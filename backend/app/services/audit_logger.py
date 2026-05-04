@@ -1,31 +1,48 @@
+from datetime import datetime
+from typing import Optional
+from sqlalchemy.orm import Session
+
 from app.models.audit_log import AuditLog
 
 
 def log_event(
     *,
-    user_id: str,
+    user_id,
     role: str,
     action: str,
-    entity_type: str | None = None,
-    entity_id: str | None = None,
-    ip_address: str | None = None,
+    entity_type: str,
+    entity_id: str,
+    ip: Optional[str] = None,
+    db: Optional[Session] = None,
 ):
     """
-    Create an audit log entry.
-    In production, this will be saved to the database.
+    Audit logger.
+    - Always prints (developer visibility)
+    - Persists to audit_logs when db session is provided (compliance/audit readiness)
     """
-    audit = AuditLog(
-        user_id=user_id,
-        role=role,
-        action=action,
-        entity_type=entity_type,
-        entity_id=entity_id,
-        ip_address=ip_address,
+    print(
+        f"[AUDIT] user={user_id} role={role} action={action} "
+        f"entity={entity_type}:{entity_id} ip={ip}"
     )
 
-    # TEMPORARY: Print instead of DB write
-    # This will be replaced with session.add(audit)
-    print(
-        f"[AUDIT] user={user_id} role={role} "
-        f"action={action} entity={entity_type}:{entity_id} ip={ip_address}"
+    if db is None:
+        return
+
+    row = AuditLog(
+        user_id=str(user_id),
+        role=str(role),
+        action=str(action),
+        entity_type=str(entity_type),
+        entity_id=str(entity_id),
+        created_at=datetime.utcnow(),
     )
+
+    # Only include ip if your model has it; otherwise leave it out
+    if hasattr(row, "ip") or hasattr(row, "ip_address"):
+        if hasattr(row, "ip"):
+            row.ip = ip
+        else:
+            row.ip_address = ip
+
+    db.add(row)
+    # no commit here; caller controls transaction

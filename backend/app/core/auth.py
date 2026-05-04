@@ -1,3 +1,4 @@
+import uuid
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
@@ -8,23 +9,35 @@ security = HTTPBearer()
 
 
 class CurrentUser:
-    def __init__(self, user_id: str, role: str):
+    def __init__(self, user_id: uuid.UUID, role: str):
         self.user_id = user_id
         self.role = role
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-):
+) -> CurrentUser:
     token = credentials.credentials
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = payload.get("sub")
+        sub = payload.get("sub")
         role = payload.get("role")
 
-        if not user_id or not role:
-            raise HTTPException(status_code=401)
+        if not sub or not role:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload",
+            )
+
+        # ✅ Convert "sub" to UUID (prevents provider_id UUID crashes)
+        try:
+            user_id = uuid.UUID(sub)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token subject (sub must be UUID)",
+            )
 
         return CurrentUser(user_id=user_id, role=role)
 

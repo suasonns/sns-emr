@@ -1,8 +1,8 @@
 import uuid
-from sqlalchemy import Column, DateTime
+from datetime import datetime
+from sqlalchemy import Column, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declarative_base
-from datetime import datetime
 
 Base = declarative_base()
 
@@ -20,4 +20,17 @@ class BaseModel(Base):
         DateTime,
         default=datetime.utcnow,
         nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    created_by = Column(
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
     )

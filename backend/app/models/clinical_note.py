@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Text, ForeignKey, DateTime
+from sqlalchemy.dialects.postgresql import UUID
 from app.models.base import BaseModel
 from datetime import datetime
 
@@ -18,12 +19,23 @@ class ClinicalNote(BaseModel):
 
     note_type = Column(String, nullable=False)
     content = Column(Text, nullable=False)
-    status = Column(String, default="draft")
-    finalized_at = Column(DateTime, nullable=True)
 
-    def finalize(self):
-        if self.status == "finalized":
-            raise ValueError("Clinical notes cannot be modified once finalized")
+    # Draft / finalized indicator (secondary)
+    status = Column(String, default="draft")
+
+    # ✅ Authoritative finalization boundary
+    finalized_at = Column(DateTime, nullable=True)
+    finalized_by = Column(UUID(as_uuid=True), nullable=True)
+
+    def finalize(self, *, finalized_by):
+        """
+        Finalize the clinical note.
+        This is a one-way operation.
+        """
+        # ✅ Authoritative guard (timestamp-based, survey-defensible)
+        if self.finalized_at is not None:
+            raise ValueError("Clinical note already finalized")
 
         self.status = "finalized"
         self.finalized_at = datetime.utcnow()
+        self.finalized_by = finalized_by
