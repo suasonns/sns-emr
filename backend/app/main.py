@@ -5,7 +5,6 @@ from app.api import visits
 from app.api import notes
 from app.api import medications
 from app.api import chha_pocs
-from app.api import idg_meetings
 from app.api import f2f, certifications
 from app.api import benefits
 from app.api import compliance
@@ -41,10 +40,6 @@ app = FastAPI(
             "description": "RN-authored hospice aide plans of care",
         },
         {
-            "name": "idg_meetings",
-            "description": "Interdisciplinary Group reviews",
-        },
-        {
             "name": "f2f",
             "description": "Face-to-face encounters",
         },
@@ -75,7 +70,6 @@ app.include_router(visits.router)
 app.include_router(notes.router)
 app.include_router(medications.router)
 app.include_router(chha_pocs.router)
-app.include_router(idg_meetings.router)
 app.include_router(f2f.router)
 app.include_router(certifications.router)
 app.include_router(benefits.router)
