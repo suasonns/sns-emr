@@ -1,13 +1,46 @@
-from sqlalchemy import Column, String, Date, DateTime, Enum, ForeignKey, Index
+import enum
+
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Enum,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.types import Enum as SAEnum
 
 from app.models.base import BaseModel
+
+
+# ---------------------------------------------------------------------
+# Completion Evidence Enum (matches Postgres exactly)
+# ---------------------------------------------------------------------
+class TaskCompletionRefType(enum.Enum):
+    VISIT = "VISIT"
+    NOTE = "NOTE"
+    DOCUMENT = "DOCUMENT"
+    CLINICAL_NOTE = "CLINICAL_NOTE"
 
 
 class Task(BaseModel):
     __tablename__ = "tasks"
 
-    # --- Task classification ---
+    # -------------------------------------------------
+    # Tenant scope (CRITICAL)
+    # -------------------------------------------------
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id"),
+        nullable=False,
+        index=True,
+    )
+
+    # -------------------------------------------------
+    # Task classification
+    # -------------------------------------------------
     task_type = Column(
         Enum(
             "HUV",
@@ -15,18 +48,15 @@ class Task(BaseModel):
             "OTHER",
             "POC_UPDATE",
             "IDG_REVIEW",
+            "IDG_POC_REVIEW",          # ✅ legacy DB value
             "CERTIFICATION",
             "RECERTIFICATION",
             "F2F",
-
-            # ✅ Optional: only keep these if they EXIST in the DB enum
-            # If not yet in DB, add them via an Alembic migration first.
             "POC_NONCOMPLIANT_STRUCTURE",
             "POC_REVIEW_REQUIRED",
             "POC_OUT_OF_SCOPE_CARE",
             "POC_STALE_REVIEW",
             "POC_PHYSICIAN_REVIEW_REQUIRED",
-
             name="tasks_task_type_enum",
             create_type=False,
         ),
@@ -45,10 +75,15 @@ class Task(BaseModel):
         default="PERIODIC",
     )
 
-    # --- Core relationships ---
-    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    # -------------------------------------------------
+    # Core relationships
+    # -------------------------------------------------
+    patient_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
+        nullable=False,
+    )
 
-    # ✅ DB allows this to be NULL in your environment, so keep nullable=True
     benefit_period_id = Column(
         UUID(as_uuid=True),
         ForeignKey("benefit_periods.id"),
@@ -56,7 +91,9 @@ class Task(BaseModel):
         index=True,
     )
 
-    # --- Responsibility ---
+    # -------------------------------------------------
+    # Responsibility
+    # -------------------------------------------------
     discipline = Column(
         Enum(
             "RN",
@@ -71,12 +108,19 @@ class Task(BaseModel):
         nullable=False,
     )
 
-    assigned_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assigned_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
 
-    # --- CMS / Regulatory justification ---
+    # -------------------------------------------------
+    # CMS / Regulatory justification
+    # -------------------------------------------------
     regulatory_basis = Column(
         Enum(
             "IDG",
+            "IDG_15_DAY",              # ✅ legacy DB value
             "VISIT_FREQUENCY",
             "F2F",
             "CERTIFICATION",
@@ -88,7 +132,9 @@ class Task(BaseModel):
         nullable=False,
     )
 
-    # --- Lifecycle ---
+    # -------------------------------------------------
+    # Lifecycle
+    # -------------------------------------------------
     due_date = Column(Date, nullable=False)
 
     status = Column(
@@ -105,28 +151,42 @@ class Task(BaseModel):
         default="PENDING",
     )
 
-    completed_at = Column(DateTime, nullable=True)
+    completed_at = Column(
+        DateTime(timezone=False),
+        nullable=True,
+    )
 
-    # --- Completion traceability ---
+    # -------------------------------------------------
+    # Alert reason (ESCALATION EXPLANATION)
+    # -------------------------------------------------
+    alert_reason = Column(
+        Text,
+        nullable=True,
+    )
+
+    # -------------------------------------------------
+    # Completion traceability (AUDIT‑CRITICAL)
+    # -------------------------------------------------
     completion_reference_type = Column(
-        Enum(
-            "VISIT",
-            "NOTE",
-            "ORDER",
-            "IDG_MEETING",
-            "CERTIFICATION",
-            "F2F_ENCOUNTER",
-            name="tasks_completion_ref_enum",
+        SAEnum(
+            TaskCompletionRefType,
+            name="tasks_completion_ref_enum_v2",
             create_type=False,
+            native_enum=True,
         ),
         nullable=True,
     )
 
-    # ✅ IMPORTANT: DB column is character varying — keep String
-    completion_reference_id = Column(String, nullable=True)
+    completion_reference_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
 
 
-# --- Indexes ---
+# -------------------------------------------------
+# Indexes
+# -------------------------------------------------
+Index("idx_tasks_tenant", Task.tenant_id)
 Index("idx_tasks_patient", Task.patient_id)
 Index("idx_tasks_benefit_period", Task.benefit_period_id)
 Index("idx_tasks_discipline", Task.discipline)

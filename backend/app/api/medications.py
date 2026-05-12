@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser
-from app.core.db_session import get_db
+from app.core.database import get_db
 from app.core.permissions import require_roles
 from app.models.drug_alias import DrugAlias
 from app.models.medication import Medication

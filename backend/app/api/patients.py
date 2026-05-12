@@ -1,23 +1,18 @@
 import uuid
-from datetime import datetime
+from datetime import date
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.core.auth import CurrentUser
-from app.core.db_session import get_db
-from app.core.permissions import require_roles
-from app.core.visit_types import normalize_visit_type
-
-from app.models.amendment import Amendment
-from app.models.clinical_note import ClinicalNote
-from app.models.medication import Medication
+from app.core.database import get_db
+from app.core.security import get_current_user
 from app.models.patient import Patient
 from app.models.visit import Visit
-
 from app.services.task_overdue_engine import evaluate_task_timeliness
+from app.services.dx_policy import is_primary_allowed  # ✅ PRIMARY DX GOVERNANCE
+
 
 router = APIRouter(prefix="/patients", tags=["patients"])
 
@@ -35,14 +30,142 @@ class AcuityUpdate(BaseModel):
 
 
 # =========================================================
-# PATIENT LISTING
+# PATIENT CREATE / UPDATE SCHEMAS
+# =========================================================
+class PatientCreate(BaseModel):
+    mrn: str
+    full_name: str
+    date_of_birth: date
+    primary_diagnosis: str | None = None
+
+
+class PatientUpdate(BaseModel):
+    full_name: str | None = None
+    primary_diagnosis: str | None = None
+    status: str | None = None
+
+
+# =========================================================
+# PATIENT CREATE (WRITE)
+# =========================================================
+@router.post("/", summary="Create patient")
+def create_patient(
+    payload: PatientCreate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    tenant_id = getattr(user, "tenant_id", None)
+    role = getattr(user, "role", "").upper()
+
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Tenant context missing on user session")
+
+    # Adjust allowed roles as needed
+    if role not in {"RN", "NP", "MD", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # ✅ PRIMARY DX ENFORCEMENT (GLOBAL + TENANT POLICY)
+    if payload.primary_diagnosis:
+        allowed, reason = is_primary_allowed(
+            db,
+            tenant_id=tenant_id,
+            code=payload.primary_diagnosis,
+        )
+        if not allowed:
+            raise HTTPException(status_code=422, detail=reason)
+
+    patient = Patient(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        mrn=payload.mrn,
+        full_name=payload.full_name,
+        date_of_birth=payload.date_of_birth,
+        primary_diagnosis=payload.primary_diagnosis,
+        status="ACTIVE",
+        created_by=getattr(user, "user_id", None) or getattr(user, "id", None),
+    )
+
+    db.add(patient)
+    db.commit()
+    db.refresh(patient)
+
+    return {"patient_id": str(patient.id)}
+
+
+# =========================================================
+# PATIENT UPDATE (WRITE)
+# =========================================================
+@router.put("/{patient_id}", summary="Update patient")
+def update_patient(
+    patient_id: uuid.UUID,
+    payload: PatientUpdate,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    tenant_id = getattr(user, "tenant_id", None)
+    role = getattr(user, "role", "").upper()
+
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Tenant context missing on user session")
+
+    if role not in {"RN", "NP", "MD", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
+        .first()
+    )
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    # ✅ PRIMARY DX ENFORCEMENT (ONLY IF CHANGED)
+    if payload.primary_diagnosis is not None:
+        allowed, reason = is_primary_allowed(
+            db,
+            tenant_id=tenant_id,
+            code=payload.primary_diagnosis,
+        )
+        if not allowed:
+            raise HTTPException(status_code=422, detail=reason)
+
+        patient.primary_diagnosis = payload.primary_diagnosis
+
+    if payload.full_name is not None:
+        patient.full_name = payload.full_name
+
+    if payload.status is not None:
+        patient.status = payload.status
+
+    db.commit()
+    return {"status": "ok"}
+
+
+# =========================================================
+# PATIENT LISTING (READ‑ONLY)
 # =========================================================
 @router.get("/", summary="List patients (read-only)")
 def list_patients(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Surveyor"])),
+    user=Depends(get_current_user),
 ):
-    patients = db.query(Patient).all()
+    tenant_id = getattr(user, "tenant_id", None)
+    role = getattr(user, "role", "").upper()
+
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Tenant context missing on user session")
+
+    allowed = {"RN", "NP", "MD", "SURVEYOR"}
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    patients = (
+        db.query(Patient)
+        .filter(Patient.tenant_id == tenant_id)
+        .order_by(Patient.full_name.asc())
+        .all()
+    )
+
     return [
         {
             "patient_id": str(p.id),
@@ -57,17 +180,30 @@ def list_patients(
 
 
 # =========================================================
-# VISITS FOR PATIENT
+# VISITS FOR PATIENT (READ‑ONLY)
 # =========================================================
 @router.get("/{patient_id}/visits", summary="List visits for a patient (read-only)")
 def list_visits_for_patient(
     patient_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "LVN", "NP", "MD", "Surveyor"])),
+    user=Depends(get_current_user),
 ):
+    tenant_id = getattr(user, "tenant_id", None)
+    role = getattr(user, "role", "").upper()
+
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Tenant context missing on user session")
+
+    allowed = {"RN", "LVN", "NP", "MD", "SURVEYOR"}
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     visits = (
         db.query(Visit)
-        .filter(Visit.patient_id == patient_id)
+        .filter(
+            Visit.tenant_id == tenant_id,
+            Visit.patient_id == patient_id,
+        )
         .order_by(Visit.visit_datetime.desc())
         .all()
     )
@@ -87,17 +223,32 @@ def list_visits_for_patient(
 
 
 # =========================================================
-# CHART SUMMARY (READ-ONLY EXPORT)
+# CHART SUMMARY (READ‑ONLY EXPORT)
 # =========================================================
 @router.get("/{patient_id}/chart-summary", summary="Patient chart summary (read-only export view)")
 def patient_chart_summary(
     patient_id: uuid.UUID,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Surveyor"])),
+    user=Depends(get_current_user),
 ):
+    tenant_id = getattr(user, "tenant_id", None)
+    role = getattr(user, "role", "").upper()
+
+    if not tenant_id:
+        raise HTTPException(status_code=500, detail="Tenant context missing on user session")
+
+    allowed = {"RN", "NP", "MD", "SURVEYOR"}
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Keep your existing timeliness evaluation hook
     evaluate_task_timeliness(db)
 
-    patient = db.query(Patient).filter(Patient.id == patient_id).first()
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
+        .first()
+    )
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
@@ -107,113 +258,4 @@ def patient_chart_summary(
         "clinical_notes": [],
         "amendments": [],
         "medications": [],
-    }
-
-
-# =========================================================
-# SET PATIENT ACUITY + AUTO-CREATE NOTE
-# =========================================================
-@router.patch("/{patient_id}/acuity", summary="Set patient acuity state (ROUTINE/CRISIS)")
-def set_patient_acuity(
-    patient_id: uuid.UUID,
-    payload: AcuityUpdate,
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD"])),
-):
-    patient = db.query(Patient).filter(Patient.id == patient_id).first()
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    # Normalize and validate acuity value (works for str or Enum)
-    new_acuity = payload.acuity_state
-    if hasattr(new_acuity, "value"):
-        new_acuity = new_acuity.value
-    new_acuity = (new_acuity or "").upper()
-
-    if new_acuity not in ("ROUTINE", "CRISIS"):
-        raise HTTPException(status_code=422, detail="acuity_state must be ROUTINE or CRISIS")
-
-    previous_acuity = getattr(patient, "acuity_state", None)
-
-    # No-op protection
-    if previous_acuity == new_acuity:
-        return {
-            "patient_id": str(patient.id),
-            "acuity_state": patient.acuity_state,
-            "note_created": False,
-        }
-
-    # Update patient acuity
-    patient.acuity_state = new_acuity
-    now = datetime.utcnow()
-
-    # Crisis timing (only if columns exist)
-    if new_acuity == "CRISIS":
-        if hasattr(patient, "crisis_started_at") and getattr(patient, "crisis_started_at", None) is None:
-            patient.crisis_started_at = now
-        if hasattr(patient, "crisis_ended_at"):
-            patient.crisis_ended_at = None
-    else:
-        if hasattr(patient, "crisis_ended_at"):
-            patient.crisis_ended_at = now
-
-    db.flush()
-
-    # Find latest visit to attach the note
-    visit = (
-        db.query(Visit)
-        .filter(Visit.patient_id == patient.id)
-        .order_by(Visit.visit_datetime.desc())
-        .first()
-    )
-
-    # Create a draft RN visit if needed (visit_id is NOT NULL on clinical_notes)
-    if visit is None:
-        visit = Visit(
-            patient_id=patient.id,
-            provider_id=user.user_id,
-            visit_type=normalize_visit_type("RN"),
-            visit_datetime=now,
-            status="draft",
-            created_by=user.user_id,
-            is_supervisory=False,
-            acuity_state_at_visit=new_acuity,
-        )
-        db.add(visit)
-        db.flush()
-
-    note_content = (
-        f"Patient acuity state changed from {previous_acuity} to {new_acuity}.\n\n"
-        "Change reflects current clinical status and Plan of Care needs. "
-        "Acuity update supports appropriate visit frequency, supervisory requirements, "
-        "and Plan of Care oversight.\n\n"
-        "No direct patient contact occurred for this acuity update entry unless otherwise documented."
-    )
-
-    # Build ClinicalNote using REQUIRED + known-safe fields
-    note_kwargs = {
-        "visit_id": visit.id,                   # NOT NULL
-        "author_id": user.user_id,              # NOT NULL (critical fix)
-        "note_type": "Clinical Chart Review",   # NOT NULL
-        "content": note_content,                # NOT NULL
-        "status": "finalized",
-        "finalized_at": now,
-        "finalized_by": user.user_id,
-    }
-
-    # Optional fields only if your model supports them
-    if hasattr(ClinicalNote, "created_by"):
-        note_kwargs["created_by"] = user.user_id
-
-    note = ClinicalNote(**note_kwargs)
-    db.add(note)
-    db.commit()
-
-    return {
-        "patient_id": str(patient.id),
-        "acuity_state": patient.acuity_state,
-        "previous_acuity": previous_acuity,
-        "note_created": True,
-        "note_id": str(note.id),
-        "note_visit_id": str(visit.id),
     }

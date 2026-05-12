@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 
-from app.core.db_session import get_db
+from app.core.database import get_db
 from app.core.permissions import require_roles
 from app.core.auth import CurrentUser
 
