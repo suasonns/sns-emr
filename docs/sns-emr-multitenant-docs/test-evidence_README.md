@@ -10,3 +10,10 @@ Recommended additions:
 - Integration tests for alerts toggle
 
 **Generated:** 2026-05-08T02:32:26Z
+
+# Deprecated
+
+Authoritative documentation now lives in:
+docs/sns-emr-multitenant-docs/
+
+This folder is intentionally retired.

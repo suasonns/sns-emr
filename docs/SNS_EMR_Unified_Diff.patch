@@ -1,0 +1,30 @@
+--- SNS_EMR_MASTER_BLUEPRINT (old)
++++ SNS_EMR_MASTER_BLUEPRINT (updated)
+@@ -2,3 +2,27 @@
+ ### 1.1 Multi‑Tenant Isolation (Hard Boundary)
+ - Tenancy is resolved from request context
+ - All PHI queries are scoped by tenant
++
++### Roles & Tenant Authority Model (LOCKED)
++
++Owner Super User:
++- Platform-wide governance only
++- Never bypasses tenant isolation
++
++Tenant Super User (Optional / Subscription-Gated):
++- Tenant-scoped only
++- Cannot access other tenants
++- Cannot browse files without patient context
++
++Tenant Admin:
++- Tenant-scoped
++- Admin dashboards only
++- No global file browsing
++
++Clinical Staff:
++- Assigned-patient access only
++- Files visible only via patient charts
++
++✅ Definition-of-Done Badge: Patient‑Scoped Files ✅
++
++(See SNS_EMR_Role_Matrix.md for canonical definitions)
