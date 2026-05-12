@@ -2,9 +2,7 @@
 # Python bytecode
 # ======================
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
 
 # ======================
 # Virtual environments
@@ -16,9 +14,36 @@ venv/
 # Environment variables
 # ======================
 .env
+.env.*
+*.local
 
 # ======================
 # OS / Editor junk
 # ======================
 .DS_Store
 Thumbs.db
+
+# ======================
+# Archives / generated bundles
+# ======================
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# ======================
+# Test artifacts / temp outputs
+# ======================
+.coverage
+.pytest_cache/
+htmlcov/
+
+# ======================
+# Logs
+# ======================
+*.log
+
+# ======================
+# Node / frontend (future-proof)
+# ======================
+node_modules/
