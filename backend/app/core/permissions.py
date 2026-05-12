@@ -1,15 +1,39 @@
+# app/core/permissions.py
+
+from typing import Iterable, Optional
 from fastapi import Depends, HTTPException, status
-from typing import List
-from app.core.auth import get_current_user, CurrentUser
+
+from app.core.security import get_current_access
 
 
-def require_roles(allowed_roles: List[str]):
-    def checker(user: CurrentUser = Depends(get_current_user)):
-        if user.role not in allowed_roles:
+def require_system_access():
+    """
+    Enforces system-level access ONLY.
+    This is NOT a user, role, or clinician.
+    """
+
+    def _dependency(access=Depends(get_current_access)):
+        if access.get("access_type") != "SYSTEM":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
+                detail="System access required",
             )
-        return user
+        return access
 
-    return checker
+    return _dependency
+
+
+# ------------------------------------------------------------------
+# Legacy compatibility shims (NO roles / NO permissions enforced)
+# ------------------------------------------------------------------
+
+def require_roles(_allowed_roles: Optional[Iterable[str]] = None):
+    return require_system_access()
+
+
+def require_permission(_permission: str = ""):
+    return require_system_access()
+
+
+def has_permission(*args, **kwargs):
+    return True
