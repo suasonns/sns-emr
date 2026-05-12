@@ -14,14 +14,22 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    op.create_table(
-        "tasks",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("patient_id", UUID(as_uuid=True), nullable=False),
-        sa.Column("status", sa.String, nullable=False),
-    )
-
+def upgrade() -> None:
+    # If tasks already exists (it will, via b8699a65514c), do nothing.
+    # If tasks doesn't exist, create a minimal placeholder to allow later migrations
+    # to run (dev repair safety).
+    op.execute("""
+    DO $$
+    BEGIN
+      IF to_regclass('public.tasks') IS NULL THEN
+        CREATE TABLE tasks (
+          id UUID PRIMARY KEY,
+          patient_id UUID NOT NULL REFERENCES patients(id),
+          status VARCHAR NOT NULL
+        );
+      END IF;
+    END $$;
+    """)
 
 def downgrade():
     op.drop_table("tasks")

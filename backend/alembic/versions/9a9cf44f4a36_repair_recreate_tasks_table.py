@@ -5,137 +5,123 @@ Revises: eb851de9e5e1
 Create Date: 2026-04-30 13:48:45.744796
 """
 
-from typing import Sequence, Union
-
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.dialects.postgresql import ENUM
-
 
 # revision identifiers, used by Alembic.
-revision: str = "9a9cf44f4a36"
-down_revision: Union[str, Sequence[str], None] = "eb851de9e5e1"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
-
-
-def _create_enum_if_not_exists(enum_name: str, values: list[str]) -> None:
-    values_sql = ", ".join([f"'{v}'" for v in values])
-    op.execute(
-        f"""
-        DO $$
-        BEGIN
-            CREATE TYPE {enum_name} AS ENUM ({values_sql});
-        EXCEPTION
-            WHEN duplicate_object THEN NULL;
-        END $$;
-        """
-    )
+revision = "9a9cf44f4a36"
+down_revision = "eb851de9e5e1"
+branch_labels = None
+depends_on = None
 
 
 def upgrade() -> None:
-    conn = op.get_bind()
+    """
+    Repair-only migration (safety-first):
+    - If public.tasks already exists, do nothing.
+    - If tasks is missing but prerequisites are missing (patients), fail fast with a clear message.
+    - Create required ENUMs only if missing (no dynamic EXECUTE/quoting issues).
+    - Recreate tasks table WITHOUT referencing users (users may not exist).
+    - Add FK to benefit_periods only if benefit_periods exists.
+    """
 
-    exists = conn.execute(sa.text("""
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema='public' AND table_name='tasks'
-        LIMIT 1
-    """)).scalar()
+    bind = op.get_bind()
 
-    if exists:
+    # If tasks exists, no-op (normal case when b8699a ran) [1](https://suasonns-my.sharepoint.com/personal/romel_suason_suasonns_org/Documents/Microsoft%20Copilot%20Chat%20Files/b8699a65514c_add_task_engine_for_huv_sfv.py)
+    tasks_exists = bind.execute(sa.text("SELECT to_regclass('public.tasks')")).scalar()
+    if tasks_exists:
         return
 
-    # --- Ensure enum types exist ---
-    _create_enum_if_not_exists("tasks_task_type_enum", ["HUV", "SFV", "OTHER"])
-    _create_enum_if_not_exists("tasks_origin_enum", ["ADMISSION", "PERIODIC", "MANUAL"])
-    _create_enum_if_not_exists("tasks_discipline_enum", ["RN", "LVN", "MD", "NP", "SW", "CHAPLAIN", "AIDE"])
-    _create_enum_if_not_exists("tasks_status_enum", ["PENDING", "COMPLETED", "OVERDUE", "ESCALATED", "WAIVED"])
-    _create_enum_if_not_exists("tasks_completion_ref_enum", ["VISIT", "NOTE", "ORDER"])
-    _create_enum_if_not_exists(
-        "tasks_regulatory_basis_enum",
-        ["IDG", "VISIT_FREQUENCY", "F2F", "CERTIFICATION", "ADMISSION_REQUIREMENT"],
-    )
+    # Patients must exist; if not, DB is drifted beyond repair here.
+    patients_exists = bind.execute(sa.text("SELECT to_regclass('public.patients')")).scalar()
+    if not patients_exists:
+        raise RuntimeError("public.patients does not exist; reset DB and run alembic upgrade head from scratch")
 
-   # --- Create tasks table ---
-    op.create_table(
-        "tasks",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    # Ensure ENUM types exist (idempotent)
+    op.execute("""
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_task_type_enum') THEN
+        CREATE TYPE tasks_task_type_enum AS ENUM ('HUV', 'SFV', 'OTHER');
+      END IF;
 
-        sa.Column(
-            "patient_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("patients.id", ondelete="CASCADE"),
-            nullable=False,
-        ),
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_origin_enum') THEN
+        CREATE TYPE tasks_origin_enum AS ENUM ('ADMISSION', 'PERIODIC', 'MANUAL');
+      END IF;
 
-        sa.Column(
-            "benefit_period_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("benefit_periods.id"),
-            nullable=True,
-        ),
+      -- Keep this aligned with the canonical task engine migration (no LVN here)
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_discipline_enum') THEN
+        CREATE TYPE tasks_discipline_enum AS ENUM ('RN', 'MD', 'NP', 'SW', 'CHAPLAIN', 'AIDE');
+      END IF;
 
-        sa.Column(
-            "task_type",
-            ENUM(name="tasks_task_type_enum", create_type=False),
-            nullable=False,
-        ),
-        sa.Column(
-            "origin",
-            ENUM(name="tasks_origin_enum", create_type=False),
-            nullable=False,
-            server_default="PERIODIC",
-        ),
-        sa.Column(
-            "discipline",
-            ENUM(name="tasks_discipline_enum", create_type=False),
-            nullable=False,
-        ),
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_status_enum') THEN
+        CREATE TYPE tasks_status_enum AS ENUM ('PENDING', 'COMPLETED', 'OVERDUE', 'ESCALATED', 'WAIVED');
+      END IF;
 
-        sa.Column(
-            "assigned_user_id",
-            UUID(as_uuid=True),
-            sa.ForeignKey("users.id"),
-            nullable=True,
-        ),
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_completion_ref_enum') THEN
+        CREATE TYPE tasks_completion_ref_enum AS ENUM ('VISIT', 'NOTE', 'ORDER');
+      END IF;
 
-        sa.Column(
-            "regulatory_basis",
-            ENUM(name="tasks_regulatory_basis_enum", create_type=False),
-            nullable=False,
-            server_default="VISIT_FREQUENCY",
-        ),
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_regulatory_basis_enum') THEN
+        CREATE TYPE tasks_regulatory_basis_enum AS ENUM ('IDG', 'VISIT_FREQUENCY', 'F2F', 'CERTIFICATION', 'ADMISSION_REQUIREMENT');
+      END IF;
+    END $$;
+    """)
 
-        sa.Column("due_date", sa.Date, nullable=False),
+    # Create tasks table (schema-qualified). Do NOT reference users (may not exist).
+    op.execute("""
+    CREATE TABLE IF NOT EXISTS public.tasks (
+      id UUID PRIMARY KEY,
+      patient_id UUID NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
 
-        sa.Column(
-            "status",
-            ENUM(name="tasks_status_enum", create_type=False),
-            nullable=False,
-            server_default="PENDING",
-        ),
+      -- benefit period is optional; FK added only if benefit_periods exists
+      benefit_period_id UUID NULL,
 
-        sa.Column("completed_at", sa.DateTime, nullable=True),
+      task_type tasks_task_type_enum NOT NULL,
+      origin tasks_origin_enum NOT NULL DEFAULT 'PERIODIC',
+      discipline tasks_discipline_enum NOT NULL,
+      regulatory_basis tasks_regulatory_basis_enum NOT NULL DEFAULT 'VISIT_FREQUENCY',
 
-        sa.Column(
-            "completion_reference_type",
-            ENUM(name="tasks_completion_ref_enum", create_type=False),
-            nullable=True,
-        ),
-        sa.Column("completion_reference_id", sa.String, nullable=True),
+      due_date DATE NOT NULL,
 
-        sa.Column("created_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("updated_at", sa.DateTime, server_default=sa.func.now(), nullable=False),
-        sa.Column("created_by", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
-    )
+      status tasks_status_enum NOT NULL DEFAULT 'PENDING',
 
-    op.create_index("idx_tasks_patient", "tasks", ["patient_id"])
-    op.create_index("idx_tasks_due_date", "tasks", ["due_date"])
-    op.create_index("idx_tasks_status", "tasks", ["status"])
-    op.create_index("idx_tasks_discipline", "tasks", ["discipline"])
-    op.create_index("idx_tasks_benefit_period", "tasks", ["benefit_period_id"])
+      completed_at TIMESTAMP WITHOUT TIME ZONE NULL,
+      completion_reference_type tasks_completion_ref_enum NULL,
+      completion_reference_id VARCHAR NULL,
+
+      assigned_user_id UUID NULL,   -- no FK to users here (repair-safe)
+      created_by UUID NULL,         -- no FK to users here (repair-safe)
+
+      created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+      updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now()
+    );
+    """)
+
+    # Add FK to benefit_periods only if that table exists
+    op.execute("""
+    DO $$
+    BEGIN
+      IF to_regclass('public.benefit_periods') IS NOT NULL THEN
+        -- Add constraint only if not already present
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'tasks_benefit_period_id_fkey'
+        ) THEN
+          ALTER TABLE public.tasks
+            ADD CONSTRAINT tasks_benefit_period_id_fkey
+            FOREIGN KEY (benefit_period_id) REFERENCES public.benefit_periods(id);
+        END IF;
+      END IF;
+    END $$;
+    """)
+
+    # Indexes (idempotent)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_patient ON public.tasks(patient_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON public.tasks(due_date);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_discipline ON public.tasks(discipline);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_tasks_benefit_period ON public.tasks(benefit_period_id);")
 
 
 def downgrade() -> None:

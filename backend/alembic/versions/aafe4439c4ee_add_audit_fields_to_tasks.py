@@ -19,8 +19,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    pass
+    op.execute("""
+    DO $$
+    BEGIN
+      IF to_regclass('public.tasks') IS NULL THEN
+        RAISE EXCEPTION 'public.tasks does not exist; tasks creator migration was not applied';
+      END IF;
+
+      ALTER TABLE public.tasks
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now();
+
+      ALTER TABLE public.tasks
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now();
+
+      ALTER TABLE public.tasks
+        ADD COLUMN IF NOT EXISTS created_by UUID;
+
+    END $$;
+    """)
 
 
 def downgrade() -> None:

@@ -19,11 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "tasks",
-        sa.Column("completed_at", sa.DateTime(), nullable=True),
-    )
-
+    op.execute("""
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITHOUT TIME ZONE;
+    """)
 
 def downgrade() -> None:
     op.drop_column("tasks", "completed_at")

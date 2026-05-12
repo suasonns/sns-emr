@@ -20,43 +20,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    """Upgrade schema."""
-    op.add_column(
-        "tasks",
-        sa.Column(
-            "created_at",
-            sa.DateTime(),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-    )
+    op.execute("""
+    DO $$
+    BEGIN
+      IF to_regclass('public.tasks') IS NULL THEN
+        RAISE EXCEPTION 'public.tasks does not exist; tasks creator migration was not applied';
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column(
-            "updated_at",
-            sa.DateTime(),
-            server_default=sa.func.now(),
-            nullable=False,
-        ),
-    )
+      -- Make NOT NULL + defaults safe by only applying if column exists and isn’t already not-null.
+      -- Ensure columns exist first:
+      ALTER TABLE public.tasks
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now();
 
-    op.add_column(
-        "tasks",
-        sa.Column(
-            "created_by",
-            UUID(as_uuid=True),
-            sa.ForeignKey("users.id"),
-            nullable=True,
-        ),
-    )
+      ALTER TABLE public.tasks
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT now();
 
-    op.create_index(
-        "ix_tasks_created_by",
-        "tasks",
-        ["created_by"],
-        unique=False,
-    )
+      -- If you want strict NOT NULL, set it safely (will succeed if data exists)
+      BEGIN
+        ALTER TABLE public.tasks ALTER COLUMN created_at SET NOT NULL;
+      EXCEPTION WHEN others THEN
+        -- ignore if already not null or cannot be set yet
+        NULL;
+      END;
+
+      BEGIN
+        ALTER TABLE public.tasks ALTER COLUMN updated_at SET NOT NULL;
+      EXCEPTION WHEN others THEN
+        NULL;
+      END;
+
+    END $$;
+    """)
 
 
 def downgrade() -> None:

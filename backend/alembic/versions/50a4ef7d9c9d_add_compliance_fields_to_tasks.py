@@ -6,9 +6,8 @@ Revises: 4c586d69e593
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
 
-# Alembic revision identifiers
+# revision identifiers, used by Alembic.
 revision = "50a4ef7d9c9d"
 down_revision = "4c586d69e593"
 branch_labels = None
@@ -17,88 +16,98 @@ depends_on = None
 
 def _create_enum_if_not_exists(enum_name: str, values: list[str]) -> None:
     """
-    Creates a PostgreSQL ENUM type if it doesn't already exist.
-    Safe to run multiple times.
+    Safely create a PostgreSQL ENUM type only if it doesn't already exist.
     """
-    values_sql = ", ".join([f"'{v}'" for v in values])
-    op.execute(
-        f"""
-        DO $$
-        BEGIN
-            CREATE TYPE {enum_name} AS ENUM ({values_sql});
-        EXCEPTION
-            WHEN duplicate_object THEN NULL;
-        END $$;
-        """
-    )
+    # Build quoted enum labels: 'A','B','C'
+    labels = ", ".join([f"'{v}'" for v in values])
+
+    op.execute(f"""
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = '{enum_name}') THEN
+        EXECUTE 'CREATE TYPE {enum_name} AS ENUM ({labels})';
+      END IF;
+    END $$;
+    """)
 
 
-def upgrade():
-    # --- ensure enum types exist (because tasks table started as minimal) ---
-    _create_enum_if_not_exists("tasks_task_type_enum", ["HUV", "SFV", "OTHER"])
-    _create_enum_if_not_exists("tasks_discipline_enum", ["RN", "MD", "NP", "SW", "CHAPLAIN", "AIDE"])
-    _create_enum_if_not_exists("tasks_origin_enum", ["ADMISSION", "PERIODIC", "MANUAL"])
-    _create_enum_if_not_exists("tasks_status_enum", ["PENDING", "COMPLETED", "OVERDUE", "ESCALATED", "WAIVED"])
-    _create_enum_if_not_exists("tasks_completion_ref_enum", ["VISIT", "NOTE", "ORDER"])
-    _create_enum_if_not_exists(
-        "tasks_regulatory_basis_enum",
-        ["IDG", "VISIT_FREQUENCY", "F2F", "CERTIFICATION", "ADMISSION_REQUIREMENT"],
-    )
+def upgrade() -> None:
+    # Ensure the tasks table exists
+    op.execute("""
+    DO $$
+    BEGIN
+      IF to_regclass('public.tasks') IS NULL THEN
+        RAISE EXCEPTION 'public.tasks does not exist; tasks creator migration was not applied';
+      END IF;
+    END $$;
+    """)
 
-    # --- add columns ---
-    op.add_column(
-        "tasks",
-        sa.Column("task_type", sa.Enum(name="tasks_task_type_enum"), nullable=True),
-    )
+    # Create enums safely (no dynamic EXECUTE needed)
+    op.execute("""
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_task_type_enum') THEN
+        CREATE TYPE tasks_task_type_enum AS ENUM ('HUV', 'SFV', 'OTHER');
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column("discipline", sa.Enum(name="tasks_discipline_enum"), nullable=True),
-    )
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_origin_enum') THEN
+        CREATE TYPE tasks_origin_enum AS ENUM ('ADMISSION', 'PERIODIC', 'MANUAL');
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column("origin", sa.Enum(name="tasks_origin_enum"), nullable=True),
-    )
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_discipline_enum') THEN
+        CREATE TYPE tasks_discipline_enum AS ENUM ('RN', 'MD', 'NP', 'SW', 'CHAPLAIN', 'AIDE');
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column("due_date", sa.Date, nullable=True),
-    )
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_status_enum') THEN
+        CREATE TYPE tasks_status_enum AS ENUM ('PENDING', 'COMPLETED', 'OVERDUE', 'ESCALATED', 'WAIVED');
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column("assigned_user_id", UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
-    )
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_completion_ref_enum') THEN
+        CREATE TYPE tasks_completion_ref_enum AS ENUM ('VISIT', 'NOTE', 'ORDER');
+      END IF;
 
-    op.add_column(
-        "tasks",
-        sa.Column("benefit_period_id", UUID(as_uuid=True), nullable=True),
-    )
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tasks_regulatory_basis_enum') THEN
+        CREATE TYPE tasks_regulatory_basis_enum AS ENUM ('IDG', 'VISIT_FREQUENCY', 'F2F', 'CERTIFICATION', 'ADMISSION_REQUIREMENT');
+      END IF;
+    END $$;
+    """)
 
-    op.add_column(
-        "tasks",
-        sa.Column("regulatory_basis", sa.Enum(name="tasks_regulatory_basis_enum"), nullable=True),
-    )
+    # Add columns safely (idempotent) — schema-qualified
+    op.execute("""
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS task_type tasks_task_type_enum;
 
-    op.add_column(
-        "tasks",
-        sa.Column("completion_reference_type", sa.Enum(name="tasks_completion_ref_enum"), nullable=True),
-    )
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS origin tasks_origin_enum;
 
-    op.add_column(
-        "tasks",
-        sa.Column("completion_reference_id", sa.String, nullable=True),
-    )
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS discipline tasks_discipline_enum;
 
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS regulatory_basis tasks_regulatory_basis_enum;
 
-def downgrade():
-    op.drop_column("tasks", "completion_reference_id")
-    op.drop_column("tasks", "completion_reference_type")
-    op.drop_column("tasks", "regulatory_basis")
-    op.drop_column("tasks", "benefit_period_id")
-    op.drop_column("tasks", "assigned_user_id")
-    op.drop_column("tasks", "due_date")
-    op.drop_column("tasks", "origin")
-    op.drop_column("tasks", "discipline")
-    op.drop_column("tasks", "task_type")
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS due_date DATE;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS status tasks_status_enum;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP WITHOUT TIME ZONE;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS completion_reference_type tasks_completion_ref_enum;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS completion_reference_id VARCHAR;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS assigned_user_id UUID;
+
+    ALTER TABLE public.tasks
+      ADD COLUMN IF NOT EXISTS benefit_period_id UUID;
+    """)
+
+def downgrade() -> None:
+    # Leave downgrade minimal/safe for dev: do not drop columns/enums (avoid destructive rollback)
+    pass
