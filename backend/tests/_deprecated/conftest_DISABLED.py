@@ -1,0 +1,56 @@
+import os
+import pytest
+from fastapi.testclient import TestClient
+
+# ------------------------------------------------------------
+# MUST be set BEFORE importing app.main (auth mode locks at import)
+# ------------------------------------------------------------
+os.environ.setdefault("AUTH_MODE", "TOKEN")
+os.environ.setdefault("SECRET_KEY", "dev-secret-32plus-chars-change-me-1234567890")
+os.environ.setdefault("JWT_ALGORITHM", "HS256")
+os.environ.setdefault("JWT_ISSUER", "sns-emr")
+os.environ.setdefault("JWT_AUDIENCE", "sns-emr-users")
+
+from app.main import app
+from app.core.db_session import get_db as real_get_db
+
+
+@pytest.fixture(scope="session")
+def client():
+    return TestClient(app)
+
+
+def login_headers(client: TestClient, user_id: str, role: str) -> dict:
+    r = client.post("/auth/dev-login", params={"user_id": user_id, "role": role})
+    assert r.status_code == 200, r.text
+    token = r.json().get("access_token")
+    assert token, f"dev-login returned no access_token: {r.json()}"
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def rn_headers(client):
+    return login_headers(client, user_id="nurse_test", role="RN")
+
+
+@pytest.fixture()
+def chha_headers(client):
+    return login_headers(client, user_id="aide_test", role="CHHA")
+
+
+@pytest.fixture()
+def volunteer_headers(client):
+    return login_headers(client, user_id="vol_test", role="VOLUNTEER")
+
+
+@pytest.fixture()
+def db_session():
+    gen = real_get_db()
+    db = next(gen)
+    try:
+        yield db
+    finally:
+        try:
+            next(gen)
+        except StopIteration:
+            pass
