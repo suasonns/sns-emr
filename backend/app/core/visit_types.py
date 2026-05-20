@@ -27,15 +27,8 @@ def normalize_visit_type(raw_visit_type: Optional[str]) -> str:
     """
     Normalize visit_type to canonical uppercase value.
 
-    Rules:
-      - Required field
-      - Uppercase normalization
-      - Alias resolution (e.g., HHA -> CHHA)
-      - Deterministic rejection of invalid values
-
-    NOTE:
-      - Raises ValueError only.
-      - API layer is responsible for translating this to HTTPException.
+    Core-layer rule:
+      - Raise ValueError only (API layer maps to HTTP errors)
     """
     if not raw_visit_type:
         raise ValueError("visit_type is required")
@@ -53,7 +46,7 @@ def normalize_visit_type(raw_visit_type: Optional[str]) -> str:
 
 
 # ==========================================================
-# VISIT SERVICE / DISCIPLINE NORMALIZATION (internal logic)
+# VISIT SERVICE / DISCIPLINE NORMALIZATION
 # ==========================================================
 
 ALLOWED_VISIT_SERVICES = {
@@ -100,16 +93,9 @@ def normalize_visit_service(value: Optional[str]) -> str:
     """
     Normalize visit service / discipline to canonical value.
 
-    Rules:
-      - Required field
-      - Uppercase normalization
-      - Alias resolution
-      - Deterministic rejection of invalid values
-
-    NOTE:
-      - Raises ValueError only.
-      - Caller (API layer) decides HTTP status codes.
-      - This function does NOT determine eligibility.
+    Core-layer rule:
+      - Raise ValueError only
+      - Deterministic normalization
     """
     if not value:
         raise ValueError("visit service is required")
@@ -127,3 +113,10 @@ def normalize_visit_service(value: Optional[str]) -> str:
         raise ValueError(f"unsupported visit service: {raw}")
 
     return canonical
+
+
+# ==========================================================
+# BACKWARDS-COMPATIBILITY ALIAS (MUST BE LAST)
+# ==========================================================
+
+normalize_visit_discipline = normalize_visit_service
