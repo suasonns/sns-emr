@@ -1,2 +1,70 @@
-__pycache__/ 
-*.pyc 
+# ======================
+# Python bytecode
+# ======================
+__pycache__/
+*.py[cod]
+
+# ======================
+# Virtual environments
+# ======================
+.venv/
+venv/
+
+# ======================
+# Environment variables
+# ======================
+.env
+.env.*
+*.local
+
+# ======================
+# OS / Editor junk
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# Archives / generated bundles
+# ======================
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.bundle
+
+# ======================
+# Test artifacts / temp outputs
+# ======================
+.coverage
+.pytest_cache/
+htmlcov/
+
+# ======================
+# Logs
+# ======================
+*.log
+
+# ======================
+# Node / frontend (future-proof)
+# ======================
+node_modules/
+
+# ======================
+# SNS EMR – Local integrity & ops artifacts
+# ======================
+
+# Integrity / verification artifacts
+integrity-manifest.sha256
+backend/integrity-manifest.sha256
+integrity-check-*.log
+integrity-check-*.json
+
+# Dependency snapshots
+installed-freeze.txt
+backend/installed-freeze.txt
+installed-freeze-*.txt
+
+# Local ops / safety scripts
+sns-emr-integrity-check.ps1
+backend/sns-emr-integrity-check.ps1
+sns-emr-no-drift.ps1
