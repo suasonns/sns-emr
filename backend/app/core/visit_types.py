@@ -1,7 +1,19 @@
-from fastapi import HTTPException
+from typing import Optional
+
+
+# ==========================================================
+# VISIT TYPE NORMALIZATION (API-facing classification)
+# ==========================================================
 
 CANONICAL_VISIT_TYPES = {
-    "RN", "LVN", "NP", "MD", "SW", "CHAPLAIN", "CHHA", "VOLUNTEER",
+    "RN",
+    "LVN",
+    "NP",
+    "MD",
+    "SW",
+    "CHAPLAIN",
+    "CHHA",
+    "VOLUNTEER",
 }
 
 VISIT_TYPE_ALIASES = {
@@ -10,16 +22,108 @@ VISIT_TYPE_ALIASES = {
     "CNA": "CHHA",
 }
 
-def normalize_visit_type(raw_visit_type: str) -> str:
+
+def normalize_visit_type(raw_visit_type: Optional[str]) -> str:
+    """
+    Normalize visit_type to canonical uppercase value.
+
+    Rules:
+      - Required field
+      - Uppercase normalization
+      - Alias resolution (e.g., HHA -> CHHA)
+      - Deterministic rejection of invalid values
+
+    NOTE:
+      - Raises ValueError only.
+      - API layer is responsible for translating this to HTTPException.
+    """
     if not raw_visit_type:
-        raise HTTPException(status_code=400, detail="visit_type is required")
+        raise ValueError("visit_type is required")
 
     vt = raw_visit_type.strip().upper()
     vt = VISIT_TYPE_ALIASES.get(vt, vt)
 
     if vt not in CANONICAL_VISIT_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid visit_type '{raw_visit_type}'. Allowed: {sorted(CANONICAL_VISIT_TYPES)}",
+        raise ValueError(
+            f"Invalid visit_type '{raw_visit_type}'. "
+            f"Allowed: {sorted(CANONICAL_VISIT_TYPES)}"
         )
+
     return vt
+
+
+# ==========================================================
+# VISIT SERVICE / DISCIPLINE NORMALIZATION (internal logic)
+# ==========================================================
+
+ALLOWED_VISIT_SERVICES = {
+    "RN",
+    "LVN",
+    "LPN",
+    "NP",
+    "MD",
+    "PA",
+    "SW",
+    "CHAPLAIN",
+    "AIDE",
+    "HHA",
+    "PT",
+    "OT",
+    "ST",
+}
+
+_VISIT_SERVICE_ALIASES = {
+    "NURSE": "RN",
+    "REGISTERED NURSE": "RN",
+    "SKILLED NURSE": "RN",
+    "SN": "RN",
+    "L.V.N": "LVN",
+    "LPN": "LPN",
+    "HHA": "HHA",
+    "HOME HEALTH AIDE": "HHA",
+    "HOMEHEALTHAIDE": "HHA",
+    "AID": "AIDE",
+    "AIDE": "AIDE",
+    "SOCIAL WORK": "SW",
+    "SOCIAL WORKER": "SW",
+    "MSW": "SW",
+    "CHAP": "CHAPLAIN",
+    "SPIRITUAL CARE": "CHAPLAIN",
+    "PHYSICIAN": "MD",
+    "DOCTOR": "MD",
+    "NURSE PRACTITIONER": "NP",
+    "PHYSICIAN ASSISTANT": "PA",
+}
+
+
+def normalize_visit_service(value: Optional[str]) -> str:
+    """
+    Normalize visit service / discipline to canonical value.
+
+    Rules:
+      - Required field
+      - Uppercase normalization
+      - Alias resolution
+      - Deterministic rejection of invalid values
+
+    NOTE:
+      - Raises ValueError only.
+      - Caller (API layer) decides HTTP status codes.
+      - This function does NOT determine eligibility.
+    """
+    if not value:
+        raise ValueError("visit service is required")
+
+    raw = str(value).strip()
+    if not raw:
+        raise ValueError("visit service is required")
+
+    upper = raw.upper().replace("-", " ").replace("_", " ").strip()
+    upper = " ".join(upper.split())
+
+    canonical = _VISIT_SERVICE_ALIASES.get(upper, upper)
+
+    if canonical not in ALLOWED_VISIT_SERVICES:
+        raise ValueError(f"unsupported visit service: {raw}")
+
+    return canonical
