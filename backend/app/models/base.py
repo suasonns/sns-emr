@@ -1,10 +1,20 @@
-import uuid
+﻿import uuid
 from datetime import datetime
+
 from sqlalchemy import Column, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import declarative_base
 
-Base = declarative_base()
+from app.db.base import Base
+
+
+class TenantScoped:
+    """
+    Marker mixin for tenant-isolated models.
+
+    Any model inheriting this will automatically
+    receive tenant filtering via the global tenant guard.
+    """
+    tenant_id: UUID
 
 
 class BaseModel(Base):
@@ -17,19 +27,20 @@ class BaseModel(Base):
     )
 
     created_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.utcnow,
         nullable=False,
     )
 
     updated_at = Column(
-        DateTime,
+        DateTime(timezone=True),
         default=datetime.utcnow,
         onupdate=datetime.utcnow,
         nullable=False,
     )
 
     created_by = Column(
+        UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=True,
         index=True,

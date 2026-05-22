@@ -47,3 +47,23 @@ htmlcov/
 # Node / frontend (future-proof)
 # ======================
 node_modules/
+
+# ======================
+# SNS EMR – Local integrity & ops artifacts
+# ======================
+
+# Git bundle backups (disaster recovery)
+*.bundle
+
+# Integrity / verification artifacts
+integrity-manifest.sha256
+integrity-check-*.log
+integrity-check-*.json
+
+# Dependency snapshots
+installed-freeze.txt
+installed-freeze-*.txt
+
+# Local ops / safety scripts (not production code)
+sns-emr-integrity-check.ps1
+sns-emr-no-drift.ps1

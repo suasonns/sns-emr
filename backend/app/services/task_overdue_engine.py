@@ -1,52 +1,40 @@
-from datetime import date, timedelta
+# app/services/task_overdue_engine.py
+
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from typing import Dict
+from uuid import UUID
+
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
 
 
-# --- Policy constants (survey defensible defaults) ---
-ESCALATION_DAYS = 7  # days after due_date to escalate
-
-
-def evaluate_task_timeliness(db: Session, *, as_of: date | None = None) -> dict:
+def evaluate_task_timeliness(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    as_of: date | None = None,
+) -> Dict[str, int]:
     """
-    Evaluates all non-completed tasks and updates status to:
-      - OVERDUE if due_date < today
-      - ESCALATED if overdue beyond ESCALATION_DAYS
+    Enterprise Task Timeliness Evaluation Engine (skeleton)
 
-    Returns counts for audit/logging.
+    Returns counts by status for dashboards / compliance read models.
     """
-    today = as_of or date.today()
+    if as_of is None:
+        as_of = datetime.now(timezone.utc).date()
 
-    updated = {
-        "overdue": 0,
-        "escalated": 0,
-    }
+    counts: Dict[str, int] = {"PENDING": 0, "OVERDUE": 0, "COMPLETED": 0}
 
-    # Only tasks that are still actionable
-    tasks = (
-        db.query(Task)
-        .filter(Task.status.in_(["PENDING", "OVERDUE"]))
+    rows = (
+        db.query(Task.status, sa.func.count(Task.id))  # type: ignore[name-defined]
+        .filter(Task.tenant_id == tenant_id)
+        .group_by(Task.status)
         .all()
     )
 
-    for task in tasks:
-        if task.due_date >= today:
-            continue
+    for status_value, count_value in rows:
+        counts[str(status_value)] = int(count_value)
 
-        days_overdue = (today - task.due_date).days
-
-        # Escalation threshold
-        if days_overdue >= ESCALATION_DAYS:
-            if task.status != "ESCALATED":
-                task.status = "ESCALATED"
-                updated["escalated"] += 1
-        else:
-            if task.status != "OVERDUE":
-                task.status = "OVERDUE"
-                updated["overdue"] += 1
-
-    if updated["overdue"] or updated["escalated"]:
-        db.commit()
-
-    return updated
+    return counts

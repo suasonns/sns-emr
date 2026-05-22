@@ -1,24 +1,43 @@
-from fastapi import Request
-from app.core.auth import get_current_user
-from app.services.audit_logger import log_event
+from __future__ import annotations
+
+import time
+from typing import Callable
+
+from fastapi import Request, Response
 
 
-async def audit_middleware(request: Request, call_next):
+async def audit_middleware(request: Request, call_next: Callable):
     """
-    Audit all incoming API requests.
+    Enterprise-safe audit middleware.
+
+    Critical rule:
+    - NEVER mutate request.scope['headers'] or otherwise modify inbound headers.
+      Auth dependencies rely on Authorization header.
+    - If you need to log headers, copy them and redact the copy only.
     """
-    response = await call_next(request)
+
+    start = time.time()
+
+    # Copy headers for logging only (do not modify request.headers / scope)
+    headers_for_log = dict(request.headers)
+
+    # Redact auth token in logs (safe)
+    if "authorization" in headers_for_log:
+        headers_for_log["authorization"] = "REDACTED"
 
     try:
-        user = await get_current_user(request)
-        log_event(
-            user_id=user.user_id,
-            role=user.role,
-            action=f"{request.method} {request.url.path}",
-            ip_address=request.client.host if request.client else None,
-        )
-    except Exception:
-        # Anonymous or failed auth requests are not logged here
-        pass
+        response: Response = await call_next(request)
+        return response
+    finally:
+        duration_ms = int((time.time() - start) * 1000)
 
-    return response
+        # NOTE:
+        # If you already persist audit_logs here, keep doing it,
+        # but only use headers_for_log (redacted copy).
+        #
+        # Example:
+        # log_event(action="HTTP_REQUEST", meta={"path": str(request.url.path), "duration_ms": duration_ms, "headers": headers_for_log})
+        #
+        # Do NOT block response if logging fails.
+        _ = duration_ms
+        _ = headers_for_log

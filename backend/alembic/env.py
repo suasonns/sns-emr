@@ -4,16 +4,11 @@ import sys
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import create_engine, pool
+from sqlalchemy import create_engine, pool, text
 from dotenv import load_dotenv
 
 # -------------------------------------------------------------------
 # Load environment variables
-# Priority:
-#   1) .env.local  (local development)
-#   2) .env        (fallback)
-#   3) OS env      (Azure App Service)
-# NOTE: Do NOT print secrets here.
 # -------------------------------------------------------------------
 load_dotenv(".env.local")
 load_dotenv()
@@ -47,11 +42,10 @@ def get_database_url() -> str:
     Alembic must use a synchronous SQLAlchemy engine.
     Force psycopg2 when app uses asyncpg.
     """
-    db_url = os.getenv("DATABASE_URL")
+    db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
     if not db_url:
-        raise RuntimeError("DATABASE_URL environment variable is not set")
+        raise RuntimeError("DATABASE_URL or sqlalchemy.url must be set")
 
-    # Ensure Alembic always uses sync driver
     if "postgresql+asyncpg" in db_url:
         db_url = db_url.replace("postgresql+asyncpg", "postgresql+psycopg2")
 
@@ -59,11 +53,9 @@ def get_database_url() -> str:
 
 
 def run_migrations_offline() -> None:
-    """
-    Run migrations in 'offline' mode (no DB connection).
-    """
+    url = get_database_url()
     context.configure(
-        url=get_database_url(),
+        url=url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -76,15 +68,21 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """
-    Run migrations in 'online' mode (real DB connection).
-    """
     engine = create_engine(
         get_database_url(),
         poolclass=pool.NullPool,
+        future=True,
     )
 
     with engine.connect() as connection:
+        # Optional debug: print DB user when requested
+        x_args = context.get_x_argument(as_dictionary=True)
+        if x_args.get("check_user") == "true":
+            who = connection.execute(text("select current_user")).scalar()
+            dbn = connection.execute(text("select current_database()")).scalar()
+            prt = connection.execute(text("show port")).scalar()
+            print(f"ALEMBIC DB USER: {who} | DB: {dbn} | PORT: {prt}")
+
         context.configure(
             connection=connection,
             target_metadata=target_metadata,

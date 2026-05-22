@@ -1,138 +1,103 @@
-import uuid
-from datetime import datetime, timezone
+# app/api/auth.py
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from __future__ import annotations
+
+import os
+import uuid
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, status, Body
+from pydantic import BaseModel, Field
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import create_access_token
-from app.models.user import User
 
-# ✅ Default tenant (created in Step 2)
-DEFAULT_TENANT_ID = uuid.UUID("0dac0f4a-9ce2-470d-8c1d-1c4e210b560d")
+logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------
+# ROUTER (MUST COME BEFORE DECORATORS)
+# ---------------------------------------------------------
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/dev-login")
-def dev_login(user_id: str, role: str, db: Session = Depends(get_db)):
-    """
-    Dev-only login:
-    - creates/returns a real User row
-    - guarantees tenant_id
-    - auto-grants interface-scoped RBAC (user_interface_roles)
-    - issues JWT with tenant_id embedded
-    """
+# ---------------------------------------------------------
+# DEV LOGIN SCHEMA
+# ---------------------------------------------------------
+class DevLoginRequest(BaseModel):
+    user_id: str = Field(..., description="Developer user identifier")
+    role: str = Field(..., description="Role (ADMIN, RN, MD, etc)")
+    tenant_id: uuid.UUID = Field(..., description="Tenant UUID (required)")
 
-    role = role.strip().upper()
-    email = user_id if "@" in user_id else f"{user_id}@sns.local"
 
-    # ------------------------------------------------------------
-    # 1) Create or load user
-    # ------------------------------------------------------------
-    user = db.query(User).filter(User.email == email).first()
-
-    if not user:
-        user = User(
-            id=uuid.uuid4(),
-            email=email,
-            full_name=user_id,
-            role=role,
-            tenant_id=DEFAULT_TENANT_ID,
-            active=True,
+# ---------------------------------------------------------
+# DEV‑ONLY GUARD
+# ---------------------------------------------------------
+def _ensure_dev_only() -> None:
+    env = (os.getenv("ENV") or os.getenv("ENVIRONMENT") or "development").lower()
+    if env not in {"development", "dev", "local", "test"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="dev-login is disabled outside development environments",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
 
-    # Safety net for legacy rows
-    if not getattr(user, "tenant_id", None):
-        user.tenant_id = DEFAULT_TENANT_ID
-        db.commit()
-        db.refresh(user)
 
-    # ------------------------------------------------------------
-    # 2) Determine interface (CLINICAL vs SURVEY)
-    # ------------------------------------------------------------
-    interface_name = "SURVEY_ACCESS" if role == "SURVEYOR" else "CLINICAL_EMR"
+# ---------------------------------------------------------
+# DEV LOGIN ENDPOINT
+# ---------------------------------------------------------
+@router.post("/dev-login", summary="Dev Login (tenant required)")
+def dev_login(
+    db: Session = Depends(get_db),
+    payload: DevLoginRequest = Body(...),
+):
+    """
+    DEV LOGIN — stable, explicit, enterprise-safe
 
-    interface_id = db.execute(
-        text("SELECT id FROM interfaces WHERE name = :name"),
-        {"name": interface_name},
-    ).scalar()
+    Solves ONLY identity + tenant context.
+    """
 
-    role_id = db.execute(
-        text(
-            """
-            SELECT r.id
-            FROM roles r
-            JOIN interfaces i ON i.id = r.interface_id
-            WHERE i.name = :iname AND r.name = :rname
-            """
-        ),
-        {"iname": interface_name, "rname": role},
-    ).scalar()
+    _ensure_dev_only()
 
-    # ------------------------------------------------------------
-    # 3) Grant interface-scoped RBAC if missing
-    # ------------------------------------------------------------
-    if interface_id and role_id:
-        existing = db.execute(
-            text(
-                """
-                SELECT 1
-                FROM user_interface_roles
-                WHERE tenant_id = :tenant_id
-                  AND user_id = :user_id
-                  AND interface_id = :interface_id
-                  AND role_id = :role_id
-                  AND revoked_at IS NULL
-                LIMIT 1
-                """
-            ),
-            {
-                "tenant_id": user.tenant_id,
-                "user_id": user.id,
-                "interface_id": interface_id,
-                "role_id": role_id,
-            },
-        ).first()
+    # 1) Verify tenant exists (SQL-only)
+    try:
+        tenant_exists = db.execute(
+            text("SELECT 1 FROM public.tenants WHERE id = :tid"),
+            {"tid": str(payload.tenant_id)},
+        ).scalar()
+    except Exception as e:
+        logger.exception("Tenant lookup failed")
+        raise HTTPException(status_code=500, detail=f"Tenant lookup failed: {e}")
 
-        if not existing:
-            db.execute(
-                text(
-                    """
-                    INSERT INTO user_interface_roles
-                        (id, tenant_id, user_id, interface_id, role_id, assigned_at)
-                    VALUES
-                        (:id, :tenant_id, :user_id, :interface_id, :role_id, :assigned_at)
-                    """
-                ),
-                {
-                    "id": uuid.uuid4(),
-                    "tenant_id": user.tenant_id,
-                    "user_id": user.id,
-                    "interface_id": interface_id,
-                    "role_id": role_id,
-                    "assigned_at": datetime.now(timezone.utc),
-                },
-            )
-            db.commit()
+    if not tenant_exists:
+        raise HTTPException(status_code=404, detail="Tenant not found")
 
-    # ------------------------------------------------------------
-    # 4) Issue JWT with tenant context
-    # ------------------------------------------------------------
-    token = create_access_token(
-        subject=str(user.id),
-        role=user.role,
-        tenant_id=str(user.tenant_id),
+    # 2) Normalize role
+    role_norm = payload.role.strip().upper()
+    if not role_norm:
+        raise HTTPException(status_code=400, detail="role is required")
+
+    # 3) Deterministic dev subject UUID
+    dev_user_uuid = uuid.uuid5(
+        uuid.NAMESPACE_DNS,
+        f"{payload.tenant_id}:{payload.user_id}",
     )
 
+    # 4) Create token (MATCHES create_access_token SIGNATURE)
+    try:
+        access_token = create_access_token(
+            subject=str(dev_user_uuid),
+            role=role_norm,
+            tenant_id=str(payload.tenant_id),
+        )
+    except Exception as e:
+        logger.exception("Token creation failed")
+        raise HTTPException(status_code=500, detail=f"Token creation failed: {e}")
+
     return {
-        "access_token": token,
+        "access_token": access_token,
         "token_type": "bearer",
-        "tenant_id": str(user.tenant_id),
-        "role": user.role,
-        "interface": interface_name,
+        "tenant_id": str(payload.tenant_id),
+        "user_id": payload.user_id,
+        "role": role_norm,
     }

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -26,15 +26,23 @@ class GuardrailOutcome:
 
 class AdmissionGuardrailsService:
     """
-    SNS Hospice Admission Guardrails (Decision Support Only)
+    Enterprise Hospice Admission Guardrails (Decision Support Only)
 
-    - Provides CMS LCD documentation guidance
-    - Identifies documentation risk
-    - Recommends MD review when appropriate
-    - NEVER blocks admission
+    PURPOSE
+    -------
+    - Evaluate CMS LCD documentation quality
+    - Identify admission risk patterns
+    - Recommend MD review when risk is high
+    - NEVER block admission
+    - ALWAYS produce deterministic output
+
+    COMPLIANCE
+    ----------
+    - CMS CoPs (documentation sufficiency)
+    - ACHC / CHAP / CDPH survey-defensible
     """
 
-    SERVICE_VERSION = "v1.0"
+    SERVICE_VERSION = "v1.1"
 
     LCD_BAD = {"INCOMPLETE", "INCONSISTENT", "NARRATIVE_REQUIRED"}
 
@@ -43,32 +51,36 @@ class AdmissionGuardrailsService:
 
     @staticmethod
     def assess_admission(
-        db: Session,
         *,
+        db: Session,
         admission: Any,
-        user_id: str,
         tenant_id: str,
         patient_id: str,
+        user_id: str,
         lcd_status: Optional[str] = None,
         narrative_text: Optional[str] = None,
         has_measurable_decline: Optional[bool] = None,
         flush: bool = True,
     ) -> Dict[str, Any]:
+        """
+        Perform admission documentation risk assessment.
 
-        if db is None:
-            raise ValueError("db session is required")
+        Returns a structured, deterministic result.
+        """
+
+        # ---- Hard preconditions (fail fast) ----
+        if not db:
+            raise RuntimeError("db session is required")
         if not tenant_id:
-            raise ValueError("tenant_id is required")
+            raise RuntimeError("tenant_id is required")
         if not user_id:
-            raise ValueError("user_id is required")
+            raise RuntimeError("user_id is required")
         if not patient_id:
-            raise ValueError("patient_id is required")
+            raise RuntimeError("patient_id is required")
         if admission is None:
-            raise ValueError("admission object is required")
+            raise RuntimeError("admission object is required")
 
-        mode = AdmissionGuardrailsService._safe_get_guardrail_mode(db, tenant_id)
-        if mode not in AdmissionGuardrailsService.MODES:
-            mode = "GUIDANCE"
+        mode = AdmissionGuardrailsService._get_guardrail_mode(db, tenant_id)
 
         narrative = (narrative_text or "").strip()
 
@@ -76,6 +88,7 @@ class AdmissionGuardrailsService:
         severity = "INFO"
         requires_md_review = False
 
+        # ---- Narrative checks ----
         if not narrative:
             flags.append("MISSING_ELIGIBILITY_NARRATIVE")
             severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
@@ -83,10 +96,12 @@ class AdmissionGuardrailsService:
             flags.append("WEAK_ELIGIBILITY_NARRATIVE")
             severity = AdmissionGuardrailsService._escalate(severity, "WARNING")
 
+        # ---- Decline evidence ----
         if not has_measurable_decline:
             flags.append("NO_MEASURABLE_EVIDENCE_OF_DECLINE")
             severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
 
+        # ---- LCD status ----
         if lcd_status and lcd_status in AdmissionGuardrailsService.LCD_BAD:
             flags.append(f"LCD_STATUS_{lcd_status}")
             severity = AdmissionGuardrailsService._escalate(severity, "CRITICAL")
@@ -96,6 +111,7 @@ class AdmissionGuardrailsService:
 
         status = AdmissionGuardrailsService._map_status(severity)
 
+        # ---- Persistence & audit (never silent) ----
         if mode != "OFF":
             AdmissionGuardrailsService._persist_assessment(
                 db=db,
@@ -113,9 +129,9 @@ class AdmissionGuardrailsService:
                 db=db,
                 action="ADMISSION_RISK_ASSESSMENT",
                 entity_type="ADMISSION",
-                entity_id=str(getattr(admission, "id", "") or ""),
-                user_id=user_id,
+                entity_id=str(getattr(admission, "id", "")),
                 tenant_id=tenant_id,
+                user_id=user_id,
                 details={
                     "status": status,
                     "severity": severity,
@@ -139,17 +155,30 @@ class AdmissionGuardrailsService:
         }
 
     # -----------------------
-    # Helpers
+    # Helpers (enterprise-safe)
     # -----------------------
 
     @staticmethod
-    def _safe_get_guardrail_mode(db: Session, tenant_id: str) -> str:
+    def _get_guardrail_mode(db: Session, tenant_id: str) -> str:
+        """
+        Retrieve guardrail mode deterministically.
+        Defaults to GUIDANCE with audit visibility.
+        """
         try:
             mode = TenantSettingsService.get_guardrail_mode(db, tenant_id)
-            if isinstance(mode, str):
+            if isinstance(mode, str) and mode.strip().upper() in AdmissionGuardrailsService.MODES:
                 return mode.strip().upper()
-        except Exception:
-            pass
+        except Exception as exc:
+            # Explicit audit trail for config failure
+            AdmissionGuardrailsService._audit(
+                db=db,
+                action="GUARDRAIL_MODE_FALLBACK",
+                entity_type="TENANT",
+                entity_id=tenant_id,
+                tenant_id=tenant_id,
+                user_id="SYSTEM",
+                details={"error": str(exc)},
+            )
         return "GUIDANCE"
 
     @staticmethod
@@ -166,3 +195,51 @@ class AdmissionGuardrailsService:
         if severity == "WARNING":
             return "NARRATIVE_REQUIRED"
         return "SUPPORTED"
+
+    @staticmethod
+    def _persist_assessment(
+        *,
+        db: Session,
+        admission: Any,
+        tenant_id: str,
+        user_id: str,
+        patient_id: str,
+        status: str,
+        severity: str,
+        flags: List[str],
+        requires_md_review: bool,
+    ) -> None:
+        assessment = DocumentationAssessment(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            admission_id=getattr(admission, "id", None),
+            status=status,
+            severity=severity,
+            flags=flags,
+            requires_md_review=requires_md_review,
+            assessed_by=user_id,
+            assessed_at=datetime.utcnow(),
+        )
+        db.add(assessment)
+
+    @staticmethod
+    def _audit(
+        *,
+        db: Session,
+        action: str,
+        entity_type: str,
+        entity_id: str,
+        tenant_id: str,
+        user_id: str,
+        details: Dict[str, Any],
+    ) -> None:
+        log = AuditLog(
+            tenant_id=tenant_id,
+            action=action,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            performed_by=user_id,
+            details=details,
+            performed_at=datetime.utcnow(),
+        )
+        db.add(log)

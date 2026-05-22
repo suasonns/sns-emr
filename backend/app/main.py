@@ -1,8 +1,19 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+
+# ------------------------------------------------------
+# CRITICAL: Load SQLAlchemy model registry FIRST
+# This guarantees all FK targets exist in Base.metadata
+# ------------------------------------------------------
+import app.models  # noqa: F401
 
 from app.core.audit_middleware import audit_middleware
+from app.dependencies.tenant import inject_tenant
 
+# ------------------------------------------------------
+# API routers (import once)
+# ------------------------------------------------------
 from app.api import auth
+from app.api import auth_whoami
 from app.api import patients
 from app.api import visits
 from app.api import notes
@@ -13,67 +24,58 @@ from app.api import certifications
 from app.api import benefits
 from app.api import compliance
 from app.api import survey
+from app.api import documents
+from app.api import admin_reminders
 
-
+# ------------------------------------------------------
+# FastAPI app
+# ------------------------------------------------------
 app = FastAPI(
     title="SNS Hospice EMR",
     version="0.1.0",
-    openapi_tags=[
-        {"name": "auth", "description": "Authentication and access control"},
-        {"name": "patients", "description": "Patient management and census"},
-        {"name": "visits", "description": "Clinical visits and supervision"},
-        {"name": "notes", "description": "Clinical documentation and amendments"},
-        {"name": "medications", "description": "Medication reconciliation and orders"},
-        {
-            "name": "CHHA Plan of Care",
-            "description": "RN-authored hospice aide plans of care",
-        },
-        {"name": "f2f", "description": "Face-to-face encounters"},
-        {
-            "name": "certifications",
-            "description": "Physician certifications and recertifications",
-        },
-        {
-            "name": "benefits",
-            "description": "Medicare benefit periods and eligibility",
-        },
-        {"name": "compliance", "description": "Compliance monitoring and audits"},
-        {"name": "survey", "description": "Survey readiness and oversight"},
-    ],
 )
 
 # ------------------------------------------------------
 # Global middleware
 # ------------------------------------------------------
-
 app.middleware("http")(audit_middleware)
 
 # ------------------------------------------------------
-# API routers
+# Router registration
+#
+# Rules:
+# - Auth + system routes do NOT require tenant
+# - All clinical/business routes REQUIRE tenant
 # ------------------------------------------------------
 
+# --- System / Auth (NO tenant injection) ---
 app.include_router(auth.router)
-app.include_router(patients.router)
-app.include_router(visits.router)
-app.include_router(notes.router)
-app.include_router(medications.router)
-app.include_router(chha_pocs.router)
-app.include_router(f2f.router)
-app.include_router(certifications.router)
-app.include_router(benefits.router)
-app.include_router(compliance.router)
-app.include_router(survey.router)
+app.include_router(auth_whoami.router)
+
+# --- Tenant‑scoped business routers ---
+tenant_dep = Depends(inject_tenant)
+
+app.include_router(patients.router, dependencies=[tenant_dep])
+app.include_router(visits.router, dependencies=[tenant_dep])
+app.include_router(notes.router, dependencies=[tenant_dep])
+app.include_router(medications.router, dependencies=[tenant_dep])
+app.include_router(chha_pocs.router, dependencies=[tenant_dep])
+app.include_router(f2f.router, dependencies=[tenant_dep])
+app.include_router(certifications.router, dependencies=[tenant_dep])
+app.include_router(benefits.router, dependencies=[tenant_dep])
+app.include_router(compliance.router, dependencies=[tenant_dep])
+app.include_router(survey.router, dependencies=[tenant_dep])
+app.include_router(documents.router, dependencies=[tenant_dep])
+app.include_router(admin_reminders.router, dependencies=[tenant_dep])
 
 # ------------------------------------------------------
-# System endpoints
+# System endpoints (NO tenant)
 # ------------------------------------------------------
-
-@app.get("/health")
+@app.get("/health", tags=["system"])
 def health_check():
     return {"status": "ok"}
 
-
-@app.get("/")
+@app.get("/", tags=["system"])
 def root():
     return {
         "status": "ok",

@@ -2,72 +2,134 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Tuple, Optional
+from uuid import UUID
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+
+
+def _resolve_policy_table(db: Session) -> Optional[str]:
+    """
+    Supports schema variants:
+      - dx_primary_policy
+      - dx_primary_policies
+    """
+    insp = inspect(db.get_bind())
+    if insp.has_table("dx_primary_policy"):
+        return "dx_primary_policy"
+    if insp.has_table("dx_primary_policies"):
+        return "dx_primary_policies"
+    return None
+
+
+def _resolve_reason_column(db: Session, table_name: str) -> Optional[str]:
+    """
+    Supports schema variants:
+      - reason
+      - rationale
+    """
+    insp = inspect(db.get_bind())
+    cols = {c["name"] for c in insp.get_columns(table_name)}
+    if "reason" in cols:
+        return "reason"
+    if "rationale" in cols:
+        return "rationale"
+    # If neither exists, we still can block/allow, but we cannot return a reason string
+    return None
+
+
+def evaluate_primary_dx_policy(
+    *,
+    db: Session,
+    tenant_id: UUID,
+    icd10_code: str,
+) -> Tuple[bool, Optional[str]]:
+    """
+    AUTHORITATIVE primary diagnosis policy evaluation.
+
+    Returns:
+      (True, None) if allowed as Primary Dx
+      (False, reason) if prohibited as Primary Dx
+
+    Schema-flexible and survey-safe.
+    """
+
+    if not db:
+        raise RuntimeError("Database session is required for primary dx enforcement")
+
+    if not tenant_id:
+        raise RuntimeError("tenant_id is required for primary dx enforcement")
+
+    if not icd10_code:
+        return True, None
+
+    normalized_icd = icd10_code.strip().upper()
+
+    table_name = _resolve_policy_table(db)
+    if not table_name:
+        # If policy table isn't present, fail-open to keep system operational.
+        # (If you prefer fail-closed, change this to return False with reason.)
+        return True, None
+
+    reason_col = _resolve_reason_column(db, table_name)
+
+    # The policy table must have these columns to function:
+    # tenant_id, allow_primary, code_pattern
+    insp = inspect(db.get_bind())
+    cols = {c["name"] for c in insp.get_columns(table_name)}
+    required = {"tenant_id", "allow_primary", "code_pattern"}
+    if not required.issubset(cols):
+        return True, None
+
+    # Build a safe SQL query that works regardless of ORM model shape
+    if reason_col:
+        sql = text(
+            f"""
+            SELECT {reason_col}
+            FROM {table_name}
+            WHERE tenant_id = :tenant_id
+              AND allow_primary = false
+              AND :code LIKE code_pattern
+            LIMIT 1
+            """
+        )
+        reason = db.execute(sql, {"tenant_id": str(tenant_id), "code": normalized_icd}).scalar()
+        if reason:
+            return False, str(reason)
+        return True, None
+
+    # No reason column available — still enforce allow_primary, but reason is None
+    sql = text(
+        f"""
+        SELECT 1
+        FROM {table_name}
+        WHERE tenant_id = :tenant_id
+          AND allow_primary = false
+          AND :code LIKE code_pattern
+        LIMIT 1
+        """
+    )
+    blocked = db.execute(sql, {"tenant_id": str(tenant_id), "code": normalized_icd}).scalar()
+    if blocked:
+        return False, None
+    return True, None
 
 
 def is_primary_allowed(
-    db: Optional[Session],
+    db: Session,
     *,
-    tenant_id: Optional[str] = None,
-    diagnosis_text: Optional[str] = None,
-    diagnosis_icd10: Optional[str] = None,
-) -> bool:
+    tenant_id: UUID,
+    code: str,
+    **kwargs,
+) -> Tuple[bool, Optional[str]]:
     """
-    Primary Dx Governance (Policy Gate)
+    BACKWARD-COMPATIBILITY wrapper required by app/api/patients.py
 
-    Purpose:
-      - Returns True if the selected primary diagnosis is not on a CMS/agency prohibited list.
-      - Returns False only for explicit policy-prohibited diagnoses (objective rule).
-      - This function does NOT make hospice eligibility decisions; it enforces a coding policy list.
+    Supports:
+      allowed, reason = is_primary_allowed(db, tenant_id=..., code="I50.9")
 
-    Enterprise behavior:
-      - Fail-open if dependencies are missing (do not crash the application).
-      - If db is unavailable, return True to avoid blocking workflows due to infrastructure issues.
-
-    NOTE:
-      - If you want stricter enforcement later, do that in the API layer with explicit messaging,
-        not by raising exceptions here.
+    Returns:
+      (allowed, reason)
     """
-
-    # If we cannot evaluate safely, do not block system operation.
-    if db is None:
-        return True
-
-    icd = (diagnosis_icd10 or "").strip().upper()
-    dx_text = (diagnosis_text or "").strip().lower()
-
-    # If nothing provided, allow.
-    if not icd and not dx_text:
-        return True
-
-    try:
-        # 1) Check prohibited primary ICD10 list (preferred)
-        # Table: cms_prohibited_primary_dx
-        # Columns often: icd10_code, is_active, tenant_id (optional)
-        q = """
-        SELECT 1
-        FROM cms_prohibited_primary_dx
-        WHERE is_active = true
-          AND (
-                (:icd <> '' AND upper(icd10_code) = :icd)
-                OR (:dx_text <> '' AND lower(dx_text) = :dx_text)
-              )
-        """
-        params = {"icd": icd, "dx_text": dx_text}
-        # If tenant scoping exists, apply it safely (no failure if column absent).
-        if tenant_id:
-            q = q + " AND (tenant_id::text = :tenant_id OR tenant_id IS NULL)"
-            params["tenant_id"] = str(tenant_id)
-
-        hit = db.execute(text(q), params).scalar()
-        if hit:
-            return False
-
-    except Exception:
-        # Do not crash application startup if table/column is absent in this environment.
-        return True
-
-    return True
+    return evaluate_primary_dx_policy(db=db, tenant_id=tenant_id, icd10_code=code)

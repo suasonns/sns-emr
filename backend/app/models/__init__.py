@@ -25,12 +25,19 @@ from app.models.audit_log import AuditLog  # noqa: F401
 # ---------------------------------------------------------
 # Benefit periods
 # ---------------------------------------------------------
-from .benefit_period import BenefitPeriod  # noqa: F401
+from app.models.benefit_period import BenefitPeriod  # noqa: F401
 
 # ---------------------------------------------------------
 # Canonical IDG models (CMS CoPs 418.56)
 # ---------------------------------------------------------
-from .idg import IDGReview  # noqa: F401
-from .idg_signature import IDGSignature  # noqa: F401
-from .idg_note import IDGNote  # noqa: F401
-from .idg_md_attestation import IDGMDAttestation  # noqa: F401
+from app.models.idg import IDGReview  # noqa: F401
+from app.models.idg_signature import IDGSignature  # noqa: F401
+from app.models.idg_note import IDGNote  # noqa: F401
+from app.models.idg_md_attestation import IDGMDAttestation  # noqa: F401
+
+# ---------------------------------------------------------
+# Document awareness / IDG resolution models (CRITICAL)
+# ---------------------------------------------------------
+from app.models.document_notification import DocumentNotification  # noqa: F401
+from app.models.document_idg_resolution import DocumentIDGResolution  # noqa: F401
+from app.models.document_record import DocumentRecord  # noqa: F401

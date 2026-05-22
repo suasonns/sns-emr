@@ -1,0 +1,116 @@
+{
+  "version": "1.0",
+  "purpose": "Detect high-impact prognosis/treatment-limiting signals in uploaded documents to flag for awareness. No clinical actions are automated; acknowledgment only.",
+  "applies_to_document_types": ["HNP", "H_P", "LAB_RESULT", "DIAGNOSTIC_REPORT", "PROCEDURE_RESULT"],
+  "evaluation_logic": {
+    "match_policy": "ANY_MATCH_FLAGS",
+    "negation_window_chars": 40,
+    "case_insensitive_text_match": true
+  },
+  "rules": [
+    {
+      "id": "CARD_EF_LE_20",
+      "tier": "TIER_1",
+      "category": "CARDIAC",
+      "match_type": "structured_value",
+      "field": "ejection_fraction_percent",
+      "operator": "<=",
+      "value": 20,
+      "units": "percent",
+      "description": "EF <= 20% documented",
+      "action": "FLAG"
+    },
+    {
+      "id": "CARD_BNP_GE_1000",
+      "tier": "TIER_1",
+      "category": "CARDIAC",
+      "match_type": "structured_value",
+      "field": "bnp_pg_ml",
+      "operator": ">=",
+      "value": 1000,
+      "units": "pg/mL",
+      "description": "BNP >= 1000 documented",
+      "action": "FLAG"
+    },
+    {
+      "id": "NUTR_ALBUMIN_LT_2",
+      "tier": "TIER_1",
+      "category": "NUTRITION",
+      "match_type": "structured_value",
+      "field": "albumin_g_dl",
+      "operator": "<",
+      "value": 2.0,
+      "units": "g/dL",
+      "description": "Albumin < 2.0 documented",
+      "action": "FLAG"
+    },
+    {
+      "id": "RENAL_EGFR_LT_20",
+      "tier": "TIER_1",
+      "category": "RENAL",
+      "match_type": "structured_value",
+      "field": "egfr_ml_min_1_73m2",
+      "operator": "<",
+      "value": 20,
+      "units": "mL/min/1.73m2",
+      "description": "eGFR < 20 documented",
+      "action": "FLAG"
+    },
+    {
+      "id": "ONC_METASTATIC_FINDINGS",
+      "tier": "TIER_1",
+      "category": "ONCOLOGY",
+      "match_type": "text_phrase",
+      "phrases_any": ["metastatic", "metastases", "widespread metastasis", "diffuse metastatic disease"],
+      "phrases_negated_any": ["no metastatic", "no evidence of metastatic", "negative for metastatic"],
+      "description": "Explicit metastatic findings",
+      "action": "FLAG"
+    },
+    {
+      "id": "LANG_TERMINAL_OR_TREATMENT_LIMITING",
+      "tier": "TIER_1",
+      "category": "LANGUAGE",
+      "match_type": "text_phrase",
+      "phrases_any": [
+        "end-stage",
+        "poor prognosis",
+        "comfort-focused",
+        "no further curative options",
+        "goals of care discussed",
+        "goals of care discussed - comfort",
+        "not a candidate for further intervention",
+        "not a candidate for intervention",
+        "patient declined further treatment",
+        "family declined further treatment",
+        "refused treatment",
+        "declined chemotherapy",
+        "declined surgery",
+        "declined intervention",
+        "dialysis refused",
+        "refused dialysis"
+      ],
+      "phrases_negated_any": [
+        "no evidence of end-stage",
+        "prognosis remains unclear",
+        "not comfort-focused",
+        "goals of care discussion pending",
+        "candidate for intervention",
+        "curative options available"
+      ],
+      "description": "Explicit terminal language or treatment-limiting/refusal language",
+      "action": "FLAG"
+    }
+  ],
+  "notification_policy": {
+    "notify_always_for_document_types": ["HNP", "H_P", "LAB_RESULT", "DIAGNOSTIC_REPORT", "PROCEDURE_RESULT"],
+    "flag_requires_ack_only": true,
+    "notification_recipients": ["MD", "DPCS", "CASE_MANAGER", "ASSIGNED_RN", "ASSIGNED_LVN"],
+    "notification_message": "New clinical document uploaded for patient. Available for review. This is an awareness notification only. No clinical decisions have been made.",
+    "ack_required": true,
+    "reminders": {
+      "first_reminder_after_hours": 8,
+      "repeat_every_hours": 24,
+      "stop_when": ["ACKNOWLEDGED", "IDG_DATE_REACHED"]
+    }
+  }
+}
