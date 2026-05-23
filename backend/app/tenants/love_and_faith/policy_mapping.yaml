@@ -1,0 +1,27 @@
+tenant: Love & Faith Hospice Services Inc.
+
+policy_mapping:
+
+  PP:
+    LFH-PP-POC:
+      title: Plan of Care
+      source_manual: CHAP H PP
+      policy_number: 9-017
+      system_rules:
+        - CMS-418.56-POC-UPDATE
+      regulators:
+        - CMS
+        - CHAP
+        - CDPH
+
+  HR:
+    LFH-HR-COMPETENCY:
+      title: Competency Program
+      source_manual: CHAP H HR
+      policy_number: 3-001
+      system_rules:
+        - CMS-EVIDENCE-LINKAGE
+      regulators:
+        - CMS
+        - CHAP
+        - CDPH
