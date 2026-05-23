@@ -5,10 +5,23 @@ This module intentionally provides:
 - engine
 - SessionLocal
 - Base
-- get_db (FastAPI dependency) for backwards compatibility with existing app.api modules
+- get_db (FastAPI dependency)
+- Optional tenant RLS hook
+
+CRITICAL GUARANTEE:
+- Environment variables are loaded BEFORE engine creation
 """
 
 from __future__ import annotations
+
+# ---------------------------------------------------------------------
+# Environment loading (MUST be first)
+# ---------------------------------------------------------------------
+from dotenv import load_dotenv
+
+# Explicit local override first, then fallback
+load_dotenv(".env.local")
+load_dotenv()
 
 import os
 from typing import Generator, Optional
@@ -17,12 +30,14 @@ from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 # ---------------------------------------------------------------------
-# Database URL (ENV first, safe fallback for local DEV only)
+# Database URL (ENV is authoritative; fallback is DEV-ONLY safety net)
 # ---------------------------------------------------------------------
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://sns_user:sns_password@127.0.0.1:5433/sns_emr",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Refusing to start without explicit DB configuration."
+    )
 
 # ---------------------------------------------------------------------
 # SQLAlchemy Engine (enterprise-safe defaults)
@@ -52,7 +67,7 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 # ---------------------------------------------------------------------
-# Backwards-compatible FastAPI dependency (used by existing app.api modules)
+# FastAPI DB dependency (canonical)
 # ---------------------------------------------------------------------
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
@@ -62,7 +77,7 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 # ---------------------------------------------------------------------
-# Optional: Tenant context hook (RLS-ready)
+# Optional: Tenant context hook (RLS-ready, safe no-op if unused)
 # ---------------------------------------------------------------------
 _CURRENT_TENANT: Optional[str] = None
 

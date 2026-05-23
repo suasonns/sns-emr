@@ -32,6 +32,14 @@ def _ensure_dev_only() -> None:
         )
 
 
+def _dev_email(user_id: str, tenant_id: uuid.UUID) -> str:
+    """
+    Deterministic + unique per (tenant, user).
+    Prevents unique constraint collisions on users.email in dev DBs.
+    """
+    return f"{user_id}+{str(tenant_id)[:8]}@sns.dev".lower()
+
+
 @router.post("/dev-login", summary="Dev Login (tenant required)")
 def dev_login(
     db: Session = Depends(get_db),
@@ -42,8 +50,9 @@ def dev_login(
 
     Guarantees:
     - No tenant table mutation
-    - Valid users row exists for FK(created_by) integrity
+    - Ensures a valid users row exists (for created_by integrity)
     - Deterministic UUID per tenant + user_id
+    - Avoids email uniqueness collisions (dev-safe)
     """
 
     _ensure_dev_only()
@@ -52,7 +61,7 @@ def dev_login(
     try:
         tenant_exists = db.execute(
             text("SELECT 1 FROM public.tenants WHERE id = :tid"),
-            {"tid": str(payload.tenant_id)},
+            {"tid": payload.tenant_id},
         ).scalar()
     except Exception as e:
         logger.exception("Tenant lookup failed")
@@ -66,12 +75,13 @@ def dev_login(
     if not role_norm:
         raise HTTPException(status_code=400, detail="role is required")
 
-    # 3) Deterministic dev user UUID
+    # 3) Deterministic dev user UUID (stable across restarts)
     dev_user_uuid = uuid.uuid5(uuid.NAMESPACE_DNS, f"{payload.tenant_id}:{payload.user_id}")
 
-    # 4) Ensure users row exists (satisfy NOT NULL constraints)
-    #    Based on observed DB errors, users requires: email (NOT NULL), role (NOT NULL), created_at (NOT NULL).
-    #    We also set updated_at to avoid the next likely NOT NULL failure.
+    # 4) Unique dev email (prevents users_email_key collisions)
+    email = _dev_email(payload.user_id, payload.tenant_id)
+
+    # 5) Upsert user by ID (safe)
     try:
         db.execute(
             text(
@@ -107,7 +117,7 @@ def dev_login(
                 "uid": str(dev_user_uuid),
                 "tid": str(payload.tenant_id),
                 "full_name": f"{payload.user_id} (DEV)",
-                "email": "rsuason@sns.com",
+                "email": email,
                 "role": role_norm,
             },
         )
@@ -117,7 +127,7 @@ def dev_login(
         logger.exception("Dev user upsert failed")
         raise HTTPException(status_code=500, detail=f"Dev user upsert failed: {e}")
 
-    # 5) Issue access token
+    # 6) Issue access token
     try:
         access_token = create_access_token(
             subject=str(dev_user_uuid),
@@ -134,4 +144,5 @@ def dev_login(
         "tenant_id": str(payload.tenant_id),
         "user_id": payload.user_id,
         "role": role_norm,
+        "email": email,
     }

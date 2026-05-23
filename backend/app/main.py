@@ -1,3 +1,11 @@
+# ---------------------------------------------------------------------
+# Environment loading (MUST be first)
+# ---------------------------------------------------------------------
+from dotenv import load_dotenv
+
+load_dotenv(".env.local")
+load_dotenv()
+
 """
 SNS Hospice EMR – FastAPI application entrypoint.
 
@@ -70,6 +78,7 @@ from app.api import (
 )
 
 from app.routers.eligibility import router as eligibility_router
+from app.routers import rules as rules_router
 
 
 # ---------------------------------------------------------------------
@@ -86,7 +95,7 @@ api.middleware("http")(audit_middleware)
 api.include_router(auth.router)
 api.include_router(auth_whoami.router)
 
-# --- Tenant‑scoped routes ---
+# --- Tenant-scoped routes ---
 tenant_dep = Depends(inject_tenant)
 
 api.include_router(patients.router, dependencies=[tenant_dep])
@@ -104,8 +113,11 @@ api.include_router(survey.router, dependencies=[tenant_dep])
 api.include_router(documents.router, dependencies=[tenant_dep])
 api.include_router(admin_reminders.router, dependencies=[tenant_dep])
 
-# Eligibility / LCD engine (COMPLIANCE‑CRITICAL)
+# --- Eligibility / LCD engine (COMPLIANCE-CRITICAL) ---
 api.include_router(eligibility_router, dependencies=[tenant_dep])
+
+# --- Rules dry-run (NO enforcement) ---
+api.include_router(rules_router.router, dependencies=[tenant_dep])
 
 
 # ---------------------------------------------------------------------
