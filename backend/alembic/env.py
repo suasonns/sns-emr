@@ -17,7 +17,8 @@ load_dotenv()
 # Ensure backend/ is on PYTHONPATH so `app.*` imports work
 # -------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parents[1]
-sys.path.append(str(BASE_DIR))
+if str(BASE_DIR) not in sys.path:
+    sys.path.append(str(BASE_DIR))
 
 # -------------------------------------------------------------------
 # Alembic Config object
@@ -32,7 +33,7 @@ if config.config_file_name is not None:
 # Import models ONCE using the same path as the application
 # -------------------------------------------------------------------
 from app.models.base import Base  # noqa: E402
-import app.models  # noqa: F401, E402  (loads all models)
+import app.models  # noqa: F401, E402  (loads all models into Base.metadata)
 
 target_metadata = Base.metadata
 
@@ -52,6 +53,21 @@ def get_database_url() -> str:
     return db_url
 
 
+# -------------------------------------------------------------------
+# RECOVERY MODE (TEMPORARY)
+# Prevent Alembic autogenerate from proposing mass DROPS for tables
+# that exist in DB but are not yet restored in ORM/Base.metadata.
+#
+# Condition explanation:
+# - reflected=True means object exists in the live DB
+# - compare_to=None means Alembic cannot find it in ORM metadata
+# -------------------------------------------------------------------
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table" and reflected and compare_to is None:
+        return False
+    return True
+
+
 def run_migrations_offline() -> None:
     url = get_database_url()
     context.configure(
@@ -61,6 +77,7 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         compare_server_default=True,
+        include_object=include_object,
     )
 
     with context.begin_transaction():
@@ -88,6 +105,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            include_object=include_object,
         )
 
         with context.begin_transaction():
