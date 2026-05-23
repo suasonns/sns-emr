@@ -1,4 +1,4 @@
-﻿from sqlalchemy.orm import declarative_base
+from app.core.db import Base
 
-# Single canonical SQLAlchemy Base for the entire application.
-Base = declarative_base()
+# Import ALL models here so Alembic sees them
+from app.models.eligibility_decision import EligibilityDecision  # noqa: F401

@@ -1,4 +1,10 @@
-# app/services/idg_review_tasks.py
+"""
+Enterprise-grade IDG review task management.
+
+Purpose:
+- Create, complete, and schedule IDG_REVIEW tasks
+- Tasks are audit artifacts and MUST be transaction-safe
+"""
 
 from __future__ import annotations
 
@@ -6,7 +12,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
-from app.models.idg import IDGReview
+from app.models.idg_review import IDGReview
+
 
 IDG_TASK_TYPE = "IDG_REVIEW"
 TASK_STATUS_PENDING = "PENDING"
@@ -20,9 +27,17 @@ def _plus_14_days(d):
     return d + timedelta(days=14)
 
 
-def ensure_initial_idg_review_task(db: Session, patient_id, benefit_period_id, anchor_date):
+def ensure_initial_idg_review_task(
+    db: Session,
+    *,
+    patient_id,
+    benefit_period_id,
+    anchor_date,
+) -> Task:
     """
-    Ensure exactly one pending IDG_REVIEW task exists for (patient_id, benefit_period_id).
+    Ensure exactly one pending IDG_REVIEW task exists for
+    (patient_id, benefit_period_id).
+
     Creates task due = anchor_date + 14 days.
     """
     due_date = _plus_14_days(anchor_date)
@@ -37,6 +52,7 @@ def ensure_initial_idg_review_task(db: Session, patient_id, benefit_period_id, a
         )
         .first()
     )
+
     if existing:
         return existing
 
@@ -49,14 +65,22 @@ def ensure_initial_idg_review_task(db: Session, patient_id, benefit_period_id, a
         due_date=due_date,
         status=TASK_STATUS_PENDING,
     )
+
     db.add(task)
+    db.commit()
+    db.refresh(task)
     return task
 
 
-def complete_current_idg_review_task(db: Session, idg_review: IDGReview):
+def complete_current_idg_review_task(
+    db: Session,
+    *,
+    idg_review: IDGReview,
+) -> Task | None:
     """
-    Complete the pending IDG_REVIEW task for the review’s (patient, benefit period)
-    and evidence-link it to the IDG review.
+    Complete the pending IDG_REVIEW task for the review’s
+    (patient_id, benefit_period_id) and evidence-link it
+    to the IDGReview.
     """
     task = (
         db.query(Task)
@@ -75,17 +99,23 @@ def complete_current_idg_review_task(db: Session, idg_review: IDGReview):
 
     task.status = TASK_STATUS_COMPLETED
     task.completed_at = datetime.utcnow()
-
-    # Evidence link (matches your system’s audit philosophy)
     task.completion_reference_type = "IDG_REVIEW"
     task.completion_reference_id = idg_review.id
 
+    db.commit()
+    db.refresh(task)
     return task
 
 
-def schedule_next_idg_review_task(db: Session, idg_review: IDGReview):
+def schedule_next_idg_review_task(
+    db: Session,
+    *,
+    idg_review: IDGReview,
+) -> Task:
     """
-    Create the next pending IDG_REVIEW task due 14 days after the IDG review_date.
+    Create the next pending IDG_REVIEW task due 14 days after
+    the IDG review_date.
+
     Ensures no duplicate pending task exists.
     """
     return ensure_initial_idg_review_task(

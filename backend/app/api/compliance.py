@@ -3,16 +3,18 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from datetime import datetime, date, timedelta
 
-from app.core.database import get_db
+from app.core.db import get_db
 from app.core.permissions import require_roles
 from app.core.auth import CurrentUser
 
-from app.models.idg import IDGReview
+from app.models.idg_review import IDGReview
 from app.models.visit import Visit
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
 from app.models.amendment import Amendment
+
 from app.services.idg_pdf import generate_idg_report_pdf
+
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -42,7 +44,6 @@ def late_notes_report(
             .filter(ClinicalNote.status == "finalized")
             .first()
         )
-
         if not note:
             results.append({
                 "visit_id": str(v.id),
@@ -93,7 +94,6 @@ def visits_without_notes(
             .filter(ClinicalNote.visit_id == v.id)
             .first()
         )
-
         if not has_note:
             results.append({
                 "visit_id": str(v.id),
@@ -143,7 +143,6 @@ def discharged_open_items(
             .filter(ClinicalNote.status != "finalized")
             .all()
         )
-
         if drafts:
             issues.append({
                 "patient_id": str(p.id),
@@ -181,7 +180,6 @@ def idg_compliance_trends(
                 .order_by(IDGReview.review_date.desc())
                 .first()
             )
-
             if last_review and last_review.review_date >= cutoff:
                 compliant += 1
 
@@ -193,5 +191,3 @@ def idg_compliance_trends(
         })
 
     return trend
-
-

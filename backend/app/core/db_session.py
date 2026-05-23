@@ -1,8 +1,7 @@
-from app.core.database import SessionLocal
+"""
+Backwards compatible shim.
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+Canonical get_db lives in app.core.database.
+"""
+
+from app.core.database import get_db  # noqa: F401

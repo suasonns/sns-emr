@@ -1,30 +1,55 @@
-from app.models.idg_meeting import IDGMeeting
+"""
+Enterprise-grade IDG compliance evaluation.
 
-def get_idg_meeting_warnings(meeting: IDGMeeting):
-    warnings = []
+Purpose:
+- Determine whether patients are IDG compliant
+- Based solely on IDGReview recency and completeness
+"""
 
-    if meeting is None:
-        return [{
-            "discipline": "IDG",
-            "status": "Missing",
-            "severity": "Critical",
-            "message": "IDG meeting record does not exist"
-        }]
+from datetime import date, timedelta
+from sqlalchemy.orm import Session
 
-    discipline_map = [
-        ("RN", meeting.rn_required, meeting.rn_present, "Critical"),
-        ("Medical Director / NP", meeting.physician_required, meeting.physician_present, "Critical"),
-        ("Social Worker", meeting.social_worker_required, meeting.social_worker_present, "Warning"),
-        ("Chaplain", meeting.chaplain_required, meeting.chaplain_present, "Warning"),
-    ]
+from app.models.patient import Patient
+from app.models.idg_review import IDGReview
 
-    for name, required, present, severity in discipline_map:
-        if required and not present:
-            warnings.append({
-                "discipline": name,
-                "status": "Missing",
-                "severity": severity,
-                "message": f"{name} participation is required for IDG compliance"
-            })
 
-    return warnings
+IDG_LOOKBACK_DAYS = 15
+
+
+def get_idg_compliance_summary(db: Session):
+    """
+    Returns compliance status for all active patients.
+    """
+    today = date.today()
+    cutoff = today - timedelta(days=IDG_LOOKBACK_DAYS)
+
+    patients = (
+        db.query(Patient)
+        .filter(Patient.status == "active")
+        .all()
+    )
+
+    results = []
+
+    for patient in patients:
+        last_review = (
+            db.query(IDGReview)
+            .filter(IDGReview.patient_id == patient.id)
+            .order_by(IDGReview.review_date.desc())
+            .first()
+        )
+
+        compliant = (
+            last_review is not None
+            and last_review.review_date >= cutoff
+        )
+
+        results.append({
+            "patient_id": str(patient.id),
+            "last_idg_review_date": (
+                last_review.review_date if last_review else None
+            ),
+            "compliant": compliant,
+        })
+
+    return results
