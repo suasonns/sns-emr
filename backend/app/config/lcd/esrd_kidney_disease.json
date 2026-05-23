@@ -1,0 +1,122 @@
+{
+  "test_case_id": "LCD-ESRD-TEMPLATE",
+  "disease": "ESRD_KIDNEY_DISEASE",
+  "lcd_reference": "LCD Hospice Eligibility Determination – Kidney Disease (ESRD)",
+  "evaluation_date": "",
+  "eligibility_result": "PENDING",
+
+  "eligibility_logic": {
+    "all_of": ["1", "2"],
+    "any_of": ["3", "4"]
+  },
+
+  "activation_rules": {
+    "FAST": false,
+    "NYHA": false
+  },
+
+  "clinical_scores": {
+    "KPS": null,
+    "PPS": null,
+    "FAST": null,
+    "NYHA": null
+  },
+
+  "criteria_groups": [
+    {
+      "group_id": "1",
+      "group_name": "Dialysis / Renal Transplant Status",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "1a",
+          "field": "renal.no_dialysis_not_transplant_candidate_and_not_seeking_dialysis",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "No dialysis: ruled out for transplant AND not seeking/discontinuing dialysis"
+        },
+        {
+          "criterion_id": "1b",
+          "field": "renal.on_dialysis_comfort_only_prognosis_unaltered",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "With dialysis: on dialysis AND comfort only AND prognosis unaltered even with dialysis"
+        }
+      ]
+    },
+    {
+      "group_id": "2",
+      "group_name": "Creatinine Clearance",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "2a",
+          "field": "renal.creatinine_clearance",
+          "operator": "LT",
+          "expected": 10,
+          "unit": "cc/min",
+          "description": "Creatinine clearance < 10 cc/min (< 15 cc/min for diabetics)"
+        },
+        {
+          "criterion_id": "2b",
+          "field": "renal.creatinine_clearance_with_chf_comorbidity",
+          "operator": "LT",
+          "expected": 15,
+          "unit": "cc/min",
+          "description": "Creatinine clearance < 15 cc/min (< 20 cc/min for diabetics) if comorbidity CHF present"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "Serum Creatinine",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "3a",
+          "field": "renal.serum_creatinine",
+          "operator": "GT",
+          "expected": 8.0,
+          "unit": "mg/dl",
+          "description": "Serum creatinine > 8.0 mg/dl (> 6.0 mg/dl for diabetics)"
+        }
+      ]
+    },
+    {
+      "group_id": "4",
+      "group_name": "Estimated GFR",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "4a",
+          "field": "renal.gfr",
+          "operator": "LT",
+          "expected": 10,
+          "unit": "ml/min",
+          "description": "GFR < 10 ml/min"
+        }
+      ]
+    }
+  ],
+
+  "supporting_factors": [
+    {
+      "factor_id": "5",
+      "field": "comorbidity.mechanical_ventilation",
+      "description": "Mechanical ventilation (supporting)"
+    },
+    {
+      "factor_id": "5b",
+      "field": "comorbidity.heart_disease",
+      "description": "Heart disease comorbidity (supporting)"
+    },
+    {
+      "factor_id": "5c",
+      "field": "comorbidity.pulmonary_disease",
+      "description": "Pulmonary disease comorbidity (supporting)"
+    }
+  ],
+
+  "clinical_notes": "Template derived from ESRD/Kidney Disease LCD form.",
+  "source_document": "ESRD.pdf"
+}

@@ -1,0 +1,51 @@
+{
+  "source": "CMS LCD L33393 Part II comorbidity categories + ICD-10 examples",
+  "primary_dx_guardrail": {
+    "deny_prefixes": ["F", "R", "V", "W", "X", "Y", "Z"],
+    "note": "These prefixes are allowed as secondary/comorbidity but not as PRIMARY diagnosis."
+  },
+  "categories": [
+    {
+      "category_key": "HEART_DISEASE_CHF",
+      "display_name": "Heart disease / Congestive heart failure",
+      "hnp_keywords": ["chf", "heart failure", "cardiomyopathy", "nyha", "volume overload", "edema"],
+      "icd10_family_examples": ["I50.* (heart failure)", "I11.0 (hypertensive heart disease with heart failure)"]
+    },
+    {
+      "category_key": "PULMONARY_COPD",
+      "display_name": "Pulmonary disease / COPD",
+      "hnp_keywords": ["copd", "emphysema", "chronic bronchitis", "respiratory failure", "hypoxia", "hypercapnia"],
+      "icd10_family_examples": ["J44.* (COPD)", "J96.* (respiratory failure)"]
+    },
+    {
+      "category_key": "RENAL_FAILURE_ESRD",
+      "display_name": "Renal failure / ESRD",
+      "hnp_keywords": ["esrd", "renal failure", "dialysis", "gfr", "creatinine clearance"],
+      "icd10_family_examples": ["N18.6 (end stage renal disease)", "N18.5 (CKD stage 5)"]
+    },
+    {
+      "category_key": "HIV_AIDS",
+      "display_name": "AIDS / HIV",
+      "hnp_keywords": ["hiv", "aids", "cd4", "opportunistic infection", "wasting"],
+      "icd10_family_examples": ["B20 (HIV disease)"]
+    },
+    {
+      "category_key": "ALS_MND",
+      "display_name": "ALS / Motor neuron disease",
+      "hnp_keywords": ["als", "motor neuron", "bulbar", "fvc", "nippv", "dysphagia"],
+      "icd10_family_examples": ["G12.21 (amyotrophic lateral sclerosis)"]
+    },
+    {
+      "category_key": "CANCER_METASTATIC",
+      "display_name": "Cancer (metastatic / progressive)",
+      "hnp_keywords": ["metastatic", "stage iv", "mets", "progression", "chemo stopped", "palliative"],
+      "icd10_family_examples": ["C78.* (secondary malignant neoplasm)", "C80.* (malignant neoplasm)"]
+    },
+    {
+      "category_key": "GENERAL_DECLINE",
+      "display_name": "General decline / terminal status (non-disease specific)",
+      "hnp_keywords": ["decline", "weight loss", "inanition", "poor intake", "functional decline", "kps", "pps", "adl dependence"],
+      "icd10_family_examples": ["Use definitive underlying disease codes when documented; avoid symptom codes as principal when a definitive diagnosis exists."]
+    }
+  ]
+}

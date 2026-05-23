@@ -1,0 +1,63 @@
+{
+  "test_case_id": "LCD-GENERAL-DECLINE-TEMPLATE",
+  "disease": "GENERAL_DECLINE_TERMINAL_STATUS",
+  "lcd_reference": "CMS Medicare Coverage Database - LCD L33393 Hospice - Determining Terminal Status (Part I & Part II)",
+  "evaluation_date": "",
+  "eligibility_result": "PENDING",
+  "activation_rules": {
+    "FAST": false,
+    "NYHA": false
+  },
+  "clinical_scores": {
+    "KPS": { "required": true, "operator": "LT", "threshold": 70 },
+    "PPS": { "required": true, "operator": "LT", "threshold": 70 },
+    "FAST": null,
+    "NYHA": null
+  },
+  "criteria_groups": [
+    {
+      "group_id": "I",
+      "group_name": "Part I - Decline in clinical status (non-disease specific)",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "I-3",
+          "field": "nutrition.weight_loss_percent_6_months",
+          "operator": "GTE",
+          "expected": 10,
+          "unit": "percent",
+          "description": "Weight loss ≥ 10% in prior 6 months"
+        },
+        {
+          "criterion_id": "I-9",
+          "field": "functional.kps_or_pps_declining",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Decline in KPS or PPS due to progression of disease"
+        }
+      ]
+    },
+    {
+      "group_id": "II",
+      "group_name": "Part II - Baseline non-disease specific guidelines",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "II-A",
+          "field": "scores.kps_or_pps_lt_70",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "KPS or PPS < 70%"
+        },
+        {
+          "criterion_id": "II-B",
+          "field": "adl.dependent_count",
+          "operator": "GTE",
+          "expected": 2,
+          "description": "Dependent in 2 or more ADLs"
+        }
+      ]
+    }
+  ],
+  "source_document": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?LCDId=33393"
+}

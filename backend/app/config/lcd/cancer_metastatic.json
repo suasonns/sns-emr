@@ -1,0 +1,91 @@
+{
+  "test_case_id": "LCD-CANCER-TEMPLATE",
+  "disease": "CANCER_METASTATIC",
+  "lcd_reference": "LCD Hospice Eligibility Determination – Cancer",
+  "evaluation_date": "",
+  "eligibility_result": "PENDING",
+
+  "group_combination_rule": "ANY_GROUP_REQUIRED",
+
+  "activation_rules": {
+    "FAST": false,
+    "NYHA": false
+  },
+
+  "clinical_scores": {
+    "KPS": null,
+    "PPS": null,
+    "FAST": null,
+    "NYHA": null
+  },
+
+  "criteria_groups": [
+    {
+      "group_id": "1",
+      "group_name": "Disease with metastases at presentation",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "1a",
+          "field": "cancer.metastatic_untreatable_at_presentation",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Cancer has metastasized and is untreatable at presentation"
+        }
+      ]
+    },
+    {
+      "group_id": "2",
+      "group_name": "Progression to metastatic disease",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "2a",
+          "field": "cancer.metastatic_regardless_of_therapy",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Cancer has metastasized regardless of therapy"
+        },
+        {
+          "criterion_id": "2b",
+          "field": "cancer.declines_or_not_candidate_for_curative_therapy",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Ruled out as candidate or declines further curative therapy"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "Certain cancers with poor prognosis",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "3a",
+          "field": "cancer.suspicious_large_tumor_refuses_diagnosis",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Suspicious large tumor and refuses definitive diagnosis"
+        },
+        {
+          "criterion_id": "3b",
+          "field": "functional_status.decline",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Decline in functional status"
+        },
+        {
+          "criterion_id": "3c",
+          "field": "nutrition.unintentional_weight_loss_significant",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Significant unintentional weight loss"
+        }
+      ]
+    }
+  ],
+
+  "supporting_factors": [],
+  "clinical_notes": "Template derived from LCD Hospice Eligibility Determination form for Cancer.",
+  "source_document": "Cancer.pdf"
+}

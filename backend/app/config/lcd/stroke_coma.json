@@ -1,0 +1,141 @@
+{
+  "test_case_id": "LCD-STROKE-COMA-TEMPLATE",
+  "disease": "STROKE_COMA",
+  "lcd_reference": "LCD Hospice Eligibility Determination – Stroke and Coma",
+  "evaluation_date": "",
+  "eligibility_result": "PENDING",
+
+  "eligibility_paths": [
+    {
+      "path_id": "A_STROKE",
+      "description": "Stroke: Group 1 AND Group 2 must be met",
+      "all_of_groups": ["1", "2"]
+    },
+    {
+      "path_id": "B_COMA",
+      "description": "Coma: Group 1 AND Group 3 must be met",
+      "all_of_groups": ["1", "3"]
+    }
+  ],
+
+  "activation_rules": {
+    "FAST": false,
+    "NYHA": false
+  },
+
+  "clinical_scores": {
+    "KPS": {
+      "required": true,
+      "operator": "LTE",
+      "threshold": 40
+    },
+    "PPS": {
+      "required": true,
+      "operator": "LTE",
+      "threshold": 40
+    },
+    "FAST": null,
+    "NYHA": null
+  },
+
+  "criteria_groups": [
+    {
+      "group_id": "1",
+      "group_name": "Impairment of Functional Status",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "1a",
+          "field": "scores.kps",
+          "operator": "LTE",
+          "expected": 40,
+          "description": "Karnofsky Performance Status (KPS) ≤ 40"
+        },
+        {
+          "criterion_id": "1b",
+          "field": "scores.pps",
+          "operator": "LTE",
+          "expected": 40,
+          "description": "Palliative Performance Status (PPS) ≤ 40"
+        }
+      ]
+    },
+    {
+      "group_id": "2",
+      "group_name": "Weight Loss / Inability to maintain hydration & caloric intake",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "2a",
+          "field": "nutrition.weight_loss_percent_6_months",
+          "operator": "GT",
+          "expected": 10,
+          "unit": "percent",
+          "description": "Weight loss > 10% in last 6 months OR > 7.5% in last 3 months"
+        },
+        {
+          "criterion_id": "2b",
+          "field": "labs.albumin",
+          "operator": "LT",
+          "expected": 2.5,
+          "unit": "gm/dl",
+          "description": "Serum albumin < 2.5 gm/dl"
+        },
+        {
+          "criterion_id": "2c",
+          "field": "respiratory.pulmonary_aspiration_not_responsive",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Pulmonary aspiration not responsive to SLP intervention"
+        },
+        {
+          "criterion_id": "2d",
+          "field": "nutrition.severe_dysphagia_no_artificial_nutrition",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Severe dysphagia preventing intake; no artificial nutrition/hydration"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "Comatose Status (Day 3 of coma)",
+      "rule": "ANY_3_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "3a",
+          "field": "coma.abnormal_brainstem_response",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Abnormal brain stem response"
+        },
+        {
+          "criterion_id": "3b",
+          "field": "coma.absent_verbal_response",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Absence of verbal response"
+        },
+        {
+          "criterion_id": "3c",
+          "field": "coma.absent_withdrawal_to_pain",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Absence of withdrawal response to pain"
+        },
+        {
+          "criterion_id": "3d",
+          "field": "labs.creatinine",
+          "operator": "GT",
+          "expected": 1.5,
+          "unit": "mg/dl",
+          "description": "Serum creatinine > 1.5 mg/dl"
+        }
+      ]
+    }
+  ],
+
+  "supporting_factors": [],
+  "clinical_notes": "Template derived from Stroke/Coma LCD form.",
+  "source_document": "Stroke, Coma.pdf"
+}

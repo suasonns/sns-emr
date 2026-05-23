@@ -1,0 +1,112 @@
+{
+  "test_case_id": "LCD-PULMONARY-TEMPLATE",
+  "disease": "PULMONARY_COPD_RESPIRATORY_FAILURE",
+  "lcd_reference": "LCD Hospice Eligibility Determination – Pulmonary Disease",
+  "evaluation_date": "",
+  "eligibility_result": "PENDING",
+
+  "group_combination_rule": "ALL_GROUPS_REQUIRED",
+
+  "activation_rules": {
+    "FAST": false,
+    "NYHA": false
+  },
+
+  "clinical_scores": {
+    "KPS": null,
+    "PPS": null,
+    "FAST": null,
+    "NYHA": null
+  },
+
+  "criteria_groups": [
+    {
+      "group_id": "1",
+      "group_name": "Severe Chronic Lung Disease",
+      "rule": "ALL_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "1a",
+          "field": "pulmonary.dyspnea_at_rest_disabling",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Disabling dyspnea at rest (e.g., poorly responsive/unresponsive to bronchodilators OR FEV1 < 30% predicted)"
+        },
+        {
+          "criterion_id": "1a_i",
+          "field": "pulmonary.bronchodilators_poor_response",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Poorly responsive or unresponsive to bronchodilators with decreased functional capacity"
+        },
+        {
+          "criterion_id": "1a_ii",
+          "field": "pulmonary.fev1_percent_predicted",
+          "operator": "LT",
+          "expected": 30,
+          "unit": "percent",
+          "description": "FEV1 after bronchodilator < 30% predicted (if available)"
+        },
+        {
+          "criterion_id": "1b",
+          "field": "pulmonary.end_stage_progression",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Progression of end-stage pulmonary disease (any of: ER visits, hospitalizations, respiratory failure, increased home visits, serial FEV1 decline > 40 ml/year)"
+        }
+      ]
+    },
+    {
+      "group_id": "2",
+      "group_name": "Hypoxia / Gas Exchange Abnormality",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "2a",
+          "field": "pulmonary.po2_room_air",
+          "operator": "LTE",
+          "expected": 55,
+          "unit": "mmHg",
+          "description": "Hypoxemia at rest on room air: pO2 ≤ 55 mmHg"
+        },
+        {
+          "criterion_id": "2b",
+          "field": "pulmonary.o2_saturation",
+          "operator": "LTE",
+          "expected": 88,
+          "unit": "percent",
+          "description": "O2 saturation ≤ 88% (ABG or pulse oximetry)"
+        },
+        {
+          "criterion_id": "2c",
+          "field": "pulmonary.pco2",
+          "operator": "GTE",
+          "expected": 50,
+          "unit": "mmHg",
+          "description": "Hypercapnia: pCO2 ≥ 50 mmHg (within 3 months if from hospital records)"
+        }
+      ]
+    }
+  ],
+
+  "supporting_factors": [
+    {
+      "factor_id": "3",
+      "field": "pulmonary.right_heart_failure_cor_pulmonale",
+      "description": "Right heart failure secondary to pulmonary disease (supporting)"
+    },
+    {
+      "factor_id": "4",
+      "field": "nutrition.unintentional_weight_loss_10_percent_6_months",
+      "description": "Unintentional progressive weight loss ≥ 10% over last 6 months (supporting)"
+    },
+    {
+      "factor_id": "5",
+      "field": "vitals.resting_tachycardia_gt_100",
+      "description": "Resting tachycardia > 100/min (supporting)"
+    }
+  ],
+
+  "clinical_notes": "Template derived from LCD Pulmonary Disease criteria (COPD/respiratory failure) form.",
+  "source_document": "COPD, Respiratory failure with hypoxia, hypercapnia.pdf"
+}
