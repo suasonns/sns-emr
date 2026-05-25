@@ -1,0 +1,105 @@
+-- =========================================================
+-- SNS EMR Enterprise DB Role + Ownership Normalization
+-- Run as SUPERUSER (postgres) in the target database.
+-- =========================================================
+
+BEGIN;
+
+-- 0) Safety check: confirm you are in the intended DB
+SELECT current_database() AS db, current_user AS usr, inet_server_port() AS port;
+
+-- 1) Create roles if they do not exist
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sns_owner') THEN
+    CREATE ROLE sns_owner LOGIN PASSWORD 'P%40ssw0rd7365%21';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sns_app') THEN
+    CREATE ROLE sns_app LOGIN PASSWORD 'P%40ssw0rd7365%21';
+  END IF;
+
+  -- Optional: keep existing sns role (your Alembic currently uses sns)
+  -- If sns does not exist but you want it, uncomment:
+  -- IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'sns') THEN
+  --   CREATE ROLE sns LOGIN PASSWORD 'P%40ssw0rd7365%21';
+  -- END IF;
+END $$;
+
+-- 2) Lock down schema creation (prevents drift)
+-- Remove CREATE from PUBLIC; only sns_owner can create schema objects.
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
+
+-- Allow sns_owner to use + create in schema public
+GRANT USAGE, CREATE ON SCHEMA public TO sns_owner;
+
+-- Allow sns_app to use schema (but not create)
+GRANT USAGE ON SCHEMA public TO sns_app;
+
+-- 3) Normalize ownership of ALL tables to sns_owner
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+  LOOP
+    EXECUTE format('ALTER TABLE public.%I OWNER TO sns_owner', r.tablename);
+  END LOOP;
+END $$;
+
+-- 4) Normalize ownership of ALL sequences to sns_owner
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT sequencename
+    FROM pg_sequences
+    WHERE schemaname = 'public'
+  LOOP
+    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO sns_owner', r.sequencename);
+  END LOOP;
+END $$;
+
+-- 5) Normalize ownership of ENUM types (and other user-defined types) to sns_owner
+-- Only affects types in schema public.
+DO $$
+DECLARE r RECORD;
+BEGIN
+  FOR r IN
+    SELECT t.typname
+    FROM pg_type t
+    JOIN pg_namespace n ON n.oid = t.typnamespace
+    WHERE n.nspname = 'public'
+      AND t.typtype IN ('e')  -- e = enum
+  LOOP
+    EXECUTE format('ALTER TYPE public.%I OWNER TO sns_owner', r.typname);
+  END LOOP;
+END $$;
+
+-- 6) Grant runtime privileges to sns_app on existing objects
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sns_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sns_app;
+
+-- 7) Default privileges: future tables/sequences created by sns_owner automatically grant to sns_app
+ALTER DEFAULT PRIVILEGES FOR ROLE sns_owner IN SCHEMA public
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO sns_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE sns_owner IN SCHEMA public
+GRANT USAGE, SELECT ON SEQUENCES TO sns_app;
+
+-- 8) (Optional but recommended) Ensure the migrator role can do everything needed for migrations
+-- If you keep using sns for Alembic temporarily, grant it minimal safe privileges:
+-- NOTE: Enterprise pattern is to run Alembic as sns_owner, so you can skip this once you switch.
+-- GRANT USAGE ON SCHEMA public TO sns;
+-- GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO sns;
+-- GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO sns;
+-- GRANT REFERENCES ON ALL TABLES IN SCHEMA public TO sns;
+
+COMMIT;
+
+
+
+
+
