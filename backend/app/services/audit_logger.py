@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
+
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -7,42 +10,53 @@ from app.models.audit_log import AuditLog
 
 def log_event(
     *,
-    user_id,
-    role: str,
+    request_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    role: Optional[str] = None,
     action: str,
-    entity_type: str,
-    entity_id: str,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
     ip: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
     db: Optional[Session] = None,
-):
+    commit: bool = True,
+) -> None:
     """
-    Audit logger.
-    - Always prints (developer visibility)
-    - Persists to audit_logs when db session is provided (compliance/audit readiness)
+    Enterprise audit logger (append-only, tenant-aware, non-blocking).
     """
+
     print(
-        f"[AUDIT] user={user_id} role={role} action={action} "
-        f"entity={entity_type}:{entity_id} ip={ip}"
+        f"[AUDIT] request_id={request_id} tenant={tenant_id} user={user_id} "
+        f"role={role} action={action} entity={entity_type}:{entity_id} ip={ip}"
     )
 
     if db is None:
         return
 
-    row = AuditLog(
-        user_id=str(user_id),
-        role=str(role),
-        action=str(action),
-        entity_type=str(entity_type),
-        entity_id=str(entity_id),
-        created_at=datetime.utcnow(),
-    )
+    try:
+        audit = AuditLog(
+            request_id=str(request_id) if request_id else None,
+            tenant_id=str(tenant_id) if tenant_id else None,
+            user_id=str(user_id) if user_id else None,
+            role=str(role) if role else None,
+            action=str(action),
+            entity_type=str(entity_type) if entity_type else None,
+            entity_id=str(entity_id) if entity_id else None,
+            ip_address=ip,
+            created_at=datetime.utcnow(),  # ✅ CORRECT FIELD
+        )
 
-    # Only include ip if your model has it; otherwise leave it out
-    if hasattr(row, "ip") or hasattr(row, "ip_address"):
-        if hasattr(row, "ip"):
-            row.ip = ip
-        else:
-            row.ip_address = ip
+        db.add(audit)
+        db.flush()
 
-    db.add(row)
-    # no commit here; caller controls transaction
+        if commit:
+            db.commit()
+
+    except Exception as e:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+        print(f"[AUDIT ERROR] {e}")

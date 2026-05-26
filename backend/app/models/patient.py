@@ -2,12 +2,12 @@ from sqlalchemy import Column, String, Date, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import BaseModel
+from app.models.tenant_mixin import TenantScopedMixin
 
 
-class Patient(BaseModel):
+class Patient(TenantScopedMixin, BaseModel):
     __tablename__ = "patients"
 
-    # ✅ MULTI-TENANT OWNERSHIP (MUST BE INSIDE CLASS)
     tenant_id = Column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id"),
@@ -25,7 +25,6 @@ class Patient(BaseModel):
     discharge_date = Column(Date, nullable=True)
     discharge_reason = Column(String, nullable=True)
 
-    # ✅ Crisis / acuity tracking
     acuity_state = Column(String, nullable=False, default="ROUTINE")
     crisis_started_at = Column(DateTime, nullable=True)
     crisis_ended_at = Column(DateTime, nullable=True)

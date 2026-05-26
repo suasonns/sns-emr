@@ -1,15 +1,12 @@
 """
 Enterprise-grade database core for SNS Hospice EMR.
 
-This module intentionally provides:
+Provides:
 - engine
 - SessionLocal
 - Base
-- get_db (FastAPI dependency)
-- Optional tenant RLS hook
-
-CRITICAL GUARANTEE:
-- Environment variables are loaded BEFORE engine creation
+- get_db
+- NO global tenant state (tenant handled via get_db_tenant)
 """
 
 from __future__ import annotations
@@ -19,18 +16,20 @@ from __future__ import annotations
 # ---------------------------------------------------------------------
 from dotenv import load_dotenv
 
-# Explicit local override first, then fallback
 load_dotenv(".env.local")
 load_dotenv()
 
+# ---------------------------------------------------------------------
+# Imports
+# ---------------------------------------------------------------------
 import os
-from typing import Generator, Optional
+from typing import Generator
 
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 
 # ---------------------------------------------------------------------
-# Database URL (ENV is authoritative; fallback is DEV-ONLY safety net)
+# Database URL
 # ---------------------------------------------------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
 
@@ -40,7 +39,7 @@ if not DATABASE_URL:
     )
 
 # ---------------------------------------------------------------------
-# SQLAlchemy Engine (enterprise-safe defaults)
+# Engine
 # ---------------------------------------------------------------------
 engine = create_engine(
     DATABASE_URL,
@@ -52,7 +51,7 @@ engine = create_engine(
 )
 
 # ---------------------------------------------------------------------
-# Session factory
+# Session
 # ---------------------------------------------------------------------
 SessionLocal = sessionmaker(
     bind=engine,
@@ -62,40 +61,19 @@ SessionLocal = sessionmaker(
 )
 
 # ---------------------------------------------------------------------
-# Declarative Base (SINGLE SOURCE OF TRUTH)
+# Base
 # ---------------------------------------------------------------------
 Base = declarative_base()
 
 # ---------------------------------------------------------------------
-# FastAPI DB dependency (canonical)
+# Default DB dependency (NON-TENANT)
 # ---------------------------------------------------------------------
 def get_db() -> Generator[Session, None, None]:
+    """
+    ⚠️ Use ONLY for non-tenant tables (tenants, system, admin)
+    """
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
-
-# ---------------------------------------------------------------------
-# Optional: Tenant context hook (RLS-ready, safe no-op if unused)
-# ---------------------------------------------------------------------
-_CURRENT_TENANT: Optional[str] = None
-
-
-def set_current_tenant(tenant_id: Optional[str]) -> None:
-    global _CURRENT_TENANT
-    _CURRENT_TENANT = tenant_id
-
-
-def get_current_tenant() -> Optional[str]:
-    return _CURRENT_TENANT
-
-
-@event.listens_for(Session, "after_begin")
-def _set_rls_tenant(session: Session, transaction, connection) -> None:
-    tenant_id = get_current_tenant()
-    if tenant_id:
-        connection.execute(
-            text("SET LOCAL app.current_tenant = :tenant_id"),
-            {"tenant_id": tenant_id},
-        )
