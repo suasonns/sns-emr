@@ -7,15 +7,14 @@ import uuid
 
 from app.rules.base import RuleContext, Workflow, DiagnosisItem
 from app.services.rules_dry_run import dry_run_rules
-from app.dependencies.tenant import inject_tenant
-from app.core.database import get_db
+from app.db_tenant_dependency import get_db_tenant
+from app.core.security import get_current_user
 
 
 router = APIRouter(
     prefix="/rules",
     tags=["Rules"],
 )
-
 
 # ---------------------------------------------------------------------
 # REQUEST MODEL (VALIDATION + SWAGGER)
@@ -27,7 +26,6 @@ class DryRunRequest(BaseModel):
     primary_dx: Optional[str] = Field(default="")
     facts: Dict[str, Any] = Field(default_factory=dict)
 
-
 # ---------------------------------------------------------------------
 # RESPONSE MODEL (STRICT + AUDIT FRIENDLY)
 # ---------------------------------------------------------------------
@@ -37,8 +35,7 @@ class DryRunResponse(BaseModel):
     timestamp: str
     context: Dict[str, Any]
     summary: Dict[str, Any]
-    results: List[Any]  # enforce list for predictability
-
+    results: List[Any]
 
 # ---------------------------------------------------------------------
 # ROUTE
@@ -51,33 +48,27 @@ class DryRunResponse(BaseModel):
 )
 def dry_run(
     payload: DryRunRequest,
-    db: Session = Depends(get_db),
-    tenant=Depends(inject_tenant),
+    db: Session = Depends(get_db_tenant),
+    user=Depends(get_current_user),
 ):
     """
-    Executes rules engine in non-persistent mode.
+    Executes rules engine in non-persistent (dry-run) mode.
 
-    - Safe for simulation
+    Enterprise guarantees:
+    - Tenant derived from authenticated identity
+    - Tenant-scoped DB session
     - No DB mutation
-    - Used for ADR / CMS validation scenarios
+    - Safe for CMS / ADR simulation
     """
 
     # -------------------------------------------------------------
-    # TENANT SAFETY (STRICT)
+    # TENANT CONTEXT (AUTHORITATIVE)
     # -------------------------------------------------------------
-    tenant_id = None
-
-    if tenant is not None:
-        tenant_id = (
-            getattr(tenant, "id", None)
-            or getattr(tenant, "tenant_id", None)
-            or (tenant if isinstance(tenant, str) else None)
-        )
-
+    tenant_id = user.tenant_id
     if not tenant_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tenant context missing (inject_tenant returned no tenant_id)",
+            detail="Authenticated user missing tenant_id",
         )
 
     # -------------------------------------------------------------
@@ -92,7 +83,7 @@ def dry_run(
         )
 
     # -------------------------------------------------------------
-    # BUILD CONTEXT
+    # BUILD RULE CONTEXT
     # -------------------------------------------------------------
     ctx = RuleContext(
         tenant_id=str(tenant_id),
@@ -110,14 +101,14 @@ def dry_run(
     try:
         report = dry_run_rules(ctx, db=db)
     except Exception:
-        # DO NOT expose internal errors
+        # Do not leak internal rule engine errors
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Rules engine execution failed",
         )
 
     # -------------------------------------------------------------
-    # RESPONSE
+    # RESPONSE (AUDIT FRIENDLY)
     # -------------------------------------------------------------
     return {
         "request_id": request_id,

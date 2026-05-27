@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
+
+logger = logging.getLogger("audit")
 
 
 def log_event(
@@ -23,14 +26,46 @@ def log_event(
     commit: bool = True,
 ) -> None:
     """
-    Enterprise audit logger (append-only, tenant-aware, non-blocking).
+    Enterprise audit logger.
+
+    Rules:
+    - Append-only
+    - Never blocks request execution
+    - Tenant may be None ONLY for bootstrap/system routes
     """
 
-    print(
-        f"[AUDIT] request_id={request_id} tenant={tenant_id} user={user_id} "
-        f"role={role} action={action} entity={entity_type}:{entity_id} ip={ip}"
-    )
+    # ---------------------------------------------------------
+    # Console log (human-readable, dev-friendly)
+    # ---------------------------------------------------------
+    note = metadata.get("note") if isinstance(metadata, dict) else None
 
+    if tenant_id is None:
+        if note:
+            logger.info(
+                "[AUDIT] tenant=None (expected) action=%s entity=%s:%s note=%s",
+                action,
+                entity_type,
+                entity_id,
+                note,
+            )
+        else:
+            logger.error(
+                "[AUDIT ERROR] Tenant context missing in DB session (tenant_id not set)"
+            )
+    else:
+        logger.info(
+            "[AUDIT] tenant=%s user=%s role=%s action=%s entity=%s:%s",
+            tenant_id,
+            user_id,
+            role,
+            action,
+            entity_type,
+            entity_id,
+        )
+
+    # ---------------------------------------------------------
+    # DB persistence (never blocks)
+    # ---------------------------------------------------------
     if db is None:
         return
 
@@ -44,7 +79,8 @@ def log_event(
             entity_type=str(entity_type) if entity_type else None,
             entity_id=str(entity_id) if entity_id else None,
             ip_address=ip,
-            created_at=datetime.utcnow(),  # ✅ CORRECT FIELD
+            metadata=metadata,
+            created_at=datetime.utcnow(),
         )
 
         db.add(audit)
@@ -59,4 +95,5 @@ def log_event(
         except Exception:
             pass
 
-        print(f"[AUDIT ERROR] {e}")
+        # Audit failures must never break the app
+        logger.exception("Audit log write failed: %s", e)

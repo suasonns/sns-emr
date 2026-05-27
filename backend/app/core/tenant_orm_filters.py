@@ -18,9 +18,11 @@ def _tenant_filter(execute_state) -> None:
     - have a tenant_id attribute
     """
 
+    # Only apply to SELECT statements
     if not execute_state.is_select:
         return
 
+    # Allow explicit bypass (system routes, audit logger, admin tooling)
     if execute_state.execution_options.get("skip_tenant_filter", False):
         return
 
@@ -37,7 +39,7 @@ def _tenant_filter(execute_state) -> None:
                 else true() if tenant_id else false()
             ),
             include_aliases=True,
-            track_closure_variables=False,  # ✅ CRITICAL FIX
+            track_closure_variables=False,
         )
     )
 
@@ -46,8 +48,12 @@ def _tenant_filter(execute_state) -> None:
 def _tenant_stamp_and_block(session: Session, flush_context, instances) -> None:
     """
     Auto-stamps tenant_id on new tenant-scoped objects and blocks cross-tenant writes.
+
+    Enforcement can be bypassed ONLY when session.info['skip_tenant_filter'] = True
+    (used for bootstrap/system flows like /auth and audit logging).
     """
 
+    # Global bypass for system/bootstrapping sessions
     if session.info.get("skip_tenant_filter", False):
         return
 

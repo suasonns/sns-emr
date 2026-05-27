@@ -2,7 +2,23 @@ from __future__ import annotations
 
 from fastapi import Request, HTTPException
 
-# ✅ FIXED TENANT IDS (YOUR CONTROLLED ENVIRONMENT)
+# ---------------------------------------------------------------------
+# ⚠️ DEPRECATED TENANT INJECTION (DO NOT USE IN RUNTIME PATHS)
+# ---------------------------------------------------------------------
+# This module is retained ONLY for:
+#   - legacy test tooling
+#   - controlled cross-tenant leak testing
+#
+# ✅ Enterprise runtime uses IDENTITY-BASED TENANCY ONLY:
+#    - tenant comes from authenticated user (token)
+#    - NOT from headers
+#
+# 🚫 DO NOT import this in:
+#    - API routers
+#    - DB dependencies
+#    - production request paths
+# ---------------------------------------------------------------------
+
 ALLOWED_TENANTS = {
     "01271980-0000-0000-0000-000005101977",  # Love & Faith (REAL)
     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",  # Angela Hospice
@@ -14,31 +30,31 @@ ALLOWED_TENANTS = {
 
 def inject_tenant(request: Request) -> str:
     """
-    Enterprise tenant enforcement (FINAL VERSION)
+    ❌ DEPRECATED — HEADER-BASED TENANT INJECTION
 
-    ✅ No random tenants
-    ✅ Only known tenant IDs allowed
-    ✅ Required for every request
-    ✅ Enables cross-tenant leak testing
+    This function is intentionally retained for:
+      - legacy test harnesses
+      - explicit tenant isolation testing
+
+    ✅ SNS EMR ENTERPRISE RULE:
+      - Production tenancy is derived ONLY from authenticated identity
+      - This function MUST NOT be used in runtime request handling
     """
 
     tenant_id = request.headers.get("X-Tenant-ID")
 
-    # ✅ Must send header
     if not tenant_id:
         raise HTTPException(
             status_code=400,
-            detail="Missing X-Tenant-ID header"
+            detail="Missing X-Tenant-ID header (deprecated path)",
         )
 
-    # ✅ Must be one of YOUR 5 tenants
     if tenant_id not in ALLOWED_TENANTS:
         raise HTTPException(
             status_code=403,
-            detail="Invalid tenant ID"
+            detail="Invalid tenant ID (deprecated path)",
         )
 
-    # ✅ Attach to request context
+    # Attach only for test contexts
     request.state.tenant_id = tenant_id
-
     return tenant_id
