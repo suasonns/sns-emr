@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 # Absolute source of truth for required LCD files
@@ -17,19 +17,29 @@ REQUIRED_LCD_FILES = {
     "general_decline_terminal_status.json",
 }
 
+
 class LCDConfigError(RuntimeError):
     """Fatal startup error for LCD configuration problems."""
 
 
-def load_lcd_configs() -> Dict[str, Any]:
+def load_lcd_configs(base_dir: Optional[Path] = None) -> Dict[str, Any]:
     """
     Loads and validates all LCD JSON configuration files.
+
     Fails hard at startup if:
       - a required file is missing
       - JSON is invalid
       - required keys are missing
+
+    base_dir:
+      - Optional override for LCD directory (required for unit tests)
+      - Defaults to the directory containing this module
     """
-    lcd_dir = Path(__file__).parent
+    lcd_dir = Path(base_dir) if base_dir is not None else Path(__file__).parent
+
+    if not lcd_dir.exists() or not lcd_dir.is_dir():
+        raise LCDConfigError(f"LCD config directory not found: {lcd_dir}")
+
     found_files = {f.name for f in lcd_dir.glob("*.json")}
 
     # 1️⃣ Validate file presence

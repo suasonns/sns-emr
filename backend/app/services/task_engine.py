@@ -27,12 +27,13 @@ def handle_visit_finalized(
       - due_date = visit_date + 14 days
       - status = PENDING
       - origin = PERIODIC
+      - evidence = VISIT(visit.id)
 
     CRISIS:
       - Any RN finalized visit creates + completes same-day POC_UPDATE task
       - status = COMPLETED
-      - evidence = VISIT(visit.id)
       - origin = MANUAL
+      - evidence = VISIT(visit.id)
 
     NOTE: This function does NOT commit. Caller owns the transaction.
     """
@@ -41,6 +42,7 @@ def handle_visit_finalized(
     acuity = (getattr(visit, "acuity_state_at_visit", "") or "").strip().upper()
     is_supervisory = bool(getattr(visit, "is_supervisory", False))
 
+    # Only RN discipline anchors POC_UPDATE tasks
     if discipline != "RN":
         return
 
@@ -53,31 +55,32 @@ def handle_visit_finalized(
     if not visit_id or not patient_id:
         return
 
-    # ---------------------------
-    # CRISIS: create+complete same-day
-    # ---------------------------
+    # -------------------------------------------------
+    # CRISIS: create + complete same-day POC_UPDATE
+    # -------------------------------------------------
     if acuity == "CRISIS":
         task = Task(
             tenant_id=tenant_id,
             patient_id=patient_id,
             benefit_period_id=benefit_period_id,
             task_type="POC_UPDATE",
+            regulatory_basis="POC_UPDATE",
             origin="MANUAL",
             discipline="RN",
             status="COMPLETED",
             due_date=visit_day,
             completed_at=finalized_at,
             completion_reference_type="VISIT",
-            completion_reference_id=visit_id,
+            completion_reference_id=visit_id,  # ✅ UUID, not str
             created_by=user_id,
         )
         db.add(task)
         db.flush()
         return
 
-    # ---------------------------
-    # ROUTINE: supervisory creates due+14 pending
-    # ---------------------------
+    # -------------------------------------------------
+    # ROUTINE: supervisory RN → next due +14 days
+    # -------------------------------------------------
     if acuity in ("", "ROUTINE") and is_supervisory:
         due_day = (visit_dt + timedelta(days=14)).date()
 
@@ -101,10 +104,13 @@ def handle_visit_finalized(
             patient_id=patient_id,
             benefit_period_id=benefit_period_id,
             task_type="POC_UPDATE",
+            regulatory_basis="POC_UPDATE",
             origin="PERIODIC",
             discipline="RN",
             status="PENDING",
             due_date=due_day,
+            completion_reference_type="VISIT",
+            completion_reference_id=visit_id,  # ✅ UUID
             created_by=user_id,
         )
         db.add(task)

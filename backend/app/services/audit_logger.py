@@ -31,8 +31,16 @@ def log_event(
     Rules:
     - Append-only
     - Never blocks request execution
-    - Tenant may be None ONLY for bootstrap/system routes
+    - Tenant context MUST be present (except explicit system/bootstrap events)
     """
+
+    # ---------------------------------------------------------
+    # Resolve tenant + user context from DB session if omitted
+    # ---------------------------------------------------------
+    if db is not None:
+        # SQLAlchemy Session.info is the canonical place for request context
+        tenant_id = tenant_id or db.info.get("tenant_id")
+        user_id = user_id or db.info.get("user_id")
 
     # ---------------------------------------------------------
     # Console log (human-readable, dev-friendly)
@@ -64,15 +72,19 @@ def log_event(
         )
 
     # ---------------------------------------------------------
-    # DB persistence (never blocks)
+    # DB persistence (never blocks request)
     # ---------------------------------------------------------
     if db is None:
+        return
+
+    if tenant_id is None:
+        # Never write audit rows without tenant context
         return
 
     try:
         audit = AuditLog(
             request_id=str(request_id) if request_id else None,
-            tenant_id=str(tenant_id) if tenant_id else None,
+            tenant_id=str(tenant_id),
             user_id=str(user_id) if user_id else None,
             role=str(role) if role else None,
             action=str(action),

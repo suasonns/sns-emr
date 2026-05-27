@@ -39,6 +39,10 @@ import app.models.document_record as _document_record
 import app.models.document_notification as _document_notification
 import app.models.document_idg_resolution as _document_idg_resolution
 
+from .assessment import Assessment
+from .assessment_reference import AssessmentReference
+from .assessment_discrepancy import AssessmentDiscrepancy
+
 IDGReview = _idg_review.IDGReview
 IDGNote = _idg_note.IDGNote
 IDGSignature = _idg_signature.IDGSignature

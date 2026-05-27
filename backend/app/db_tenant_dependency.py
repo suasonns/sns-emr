@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Generator
+
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,24 +14,25 @@ def get_db_tenant(
     user=Depends(get_current_user),
 ) -> Generator[Session, None, None]:
     """
-    Enterprise tenant-aware DB session.
-    Tenant is derived ONLY from authenticated identity.
-    """
+    Enterprise tenant-aware DB session derived ONLY from authenticated identity.
 
+    Guarantees:
+    1) ORM-level tenant context (db.info) using typed UUIDs
+    2) Postgres session tenant context (set_config) for RLS/audit
+    3) User attribution for audit
+    """
     tenant_id = getattr(user, "tenant_id", None)
     user_id = getattr(user, "id", None)
-
-    if not tenant_id:
-        raise RuntimeError("Authenticated user missing tenant_id")
+    if not tenant_id or not user_id:
+        raise RuntimeError("Authenticated user missing tenant_id or user id")
 
     db: Session = SessionLocal()
-
     try:
-        # ORM-level tenant context
-        db.info["tenant_id"] = str(tenant_id)
-        db.info["user_id"] = str(user_id)
+        # ORM context MUST be UUID objects (not strings)
+        db.info["tenant_id"] = tenant_id
+        db.info["user_id"] = user_id
 
-        # DB-level context (RLS-ready)
+        # Postgres session variables are strings (OK)
         db.execute(
             text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
             {"tenant_id": str(tenant_id)},
@@ -41,6 +43,5 @@ def get_db_tenant(
         )
 
         yield db
-
     finally:
         db.close()

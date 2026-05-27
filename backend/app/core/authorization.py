@@ -1,5 +1,6 @@
 from fastapi import HTTPException
-from app.api.visits import normalize_visit_type
+
+from app.domain.visits import normalize_visit_type
 
 
 def authorize_documentation(
@@ -14,19 +15,23 @@ def authorize_documentation(
 
     Rules:
     - A user may document only within their discipline.
-    - RN/NP/MD may supervise and document across disciplines.
-    - CHHA may only document CHHA visits.
+    - RN / NP / MD may supervise and document across disciplines.
+    - CHHA (AIDE) may only document aide visits.
     - Volunteers may only document volunteer services.
     """
 
-    role = user_role.upper()
+    role = user_role.strip().upper()
     vt = normalize_visit_type(visit_type)
 
+    # ---------------------------------------------------------
     # Nursing override (supervision authority)
+    # ---------------------------------------------------------
     if allow_nursing_override and role in {"RN", "NP", "MD"}:
         return
 
+    # ---------------------------------------------------------
     # Exact discipline match required
+    # ---------------------------------------------------------
     if role != vt:
         raise HTTPException(
             status_code=403,

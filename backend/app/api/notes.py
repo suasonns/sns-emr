@@ -5,10 +5,9 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.database import get_db
+from app.db_tenant_dependency import get_db_tenant
 from app.core.security import get_current_user
 from app.models.clinical_note import ClinicalNote
 from app.models.visit import Visit
@@ -18,6 +17,10 @@ from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
+
+# ---------------------------------------------------------------------
+# SCHEMAS
+# ---------------------------------------------------------------------
 
 class NoteCreateRequest(BaseModel):
     note_type: str = Field(..., example="RN_SUPERVISORY")
@@ -33,15 +36,18 @@ class NoteAmendRequest(BaseModel):
     content: str = Field(..., example="Amendment content.")
 
 
-def _set_db_context(db: Session, *, tenant_id: uuid.UUID, user_id: uuid.UUID) -> None:
-    db.execute(text("SET LOCAL app.current_tenant = :tid"), {"tid": str(tenant_id)})
-    db.execute(text("SELECT set_config('app.user_id', :uid, true)"), {"uid": str(user_id)})
-
+# ---------------------------------------------------------------------
+# HELPERS
+# ---------------------------------------------------------------------
 
 def _require_role(user_role: str, allowed: set[str]) -> None:
     if user_role.upper() not in allowed:
         raise HTTPException(status_code=403, detail="Forbidden")
 
+
+# ---------------------------------------------------------------------
+# CREATE NOTE
+# ---------------------------------------------------------------------
 
 @router.post(
     "/visits/{visit_id}",
@@ -51,45 +57,32 @@ def _require_role(user_role: str, allowed: set[str]) -> None:
 def create_clinical_note(
     visit_id: uuid.UUID,
     payload: NoteCreateRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    tenant_id = getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    role = str(getattr(user, "role", "") or "").upper()
-
-    if not tenant_id or not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    role = (user.role or "").upper()
 
     _require_role(role, {"RN", "LVN", "NP", "MD", "ADMIN"})
-    _set_db_context(db, tenant_id=tenant_id, user_id=user_id)
 
-    visit = (
-        db.query(Visit)
-        .filter(Visit.id == visit_id, Visit.tenant_id == tenant_id)
-        .first()
-    )
+    visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
 
     note = ClinicalNote(
         visit_id=visit_id,
-        author_id=user_id,
+        author_id=user.id,
         note_type=payload.note_type.strip().upper(),
         content=payload.content,
-        status="draft",
+        status="DRAFT",
+        created_by=user.id,
+        tenant_id=user.tenant_id,
     )
-
-    if hasattr(note, "tenant_id"):
-        setattr(note, "tenant_id", tenant_id)
-    if hasattr(note, "created_by"):
-        setattr(note, "created_by", user_id)
 
     db.add(note)
     db.flush()
 
     log_event(
-        user_id=user_id,
+        user_id=user.id,
         role=role,
         action="CREATE_NOTE",
         entity_type="clinical_note",
@@ -103,39 +96,35 @@ def create_clinical_note(
     return {"note_id": str(note.id), "status": note.status}
 
 
+# ---------------------------------------------------------------------
+# UPDATE NOTE
+# ---------------------------------------------------------------------
+
 @router.put("/{note_id}", summary="Update draft clinical note")
 def update_clinical_note(
     note_id: uuid.UUID,
     payload: NoteUpdateRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    tenant_id = getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    role = str(getattr(user, "role", "") or "").upper()
-
-    if not tenant_id or not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    role = (user.role or "").upper()
     _require_role(role, {"RN", "LVN", "NP", "MD", "ADMIN"})
-    _set_db_context(db, tenant_id=tenant_id, user_id=user_id)
 
-    q = db.query(ClinicalNote).filter(ClinicalNote.id == note_id)
-    if hasattr(ClinicalNote, "tenant_id"):
-        q = q.filter(ClinicalNote.tenant_id == tenant_id)
-    note = q.first()
-
+    note = db.query(ClinicalNote).filter(ClinicalNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
 
-    if getattr(note, "finalized_at", None) is not None:
-        raise HTTPException(status_code=400, detail="Finalized notes cannot be edited; use amendment")
+    if note.finalized_at is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Finalized notes cannot be edited; use amendment",
+        )
 
     note.content = payload.content
     db.flush()
 
     log_event(
-        user_id=user_id,
+        user_id=user.id,
         role=role,
         action="UPDATE_NOTE",
         entity_type="clinical_note",
@@ -149,45 +138,34 @@ def update_clinical_note(
     return {"note_id": str(note.id), "status": note.status}
 
 
+# ---------------------------------------------------------------------
+# FINALIZE NOTE
+# ---------------------------------------------------------------------
+
 @router.post("/{note_id}/finalize", summary="Finalize clinical note")
 def finalize_clinical_note(
     note_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    tenant_id = getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    role = str(getattr(user, "role", "") or "").upper()
-
-    if not tenant_id or not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    role = (user.role or "").upper()
     _require_role(role, {"RN", "NP", "MD", "ADMIN"})
-    _set_db_context(db, tenant_id=tenant_id, user_id=user_id)
 
-    q = db.query(ClinicalNote).filter(ClinicalNote.id == note_id)
-    if hasattr(ClinicalNote, "tenant_id"):
-        q = q.filter(ClinicalNote.tenant_id == tenant_id)
-    note = q.first()
-
+    note = db.query(ClinicalNote).filter(ClinicalNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
 
-    if hasattr(note, "finalize") and callable(getattr(note, "finalize")):
-        note.finalize(finalized_by=user_id)
-    else:
-        if getattr(note, "finalized_at", None) is not None:
-            raise HTTPException(status_code=400, detail="Note already finalized")
-        if hasattr(note, "finalized_at"):
-            setattr(note, "finalized_at", datetime.now(timezone.utc))
-        if hasattr(note, "finalized_by"):
-            setattr(note, "finalized_by", user_id)
-        note.status = "finalized"
+    if note.finalized_at is not None:
+        raise HTTPException(status_code=400, detail="Note already finalized")
+
+    note.finalized_at = datetime.now(timezone.utc)
+    note.finalized_by = user.id
+    note.status = "FINALIZED"
 
     db.flush()
 
     log_event(
-        user_id=user_id,
+        user_id=user.id,
         role=role,
         action="FINALIZE_NOTE",
         entity_type="clinical_note",
@@ -201,55 +179,46 @@ def finalize_clinical_note(
     return {
         "note_id": str(note.id),
         "status": note.status,
-        "finalized_at": str(getattr(note, "finalized_at", "")) if getattr(note, "finalized_at", None) else None,
+        "finalized_at": note.finalized_at.isoformat(),
     }
 
+
+# ---------------------------------------------------------------------
+# AMEND NOTE
+# ---------------------------------------------------------------------
 
 @router.post("/{note_id}/amend", summary="Amend a finalized clinical note")
 def amend_clinical_note(
     note_id: uuid.UUID,
     payload: NoteAmendRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    tenant_id = getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    role = str(getattr(user, "role", "") or "").upper()
-
-    if not tenant_id or not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    role = (user.role or "").upper()
     _require_role(role, {"RN", "NP", "MD", "ADMIN"})
-    _set_db_context(db, tenant_id=tenant_id, user_id=user_id)
 
-    q = db.query(ClinicalNote).filter(ClinicalNote.id == note_id)
-    if hasattr(ClinicalNote, "tenant_id"):
-        q = q.filter(ClinicalNote.tenant_id == tenant_id)
-    note = q.first()
-
+    note = db.query(ClinicalNote).filter(ClinicalNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
 
-    if getattr(note, "finalized_at", None) is None:
+    if note.finalized_at is None:
         raise HTTPException(status_code=400, detail="Only finalized notes can be amended")
 
     amendment = Amendment(
         clinical_note_id=note.id,
-        author_id=user_id,
-        created_by=user_id,
+        author_id=user.id,
+        created_by=user.id,
         reason=payload.reason.strip(),
         content=payload.content.strip(),
-        original_finalized_at=getattr(note, "finalized_at", None),
+        original_finalized_at=note.finalized_at,
+        tenant_id=user.tenant_id,
     )
-
-    if hasattr(amendment, "tenant_id"):
-        setattr(amendment, "tenant_id", tenant_id)
 
     db.add(amendment)
     db.flush()
 
     log_event(
-        user_id=user_id,
+        user_id=user.id,
         role=role,
         action="AMEND_NOTE",
         entity_type="amendment",
@@ -263,42 +232,31 @@ def amend_clinical_note(
     return {"amendment_id": str(amendment.id), "note_id": str(note.id)}
 
 
+# ---------------------------------------------------------------------
+# LIST NOTES
+# ---------------------------------------------------------------------
+
 @router.get("/visits/{visit_id}", summary="List notes for a visit (read-only)")
 def list_notes_for_visit(
     visit_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    tenant_id = getattr(user, "tenant_id", None)
-    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
-    role = str(getattr(user, "role", "") or "").upper()
-
-    if not tenant_id or not user_id:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
+    role = (user.role or "").upper()
     _require_role(role, {"RN", "LVN", "NP", "MD", "SURVEYOR", "ADMIN"})
-    _set_db_context(db, tenant_id=tenant_id, user_id=user_id)
 
-    visit = (
-        db.query(Visit)
-        .filter(Visit.id == visit_id, Visit.tenant_id == tenant_id)
-        .first()
-    )
+    visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
 
-    q = db.query(ClinicalNote).filter(ClinicalNote.visit_id == visit_id)
-    if hasattr(ClinicalNote, "tenant_id"):
-        q = q.filter(ClinicalNote.tenant_id == tenant_id)
-
-    notes = q.all()
+    notes = db.query(ClinicalNote).filter(ClinicalNote.visit_id == visit_id).all()
 
     return [
         {
             "note_id": str(n.id),
-            "note_type": getattr(n, "note_type", None),
-            "status": getattr(n, "status", None),
-            "finalized_at": str(getattr(n, "finalized_at", "")) if getattr(n, "finalized_at", None) else None,
+            "note_type": n.note_type,
+            "status": n.status,
+            "finalized_at": n.finalized_at.isoformat() if n.finalized_at else None,
         }
         for n in notes
     ]

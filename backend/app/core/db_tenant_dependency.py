@@ -17,36 +17,31 @@ def get_db_tenant(
     Enterprise tenant-aware DB session derived ONLY from authenticated identity.
 
     Guarantees:
-    1) ORM-level tenant context (db.info)
+    1) ORM-level tenant context (db.info) using typed UUIDs
     2) Postgres session tenant context (set_config) for RLS/audit
     3) User attribution for audit
     """
-
-    if not getattr(user, "tenant_id", None):
-        raise RuntimeError("Authenticated user missing tenant_id")
+    tenant_id = getattr(user, "tenant_id", None)
+    user_id = getattr(user, "id", None)
+    if not tenant_id or not user_id:
+        raise RuntimeError("Authenticated user missing tenant_id or user id")
 
     db: Session = SessionLocal()
-
     try:
-        # -----------------------------
-        # ORM-level tenant context
-        # -----------------------------
-        db.info["tenant_id"] = str(user.tenant_id)
-        db.info["user_id"] = str(user.id)
+        # ORM context MUST be UUID objects (not strings)
+        db.info["tenant_id"] = tenant_id
+        db.info["user_id"] = user_id
 
-        # -----------------------------
-        # DB-level tenant context (RLS/audit)
-        # -----------------------------
+        # Postgres session variables are strings (OK)
         db.execute(
             text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-            {"tenant_id": str(user.tenant_id)},
+            {"tenant_id": str(tenant_id)},
         )
         db.execute(
             text("SELECT set_config('app.user_id', :user_id, true)"),
-            {"user_id": str(user.id)},
+            {"user_id": str(user_id)},
         )
 
         yield db
-
     finally:
         db.close()

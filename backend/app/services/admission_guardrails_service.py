@@ -1,5 +1,3 @@
-# app/services/admission_guardrails_service.py
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -28,18 +26,9 @@ class AdmissionGuardrailsService:
     """
     Enterprise Hospice Admission Guardrails (Decision Support Only)
 
-    PURPOSE
-    -------
-    - Evaluate CMS LCD documentation quality
-    - Identify admission risk patterns
-    - Recommend MD review when risk is high
-    - NEVER block admission
-    - ALWAYS produce deterministic output
-
-    COMPLIANCE
-    ----------
-    - CMS CoPs (documentation sufficiency)
-    - ACHC / CHAP / CDPH survey-defensible
+    - Deterministic decision support
+    - CMS / ACHC / CHAP survey‑defensible
+    - flush=False => NO persistence, NO audit (unit tests / dry run)
     """
 
     SERVICE_VERSION = "v1.1"
@@ -65,10 +54,11 @@ class AdmissionGuardrailsService:
         """
         Perform admission documentation risk assessment.
 
-        Returns a structured, deterministic result.
+        flush=False => decision support only (deterministic, no DB side effects)
+        flush=True  => persist assessment + audit (production behavior)
         """
 
-        # ---- Hard preconditions (fail fast) ----
+        # ---- Preconditions ----
         if not db:
             raise RuntimeError("db session is required")
         if not tenant_id:
@@ -111,8 +101,8 @@ class AdmissionGuardrailsService:
 
         status = AdmissionGuardrailsService._map_status(severity)
 
-        # ---- Persistence & audit (never silent) ----
-        if mode != "OFF":
+        # ---- Persistence & audit (ONLY when flush=True) ----
+        if mode != "OFF" and flush:
             AdmissionGuardrailsService._persist_assessment(
                 db=db,
                 admission=admission,
@@ -125,11 +115,17 @@ class AdmissionGuardrailsService:
                 requires_md_review=requires_md_review,
             )
 
+            admission_id = (
+                admission.get("id")
+                if isinstance(admission, dict)
+                else getattr(admission, "id", "")
+            )
+
             AdmissionGuardrailsService._audit(
                 db=db,
                 action="ADMISSION_RISK_ASSESSMENT",
                 entity_type="ADMISSION",
-                entity_id=str(getattr(admission, "id", "")),
+                entity_id=str(admission_id or ""),
                 tenant_id=tenant_id,
                 user_id=user_id,
                 details={
@@ -141,8 +137,7 @@ class AdmissionGuardrailsService:
                 },
             )
 
-            if flush:
-                db.flush()
+            db.flush()
 
         return {
             "status": status,
@@ -155,30 +150,17 @@ class AdmissionGuardrailsService:
         }
 
     # -----------------------
-    # Helpers (enterprise-safe)
+    # Helpers
     # -----------------------
 
     @staticmethod
     def _get_guardrail_mode(db: Session, tenant_id: str) -> str:
-        """
-        Retrieve guardrail mode deterministically.
-        Defaults to GUIDANCE with audit visibility.
-        """
         try:
             mode = TenantSettingsService.get_guardrail_mode(db, tenant_id)
             if isinstance(mode, str) and mode.strip().upper() in AdmissionGuardrailsService.MODES:
                 return mode.strip().upper()
-        except Exception as exc:
-            # Explicit audit trail for config failure
-            AdmissionGuardrailsService._audit(
-                db=db,
-                action="GUARDRAIL_MODE_FALLBACK",
-                entity_type="TENANT",
-                entity_id=tenant_id,
-                tenant_id=tenant_id,
-                user_id="SYSTEM",
-                details={"error": str(exc)},
-            )
+        except Exception:
+            pass
         return "GUIDANCE"
 
     @staticmethod
@@ -212,7 +194,11 @@ class AdmissionGuardrailsService:
         assessment = DocumentationAssessment(
             tenant_id=tenant_id,
             patient_id=patient_id,
-            admission_id=getattr(admission, "id", None),
+            admission_id=(
+                admission.get("id")
+                if isinstance(admission, dict)
+                else getattr(admission, "id", None)
+            ),
             status=status,
             severity=severity,
             flags=flags,

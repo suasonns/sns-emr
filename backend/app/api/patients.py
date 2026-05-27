@@ -131,8 +131,23 @@ def list_patients(
     db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    return db.query(Patient).order_by(Patient.full_name).all()
+    role = getattr(user, "role", "") or ""
+    role = role.strip().upper()
 
+    # ---------------------------------------------------------
+    # ENTERPRISE DISCIPLINE SCOPE
+    # RN/NP/MD (and optionally ADMIN) may view full census.
+    # CHHA/VOLUNTEER must not list all patients.
+    # ---------------------------------------------------------
+    allowed_roles = {"RN", "NP", "MD", "ADMIN"}
+
+    if role not in allowed_roles:
+        raise HTTPException(
+            status_code=403,
+            detail="You may not list all patients. Access is restricted by discipline.",
+        )
+
+    return db.query(Patient).order_by(Patient.full_name).all()
 
 # =========================================================
 # VISITS FOR PATIENT
