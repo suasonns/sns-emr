@@ -35,7 +35,6 @@ def _resolve_reason_column(db: Session, table_name: str) -> Optional[str]:
         return "reason"
     if "rationale" in cols:
         return "rationale"
-    # If neither exists, we still can block/allow, but we cannot return a reason string
     return None
 
 
@@ -48,11 +47,13 @@ def evaluate_primary_dx_policy(
     """
     AUTHORITATIVE primary diagnosis policy evaluation.
 
-    Returns:
-      (True, None) if allowed as Primary Dx
-      (False, reason) if prohibited as Primary Dx
+    Baseline CMS/LCD hard rules (always enforced):
+    - F* codes (mental/behavioral) cannot be primary hospice diagnosis
+    - R* codes (symptoms/signs) cannot be primary hospice diagnosis
+    - Z* codes (factors influencing health status) cannot be primary hospice diagnosis
 
-    Schema-flexible and survey-safe.
+    Then applies tenant-specific DB policy rules (dx_primary_policy / dx_primary_policies)
+    as an overlay for additional restrictions.
     """
 
     if not db:
@@ -61,28 +62,41 @@ def evaluate_primary_dx_policy(
     if not tenant_id:
         raise RuntimeError("tenant_id is required for primary dx enforcement")
 
+    # Empty ICD is allowed during draft/intake
     if not icd10_code:
         return True, None
 
     normalized_icd = icd10_code.strip().upper()
+    if not normalized_icd:
+        return True, None
 
+    # ---------------------------------------------------------
+    # ✅ Baseline hard blocks (CMS/LCD-aligned)
+    # ---------------------------------------------------------
+    if normalized_icd.startswith("F"):
+        return False, "F-codes are not allowed as a primary hospice diagnosis"
+    if normalized_icd.startswith("R"):
+        return False, "R-codes are not allowed as a primary hospice diagnosis"
+    if normalized_icd.startswith("Z"):
+        return False, "Z-codes are not allowed as a primary hospice diagnosis"
+
+    # ---------------------------------------------------------
+    # DB policy overlay (additional tenant-specific blocks)
+    # ---------------------------------------------------------
     table_name = _resolve_policy_table(db)
     if not table_name:
-        # If policy table isn't present, fail-open to keep system operational.
-        # (If you prefer fail-closed, change this to return False with reason.)
+        # No table => baseline only
         return True, None
 
     reason_col = _resolve_reason_column(db, table_name)
 
-    # The policy table must have these columns to function:
-    # tenant_id, allow_primary, code_pattern
     insp = inspect(db.get_bind())
     cols = {c["name"] for c in insp.get_columns(table_name)}
     required = {"tenant_id", "allow_primary", "code_pattern"}
     if not required.issubset(cols):
         return True, None
 
-    # Build a safe SQL query that works regardless of ORM model shape
+    # If reason column exists, return reason string when blocked
     if reason_col:
         sql = text(
             f"""
@@ -94,12 +108,16 @@ def evaluate_primary_dx_policy(
             LIMIT 1
             """
         )
-        reason = db.execute(sql, {"tenant_id": str(tenant_id), "code": normalized_icd}).scalar()
+        reason = db.execute(
+            sql,
+            {"tenant_id": str(tenant_id), "code": normalized_icd},
+        ).scalar()
+
         if reason:
             return False, str(reason)
         return True, None
 
-    # No reason column available — still enforce allow_primary, but reason is None
+    # No reason column — still enforce block, but return None reason
     sql = text(
         f"""
         SELECT 1
@@ -110,9 +128,14 @@ def evaluate_primary_dx_policy(
         LIMIT 1
         """
     )
-    blocked = db.execute(sql, {"tenant_id": str(tenant_id), "code": normalized_icd}).scalar()
+    blocked = db.execute(
+        sql,
+        {"tenant_id": str(tenant_id), "code": normalized_icd},
+    ).scalar()
+
     if blocked:
         return False, None
+
     return True, None
 
 
@@ -126,10 +149,14 @@ def is_primary_allowed(
     """
     BACKWARD-COMPATIBILITY wrapper required by app/api/patients.py
 
-    Supports:
+    Usage:
       allowed, reason = is_primary_allowed(db, tenant_id=..., code="I50.9")
 
     Returns:
       (allowed, reason)
     """
-    return evaluate_primary_dx_policy(db=db, tenant_id=tenant_id, icd10_code=code)
+    return evaluate_primary_dx_policy(
+        db=db,
+        tenant_id=tenant_id,
+        icd10_code=code,
+    )
