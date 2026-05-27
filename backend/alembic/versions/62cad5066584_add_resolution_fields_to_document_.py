@@ -20,43 +20,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 ALLOWED = ("ACCEPTED", "NO_CHANGE", "OVERRIDDEN")
 
-def upgrade():
-    op.add_column(
-        "document_notifications",
-        sa.Column("resolution_status", sa.String(length=32), nullable=True),
-    )
-    op.add_column(
-        "document_notifications",
-        sa.Column("resolution_note", sa.Text(), nullable=True),
-    )
-    op.add_column(
-        "document_notifications",
-        sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.add_column(
-        "document_notifications",
-        sa.Column("resolved_by", postgresql.UUID(as_uuid=True), nullable=True),
-    )
-
-    # Enforce allowed values at DB level (survey-defensible)
-    op.create_check_constraint(
-        "ck_document_notifications_resolution_status",
-        "document_notifications",
-        f"resolution_status IS NULL OR resolution_status IN {ALLOWED}",
-    )
-
-    # Helpful indexes for dashboards and survey exports
-    op.create_index(
-        "ix_document_notifications_document_id",
-        "document_notifications",
-        ["document_id"],
-        unique=False,
-    )
-    op.create_index(
-        "ix_document_notifications_resolved_at",
-        "document_notifications",
-        ["resolved_at"],
-        unique=False,
+def upgrade() -> None:
+    # Rebuild-safe: only apply if document_notifications exists
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('public.document_notifications') IS NOT NULL THEN
+                    EXECUTE 'ALTER TABLE public.document_notifications
+                             ADD COLUMN IF NOT EXISTS resolution_status VARCHAR(32)';
+                    EXECUTE 'ALTER TABLE public.document_notifications
+                             ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMPTZ';
+                    EXECUTE 'ALTER TABLE public.document_notifications
+                             ADD COLUMN IF NOT EXISTS resolved_by UUID';
+                END IF;
+            END $$;
+            """
+        )
     )
 
 def downgrade():

@@ -1,11 +1,14 @@
-from logging.config import fileConfig
+from __future__ import annotations
+
 import os
 import sys
+from logging.config import fileConfig
 from pathlib import Path
 
 from alembic import context
-from sqlalchemy import create_engine, pool, text
 from dotenv import load_dotenv
+import sqlalchemy as sa
+from sqlalchemy import engine_from_config, pool
 
 # -------------------------------------------------------------------
 # Load environment variables
@@ -14,11 +17,11 @@ load_dotenv(".env.local")
 load_dotenv()
 
 # -------------------------------------------------------------------
-# Ensure backend/ is on PYTHONPATH so `app.*` imports work
+# Ensure backend/ is on PYTHONPATH so app.* imports work
 # -------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
-    sys.path.append(str(BASE_DIR))
+    sys.path.insert(0, str(BASE_DIR))
 
 # -------------------------------------------------------------------
 # Alembic Config object
@@ -30,51 +33,61 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # -------------------------------------------------------------------
-# Import models ONCE using the same path as the application
+# Import canonical Base + import models for metadata registration
 # -------------------------------------------------------------------
-from app.models.base import Base  # noqa: E402
-import app.models  # noqa: F401, E402
+from app.db.base import Base  # noqa: E402,F401
+import app.models  # noqa: E402,F401
 
 target_metadata = Base.metadata
 
-
+# -------------------------------------------------------------------
+# Enterprise-safe DB URL resolution (MIGRATION DATABASE FIRST)
+# -------------------------------------------------------------------
 def get_database_url() -> str:
-    """
-    Enterprise-safe DB resolution order:
-
-    1) MIGRATION_DATABASE_URL  (DDL / Alembic only)
-    2) DATABASE_URL            (application runtime)
-    3) alembic.ini fallback    (last resort)
-    """
-    db_url = (
+    url = (
         os.getenv("MIGRATION_DATABASE_URL")
         or os.getenv("DATABASE_URL")
-        or config.get_main_option("sqlalchemy.url")
+        or os.getenv("SQLALCHEMY_DATABASE_URL")
     )
-
-    if not db_url:
-        raise RuntimeError(
-            "MIGRATION_DATABASE_URL or DATABASE_URL must be set for Alembic"
-        )
-
-    # Force synchronous driver
-    if "postgresql+asyncpg" in db_url:
-        db_url = db_url.replace(
-            "postgresql+asyncpg", "postgresql+psycopg2"
-        )
-
-    return db_url
-
+    if not url:
+        raise RuntimeError("Database URL not found. Set MIGRATION_DATABASE_URL or DATABASE_URL.")
+    return url
 
 # -------------------------------------------------------------------
-# SAFETY GUARD — PREVENT MASS DROPS DURING AUTOGENERATE
+# SCOPE GUARD: only autogenerate for ORM tables
 # -------------------------------------------------------------------
-def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table" and reflected and compare_to is None:
-        return False
+def include_object(object_, name, type_, reflected, compare_to):
+    if type_ == "table":
+        return name in target_metadata.tables
     return True
 
+# -------------------------------------------------------------------
+# Normalize server defaults to reduce drift noise
+# -------------------------------------------------------------------
+def _normalize_default(value) -> str | None:
+    if value is None:
+        return None
+    s = str(value).strip().lower()
+    s = s.replace(" ", "")
+    s = s.replace("::character varying", "")
+    s = s.replace("::text", "")
+    return s
 
+def compare_server_default(
+    context_,
+    inspected_column,
+    metadata_column,
+    inspected_default,
+    metadata_default,
+    rendered_metadata_default,
+):
+    left = _normalize_default(inspected_default)
+    right = _normalize_default(rendered_metadata_default)
+    return left != right
+
+# -------------------------------------------------------------------
+# Migration runners
+# -------------------------------------------------------------------
 def run_migrations_offline() -> None:
     url = get_database_url()
     context.configure(
@@ -83,49 +96,42 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
-        compare_server_default=True,
+        compare_server_default=compare_server_default,
         include_object=include_object,
+        version_table_schema="public",
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
-
 def run_migrations_online() -> None:
-    engine = create_engine(
-        get_database_url(),
+    configuration = config.get_section(config.config_ini_section) or {}
+    configuration["sqlalchemy.url"] = get_database_url()
+
+    # Force Alembic connections to use public schema
+    connectable = engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
         poolclass=pool.NullPool,
         future=True,
+        connect_args={"options": "-csearch_path=public"},
     )
 
-    with engine.connect() as connection:
-        # Optional debug: print DB identity
-        x_args = context.get_x_argument(as_dictionary=True)
-        if x_args.get("check_user") == "true":
-            who = connection.execute(
-                text("select current_user")
-            ).scalar()
-            dbn = connection.execute(
-                text("select current_database()")
-            ).scalar()
-            prt = connection.execute(
-                text("show port")
-            ).scalar()
-            print(
-                f"ALEMBIC CONNECTED AS: {who} | DB: {dbn} | PORT: {prt}"
-            )
+    with connectable.connect() as connection:
+        # Belt + suspenders: ensure search_path is correct even if connect_args changes
+        connection.execute(sa.text("SET search_path TO public"))
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
-            compare_server_default=True,
+            compare_server_default=compare_server_default,
             include_object=include_object,
+            version_table_schema="public",
         )
 
         with context.begin_transaction():
             context.run_migrations()
-
 
 if context.is_offline_mode():
     run_migrations_offline()

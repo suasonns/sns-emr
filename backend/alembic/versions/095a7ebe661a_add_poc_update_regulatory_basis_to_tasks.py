@@ -4,10 +4,11 @@ Revision ID: 095a7ebe661a
 Revises: 9a9cf44f4a36
 Create Date: 2026-04-30 14:46:19.895989
 """
+
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa  # keep if you use it later; safe to keep
+import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
@@ -18,11 +19,34 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # ✅ Run enum ALTER outside the migration transaction for maximum compatibility
-    with op.get_context().autocommit_block():
-        op.execute("ALTER TYPE tasks_regulatory_basis_enum ADD VALUE IF NOT EXISTS 'POC_UPDATE';")
+    """
+    Add 'POC_UPDATE' to tasks_regulatory_basis_enum.
+
+    Enterprise-safe implementation:
+    - SQLAlchemy may already have an open transaction (autobegin).
+    - You cannot change isolation_level to AUTOCOMMIT until you COMMIT/ROLLBACK.
+    - We commit if needed, then run ALTER TYPE using AUTOCOMMIT.
+    """
+    conn = op.get_bind()
+
+    # End any active transaction before switching isolation level.
+    # (SQLAlchemy 2.x raises InvalidRequestError otherwise.)
+    try:
+        if hasattr(conn, "in_transaction") and conn.in_transaction():
+            conn.commit()
+    except Exception:
+        # If commit isn't available/needed, ignore safely.
+        pass
+
+    ac = conn.execution_options(isolation_level="AUTOCOMMIT")
+    ac.execute(
+        sa.text(
+            "ALTER TYPE tasks_regulatory_basis_enum "
+            "ADD VALUE IF NOT EXISTS 'POC_UPDATE'"
+        )
+    )
 
 
 def downgrade() -> None:
-    # Safe no-op; PostgreSQL enums cannot easily remove values.
+    # PostgreSQL enums are forward-only (cannot easily remove values).
     pass

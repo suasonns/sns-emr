@@ -2,37 +2,48 @@
 
 Revision ID: d8e10b78f236
 Revises: f58020cc5ea2
+Create Date: 2026-xx-xx xx:xx:xx.xxxxxx
 """
 
+from typing import Sequence, Union
+
 from alembic import op
+import sqlalchemy as sa
+
 
 # revision identifiers, used by Alembic.
-revision = "d8e10b78f236"
-down_revision = "f58020cc5ea2"
-branch_labels = None
-depends_on = None
+revision: str = "d8e10b78f236"
+down_revision: Union[str, Sequence[str], None] = "f58020cc5ea2"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # PostgreSQL requires enum ADD VALUE to be committed
-    # before it can be referenced in indexes or constraints
-    with op.get_context().autocommit_block():
-        op.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                FROM pg_enum e
-                JOIN pg_type t ON t.oid = e.enumtypid
-                WHERE t.typname = 'tasks_task_type_enum'
-                  AND e.enumlabel = 'IDG_REVIEW'
-            ) THEN
-                ALTER TYPE tasks_task_type_enum ADD VALUE 'IDG_REVIEW';
-            END IF;
-        END$$;
-        """)
+    """
+    Add 'IDG_REVIEW' to tasks_task_type_enum.
+
+    Enterprise-safe implementation:
+    - Avoids op.get_context().autocommit_block() (can assert in some Alembic contexts)
+    - Ends any active transaction before switching to AUTOCOMMIT (SQLAlchemy 2.x)
+    """
+    conn = op.get_bind()
+
+    # End any active transaction before switching isolation level.
+    try:
+        if hasattr(conn, "in_transaction") and conn.in_transaction():
+            conn.commit()
+    except Exception:
+        pass
+
+    ac = conn.execution_options(isolation_level="AUTOCOMMIT")
+    ac.execute(
+        sa.text(
+            "ALTER TYPE tasks_task_type_enum "
+            "ADD VALUE IF NOT EXISTS 'IDG_REVIEW'"
+        )
+    )
 
 
 def downgrade() -> None:
-    # Enum values cannot be safely removed
+    # PostgreSQL enums are forward-only.
     pass

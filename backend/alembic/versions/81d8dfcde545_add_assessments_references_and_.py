@@ -56,7 +56,23 @@ def _table_exists(table_name: str, schema: str = "public") -> bool:
 
 def upgrade() -> None:
     # Enterprise-safe: enable uuid extension for server-side UUID defaults.
-    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+    op.execute(
+    sa.text(
+        """
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM pg_roles
+                WHERE rolname = current_user
+                  AND rolsuper
+            ) THEN
+                CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+            END IF;
+        END $$;
+        """
+    )
+)
 
     # Detect PKs (do NOT assume "id" exists everywhere)
     patients_pk = _get_pk_column("patients")

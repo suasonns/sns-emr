@@ -19,10 +19,19 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "document_notifications",
-        sa.Column("last_reminder_at", sa.DateTime(timezone=True), nullable=True),
-        schema="public",
+    # Rebuild-safe: only apply if the table exists in this branch/order
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF to_regclass('public.document_notifications') IS NOT NULL THEN
+                    EXECUTE 'ALTER TABLE public.document_notifications
+                             ADD COLUMN IF NOT EXISTS last_reminder_at TIMESTAMPTZ';
+                END IF;
+            END $$;
+            """
+        )
     )
 
 
