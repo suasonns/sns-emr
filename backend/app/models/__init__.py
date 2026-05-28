@@ -5,74 +5,58 @@ Purpose:
 - Allow staged ORM restoration
 - Avoid circular imports
 - Prevent FK resolution explosions
-- Keep DB and rules inert
+- Keep DB and rule engines inert
+
+IMPORTANT:
+- This module exists ONLY to force model registration on Base.metadata
+- Alembic relies on the SIDE EFFECTS of these imports
 """
 
+from __future__ import annotations
+
 # ---------------------------------------------------------
-# Foundation
+# Foundation (must load first)
 # ---------------------------------------------------------
-from app.models.tenant import Tenant
-from app.models.user import User
-from app.models.role import Role
-from app.models.interface import Interface
+from app.models.tenant import Tenant  # noqa: F401
+from app.models.user import User  # noqa: F401
+from app.models.role import Role  # noqa: F401
+from app.models.interface import Interface  # noqa: F401
 
 # ---------------------------------------------------------
 # Patient core
 # ---------------------------------------------------------
-import app.models.patient as _patient
-import app.models.visit as _visit
-import app.models.benefit_period as _benefit_period
-
-Patient = _patient.Patient
-Visit = _visit.Visit
-BenefitPeriod = _benefit_period.BenefitPeriod
+import app.models.patient  # noqa: F401
+import app.models.visit  # noqa: F401
+import app.models.benefit_period  # noqa: F401
 
 # ---------------------------------------------------------
-# IDG / Documentation
+# IDG / Documentation (FK ROOT MUST LOAD FIRST)
 # ---------------------------------------------------------
-import app.models.idg_review as _idg_review
-import app.models.idg_note as _idg_note
-import app.models.idg_signature as _idg_signature
-import app.models.idg_md_attestation as _idg_md_attestation
+import app.models.idg_meeting  # noqa: F401  ✅ REQUIRED FK ROOT
 
-import app.models.document_record as _document_record
-import app.models.document_notification as _document_notification
-import app.models.document_idg_resolution as _document_idg_resolution
+import app.models.idg_review  # noqa: F401
+import app.models.idg_note  # noqa: F401
+import app.models.idg_signature  # noqa: F401
+import app.models.idg_md_attestation  # noqa: F401
 
-from .assessment import Assessment
-from .assessment_reference import AssessmentReference
-from .assessment_discrepancy import AssessmentDiscrepancy
+import app.models.document_record  # noqa: F401
+import app.models.document_notification  # noqa: F401
+import app.models.document_idg_resolution  # noqa: F401
 
-IDGReview = _idg_review.IDGReview
-IDGNote = _idg_note.IDGNote
-IDGSignature = _idg_signature.IDGSignature
-IDGMDAttestation = _idg_md_attestation.IDGMDAttestation
-
-DocumentRecord = _document_record.DocumentRecord
-DocumentNotification = _document_notification.DocumentNotification
-DocumentIDGResolution = _document_idg_resolution.DocumentIDGResolution
+import app.models.assessment  # noqa: F401
+import app.models.assessment_reference  # noqa: F401
+import app.models.assessment_discrepancy  # noqa: F401
 
 # ---------------------------------------------------------
 # Tasks / Access
 # ---------------------------------------------------------
-import app.models.task as _task
-import app.models.survey_access as _survey_access
-
-Task = _task.Task
-SurveyAccess = _survey_access.SurveyAccess
+import app.models.task  # noqa: F401
+import app.models.survey_access  # noqa: F401
 
 # ---------------------------------------------------------
-# Rule‑related models (INERT)
+# Rule-related models (INERT — imported only for metadata)
 # ---------------------------------------------------------
-import app.models.dx_primary_policy as _dx_primary_policy
-import app.models.drug_alias as _drug_alias
-import app.models.eligibility as _eligibility
-import app.models.eligibility_decision as _eligibility_decision
-
-DxPrimaryPolicy = _dx_primary_policy.DxPrimaryPolicy
-DrugAlias = _drug_alias.DrugAlias
-
-EligibilityAssessment = _eligibility.EligibilityAssessment
-EligibilityRuleset = _eligibility.EligibilityRuleset
-
-EligibilityDecision = _eligibility_decision.EligibilityDecision
+import app.models.dx_primary_policy  # noqa: F401
+import app.models.drug_alias  # noqa: F401
+import app.models.eligibility  # noqa: F401
+import app.models.eligibility_decision  # noqa: F401

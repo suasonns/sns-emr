@@ -68,3 +68,5 @@ installed-freeze-*.txt
 sns-emr-integrity-check.ps1
 backend/sns-emr-integrity-check.ps1
 sns-emr-no-drift.ps1
+# Sensitive local docs (never commit secrets)
+/docs/*Ownership*Script*.txt

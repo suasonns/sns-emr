@@ -4,7 +4,7 @@ Enterprise-grade database core for SNS Hospice EMR.
 Provides:
 - engine
 - SessionLocal
-- Base
+- Base (CANONICAL, imported)
 - get_db
 - NO global tenant state (tenant handled via get_db_tenant)
 """
@@ -26,7 +26,12 @@ import os
 from typing import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session
+
+# ---------------------------------------------------------------------
+# CANONICAL Base (DO NOT redefine)
+# ---------------------------------------------------------------------
+from app.db.base import Base  # ✅ SINGLE SOURCE OF TRUTH
 
 # ---------------------------------------------------------------------
 # Database URL
@@ -59,11 +64,6 @@ SessionLocal = sessionmaker(
     autocommit=False,
     expire_on_commit=False,
 )
-
-# ---------------------------------------------------------------------
-# Base
-# ---------------------------------------------------------------------
-Base = declarative_base()
 
 # ---------------------------------------------------------------------
 # Default DB dependency (NON-TENANT)

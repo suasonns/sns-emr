@@ -1,0 +1,89 @@
+0) Shared Definitions (use this file as common.defs.schema.json)
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://sns-hospice-emr/schemas/common.defs.schema.json",
+  "title": "SNS Hospice EMR Common Definitions (Draft-07)",
+  "type": "object",
+  "definitions": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "dateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "nullableDateTime": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "nullableUuid": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"
+    },
+    "discipline": {
+      "type": "string",
+      "enum": ["RN", "MSW", "SC", "MD", "NP", "LVN", "CHHA"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "SIGNED", "VOIDED"]
+    },
+    "evidenceLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference_type", "reference_id"],
+      "properties": {
+        "reference_type": {
+          "type": "string",
+          "enum": ["VISIT", "DOCUMENT", "NOTE", "ASSESSMENT"]
+        },
+        "reference_id": { "$ref": "#/definitions/nullableUuid" }
+      }
+    },
+    "painAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessed", "patient_alert", "tool_used", "pain_present"],
+      "properties": {
+        "assessed": { "type": "boolean" },
+        "patient_alert": { "type": "boolean" },
+        "tool_used": { "type": "string", "enum": ["NUMERIC", "FLACC", "PAINAD"] },
+        "pain_present": { "type": "boolean" },
+        "severity": { "type": ["number", "integer", "null"], "minimum": 0, "maximum": 10 },
+        "location": { "type": ["string", "null"], "maxLength": 200 },
+        "intervention_or_escalation": { "type": ["string", "null"], "maxLength": 2000 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "patient_alert": { "const": true } }, "required": ["patient_alert"] },
+          "then": { "properties": { "tool_used": { "const": "NUMERIC" } } },
+          "else": { "properties": { "tool_used": { "enum": ["FLACC", "PAINAD"] } } }
+        }
+      ]
+    },
+    "discrepancy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alignment_to_rn_baseline", "requires_idg_reconciliation"],
+      "properties": {
+        "alignment_to_rn_baseline": {
+          "type": "string",
+          "enum": ["NOT_APPLICABLE", "ALIGNED", "DIFFERENT"]
+        },
+        "discrepancy_note": { "type": ["string", "null"], "maxLength": 4000 },
+        "requires_idg_reconciliation": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "alignment_to_rn_baseline": { "const": "DIFFERENT" } } },
+          "then": {
+            "required": ["discrepancy_note"],
+            "properties": { "requires_idg_reconciliation": { "const": true } }
+          }
+        }
+      ]
+    }
+  }
+}

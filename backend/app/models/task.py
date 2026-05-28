@@ -1,179 +1,113 @@
-import enum
+from __future__ import annotations
 
-from sqlalchemy import (
-    Column,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Enum,
-    Text,
-)
+from sqlalchemy import Column, Date, DateTime, Enum, ForeignKey, String
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.types import Enum as SAEnum
+from sqlalchemy.sql import func
 
-from app.models.base import BaseModel
+from app.db.base import Base
+
+# ------------------------------------------------------------------
+# PostgreSQL enums (already exist in DB — DO NOT recreate)
+# ------------------------------------------------------------------
+TaskTypeEnum = Enum(
+    name="tasks_task_type_enum",
+    native_enum=True,
+    create_type=False,
+)
+
+TaskOriginEnum = Enum(
+    name="tasks_origin_enum",
+    native_enum=True,
+    create_type=False,
+)
+
+TaskDisciplineEnum = Enum(
+    name="tasks_discipline_enum",
+    native_enum=True,
+    create_type=False,
+)
+
+TaskRegulatoryBasisEnum = Enum(
+    name="tasks_regulatory_basis_enum",
+    native_enum=True,
+    create_type=False,
+)
+
+TaskStatusEnum = Enum(
+    name="tasks_status_enum",
+    native_enum=True,
+    create_type=False,
+)
+
+TaskCompletionRefEnum = Enum(
+    name="tasks_completion_ref_enum",
+    native_enum=True,
+    create_type=False,
+)
 
 
-# ---------------------------------------------------------------------
-# Completion Evidence Enum (matches Postgres exactly)
-# ---------------------------------------------------------------------
-class TaskCompletionRefType(enum.Enum):
-    VISIT = "VISIT"
-    NOTE = "NOTE"
-    DOCUMENT = "DOCUMENT"
-    CLINICAL_NOTE = "CLINICAL_NOTE"
+class Task(Base):
+    """
+    Enterprise-grade Task model.
 
+    Regulatory relevance:
+    - CMS Hospice Conditions of Participation (CoPs)
+    - Survey-defensible obligation lifecycle
+    - Evidence-linked completion
+    """
 
-class Task(BaseModel):
     __tablename__ = "tasks"
 
     # -------------------------------------------------
-    # Tenant scope (CRITICAL)
+    # Identity / scope
     # -------------------------------------------------
-    tenant_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("tenants.id"),
-        nullable=False,
-        index=True,
-    )
+    id = Column(UUID(as_uuid=True), primary_key=True)
 
-    # -------------------------------------------------
-    # Task classification
-    # -------------------------------------------------
-    task_type = Column(
-        Enum(
-            "HUV",
-            "SFV",
-            "OTHER",
-            "POC_UPDATE",
-            "IDG_REVIEW",
-            "IDG_POC_REVIEW",          # ✅ legacy DB value
-            "CERTIFICATION",
-            "RECERTIFICATION",
-            "F2F",
-            "POC_NONCOMPLIANT_STRUCTURE",
-            "POC_REVIEW_REQUIRED",
-            "POC_OUT_OF_SCOPE_CARE",
-            "POC_STALE_REVIEW",
-            "POC_PHYSICIAN_REVIEW_REQUIRED",
-            name="tasks_task_type_enum",
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    origin = Column(
-        Enum(
-            "ADMISSION",
-            "PERIODIC",
-            "MANUAL",
-            name="tasks_origin_enum",
-            create_type=False,
-        ),
-        nullable=False,
-        default="PERIODIC",
-    )
-
-    # -------------------------------------------------
-    # Core relationships
-    # -------------------------------------------------
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id"),
         nullable=False,
+        index=True,
     )
 
     benefit_period_id = Column(
         UUID(as_uuid=True),
         ForeignKey("benefit_periods.id"),
+        nullable=False,
+        index=True,
+    )
+
+    # -------------------------------------------------
+    # Task classification (ENUM enforced by DB)
+    # -------------------------------------------------
+    task_type = Column(TaskTypeEnum, nullable=False)
+    origin = Column(TaskOriginEnum, nullable=False)
+    discipline = Column(TaskDisciplineEnum, nullable=False)
+    regulatory_basis = Column(TaskRegulatoryBasisEnum, nullable=False)
+    status = Column(TaskStatusEnum, nullable=False)
+
+    # -------------------------------------------------
+    # Assignment
+    # -------------------------------------------------
+    assigned_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=True,
         index=True,
     )
 
     # -------------------------------------------------
-    # Responsibility
-    # -------------------------------------------------
-    discipline = Column(
-        Enum(
-            "RN",
-            "MD",
-            "NP",
-            "SW",
-            "CHAPLAIN",
-            "AIDE",
-            name="tasks_discipline_enum",
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    assigned_user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id"),
-        nullable=True,
-    )
-
-    # -------------------------------------------------
-    # CMS / Regulatory justification
-    # -------------------------------------------------
-    regulatory_basis = Column(
-        Enum(
-            "IDG",
-            "IDG_15_DAY",              # ✅ legacy DB value
-            "VISIT_FREQUENCY",
-            "F2F",
-            "CERTIFICATION",
-            "ADMISSION_REQUIREMENT",
-            "POC_UPDATE",
-            name="tasks_regulatory_basis_enum",
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    # -------------------------------------------------
-    # Lifecycle
+    # Scheduling
     # -------------------------------------------------
     due_date = Column(Date, nullable=False)
 
-    status = Column(
-        Enum(
-            "PENDING",
-            "COMPLETED",
-            "OVERDUE",
-            "ESCALATED",
-            "WAIVED",
-            name="tasks_status_enum",
-            create_type=False,
-        ),
-        nullable=False,
-        default="PENDING",
-    )
+    # -------------------------------------------------
+    # Completion evidence (COMPLIANCE‑CRITICAL)
+    # -------------------------------------------------
+    completed_at = Column(DateTime(timezone=False), nullable=True)
 
-    completed_at = Column(
-        DateTime(timezone=False),
-        nullable=True,
-    )
-
-    # -------------------------------------------------
-    # Alert reason (ESCALATION EXPLANATION)
-    # -------------------------------------------------
-    alert_reason = Column(
-        Text,
-        nullable=True,
-    )
-
-    # -------------------------------------------------
-    # Completion traceability (AUDIT‑CRITICAL)
-    # -------------------------------------------------
     completion_reference_type = Column(
-        SAEnum(
-            TaskCompletionRefType,
-            name="tasks_completion_ref_enum_v2",
-            create_type=False,
-            native_enum=True,
-        ),
+        TaskCompletionRefEnum,
         nullable=True,
     )
 
@@ -182,13 +116,32 @@ class Task(BaseModel):
         nullable=True,
     )
 
+    # -------------------------------------------------
+    # Excusal / waiver (audit‑relevant)
+    # -------------------------------------------------
+    excused_reason_code = Column(String, nullable=True)
+    excused_at = Column(DateTime(timezone=True), nullable=True)
+    excused_source = Column(String, nullable=True)
 
-# -------------------------------------------------
-# Indexes
-# -------------------------------------------------
-Index("idx_tasks_tenant", Task.tenant_id)
-Index("idx_tasks_patient", Task.patient_id)
-Index("idx_tasks_benefit_period", Task.benefit_period_id)
-Index("idx_tasks_discipline", Task.discipline)
-Index("idx_tasks_status", Task.status)
-Index("idx_tasks_due_date", Task.due_date)
+    # -------------------------------------------------
+    # Audit timestamps
+    # -------------------------------------------------
+    created_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )

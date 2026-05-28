@@ -1,33 +1,56 @@
-from sqlalchemy import Column, DateTime, ForeignKey, Enum
+from __future__ import annotations
+
+from sqlalchemy import Column, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
-from app.models.base import BaseModel
+from app.db.base import Base
 
 
-class IDGSignature(BaseModel):
+class IDGSignature(Base):
+    """
+    Signature attesting participation in IDG review.
+    """
+
     __tablename__ = "idg_signatures"
 
-    idg_review_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("idg_reviews.id", ondelete="CASCADE"),
-        nullable=False,
-    )
+    id = Column(UUID(as_uuid=True), primary_key=True)
 
-    discipline = Column(
-        Enum("RN", "MD", "MSW", "SC", "LVN", "NP", name="idg_discipline"),
+    idg_meeting_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("idg_meetings.id"),
         nullable=False,
+        index=True,
     )
 
     user_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
-        nullable=True,
+        nullable=False,
+        index=True,
     )
 
-    signed_at = Column(DateTime, nullable=False)
+    signed_at = Column(
+        DateTime(timezone=False),
+        nullable=False,
+    )
 
-    idg_review = relationship(
-        "IDGReview",
-        back_populates="signatures",
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+
+    created_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

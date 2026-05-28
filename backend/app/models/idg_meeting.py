@@ -1,22 +1,27 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text
+from sqlalchemy import Column, DateTime, Enum, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.db.base import Base
 
+IDGStatusEnum = Enum(
+    name="idg_status_enum",
+    native_enum=True,
+    create_type=False,
+)
 
-class IDGJustification(Base):
+
+class IDGMeeting(Base):
     """
-    Compliance or eligibility justification record.
+    Enterprise-grade IDG Meeting.
 
-    Purpose:
-    - ADR responses
-    - Survey defense
+    Regulatory basis:
+    - CMS CoPs §418.56
     """
 
-    __tablename__ = "idg_justification_notes"
+    __tablename__ = "idg_meetings"
 
     id = Column(UUID(as_uuid=True), primary_key=True)
 
@@ -27,12 +32,18 @@ class IDGJustification(Base):
         index=True,
     )
 
-    note_text = Column(Text, nullable=False)
-
-    created_by = Column(
+    benefit_period_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        ForeignKey("benefit_periods.id"),
         nullable=True,
+        index=True,
+    )
+
+    status = Column(IDGStatusEnum, nullable=False)
+
+    meeting_date = Column(
+        DateTime(timezone=False),
+        nullable=False,
         index=True,
     )
 

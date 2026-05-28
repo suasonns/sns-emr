@@ -1,0 +1,400 @@
+Base payload (ALL assessments)
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "RN|MSW|SC|MD|NP|LVN|CHHA",
+  "assessment_type": "RN_ICA|MSW_ICA|SC_ICA|RN_BEREAVEMENT_BASELINE|BEREAVEMENT_ASSESSMENT",
+  "occurred_at": "2026-05-25T10:30:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+
+  "evidence_link": {
+    "reference_type": "VISIT|DOCUMENT|NOTE|ASSESSMENT",
+    "reference_id": null
+  },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": true,
+    "tool_used": "NUMERIC|FLACC|PAINAD",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": null
+  },
+
+  "discrepancy": {
+    "alignment_to_rn_baseline": "NOT_APPLICABLE|ALIGNED|DIFFERENT",
+    "discrepancy_note": null,
+    "requires_idg_reconciliation": false
+  },
+
+  "meta": {
+    "created_via": "UI|API|IMPORT",
+    "source_form": null,
+    "tenant_id": "uuid"
+  }
+}
+
+ RN ICA payload (assessment_type = RN_ICA)
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "RN",
+  "assessment_type": "RN_ICA",
+  "occurred_at": "2026-05-25T10:30:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|DOCUMENT|NOTE", "reference_id": null },
+
+  "soc": {
+    "soc_at": "2026-05-25T10:30:00-07:00",
+    "soc_source": "RN_INITIAL_ASSESSMENT|ELECTION_ORDER"
+  },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": false,
+    "tool_used": "PAINAD",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": null
+  },
+
+  "ros": {
+    "integumentary": {
+      "skin_assessed": true,
+      "skin_intact": true,
+      "skin_impaired": false,
+      "risk_factors": ["poor_nutrition", "incontinence", "weakness"],
+      "wound_present": false,
+      "skin_impairment_assessment_ref": {
+        "reference_type": "DOCUMENT|NOTE|ASSESSMENT",
+        "reference_id": null
+      },
+      "education": {
+        "provided": true,
+        "topics": ["repositioning_q2h", "pressure_offloading", "skin_monitoring", "report_changes"],
+        "pcg_understanding": true
+      },
+      "narrative": "string"
+    }
+  },
+
+  "safety_fall": {
+    "care_setting": "FACILITY|HOME",
+    "fall_risk_assessed": true,
+    "fall_risk_level": "LOW|MODERATE|HIGH",
+    "history_of_falls_reviewed": true,
+    "mobility_limitations_documented": true,
+    "assistive_devices_reviewed": true,
+
+    "facility_path": {
+      "facility_protocols_reviewed": false,
+      "call_light_confirmed": false,
+      "alarms_reviewed": false,
+      "facility_responsible": false,
+      "facility_staff_notified": false
+    },
+
+    "home_path": {
+      "hazards_assessed": false,
+      "bathroom_safety_reviewed": false,
+      "bed_chair_safety_reviewed": false,
+      "oxygen_safety_reviewed": false,
+      "emergency_preparedness_reviewed": false,
+      "education_within_scope": false,
+      "pcg_understanding": false
+    }
+  },
+
+  "rn_bereavement_baseline": {
+    "documented": true,
+    "primary_caregiver_identified": true,
+    "primary_bereaved_identified": true,
+    "early_indicators": ["anticipatory_grief", "limited_support"],
+    "summary": "string",
+    "risk_hint": "NONE|LOW|MODERATE|HIGH"
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+MSW ICA payload (assessment_type = MSW_ICA) — includes RN baseline reference requirement
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "MSW",
+  "assessment_type": "MSW_ICA",
+  "occurred_at": "2026-05-27T13:00:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|DOCUMENT|NOTE", "reference_id": null },
+
+  "rn_baseline_panel": {
+    "rn_ica_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" },
+    "rn_bereavement_baseline_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" },
+    "rn_skin_baseline_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" },
+    "rn_safety_fall_baseline_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" }
+  },
+
+  "rn_baseline_ack": {
+    "reviewed": true,
+    "reviewed_at": "2026-05-27T13:05:00-07:00"
+  },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": true,
+    "tool_used": "NUMERIC",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": "RN_NOTIFIED_IF_INDICATED"
+  },
+
+  "psychosocial": {
+    "mental_status": "string",
+    "coping": "string",
+    "caregiver_capacity": "string",
+    "support_system": ["family", "facility_staff"],
+    "financial_legal_needs": {
+      "financial_concerns": false,
+      "advance_directives_reviewed": true,
+      "poa_identified": true,
+      "burial_planning": "IN_PROCESS|COMPLETE|NEEDS_HELP"
+    },
+    "risk_screen": {
+      "crisis_risk": "NONE|LOW|MODERATE|HIGH",
+      "abuse_neglect_risk": false,
+      "suicide_risk": false
+    },
+    "narrative": "string"
+  },
+
+  "discrepancy": {
+    "alignment_to_rn_baseline": "ALIGNED|DIFFERENT",
+    "discrepancy_note": null,
+    "requires_idg_reconciliation": false
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+SC ICA payload (assessment_type = SC_ICA) — includes RN baseline reference requirement
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "SC",
+  "assessment_type": "SC_ICA",
+  "occurred_at": "2026-05-27T15:00:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|DOCUMENT|NOTE", "reference_id": null },
+
+  "rn_baseline_panel": {
+    "rn_ica_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" },
+    "rn_bereavement_baseline_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" }
+  },
+
+  "rn_baseline_ack": {
+    "reviewed": true,
+    "reviewed_at": "2026-05-27T15:02:00-07:00"
+  },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": true,
+    "tool_used": "NUMERIC",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": "RN_NOTIFIED_IF_INDICATED"
+  },
+
+  "spiritual": {
+    "faith_background": "string",
+    "cultural_influences": "string",
+    "support_sources": ["prayer", "family"],
+    "spiritual_distress": {
+      "present": false,
+      "indicators": []
+    },
+    "interventions": ["listening", "prayer"],
+    "narrative": "string",
+    "declined_spiritual_care": false
+  },
+
+  "discrepancy": {
+    "alignment_to_rn_baseline": "ALIGNED|DIFFERENT",
+    "discrepancy_note": null,
+    "requires_idg_reconciliation": false
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+RN Bereavement Baseline payload (assessment_type = RN_BEREAVEMENT_BASELINE)
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "RN",
+  "assessment_type": "RN_BEREAVEMENT_BASELINE",
+  "occurred_at": "2026-05-25T10:30:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|DOCUMENT|NOTE", "reference_id": null },
+
+  "baseline": {
+    "primary_bereaved_identified": true,
+    "relationship": "string",
+    "primary_caregiver_identified": true,
+    "support_system": ["family", "facility_staff"],
+    "early_indicators": [
+      "anticipatory_grief",
+      "caregiver_strain",
+      "limited_support"
+    ],
+    "rn_summary": "string"
+  },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": false,
+    "tool_used": "PAINAD",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": null
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+ Bereavement Assessment payload (assessment_type = BEREAVEMENT_ASSESSMENT) — MSW or SC (or RN fallback)
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "MSW|SC|RN",
+  "assessment_type": "BEREAVEMENT_ASSESSMENT",
+  "occurred_at": "2026-05-28T14:00:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|DOCUMENT|NOTE", "reference_id": null },
+
+  "rn_baseline_panel": {
+    "rn_bereavement_baseline_ref": { "reference_type": "ASSESSMENT|DOCUMENT|NOTE", "reference_id": "uuid" }
+  },
+
+  "rn_baseline_ack": {
+    "reviewed": true,
+    "reviewed_at": "2026-05-28T14:05:00-07:00",
+    "alignment": "ALIGNED|DIFFERENT",
+    "difference_note": null
+  },
+
+  "primary_bereaved": {
+    "last_name": "string",
+    "first_name": "string",
+    "age": null,
+    "address": "string",
+    "phone_home": "string",
+    "phone_cell": "string",
+    "relationship_to_patient": "string",
+    "was_primary_caregiver": true,
+    "preferred_contact_method": "PHONE|TEXT|EMAIL|MAIL",
+    "consent_to_contact_post_death": true
+  },
+
+  "risk_assessment": {
+    "risk_items": [
+      { "code": "SUICIDE_IDEATION", "selected": false, "weight": 10 },
+      { "code": "SUBSTANCE_ABUSE", "selected": false, "weight": 2 },
+      { "code": "MENTAL_HEALTH_HISTORY", "selected": false, "weight": 2 },
+      { "code": "ISOLATED_SUPPORT", "selected": false, "weight": 2 },
+      { "code": "MULTIPLE_LOSSES", "selected": false, "weight": 2 },
+      { "code": "ANTICIPATORY_GRIEF", "selected": true, "weight": 1 }
+    ],
+    "total_score": 1,
+    "risk_level": "LOW|MODERATE|HIGH"
+  },
+
+  "additional_bereaved": [
+    {
+      "name": "string",
+      "relationship": "string",
+      "phone": "string",
+      "specific_concerns": "string"
+    }
+  ],
+
+  "plan": {
+    "services_offered": [
+      "EDUCATION",
+      "PHONE_FOLLOWUP",
+      "COUNSELING_VISIT",
+      "SPIRITUAL_SUPPORT",
+      "SUPPORT_GROUP_REFERRAL"
+    ],
+    "family_response": "ACCEPTED|DECLINED|DEFERRED",
+    "decline_reason": null,
+    "reoffer_date": null
+  },
+
+  "narrative": "string",
+
+  "discrepancy": {
+    "alignment_to_rn_baseline": "ALIGNED|DIFFERENT",
+    "discrepancy_note": null,
+    "requires_idg_reconciliation": false
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+ Optional: Generic discipline visit-note payload (MD/NP/LVN/CHHA) with enforced pain section
+
+{
+  "schema_version": "1.3",
+  "patient_id": "uuid",
+  "discipline": "MD|NP|LVN|CHHA",
+  "assessment_type": "DISCIPLINE_VISIT_NOTE",
+  "occurred_at": "2026-05-29T09:00:00-07:00",
+  "status": "DRAFT|SIGNED|VOIDED",
+  "signed_at": null,
+  "signed_by": null,
+  "evidence_link": { "reference_type": "VISIT|NOTE", "reference_id": null },
+
+  "pain_assessment": {
+    "assessed": true,
+    "patient_alert": true,
+    "tool_used": "NUMERIC",
+    "pain_present": false,
+    "severity": null,
+    "location": null,
+    "intervention_or_escalation": "RN_MD_NOTIFIED_IF_INDICATED"
+  },
+
+  "note": {
+    "summary": "string",
+    "interventions": ["string"],
+    "education": ["string"]
+  },
+
+  "meta": { "created_via": "UI|API|IMPORT", "tenant_id": "uuid" }
+}
+
+
+

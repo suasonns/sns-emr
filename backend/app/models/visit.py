@@ -1,84 +1,134 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Boolean
+from __future__ import annotations
+
+from sqlalchemy import Column, DateTime, ForeignKey, String, Boolean
 from sqlalchemy.dialects.postgresql import UUID
-from datetime import datetime
+from sqlalchemy.sql import func
 
-from app.models.base import BaseModel
-from app.models.tenant import Tenant  # noqa: F401
-from app.models.role import Role  # noqa: F401
-from app.models.interface import Interface  # noqa: F401
+from app.db.base import Base
 
 
-class Visit(BaseModel):
+class Visit(Base):
+    """
+    Enterprise-grade Visit model.
+
+    Regulatory relevance:
+    - CMS Hospice Conditions of Participation (CoPs)
+    - RN supervisory visit enforcement
+    - Survey-defensible visit finalization and audit trail
+
+    IMPORTANT:
+    - This model is STRUCTURE ONLY.
+    - All business logic (finalize rules, task creation, validation)
+      lives in the service layer.
+    """
+
     __tablename__ = "visits"
 
-    # ✅ MULTI-TENANT OWNERSHIP
-    tenant_id = Column(
+    # -------------------------------------------------
+    # Identity
+    # -------------------------------------------------
+    id = Column(UUID(as_uuid=True), primary_key=True)
+
+    # -------------------------------------------------
+    # Core relationships
+    # -------------------------------------------------
+    patient_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("tenants.id"),
+        ForeignKey("patients.id"),
         nullable=False,
         index=True,
     )
 
-    # ------------------------------------
-    # Core relationships
-    # ------------------------------------
-    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
-    provider_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-
-    # ------------------------------------
-    # Visit semantics (EXPLICIT)
-    # ------------------------------------
-    # ✅ SERVICE: what was delivered (SN, SW, CHAPLAIN, CHHA)
-    visit_type = Column(String, nullable=False)
-
-    # ✅ DISCIPLINE: who delivered it (RN, LVN, NP, MD)
-    visit_discipline = Column(String, nullable=False)
-
-    visit_datetime = Column(
-        DateTime(timezone=True),
-        default=datetime.utcnow,
+    provider_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
         nullable=False,
+        index=True,
     )
 
-    status = Column(String, default="draft", nullable=False)
+    # -------------------------------------------------
+    # Visit semantics
+    # -------------------------------------------------
+    visit_type = Column(
+        String(32),
+        nullable=False,
+        index=True,
+    )
+    # Normalized in API/service layer (RN, LVN, NP, MD, SW, CHAPLAIN, AIDE)
 
-    # ------------------------------------
-    # Clinical context snapshot (AUDIT-CRITICAL)
-    # ------------------------------------
-    acuity_state_at_visit = Column(String(32), nullable=True)
+    status = Column(
+        String(32),
+        nullable=False,
+        index=True,
+    )
+    # Values enforced in service layer (e.g., DRAFT, FINALIZED)
 
-    # ------------------------------------
-    # RN supervisory flag
-    # ------------------------------------
-    is_supervisory = Column(Boolean, nullable=False, default=False)
+    # -------------------------------------------------
+    # Timing
+    # -------------------------------------------------
+    visit_datetime = Column(
+        DateTime(timezone=False),
+        nullable=False,
+        index=True,
+    )
 
-    # ------------------------------------
-    # Finalization audit fields (LEGAL SNAPSHOT)
-    # ------------------------------------
-    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    # -------------------------------------------------
+    # Compliance flags
+    # -------------------------------------------------
+    is_supervisory = Column(
+        Boolean,
+        nullable=False,
+        server_default="false",
+    )
+
+    acuity_state_at_visit = Column(
+        String(32),
+        nullable=True,
+    )
+
+    # -------------------------------------------------
+    # Finalization audit (LEGAL SNAPSHOT)
+    # -------------------------------------------------
+    finalized_at = Column(
+        DateTime(timezone=False),
+        nullable=True,
+    )
 
     finalized_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=True,
+        index=True,
     )
 
-    finalized_role_id = Column(
+    # -------------------------------------------------
+    # CHHA Plan of Care linkage (if applicable)
+    # -------------------------------------------------
+    chha_poc_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("roles.id"),
         nullable=True,
+        index=True,
     )
 
-    finalized_interface_id = Column(
+    # -------------------------------------------------
+    # Audit timestamps
+    # -------------------------------------------------
+    created_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=False),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    created_by = Column(
         UUID(as_uuid=True),
-        ForeignKey("interfaces.id"),
+        ForeignKey("users.id"),
         nullable=True,
+        index=True,
     )
-
-    def finalize(self, *, finalized_by: UUID):
-        if self.finalized_at is not None:
-            raise ValueError("Visit already finalized")
-
-        self.status = "finalized"
-        self.finalized_at = datetime.utcnow()
-        self.finalized_by = finalized_by
