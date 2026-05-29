@@ -20,9 +20,14 @@ def get_db_tenant(
     1) ORM-level tenant context (db.info) using typed UUIDs
     2) Postgres session tenant context (set_config) for RLS/audit
     3) User attribution for audit
+
+    Transaction hygiene:
+    - If an exception escapes the endpoint, rollback the session so the pooled
+      connection does not retain a failed transaction state.
     """
     tenant_id = getattr(user, "tenant_id", None)
     user_id = getattr(user, "id", None)
+
     if not tenant_id or not user_id:
         raise RuntimeError("Authenticated user missing tenant_id or user id")
 
@@ -43,5 +48,14 @@ def get_db_tenant(
         )
 
         yield db
+
+    except Exception:
+        # ✅ enterprise-grade cleanup: never return a failed transaction to the pool
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
+
     finally:
         db.close()

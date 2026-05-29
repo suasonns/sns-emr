@@ -23,17 +23,32 @@ router = APIRouter(prefix="/notes", tags=["notes"])
 # ---------------------------------------------------------------------
 
 class NoteCreateRequest(BaseModel):
-    note_type: str = Field(..., example="RN_SUPERVISORY")
-    content: str = Field(..., example="Patient seen for routine RN supervisory visit.")
+    note_type: str = Field(
+        ...,
+        json_schema_extra={"example": "RN_SUPERVISORY"},
+    )
+    content: str = Field(
+        ...,
+        json_schema_extra={"example": "Patient seen for routine RN supervisory visit."},
+    )
 
 
 class NoteUpdateRequest(BaseModel):
-    content: str = Field(..., example="Updated draft note content.")
+    content: str = Field(
+        ...,
+        json_schema_extra={"example": "Updated draft note content."},
+    )
 
 
 class NoteAmendRequest(BaseModel):
-    reason: str = Field(..., example="Correction: clarified symptom description.")
-    content: str = Field(..., example="Amendment content.")
+    reason: str = Field(
+        ...,
+        json_schema_extra={"example": "Correction: clarified symptom description."},
+    )
+    content: str = Field(
+        ...,
+        json_schema_extra={"example": "Amendment content."},
+    )
 
 
 # ---------------------------------------------------------------------
@@ -61,7 +76,6 @@ def create_clinical_note(
     user=Depends(get_current_user),
 ):
     role = (user.role or "").upper()
-
     _require_role(role, {"RN", "LVN", "NP", "MD", "ADMIN"})
 
     visit = db.query(Visit).filter(Visit.id == visit_id).first()
@@ -233,7 +247,7 @@ def amend_clinical_note(
 
 
 # ---------------------------------------------------------------------
-# LIST NOTES
+# LIST NOTES (READ‑ONLY)
 # ---------------------------------------------------------------------
 
 @router.get("/visits/{visit_id}", summary="List notes for a visit (read-only)")

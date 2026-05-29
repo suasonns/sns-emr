@@ -28,39 +28,24 @@ def log_event(
     """
     Enterprise audit logger.
 
-    Rules:
+    Guarantees:
     - Append-only
-    - Never blocks request execution
-    - Tenant context MUST be present (except explicit system/bootstrap events)
+    - NEVER blocks clinical workflows
+    - Tenant context enforced
+    - Uses SAVEPOINT to prevent poisoning outer transactions
     """
 
     # ---------------------------------------------------------
     # Resolve tenant + user context from DB session if omitted
     # ---------------------------------------------------------
     if db is not None:
-        # SQLAlchemy Session.info is the canonical place for request context
         tenant_id = tenant_id or db.info.get("tenant_id")
         user_id = user_id or db.info.get("user_id")
 
     # ---------------------------------------------------------
-    # Console log (human-readable, dev-friendly)
+    # Console log (always safe)
     # ---------------------------------------------------------
-    note = metadata.get("note") if isinstance(metadata, dict) else None
-
-    if tenant_id is None:
-        if note:
-            logger.info(
-                "[AUDIT] tenant=None (expected) action=%s entity=%s:%s note=%s",
-                action,
-                entity_type,
-                entity_id,
-                note,
-            )
-        else:
-            logger.error(
-                "[AUDIT ERROR] Tenant context missing in DB session (tenant_id not set)"
-            )
-    else:
+    if tenant_id:
         logger.info(
             "[AUDIT] tenant=%s user=%s role=%s action=%s entity=%s:%s",
             tenant_id,
@@ -70,15 +55,18 @@ def log_event(
             entity_type,
             entity_id,
         )
+    else:
+        logger.warning(
+            "[AUDIT] tenant=None action=%s entity=%s:%s (skipped DB write)",
+            action,
+            entity_type,
+            entity_id,
+        )
 
     # ---------------------------------------------------------
-    # DB persistence (never blocks request)
+    # DB persistence (STRICTLY NON-BLOCKING)
     # ---------------------------------------------------------
-    if db is None:
-        return
-
-    if tenant_id is None:
-        # Never write audit rows without tenant context
+    if db is None or tenant_id is None:
         return
 
     try:
@@ -95,17 +83,16 @@ def log_event(
             created_at=datetime.utcnow(),
         )
 
-        db.add(audit)
-        db.flush()
+        # ✅ CRITICAL: use SAVEPOINT so audit failures do NOT rollback clinical tx
+        with db.begin_nested():
+            db.add(audit)
+            db.flush()
 
+        # Only commit if audit logger is used standalone
         if commit:
             db.commit()
 
     except Exception as e:
-        try:
-            db.rollback()
-        except Exception:
-            pass
-
-        # Audit failures must never break the app
-        logger.exception("Audit log write failed: %s", e)
+        # ✅ NEVER rollback the outer transaction
+        logger.exception("Audit log write failed (ignored): %s", e)
+        return

@@ -13,3 +13,12 @@ This system has been verified stable with:
 
 This is a locked baseline.
 All future work must be additive.
+---
+## 2026-05-28 — Architectural Decisions Update
+
+- Single UI and codebase for all tenants
+- Behavioral differences via subscription + tenant config
+- Multi-tenant user support with per-tenant roles
+- Sensitive HR data masked and tenant-configurable enforcement
+- Owner-level platform dashboard confirmed
+- Tenant hardening required before clinical workflows

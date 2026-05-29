@@ -55,6 +55,46 @@ class TaskType(str, enum.Enum):
     OTHER = "OTHER"
 
 
+class TaskOrigin(str, enum.Enum):
+    """
+    Used by: tasks.origin
+    PostgreSQL enum: tasks_origin_enum
+
+    Indicates why the task was created.
+    """
+    MANUAL = "MANUAL"          # explicitly triggered by clinical action
+    PERIODIC = "PERIODIC"      # scheduled / recurring obligation
+    SYSTEM = "SYSTEM"          # system-generated (rules engine)
+
+
+class TaskDiscipline(str, enum.Enum):
+    """
+    Used by: tasks.discipline
+    PostgreSQL enum: tasks_discipline_enum
+
+    Identifies the clinical discipline responsible.
+    """
+    RN = "RN"
+    LVN = "LVN"
+    NP = "NP"
+    MD = "MD"
+    SW = "SW"
+    CHAPLAIN = "CHAPLAIN"
+    AIDE = "AIDE"
+
+
+class TaskRegulatoryBasis(str, enum.Enum):
+    """
+    Used by: tasks.regulatory_basis
+    PostgreSQL enum: tasks_regulatory_basis_enum
+
+    Indicates the compliance rule that requires the task.
+    """
+    POC_UPDATE = "POC_UPDATE"
+    CERTIFICATION = "CERTIFICATION"
+    RECERTIFICATION = "RECERTIFICATION"
+
+
 class CompletionReferenceType(str, enum.Enum):
     """
     Used by:
@@ -62,6 +102,7 @@ class CompletionReferenceType(str, enum.Enum):
     - tasks.completion_reference_id
 
     Enforces survey-defensible evidence linking.
+    PostgreSQL enum: tasks_completion_ref_enum
     """
     VISIT = "VISIT"            # finalized Visit record
     NOTE = "NOTE"              # signed clinical note
