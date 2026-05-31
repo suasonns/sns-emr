@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import os
 
 
 class EDIBuilderError(RuntimeError):
@@ -36,14 +37,10 @@ def _segment(*elements: object) -> str:
 
 
 # ---------------------------------------------------------
-# MAIN BUILDER
+# MAIN EDI BUILDER
 # ---------------------------------------------------------
 
 def build_837i_text(export_payload: dict) -> str:
-    """
-    Enterprise-safe 837I builder using Step 5/6 payload.
-    """
-
     if not isinstance(export_payload, dict):
         raise EDIBuilderError("Invalid export payload")
 
@@ -57,10 +54,6 @@ def build_837i_text(export_payload: dict) -> str:
         raise EDIBuilderError("Missing claim_header")
     if not patient:
         raise EDIBuilderError("Missing patient")
-
-    # ---------------------------------------------------------
-    # BASIC FIELDS
-    # ---------------------------------------------------------
 
     claim_control_number = _clean(claim_header.get("claim_control_number"))
     total_amount = _clean(claim_header.get("total_estimated_amount", "0.00"))
@@ -78,58 +71,44 @@ def build_837i_text(export_payload: dict) -> str:
     primary_payer = payer.get("primary_payer") or {}
     payer_name = _clean(primary_payer.get("payer_name")) or "PRIMARY PAYER"
 
-    # ---------------------------------------------------------
-    # START SEGMENTS
-    # ---------------------------------------------------------
-
     segments: list[str] = []
 
     # ISA
-    segments.append(
-        _segment(
-            "ISA",
-            "00", "", "00", "",
-            "ZZ", "SNSHOSPICEEMR",
-            "ZZ", "RECEIVER",
-            _date_now(),
-            _hhmm_now(),
-            "^",
-            "00501",
-            "000000001",
-            "0",
-            "P",
-            ":",
-        )
-    )
+    segments.append(_segment(
+        "ISA", "00", "", "00", "",
+        "ZZ", "SNSHOSPICEEMR",
+        "ZZ", "RECEIVER",
+        _date_now(),
+        _hhmm_now(),
+        "^",
+        "00501",
+        "000000001",
+        "0",
+        "P",
+        ":",
+    ))
 
     # GS
-    segments.append(
-        _segment(
-            "GS",
-            "HC",
-            "SNSHOSPICEEMR",
-            "RECEIVER",
-            datetime.utcnow().strftime("%Y%m%d"),
-            _hhmm_now(),
-            "1",
-            "X",
-            "005010X223A2",
-        )
-    )
+    segments.append(_segment(
+        "GS", "HC",
+        "SNSHOSPICEEMR",
+        "RECEIVER",
+        datetime.utcnow().strftime("%Y%m%d"),
+        _hhmm_now(),
+        "1",
+        "X",
+        "005010X223A2",
+    ))
 
     # ST + BHT
     segments.append(_segment("ST", "837", "0001", "005010X223A2"))
-    segments.append(
-        _segment(
-            "BHT",
-            "0019",
-            "00",
-            claim_control_number,
-            datetime.utcnow().strftime("%Y%m%d"),
-            _hhmm_now(),
-            "CH",
-        )
-    )
+    segments.append(_segment(
+        "BHT", "0019", "00",
+        claim_control_number,
+        datetime.utcnow().strftime("%Y%m%d"),
+        _hhmm_now(),
+        "CH"
+    ))
 
     # Submitter + Receiver
     segments.append(_segment("NM1", "41", "2", "SNS HOSPICE EMR", "", "", "", "", "46", "SUBMITTER"))
@@ -144,65 +123,39 @@ def build_837i_text(export_payload: dict) -> str:
     segments.append(_segment("N4", "RANCHO CUCAMONGA", "CA", "91730"))
     segments.append(_segment("REF", "EI", "000000000"))
 
-    # Patient HL
+    # Patient
     segments.append(_segment("HL", "2", "1", "22", "0"))
     segments.append(_segment("SBR", "P", "18"))
-
-    segments.append(
-        _segment(
-            "NM1",
-            "IL",
-            "1",
-            patient_name,
-            "",
-            "",
-            "",
-            "",
-            "MI",
-            patient_mrn or patient_id,
-        )
-    )
+    segments.append(_segment(
+        "NM1", "IL", "1",
+        patient_name, "", "", "", "",
+        "MI", patient_mrn or patient_id
+    ))
 
     if patient_dob:
         segments.append(_segment("DMG", "D8", patient_dob))
 
     # Claim
-    segments.append(
-        _segment(
-            "CLM",
-            claim_control_number,
-            total_amount,
-            "",
-            "",
-            "11:B:1",
-            "Y",
-            "A",
-            "Y",
-            "I",
-        )
-    )
+    segments.append(_segment(
+        "CLM",
+        claim_control_number,
+        total_amount,
+        "", "",
+        "11:B:1",
+        "Y", "A", "Y", "I"
+    ))
 
     if statement_from:
-        segments.append(
-            _segment(
-                "DTP",
-                "434",
-                "RD8",
-                f"{statement_from}-{statement_to or statement_from}",
-            )
-        )
+        segments.append(_segment(
+            "DTP", "434", "RD8",
+            f"{statement_from}-{statement_to or statement_from}"
+        ))
 
     # Diagnosis
     if primary_dx:
         segments.append(_segment("HI", f"ABK:{primary_dx}"))
 
-    # ---------------------------------------------------------
-    # CLAIM LINES
-    # ---------------------------------------------------------
-
-    if not isinstance(claim_lines, list):
-        raise EDIBuilderError("Invalid claim_lines")
-
+    # Claim Lines
     for idx, line in enumerate(claim_lines, start=1):
         revenue_code = _clean(line.get("revenue_code"))
         amount = _clean(line.get("estimated_amount"))
@@ -217,21 +170,10 @@ def build_837i_text(export_payload: dict) -> str:
         segments.append(_segment("SV2", revenue_code, amount, "UN", days))
 
         if from_date:
-            segments.append(
-                _segment(
-                    "DTP",
-                    "472",
-                    "RD8",
-                    f"{from_date}-{to_date or from_date}",
-                )
-            )
+            segments.append(_segment("DTP", "472", "RD8", f"{from_date}-{to_date or from_date}"))
 
-    # ---------------------------------------------------------
-    # END SEGMENTS
-    # ---------------------------------------------------------
-
+    # Trailer
     segment_count = len(segments) + 1
-
     segments.append(_segment("SE", segment_count, "0001"))
     segments.append(_segment("GE", "1", "1"))
     segments.append(_segment("IEA", "1", "000000001"))

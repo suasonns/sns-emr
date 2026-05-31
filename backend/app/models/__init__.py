@@ -79,3 +79,6 @@ import app.billing.models.orders_snapshot  # noqa: F401
 import app.billing.models.payer  # noqa: F401
 import app.billing.models.authorization  # noqa: F401
 import app.billing.models.contract  # noqa: F401
+
+# ✅ NEW — STEP 7 AUDIT LOG (REQUIRED)
+import app.billing.models.claim_export_log  # noqa: F401
