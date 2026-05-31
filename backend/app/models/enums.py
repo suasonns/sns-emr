@@ -36,24 +36,38 @@ class TaskType(str, enum.Enum):
     """
     Used by: tasks.task_type
     PostgreSQL enum: tasks_task_type_enum
+
+    IMPORTANT:
+    - This enum MUST reflect the full set of values present in the database.
+    - Business logic may use a subset.
     """
 
     # Visit-frequency driven tasks
-    HUV = "HUV"                # High Utilization Visit
-    SFV = "SFV"                # Standard Frequency Visit
+    HUV = "HUV"
+    SFV = "SFV"
 
-    # Core compliance tasks
-    POC_UPDATE = "POC_UPDATE"  # Plan of Care update
-    IDG_REVIEW = "IDG_REVIEW"  # Interdisciplinary Group review
+    # Admission / SOC compliance (CMS CRITICAL)
+    INITIAL_RN_ICA = "INITIAL_RN_ICA"
+    NOE_DUE = "NOE_DUE"
+
+    # Core compliance
+    POC_UPDATE = "POC_UPDATE"
+    IDG_REVIEW = "IDG_REVIEW"
 
     # Certification / regulatory
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
-    F2F = "F2F"                # Face-to-Face encounter
+    F2F = "F2F"
 
-    # Catch-all / legacy
+    # POC governance / exception states (present in DB)
+    POC_NONCOMPLIANT_STRUCTURE = "POC_NONCOMPLIANT_STRUCTURE"
+    POC_REVIEW_REQUIRED = "POC_REVIEW_REQUIRED"
+    POC_OUT_OF_SCOPE_CARE = "POC_OUT_OF_SCOPE_CARE"
+    POC_STALE_REVIEW = "POC_STALE_REVIEW"
+    POC_PHYSICIAN_REVIEW_REQUIRED = "POC_PHYSICIAN_REVIEW_REQUIRED"
+
+    # Legacy / fallback
     OTHER = "OTHER"
-
 
 class TaskOrigin(str, enum.Enum):
     """
@@ -62,10 +76,10 @@ class TaskOrigin(str, enum.Enum):
 
     Indicates why the task was created.
     """
-    MANUAL = "MANUAL"          # explicitly triggered by clinical action
-    PERIODIC = "PERIODIC"      # scheduled / recurring obligation
-    SYSTEM = "SYSTEM"          # system-generated (rules engine)
 
+    ADMISSION = "ADMISSION"    # created as part of admission workflow
+    PERIODIC = "PERIODIC"      # scheduled / recurring obligation
+    MANUAL = "MANUAL"          # explicitly triggered by clinical action
 
 class TaskDiscipline(str, enum.Enum):
     """
@@ -87,13 +101,11 @@ class TaskRegulatoryBasis(str, enum.Enum):
     """
     Used by: tasks.regulatory_basis
     PostgreSQL enum: tasks_regulatory_basis_enum
-
-    Indicates the compliance rule that requires the task.
     """
     POC_UPDATE = "POC_UPDATE"
+    IDG_REVIEW = "IDG_REVIEW"
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
-
 
 class CompletionReferenceType(str, enum.Enum):
     """

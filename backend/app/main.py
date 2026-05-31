@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------------
-# Environment loading (MUST be first)
+# ENVIRONMENT LOADING (MUST BE FIRST)
 # ---------------------------------------------------------------------
 from dotenv import load_dotenv
+
 load_dotenv(".env.local")
 load_dotenv()
 
@@ -9,37 +10,65 @@ load_dotenv()
 SNS Hospice EMR – FastAPI application entrypoint.
 """
 
+# ---------------------------------------------------------------------
+# CORE IMPORTS
+# ---------------------------------------------------------------------
+import logging
 from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
+logger = logging.getLogger("app")
+
+# ---------------------------------------------------------------------
+# LIFESPAN (ENTERPRISE STANDARD)
+# ---------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("✅ SNS Hospice EMR started")
+    yield
+    logger.info("🛑 SNS Hospice EMR shutting down")
+
+# ---------------------------------------------------------------------
+# APP INIT (KEEP NAME STABLE)
+# ---------------------------------------------------------------------
 fastapi_app = FastAPI(
     title="SNS Hospice EMR",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # ---------------------------------------------------------------------
-# Load SQLAlchemy models FIRST
+# LOAD SQLALCHEMY MODELS FIRST
 # ---------------------------------------------------------------------
-import app.models  # noqa: F401
+try:
+    import app.models  # noqa: F401
+except Exception as e:
+    raise RuntimeError(f"Failed to load models: {e}")
 
 # ---------------------------------------------------------------------
-# Load ORM tenant filters (CRITICAL)
+# LOAD ORM TENANT FILTERS (CRITICAL)
 # ---------------------------------------------------------------------
-import app.core.tenant_orm_filters  # noqa: F401
+try:
+    import app.core.tenant_orm_filters  # noqa: F401
+except Exception as e:
+    raise RuntimeError(f"Failed to load tenant ORM filters: {e}")
 
 # ---------------------------------------------------------------------
-# Audit middleware (OBSERVATION ONLY)
+# AUDIT MIDDLEWARE (OBSERVATION ONLY)
 # ---------------------------------------------------------------------
 from app.core.audit_middleware import audit_middleware
+
 fastapi_app.middleware("http")(audit_middleware)
 
 # ---------------------------------------------------------------------
-# Router registration
+# ROUTER REGISTRATION
 # ---------------------------------------------------------------------
 from app.api.registry import register_routers
+
 register_routers(fastapi_app)
 
 # ---------------------------------------------------------------------
-# System endpoints
+# SYSTEM ENDPOINTS
 # ---------------------------------------------------------------------
 @fastapi_app.get("/health", tags=["system"])
 def health_check():

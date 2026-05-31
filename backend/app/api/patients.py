@@ -1,23 +1,22 @@
 # app/api/patients.py
 
+from __future__ import annotations
+
 import uuid
 from datetime import date
 from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
-from app.db_tenant_dependency import get_db_tenant
 from app.core.security import get_current_user
-from app.tenancy.registry import assert_known_tenant
-from app.tenancy.context import set_tenant_context, get_tenant_id
-
+from app.db_tenant_dependency import get_db_tenant
 from app.models.patient import Patient
 from app.models.visit import Visit
 from app.services.dx_policy import is_primary_allowed
-from app.services.patient_lifecycle import validate_patient_transition  # kept for future use
+from app.tenancy.registry import assert_known_tenant
 
 # Optional import – must never crash endpoints
 try:
@@ -57,7 +56,7 @@ def require_valid_tenant(user=Depends(get_current_user)):
     return user
 
 
-def set_tenant_context(
+def set_patient_router_tenant_context(
     db: Session = Depends(get_db_tenant),
     user=Depends(require_valid_tenant),
 ):
@@ -69,11 +68,15 @@ def set_tenant_context(
       db.info["user_id"]
     """
     db.info["tenant_id"] = str(user.tenant_id)
-    db.info["user_id"] = str(getattr(user, "id", "")) if getattr(user, "id", None) else None
+    db.info["user_id"] = (
+        str(getattr(user, "id", ""))
+        if getattr(user, "id", None)
+        else None
+    )
     return user
 
 
-def get_tenant_id(db: Session) -> str:
+def get_session_tenant_id(db: Session) -> str:
     """
     Canonical ORM tenant accessor.
     Fails closed if missing.
@@ -94,8 +97,7 @@ def get_tenant_id(db: Session) -> str:
 router = APIRouter(
     prefix="/patients",
     tags=["patients"],
-    # Enterprise-grade: tenant enforcement applied once, for all endpoints in this router
-    dependencies=[Depends(set_tenant_context)],
+    dependencies=[Depends(set_patient_router_tenant_context)],
 )
 
 
@@ -137,11 +139,11 @@ class PatientUpdate(BaseModel):
 def create_patient(
     payload: PatientCreate,
     db: Session = Depends(get_db_tenant),
-    user=Depends(set_tenant_context),
+    user=Depends(set_patient_router_tenant_context),
 ):
-    tenant_id = get_tenant_id(db)
+    tenant_id = get_session_tenant_id(db)
 
-    # Policy guard for primary dx
+    # Policy guard for primary diagnosis
     if payload.primary_diagnosis:
         if not is_primary_allowed(
             db,
@@ -155,37 +157,42 @@ def create_patient(
 
     patient = Patient(
         id=uuid.uuid4(),
-        tenant_id=tenant_id,                      # ✅ tenant boundary (canonical)
+        tenant_id=tenant_id,
         mrn=payload.mrn,
         full_name=payload.full_name,
         date_of_birth=payload.date_of_birth,
         primary_diagnosis=payload.primary_diagnosis,
-        status="ACTIVE",                          # ✅ required by DB constraint
-        acuity_state=AcuityState.ROUTINE.value,   # ✅ clinical default
+        status="ACTIVE",
+        admission_status="PRE_REFERRAL",
+        acuity_state=AcuityState.ROUTINE.value,
         created_by=getattr(user, "id", None),
     )
 
-    # Enterprise rule: creator must immediately be able to see the patient.
-    # Achieved by inserting a patient_assignment in the SAME transaction.
     try:
         db.add(patient)
-        db.flush()  # ensures patient.id exists in transaction
+        db.flush()  # ensure patient.id exists before assignment insert
 
+        # Enterprise rule:
+        # creator should immediately be able to access the newly created chart
         db.execute(
-            text("""
+            text(
+                """
                 INSERT INTO public.patient_assignments
                     (id, tenant_id, patient_id, user_id, role_at_assignment, assigned_by, assigned_at)
                 VALUES
                     (:id, :tenant_id, :patient_id, :user_id, :role_at_assignment, :assigned_by, NOW())
                 ON CONFLICT (patient_id, user_id) DO NOTHING
-            """),
+                """
+            ),
             {
                 "id": str(uuid.uuid4()),
                 "tenant_id": str(tenant_id),
                 "patient_id": str(patient.id),
-                "user_id": str(user.id),
-                "role_at_assignment": (getattr(user, "role", "") or "").strip().upper() or "STAFF",
-                "assigned_by": str(user.id),
+                "user_id": str(getattr(user, "id", "")),
+                "role_at_assignment": (
+                    (getattr(user, "role", "") or "").strip().upper() or "STAFF"
+                ),
+                "assigned_by": str(getattr(user, "id", "")),
             },
         )
 
@@ -207,9 +214,9 @@ def update_patient(
     patient_id: uuid.UUID,
     payload: PatientUpdate,
     db: Session = Depends(get_db_tenant),
-    user=Depends(set_tenant_context),
+    user=Depends(set_patient_router_tenant_context),
 ):
-    tenant_id = get_tenant_id(db)
+    tenant_id = get_session_tenant_id(db)
 
     patient = (
         db.query(Patient)
@@ -221,8 +228,10 @@ def update_patient(
     )
 
     if not patient:
-        # Prefer 404 to avoid existence leak across tenants
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
 
     data = payload.dict(exclude_unset=True)
     for field, value in data.items():
@@ -237,15 +246,38 @@ def update_patient(
 # LIST PATIENTS
 # =========================================================
 
-@router.get("/", summary="List patients (admin sees all, staff sees assigned)")
+@router.get("/", summary="List patients (RBAC + assignment scoped)")
 def list_patients(
     db: Session = Depends(get_db_tenant),
-    user=Depends(set_tenant_context),
+    user=Depends(set_patient_router_tenant_context),
 ):
-    tenant_id = get_tenant_id(db)
+    tenant_id = get_session_tenant_id(db)
     role = (getattr(user, "role", "") or "").strip().upper()
 
-    # Always allow ADMIN to see tenant census
+    # ---------------------------------------------------------
+    # RBAC ENFORCEMENT
+    # ---------------------------------------------------------
+    # Explicitly deny CHHA / VOLUNTEER / unknown roles from listing all patients
+    allowed_roles = {
+        "ADMIN",
+        "RN",
+        "LVN",
+        "LPN",
+        "MSW",
+        "SW",
+        "SC",
+        "MD",
+        "NP",
+        "DPCS",
+        "CHAPLAIN",
+    }
+
+    if role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # ---------------------------------------------------------
+    # ADMIN: full tenant census
+    # ---------------------------------------------------------
     if role == "ADMIN":
         return (
             db.query(Patient)
@@ -254,34 +286,39 @@ def list_patients(
             .all()
         )
 
-    # Check if patient_assignments exists (avoid UndefinedTable crashes)
+    # ---------------------------------------------------------
+    # Check if patient_assignments exists
+    # ---------------------------------------------------------
     has_assignments = db.execute(
-        text("""
+        text(
+            """
             SELECT EXISTS (
                 SELECT 1
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                   AND table_name = 'patient_assignments'
             )
-        """)
+            """
+        )
     ).scalar()
 
-    # If assignments table is missing, degrade safely:
-    # - RN/LVN/MSW/SC/MD/NP can see tenant census (clinical continuity)
-    # - CHHA/VOLUNTEER and unknown roles see none (least privilege)
+    # ---------------------------------------------------------
+    # Graceful degradation if assignment table missing
+    # ---------------------------------------------------------
+    # Clinical roles may see tenant census to preserve continuity of care.
     if not has_assignments:
-        clinical_roles = {"RN", "LVN", "LPN", "MSW", "SC", "MD", "NP", "SW", "CHAPLAIN"}
-        if role in clinical_roles:
-            return (
-                db.query(Patient)
-                .filter(Patient.tenant_id == tenant_id)
-                .order_by(Patient.full_name)
-                .all()
-            )
-        return []
+        return (
+            db.query(Patient)
+            .filter(Patient.tenant_id == tenant_id)
+            .order_by(Patient.full_name)
+            .all()
+        )
 
-    # Assignment-based visibility for non-admin (table exists)
-    stmt = text("""
+    # ---------------------------------------------------------
+    # Assignment-scoped visibility
+    # ---------------------------------------------------------
+    stmt = text(
+        """
         SELECT p.*
         FROM public.patients p
         JOIN public.patient_assignments pa
@@ -289,12 +326,16 @@ def list_patients(
         WHERE p.tenant_id = :tenant_id
           AND pa.user_id = :uid
         ORDER BY p.full_name
-    """)
+        """
+    )
 
     return (
         db.query(Patient)
         .from_statement(stmt)
-        .params(tenant_id=str(tenant_id), uid=str(user.id))
+        .params(
+            tenant_id=str(tenant_id),
+            uid=str(getattr(user, "id", "")),
+        )
         .all()
     )
 
@@ -307,9 +348,9 @@ def list_patients(
 def list_visits_for_patient(
     patient_id: uuid.UUID,
     db: Session = Depends(get_db_tenant),
-    user=Depends(set_tenant_context),
+    user=Depends(set_patient_router_tenant_context),
 ):
-    tenant_id = get_tenant_id(db)
+    tenant_id = get_session_tenant_id(db)
 
     return (
         db.query(Visit)
@@ -330,9 +371,9 @@ def list_visits_for_patient(
 def patient_chart_summary(
     patient_id: uuid.UUID,
     db: Session = Depends(get_db_tenant),
-    user=Depends(set_tenant_context),
+    user=Depends(set_patient_router_tenant_context),
 ):
-    tenant_id = get_tenant_id(db)
+    tenant_id = get_session_tenant_id(db)
 
     patient = (
         db.query(Patient)
@@ -344,7 +385,10 @@ def patient_chart_summary(
     )
 
     if not patient:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Patient not found",
+        )
 
     visits = (
         db.query(Visit)

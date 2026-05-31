@@ -1,41 +1,37 @@
 """
 Enterprise-grade database core for SNS Hospice EMR.
-
-Provides:
-- engine
-- SessionLocal
-- Base (CANONICAL, imported)
-- get_db
-- NO global tenant state (tenant handled via get_db_tenant)
 """
 
 from __future__ import annotations
 
-# ---------------------------------------------------------------------
-# Environment loading (MUST be first)
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+# Environment loading
+# -----------------------------------------------------
+
 from dotenv import load_dotenv
 
 load_dotenv(".env.local")
 load_dotenv()
 
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
 # Imports
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+
 import os
 from typing import Generator
-
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 
-# ---------------------------------------------------------------------
-# CANONICAL Base (DO NOT redefine)
-# ---------------------------------------------------------------------
-from app.db.base import Base  # ✅ SINGLE SOURCE OF TRUTH
+# -----------------------------------------------------
+# Canonical Base
+# -----------------------------------------------------
 
-# ---------------------------------------------------------------------
+from app.db.base import Base
+
+# -----------------------------------------------------
 # Database URL
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
@@ -43,9 +39,10 @@ if not DATABASE_URL:
         "DATABASE_URL is not set. Refusing to start without explicit DB configuration."
     )
 
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
 # Engine
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+
 engine = create_engine(
     DATABASE_URL,
     future=True,
@@ -55,9 +52,10 @@ engine = create_engine(
     connect_args={"options": "-csearch_path=public"},
 )
 
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
 # Session
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+
 SessionLocal = sessionmaker(
     bind=engine,
     autoflush=False,
@@ -65,14 +63,39 @@ SessionLocal = sessionmaker(
     expire_on_commit=False,
 )
 
-# ---------------------------------------------------------------------
-# Default DB dependency (NON-TENANT)
-# ---------------------------------------------------------------------
+# -----------------------------------------------------
+# ✅ DEV TENANT MODE
+# -----------------------------------------------------
+# IMPORTANT:
+# None = SUPER ADMIN MODE (ACCESS ALL TENANTS)
+# UUID = SINGLE TENANT MODE (RESTRICTED)
+
+DEV_TENANT_ID = None
+
+# -----------------------------------------------------
+# DB Dependency
+# -----------------------------------------------------
+
 def get_db() -> Generator[Session, None, None]:
     """
-    ⚠️ Use ONLY for non-tenant tables (tenants, system, admin)
+    ENTERPRISE BEHAVIOR:
+
+    DEV MODE:
+    - tenant_id = None → ALL tenants accessible (SUPER ADMIN)
+
+    PRODUCTION:
+    - tenant_id must come from JWT / auth layer
+    - NEVER leave as None in production
+
+    This value is injected into SQLAlchemy session.info
+    and consumed by tenant_orm_filters.
     """
+
     db = SessionLocal()
+
+    # ✅ CRITICAL: Tenant injection
+    db.info["tenant_id"] = DEV_TENANT_ID
+
     try:
         yield db
     finally:

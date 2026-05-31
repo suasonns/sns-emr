@@ -1,15 +1,22 @@
-# app/models/task.py
-
 from __future__ import annotations
 
 import uuid
-from sqlalchemy import Column, Date, DateTime, Enum as SAEnum, ForeignKey, String
+
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Enum as SAEnum,
+    ForeignKey,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.db.base import Base
 
-# Canonical enums (DO NOT rename these)
+# Canonical enums (DO NOT rename)
 from app.models.enums import (
     TaskType,
     TaskOrigin,
@@ -21,39 +28,23 @@ from app.models.enums import (
 
 
 class Task(Base):
-    """
-    Enterprise-grade Task model.
-
-    Regulatory relevance:
-    - CMS Hospice CoPs obligation lifecycle
-    - Survey-defensible obligation tracking
-    - Evidence-linked completion
-    """
-
     __tablename__ = "tasks"
 
-    # -------------------------------------------------
-    # Identity
-    # -------------------------------------------------
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid.uuid4,
-    )
+    # ---------------------------------------------------------
+    # PRIMARY KEY
+    # ---------------------------------------------------------
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # -------------------------------------------------
-    # Tenant isolation (NON-NEGOTIABLE)
-    # -------------------------------------------------
+    # ---------------------------------------------------------
+    # TENANT / PATIENT / FK CORE
+    # ---------------------------------------------------------
     tenant_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("tenants.id", ondelete="RESTRICT"),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    # -------------------------------------------------
-    # Scope / attribution
-    # -------------------------------------------------
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="RESTRICT"),
@@ -61,128 +52,99 @@ class Task(Base):
         index=True,
     )
 
-    # Nullable by design (benefit periods may not exist yet in dev)
     benefit_period_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("benefit_periods.id", ondelete="RESTRICT"),
+        ForeignKey("benefit_periods.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-    )
-
-    # -------------------------------------------------
-    # Task classification (PostgreSQL ENUM + Python Enum)
-    # -------------------------------------------------
-    task_type = Column(
-        SAEnum(
-            TaskType,
-            name="tasks_task_type_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    origin = Column(
-        SAEnum(
-            TaskOrigin,
-            name="tasks_origin_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    discipline = Column(
-        SAEnum(
-            TaskDiscipline,
-            name="tasks_discipline_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    regulatory_basis = Column(
-        SAEnum(
-            TaskRegulatoryBasis,
-            name="tasks_regulatory_basis_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    status = Column(
-        SAEnum(
-            TaskStatus,
-            name="tasks_status_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=False,
-    )
-
-    # -------------------------------------------------
-    # Assignment
-    # -------------------------------------------------
-    assigned_user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=True,
-        index=True,
-    )
-
-    # -------------------------------------------------
-    # Scheduling
-    # -------------------------------------------------
-    due_date = Column(Date, nullable=False)
-
-    # -------------------------------------------------
-    # Completion evidence (COMPLIANCE‑CRITICAL)
-    # -------------------------------------------------
-    completed_at = Column(DateTime(timezone=False), nullable=True)
-
-    completion_reference_type = Column(
-        SAEnum(
-            CompletionReferenceType,
-            name="tasks_completion_ref_enum",
-            native_enum=True,
-            create_type=False,
-        ),
-        nullable=True,
-    )
-
-    completion_reference_id = Column(
-        UUID(as_uuid=True),
-        nullable=True,
-    )
-
-    # -------------------------------------------------
-    # Excusal / waiver (audit‑relevant)
-    # -------------------------------------------------
-    excused_reason_code = Column(String, nullable=True)
-    excused_at = Column(DateTime(timezone=True), nullable=True)
-    excused_source = Column(String, nullable=True)
-
-    # -------------------------------------------------
-    # Audit timestamps
-    # -------------------------------------------------
-    created_at = Column(
-        DateTime(timezone=False),
-        server_default=func.now(),
-        nullable=False,
-    )
-
-    updated_at = Column(
-        DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
+        doc="Active benefit period at task creation time (if available)",
     )
 
     created_by = Column(
         UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="RESTRICT"),
+        ForeignKey("users.id"),
         nullable=True,
-        index=True,
+    )
+
+    assigned_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
+    # TASK IDENTITY
+    # ---------------------------------------------------------
+    task_type = Column(SAEnum(TaskType, create_type=False), nullable=False)
+
+    origin = Column(SAEnum(TaskOrigin, create_type=False), nullable=False)
+
+    discipline = Column(SAEnum(TaskDiscipline, create_type=False), nullable=False)
+
+    regulatory_basis = Column(
+        SAEnum(TaskRegulatoryBasis, create_type=False),
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
+    # TASK STATUS
+    # ---------------------------------------------------------
+    status = Column(
+        SAEnum(TaskStatus, create_type=False),
+        nullable=False,
+        server_default=text("'DUE'"),
+    )
+
+    # ---------------------------------------------------------
+    # DUE TIMING
+    # ---------------------------------------------------------
+    due_date = Column(Date, nullable=True)
+
+    due_at = Column(DateTime(timezone=True), nullable=True)
+
+    # ---------------------------------------------------------
+    # COMPLETION / EVIDENCE
+    # ---------------------------------------------------------
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    completion_reference_type = Column(
+        SAEnum(CompletionReferenceType, create_type=False),
+        nullable=True,
+    )
+
+    completion_reference_id = Column(UUID(as_uuid=True), nullable=True)
+
+    # ---------------------------------------------------------
+    # AUDIT
+    # ---------------------------------------------------------
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    # ---------------------------------------------------------
+    # RELATIONSHIPS (CRITICAL FOR ORM INTEGRITY)
+    # ---------------------------------------------------------
+
+    patient = relationship(
+        "Patient",
+        back_populates="tasks",
+        foreign_keys=[patient_id],
+    )
+
+    benefit_period = relationship(
+        "BenefitPeriod",
+        back_populates="tasks",
+        foreign_keys=[benefit_period_id],
+    )
+
+    created_by_user = relationship(
+        "User",
+        foreign_keys=[created_by],
+    )
+
+    assigned_user = relationship(
+        "User",
+        foreign_keys=[assigned_user_id],
     )
