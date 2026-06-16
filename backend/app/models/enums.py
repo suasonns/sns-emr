@@ -25,11 +25,11 @@ class TaskStatus(str, enum.Enum):
     Used by: tasks.status
     PostgreSQL enum: tasks_status_enum
     """
-    PENDING = "PENDING"        # obligation exists, not yet due or completed
-    COMPLETED = "COMPLETED"    # obligation fulfilled with evidence
-    OVERDUE = "OVERDUE"        # due_date passed
-    ESCALATED = "ESCALATED"    # overdue beyond escalation threshold
-    WAIVED = "WAIVED"          # administratively waived (never completed)
+    PENDING = "PENDING"
+    COMPLETED = "COMPLETED"
+    OVERDUE = "OVERDUE"
+    ESCALATED = "ESCALATED"
+    WAIVED = "WAIVED"
 
 
 class TaskType(str, enum.Enum):
@@ -42,51 +42,69 @@ class TaskType(str, enum.Enum):
     - Business logic may use a subset.
     """
 
+    # ---------------------------------------------------------------
     # Visit-frequency driven tasks
+    # ---------------------------------------------------------------
     HUV = "HUV"
     SFV = "SFV"
 
+    # ---------------------------------------------------------------
     # Admission / SOC compliance (CMS CRITICAL)
+    # ---------------------------------------------------------------
     INITIAL_RN_ICA = "INITIAL_RN_ICA"
+    INITIAL_MSW_ICA = "INITIAL_MSW_ICA"
+    INITIAL_SC_ICA = "INITIAL_SC_ICA"
+    INITIAL_BEREAVEMENT = "INITIAL_BEREAVEMENT"
     NOE_DUE = "NOE_DUE"
 
+    # ---------------------------------------------------------------
     # Core compliance
+    # ---------------------------------------------------------------
     POC_UPDATE = "POC_UPDATE"
     IDG_REVIEW = "IDG_REVIEW"
 
+    # ---------------------------------------------------------------
     # Certification / regulatory
+    # ---------------------------------------------------------------
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
     F2F = "F2F"
 
-    # POC governance / exception states (present in DB)
+    # ---------------------------------------------------------------
+    # CONDITION ENGINE
+    # ---------------------------------------------------------------
+    MSW_REOFFER = "MSW_REOFFER"
+    CHAPLAIN_REOFFER = "CHAPLAIN_REOFFER"
+    AIDE_REOFFER = "AIDE_REOFFER"
+
+    # ---------------------------------------------------------------
+    # POC governance / exception states
+    # ---------------------------------------------------------------
     POC_NONCOMPLIANT_STRUCTURE = "POC_NONCOMPLIANT_STRUCTURE"
     POC_REVIEW_REQUIRED = "POC_REVIEW_REQUIRED"
     POC_OUT_OF_SCOPE_CARE = "POC_OUT_OF_SCOPE_CARE"
     POC_STALE_REVIEW = "POC_STALE_REVIEW"
     POC_PHYSICIAN_REVIEW_REQUIRED = "POC_PHYSICIAN_REVIEW_REQUIRED"
 
+    # ---------------------------------------------------------------
     # Legacy / fallback
+    # ---------------------------------------------------------------
     OTHER = "OTHER"
+
 
 class TaskOrigin(str, enum.Enum):
     """
-    Used by: tasks.origin
     PostgreSQL enum: tasks_origin_enum
-
-    Indicates why the task was created.
     """
+    ADMISSION = "ADMISSION"
+    PERIODIC = "PERIODIC"
+    MANUAL = "MANUAL"
+    SYSTEM = "SYSTEM"
 
-    ADMISSION = "ADMISSION"    # created as part of admission workflow
-    PERIODIC = "PERIODIC"      # scheduled / recurring obligation
-    MANUAL = "MANUAL"          # explicitly triggered by clinical action
 
 class TaskDiscipline(str, enum.Enum):
     """
-    Used by: tasks.discipline
     PostgreSQL enum: tasks_discipline_enum
-
-    Identifies the clinical discipline responsible.
     """
     RN = "RN"
     LVN = "LVN"
@@ -99,26 +117,22 @@ class TaskDiscipline(str, enum.Enum):
 
 class TaskRegulatoryBasis(str, enum.Enum):
     """
-    Used by: tasks.regulatory_basis
     PostgreSQL enum: tasks_regulatory_basis_enum
     """
     POC_UPDATE = "POC_UPDATE"
     IDG_REVIEW = "IDG_REVIEW"
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
+    CONDITION_TRIGGER = "CONDITION_TRIGGER"
+
 
 class CompletionReferenceType(str, enum.Enum):
     """
-    Used by:
-    - tasks.completion_reference_type
-    - tasks.completion_reference_id
-
-    Enforces survey-defensible evidence linking.
     PostgreSQL enum: tasks_completion_ref_enum
     """
-    VISIT = "VISIT"            # finalized Visit record
-    NOTE = "NOTE"              # signed clinical note
-    DOCUMENT = "DOCUMENT"      # formal document (IDG, POC, PDF)
+    VISIT = "VISIT"
+    NOTE = "NOTE"
+    DOCUMENT = "DOCUMENT"
     CLINICAL_NOTE = "CLINICAL_NOTE"
 
 
@@ -127,9 +141,6 @@ class CompletionReferenceType(str, enum.Enum):
 # =====================================================================
 
 class BenefitPeriodStatus(str, enum.Enum):
-    """
-    Used by: benefit_periods.status
-    """
     OPEN = "OPEN"
     CLOSED = "CLOSED"
 
@@ -139,10 +150,6 @@ class BenefitPeriodStatus(str, enum.Enum):
 # =====================================================================
 
 class CareSettingEnum(str, enum.Enum):
-    """
-    Used by: safety_assessments.care_setting
-    PostgreSQL enum: care_setting_enum
-    """
     HOME = "HOME"
     ALF = "ALF"
     BOARD_AND_CARE = "BOARD_AND_CARE"
@@ -157,11 +164,5 @@ class CareSettingEnum(str, enum.Enum):
 
 
 class SafetyResponsibilityEnum(str, enum.Enum):
-    """
-    Used by: safety_assessments.safety_responsibility
-    PostgreSQL enum: safety_responsibility_enum
-
-    This value is DERIVED by system logic and must never be user-editable.
-    """
     HOSPICE_MANAGED = "HOSPICE_MANAGED"
     FACILITY_MANAGED = "FACILITY_MANAGED"

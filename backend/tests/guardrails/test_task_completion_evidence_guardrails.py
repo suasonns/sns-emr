@@ -1,83 +1,112 @@
+from __future__ import annotations
+
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
-from sqlalchemy import text
 
 from app.models.patient import Patient
 from app.models.task import Task
-from app.models.enums import TaskType, TaskStatus, CompletionReferenceType
-
-from app.services.admission_authorization_service import authorize_admission
+from app.models.enums import (
+    TaskType,
+    TaskStatus,
+    TaskOrigin,
+    TaskDiscipline,
+    TaskRegulatoryBasis,
+    CompletionReferenceType,
+)
 from app.services.task_completion_evidence import complete_task_with_evidence
 
 
-_UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
+TENANT_ID = uuid.UUID("01271980-0000-0000-0000-000005101977")
 
 
-def stable_uuid(name: str) -> uuid.UUID:
-    return uuid.uuid5(_UUID_NS, name)
+# -------------------------------------------------
+# Deterministic helpers (enterprise-grade)
+# -------------------------------------------------
+
+def _fixed_due() -> datetime:
+    """
+    Far-future date avoids UNIQUE collisions across test re-runs:
+    uq_poc_update_periodic_per_patient_due
+    """
+    return datetime(2099, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
 
 
-FIXED_SOC = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
-
-
-def _ensure_min_patient(db_session, patient_id: uuid.UUID) -> Patient:
-    p = db_session.get(Patient, patient_id)
+def _ensure_patient(db_session, patient_id: uuid.UUID) -> Patient:
+    p = db_session.query(Patient).filter(Patient.id == patient_id).one_or_none()
     if p:
         return p
 
-    tenant_id = db_session.info.get("tenant_id")
-    assert tenant_id
-
+    now = datetime.now(timezone.utc)
     p = Patient(
         id=patient_id,
-        tenant_id=tenant_id,
-        mrn=f"MRN-{str(patient_id)[:8]}",
-        full_name="TEST PATIENT",
-        date_of_birth=datetime(1950, 1, 1, tzinfo=timezone.utc).date(),
-        primary_diagnosis="TEST DX",
+        tenant_id=TENANT_ID,
+        mrn=f"EVI-{str(patient_id)[:8]}",
+        full_name="Evidence Hardening Patient",
+        date_of_birth=date(1940, 1, 1),
+        primary_diagnosis="C34.90",
         status="ACTIVE",
         admission_status="PRE_REFERRAL",
         acuity_state="ROUTINE",
+        created_at=now,
+        updated_at=now,
     )
     db_session.add(p)
-    db_session.commit()
+    db_session.flush()
     return p
 
 
-def _get_task(db_session, patient_id: uuid.UUID, task_type: TaskType) -> Task:
-    tenant_id = db_session.info.get("tenant_id")
-    task = (
-        db_session.query(Task)
-        .filter(Task.tenant_id == tenant_id, Task.patient_id == patient_id, Task.task_type == task_type)
-        .first()
-    )
-    assert task, f"Task {task_type} not found"
-    return task
+def _clear_unique_poc_collision(db_session, patient_id: uuid.UUID) -> None:
+    """
+    Ensures deterministic behavior under a persistent DB by removing
+    any prior row that would violate:
+      UNIQUE(task_type, origin, patient_id, due_date)
+    """
+    due = _fixed_due()
+    db_session.query(Task).filter(
+        Task.tenant_id == TENANT_ID,
+        Task.patient_id == patient_id,
+        Task.task_type == TaskType.POC_UPDATE,
+        Task.origin == TaskOrigin.PERIODIC,
+        Task.due_date == due.date(),
+    ).delete(synchronize_session=False)
+    db_session.flush()
 
+
+# -------------------------------------------------
+# Tests
+# -------------------------------------------------
 
 @pytest.mark.core_rule("Task completion evidence")
-def test_cannot_complete_task_without_evidence(db_session):
-    patient_id = stable_uuid("patient:noe_no_evidence")
-    _ensure_min_patient(db_session, patient_id)
+def test_complete_requires_evidence(db_session):
+    patient_id = uuid.uuid5(uuid.NAMESPACE_DNS, "patient:evidence_requires")
+    _ensure_patient(db_session, patient_id)
+    _clear_unique_poc_collision(db_session, patient_id)
 
-    authorize_admission(
-        db_session,
+    due = _fixed_due()
+
+    task = Task(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_ID,
         patient_id=patient_id,
-        election_signed_at=FIXED_SOC,
-        authorized_by_user_id=None,
+        task_type=TaskType.POC_UPDATE,
+        origin=TaskOrigin.PERIODIC,
+        discipline=TaskDiscipline.RN,
+        regulatory_basis=TaskRegulatoryBasis.POC_UPDATE,
+        status=TaskStatus.PENDING,
+        due_at=due,
+        due_date=due.date(),
     )
+    db_session.add(task)
     db_session.commit()
-
-    noe_task = _get_task(db_session, patient_id, TaskType.NOE_DUE)
 
     with pytest.raises(Exception) as ex:
         complete_task_with_evidence(
             db_session,
-            task_id=noe_task.id,
-            completion_reference_type=None,  # invalid
-            completion_reference_id=None,    # invalid
+            task_id=task.id,
+            completion_reference_type=None,
+            completion_reference_id=None,
             completed_by=None,
         )
 
@@ -85,34 +114,42 @@ def test_cannot_complete_task_without_evidence(db_session):
 
 
 @pytest.mark.core_rule("Task completion evidence")
-def test_complete_task_with_evidence_sets_fields(db_session):
-    patient_id = stable_uuid("patient:noe_with_evidence")
-    _ensure_min_patient(db_session, patient_id)
+def test_complete_sets_fields(db_session):
+    patient_id = uuid.uuid5(uuid.NAMESPACE_DNS, "patient:evidence_sets")
+    _ensure_patient(db_session, patient_id)
+    _clear_unique_poc_collision(db_session, patient_id)
 
-    authorize_admission(
-        db_session,
+    due = _fixed_due()
+
+    task = Task(
+        id=uuid.uuid4(),
+        tenant_id=TENANT_ID,
         patient_id=patient_id,
-        election_signed_at=FIXED_SOC,
-        authorized_by_user_id=None,
+        task_type=TaskType.POC_UPDATE,
+        origin=TaskOrigin.PERIODIC,
+        discipline=TaskDiscipline.RN,
+        regulatory_basis=TaskRegulatoryBasis.POC_UPDATE,
+        status=TaskStatus.PENDING,
+        due_at=due,
+        due_date=due.date(),
     )
+    db_session.add(task)
     db_session.commit()
 
-    noe_task = _get_task(db_session, patient_id, TaskType.NOE_DUE)
-
-    doc_id = stable_uuid("document:noe_proof")
+    evidence_id = uuid.uuid4()
 
     complete_task_with_evidence(
         db_session,
-        task_id=noe_task.id,
-        completion_reference_type=CompletionReferenceType.DOCUMENT,
-        completion_reference_id=doc_id,
+        task_id=task.id,
+        completion_reference_type=CompletionReferenceType.VISIT,
+        completion_reference_id=evidence_id,
         completed_by=None,
+        completed_at=datetime.now(timezone.utc),
     )
     db_session.commit()
+    db_session.refresh(task)
 
-    db_session.refresh(noe_task)
-
-    assert noe_task.status == TaskStatus.COMPLETED
-    assert noe_task.completed_at is not None
-    assert noe_task.completion_reference_type == CompletionReferenceType.DOCUMENT
-    assert noe_task.completion_reference_id == doc_id
+    assert task.status == TaskStatus.COMPLETED
+    assert task.completed_at is not None
+    assert task.completion_reference_type == CompletionReferenceType.VISIT
+    assert task.completion_reference_id == evidence_id

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
 import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.patient import Patient
@@ -15,245 +15,307 @@ from app.models.enums import (
     TaskDiscipline,
     TaskRegulatoryBasis,
 )
-from app.services.benefit_period_service import rollover_benefit_period
 from app.services.task_benefit_period_linker import attach_active_benefit_period_to_task
 
 
 # ---------------------------------------------------------------------
 # Task type identifiers
 # ---------------------------------------------------------------------
+
 TASK_INITIAL_RN_ICA = "INITIAL_RN_ICA"
 TASK_NOE_DUE = "NOE_DUE"
 
 
 # ---------------------------------------------------------------------
-# Time helpers
+# Helpers
 # ---------------------------------------------------------------------
+
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _pick_open_status() -> TaskStatus:
-    if hasattr(TaskStatus, "PENDING"):
-        return TaskStatus.PENDING
-    return list(TaskStatus)[0]
+def _enum_member(enum_cls, preferred_names: list[str]):
+    for name in preferred_names:
+        if hasattr(enum_cls, name):
+            return getattr(enum_cls, name)
+    return list(enum_cls)[0]
 
 
-def _task_type(name: str) -> TaskType:
-    if hasattr(TaskType, name):
-        return getattr(TaskType, name)
-
-    raise HTTPException(
-        status_code=500,
-        detail=f"TaskType missing enum member '{name}'. Add it to app.models.enums.TaskType.",
-    )
+def _as_date(value):
+    if value is None:
+        return None
+    return value.date() if hasattr(value, "date") else value
 
 
-def _get_patient(db: Session, patient_id: uuid.UUID) -> Patient:
-    patient = db.query(Patient).filter(Patient.id == patient_id).one_or_none()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    return patient
+def _set_due_fields(task: Task, due_at: datetime) -> None:
+    if hasattr(task, "due_at"):
+        task.due_at = due_at
+    if hasattr(task, "due_date"):
+        task.due_date = due_at.date()
 
 
-# ---------------------------------------------------------------------
-# Task creation helper
-# ---------------------------------------------------------------------
-def _ensure_task(
+def _ensure_initial_task_pending_unique(
     db: Session,
     *,
-    tenant_id,
+    tenant_id: uuid.UUID,
     patient_id: uuid.UUID,
     task_type: TaskType,
     due_at: datetime,
-    created_by: uuid.UUID | None,
+    created_by: Optional[uuid.UUID],
     discipline: TaskDiscipline,
     regulatory_basis: TaskRegulatoryBasis,
     origin: TaskOrigin,
-) -> None:
+) -> Task:
     """
-    Idempotent task creation with required enterprise fields.
+    STRICT uniqueness per (tenant_id, patient_id, task_type) across all statuses.
 
-    Guarantees:
-    - no duplicate open task of same type for same patient
-    - due_date and due_at both populated
-    - regulatory_basis always set
-    - benefit period auto-attached when available
+    Used for onboarding tasks which must never duplicate:
+    - INITIAL_RN_ICA
+    - NOE_DUE
+
+    If an existing task is found and not COMPLETED, it is normalized to PENDING.
     """
-
-    open_status = _pick_open_status()
-
     existing = (
         db.query(Task)
         .filter(
             Task.tenant_id == tenant_id,
             Task.patient_id == patient_id,
             Task.task_type == task_type,
-            Task.status == open_status,
         )
+        .order_by(Task.created_at.asc())
         .first()
     )
 
-    if existing:
-        return
+    pending = _enum_member(TaskStatus, ["PENDING"])
+    completed = getattr(TaskStatus, "COMPLETED", None)
 
-    task = Task(
+    if existing:
+        if completed is None or existing.status != completed:
+            existing.status = pending
+        _set_due_fields(existing, due_at)
+        return existing
+
+    t = Task(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         patient_id=patient_id,
         task_type=task_type,
+        status=pending,
         origin=origin,
         discipline=discipline,
         regulatory_basis=regulatory_basis,
-        status=open_status,
-        due_at=due_at,
-        due_date=due_at.date(),
-        created_by=created_by,
+        created_by=str(created_by) if created_by else None,
     )
+    _set_due_fields(t, due_at)
 
     attach_active_benefit_period_to_task(
         db,
-        task=task,
+        task=t,
         tenant_id=tenant_id,
         patient_id=patient_id,
-        as_of_date=task.due_date,
     )
 
-    db.add(task)
+    db.add(t)
+    return t
+
+
+def _ensure_open_task_by_type(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    task_type: TaskType,
+    due_at: datetime,
+    created_by: Optional[uuid.UUID],
+    discipline: TaskDiscipline,
+    regulatory_basis: TaskRegulatoryBasis,
+    origin: TaskOrigin,
+) -> Task:
+    """
+    OPEN‑ONLY idempotency:
+
+    - If an OPEN/PENDING task exists: reuse it (and refresh due date)
+    - If only COMPLETED tasks exist: create a NEW open task
+
+    Used for recurring obligations like IDG_REVIEW.
+    """
+    pending = _enum_member(TaskStatus, ["PENDING"])
+    open_status = getattr(TaskStatus, "OPEN", None)
+
+    base_q = db.query(Task).filter(
+        Task.tenant_id == tenant_id,
+        Task.patient_id == patient_id,
+        Task.task_type == task_type,
+    )
+
+    if open_status is not None:
+        existing_open = (
+            base_q.filter(Task.status == open_status)
+            .order_by(Task.created_at.desc())
+            .first()
+        )
+        if existing_open:
+            _set_due_fields(existing_open, due_at)
+            return existing_open
+
+    existing_pending = (
+        base_q.filter(Task.status == pending)
+        .order_by(Task.created_at.desc())
+        .first()
+    )
+    if existing_pending:
+        _set_due_fields(existing_pending, due_at)
+        return existing_pending
+
+    # No open task exists → create a new one
+    t = Task(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=task_type,
+        status=pending,
+        origin=origin,
+        discipline=discipline,
+        regulatory_basis=regulatory_basis,
+        created_by=str(created_by) if created_by else None,
+    )
+    _set_due_fields(t, due_at)
+
+    attach_active_benefit_period_to_task(
+        db,
+        task=t,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+    )
+
+    db.add(t)
+    return t
 
 
 # ---------------------------------------------------------------------
-# Records release consent
+# Public Contract: Records release consent
 # ---------------------------------------------------------------------
+
 def record_records_release_consent(
     db: Session,
     *,
     patient_id: uuid.UUID,
     signed_at: datetime,
-    user_id: uuid.UUID | None,
+    user_id: Optional[uuid.UUID],
 ) -> Patient:
     """
-    Phase 1 self-referral / records release consent only.
+    PUBLIC CONTRACT: required by app.api.admission_authorization imports.
 
-    Guarantees:
-    - does not admit patient
-    - does not create clinical admission tasks
+    Records release consent only:
+    - no admission authorization
+    - no onboarding tasks
     """
-    patient = _get_patient(db, patient_id)
+    patient = db.query(Patient).filter(Patient.id == patient_id).one()
 
-    if getattr(patient, "tenant_id", None):
-        db.info["tenant_id"] = patient.tenant_id
+    if hasattr(patient, "records_release_signed_at"):
+        patient.records_release_signed_at = signed_at
+    if hasattr(patient, "records_release_signed_by"):
+        patient.records_release_signed_by = user_id
 
-    patient.records_release_signed_at = signed_at
-    patient.admission_status = "RECORDS_PENDING"
-
-    db.flush()
+    patient.updated_at = _now_utc()
+    db.commit()
+    db.refresh(patient)
     return patient
 
 
 # ---------------------------------------------------------------------
-# Admission authorization
+# Public Contract: Admission authorization
 # ---------------------------------------------------------------------
+
 def authorize_admission(
     db: Session,
     *,
     patient_id: uuid.UUID,
     election_signed_at: datetime,
-    authorized_by_user_id: uuid.UUID | None,
+    authorized_by_user_id: Optional[uuid.UUID],
 ) -> Patient:
     """
-    Enterprise admission authorization.
+    Admission authorization (production stable).
 
     Guarantees:
-    - SOC anchored to election_signed_at if not already set
-    - admission status updated
-    - benefit period created/rolled over via single authoritative service
-    - IDG_REVIEW scheduled due SOC + 15 days, with both due_at and due_date
-    - INITIAL_RN_ICA scheduled due SOC + 48 hours
-    - NOE_DUE scheduled due SOC + 5 days
-    - tasks include regulatory_basis and auto-attach to benefit period
+    - SOC immutable (no-op if already set)
+    - INITIAL_RN_ICA due +2 days (PENDING, strict unique)
+    - NOE_DUE due +5 days (PENDING, strict unique)
+    - IDG_REVIEW due +15 days (PENDING, OPEN-only idempotent)
     """
-
-    patient = _get_patient(db, patient_id)
-
-    if getattr(patient, "tenant_id", None):
-        db.info["tenant_id"] = patient.tenant_id
-
-    # -------------------------------------------------
-    # SOC immutability
-    # -------------------------------------------------
-    if patient.soc_date is None:
-        patient.election_signed_at = election_signed_at
-        patient.soc_date = election_signed_at
-
-    patient.admission_authorized_at = _now_utc()
-    patient.admission_authorized_by = authorized_by_user_id
-    patient.admission_status = "ADMITTED"
-
-    db.flush()
-
-    soc = patient.soc_date
+    patient = db.query(Patient).filter(Patient.id == patient_id).one()
     tenant_id = patient.tenant_id
 
-    # -------------------------------------------------
-    # Create / ensure benefit period
-    # -------------------------------------------------
-    rollover_benefit_period(
-        db=db,
-        tenant_id=tenant_id,
-        patient_id=patient.id,
-        election_date=soc.date(),
-        start_date=soc.date(),
-        benefit_type="INITIAL",
-    )
+    incoming_soc = election_signed_at.date()
+    existing_soc = _as_date(getattr(patient, "soc_date", None))
 
-    # -------------------------------------------------
-    # Schedule required tasks
-    # -------------------------------------------------
-    idg_due_at = soc.astimezone(timezone.utc) + timedelta(days=15)
-    rn_due_at = soc.astimezone(timezone.utc) + timedelta(hours=48)
-    noe_due_at = soc.astimezone(timezone.utc) + timedelta(days=5)
+    # SOC immutability
+    if existing_soc is None:
+        try:
+            patient.soc_date = incoming_soc
+        except Exception:
+            patient.soc_date = election_signed_at
 
-    # IDG_REVIEW
-    _ensure_task(
+    # Admission auth stamps (set once)
+    if hasattr(patient, "admission_authorized_at") and getattr(patient, "admission_authorized_at", None) is None:
+        patient.admission_authorized_at = election_signed_at
+    if hasattr(patient, "election_signed_at") and getattr(patient, "election_signed_at", None) is None:
+        patient.election_signed_at = election_signed_at
+
+    patient.updated_at = _now_utc()
+
+    origin_manual = _enum_member(TaskOrigin, ["MANUAL", "PERIODIC"])
+    origin_periodic = _enum_member(TaskOrigin, ["PERIODIC"])
+    rn_disc = _enum_member(TaskDiscipline, ["RN"])
+
+    rn_ica_type = _enum_member(TaskType, [TASK_INITIAL_RN_ICA])
+    noe_type = _enum_member(TaskType, [TASK_NOE_DUE])
+
+    rn_basis = _enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
+    noe_basis = _enum_member(TaskRegulatoryBasis, ["NOE", "IDG_REVIEW"])
+
+    # Onboarding tasks (strict unique)
+    _ensure_initial_task_pending_unique(
         db,
         tenant_id=tenant_id,
-        patient_id=patient.id,
-        task_type=TaskType.IDG_REVIEW,
-        due_at=idg_due_at,
+        patient_id=patient_id,
+        task_type=rn_ica_type,
+        due_at=election_signed_at + timedelta(days=2),
         created_by=authorized_by_user_id,
-        discipline=TaskDiscipline.RN,
-        regulatory_basis=TaskRegulatoryBasis.IDG_REVIEW,
-        origin=TaskOrigin.PERIODIC,
+        discipline=rn_disc,
+        regulatory_basis=rn_basis,
+        origin=origin_manual,
     )
 
-    # INITIAL_RN_ICA
-    _ensure_task(
+    _ensure_initial_task_pending_unique(
         db,
         tenant_id=tenant_id,
-        patient_id=patient.id,
-        task_type=_task_type(TASK_INITIAL_RN_ICA),
-        due_at=rn_due_at,
+        patient_id=patient_id,
+        task_type=noe_type,
+        due_at=election_signed_at + timedelta(days=5),
         created_by=authorized_by_user_id,
-        discipline=TaskDiscipline.RN,
-        regulatory_basis=TaskRegulatoryBasis.CERTIFICATION,
-        origin=TaskOrigin.ADMISSION,
+        discipline=rn_disc,
+        regulatory_basis=noe_basis,
+        origin=origin_manual,
     )
 
-    # NOE_DUE
-    _ensure_task(
-        db,
-        tenant_id=tenant_id,
-        patient_id=patient.id,
-        task_type=_task_type(TASK_NOE_DUE),
-        due_at=noe_due_at,
-        created_by=authorized_by_user_id,
-        discipline=TaskDiscipline.RN,
-        regulatory_basis=TaskRegulatoryBasis.CERTIFICATION,
-        origin=TaskOrigin.ADMISSION,
-    )
+    # IDG review cadence (open-only idempotent)
+    if hasattr(TaskType, "IDG_REVIEW"):
+        idg_type = TaskType.IDG_REVIEW
+        idg_basis = _enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
 
-    db.flush()
+        _ensure_open_task_by_type(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            task_type=idg_type,
+            due_at=election_signed_at + timedelta(days=15),
+            created_by=authorized_by_user_id,
+            discipline=rn_disc,
+            regulatory_basis=idg_basis,
+            origin=origin_periodic,
+        )
+
+    db.commit()
+    db.refresh(patient)
     return patient

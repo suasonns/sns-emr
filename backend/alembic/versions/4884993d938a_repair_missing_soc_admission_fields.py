@@ -1,9 +1,8 @@
 """
-repair_missing_soc_admission_fields
+repair_missing_soc_admission_fields (ENTERPRISE REBUILD-SAFE)
 
 Revision ID: 4884993d938a
 Revises: bf0a89eda7f3
-Create Date: 2026-05-29 15:55:01
 """
 
 from __future__ import annotations
@@ -54,27 +53,29 @@ def _column_exists(bind, table: str, column: str, schema: str = "public") -> boo
         """
     )
     return bind.execute(
-        sql,
-        {"schema": schema, "table": table, "column": column},
+        sql, {"schema": schema, "table": table, "column": column}
     ).first() is not None
 
 
-def _constraint_exists(bind, table: str, constraint: str, schema: str = "public") -> bool:
+def _constraint_exists(bind, table: str, constraint_names: list[str], schema: str = "public") -> bool:
     sql = sa.text(
         """
-        SELECT 1
+        SELECT c.conname
         FROM pg_constraint c
         JOIN pg_class t ON t.oid = c.conrelid
         JOIN pg_namespace n ON n.oid = t.relnamespace
         WHERE n.nspname = :schema
           AND t.relname = :table
-          AND c.conname = :constraint
         """
     )
-    return bind.execute(
-        sql,
-        {"schema": schema, "table": table, "constraint": constraint},
-    ).first() is not None
+    existing = {
+        row[0]
+        for row in bind.execute(
+            sql, {"schema": schema, "table": table}
+        )
+    }
+
+    return any(name in existing for name in constraint_names)
 
 
 # ------------------------------------------------------------------
@@ -107,7 +108,6 @@ def upgrade() -> None:
         )
 
     if not _column_exists(bind, "patients", "admission_status"):
-        # server_default only to satisfy NOT NULL for existing rows
         op.add_column(
             "patients",
             sa.Column(
@@ -117,7 +117,6 @@ def upgrade() -> None:
                 server_default="PRE_REFERRAL",
             ),
         )
-        # remove default after backfill
         op.alter_column("patients", "admission_status", server_default=None)
 
     if not _column_exists(bind, "patients", "admission_authorized_at"):
@@ -129,11 +128,7 @@ def upgrade() -> None:
     if not _column_exists(bind, "patients", "admission_authorized_by"):
         op.add_column(
             "patients",
-            sa.Column(
-                "admission_authorized_by",
-                postgresql.UUID(as_uuid=True),
-                nullable=True,
-            ),
+            sa.Column("admission_authorized_by", postgresql.UUID(as_uuid=True), nullable=True),
         )
 
     if not _column_exists(bind, "patients", "not_admitted_at"):
@@ -149,16 +144,26 @@ def upgrade() -> None:
         )
 
     # -----------------------------
-    # admission_status CHECK constraint
+    # admission_status CHECK constraint (ENTERPRISE SAFE)
     # -----------------------------
 
-    if not _constraint_exists(bind, "patients", "ck_patients_admission_status"):
+    constraint_candidates = [
+        "ck_patients_admission_status",
+        "ck_patients_ck_patients_admission_status",  # legacy duplicate naming
+    ]
+
+    if not _constraint_exists(bind, "patients", constraint_candidates):
         op.create_check_constraint(
             "ck_patients_admission_status",
             "patients",
-            "admission_status IN "
-            "('PRE_REFERRAL','RECORDS_PENDING','MD_REVIEW_PENDING',"
-            "'AUTHORIZED_TO_ADMIT','ADMITTED','NOT_ADMITTED')",
+            "admission_status IN ("
+            "'PRE_REFERRAL',"
+            "'RECORDS_PENDING',"
+            "'MD_REVIEW_PENDING',"
+            "'AUTHORIZED_TO_ADMIT',"
+            "'ADMITTED',"
+            "'NOT_ADMITTED'"
+            ")",
         )
 
     # -----------------------------
@@ -177,6 +182,5 @@ def upgrade() -> None:
 # ------------------------------------------------------------------
 
 def downgrade() -> None:
-    # Forward-only repair migration.
-    # Downgrade intentionally omitted to preserve audit safety.
+    # forward-only (audit-safe)
     pass

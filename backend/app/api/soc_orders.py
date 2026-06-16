@@ -1,16 +1,19 @@
+# app/api/soc_orders.py
+from __future__ import annotations
+
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db_tenant_dependency import get_db_tenant
 from app.core.security import get_current_user
+from app.db_tenant_dependency import get_db_tenant
+from app.models.patient import Patient
 from app.models.task import Task
-
-# you will create this model below
-from app.models.patient_assignment import PatientAssignment
+from app.models.enums import TaskType, TaskOrigin, TaskDiscipline, TaskStatus
+from app.tenancy.registry import assert_known_tenant
 
 
 router = APIRouter(prefix="/soc-orders", tags=["soc-orders"])
@@ -20,86 +23,71 @@ class RNAdmissionOrder(BaseModel):
     # RN is always required for admission workflow
     order_rn: bool = True
 
-    # optional, based on hospice practice and case needs
-    order_msw: bool = False
-    order_sc: bool = False
 
-    # if you want to allow RN to document “MSW declined”
-    msw_declined: bool = False
-    sc_declined: bool = False
+def _require_tenant(user) -> str:
+    tenant_id = getattr(user, "tenant_id", None)
+    if tenant_id is None and isinstance(user, dict):
+        tenant_id = user.get("tenant_id")
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Missing tenant context")
+
+    assert_known_tenant(str(tenant_id))
+    return str(tenant_id)
 
 
-def _due(dt: datetime, days: int) -> datetime:
-    return dt + timedelta(days=days)
-
-
-@router.post("/patients/{patient_id}/rn-admission", summary="Finalize RN admission order and create SOC tasks")
+@router.post(
+    "/patients/{patient_id}/rn-admission",
+    summary="Finalize RN admission order and create ICA tasks",
+)
 def finalize_rn_admission_order(
     patient_id: uuid.UUID,
     payload: RNAdmissionOrder,
     db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
-    now = datetime.utcnow()
+    tenant_id = _require_tenant(user)
 
-    # Determine required disciplines for tasks
-    disciplines = ["RN"]
-    if payload.order_msw and not payload.msw_declined:
-        disciplines.append("MSW")
-    if payload.order_sc and not payload.sc_declined:
-        disciplines.append("SC")
-
-    # Pull active assignments for those disciplines (optional but recommended)
-    assignments = (
-        db.query(PatientAssignment)
-        .filter(PatientAssignment.patient_id == patient_id)
-        .filter(PatientAssignment.status == "ASSIGNED")
-        .all()
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
+        .first()
     )
-    assignment_map = {a.discipline.upper(): a for a in assignments}
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
-    # If RN not assigned, block (RN must be assigned in real ops)
-    if "RN" not in assignment_map:
-        raise HTTPException(status_code=400, detail="RN not assigned. Assign RN before finalizing admission order.")
+    if not payload.order_rn:
+        raise HTTPException(status_code=400, detail="RN admission order cannot be false")
+
+    soc_date = datetime.now(timezone.utc).date()
+
+    ica_specs = [
+        (TaskType.INITIAL_RN_ICA, TaskDiscipline.RN, soc_date + timedelta(days=2)),
+        (TaskType.INITIAL_MSW_ICA, TaskDiscipline.SW, soc_date + timedelta(days=5)),
+        (TaskType.INITIAL_SC_ICA, TaskDiscipline.CHAPLAIN, soc_date + timedelta(days=5)),
+        (TaskType.INITIAL_BEREAVEMENT, TaskDiscipline.SW, soc_date + timedelta(days=5)),
+    ]
 
     created = []
-
-    for d in disciplines:
-        assignee = assignment_map.get(d)
-
-        # If MSW/SC ordered but not assigned yet -> still create task, unassigned
-        assigned_user_id = assignee.staff_user_id if assignee else None
-
-        # Due logic (compliance-first but practice-aligned):
-        # RN: due in 2 days (48h)
-        # MSW/SC: due in 5 days
-        if d == "RN":
-            due_date = _due(now, 2)
-            task_type = "RN_SOC"
-        elif d == "MSW":
-            due_date = _due(now, 5)
-            task_type = "MSW_ICA"
-        else:
-            due_date = _due(now, 5)
-            task_type = "SC_ICA"
-
-        task = Task(
-            id=uuid.uuid4(),
-            patient_id=patient_id,
-            task_type=task_type,
-            status="OPEN",
-            due_date=due_date,
-            assigned_user_id=assigned_user_id,
-            schedule_status="NEEDS_SCHEDULING",
+    for task_type, discipline, due_date in ica_specs:
+        db.add(
+            Task(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                task_type=task_type,
+                origin=TaskOrigin.ADMISSION,
+                discipline=discipline,
+                status=TaskStatus.PENDING,  # ✅ enum-safe
+                due_date=due_date,
+                created_by=getattr(user, "id", None),
+            )
         )
-        db.add(task)
-        created.append(task)
+        created.append(task_type.value)
 
     db.commit()
 
     return {
+        "status": "rn_admission_finalized",
         "patient_id": str(patient_id),
-        "created_task_count": len(created),
-        "task_types": [t.task_type for t in created],
-        "schedule_status": "NEEDS_SCHEDULING",
+        "ica_tasks_created": created,
     }

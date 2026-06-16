@@ -24,12 +24,26 @@ from app.models.role import Role  # noqa: F401
 from app.models.interface import Interface  # noqa: F401
 
 # ---------------------------------------------------------
-# PATIENT CORE
+# PATIENT CORE (MUST LOAD BEFORE DEPENDENTS)
 # ---------------------------------------------------------
 
 import app.models.patient  # noqa: F401
+import app.models.patient_payer  # noqa: F401
 import app.models.visit  # noqa: F401
 import app.models.benefit_period  # noqa: F401
+
+# ---------------------------------------------------------
+# PATIENT DEPENDENCIES (REQUIRED BY RELATIONSHIPS)
+# ---------------------------------------------------------
+
+import app.models.service_coverage_decision  # noqa: F401
+import app.models.external_substance  # noqa: F401
+
+# ---------------------------------------------------------
+# INCIDENTS / EVENTS (REQUIRED FOR TASK FK RESOLUTION)
+# ---------------------------------------------------------
+
+import app.models.incident_report  # noqa: F401
 
 # ---------------------------------------------------------
 # IDG / DOCUMENTATION
@@ -80,5 +94,8 @@ import app.billing.models.payer  # noqa: F401
 import app.billing.models.authorization  # noqa: F401
 import app.billing.models.contract  # noqa: F401
 
-# ✅ NEW — STEP 7 AUDIT LOG (REQUIRED)
+# ---------------------------------------------------------
+# AUDIT / EXPORT
+# ---------------------------------------------------------
+
 import app.billing.models.claim_export_log  # noqa: F401

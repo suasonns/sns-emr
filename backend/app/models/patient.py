@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Text, text
+from sqlalchemy import (
+    Column,
+    String,
+    Date,
+    DateTime,
+    ForeignKey,
+    Text,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -12,7 +21,7 @@ class Patient(TenantScopedMixin, BaseModel):
     __tablename__ = "patients"
 
     # ---------------------------------------------------------
-    # TENANT ISOLATION
+    # TENANT ISOLATION (COMPLIANCE CRITICAL)
     # ---------------------------------------------------------
     tenant_id = Column(
         UUID(as_uuid=True),
@@ -22,28 +31,32 @@ class Patient(TenantScopedMixin, BaseModel):
     )
 
     # ---------------------------------------------------------
-    # CORE IDENTITY
+    # CORE IDENTITY (ENTERPRISE LOCKED)
     # ---------------------------------------------------------
-    mrn = Column(String, unique=True, nullable=False)
-    full_name = Column(String, nullable=False)
+    mrn = Column(String(64), nullable=False, index=True)
+    full_name = Column(String(255), nullable=False)
     date_of_birth = Column(Date, nullable=False)
-    primary_diagnosis = Column(String, nullable=False)
+
+    ssn_last4 = Column(String(4), nullable=True)
+    primary_diagnosis = Column(String(255), nullable=False)
 
     # ---------------------------------------------------------
     # SYSTEM LIFECYCLE
     # ---------------------------------------------------------
     status = Column(
-        String,
+        String(32),
         nullable=False,
         server_default=text("'ACTIVE'"),
+        index=True,
     )
 
     # ---------------------------------------------------------
-    # HOSPICE LIFECYCLE (LEGACY)
+    # HOSPICE LIFECYCLE
     # ---------------------------------------------------------
     hospice_election_date = Column(Date, nullable=True)
+
     discharge_date = Column(Date, nullable=True)
-    discharge_reason = Column(String, nullable=True)
+    discharge_reason = Column(String(255), nullable=True)
 
     # ---------------------------------------------------------
     # SOC / ADMISSION (COMPLIANCE CRITICAL)
@@ -53,14 +66,17 @@ class Patient(TenantScopedMixin, BaseModel):
 
     soc_date = Column(DateTime(timezone=True), nullable=True)
 
+    # ✅ System-level SOC trigger
+    on_service_at = Column(DateTime(timezone=True), nullable=True)
+
     admission_status = Column(
         String(32),
         nullable=False,
         server_default=text("'PRE_REFERRAL'"),
+        index=True,
     )
 
     admission_authorized_at = Column(DateTime(timezone=True), nullable=True)
-
     admission_authorized_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
@@ -74,9 +90,10 @@ class Patient(TenantScopedMixin, BaseModel):
     # CLINICAL ACUITY
     # ---------------------------------------------------------
     acuity_state = Column(
-        String,
+        String(32),
         nullable=False,
         server_default=text("'ROUTINE'"),
+        index=True,
     )
 
     crisis_started_at = Column(DateTime(timezone=True), nullable=True)
@@ -93,9 +110,8 @@ class Patient(TenantScopedMixin, BaseModel):
     )
 
     # ---------------------------------------------------------
-    # RELATIONSHIPS (CRITICAL FOR ORM + COMPLIANCE TRACE)
+    # RELATIONSHIPS (ENTERPRISE-SAFE)
     # ---------------------------------------------------------
-
     tasks = relationship(
         "Task",
         back_populates="patient",
@@ -106,4 +122,46 @@ class Patient(TenantScopedMixin, BaseModel):
         "BenefitPeriod",
         back_populates="patient",
         cascade="all, delete-orphan",
+    )
+
+    # ✅ FIXED: Legacy-safe relationship using explicit cast
+    payers = relationship(
+        "PatientPayer",
+        primaryjoin="Patient.id == cast(foreign(PatientPayer.patient_id), UUID(as_uuid=True))",
+        back_populates="patient",
+        viewonly=True,
+        lazy="selectin",
+    )
+
+    coverage_decisions = relationship(
+        "ServiceCoverageDecision",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    external_substances = relationship(
+        "ExternalSubstance",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    # ---------------------------------------------------------
+    # ENTERPRISE CONSTRAINTS
+    # ---------------------------------------------------------
+    __table_args__ = (
+        Index(
+            "uq_patients_tenant_mrn",
+            "tenant_id",
+            "mrn",
+            unique=True,
+        ),
+        Index(
+            "ix_patients_status_tenant",
+            "tenant_id",
+            "status",
+        ),
+        Index(
+            "ix_patients_admission_status",
+            "admission_status",
+        ),
     )

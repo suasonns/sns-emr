@@ -1,82 +1,126 @@
+# app/api/tasks.py
 from __future__ import annotations
 
-from uuid import UUID
+import uuid
+from typing import Generator
 
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.core.security import get_current_user
+from app.db_tenant_dependency import get_db_tenant
 from app.models.task import Task
-from app.services.task_service import complete_task
-from app.api.schemas.task import TaskResponse
+from app.api.schemas.task_read import TaskResponse
+from app.tenancy.registry import assert_known_tenant
+
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
-# ------------------------------------------------------------------
-# Request schemas
-# ------------------------------------------------------------------
 
-class TaskCompletionRequest(BaseModel):
-    completion_reference_type: str = Field(
-        ..., description="VISIT | NOTE | IDG_MEETING | etc"
-    )
-    completion_reference_id: UUID
+# =========================================================
+# DB DEPENDENCY (AUDIT‑SAFE)
+# =========================================================
 
-
-# ------------------------------------------------------------------
-# Query endpoints
-# ------------------------------------------------------------------
-
-@router.get("", response_model=list[TaskResponse])
-def list_tasks(db: Session = Depends(get_db)):
-    """
-    List all tasks.
-    Used for dashboards, audits, and operational views.
-    """
-    return (
-        db.query(Task)
-        .order_by(Task.created_at.desc())
-        .all()
-    )
-
-
-@router.get("/escalated", response_model=list[TaskResponse])
-def list_escalated_tasks(db: Session = Depends(get_db)):
-    """
-    List escalated tasks.
-    Used for compliance dashboards and survey prep.
-    """
-    return (
-        db.query(Task)
-        .filter(Task.status == "ESCALATED")
-        .order_by(Task.created_at.desc())
-        .all()
-    )
-
-
-# ------------------------------------------------------------------
-# Mutation endpoints
-# ------------------------------------------------------------------
-
-@router.post("/{task_id}/complete", response_model=TaskResponse)
-def complete_task_endpoint(
-    task_id: UUID,
-    payload: TaskCompletionRequest,
-    db: Session = Depends(get_db),
-):
-    """
-    Complete a task with required evidence.
-
-    This endpoint enforces CMS‑mandated evidence rules.
-    """
+def get_db_with_request_state(
+    request: Request,
+    db: Session = Depends(get_db_tenant),
+) -> Generator[Session, None, None]:
+    request.state.db = db
     try:
-        task = complete_task(
-            db=db,
-            task_id=task_id,
-            completion_reference_type=payload.completion_reference_type,
-            completion_reference_id=payload.completion_reference_id,
+        yield db
+    finally:
+        pass
+
+
+# =========================================================
+# TENANT GUARD
+# =========================================================
+
+def require_valid_tenant(user=Depends(get_current_user)):
+    tenant_id = getattr(user, "tenant_id", None)
+    if tenant_id is None and isinstance(user, dict):
+        tenant_id = user.get("tenant_id")
+
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing tenant context",
         )
-        return task
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        assert_known_tenant(str(tenant_id))
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+
+    return user
+
+
+# =========================================================
+# QUERY ENDPOINTS (READ‑ONLY, ENTERPRISE‑SAFE)
+# =========================================================
+
+@router.get(
+    "/",
+    response_model=list[TaskResponse],
+    summary="List all tasks (tenant‑scoped)",
+)
+def list_tasks(
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_valid_tenant),
+):
+    tenant_id = str(user.tenant_id)
+
+    return (
+        db.query(Task)
+        .filter(Task.tenant_id == tenant_id)
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+
+
+@router.get(
+    "/patients/{patient_id}",
+    response_model=list[TaskResponse],
+    summary="List tasks for a patient",
+)
+def list_tasks_for_patient(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_valid_tenant),
+):
+    tenant_id = str(user.tenant_id)
+
+    return (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.patient_id == patient_id,
+        )
+        .order_by(Task.due_date.asc())
+        .all()
+    )
+
+
+@router.get(
+    "/escalated",
+    response_model=list[TaskResponse],
+    summary="List escalated tasks",
+)
+def list_escalated_tasks(
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_valid_tenant),
+):
+    tenant_id = str(user.tenant_id)
+
+    return (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.status == "ESCALATED",
+        )
+        .order_by(Task.created_at.desc())
+        .all()
+    )

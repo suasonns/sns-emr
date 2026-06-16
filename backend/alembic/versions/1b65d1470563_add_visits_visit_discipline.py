@@ -1,29 +1,36 @@
-"""add visits.visit_discipline
+"""add_visits_visit_discipline (rebuild-safe)
 
 Revision ID: 1b65d1470563
 Revises: 288d8809a335
-Create Date: 2026-05-29 10:13:30.405413
-
 """
-from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
-
-# revision identifiers, used by Alembic.
-revision: str = '1b65d1470563'
-down_revision: Union[str, Sequence[str], None] = '288d8809a335'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision = "1b65d1470563"
+down_revision = "288d8809a335"
+branch_labels = None
+depends_on = None
 
 
 def upgrade():
-    op.add_column(
-        "visits",
-        sa.Column("visit_discipline", sa.String(length=32), nullable=True),
-    )
+    conn = op.get_bind()
+    inspector = inspect(conn)
+
+    if "visits" not in inspector.get_table_names():
+        return
+
+    columns = {col["name"] for col in inspector.get_columns("visits")}
+
+    # ✅ SAFE COLUMN ADD
+    if "visit_discipline" not in columns:
+        op.add_column(
+            "visits",
+            sa.Column("visit_discipline", sa.String(length=32), nullable=True),
+        )
 
 
 def downgrade():
-    op.drop_column("visits", "visit_discipline")
+    # ✅ forward-only
+    pass

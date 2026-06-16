@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum as SAEnum,
     ForeignKey,
+    Text,                # ✅ REQUIRED
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -16,7 +17,7 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 
-# Canonical enums (DO NOT rename)
+# ✅ CANONICAL ENUMS (DO NOT RENAME)
 from app.models.enums import (
     TaskType,
     TaskOrigin,
@@ -30,14 +31,14 @@ from app.models.enums import (
 class Task(Base):
     __tablename__ = "tasks"
 
-    # ---------------------------------------------------------
+    # =====================================================
     # PRIMARY KEY
-    # ---------------------------------------------------------
+    # =====================================================
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # ---------------------------------------------------------
-    # TENANT / PATIENT / FK CORE
-    # ---------------------------------------------------------
+    # =====================================================
+    # CORE RELATIONSHIP KEYS
+    # =====================================================
     tenant_id = Column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -57,7 +58,6 @@ class Task(Base):
         ForeignKey("benefit_periods.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
-        doc="Active benefit period at task creation time (if available)",
     )
 
     created_by = Column(
@@ -72,39 +72,70 @@ class Task(Base):
         nullable=True,
     )
 
-    # ---------------------------------------------------------
-    # TASK IDENTITY
-    # ---------------------------------------------------------
-    task_type = Column(SAEnum(TaskType, create_type=False), nullable=False)
+    # =====================================================
+    # LINKING (CRITICAL FOR WORKFLOW ENGINE)
+    # =====================================================
+    clinical_note_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("clinical_notes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
-    origin = Column(SAEnum(TaskOrigin, create_type=False), nullable=False)
+    incident_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("incident_reports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
-    discipline = Column(SAEnum(TaskDiscipline, create_type=False), nullable=False)
+    # =====================================================
+    # TASK CLASSIFICATION
+    # =====================================================
+    task_type = Column(
+        SAEnum(TaskType, create_type=False),
+        nullable=False,
+    )
+
+    origin = Column(
+        SAEnum(TaskOrigin, create_type=False),
+        nullable=False,
+    )
+
+    discipline = Column(
+        SAEnum(TaskDiscipline, create_type=False),
+        nullable=False,
+    )
 
     regulatory_basis = Column(
         SAEnum(TaskRegulatoryBasis, create_type=False),
         nullable=True,
     )
 
-    # ---------------------------------------------------------
-    # TASK STATUS
-    # ---------------------------------------------------------
+    # =====================================================
+    # ✅ CRITICAL FIX — ALERT REASON COLUMN
+    # =====================================================
+    alert_reason = Column(Text, nullable=True)
+
+    # =====================================================
+    # STATUS
+    # =====================================================
     status = Column(
         SAEnum(TaskStatus, create_type=False),
         nullable=False,
         server_default=text("'DUE'"),
     )
 
-    # ---------------------------------------------------------
+    # =====================================================
     # DUE TIMING
-    # ---------------------------------------------------------
+    # =====================================================
     due_date = Column(Date, nullable=True)
 
     due_at = Column(DateTime(timezone=True), nullable=True)
 
-    # ---------------------------------------------------------
-    # COMPLETION / EVIDENCE
-    # ---------------------------------------------------------
+    # =====================================================
+    # COMPLETION (AUDIT SAFE)
+    # =====================================================
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
     completion_reference_type = Column(
@@ -114,30 +145,26 @@ class Task(Base):
 
     completion_reference_id = Column(UUID(as_uuid=True), nullable=True)
 
-    # ---------------------------------------------------------
+    # =====================================================
     # AUDIT
-    # ---------------------------------------------------------
+    # =====================================================
     created_at = Column(
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
     )
 
-    # ---------------------------------------------------------
-    # RELATIONSHIPS (CRITICAL FOR ORM INTEGRITY)
-    # ---------------------------------------------------------
-
-    patient = relationship(
-        "Patient",
-        back_populates="tasks",
-        foreign_keys=[patient_id],
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
-    benefit_period = relationship(
-        "BenefitPeriod",
-        back_populates="tasks",
-        foreign_keys=[benefit_period_id],
-    )
+    # =====================================================
+    # RELATIONSHIPS
+    # =====================================================
+    patient = relationship("Patient", back_populates="tasks")
+
+    benefit_period = relationship("BenefitPeriod", back_populates="tasks")
 
     created_by_user = relationship(
         "User",

@@ -1,89 +1,72 @@
-import os
-from typing import Set
+from __future__ import annotations
 
-from dotenv import load_dotenv
+from dataclasses import dataclass
 
-# ---------------------------------------------------------
-# Ensure local env is available for CLI/tests
-# ---------------------------------------------------------
-load_dotenv(".env.local")
-load_dotenv()
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.core.database import SessionLocal
 
 
-def _env(name: str) -> str:
-    val = os.getenv(name)
-    if not val:
-        raise RuntimeError(f"Missing required env var: {name}")
-    return val
+@dataclass(frozen=True)
+class TenantRecord:
+    tenant_id: str
+    schema_name: str
+    display_name: str
+    status: str
 
 
-# ---------------------------------------------------------
-# CANONICAL TENANT REGISTRY (DO NOT GUESS, DO NOT GENERATE)
-# ---------------------------------------------------------
+def get_tenant_by_id(db: Session, tenant_id: str) -> TenantRecord:
+    """
+    ✅ CANONICAL TENANT REGISTRY (ENTERPRISE)
 
-TENANT_REAL = _env("DEV_TENANT_REAL_ID")  # LOVE AND FAITH HOSPICE SERVICES INC.
+    - Single source of truth (DB-backed: core.tenants)
+    - ACTIVE lifecycle enforced
+    - SQLAlchemy 2.x safe (text())
+    """
+    stmt = text(
+        """
+        SELECT id, schema_name, display_name, status
+        FROM core.tenants
+        WHERE id = :tenant_id
+        """
+    )
+    row = db.execute(stmt, {"tenant_id": tenant_id}).fetchone()
 
-TENANT_TRAINING_A = _env("DEV_TENANT_DUMMY_A")  # Angela Hospice
-TENANT_TRAINING_B = _env("DEV_TENANT_DUMMY_B")  # Silva Hospice
+    if not row:
+        raise RuntimeError(f"Unknown tenant_id: {tenant_id}")
 
-TENANT_LEGACY_A = _env("DEV_TENANT_A_ID")  # Temporary legacy
-TENANT_LEGACY_B = _env("DEV_TENANT_B_ID")  # Temporary legacy
+    if row.status != "ACTIVE":
+        raise RuntimeError(f"Tenant not active: {tenant_id}")
 
-
-ALL_KNOWN_TENANTS: Set[str] = {
-    TENANT_REAL,
-    TENANT_TRAINING_A,
-    TENANT_TRAINING_B,
-    TENANT_LEGACY_A,
-    TENANT_LEGACY_B,
-}
-
-
-# ---------------------------------------------------------
-# TENANT CLASSIFICATION
-# ---------------------------------------------------------
-
-PROTECTED_TENANTS: Set[str] = {
-    TENANT_REAL,
-    TENANT_TRAINING_A,
-    TENANT_TRAINING_B,
-}
-
-TRAINING_TENANTS: Set[str] = {
-    TENANT_TRAINING_A,
-    TENANT_TRAINING_B,
-}
-
-LEGACY_TENANTS: Set[str] = {
-    TENANT_LEGACY_A,
-    TENANT_LEGACY_B,
-}
+    return TenantRecord(
+        tenant_id=str(row.id),
+        schema_name=row.schema_name,
+        display_name=row.display_name,
+        status=row.status,
+    )
 
 
-# ---------------------------------------------------------
-# ASSERTIONS (HARD GUARDS)
-# ---------------------------------------------------------
+def get_tenant_schema_name(db: Session, tenant_id: str) -> str:
+    """
+    ✅ ONLY approved way to resolve tenant schema name (DB-backed)
+    """
+    return get_tenant_by_id(db, tenant_id).schema_name
+
 
 def assert_known_tenant(tenant_id: str) -> None:
     """
-    Hard guard: reject any tenant not explicitly registered.
-    """
-    if tenant_id not in ALL_KNOWN_TENANTS:
-        raise ValueError(f"Unknown tenant_id: {tenant_id}")
+    ✅ BACKWARD-COMPATIBILITY SHIM (DO NOT USE IN NEW CODE)
 
+    Some legacy routers import assert_known_tenant at module import time.
+    This function exists ONLY to prevent startup crashes and to provide
+    the same safety boundary: tenant must exist and be ACTIVE.
 
-def assert_protected_tenant(tenant_id: str) -> None:
+    New code should NOT call this; it should call:
+        get_tenant_schema_name(db, tenant_id)
     """
-    Guard for tenants that must never be deleted or modified destructively.
-    """
-    if tenant_id not in PROTECTED_TENANTS:
-        raise ValueError("Tenant is not protected")
-
-
-def assert_training_or_legacy_tenant(tenant_id: str) -> None:
-    """
-    Guard for tenants where patient data may be reset (training + legacy only).
-    """
-    allowed = TRAINING_TENANTS | LEGACY_TENANTS
-    if tenant_id not in allowed:
-        raise ValueError("Tenant is not training or legacy")
+    db: Session = SessionLocal()
+    try:
+        _ = get_tenant_by_id(db, tenant_id)
+    finally:
+        db.close()

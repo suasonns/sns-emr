@@ -1,12 +1,12 @@
-from sqlalchemy import Column, String
-from app.db.base import Base
+"""
+BILLING VIEW OF PATIENT PAYERS (ENTERPRISE SAFE)
 
+IMPORTANT:
+- Billing MUST NOT define patient_payers schema
+- Canonical ORM model lives in app.models.patient_payer
+- This file exists ONLY for import compatibility
+"""
 
-class PatientPayer(Base):
-    __tablename__ = "patient_payers"
+from __future__ import annotations
 
-    id = Column(String, primary_key=True)
-    patient_id = Column(String, nullable=False)
-
-    payer_name = Column(String, nullable=False)
-    payer_type = Column(String, nullable=False)
+from app.models.patient_payer import PatientPayer  # noqa: F401

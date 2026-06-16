@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, date
+from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Boolean, CheckConstraint, text
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Boolean,
+    CheckConstraint,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -25,14 +36,29 @@ class Visit(Base):
 
     __tablename__ = "visits"
 
-    # Optional: light constraints that are safe and DB-portable.
-    # (Do NOT add strict clinical enums here unless you also enforce in API/service.)
     __table_args__ = (
+        # ✅ Basic integrity constraints
         CheckConstraint("status <> ''", name="ck_visits_status_not_blank"),
         CheckConstraint("visit_type <> ''", name="ck_visits_visit_type_not_blank"),
+        CheckConstraint("visit_mode <> ''", name="ck_visits_mode_not_blank"),
+
+        # ✅ Performance index (critical for patient timelines)
+        Index(
+            "ix_visits_patient_datetime",
+            "patient_id",
+            "visit_datetime",
+        ),
     )
 
+    # =========================================================
+    # PRIMARY KEYS
+    # =========================================================
+
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # =========================================================
+    # TENANCY / RELATIONSHIPS
+    # =========================================================
 
     tenant_id = Column(
         UUID(as_uuid=True),
@@ -55,23 +81,42 @@ class Visit(Base):
         index=True,
     )
 
+    # =========================================================
+    # VISIT CLASSIFICATION
+    # =========================================================
+
     visit_type = Column(String(32), nullable=False, index=True)
 
     visit_discipline = Column(String(32), nullable=True, index=True)
 
+    visit_mode = Column(
+        String(32),
+        nullable=False,
+        index=True,
+        server_default=text("'IN_PERSON'"),
+    )
+
     status = Column(String(32), nullable=False, index=True)
-
-    visit_datetime = Column(DateTime(timezone=False), nullable=False, index=True)
-
-    # NEW: visit_mode (matches your "add visit_mode" migration intent)
-    # Defaults to IN_PERSON to keep inserts backwards compatible.
-    visit_mode = Column(String(32), nullable=False, index=True, server_default=text("'IN_PERSON'"))
 
     is_supervisory = Column(Boolean, nullable=False, server_default=text("false"))
 
     acuity_state_at_visit = Column(String(32), nullable=True)
 
-    finalized_at = Column(DateTime(timezone=False), nullable=True)
+    # =========================================================
+    # TIMESTAMPS
+    # =========================================================
+
+    visit_datetime = Column(
+        DateTime(timezone=True),  # ✅ upgraded to timezone-aware
+        nullable=False,
+        index=True,
+    )
+
+    finalized_at = Column(DateTime(timezone=True), nullable=True)
+
+    # =========================================================
+    # AUDIT TRAIL
+    # =========================================================
 
     finalized_by = Column(
         UUID(as_uuid=True),
@@ -80,12 +125,14 @@ class Visit(Base):
         index=True,
     )
 
-    chha_poc_id = Column(UUID(as_uuid=True), nullable=True, index=True)
-
-    created_at = Column(DateTime(timezone=False), server_default=func.now(), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
 
     updated_at = Column(
-        DateTime(timezone=False),
+        DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
@@ -97,3 +144,46 @@ class Visit(Base):
         nullable=True,
         index=True,
     )
+
+    # ✅ NEW: audit completion
+    updated_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+
+    # ✅ OPTIONAL: soft delete (enterprise safety)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    deleted_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+    # =========================================================
+    # OPTIONAL / EXTENSIONS
+    # =========================================================
+
+    chha_poc_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
+    # =========================================================
+    # COMPATIBILITY LAYER (CRITICAL FIX)
+    # =========================================================
+
+    @property
+    def visit_date(self) -> Optional[date]:
+        """
+        Backward-compatible alias for services expecting visit.visit_date.
+        Derived from visit_datetime.
+        """
+        value = getattr(self, "visit_datetime", None)
+
+        if isinstance(value, datetime):
+            return value.date()
+
+        if isinstance(value, date):
+            return value
+
+        return None

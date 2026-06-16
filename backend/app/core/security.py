@@ -12,11 +12,13 @@ from jose import jwt, JWTError
 # -------------------------------------------------------------------
 # CONFIG
 # -------------------------------------------------------------------
-SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_LATER")  # >= 32 chars in prod
+
+SECRET_KEY = os.getenv("SECRET_KEY", "CHANGE_ME_LATER")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
-AUTH_MODE = os.getenv("AUTH_MODE", "SYSTEM").upper()  # SYSTEM | TOKEN
+# ✅ ENTERPRISE FIX — NEVER DEFAULT TO SYSTEM
+AUTH_MODE = os.getenv("AUTH_MODE", "TOKEN").upper()
 
 SYSTEM_ACCESS_KEY = os.getenv("SYSTEM_ACCESS_KEY", "CHANGE_ME_SYSTEM_KEY")
 
@@ -24,8 +26,16 @@ JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-emr")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-emr-users")
 
 # -------------------------------------------------------------------
+# VALIDATE AUTH MODE (FAIL FAST)
+# -------------------------------------------------------------------
+
+if AUTH_MODE not in {"TOKEN", "SYSTEM"}:
+    raise RuntimeError(f"Invalid AUTH_MODE: {AUTH_MODE}")
+
+# -------------------------------------------------------------------
 # CONTEXT OBJECTS
 # -------------------------------------------------------------------
+
 class SystemAccessContext(dict):
     """
     Represents system-level access ONLY.
@@ -38,6 +48,7 @@ class CurrentUser:
     """
     Represents an authenticated clinical user (multi-tenant).
     """
+
     def __init__(self, user_id: uuid.UUID, role: str, tenant_id: uuid.UUID):
         self.user_id = user_id
         self.id = user_id  # compatibility
@@ -46,8 +57,9 @@ class CurrentUser:
 
 
 # -------------------------------------------------------------------
-# SYSTEM ACCESS (INFRA / INTEGRATIONS ONLY)
+# SYSTEM ACCESS (INFRA ONLY)
 # -------------------------------------------------------------------
+
 def get_current_access(
     x_system_key: str = Header(..., alias="X-System-Key"),
 ) -> SystemAccessContext:
@@ -66,6 +78,7 @@ def get_current_access(
 # -------------------------------------------------------------------
 # JWT HELPERS
 # -------------------------------------------------------------------
+
 bearer_scheme = HTTPBearer(auto_error=True)
 
 
@@ -117,8 +130,9 @@ def decode_access_token(token: str) -> Dict[str, Any]:
 
 
 # -------------------------------------------------------------------
-# CLINICAL USER DEPENDENCY (JWT ONLY)
+# CLINICAL USER DEPENDENCY (TOKEN ONLY)
 # -------------------------------------------------------------------
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
 ) -> CurrentUser:
@@ -127,6 +141,7 @@ def get_current_user(
     Used by ALL clinical / patient / visit / chart endpoints.
     """
 
+    # ✅ HARD BLOCK SYSTEM MODE FOR CLINICAL ACCESS
     if AUTH_MODE != "TOKEN":
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
