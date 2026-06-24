@@ -33,6 +33,21 @@ import app.models.visit  # noqa: F401
 import app.models.benefit_period  # noqa: F401
 
 # ---------------------------------------------------------
+# CORE CLINICAL / NOTES (EARLY LOAD)
+# ---------------------------------------------------------
+
+import app.models.clinical_note  # noqa: F401
+import app.models.notification  # noqa: F401
+import app.models.rn_recert_assessment  # noqa: F401
+
+# ---------------------------------------------------------
+# ✅ CHHA OUTCOME LAYER (NEW - SAFE ADD)
+# ---------------------------------------------------------
+
+from app.models.chha_visit_outcome import CHHAVisitOutcome  # noqa: F401
+from app.models.chha_visit_task_result import CHHAVisitTaskResult  # noqa: F401
+
+# ---------------------------------------------------------
 # PATIENT DEPENDENCIES (REQUIRED BY RELATIONSHIPS)
 # ---------------------------------------------------------
 
@@ -62,6 +77,12 @@ import app.models.document_idg_resolution  # noqa: F401
 import app.models.assessment  # noqa: F401
 import app.models.assessment_reference  # noqa: F401
 import app.models.assessment_discrepancy  # noqa: F401
+import app.models.med_reconciliation  # noqa: F401
+
+from app.models.form_registry_model import FormRegistryModel
+from app.models.form import Form
+from app.models.form_module import FormModule
+from app.models.form_package_module import FormPackageModule
 
 # ---------------------------------------------------------
 # TASKS / ACCESS

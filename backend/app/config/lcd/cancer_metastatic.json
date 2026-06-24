@@ -3,7 +3,12 @@
   "disease": "CANCER_METASTATIC",
   "lcd_reference": "LCD Hospice Eligibility Determination – Cancer",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
 
   "group_combination_rule": "ANY_GROUP_REQUIRED",
 
@@ -30,7 +35,7 @@
           "field": "cancer.metastatic_untreatable_at_presentation",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Cancer has metastasized and is untreatable at presentation"
+          "description": "Cancer has metastasized and is not treatable at presentation"
         }
       ]
     },
@@ -51,7 +56,7 @@
           "field": "cancer.declines_or_not_candidate_for_curative_therapy",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Ruled out as candidate or declines further curative therapy"
+          "description": "Patient declines or is not a candidate for curative therapy"
         }
       ]
     },
@@ -65,7 +70,7 @@
           "field": "cancer.suspicious_large_tumor_refuses_diagnosis",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Suspicious large tumor and refuses definitive diagnosis"
+          "description": "Suspicious large tumor and patient refuses definitive diagnosis"
         },
         {
           "criterion_id": "3b",

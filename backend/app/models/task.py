@@ -3,12 +3,15 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     Column,
     Date,
     DateTime,
     Enum as SAEnum,
     ForeignKey,
-    Text,                # ✅ REQUIRED
+    Integer,
+    Text,
+    String,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -17,7 +20,6 @@ from sqlalchemy.sql import func
 
 from app.db.base import Base
 
-# ✅ CANONICAL ENUMS (DO NOT RENAME)
 from app.models.enums import (
     TaskType,
     TaskOrigin,
@@ -73,7 +75,7 @@ class Task(Base):
     )
 
     # =====================================================
-    # LINKING (CRITICAL FOR WORKFLOW ENGINE)
+    # LINKING
     # =====================================================
     clinical_note_id = Column(
         UUID(as_uuid=True),
@@ -112,9 +114,6 @@ class Task(Base):
         nullable=True,
     )
 
-    # =====================================================
-    # ✅ CRITICAL FIX — ALERT REASON COLUMN
-    # =====================================================
     alert_reason = Column(Text, nullable=True)
 
     # =====================================================
@@ -123,18 +122,42 @@ class Task(Base):
     status = Column(
         SAEnum(TaskStatus, create_type=False),
         nullable=False,
-        server_default=text("'DUE'"),
+        server_default=text("'PENDING'"),
     )
+
+    # ✅ INTELLIGENCE FIELDS (FINAL)
+    priority = Column(String, nullable=True)
+    clinical_severity = Column(String, nullable=True)
+
+    # ✅ ROUTING + NOTIFICATION (FINAL FIX)
+    assigned_role = Column(String, nullable=True)
+    notification_required = Column(Boolean, nullable=False, server_default="false")
+    
+    
+    # ✅ TRACEABILITY (FINAL FIX)
+    reference_type = Column(String, nullable=True)
+    reference_id = Column(UUID(as_uuid=True), nullable=True)
 
     # =====================================================
     # DUE TIMING
     # =====================================================
     due_date = Column(Date, nullable=True)
-
     due_at = Column(DateTime(timezone=True), nullable=True)
 
     # =====================================================
-    # COMPLETION (AUDIT SAFE)
+    # SLA ENGINE
+    # =====================================================
+    sla_start_at = Column(DateTime(timezone=True), nullable=True)
+    sla_due_at = Column(DateTime(timezone=True), nullable=True)
+
+    is_overdue = Column(Boolean, nullable=False, server_default="false")
+
+    escalation_level = Column(Integer, nullable=False, server_default="0")
+    escalated_at = Column(DateTime(timezone=True), nullable=True)
+    escalation_reason = Column(Text, nullable=True)
+
+    # =====================================================
+    # COMPLETION
     # =====================================================
     completed_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -166,12 +189,6 @@ class Task(Base):
 
     benefit_period = relationship("BenefitPeriod", back_populates="tasks")
 
-    created_by_user = relationship(
-        "User",
-        foreign_keys=[created_by],
-    )
+    created_by_user = relationship("User", foreign_keys=[created_by])
 
-    assigned_user = relationship(
-        "User",
-        foreign_keys=[assigned_user_id],
-    )
+    assigned_user = relationship("User", foreign_keys=[assigned_user_id])

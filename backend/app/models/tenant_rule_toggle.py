@@ -1,7 +1,7 @@
 from sqlalchemy import Column, String, Boolean, DateTime, text
 from sqlalchemy.dialects.postgresql import UUID
 
-from app.core.database import Base
+from app.db.base import Base
 
 
 class TenantRuleToggle(Base):

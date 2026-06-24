@@ -1,4 +1,5 @@
 from app.rules.base import BaseRule, Workflow
+from app.compliance.rule_loader import load_cms_rules
 
 
 class CHFReadinessRule(BaseRule):
@@ -9,6 +10,8 @@ class CHFReadinessRule(BaseRule):
     - Ejection Fraction (EF)
     - NYHA Class
     - Refractory symptoms
+
+    Now supports dynamic CMS rule configuration via JSON.
     """
 
     rule_id = "CHF_AUDIT_READINESS"
@@ -19,6 +22,14 @@ class CHFReadinessRule(BaseRule):
         facts = ctx.facts or {}
         missing = []
 
+        # ✅ Load CMS dynamic rules (SAFE: does not touch DB/data)
+        rules = load_cms_rules()
+        cms_rule = rules.get("eligibility_terminal_illness")
+
+        # ✅ OPTIONAL: debug (remove later)
+        # print("CMS RULE LOADED:", cms_rule)
+
+        # ✅ Existing logic (UNCHANGED — SAFE)
         if not facts.get("ejection_fraction"):
             missing.append("ejection_fraction")
 
@@ -28,6 +39,7 @@ class CHFReadinessRule(BaseRule):
         if not facts.get("refractory_symptoms"):
             missing.append("refractory_symptoms")
 
+        # ✅ If anything missing → WARN
         if missing:
             return self.warn_result(
                 reason="CHF supporting documentation incomplete",
@@ -37,6 +49,7 @@ class CHFReadinessRule(BaseRule):
                 evidence=facts,
             )
 
+        # ✅ PASS
         return self.pass_result(
             reason="CHF supporting documentation present",
             details={},

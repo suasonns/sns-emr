@@ -1,43 +1,71 @@
 from __future__ import annotations
 
 import os
-from types import SimpleNamespace
+import uuid
 from uuid import UUID
+from typing import Optional
 
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 
-# IMPORTANT:
-# Do NOT put Depends(get_current_user) here
-# We control flow manually to allow DEV fallback
+from app.core.auth import CurrentUser
 
 
-def resolve_dashboard_user(current_user=None):
+# =========================================================
+# CONFIG
+# =========================================================
+
+ALLOW_DEV_BYPASS = os.getenv("ALLOW_DEV_DASHBOARD_BYPASS", "false").lower() == "true"
+
+ALLOWED_DASHBOARD_ROLES = {
+    "OWNER",
+    "ADMINISTRATOR",
+    "DPCS",
+    "RN",
+}
+
+
+# =========================================================
+# RESOLVER
+# =========================================================
+
+def resolve_dashboard_user(current_user: Optional[CurrentUser] = None) -> CurrentUser:
     """
-    ENTERPRISE AUTH RESOLVER (DEV + PROD)
+    ENTERPRISE DASHBOARD AUTH RESOLVER
 
-    Behavior:
+    Rules:
 
-    1. If valid authenticated user is passed → use it
-    2. If auth fails AND dev bypass is enabled → use dev user
-    3. Otherwise → raise 401
+    1. If valid authenticated user → use it ✅
+    2. DEV bypass allowed → controlled fallback ✅
+    3. Otherwise → reject ❌
 
-    This avoids FastAPI raising early before fallback executes.
+    Guarantees:
+    ✅ Always returns a consistent CurrentUser object
+    ✅ Enforces role validation
+    ✅ Marks dev bypass clearly (for audit)
+    ✅ Prevents silent production misuse
     """
 
-    allow_bypass = os.getenv("ALLOW_DEV_DASHBOARD_BYPASS", "false").lower() == "true"
-
-    # ✅ 1. REAL AUTH (PRODUCTION PATH)
+    # -----------------------------------------------------
+    # 1. AUTHENTICATED USER (PRODUCTION PATH)
+    # -----------------------------------------------------
     if current_user is not None:
+        if current_user.role not in ALLOWED_DASHBOARD_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not authorized for dashboard access",
+            )
         return current_user
 
-    # ✅ 2. DEV BYPASS MODE
-    if allow_bypass:
+    # -----------------------------------------------------
+    # 2. DEV BYPASS MODE
+    # -----------------------------------------------------
+    if ALLOW_DEV_BYPASS:
         tenant_id_raw = os.getenv("DEV_DASHBOARD_TENANT_ID", "").strip()
 
         if not tenant_id_raw:
             raise HTTPException(
                 status_code=500,
-                detail="DEV_DASHBOARD_TENANT_ID is not set in .env",
+                detail="DEV_DASHBOARD_TENANT_ID is not configured",
             )
 
         try:
@@ -45,16 +73,29 @@ def resolve_dashboard_user(current_user=None):
         except Exception:
             raise HTTPException(
                 status_code=500,
-                detail="DEV_DASHBOARD_TENANT_ID is not a valid UUID",
+                detail="DEV_DASHBOARD_TENANT_ID must be a valid UUID",
             )
 
-        return SimpleNamespace(
-            id="dev-user",
+        role = os.getenv("DEV_DASHBOARD_ROLE", "OWNER")
+
+        if role not in ALLOWED_DASHBOARD_ROLES:
+            raise HTTPException(
+                status_code=500,
+                detail="DEV_DASHBOARD_ROLE is not valid",
+            )
+
+        # ✅ RETURN REAL CurrentUser (NOT SimpleNamespace)
+        return CurrentUser(
+            user_id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            role=role,
             tenant_id=tenant_id,
-            role=os.getenv("DEV_DASHBOARD_ROLE", "OWNER"),
-            ai_enabled=os.getenv("DEV_DASHBOARD_AI_ENABLED", "true").lower()
-            == "true",
+            email="dev-dashboard@sns.local",
         )
 
-    # ❌ 3. NO AUTH
-    raise HTTPException(status_code=401, detail="Not authenticated")
+    # -----------------------------------------------------
+    # 3. NO AUTH → REJECT
+    # -----------------------------------------------------
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )

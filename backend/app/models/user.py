@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, ForeignKey
+from sqlalchemy import Column, String, Boolean, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import BaseModel
@@ -8,6 +8,9 @@ from app.models.tenant import Tenant  # ensures table registration
 class User(BaseModel):
     __tablename__ = "users"
 
+    # =========================================================
+    # TENANT ISOLATION (CRITICAL)
+    # =========================================================
     tenant_id = Column(
         UUID(as_uuid=True),
         ForeignKey("tenants.id", ondelete="RESTRICT"),
@@ -15,13 +18,64 @@ class User(BaseModel):
         index=True,
     )
 
-    email = Column(String, nullable=False, unique=True)
-    full_name = Column(String, nullable=False)
-    role = Column(String, nullable=False)
-    license_number = Column(String, nullable=True)
+    # =========================================================
+    # IDENTITY
+    # =========================================================
+    email = Column(
+        String,
+        nullable=False,
+    )
 
+    full_name = Column(
+        String,
+        nullable=False,
+    )
+
+    # =========================================================
+    # ROLE (FUNCTIONAL ROLE)
+    # =========================================================
+    role = Column(
+        String,
+        nullable=False,
+        index=True,
+    )
+
+    # =========================================================
+    # LICENSE (FOR CLINICAL STAFF)
+    # =========================================================
+    license_number = Column(
+        String,
+        nullable=True,
+    )
+
+    # =========================================================
+    # ACCESS CONTROL (NEW - PRODUCTION CRITICAL)
+    # =========================================================
+    access_level = Column(
+        String(32),
+        nullable=False,
+        server_default=text("'ROLE_BASED'"),
+        index=True,
+    )
+
+    # =========================================================
+    # STATUS
+    # =========================================================
     active = Column(
         Boolean,
         nullable=False,
-        default=True,
+        server_default=text("true"),
+        index=True,
+    )
+
+    # =========================================================
+    # CONSTRAINTS (ENTERPRISE SAFE)
+    # =========================================================
+    __table_args__ = (
+        Index(
+            "uq_users_tenant_email",
+            "tenant_id",
+            "email",
+            unique=True,
+        ),
     )

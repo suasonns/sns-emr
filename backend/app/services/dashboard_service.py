@@ -263,7 +263,7 @@ def get_owner_dashboard(
                     SELECT COUNT(*)
                     FROM tasks
                     WHERE tenant_id = :tenant_id
-                      AND status IN ('DUE', 'PENDING', 'OVERDUE')
+                      AND status IN ('PENDING', 'PENDING', 'OVERDUE')
                     """
                 ),
                 {"tenant_id": tenant_id},
@@ -526,7 +526,7 @@ def _safe_scalar(
 
 def _task_is_open(task: Task) -> bool:
     status = _enumish(getattr(task, "status", None)).upper()
-    return status in {"DUE", "PENDING", "OVERDUE"}
+    return status in {"PENDING", "PENDING", "OVERDUE"}
 
 
 def _has_flagged_content(note: ClinicalNote) -> bool:

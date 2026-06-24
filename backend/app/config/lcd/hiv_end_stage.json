@@ -3,7 +3,12 @@
   "disease": "HIV_END_STAGE",
   "lcd_reference": "LCD Hospice Eligibility Determination – HIV Disease",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
 
   "group_combination_rule": "ALL_GROUPS_REQUIRED",
 
@@ -38,14 +43,14 @@
           "field": "scores.kps",
           "operator": "LT",
           "expected": 50,
-          "description": "KPS < 50"
+          "description": "KPS less than 50"
         },
         {
           "criterion_id": "1b",
           "field": "scores.pps",
           "operator": "LT",
           "expected": 50,
-          "description": "PPS < 50"
+          "description": "PPS less than 50"
         }
       ]
     },
@@ -60,7 +65,7 @@
           "operator": "LT",
           "expected": 25,
           "unit": "cells/mcl",
-          "description": "CD4 count < 25 cells/mcl"
+          "description": "CD4 count less than 25 cells per mcl"
         },
         {
           "criterion_id": "2b",
@@ -68,14 +73,14 @@
           "operator": "GT",
           "expected": 100000,
           "unit": "copies/ml",
-          "description": "Persistent viral load > 100,000 copies/ml (two or more assays at least one month apart)"
+          "description": "Persistent viral load greater than 100000 copies per ml"
         },
         {
           "criterion_id": "2c",
           "field": "hiv.severe_condition_present",
           "operator": "EQUALS",
           "expected": true,
-          "description": "At least one severe HIV-associated condition present (e.g., CNS lymphoma, wasting, MAC bacteremia, PML, systemic lymphoma, visceral Kaposi’s, renal failure without dialysis, cryptosporidium, toxoplasmosis unresponsive)"
+          "description": "Presence of severe HIV-associated condition"
         }
       ]
     }

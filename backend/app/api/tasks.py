@@ -1,4 +1,3 @@
-# app/api/tasks.py
 from __future__ import annotations
 
 import uuid
@@ -6,6 +5,7 @@ from typing import Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
+from app.services.task_overdue_engine import run_overdue_engine
 
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
@@ -59,14 +59,10 @@ def require_valid_tenant(user=Depends(get_current_user)):
 
 
 # =========================================================
-# QUERY ENDPOINTS (READ‑ONLY, ENTERPRISE‑SAFE)
+# QUERY ENDPOINTS
 # =========================================================
 
-@router.get(
-    "/",
-    response_model=list[TaskResponse],
-    summary="List all tasks (tenant‑scoped)",
-)
+@router.get("/", response_model=list[TaskResponse])
 def list_tasks(
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_valid_tenant),
@@ -81,11 +77,7 @@ def list_tasks(
     )
 
 
-@router.get(
-    "/patients/{patient_id}",
-    response_model=list[TaskResponse],
-    summary="List tasks for a patient",
-)
+@router.get("/patients/{patient_id}", response_model=list[TaskResponse])
 def list_tasks_for_patient(
     patient_id: uuid.UUID,
     db: Session = Depends(get_db_with_request_state),
@@ -104,11 +96,7 @@ def list_tasks_for_patient(
     )
 
 
-@router.get(
-    "/escalated",
-    response_model=list[TaskResponse],
-    summary="List escalated tasks",
-)
+@router.get("/escalated", response_model=list[TaskResponse])
 def list_escalated_tasks(
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_valid_tenant),
@@ -122,5 +110,43 @@ def list_escalated_tasks(
             Task.status == "ESCALATED",
         )
         .order_by(Task.created_at.desc())
+        .all()
+    )
+
+
+# =========================================================
+# RN DASHBOARD
+# =========================================================
+
+@router.get(
+    "/dashboard",
+    response_model=list[TaskResponse],
+    summary="RN dashboard (actionable tasks)",
+)
+def rn_dashboard_tasks(
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_valid_tenant),
+):
+    tenant_id = user.tenant_id
+
+    print("RN DASHBOARD HIT")
+    print(f"tenant_id={tenant_id}")
+
+    updated = run_overdue_engine(
+        db=db,
+        tenant_id=tenant_id,
+    )
+
+    print(f"overdue_engine_updated={updated}")
+
+    db.commit()
+
+    return (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.status.in_(["PENDING", "OVERDUE", "ESCALATED"]),
+        )
+        .order_by(Task.due_date.asc(), Task.created_at.asc())
         .all()
     )

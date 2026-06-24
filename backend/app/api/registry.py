@@ -8,6 +8,7 @@ from app.api.support_reference import router as support_reference_router
 
 # ADMIN
 from app.api.admin.chart_export import router as admin_chart_export_router
+from app.api.routes import forms
 
 # COMMUNICATIONS LOG
 from app.api.communications_log.router import router as communications_log_router
@@ -27,6 +28,7 @@ from app.api import (
     documents,
     admin_reminders,
     admission_authorization,
+    med_reconciliation,
 )
 
 # DOMAIN / WORKFLOW
@@ -40,8 +42,12 @@ from app.api.clinical_notes.router import router as clinical_notes_router
 from app.api.idg.router import router as idg_router
 from app.api.dashboard.router import router as dashboard_router
 from app.api.audit_dashboard import router as audit_dashboard_router
+from app.api.clinical_translation import router as clinical_translation_router  # ✅ ADD THIS
 
-# TASK ENGINE
+# ✅ NEW TASK ROUTER (THIS IS THE FIX)
+from app.api.tasks import router as tasks_router
+
+# TASK ENGINE (existing)
 from app.api.task_completion import router as task_completion_router
 from app.api.task_scheduling import router as task_scheduling_router
 
@@ -76,9 +82,6 @@ except Exception:  # pragma: no cover
 def register_routers(app: FastAPI) -> None:
     """
     Canonical router registry.
-
-    IMPORTANT RULE:
-    - If a router defines prefix="/auth" internally, do NOT add "/auth" again here.
     """
 
     # =====================================================
@@ -112,11 +115,17 @@ def register_routers(app: FastAPI) -> None:
     tenant_routes = [
         patients.router,
         visits.router,
+        forms.router,
         notes.router,
         communications_log_router,
         clinical_notes_router,
         idg_router,
         dashboard_router,
+        clinical_translation_router,  # ✅ ADD THIS
+
+        # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
+        tasks_router,
+
         audit_dashboard_router,
         medications.router,
         chha_pocs.router,
@@ -128,9 +137,13 @@ def register_routers(app: FastAPI) -> None:
         documents.router,
         admin_reminders.router,
         admission_authorization.router,
+        med_reconciliation.router,
         soc_orders_router,
+
+        # Existing task system
         task_completion_router,
         task_scheduling_router,
+
         patient_assignments_router,
         eligibility_router,
         rules_router,
@@ -143,7 +156,7 @@ def register_routers(app: FastAPI) -> None:
         export_router,
         claim_status_router,
         audit_router,
-        billing_router,   # legacy billing LAST
+        billing_router,
         dev_test_router,
     ]
 

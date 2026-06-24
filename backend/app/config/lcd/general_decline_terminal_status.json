@@ -3,17 +3,33 @@
   "disease": "GENERAL_DECLINE_TERMINAL_STATUS",
   "lcd_reference": "CMS Medicare Coverage Database - LCD L33393 Hospice - Determining Terminal Status (Part I & Part II)",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
+
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
+
   "clinical_scores": {
-    "KPS": { "required": true, "operator": "LT", "threshold": 70 },
-    "PPS": { "required": true, "operator": "LT", "threshold": 70 },
+    "KPS": {
+      "required": true,
+      "operator": "LT",
+      "threshold": 70
+    },
+    "PPS": {
+      "required": true,
+      "operator": "LT",
+      "threshold": 70
+    },
     "FAST": null,
     "NYHA": null
   },
+
   "criteria_groups": [
     {
       "group_id": "I",
@@ -26,7 +42,7 @@
           "operator": "GTE",
           "expected": 10,
           "unit": "percent",
-          "description": "Weight loss ≥ 10% in prior 6 months"
+          "description": "Weight loss ≥ 10 percent in prior 6 months"
         },
         {
           "criterion_id": "I-9",
@@ -47,7 +63,7 @@
           "field": "scores.kps_or_pps_lt_70",
           "operator": "EQUALS",
           "expected": true,
-          "description": "KPS or PPS < 70%"
+          "description": "KPS or PPS less than 70 percent"
         },
         {
           "criterion_id": "II-B",
@@ -59,5 +75,7 @@
       ]
     }
   ],
+
+  "clinical_notes": "",
   "source_document": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?LCDId=33393"
 }

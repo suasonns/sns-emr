@@ -4,7 +4,7 @@ from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 # ---------------------------------------------------------
-# FULL NAMING CONVENTION (ENTERPRISE REQUIRED)
+# ✅ ENTERPRISE NAMING CONVENTION (NON-NEGOTIABLE)
 # ---------------------------------------------------------
 
 NAMING_CONVENTION = {
@@ -18,21 +18,26 @@ NAMING_CONVENTION = {
 metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
+# ---------------------------------------------------------
+# ✅ CANONICAL BASE (USED BY ALL MODELS)
+# ---------------------------------------------------------
+
 class Base(DeclarativeBase):
     """
     ✅ Canonical SQLAlchemy Base for SNS Hospice EMR
 
     CRITICAL RULES:
-    - ALL models must inherit from this Base
+    - ALL ORM models must inherit from this Base
     - Alembic uses this metadata for autogenerate
+    - No model should define its own metadata
     """
     metadata = metadata
 
 
 # ---------------------------------------------------------
-# 🔴 CRITICAL: MODEL REGISTRATION (NEVER REMOVE)
+# 🔴 CRITICAL: FORCE MODEL REGISTRATION
 # ---------------------------------------------------------
-
-# This MUST run at import time so Alembic sees all tables
+# ✅ This guarantees all models are loaded into SQLAlchemy metadata
+# ✅ Required for Alembic autogenerate to detect tables
 
 import app.models  # noqa: F401

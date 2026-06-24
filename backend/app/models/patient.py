@@ -112,6 +112,13 @@ class Patient(TenantScopedMixin, BaseModel):
     # ---------------------------------------------------------
     # RELATIONSHIPS (ENTERPRISE-SAFE)
     # ---------------------------------------------------------
+    
+    assignments = relationship(
+        "PatientAssignment",
+        back_populates="patient"
+    )
+
+
     tasks = relationship(
         "Task",
         back_populates="patient",

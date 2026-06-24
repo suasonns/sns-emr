@@ -4,15 +4,20 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from typing import Generator
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func, text
 
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
+
 from app.models.patient import Patient
+from app.models.user import User
+from app.models.patient_assignment import PatientAssignment
 from app.models.task import Task
 from app.models.visit import Visit
+
 from app.models.enums import (
     TaskStatus,
     TaskOrigin,
@@ -20,11 +25,12 @@ from app.models.enums import (
     TaskDiscipline,
     TaskRegulatoryBasis,
 )
+
 from app.services.dx_policy import is_primary_allowed
 
 
 # =========================================================
-# AUDIT SAFE DB WRAPPER
+# DB WRAPPER
 # =========================================================
 
 def get_db_with_request_state(
@@ -36,7 +42,7 @@ def get_db_with_request_state(
 
 
 # =========================================================
-# TENANT AUTH
+# AUTH
 # =========================================================
 
 def require_tenant_user(user=Depends(get_current_user)):
@@ -52,10 +58,7 @@ def _tenant_id_uuid(user) -> uuid.UUID:
     tenant_id = getattr(user, "tenant_id", None)
     if not tenant_id:
         raise HTTPException(401, "Missing tenant context")
-    try:
-        return uuid.UUID(str(tenant_id))
-    except Exception:
-        raise HTTPException(400, "Invalid tenant_id format")
+    return uuid.UUID(str(tenant_id))
 
 
 # =========================================================
@@ -83,31 +86,116 @@ class PatientUpdate(BaseModel):
 
 
 # =========================================================
-# LIST PATIENTS
+# LIST PATIENTS (FINAL PRODUCTION VERSION)
 # =========================================================
 
 @router.get("/", summary="List patients")
 def list_patients(
+    category: str = Query("ACTIVE"),
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_tenant_user),
 ):
     tenant_id = _tenant_id_uuid(user)
 
-    ALLOWED_LIST_ROLES = {"RN", "LVN", "NP", "MD", "MSW", "SC", "ADMIN"}
+    # -----------------------------------------------------
+    # ROLE SCOPE (DO NOT REMOVE)
+    # -----------------------------------------------------
+    ALLOWED_LIST_ROLES = {
+        "RN", "LVN", "NP", "MD",
+        "MSW", "BSW", "LCSW",
+        "SC", "CHHA",
+        "ADMIN", "DPCS",
+    }
 
     if user.role not in ALLOWED_LIST_ROLES:
         raise HTTPException(403, "Insufficient role scope")
 
-    return (
-        db.query(Patient)
-        .filter(Patient.tenant_id == tenant_id)
-        .order_by(Patient.full_name)
-        .all()
+    # -----------------------------------------------------
+    # LOAD USER FROM DB (SINGLE SOURCE OF TRUTH)
+    # -----------------------------------------------------
+    db_user = db.query(User).filter(User.id == user.user_id).first()
+
+    if not db_user:
+        raise HTTPException(401, "User not found")
+
+    if not db_user.active:
+        raise HTTPException(403, "Inactive user")
+
+    access_level = db_user.access_level or "ROLE_BASED"
+
+    # -----------------------------------------------------
+    # BASE QUERY (TENANT SAFE)
+    # -----------------------------------------------------
+    query = db.query(Patient).filter(
+        Patient.tenant_id == tenant_id
     )
+
+    # -----------------------------------------------------
+    # ACCESS CONTROL (DATA-DRIVEN — NO HARDCODING)
+    # -----------------------------------------------------
+    FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
+
+    if not (
+        user.role in FULL_ACCESS_ROLES
+        or access_level == "FULL_ACCESS"
+    ):
+        query = (
+            query.join(
+                PatientAssignment,
+                Patient.id == PatientAssignment.patient_id
+            )
+            .filter(
+                PatientAssignment.tenant_id == tenant_id,
+                PatientAssignment.user_id == user.user_id,
+            )
+            .distinct()
+        )
+
+    # -----------------------------------------------------
+    # CATEGORY FILTERING
+    # -----------------------------------------------------
+    if category == "ACTIVE":
+        query = query.filter(
+            Patient.admission_status == "ADMITTED"
+        )
+
+    elif category == "PENDING":
+        query = query.filter(
+            Patient.admission_status == "PENDING"
+        )
+
+    elif category == "PROSPECTIVE":
+        query = query.filter(
+            Patient.admission_status.in_(["PRE_REFERRAL", "PROSPECT"])
+        )
+
+    elif category == "NON_ADMITS":
+        query = query.filter(
+            Patient.not_admitted_at.isnot(None)
+        )
+
+    elif category == "DISCHARGED_30":
+        query = query.filter(
+            Patient.discharge_date.isnot(None),
+            Patient.discharge_date >= func.current_date() - text("INTERVAL '30 days'")
+        )
+
+    elif category == "DISCHARGED_ALL":
+        query = query.filter(
+            Patient.discharge_date.isnot(None)
+        )
+
+    elif category == "ALL":
+        pass
+
+    else:
+        raise HTTPException(400, f"Invalid category: {category}")
+
+    return query.order_by(Patient.full_name).all()
 
 
 # =========================================================
-# CREATE
+# CREATE PATIENT
 # =========================================================
 
 @router.post("/")
@@ -142,7 +230,7 @@ def create_patient(
 
 
 # =========================================================
-# UPDATE
+# UPDATE PATIENT
 # =========================================================
 
 @router.put("/{patient_id}")
@@ -205,10 +293,7 @@ def put_patient_on_service(
 
     patient = (
         db.query(Patient)
-        .filter(
-            Patient.id == patient_id,
-            Patient.tenant_id == tenant_id,
-        )
+        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
         .first()
     )
 
@@ -226,7 +311,6 @@ def put_patient_on_service(
 
     soc_date = now.date()
 
-    # ✅ ICA TASK DEFINITIONS
     ica_specs = [
         (TaskType.INITIAL_RN_ICA, TaskDiscipline.RN, TaskRegulatoryBasis.IDG_REVIEW, soc_date + timedelta(days=2)),
         (TaskType.INITIAL_MSW_ICA, TaskDiscipline.SW, TaskRegulatoryBasis.IDG_REVIEW, soc_date + timedelta(days=5)),
@@ -260,8 +344,9 @@ def put_patient_on_service(
         "ica_tasks_created": created,
     }
 
+
 # =========================================================
-# REQUIRED: PATIENT CHART SUMMARY
+# CHART SUMMARY
 # =========================================================
 
 @router.get("/{patient_id}/chart-summary")

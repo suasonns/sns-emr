@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -12,7 +11,7 @@ from app.models.enums import (
     TaskType,
     CompletionReferenceType,
 )
-from app.services.task_completion_service import complete_task_with_evidence
+from app.services.task_completion_evidence import complete_task_with_evidence
 
 
 def auto_complete_tasks_for_visit(
@@ -28,12 +27,11 @@ def auto_complete_tasks_for_visit(
     - Completion is evidence-based (VISIT)
     - Uses canonical completion service
     - DB CHECK constraint enforces correctness
+    - Caller owns the outer transaction/commit
     """
-
-    if not visit.finalized_at:
+    if not getattr(visit, "finalized_at", None):
         return
 
-    # Tasks this visit can satisfy
     completable_task_types = {
         TaskType.INITIAL_RN_ICA,
         TaskType.INITIAL_MSW_ICA,
@@ -54,11 +52,11 @@ def auto_complete_tasks_for_visit(
 
     for task in tasks:
         complete_task_with_evidence(
-            db=db,
-            task=task,
-            reference_type=CompletionReferenceType.VISIT,
-            reference_id=visit.id,
-            user_id=user_id,
+            db,
+            task_id=task.id,
+            completion_reference_type=CompletionReferenceType.VISIT,
+            completion_reference_id=visit.id,
+            completed_by=user_id,
         )
 
-    # DO NOT commit here — caller controls transaction
+    # DO NOT commit here — caller controls transaction.

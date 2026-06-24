@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+from enum import Enum
+
+
+class FormType(str, Enum):
+    AFTER_DEATH = "AFTER_DEATH"
+    AFTER_HOURS = "AFTER_HOURS"
+    ANCILLARY_SUPPORT = "ANCILLARY_SUPPORT"
+    ASSESS = "ASSESS"
+    BEREAVEMENT_VISIT = "BEREAVEMENT_VISIT"
+    DEATH_VISIT = "DEATH_VISIT"
+    DECLINED_VISIT = "DECLINED_VISIT"
+    MISSED_VISIT = "MISSED_VISIT"
+    OFFICE_HOURS = "OFFICE_HOURS"
+    ON_CALL_TRIAGE = "ON_CALL_TRIAGE"
+    PRE_ADMIT_EVAL = "PRE_ADMIT_EVAL"
+    RESPITE_RELIEF = "RESPITE_RELIEF"
+    SHORT_FORM = "SHORT_FORM"
+    SUPV_VISIT_ONLY = "SUPV_VISIT_ONLY"
+    VOLUNTEER_SUPPORT = "VOLUNTEER_SUPPORT"
+    WEEKENDS = "WEEKENDS"
+
+
+class FormFamily(str, Enum):
+    CLINICAL = "CLINICAL"
+    PSYCHOSOCIAL = "PSYCHOSOCIAL"
+    SPIRITUAL = "SPIRITUAL"
+    SUPPORT = "SUPPORT"
+    MEDICAL = "MEDICAL"
+    ADMIN = "ADMIN"
+
+
+class Discipline(str, Enum):
+    RN = "RN"
+    NP = "NP"
+    LVN = "LVN"
+    MSW = "MSW"
+    SW = "SW"
+    BSW = "BSW"
+    LCSW = "LCSW"
+    SC = "SC"
+    CHAPLAIN = "CHAPLAIN"
+    CHHA = "CHHA"
+    AIDE = "AIDE"
+    MD = "MD"
+    VOLUNTEER = "VOLUNTEER"

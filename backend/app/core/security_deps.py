@@ -1,13 +1,14 @@
-from typing import Optional
+from __future__ import annotations
+
 from fastapi import Depends
-import uuid
+
+from app.core.security import CurrentUser, get_current_user
 
 
-def get_current_user_id() -> str:
+def get_current_user_id(
+    user: CurrentUser = Depends(get_current_user),
+) -> str:
     """
-    Temporary placeholder for authentication.
-
-    Replace later with real JWT / auth system.
+    Returns the authenticated clinical user's UUID as a stable string.
     """
-
-    return str(uuid.uuid4())
+    return str(user.user_id)

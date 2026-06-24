@@ -1,9 +1,17 @@
 {
   "source": "CMS LCD L33393 Part II comorbidity categories + ICD-10 examples",
+
   "primary_dx_guardrail": {
     "deny_prefixes": ["F", "R", "V", "W", "X", "Y", "Z"],
     "note": "These prefixes are allowed as secondary/comorbidity but not as PRIMARY diagnosis."
   },
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
+
   "categories": [
     {
       "category_key": "HEART_DISEASE_CHF",

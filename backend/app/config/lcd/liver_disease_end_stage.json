@@ -3,7 +3,12 @@
   "disease": "LIVER_DISEASE_END_STAGE",
   "lcd_reference": "LCD Hospice Eligibility Determination – Liver Disease",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
 
   "group_combination_rule": "ALL_GROUPS_REQUIRED",
 
@@ -31,14 +36,14 @@
           "operator": "GT",
           "expected": 5,
           "unit": "seconds",
-          "description": "Prothrombin time prolonged > 5 seconds over control"
+          "description": "Prothrombin time greater than 5 seconds over control"
         },
         {
           "criterion_id": "1a_ii",
           "field": "labs.inr",
           "operator": "GT",
           "expected": 1.5,
-          "description": "INR > 1.5"
+          "description": "INR greater than 1.5"
         },
         {
           "criterion_id": "1b",
@@ -46,10 +51,10 @@
           "operator": "LT",
           "expected": 2.5,
           "unit": "gm/dl",
-          "description": "Serum albumin < 2.5 gm/dl"
+          "description": "Serum albumin less than 2.5 gm/dl"
         }
       ],
-      "notes": "LCD form presents PT>5 seconds OR INR>1.5; implementation may treat as ANY_REQUIRED between 1a_i and 1a_ii, with 1b required."
+      "notes": "LCD indicates PT or INR may be sufficient; engine may evaluate group 1a_i OR 1a_ii with albumin as required."
     },
     {
       "group_id": "2",
@@ -75,21 +80,21 @@
           "field": "liver.hepatorenal_syndrome",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Hepatorenal syndrome (elevated creatinine/BUN + oliguria + urine sodium <10 mEq/L)"
+          "description": "Hepatorenal syndrome"
         },
         {
           "criterion_id": "2d",
           "field": "liver.hepatic_encephalopathy_refractory",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Hepatic encephalopathy refractory or non-compliant"
+          "description": "Hepatic encephalopathy refractory or uncontrolled"
         },
         {
           "criterion_id": "2e",
           "field": "liver.recurrent_variceal_bleeding_despite_therapy",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Recurrent variceal bleeding despite intensive therapy"
+          "description": "Recurrent variceal bleeding despite therapy"
         }
       ]
     }
@@ -99,32 +104,32 @@
     {
       "factor_id": "3a",
       "field": "nutrition.progressive_malnutrition",
-      "description": "Progressive malnutrition (supporting)"
+      "description": "Progressive malnutrition"
     },
     {
       "factor_id": "3b",
       "field": "nutrition.muscle_wasting",
-      "description": "Muscle wasting with reduced strength/endurance (supporting)"
+      "description": "Muscle wasting with reduced strength or endurance"
     },
     {
       "factor_id": "3c",
       "field": "substance.continued_active_alcoholism_gt_80g_day",
-      "description": "Continued active alcoholism > 80 gm ethanol/day (supporting)"
+      "description": "Continued active alcoholism greater than 80 grams ethanol per day"
     },
     {
       "factor_id": "3d",
       "field": "liver.hepatocellular_carcinoma",
-      "description": "Hepatocellular carcinoma (supporting)"
+      "description": "Hepatocellular carcinoma"
     },
     {
       "factor_id": "3e",
       "field": "liver.hbsag_positive",
-      "description": "HBsAg positivity (supporting)"
+      "description": "HBsAg positivity"
     },
     {
       "factor_id": "3f",
       "field": "liver.hepatitis_c_refractory_to_interferon",
-      "description": "Hepatitis C refractory to interferon treatment (supporting)"
+      "description": "Hepatitis C refractory to interferon therapy"
     }
   ],
 

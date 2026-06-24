@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
@@ -36,7 +37,7 @@ INCIDENT_SEVERITY_SIGNIFICANT = "SIGNIFICANT"
 INCIDENT_SEVERITY_SENTINEL = "SENTINEL"
 
 DISCIPLINES_ALLOWED = {"RN", "LVN", "MSW", "SC", "HHA", "CHHA", "MD", "NP"}
-CARE_LEVELS_ALLOWED = {"RC", "CC", "GIP", "RSP"}
+CARE_LEVELS_ALLOWED = {"RC", "CC", "GIP", "RSP", "ROUTINE", "CRISIS"}
 ENCOUNTER_TYPES_ALLOWED = {"COMPREHENSIVE", "ROUTINE", "PRN", "IDG", "DISCIPLINE"}
 
 REQUIRED_FULL_ROS_SECTIONS = {
@@ -70,7 +71,15 @@ class ValidationResult:
     warnings: list[str]
     red_flags: list[str]
     audit_flags: list[str]
-    needs_clarification: list[str]
+
+    # IMPORTANT:
+    # clinical_notes.needs_clarification is a BOOLEAN column.
+    # Therefore this DTO exposes both:
+    # - needs_clarification: boolean summary
+    # - clarification_items: list of reasons
+    needs_clarification: bool
+    clarification_items: list[str]
+
     incident_required: bool
     incident_status: str
     incident_id: UUID | None
@@ -92,15 +101,20 @@ def validate_and_trigger_incident(
 
     Behavior:
     - Reads observed_data, patient_reported, caregiver_reported, assessment,
-      interventions, plan_of_care_updates
-    - Writes warnings to note.red_flags / note.audit_flags / note.needs_clarification
-    - Auto-creates incident_reports placeholder when incident criteria are met
-    - Does NOT block signing; it surfaces issues and marks incident workflow pending
+      interventions, and plan_of_care_updates.
+    - Writes validation summaries to:
+        - note.red_flags          JSON list
+        - note.audit_flags        JSON list
+        - note.needs_clarification BOOLEAN
+    - Auto-creates incident_reports placeholder when incident criteria are met.
+    - Does NOT block signing.
+    - Does NOT commit internally. Transaction ownership belongs to caller.
     """
+
     warnings: list[str] = []
     red_flags: list[str] = []
     audit_flags: list[str] = []
-    needs_clarification: list[str] = []
+    clarification_items: list[str] = []
 
     observed = _obj(note.observed_data)
     patient_reported = _obj(note.patient_reported)
@@ -110,10 +124,30 @@ def validate_and_trigger_incident(
     _ = _obj(note.plan_of_care_updates)
 
     _validate_core_classification(note, warnings, red_flags)
-    _validate_truth_layers(observed, patient_reported, caregiver_reported, needs_clarification)
-    _validate_required_ros(note, observed, assessment, warnings, audit_flags)
-    _validate_symptom_interventions(observed, interventions, warnings)
-    _validate_discipline_specific(note, observed, assessment, warnings)
+    _validate_truth_layers(
+        observed=observed,
+        patient_reported=patient_reported,
+        caregiver_reported=caregiver_reported,
+        clarification_items=clarification_items,
+    )
+    _validate_required_ros(
+        note=note,
+        observed=observed,
+        assessment=assessment,
+        warnings=warnings,
+        audit_flags=audit_flags,
+    )
+    _validate_symptom_interventions(
+        observed=observed,
+        interventions=interventions,
+        warnings=warnings,
+    )
+    _validate_discipline_specific(
+        note=note,
+        observed=observed,
+        assessment=assessment,
+        warnings=warnings,
+    )
 
     incident_decision = _detect_incident(
         note=note,
@@ -124,7 +158,7 @@ def validate_and_trigger_incident(
         interventions=interventions,
         warnings=warnings,
         red_flags=red_flags,
-        needs_clarification=needs_clarification,
+        clarification_items=clarification_items,
     )
 
     incident_id: UUID | None = None
@@ -146,14 +180,23 @@ def validate_and_trigger_incident(
         incident_status = INCIDENT_STATUS_PENDING
         audit_flags.append(f"incident_triggered:{incident_decision['incident_type']}")
 
-    note.needs_clarification = _merge_json_list(note.needs_clarification, needs_clarification)
+    # ---------------------------------------------------------
+    # CRITICAL FIX:
+    # needs_clarification is BOOLEAN in clinical_notes.
+    # Do NOT assign list here.
+    # ---------------------------------------------------------
+    note.needs_clarification = bool(clarification_items)
+
     note.red_flags = _merge_json_list(note.red_flags, red_flags)
     note.audit_flags = _merge_json_list(note.audit_flags, audit_flags)
-    note.incident_required = incident_decision["required"]
+    note.incident_required = bool(incident_decision["required"])
     note.incident_status = incident_status
 
     if incident_id and hasattr(note, "incident_id"):
         note.incident_id = incident_id
+
+    _flag_json_modified(note, "red_flags")
+    _flag_json_modified(note, "audit_flags")
 
     _write_audit_log(
         db=db,
@@ -165,15 +208,15 @@ def validate_and_trigger_incident(
     )
 
     db.add(note)
-    db.commit()
-    db.refresh(note)
+    db.flush()
 
     return ValidationResult(
         warnings=warnings,
         red_flags=red_flags,
         audit_flags=audit_flags,
-        needs_clarification=needs_clarification,
-        incident_required=incident_decision["required"],
+        needs_clarification=bool(clarification_items),
+        clarification_items=clarification_items,
+        incident_required=bool(incident_decision["required"]),
         incident_status=incident_status,
         incident_id=incident_id,
     )
@@ -183,37 +226,49 @@ def validate_and_trigger_incident(
 # VALIDATION RULES
 # =========================================================
 
-def _validate_core_classification(note: ClinicalNote, warnings: list[str], red_flags: list[str]) -> None:
-    if note.care_level not in CARE_LEVELS_ALLOWED:
-        red_flags.append(f"invalid_care_level:{note.care_level}")
+def _validate_core_classification(
+    note: ClinicalNote,
+    warnings: list[str],
+    red_flags: list[str],
+) -> None:
+    care_level = _clean_upper(getattr(note, "care_level", None))
+    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
+    discipline = _clean_upper(getattr(note, "discipline", None))
+    visit_type = _clean_upper(getattr(note, "visit_type", None))
+    visit_origin = _clean_upper(getattr(note, "visit_origin", None))
 
-    if note.encounter_type not in ENCOUNTER_TYPES_ALLOWED:
-        red_flags.append(f"invalid_encounter_type:{note.encounter_type}")
+    if care_level and care_level not in CARE_LEVELS_ALLOWED:
+        red_flags.append(f"invalid_care_level:{care_level}")
 
-    if note.discipline not in DISCIPLINES_ALLOWED:
-        red_flags.append(f"invalid_discipline:{note.discipline}")
+    if encounter_type and encounter_type not in ENCOUNTER_TYPES_ALLOWED:
+        red_flags.append(f"invalid_encounter_type:{encounter_type}")
 
-    if note.visit_type in {"PRN", "CRISIS"} and note.visit_origin == "SCHEDULED":
+    if discipline and discipline not in DISCIPLINES_ALLOWED:
+        red_flags.append(f"invalid_discipline:{discipline}")
+
+    if visit_type in {"PRN", "CRISIS"} and visit_origin == "SCHEDULED":
         warnings.append("visit_type suggests unscheduled workflow but visit_origin is scheduled")
 
 
 def _validate_truth_layers(
+    *,
     observed: dict[str, Any],
     patient_reported: dict[str, Any],
     caregiver_reported: dict[str, Any],
-    needs_clarification: list[str],
+    clarification_items: list[str],
 ) -> None:
     if observed and not isinstance(observed, dict):
-        needs_clarification.append("observed_data must be structured json object")
+        clarification_items.append("observed_data must be structured json object")
 
     if patient_reported and not isinstance(patient_reported, dict):
-        needs_clarification.append("patient_reported must be structured json object")
+        clarification_items.append("patient_reported must be structured json object")
 
     if caregiver_reported and not isinstance(caregiver_reported, dict):
-        needs_clarification.append("caregiver_reported must be structured json object")
+        clarification_items.append("caregiver_reported must be structured json object")
 
 
 def _validate_required_ros(
+    *,
     note: ClinicalNote,
     observed: dict[str, Any],
     assessment: dict[str, Any],
@@ -221,14 +276,15 @@ def _validate_required_ros(
     audit_flags: list[str],
 ) -> None:
     ros = _obj(observed.get("review_of_systems") or assessment.get("review_of_systems"))
+    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
 
-    if note.encounter_type == "COMPREHENSIVE":
+    if encounter_type == "COMPREHENSIVE":
         missing = sorted(section for section in REQUIRED_FULL_ROS_SECTIONS if section not in ros)
         if missing:
             warnings.append(f"comprehensive_missing_ros:{', '.join(missing)}")
             audit_flags.append("full_ros_incomplete")
 
-    elif note.encounter_type in {"ROUTINE", "PRN"}:
+    elif encounter_type in {"ROUTINE", "PRN"}:
         present = {section for section in REQUIRED_FOCUSED_ROS_SECTIONS if section in ros}
         if not present:
             warnings.append("routine_or_prn_note_missing_focused_ros")
@@ -236,6 +292,7 @@ def _validate_required_ros(
 
 
 def _validate_symptom_interventions(
+    *,
     observed: dict[str, Any],
     interventions: dict[str, Any],
     warnings: list[str],
@@ -257,22 +314,27 @@ def _validate_symptom_interventions(
 
 
 def _validate_discipline_specific(
+    *,
     note: ClinicalNote,
     observed: dict[str, Any],
     assessment: dict[str, Any],
     warnings: list[str],
 ) -> None:
-    if note.discipline in {"MSW", "SC"}:
+    discipline = _clean_upper(getattr(note, "discipline", None))
+    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
+    visit_type = _clean_upper(getattr(note, "visit_type", None))
+
+    if discipline in {"MSW", "SC"}:
         baseline_ref = assessment.get("rn_baseline_reference_id")
-        if note.encounter_type == "COMPREHENSIVE" and not baseline_ref:
+        if encounter_type == "COMPREHENSIVE" and not baseline_ref:
             warnings.append("msw_sc_comprehensive_note_missing_rn_baseline_reference")
 
-    if note.discipline in {"HHA", "CHHA"}:
+    if discipline in {"HHA", "CHHA"}:
         adls = _obj(observed.get("adls"))
         if not adls:
             warnings.append("hha_note_missing_adl_observation")
 
-    if note.discipline in {"MD", "NP"} and note.visit_type == "F2F":
+    if discipline in {"MD", "NP"} and visit_type == "F2F":
         if not assessment.get("eligibility_justification"):
             warnings.append("f2f_note_missing_eligibility_justification")
 
@@ -291,14 +353,20 @@ def _detect_incident(
     interventions: dict[str, Any],
     warnings: list[str],
     red_flags: list[str],
-    needs_clarification: list[str],
+    clarification_items: list[str],
 ) -> dict[str, Any]:
     incident_required = False
     incident_type = INCIDENT_TYPE_OTHER
     incident_severity = INCIDENT_SEVERITY_STANDARD
 
-    fall_reported = _truthy(caregiver_reported.get("fall_reported")) or _truthy(patient_reported.get("fall_reported"))
-    fall_observed = _truthy(observed.get("fall")) or _truthy(_obj(observed.get("incident")).get("fall"))
+    fall_reported = (
+        _truthy(caregiver_reported.get("fall_reported"))
+        or _truthy(patient_reported.get("fall_reported"))
+    )
+    fall_observed = (
+        _truthy(observed.get("fall"))
+        or _truthy(_obj(observed.get("incident")).get("fall"))
+    )
 
     skin = _obj(observed.get("skin"))
     injury = _obj(observed.get("injury"))
@@ -309,8 +377,9 @@ def _detect_incident(
     bruise = _truthy(injury.get("bruise")) or _truthy(skin.get("bruising"))
     laceration = _truthy(injury.get("laceration"))
     fracture = _truthy(injury.get("fracture"))
-    hospitalization_required = _truthy(injury.get("hospitalization_required")) or _truthy(
-        disposition.get("hospitalization_required")
+    hospitalization_required = (
+        _truthy(injury.get("hospitalization_required"))
+        or _truthy(disposition.get("hospitalization_required"))
     )
 
     if fall_reported or fall_observed:
@@ -344,12 +413,12 @@ def _detect_incident(
 
     if caregiver_no_injury and injury_observed:
         red_flags.append("reported_no_injury_but_clinician_observed_injury")
-        needs_clarification.append("family/facility report of no injury differs from clinician findings")
+        clarification_items.append("family/facility report of no injury differs from clinician findings")
         incident_required = True
         if incident_type == INCIDENT_TYPE_OTHER and (fall_reported or fall_observed):
             incident_type = INCIDENT_TYPE_FALL
 
-    if incident_required and note.note_category == "MISSED_VISIT":
+    if incident_required and getattr(note, "note_category", None) == "MISSED_VISIT":
         warnings.append("incident flagged on note that appears to be a missed visit; review workflow context")
 
     return {
@@ -423,6 +492,7 @@ def _ensure_incident_report(
         narrative=narrative,
         entered_by=actor_user_id,
     )
+
     db.add(incident)
     db.flush()
 
@@ -455,41 +525,44 @@ def _write_audit_log(
         return
 
     try:
-        db.execute(
-            text(
-                """
-                INSERT INTO public.audit_logs (
-                    id,
-                    user_id,
-                    action,
-                    entity_type,
-                    entity_id,
-                    role,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    gen_random_uuid(),
-                    :user_id,
-                    :action,
-                    :entity_type,
-                    :entity_id,
-                    :role,
-                    NOW(),
-                    NOW()
-                )
-                """
-            ),
-            {
-                "user_id": actor_user_id,
-                "action": action,
-                "entity_type": entity_type,
-                "entity_id": entity_id,
-                "role": actor_role,
-            },
-        )
+        with db.begin_nested():
+            db.execute(
+                text(
+                    """
+                    INSERT INTO public.audit_logs (
+                        id,
+                        user_id,
+                        action,
+                        entity_type,
+                        entity_id,
+                        role,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        gen_random_uuid(),
+                        :user_id,
+                        :action,
+                        :entity_type,
+                        :entity_id,
+                        :role,
+                        NOW(),
+                        NOW()
+                    )
+                    """
+                ),
+                {
+                    "user_id": actor_user_id,
+                    "action": action,
+                    "entity_type": entity_type,
+                    "entity_id": entity_id,
+                    "role": actor_role,
+                },
+            )
     except SQLAlchemyError:
-        db.rollback()
+        # Best-effort only.
+        # Do not rollback the caller's clinical note transaction.
+        return
 
 
 # =========================================================
@@ -506,13 +579,27 @@ def _merge_json_list(existing: Any, additions: list[str]) -> list[str]:
     return merged
 
 
+def _flag_json_modified(note: ClinicalNote, attr_name: str) -> None:
+    try:
+        flag_modified(note, attr_name)
+    except Exception:
+        return
+
+
+def _clean_upper(value: Any) -> str:
+    return str(value or "").strip().upper()
+
+
 def _truthy(value: Any) -> bool:
     if isinstance(value, bool):
         return value
+
     if isinstance(value, (int, float)):
         return value != 0
+
     if isinstance(value, str):
         return value.strip().lower() in {"true", "yes", "y", "1", "present", "required"}
+
     return False
 
 
@@ -566,18 +653,33 @@ def _coerce_witness_party(data: dict[str, Any]) -> str | None:
 
 
 def _coerce_place(observed: dict[str, Any], assessment: dict[str, Any]) -> str | None:
-    place = str((observed.get("incident") or {}).get("place") or assessment.get("place") or "").strip().upper()
+    place = str(
+        _obj(observed.get("incident")).get("place")
+        or assessment.get("place")
+        or ""
+    ).strip().upper()
+
     return place if place in {"POS", "OTHER"} else None
 
 
 def _coerce_area(observed: dict[str, Any], assessment: dict[str, Any]) -> str | None:
-    area = str((observed.get("incident") or {}).get("area") or assessment.get("area") or "").strip().upper()
+    area = str(
+        _obj(observed.get("incident")).get("area")
+        or assessment.get("area")
+        or ""
+    ).strip().upper()
+
     approved = {"PT_ROOM_BEDROOM", "HALLWAY", "BATHROOM", "STEPS", "KITCHEN", "OTHER"}
     return area if area in approved else None
 
 
 def _coerce_surface(observed: dict[str, Any], assessment: dict[str, Any]) -> str | None:
-    surface = str((observed.get("incident") or {}).get("surface") or assessment.get("surface") or "").strip().upper()
+    surface = str(
+        _obj(observed.get("incident")).get("surface")
+        or assessment.get("surface")
+        or ""
+    ).strip().upper()
+
     approved = {"CARPET", "RUNNER", "THROW_AWAY_RUG", "SLAB", "WOOD", "OTHER"}
     return surface if surface in approved else None
 
@@ -588,12 +690,16 @@ def _coerce_medication_used(observed: dict[str, Any]) -> str | None:
     return med_used if med_used in approved else None
 
 
-def _coerce_activity(observed: dict[str, Any], caregiver_reported: dict[str, Any]) -> str | None:
+def _coerce_activity(
+    observed: dict[str, Any],
+    caregiver_reported: dict[str, Any],
+) -> str | None:
     activity = str(
         _obj(observed.get("incident")).get("activity_at_time")
         or caregiver_reported.get("activity_at_time")
         or ""
     ).strip().upper()
+
     approved = {
         "REACHING_CHAIR_TO_BED",
         "REACHING_BED_TO_CHAIR",
@@ -603,19 +709,29 @@ def _coerce_activity(observed: dict[str, Any], caregiver_reported: dict[str, Any
         "SITTING",
         "OTHER",
     }
+
     return activity if activity in approved else None
 
 
-def _coerce_injury_level(observed: dict[str, Any], assessment: dict[str, Any]) -> str | None:
+def _coerce_injury_level(
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+) -> str | None:
     injury = _obj(observed.get("injury"))
-    if _truthy(injury.get("hospitalization_required")) or _truthy(_obj(assessment.get("disposition")).get("hospitalization_required")):
+    disposition = _obj(assessment.get("disposition"))
+
+    if _truthy(injury.get("hospitalization_required")) or _truthy(disposition.get("hospitalization_required")):
         return "HOSPITALIZATION_REQUIRED"
+
     if _truthy(injury.get("fracture")) or _truthy(injury.get("laceration")) or _truthy(injury.get("skin_tear")):
         return "MODERATE_INJURY"
+
     if _truthy(injury.get("bruise")):
         return "MINOR_INJURY"
+
     if injury:
         return "NO_INJURY"
+
     return None
 
 
@@ -625,14 +741,19 @@ def _coerce_injury_type(observed: dict[str, Any]) -> str | None:
 
     if _truthy(skin.get("skin_tear")) or _truthy(injury.get("skin_tear")):
         return "SKIN_TEAR"
+
     if _truthy(injury.get("laceration")):
         return "LACERATION"
+
     if _truthy(injury.get("bruise")) or _truthy(skin.get("bruising")):
         return "BRUISE"
+
     if _truthy(injury.get("fracture")):
         return "FRACTURE"
+
     if injury:
         return "OTHER"
+
     return None
 
 

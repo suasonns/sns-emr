@@ -3,7 +3,12 @@
   "disease": "ESRD_KIDNEY_DISEASE",
   "lcd_reference": "LCD Hospice Eligibility Determination – Kidney Disease (ESRD)",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
 
   "eligibility_logic": {
     "all_of": ["1", "2"],
@@ -33,14 +38,14 @@
           "field": "renal.no_dialysis_not_transplant_candidate_and_not_seeking_dialysis",
           "operator": "EQUALS",
           "expected": true,
-          "description": "No dialysis: ruled out for transplant AND not seeking/discontinuing dialysis"
+          "description": "No dialysis and not a transplant candidate and not seeking dialysis"
         },
         {
           "criterion_id": "1b",
           "field": "renal.on_dialysis_comfort_only_prognosis_unaltered",
           "operator": "EQUALS",
           "expected": true,
-          "description": "With dialysis: on dialysis AND comfort only AND prognosis unaltered even with dialysis"
+          "description": "On dialysis but comfort-focus only and prognosis unchanged"
         }
       ]
     },
@@ -55,7 +60,7 @@
           "operator": "LT",
           "expected": 10,
           "unit": "cc/min",
-          "description": "Creatinine clearance < 10 cc/min (< 15 cc/min for diabetics)"
+          "description": "Creatinine clearance < 10 cc/min (< 15 for diabetics)"
         },
         {
           "criterion_id": "2b",
@@ -63,7 +68,7 @@
           "operator": "LT",
           "expected": 15,
           "unit": "cc/min",
-          "description": "Creatinine clearance < 15 cc/min (< 20 cc/min for diabetics) if comorbidity CHF present"
+          "description": "Creatinine clearance < 15 cc/min (< 20 for diabetics with CHF)"
         }
       ]
     },
@@ -78,7 +83,7 @@
           "operator": "GT",
           "expected": 8.0,
           "unit": "mg/dl",
-          "description": "Serum creatinine > 8.0 mg/dl (> 6.0 mg/dl for diabetics)"
+          "description": "Serum creatinine > 8.0 mg/dl (> 6.0 for diabetics)"
         }
       ]
     },

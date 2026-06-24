@@ -3,7 +3,12 @@
   "disease": "DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION",
   "lcd_reference": "CMS Hospice LCD – Dementia",
   "evaluation_date": "2022-01-09",
-  "eligibility_result": "ELIGIBLE",
+
+  "eligibility_result": {
+    "status": "ELIGIBLE",
+    "reason": "Meets dementia LCD criteria based on FAST stage and supporting complications",
+    "confidence": null
+  },
 
   "activation_rules": {
     "FAST": true,
@@ -32,9 +37,21 @@
       "group_name": "ADL and Functional Decline",
       "rule": "ALL_REQUIRED",
       "criteria": [
-        { "criterion_id": "1a", "description": "KPS ≤ 70", "result": true },
-        { "criterion_id": "1b", "description": "PPS ≤ 70", "result": true },
-        { "criterion_id": "1c", "description": "FAST ≥ 7A", "result": true }
+        {
+          "criterion_id": "1a",
+          "description": "KPS ≤ 70",
+          "result": true
+        },
+        {
+          "criterion_id": "1b",
+          "description": "PPS ≤ 70",
+          "result": true
+        },
+        {
+          "criterion_id": "1c",
+          "description": "FAST ≥ 7A",
+          "result": true
+        }
       ]
     },
     {
@@ -42,8 +59,16 @@
       "group_name": "Disease Progression / Complications",
       "rule": "ANY_REQUIRED",
       "criteria": [
-        { "criterion_id": "2a", "description": "Aspiration pneumonia", "result": true },
-        { "criterion_id": "2b", "description": "Septicemia", "result": false }
+        {
+          "criterion_id": "2a",
+          "description": "Aspiration pneumonia",
+          "result": true
+        },
+        {
+          "criterion_id": "2b",
+          "description": "Septicemia",
+          "result": false
+        }
       ]
     }
   ],

@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, date, timedelta
 
 from app.core.db import get_db
@@ -13,24 +12,26 @@ from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
 from app.models.amendment import Amendment
 
-from app.services.idg_pdf import generate_idg_report_pdf
-
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
+
 
 NOTE_COMPLETION_HOURS = 24
 DRAFT_NOTE_WARNING_HOURS = 48
 
 
-@router.get("/late-notes", summary="Visits with late or missing clinical notes")
+@router.get("/late-notes")
 def late_notes_report(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
+    user: CurrentUser = Depends(
+        require_roles(["RN", "NP", "MD", "Administrator", "DPCS"])
+    ),
 ):
     cutoff = datetime.utcnow() - timedelta(hours=NOTE_COMPLETION_HOURS)
 
     visits = (
         db.query(Visit)
+        .options(joinedload(Visit.notes))
         .filter(Visit.visit_datetime < cutoff)
         .all()
     )
@@ -38,27 +39,22 @@ def late_notes_report(
     results = []
 
     for v in visits:
-        note = (
-            db.query(ClinicalNote)
-            .filter(ClinicalNote.visit_id == v.id)
-            .filter(ClinicalNote.status == "finalized")
-            .first()
-        )
-        if not note:
+        if not v.notes:
             results.append({
                 "visit_id": str(v.id),
                 "patient_id": str(v.patient_id),
-                "visit_datetime": v.visit_datetime,
-                "issue": "Missing or late note",
+                "issue": "Missing note"
             })
 
     return results
 
 
-@router.get("/draft-notes", summary="Stale draft clinical notes")
+@router.get("/draft-notes")
 def draft_notes_report(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
+    user: CurrentUser = Depends(
+        require_roles(["RN", "NP", "MD", "Administrator", "DPCS"])
+    ),
 ):
     cutoff = datetime.utcnow() - timedelta(hours=DRAFT_NOTE_WARNING_HOURS)
 
@@ -74,101 +70,26 @@ def draft_notes_report(
             "note_id": str(n.id),
             "visit_id": str(n.visit_id),
             "created_at": n.created_at,
-            "status": n.status,
         }
         for n in notes
     ]
 
 
-@router.get("/missing-visit-notes", summary="Visits with no clinical notes")
-def visits_without_notes(
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
-):
-    visits = db.query(Visit).all()
-    results = []
-
-    for v in visits:
-        has_note = (
-            db.query(ClinicalNote)
-            .filter(ClinicalNote.visit_id == v.id)
-            .first()
-        )
-        if not has_note:
-            results.append({
-                "visit_id": str(v.id),
-                "patient_id": str(v.patient_id),
-                "visit_datetime": v.visit_datetime,
-            })
-
-    return results
-
-
-@router.get("/amendments", summary="Amendment audit summary")
-def amendment_activity(
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
-):
-    amendments = db.query(Amendment).all()
-
-    return [
-        {
-            "amendment_id": str(a.id),
-            "clinical_note_id": str(a.clinical_note_id),
-            "created_at": a.created_at,
-            "reason": a.reason,
-        }
-        for a in amendments
-    ]
-
-
-@router.get("/discharged-open-items", summary="Discharged patients with open documentation")
-def discharged_open_items(
-    db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
-):
-    patients = (
-        db.query(Patient)
-        .filter(Patient.status == "discharged")
-        .all()
-    )
-
-    issues = []
-
-    for p in patients:
-        drafts = (
-            db.query(ClinicalNote)
-            .join(Visit, ClinicalNote.visit_id == Visit.id)
-            .filter(Visit.patient_id == p.id)
-            .filter(ClinicalNote.status != "finalized")
-            .all()
-        )
-        if drafts:
-            issues.append({
-                "patient_id": str(p.id),
-                "open_draft_notes": len(drafts),
-            })
-
-    return issues
-
-
-@router.get("/idg-trends", summary="15-day rolling IDG compliance trends")
+@router.get("/idg-trends")
 def idg_compliance_trends(
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "Administrator"])),
+    user: CurrentUser = Depends(
+        require_roles(["RN", "NP", "MD", "Administrator", "DPCS"])
+    ),
 ):
     today = date.today()
     trend = []
 
+    active_patients = db.query(Patient).filter(Patient.status == "active").all()
+
     for days_ago in range(0, 60, 5):
         as_of = today - timedelta(days=days_ago)
         cutoff = as_of - timedelta(days=15)
-
-        active_patients = (
-            db.query(Patient)
-            .filter(Patient.status == "active")
-            .all()
-        )
 
         compliant = 0
 
@@ -180,6 +101,7 @@ def idg_compliance_trends(
                 .order_by(IDGReview.review_date.desc())
                 .first()
             )
+
             if last_review and last_review.review_date >= cutoff:
                 compliant += 1
 

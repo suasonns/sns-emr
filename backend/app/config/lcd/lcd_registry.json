@@ -1,0 +1,18 @@
+{
+  "state": "CA",
+  "mac": "NGS",
+  "mac_type": "HHH",
+  "last_verified_source": "CMS Medicare Coverage Database",
+  "lcds": [
+    {
+      "lcd_id": "L33393",
+      "title": "Hospice - Determining Terminal Status",
+      "effective_date": "2019-11-14",
+      "status": "ACTIVE",
+      "diagnosis_groups": [],
+      "general_decline_criteria": [],
+      "disease_specific_criteria": [],
+      "required_documentation": []
+    }
+  ]
+}

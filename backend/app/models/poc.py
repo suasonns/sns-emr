@@ -12,7 +12,7 @@ from sqlalchemy import Boolean, Column, DateTime, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func, text
 
-from app.core.database import Base
+from app.db.base import Base
 
 
 class POCProblemTemplate(Base):

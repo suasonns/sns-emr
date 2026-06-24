@@ -3,7 +3,12 @@
   "disease": "ALS_END_STAGE",
   "lcd_reference": "LCD Hospice Eligibility Determination – ALS",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+
+  "eligibility_result": {
+    "status": "PENDING",
+    "reason": "",
+    "confidence": null
+  },
 
   "eligibility_logic": {
     "all_of": ["1"],
@@ -33,28 +38,28 @@
           "field": "als.progression_ambulatory_to_bedbound",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from independent ambulation → wheelchair → bed-bound"
+          "description": "Progression from independent ambulation to wheelchair to bed-bound"
         },
         {
           "criterion_id": "1b",
           "field": "als.progression_speech_to_unintelligible",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from normal speech → barely intelligible/unintelligible"
+          "description": "Progression from normal speech to barely intelligible or unintelligible"
         },
         {
           "criterion_id": "1c",
           "field": "als.progression_diet_to_pureed",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from normal diet → pureed diet"
+          "description": "Progression from normal diet to pureed diet"
         },
         {
           "criterion_id": "1d",
           "field": "als.adl_decline_to_total_assist",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from independence in ADLs → major caregiver assistance in all ADLs"
+          "description": "Progression from independence in ADLs to total assist"
         }
       ]
     },
@@ -75,7 +80,7 @@
           "field": "nutrition.continued_weight_loss",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Continuing to lose weight"
+          "description": "Continuing weight loss"
         },
         {
           "criterion_id": "2c",
@@ -89,7 +94,7 @@
           "field": "nutrition.no_artificial_feeding_or_not_relieve_hunger",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Absence of artificial feeding sufficient to sustain life, but not relieving hunger"
+          "description": "No artificial feeding sufficient to sustain life or not relieving hunger"
         }
       ]
     },
@@ -103,14 +108,14 @@
           "field": "infection.recurrent_aspiration_pneumonia",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Recurrent aspiration pneumonia (with or without tube feedings)"
+          "description": "Recurrent aspiration pneumonia"
         },
         {
           "criterion_id": "3b",
           "field": "infection.upper_urinary_tract_infection",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Upper urinary tract infection (e.g., pyelonephritis)"
+          "description": "Upper urinary tract infection such as pyelonephritis"
         },
         {
           "criterion_id": "3c",
@@ -131,7 +136,7 @@
           "field": "skin.decubitus_ulcer_stage_3_or_4",
           "operator": "EQUALS",
           "expected": true,
-          "description": "History/presence of stage 3 or 4 decubitus ulcers"
+          "description": "Stage 3 or 4 pressure ulcers"
         }
       ]
     }

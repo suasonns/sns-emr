@@ -1,104 +1,110 @@
 from __future__ import annotations
 
-from typing import Generator
+import logging
+import os
+from typing import Generator, Annotated
 
 from fastapi import Depends
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-import logging
-import os
 
 from app.core.database import SessionLocal
-from app.core.security import get_current_user
+from app.core.security import get_current_user, CurrentUser
 from app.tenancy.registry import get_tenant_schema_name
 from app.tenancy.search_path import set_tenant_search_path
 
 logger = logging.getLogger("sns_emr")
 
-# Optional debug flag (keeps noise out of normal runs)
 TENANT_DEBUG = os.getenv("TENANT_DEBUG", "false").lower() == "true"
 
 
 def get_db_tenant(
-    user=Depends(get_current_user),
+    user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> Generator[Session, None, None]:
     """
-    ✅ SINGLE ENFORCEMENT POINT (CANONICAL)
+    ✅ ENTERPRISE TENANT DB DEPENDENCY (PRODUCTION SAFE)
 
-    Controls:
-    - tenant scoping
-    - search_path switching
-    - cross-tenant access
-    - system account behavior (Owner + Management)
+    Responsibilities:
+    - Enforces tenant isolation (PostgreSQL schema switching)
+    - Injects audit context (tenant_id, user_id)
+    - Prevents connection pool leakage
+
+    IMPORTANT:
+    - This dependency is for tenant-scoped clinical endpoints.
+    - System/admin-only endpoints should use separate access patterns and should
+      not depend on tenant search_path switching.
     """
 
     db: Session = SessionLocal()
 
     try:
-        # ✅ DEBUG: show DB identity + search_path for this session
         if TENANT_DEBUG:
             who = db.execute(text("SELECT current_user")).scalar_one()
             sp = db.execute(text("SHOW search_path")).scalar_one()
-            logger.warning(f"DB WHOAMI current_user={who} search_path={sp}")
+            logger.warning(
+                f"[TENANT_DEBUG] current_user={who} search_path={sp}"
+            )
+            logger.warning(
+                f"[TENANT_DEBUG] auth_user user_id={getattr(user, 'user_id', None)} "
+                f"tenant_id={getattr(user, 'tenant_id', None)} "
+                f"role={getattr(user, 'role', None)} "
+                f"is_system={getattr(user, 'is_system', None)}"
+            )
 
         # ---------------------------------------------------
-        # STEP 1 — OWNER / SYSTEM ADMIN (SNS Hospice Owner)
+        # SYSTEM ACCESS SHOULD NOT USE TENANT-SCOPED DB
         # ---------------------------------------------------
-        if getattr(user, "is_superuser", False):
-            db.info["user_id"] = str(getattr(user, "id", ""))
+        if getattr(user, "is_system", False):
+            db.info["user_id"] = str(getattr(user, "user_id", ""))
             db.info["tenant_id"] = None
             yield db
             return
 
         # ---------------------------------------------------
-        # STEP 2 — MANAGEMENT ACCOUNT (Support / Monitoring)
-        # ---------------------------------------------------
-        if getattr(user, "is_management", False):
-            db.info["user_id"] = str(getattr(user, "id", ""))
-            db.info["tenant_id"] = None
-            yield db
-            return
-
-        # ---------------------------------------------------
-        # STEP 3 — NORMAL TENANT USER (Hospice Staff)
+        # NORMAL TENANT USER
         # ---------------------------------------------------
         tenant_id = getattr(user, "tenant_id", None)
-        user_id = getattr(user, "id", None)
+        user_id = getattr(user, "user_id", None)
 
-        if not tenant_id or not user_id:
+        if tenant_id is None or user_id is None:
             raise RuntimeError("Tenant user missing tenant_id or user id")
 
-        tenant_schema = get_tenant_schema_name(db, str(tenant_id))
+        tenant_id_str = str(tenant_id)
+        user_id_str = str(user_id)
 
-        db.info["tenant_id"] = str(tenant_id)
-        db.info["user_id"] = str(user_id)
+        tenant_schema = get_tenant_schema_name(db, tenant_id_str)
 
-        # ✅ Enforce tenant isolation (must be SET search_path, not SET LOCAL)
+        db.info["tenant_id"] = tenant_id_str
+        db.info["user_id"] = user_id_str
+
+        # ✅ Enforce tenant isolation
         set_tenant_search_path(db, tenant_schema)
 
-        # ✅ Optional audit variables (does not enable RLS)
+        # ✅ Optional Postgres session vars for audit/debug
         db.execute(
             text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
-            {"tenant_id": str(tenant_id)},
+            {"tenant_id": tenant_id_str},
         )
         db.execute(
             text("SELECT set_config('app.user_id', :user_id, true)"),
-            {"user_id": str(user_id)},
+            {"user_id": user_id_str},
         )
 
         yield db
 
-    except Exception:
+    except Exception as e:
         try:
             db.rollback()
         except Exception:
             pass
-        raise
+
+        logger.error("Tenant DB dependency error", exc_info=True)
+        raise e
 
     finally:
-        # ✅ Prevent pooled connection leakage
         try:
             db.execute(text("SET search_path TO public"))
         except Exception:
             pass
+
         db.close()

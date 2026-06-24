@@ -15,17 +15,43 @@ from app.models.enums import TaskStatus
 # =========================================================
 # IDG CHECK RESULT
 # =========================================================
-
 class IDGCheckResult:
+    """
+    Result of IDG readiness check.
+
+    blocked = True → IDG cannot proceed
+    reasons = list of compliance blockers
+    """
+
     def __init__(self):
         self.blocked: bool = False
         self.reasons: List[str] = []
+
+    def add_reason(self, reason: str) -> None:
+        if reason not in self.reasons:
+            self.reasons.append(reason)
+            self.blocked = True
+
+
+# =========================================================
+# STATUS HELPERS (CANONICAL)
+# =========================================================
+def _active_task_statuses():
+    """
+    ACTIVE tasks = tasks that are not completed.
+
+    MUST MATCH Task Engine behavior.
+    """
+    return [
+        TaskStatus.PENDING,
+        TaskStatus.IN_PROGRESS,
+        TaskStatus.OVERDUE,
+    ]
 
 
 # =========================================================
 # MAIN ENTRY POINT
 # =========================================================
-
 def enforce_idg_readiness(
     db: Session,
     *,
@@ -34,29 +60,34 @@ def enforce_idg_readiness(
 ) -> IDGCheckResult:
     """
     Enforce IDG compliance rules before meeting/closure.
+
+    BLOCK CONDITIONS:
+    1. Active tasks exist
+    2. Red flags unresolved
+    3. Needs clarification not resolved
+    4. Incident not completed
     """
 
     result = IDGCheckResult()
 
     # -----------------------------------------------------
-    # 1. CHECK OPEN TASKS
+    # 1. CHECK ACTIVE TASKS (CRITICAL CMS REQUIREMENT)
     # -----------------------------------------------------
-    open_tasks = (
+    active_tasks = (
         db.query(Task)
         .filter(
             Task.patient_id == patient_id,
             Task.tenant_id == tenant_id,
-            Task.status.in_([_status_due(), _status_pending()]),
+            Task.status.in_(_active_task_statuses()),
         )
         .all()
     )
 
-    if open_tasks:
-        result.blocked = True
-        result.reasons.append("Open tasks must be completed before IDG")
+    if active_tasks:
+        result.add_reason("All active tasks must be completed before IDG")
 
     # -----------------------------------------------------
-    # 2. CHECK RED FLAGS
+    # 2. LOAD NOTES ONCE
     # -----------------------------------------------------
     notes = (
         db.query(ClinicalNote)
@@ -67,63 +98,37 @@ def enforce_idg_readiness(
         .all()
     )
 
-    for note in notes:
-        if _has_items(note.red_flags):
-            result.blocked = True
-            result.reasons.append("Unresolved red flags in clinical notes")
-            break
+    # -----------------------------------------------------
+    # 3. CHECK RED FLAGS
+    # -----------------------------------------------------
+    if any(_has_items(note.red_flags) for note in notes):
+        result.add_reason("Unresolved red flags in clinical notes")
 
     # -----------------------------------------------------
-    # 3. CHECK NEEDS CLARIFICATION
+    # 4. CHECK NEEDS CLARIFICATION
     # -----------------------------------------------------
-    for note in notes:
-        if _has_items(note.needs_clarification):
-            result.blocked = True
-            result.reasons.append("Clinical documentation needs clarification")
-            break
+    if any(_has_items(note.needs_clarification) for note in notes):
+        result.add_reason("Clinical documentation requires clarification")
 
     # -----------------------------------------------------
-    # 4. CHECK INCIDENT COMPLETION
+    # 5. CHECK INCIDENT COMPLETION
     # -----------------------------------------------------
-    for note in notes:
-        if _is_incident_pending(note):
-            result.blocked = True
-            result.reasons.append("Incident reports must be completed")
-            break
+    if any(_is_incident_pending(note) for note in notes):
+        result.add_reason("Incident reports must be completed before IDG")
 
     return result
 
 
 # =========================================================
-# ENUM HELPERS
-# =========================================================
-
-def _status_due():
-    for s in TaskStatus:
-        if str(s.value).upper() in ("DUE",):
-            return s
-    return list(TaskStatus)[0]
-
-
-def _status_pending():
-    for s in TaskStatus:
-        if str(s.value).upper() in ("PENDING",):
-            return s
-    return list(TaskStatus)[0]
-
-
-# =========================================================
 # UTILITIES
 # =========================================================
-
-def _has_items(value):
+def _has_items(value) -> bool:
     return isinstance(value, list) and len(value) > 0
 
 
-def _is_incident_pending(note):
+def _is_incident_pending(note) -> bool:
     status = getattr(note, "incident_status", None)
-
     if not status:
         return False
 
-    return str(status).upper() in ("PENDING",)
+    return str(status).upper() == "PENDING"

@@ -3,7 +3,12 @@
   "disease": "HEART_FAILURE",
   "lcd_reference": "CMS Hospice LCD – Heart Disease",
   "evaluation_date": "2022-01-09",
-  "eligibility_result": "ELIGIBLE",
+
+  "eligibility_result": {
+    "status": "ELIGIBLE",
+    "reason": "Patient meets CHF LCD criteria with NYHA Class IV and refractory disease",
+    "confidence": null
+  },
 
   "activation_rules": {
     "FAST": false,
@@ -32,8 +37,16 @@
       "group_name": "Untreatable Condition",
       "rule": "ANY_REQUIRED",
       "criteria": [
-        { "criterion_id": "1a", "description": "Declined surgery", "result": true },
-        { "criterion_id": "1b", "description": "Ruled out for surgery", "result": false }
+        {
+          "criterion_id": "1a",
+          "description": "Declined surgery",
+          "result": true
+        },
+        {
+          "criterion_id": "1b",
+          "description": "Ruled out for surgery",
+          "result": false
+        }
       ]
     },
     {
@@ -41,7 +54,11 @@
       "group_name": "NYHA Classification",
       "rule": "ALL_REQUIRED",
       "criteria": [
-        { "criterion_id": "2a", "description": "NYHA Class IV", "result": true }
+        {
+          "criterion_id": "2a",
+          "description": "NYHA Class IV",
+          "result": true
+        }
       ]
     }
   ],

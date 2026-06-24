@@ -16,6 +16,7 @@ Enterprise-grade initialization (stable + deterministic).
 # CORE IMPORTS
 # ---------------------------------------------------------------------
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -23,9 +24,10 @@ import os
 import re
 import subprocess
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Set
+from app.services.overdue_service import mark_overdue_poc_tasks
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -53,6 +55,7 @@ STARTUP_STATUS: Dict[str, Any] = {
     "schema_hash_sha256": None,
     "db_probe_ok": False,
     "model_schema_ok": False,
+    "scheduler_started": False,
     "error": None,
     "warnings": [],
 }
@@ -64,8 +67,10 @@ STARTUP_STATUS: Dict[str, Any] = {
 def _alembic_revision_ids(output: str) -> Set[str]:
     return set(re.findall(r"\b[0-9a-f]{7,40}\b", output.lower()))
 
+
 def _backend_root_dir() -> Path:
     return Path(__file__).resolve().parents[1]
+
 
 # ---------------------------------------------------------------------
 # ALEMBIC CHECK (HARD STOP)
@@ -78,10 +83,16 @@ def assert_alembic_in_sync() -> None:
     backend_root = _backend_root_dir()
 
     current = subprocess.run(
-        ["alembic", "current"], capture_output=True, text=True, cwd=str(backend_root)
+        ["alembic", "current"],
+        capture_output=True,
+        text=True,
+        cwd=str(backend_root),
     )
     heads = subprocess.run(
-        ["alembic", "heads"], capture_output=True, text=True, cwd=str(backend_root)
+        ["alembic", "heads"],
+        capture_output=True,
+        text=True,
+        cwd=str(backend_root),
     )
 
     current_ids = _alembic_revision_ids(current.stdout)
@@ -92,6 +103,7 @@ def assert_alembic_in_sync() -> None:
 
     if current_ids != head_ids:
         raise RuntimeError("DATABASE SCHEMA DRIFT DETECTED — Alembic mismatch")
+
 
 # ---------------------------------------------------------------------
 # DB PROBE
@@ -110,8 +122,9 @@ def assert_db_probe() -> None:
     finally:
         db.close()
 
+
 # ---------------------------------------------------------------------
-# ⚠️ MODEL DRIFT CHECK (WARNING ONLY)
+# MODEL DRIFT CHECK (WARNING ONLY)
 # ---------------------------------------------------------------------
 
 def check_model_schema_alignment() -> None:
@@ -121,11 +134,13 @@ def check_model_schema_alignment() -> None:
     db = SessionLocal()
     try:
         rows = db.execute(
-            text("""
+            text(
+                """
                 SELECT table_name, column_name
                 FROM information_schema.columns
                 WHERE table_schema='public'
-            """)
+                """
+            )
         ).fetchall()
 
         db_tables: Dict[str, Set[str]] = {}
@@ -157,6 +172,7 @@ def check_model_schema_alignment() -> None:
     finally:
         db.close()
 
+
 # ---------------------------------------------------------------------
 # SCHEMA HASH
 # ---------------------------------------------------------------------
@@ -167,12 +183,14 @@ def log_schema_hash() -> None:
     db = SessionLocal()
     try:
         rows = db.execute(
-            text("""
+            text(
+                """
                 SELECT table_name, column_name, data_type
                 FROM information_schema.columns
                 WHERE table_schema='public'
                 ORDER BY table_name
-            """)
+                """
+            )
         ).fetchall()
 
         payload = [{"t": r[0], "c": r[1], "d": r[2]} for r in rows]
@@ -183,14 +201,21 @@ def log_schema_hash() -> None:
     finally:
         db.close()
 
+
 # ---------------------------------------------------------------------
 # LIFESPAN
 # ---------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    STARTUP_STATUS["started_at_utc"] = datetime.utcnow().isoformat()
+    STARTUP_STATUS["started_at_utc"] = datetime.now(timezone.utc).isoformat()
+
+    scheduler_task = None
+
     try:
+        # -------------------------------------------------------------
+        # HARD STARTUP CHECKS
+        # -------------------------------------------------------------
         assert_alembic_in_sync()
         assert_db_probe()
         check_model_schema_alignment()
@@ -198,11 +223,43 @@ async def lifespan(app: FastAPI):
 
         STARTUP_STATUS["checks_passed"] = True
         logger.info("✅ SNS EMR started")
+
+        # -------------------------------------------------------------
+        # START OVERDUE SCHEDULER ONLY AFTER SUCCESSFUL INIT
+        # -------------------------------------------------------------
+        try:
+            from app.services.task_scheduler import overdue_scheduler
+
+            scheduler_task = asyncio.create_task(overdue_scheduler())
+            STARTUP_STATUS["scheduler_started"] = True
+            logger.info("✅ Overdue scheduler started")
+        except Exception as scheduler_exc:
+            STARTUP_STATUS["warnings"].append(
+                {"scheduler_start_failed": str(scheduler_exc)}
+            )
+            logger.warning(
+                "⚠️ Overdue scheduler failed to start (non-blocking): %s",
+                scheduler_exc,
+            )
+
         yield
+
     except Exception as e:
         STARTUP_STATUS["error"] = str(e)
         logger.exception("🛑 Startup failed")
         raise
+
+    finally:
+        # -------------------------------------------------------------
+        # CLEAN SHUTDOWN
+        # -------------------------------------------------------------
+        if scheduler_task is not None:
+            scheduler_task.cancel()
+            try:
+                await scheduler_task
+            except asyncio.CancelledError:
+                logger.info("✅ Overdue scheduler stopped")
+
 
 # ---------------------------------------------------------------------
 # APP
@@ -214,11 +271,13 @@ fastapi_app = FastAPI(
     lifespan=lifespan,
 )
 
+
 # ---------------------------------------------------------------------
 # MODELS (REGISTER METADATA)
 # ---------------------------------------------------------------------
 
 import app.models  # noqa
+
 
 # ---------------------------------------------------------------------
 # CORS
@@ -231,13 +290,17 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # ---------------------------------------------------------------------
 # ROUTERS
 # ---------------------------------------------------------------------
 
 from app.api.registry import register_routers
+from app.api.debug import router as debug_router
 
+fastapi_app.include_router(debug_router)
 register_routers(fastapi_app)
+
 
 # ---------------------------------------------------------------------
 # HEALTH
@@ -246,6 +309,7 @@ register_routers(fastapi_app)
 @fastapi_app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @fastapi_app.get("/system/startup-status")
 def startup_status():

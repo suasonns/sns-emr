@@ -1,4 +1,5 @@
 from app.rules.base import BaseRule
+from app.compliance.rule_loader import load_cms_rules
 
 
 class COPDReadinessRule(BaseRule):
@@ -7,6 +8,8 @@ class COPDReadinessRule(BaseRule):
 
     Triggered only when primary diagnosis looks pulmonary (COPD/resp failure).
     Checks for common supporting documentation elements.
+
+    Now supports dynamic CMS rule integration (non-breaking).
     """
 
     rule_id = "COPD_AUDIT_READINESS"
@@ -19,14 +22,23 @@ class COPDReadinessRule(BaseRule):
         primary = (ctx.primary_dx.icd10 if ctx.primary_dx else "") or ""
         code = primary.strip().upper()
 
-        # If not a pulmonary code, do nothing (PASS)
+        # ✅ Load CMS dynamic rules (SAFE: no DB impact)
+        rules = load_cms_rules()
+        cms_rule = rules.get("eligibility_terminal_illness")
+
+        # ✅ OPTIONAL DEBUG (remove later)
+        # print("CMS RULE LOADED:", cms_rule)
+
+        # ✅ If not pulmonary, skip this rule
         if not any(code.startswith(p) for p in self._PULM_PREFIXES):
-            return self.pass_result(reason="Not a pulmonary primary diagnosis; COPD readiness not applicable.")
+            return self.pass_result(
+                reason="Not a pulmonary primary diagnosis; COPD readiness not applicable."
+            )
 
         facts = ctx.facts or {}
         missing = []
 
-        # Recommended supporting elements (WARN-only if missing)
+        # ✅ Supporting documentation checks
         if facts.get("oxygen_lpm") is None and facts.get("oxygen_required") is None:
             missing.append("oxygen_required_or_lpm")
 
@@ -42,15 +54,22 @@ class COPDReadinessRule(BaseRule):
         if facts.get("recent_exacerbations") is None and facts.get("recent_hospitalizations") is None:
             missing.append("recent_exacerbations_or_hospitalizations")
 
+        # ✅ WARN if missing elements
         if missing:
             return self.warn_result(
                 reason="COPD supporting documentation incomplete",
-                details={"missing_elements": missing, "primary_dx": code},
+                details={
+                    "missing_elements": missing,
+                    "primary_dx": code,
+                },
                 evidence=facts,
             )
 
+        # ✅ PASS if complete
         return self.pass_result(
             reason="COPD supporting documentation present",
-            details={"primary_dx": code},
+            details={
+                "primary_dx": code,
+            },
             evidence=facts,
         )

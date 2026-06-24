@@ -1,11 +1,29 @@
-from fastapi import HTTPException
+from __future__ import annotations
 
-def require_owner(user) -> None:
+from fastapi import Depends, HTTPException, status
+
+from app.core.auth import CurrentUser, get_current_user
+
+
+# =========================================================
+# OWNER ROLE GUARD
+# =========================================================
+
+def require_owner(user: CurrentUser = Depends(get_current_user)) -> CurrentUser:
     """
-    Enforces OWNER (management) access.
+    Enforces OWNER-level access.
+
+    Enterprise guarantees:
+    ✅ Uses authenticated JWT user
+    ✅ Strong typing (CurrentUser)
+    ✅ Compatible with FastAPI dependency system
+    ✅ Returns user for downstream usage
     """
-    if getattr(user, "role", None) != "OWNER":
+
+    if user.role != "OWNER":
         raise HTTPException(
-            status_code=403,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Owner access required",
         )
+
+    return user

@@ -1,73 +1,109 @@
+from __future__ import annotations
+
 import uuid
+from dataclasses import dataclass
+from typing import Optional
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import jwt, JWTError
 
-from app.core.security import SECRET_KEY, ALGORITHM
+from app.core.security import SECRET_KEY, ALGORITHM, JWT_AUDIENCE, JWT_ISSUER
+
 
 security = HTTPBearer()
 
 
-# ✅ Canonical allowed roles (include RN)
-ALLOWED_ROLES = {
-    "RN",                 # ✅ REQUIRED (your dev + clinical usage)
-    "RN_CASE_MANAGER",
-    "RN_ADMIN",
-    "DPCS",
+# =========================================================
+# CONSTANTS
+# =========================================================
+
+VALID_ROLES = {
+    "RN",
     "LVN",
     "LPN",
     "MD",
     "NP",
     "SW",
     "CHAPLAIN",
+    "MEDICAL_DIRECTOR",
+    "ALTERNATE_MEDICAL_DIRECTOR",
+    "MEDICAL_DIRECTOR_DESIGNEE",
+    "ADMINISTRATOR",
+    "DPCS",
 }
 
 
+# =========================================================
+# USER CONTEXT
+# =========================================================
+
+@dataclass(frozen=True)
 class CurrentUser:
-    def __init__(self, user_id: uuid.UUID, role: str):
-        self.user_id = user_id
-        self.id = user_id          # ✅ compatibility across routers
-        self.role = role
+    user_id: uuid.UUID
+    role: str
+    tenant_id: Optional[uuid.UUID] = None
+    email: Optional[str] = None
+    is_system: bool = False
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> CurrentUser:
-    token = credentials.credentials
+# =========================================================
+# TOKEN DECODE
+# =========================================================
 
+def _decode_token(token: str) -> dict:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-
-        sub = payload.get("sub")
-        role = payload.get("role")
-
-        if not sub or not role:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload",
-            )
-
-        # ✅ Normalize role defensively
-        role = role.strip().upper()
-
-        if role not in ALLOWED_ROLES:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Invalid user role",
-            )
-
-        try:
-            user_id = uuid.UUID(sub)
-        except (ValueError, TypeError):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token subject (sub must be UUID)",
-            )
-
-        return CurrentUser(user_id=user_id, role=role)
-
+        return jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            audience=JWT_AUDIENCE,
+            issuer=JWT_ISSUER,
+        )
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
+        )
+
+
+# =========================================================
+# DEPENDENCY
+# =========================================================
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> CurrentUser:
+
+    token = credentials.credentials
+    payload = _decode_token(token)
+
+    user_id = payload.get("sub")
+    role = payload.get("role")
+    tenant_id = payload.get("tenant_id")
+
+    if not user_id or not role:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token missing required claims",
+        )
+
+    if role not in VALID_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Invalid role: {role}",
+        )
+
+    try:
+        return CurrentUser(
+            user_id=uuid.UUID(user_id),
+            role=str(role),
+            tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
+            email=payload.get("email"),
+            is_system=False,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token values",
         )

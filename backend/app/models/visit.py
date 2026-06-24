@@ -37,12 +37,10 @@ class Visit(Base):
     __tablename__ = "visits"
 
     __table_args__ = (
-        # ✅ Basic integrity constraints
         CheckConstraint("status <> ''", name="ck_visits_status_not_blank"),
         CheckConstraint("visit_type <> ''", name="ck_visits_visit_type_not_blank"),
         CheckConstraint("visit_mode <> ''", name="ck_visits_mode_not_blank"),
 
-        # ✅ Performance index (critical for patient timelines)
         Index(
             "ix_visits_patient_datetime",
             "patient_id",
@@ -51,7 +49,7 @@ class Visit(Base):
     )
 
     # =========================================================
-    # PRIMARY KEYS
+    # PRIMARY KEY
     # =========================================================
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -86,7 +84,6 @@ class Visit(Base):
     # =========================================================
 
     visit_type = Column(String(32), nullable=False, index=True)
-
     visit_discipline = Column(String(32), nullable=True, index=True)
 
     visit_mode = Column(
@@ -102,12 +99,22 @@ class Visit(Base):
 
     acuity_state_at_visit = Column(String(32), nullable=True)
 
+    # ✅ ✅ ✅ NEW FORM ENGINE FIELD (CRITICAL)
+    form_type = Column(String(64), nullable=True)
+
+    # =========================================================
+    # TIME TRACKING (FOR CC + BILLING)
+    # =========================================================
+
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
+
     # =========================================================
     # TIMESTAMPS
     # =========================================================
 
     visit_datetime = Column(
-        DateTime(timezone=True),  # ✅ upgraded to timezone-aware
+        DateTime(timezone=True),
         nullable=False,
         index=True,
     )
@@ -145,7 +152,6 @@ class Visit(Base):
         index=True,
     )
 
-    # ✅ NEW: audit completion
     updated_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),
@@ -153,7 +159,6 @@ class Visit(Base):
         index=True,
     )
 
-    # ✅ OPTIONAL: soft delete (enterprise safety)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     deleted_by = Column(
@@ -169,7 +174,7 @@ class Visit(Base):
     chha_poc_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
     # =========================================================
-    # COMPATIBILITY LAYER (CRITICAL FIX)
+    # COMPATIBILITY LAYER
     # =========================================================
 
     @property

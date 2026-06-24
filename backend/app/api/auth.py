@@ -318,44 +318,51 @@ def dev_login(
     email = _dev_email(payload.user_id, payload.tenant_id)
 
     try:
-        row = db.execute(
-            text(
-                """
-                INSERT INTO public.users (
-                    id,
-                    tenant_id,
-                    full_name,
-                    email,
-                    role,
-                    created_at,
-                    updated_at
-                )
-                VALUES (
-                    :uid,
-                    :tid,
-                    :full_name,
-                    :email,
-                    :role,
-                    NOW(),
-                    NOW()
-                )
-                ON CONFLICT (email) DO UPDATE
-                SET
-                    tenant_id = EXCLUDED.tenant_id,
-                    full_name = EXCLUDED.full_name,
-                    role = EXCLUDED.role,
-                    updated_at = NOW()
-                RETURNING id
-                """
-            ),
-            {
-                "uid": str(dev_user_uuid),
-                "tid": str(payload.tenant_id) if payload.tenant_id else None,
-                "full_name": f"{payload.user_id} (DEV)",
-                "email": email,
-                "role": role_norm,
-            },
-        ).fetchone()
+        sql = """
+            INSERT INTO public.users (
+                id,
+                tenant_id,
+                full_name,
+                email,
+                role,
+                access_level,
+                active,
+                created_at,
+                updated_at
+            )
+            VALUES (
+                :uid,
+                :tid,
+                :full_name,
+                :email,
+                :role,
+                :access_level,
+                :active,
+                NOW(),
+                NOW()
+            )
+            ON CONFLICT (email) DO UPDATE
+            SET
+                tenant_id = EXCLUDED.tenant_id,
+                full_name = EXCLUDED.full_name,
+                role = EXCLUDED.role,
+                access_level = EXCLUDED.access_level,
+                active = EXCLUDED.active,
+                updated_at = NOW()
+            RETURNING id
+        """
+
+        params = {
+            "uid": str(dev_user_uuid),
+            "tid": str(payload.tenant_id) if payload.tenant_id else None,
+            "full_name": f"{payload.user_id} (DEV)",
+            "email": email,
+            "role": role_norm,
+            "access_level": "FULL_ACCESS",
+            "active": True,
+        }
+
+        row = db.execute(text(sql), params).fetchone()
 
         if row and row[0]:
             dev_user_uuid = uuid.UUID(str(row[0]))

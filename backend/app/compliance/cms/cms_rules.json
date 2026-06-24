@@ -1,0 +1,9 @@
+{
+  "eligibility_terminal_illness": {
+    "enabled": true,
+    "source": "CMS",
+    "version": "2026-01",
+    "description": "Patient prognosis must be six months or less if the disease follows its normal course.",
+    "max_prognosis_months": 6
+  }
+}
