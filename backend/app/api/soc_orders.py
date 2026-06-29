@@ -1,8 +1,7 @@
-# app/api/soc_orders.py
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -11,29 +10,47 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.models.patient import Patient
-from app.models.task import Task
-from app.models.enums import TaskType, TaskOrigin, TaskDiscipline, TaskStatus
 from app.tenancy.registry import assert_known_tenant
 
+# ✅ CRITICAL SERVICES
+from app.services.admission_authorization_service import authorize_admission
+from app.services.admission_guardrails_service import AdmissionGuardrailsService
 
 router = APIRouter(prefix="/soc-orders", tags=["soc-orders"])
 
 
+# =========================================================
+# REQUEST MODEL
+# =========================================================
+
 class RNAdmissionOrder(BaseModel):
-    # RN is always required for admission workflow
     order_rn: bool = True
 
+    # ✅ REQUIRED for guardrails
+    narrative: str | None = None
+    has_decline: bool | None = None
+    lcd_status: str | None = None
+
+
+# =========================================================
+# TENANT ENFORCEMENT
+# =========================================================
 
 def _require_tenant(user) -> str:
     tenant_id = getattr(user, "tenant_id", None)
     if tenant_id is None and isinstance(user, dict):
         tenant_id = user.get("tenant_id")
+
     if not tenant_id:
         raise HTTPException(status_code=401, detail="Missing tenant context")
 
     assert_known_tenant(str(tenant_id))
     return str(tenant_id)
 
+
+# =========================================================
+# MAIN ENDPOINT
+# =========================================================
 
 @router.post(
     "/patients/{patient_id}/rn-admission",
@@ -47,47 +64,85 @@ def finalize_rn_admission_order(
 ):
     tenant_id = _require_tenant(user)
 
+    # -----------------------------------------------------
+    # LOAD PATIENT
+    # -----------------------------------------------------
+
     patient = (
         db.query(Patient)
         .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
         .first()
     )
+
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
     if not payload.order_rn:
-        raise HTTPException(status_code=400, detail="RN admission order cannot be false")
+        raise HTTPException(status_code=400, detail="RN admission order is required")
 
-    soc_date = datetime.now(timezone.utc).date()
+    now = datetime.now(timezone.utc)
 
-    ica_specs = [
-        (TaskType.INITIAL_RN_ICA, TaskDiscipline.RN, soc_date + timedelta(days=2)),
-        (TaskType.INITIAL_MSW_ICA, TaskDiscipline.SW, soc_date + timedelta(days=5)),
-        (TaskType.INITIAL_SC_ICA, TaskDiscipline.CHAPLAIN, soc_date + timedelta(days=5)),
-        (TaskType.INITIAL_BEREAVEMENT, TaskDiscipline.SW, soc_date + timedelta(days=5)),
-    ]
+    # -----------------------------------------------------
+    # ✅ GUARDRAILS (ENTERPRISE ENFORCEMENT)
+    # -----------------------------------------------------
 
-    created = []
-    for task_type, discipline, due_date in ica_specs:
-        db.add(
-            Task(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                patient_id=patient.id,
-                task_type=task_type,
-                origin=TaskOrigin.ADMISSION,
-                discipline=discipline,
-                status=TaskStatus.PENDING,  # ✅ enum-safe
-                due_date=due_date,
-                created_by=getattr(user, "id", None),
-            )
+    guardrail_result = AdmissionGuardrailsService.assess_admission(
+        db=db,
+        admission={"id": None},
+        tenant_id=tenant_id,
+        patient_id=str(patient.id),
+        user_id=str(getattr(user, "id", "")),
+        narrative_text=payload.narrative,
+        has_measurable_decline=payload.has_decline,
+        lcd_status=payload.lcd_status,
+        flush=True,
+    )
+
+    # 🚨 HARD STOP
+    if guardrail_result.get("hard_stop", False):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "ADMISSION_BLOCKED_BY_GUARDRAILS",
+                "message": "Admission blocked due to clinical documentation risk.",
+                "severity": guardrail_result["severity"],
+                "flags": guardrail_result["flags"],
+                "requires_md_review": guardrail_result["requires_md_review"],
+                "rn_explanation": guardrail_result["rn_explanation"],
+            },
         )
-        created.append(task_type.value)
 
-    db.commit()
+    # -----------------------------------------------------
+    # ✅ ADMISSION AUTHORIZATION (CORRECT SERVICE)
+    # -----------------------------------------------------
+
+    election_signed_at = getattr(patient, "soc_date", None)
+
+    if not election_signed_at:
+        raise HTTPException(
+            status_code=400,
+            detail="SOC / election_signed_at must be set before admission.",
+        )
+
+    try:
+        authorize_admission(
+            db=db,
+            patient_id=patient.id,
+            election_signed_at=election_signed_at,
+            authorized_by_user_id=getattr(user, "id", None),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Admission authorization failed: {str(e)}",
+        )
+
+    # -----------------------------------------------------
+    # RESPONSE
+    # -----------------------------------------------------
 
     return {
         "status": "rn_admission_finalized",
         "patient_id": str(patient_id),
-        "ica_tasks_created": created,
+        "guardrails": guardrail_result,
     }

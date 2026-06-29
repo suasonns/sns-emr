@@ -1,6 +1,6 @@
-from __future__ import annotations
+# app/models/med_reconciliation.py
 
-import uuid
+from __future__ import annotations
 
 from sqlalchemy import (
     Boolean,
@@ -8,33 +8,52 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     String,
     Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
-from app.models.base import Base
+from app.models.base import BaseModel
+from app.models.tenant_mixin import TenantScopedMixin
 
 
-class MedReconciliationImport(Base):
+class MedReconciliationImport(TenantScopedMixin, BaseModel):
     __tablename__ = "med_reconciliation_imports"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     source_type = Column(String(32), nullable=False)
     source_context = Column(String(32), nullable=False)
-    status = Column(String(32), nullable=False, default="PENDING_REVIEW")
+
+    status = Column(
+        String(32),
+        nullable=False,
+        server_default="PENDING_REVIEW",
+    )
 
     source_file_name = Column(String(255), nullable=True)
+
     uploaded_by = Column(UUID(as_uuid=True), nullable=True)
-    uploaded_at = Column(DateTime(timezone=True), nullable=False)
+    uploaded_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
 
     parsed_at = Column(DateTime(timezone=True), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
@@ -42,8 +61,7 @@ class MedReconciliationImport(Base):
 
     raw_summary = Column(Text, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), nullable=False)
-    updated_at = Column(DateTime(timezone=True), nullable=False)
+    patient = relationship("Patient")
 
     items = relationship(
         "MedReconciliationItem",
@@ -65,27 +83,39 @@ class MedReconciliationImport(Base):
             "status IN ('PENDING_REVIEW', 'PARTIALLY_REVIEWED', 'FINALIZED')",
             name="ck_med_reconciliation_imports_status",
         ),
+        Index(
+            "ix_med_reconciliation_imports_patient",
+            "patient_id",
+        ),
     )
 
 
-class MedReconciliationItem(Base):
+class MedReconciliationItem(TenantScopedMixin, BaseModel):
     __tablename__ = "med_reconciliation_items"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     import_id = Column(
         UUID(as_uuid=True),
         ForeignKey("med_reconciliation_imports.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
-    tenant_id = Column(UUID(as_uuid=True), nullable=False)
+
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     list_type = Column(String(32), nullable=False)
+
     med_name_raw = Column(String(255), nullable=False)
     med_name_normalized = Column(String(255), nullable=True)
 
@@ -94,25 +124,36 @@ class MedReconciliationItem(Base):
     frequency = Column(String(128), nullable=True)
     indication = Column(String(255), nullable=True)
 
+    dose_normalized = Column(String(128), nullable=True)
+    route_normalized = Column(String(64), nullable=True)
+    frequency_normalized = Column(String(128), nullable=True)
+
+    signature_hash = Column(String(64), nullable=False, index=True)
+
     reaction_description = Column(Text, nullable=True)
     severity = Column(String(16), nullable=True)
+
     reaction_category_suggested = Column(String(32), nullable=True)
     reaction_category_final = Column(String(32), nullable=True)
 
-    is_discharge_candidate = Column(Boolean, nullable=False, default=False)
-    requires_immediate_review = Column(Boolean, nullable=False, default=False)
-    is_critical_reaction = Column(Boolean, nullable=False, default=False)
+    is_discharge_candidate = Column(Boolean, nullable=False, server_default="false")
+    requires_immediate_review = Column(Boolean, nullable=False, server_default="false")
+    is_critical_reaction = Column(Boolean, nullable=False, server_default="false")
 
-    review_status = Column(String(32), nullable=False, default="PENDING")
+    review_status = Column(
+        String(32),
+        nullable=False,
+        server_default="PENDING",
+    )
+
     notes = Column(Text, nullable=True)
-
-    created_at = Column(DateTime(timezone=True), nullable=False)
-    updated_at = Column(DateTime(timezone=True), nullable=False)
 
     import_record = relationship(
         "MedReconciliationImport",
         back_populates="items",
     )
+
+    patient = relationship("Patient")
 
     __table_args__ = (
         CheckConstraint(
@@ -136,5 +177,15 @@ class MedReconciliationItem(Base):
         CheckConstraint(
             "review_status IN ('PENDING', 'REVIEWED', 'ACCEPTED', 'REJECTED')",
             name="ck_med_reconciliation_items_review_status",
+        ),
+        Index(
+            "ix_med_reconciliation_items_patient",
+            "patient_id",
+        ),
+        Index(
+            "ix_med_reconciliation_items_patient_pending_signature",
+            "patient_id",
+            "review_status",
+            "signature_hash",
         ),
     )

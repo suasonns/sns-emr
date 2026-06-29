@@ -53,15 +53,25 @@ def _date_to_utc_datetime(value: date) -> datetime:
 # ENUM HELPERS
 # =========================================================
 
-def _active_poc_statuses() -> list[TaskStatus]:
+def _task_type_poc_update() -> TaskType | str:
+    """
+    Canonical POC_UPDATE task type resolver.
+
+    Supports enum-backed schemas and string fallback patterns.
+    """
+    member = getattr(TaskType, "POC_UPDATE", None)
+    return member if member is not None else "POC_UPDATE"
+
+
+def _active_poc_statuses() -> list:
     """
     Canonical active statuses for POC task lookup.
 
     ACTIVE = unresolved workflow states.
     """
-    statuses: list[TaskStatus] = []
+    statuses: list = []
 
-    for name in ("PENDING", "IN_PROGRESS", "OVERDUE"):
+    for name in ("PENDING", "OPEN", "DUE", "IN_PROGRESS", "OVERDUE"):
         member = getattr(TaskStatus, name, None)
         if member is not None and member not in statuses:
             statuses.append(member)
@@ -69,31 +79,32 @@ def _active_poc_statuses() -> list[TaskStatus]:
     if not statuses:
         raise ValueError(
             "TaskStatus enum has no usable active statuses. "
-            "Expected at least PENDING, IN_PROGRESS, or OVERDUE."
+            "Expected at least one of: PENDING, OPEN, DUE, IN_PROGRESS, OVERDUE."
         )
 
     return statuses
 
 
-def _default_new_task_status() -> TaskStatus:
+def _default_new_task_status():
     """
     Default status for newly created POC tasks.
     """
-    member = getattr(TaskStatus, "PENDING", None)
-    if member is not None:
-        return member
+    for name in ("PENDING", "OPEN", "DUE"):
+        member = getattr(TaskStatus, name, None)
+        if member is not None:
+            return member
 
-    raise ValueError("TaskStatus enum has no usable PENDING member")
+    raise ValueError("TaskStatus enum has no usable default active status")
 
 
-def _completed_status() -> TaskStatus:
+def _completed_status():
     completed = getattr(TaskStatus, "COMPLETED", None)
     if completed is None:
         raise ValueError("TaskStatus enum has no COMPLETED member")
     return completed
 
 
-def _default_manual_origin() -> TaskOrigin:
+def _default_manual_origin():
     """
     Origin used for same-day crisis POC behavior.
     """
@@ -105,7 +116,7 @@ def _default_manual_origin() -> TaskOrigin:
     raise ValueError("TaskOrigin enum has no usable MANUAL or SYSTEM member")
 
 
-def _default_periodic_origin() -> TaskOrigin:
+def _default_periodic_origin():
     """
     Origin used for routine periodic POC cycle tasks.
     """
@@ -117,7 +128,7 @@ def _default_periodic_origin() -> TaskOrigin:
     raise ValueError("TaskOrigin enum has no usable PERIODIC or SYSTEM member")
 
 
-def _is_periodic_origin(origin: TaskOrigin) -> bool:
+def _is_periodic_origin(origin) -> bool:
     return origin == _default_periodic_origin()
 
 
@@ -125,7 +136,7 @@ def _visit_reference_type() -> CompletionReferenceType | str:
     """
     Resolve VISIT completion reference type safely.
 
-    Supports enum-backed columns and fallback-to-string style schemas.
+    Supports enum-backed columns and fallback-to-string schemas.
     """
     member = getattr(CompletionReferenceType, "VISIT", None)
     return member if member is not None else "VISIT"
@@ -135,7 +146,7 @@ def _regulatory_basis_poc_update() -> TaskRegulatoryBasis | str:
     """
     Resolve POC_UPDATE regulatory basis safely.
 
-    Supports enum-backed columns and fallback-to-string style schemas.
+    Supports enum-backed columns and fallback-to-string schemas.
     """
     member = getattr(TaskRegulatoryBasis, "POC_UPDATE", None)
     return member if member is not None else "POC_UPDATE"
@@ -145,7 +156,7 @@ def _resolve_task_discipline(value: Optional[str]) -> TaskDiscipline | str:
     """
     Normalize task discipline safely.
 
-    Falls back to RN if a usable mapped discipline is not available.
+    Falls back to RN if a usable discipline is not available.
     """
     normalized = (value or "").strip().upper()
 
@@ -181,8 +192,8 @@ def normalize_visit_type(value: Optional[str]) -> str:
     """
     Normalize visit type using the canonical domain visit normalizer.
 
-    Returns an empty string for invalid/missing values so service-level logic can
-    safely return None instead of raising during read/automation paths.
+    Returns an empty string for invalid/missing values so the service can
+    safely return None instead of raising during routine automation paths.
     """
     if value is None:
         return ""
@@ -311,13 +322,14 @@ def get_active_poc_task(
     Return the earliest active POC_UPDATE task for a patient.
     """
     active_statuses = _active_poc_statuses()
+    task_type = _task_type_poc_update()
 
     query = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
         .filter(
             Task.patient_id == patient_id,
-            Task.task_type == TaskType.POC_UPDATE,
+            Task.task_type == task_type,
             Task.status.in_(active_statuses),
         )
     )
@@ -335,17 +347,16 @@ def get_periodic_poc_task_for_due_date(
 ) -> Optional[Task]:
     """
     Return an existing PERIODIC POC_UPDATE task for the exact patient + due_date cycle.
-
-    This prevents duplicate routine periodic POC obligations for the same cycle.
     """
     periodic_origin = _default_periodic_origin()
+    task_type = _task_type_poc_update()
 
     query = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
         .filter(
             Task.patient_id == patient_id,
-            Task.task_type == TaskType.POC_UPDATE,
+            Task.task_type == task_type,
             Task.origin == periodic_origin,
             Task.due_date == due_date,
         )
@@ -365,16 +376,17 @@ def get_poc_task_for_visit_evidence(
     """
     Return a POC_UPDATE task already linked to a visit as completion evidence.
 
-    This protects idempotency when a finalize operation is retried.
+    Protects idempotency when a finalize operation is retried.
     """
     reference_type = _visit_reference_type()
+    task_type = _task_type_poc_update()
 
     query = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
         .filter(
             Task.patient_id == patient_id,
-            Task.task_type == TaskType.POC_UPDATE,
+            Task.task_type == task_type,
             Task.completion_reference_id == visit_id,
         )
     )
@@ -396,17 +408,16 @@ def get_manual_poc_task_for_due_date(
 ) -> Optional[Task]:
     """
     Return an existing same-day manual/system POC_UPDATE task for a patient.
-
-    Used for crisis same-day behavior so repeat finalize calls do not create duplicates.
     """
     manual_origin = _default_manual_origin()
+    task_type = _task_type_poc_update()
 
     query = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
         .filter(
             Task.patient_id == patient_id,
-            Task.task_type == TaskType.POC_UPDATE,
+            Task.task_type == task_type,
             Task.origin == manual_origin,
             Task.due_date == due_date,
         )
@@ -425,7 +436,7 @@ def create_poc_task(
     db: Session,
     patient: Patient,
     due_date: date,
-    origin: TaskOrigin,
+    origin,
     benefit_period_id=None,
     visit: Optional[Visit] = None,
 ) -> Task:
@@ -434,7 +445,6 @@ def create_poc_task(
 
     Safety rule:
     - Direct PERIODIC task creation with visit context requires a supervisory RN visit.
-    - This is a final service-level guard against routine POC drift.
     - Crisis same-day tasks use MANUAL/SYSTEM origin and are handled separately.
     """
     if _is_periodic_origin(origin) and visit is not None:
@@ -450,7 +460,7 @@ def create_poc_task(
         discipline_value = getattr(visit, "visit_discipline", None)
 
     task = Task(
-        task_type=TaskType.POC_UPDATE,
+        task_type=_task_type_poc_update(),
         status=_default_new_task_status(),
         due_date=due_date,
         origin=origin,
@@ -526,19 +536,19 @@ def complete_task_with_visit_evidence(
 ) -> None:
     """
     Complete a POC_UPDATE task with VISIT evidence.
-
-    Compliance rule:
-    - completed status
-    - completed_at timestamp
-    - completion_reference_type
-    - completion_reference_id
     """
     now = utcnow()
 
     task.status = _completed_status()
-    task.completed_at = now
-    task.completion_reference_type = _visit_reference_type()
-    task.completion_reference_id = visit.id
+
+    if hasattr(task, "completed_at"):
+        task.completed_at = now
+
+    if hasattr(task, "completion_reference_type"):
+        task.completion_reference_type = _visit_reference_type()
+
+    if hasattr(task, "completion_reference_id"):
+        task.completion_reference_id = visit.id
 
     if hasattr(task, "visit_id"):
         task.visit_id = getattr(visit, "id", None)
@@ -561,8 +571,6 @@ def attach_visit_as_same_cycle_context(
 ) -> Task:
     """
     Refresh an existing same-cycle POC task with supporting visit context.
-
-    This does not create a duplicate task.
 
     IMPORTANT:
     - For active tasks, attach visit context only
@@ -611,13 +619,7 @@ def upsert_next_periodic_poc_task(
 
     Locked Phase 1 policy:
     - PERIODIC POC_UPDATE anchoring requires a supervisory RN visit.
-    - Non-supervisory RN visits must not create, move, or reuse a PERIODIC
-      POC_UPDATE cycle as the anchor visit.
-    - One PERIODIC POC task is allowed per patient per due_date cycle.
-
-    Returns:
-        Task when a periodic task is created/reused/updated.
-        None when the visit is not allowed to anchor periodic behavior.
+    - One periodic POC task is allowed per patient per due_date cycle.
     """
     if not _is_supervisory_visit(anchor_visit):
         return None
@@ -626,9 +628,6 @@ def upsert_next_periodic_poc_task(
     anchor_date = _resolve_visit_service_date(anchor_visit)
     next_due_date = anchor_date + timedelta(days=14)
 
-    # ---------------------------------------------------------
-    # 1) Exact same periodic cycle already exists: reuse it.
-    # ---------------------------------------------------------
     existing_same_due = get_periodic_poc_task_for_due_date(
         db=db,
         patient_id=patient.id,
@@ -642,9 +641,6 @@ def upsert_next_periodic_poc_task(
             benefit_period_id=benefit_period_id,
         )
 
-    # ---------------------------------------------------------
-    # 2) Existing active POC task exists: move/update it.
-    # ---------------------------------------------------------
     existing_active = get_active_poc_task(
         db,
         patient.id,
@@ -690,9 +686,6 @@ def upsert_next_periodic_poc_task(
 
         return existing_active
 
-    # ---------------------------------------------------------
-    # 3) Truly new routine periodic cycle: create it.
-    # ---------------------------------------------------------
     return create_poc_task(
         db=db,
         patient=patient,
@@ -805,8 +798,6 @@ def handle_poc_on_finalized_rn_visit(
     Clinical semantic boundary:
       - POC_UPDATE task behavior is an operational/compliance checkpoint
       - It is not the full clinical POC lifecycle
-      - Condition-specific reassessment cadence belongs to condition logic, not this
-        routine periodic anchoring function
     """
     if not _is_rn_visit(visit):
         return None

@@ -8,10 +8,10 @@ from app.api.support_reference import router as support_reference_router
 
 # ADMIN
 from app.api.admin.chart_export import router as admin_chart_export_router
-from app.api.routes import forms
 
 # COMMUNICATIONS LOG
 from app.api.communications_log.router import router as communications_log_router
+from app.api.routes import forms
 
 # CORE TENANT ROUTES
 from app.api import (

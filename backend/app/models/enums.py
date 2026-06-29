@@ -6,11 +6,6 @@ CRITICAL RULES:
 - NEVER change enum values without a forward-only migration
 - Do NOT remove enum values used in historical records
 - This file is dependency-free by design
-
-COMPLIANCE COVERAGE:
-- CMS Hospice Conditions of Participation (CoPs)
-- ACHC / CHAP / CDPH / Joint Commission
-- Audit traceability + lifecycle enforcement
 """
 
 from __future__ import annotations
@@ -18,19 +13,27 @@ from __future__ import annotations
 import enum
 
 
-# =====================================================================
-# TASK ENGINE ENUMS (POSTGRESQL-BACKED — MUST MATCH DB EXACTLY)
-# =====================================================================
+# ==========================================================
+# ✅ CANONICAL CORE DISCIPLINE STANDARD (SYSTEM-WIDE)
+# ==========================================================
+
+CORE_DISCIPLINES = ["RN", "MD", "MSW", "SC"]
+
+"""
+RULE:
+- These are the ONLY disciplines used for:
+  ✅ IDG completeness
+  ✅ signature validation
+  ✅ task routing
+  ✅ compliance logic
+"""
+
+
+# ==========================================================
+# TASK ENGINE ENUMS (POSTGRESQL-BACKED — MUST MATCH DB)
+# ==========================================================
 
 class TaskStatus(str, enum.Enum):
-    """
-    Canonical task lifecycle.
-
-    IMPORTANT:
-    - Must match PostgreSQL enum exactly
-    - Used for workflow, SLA, and audit validation
-    """
-
     PENDING = "PENDING"
     IN_PROGRESS = "IN_PROGRESS"
     COMPLETED = "COMPLETED"
@@ -40,54 +43,46 @@ class TaskStatus(str, enum.Enum):
 
 
 class TaskType(str, enum.Enum):
-    """
-    Clinical + regulatory task taxonomy.
-    """
 
-    # VISIT TYPES
-    HUV = "HUV"
+    HUV1 = "HUV1"
+    HUV2 = "HUV2"
     SFV = "SFV"
+    HUV = "HUV"
 
-    # INITIAL ASSESSMENTS
     INITIAL_RN_ICA = "INITIAL_RN_ICA"
     INITIAL_MSW_ICA = "INITIAL_MSW_ICA"
     INITIAL_SC_ICA = "INITIAL_SC_ICA"
     INITIAL_BEREAVEMENT = "INITIAL_BEREAVEMENT"
     NOE_DUE = "NOE_DUE"
 
-    # PLAN OF CARE
     POC_UPDATE = "POC_UPDATE"
     IDG_REVIEW = "IDG_REVIEW"
 
-    # CERTIFICATION
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
     F2F = "F2F"
 
-    # RE-OFFERS
     MSW_REOFFER = "MSW_REOFFER"
     CHAPLAIN_REOFFER = "CHAPLAIN_REOFFER"
     AIDE_REOFFER = "AIDE_REOFFER"
 
-    # POC VALIDATION
     POC_NONCOMPLIANT_STRUCTURE = "POC_NONCOMPLIANT_STRUCTURE"
     POC_REVIEW_REQUIRED = "POC_REVIEW_REQUIRED"
     POC_OUT_OF_SCOPE_CARE = "POC_OUT_OF_SCOPE_CARE"
     POC_STALE_REVIEW = "POC_STALE_REVIEW"
     POC_PHYSICIAN_REVIEW_REQUIRED = "POC_PHYSICIAN_REVIEW_REQUIRED"
 
-    # CLINICAL REVIEW
     CLINICAL_REVIEW_REQUIRED = "CLINICAL_REVIEW_REQUIRED"
     CLINICAL_FOLLOWUP = "CLINICAL_FOLLOWUP"
 
     OTHER = "OTHER"
 
 
-class TaskOrigin(str, enum.Enum):
-    """
-    Source of task creation.
-    """
+# ==========================================================
+# TASK METADATA ENUMS
+# ==========================================================
 
+class TaskOrigin(str, enum.Enum):
     ADMISSION = "ADMISSION"
     PERIODIC = "PERIODIC"
     MANUAL = "MANUAL"
@@ -95,10 +90,6 @@ class TaskOrigin(str, enum.Enum):
 
 
 class TaskRegulatoryBasis(str, enum.Enum):
-    """
-    Regulatory driver for the task.
-    """
-
     POC_UPDATE = "POC_UPDATE"
     IDG_REVIEW = "IDG_REVIEW"
     CERTIFICATION = "CERTIFICATION"
@@ -107,14 +98,6 @@ class TaskRegulatoryBasis(str, enum.Enum):
 
 
 class CompletionReferenceType(str, enum.Enum):
-    """
-    Evidence linkage for COMPLETED tasks.
-
-    IMPORTANT:
-    - Only valid when TaskStatus == COMPLETED
-    - Must reference real clinical artifacts
-    """
-
     VISIT = "VISIT"
     NOTE = "NOTE"
     DOCUMENT = "DOCUMENT"
@@ -124,9 +107,9 @@ class CompletionReferenceType(str, enum.Enum):
     SPIRITUAL_NOTE = "SPIRITUAL_NOTE"
 
 
-# =====================================================================
-# TASK DISCIPLINE (POSTGRESQL ENUM — MUST MATCH DB EXACTLY)
-# =====================================================================
+# ==========================================================
+# ✅ TASK DISCIPLINE (DB-STABLE)
+# ==========================================================
 
 class TaskDiscipline(str, enum.Enum):
     RN = "RN"
@@ -140,18 +123,57 @@ class TaskDiscipline(str, enum.Enum):
     BSW = "BSW"
     LCSW = "LCSW"
 
+    # ✅ SPIRITUAL CARE (CANONICAL)
     SC = "SC"
+
+    # ✅ LEGACY / DISPLAY ONLY
     CHAPLAIN = "CHAPLAIN"
 
     AIDE = "AIDE"
 
 
-# =====================================================================
-# MASTER DISCIPLINE ENUM (APP-LEVEL)
-# =====================================================================
+# ==========================================================
+# ✅ DISCIPLINE NORMALIZATION (CRITICAL)
+# ==========================================================
+
+DISCIPLINE_NORMALIZATION_MAP = {
+    "RN": "RN",
+    "LVN": "RN",
+    "LPN": "RN",
+
+    "MD": "MD",
+    "DO": "MD",
+    "NP": "MD",
+    "PA": "MD",
+
+    "SW": "MSW",
+    "MSW": "MSW",
+    "BSW": "MSW",
+    "LCSW": "MSW",
+
+    "SC": "SC",
+    "CHAPLAIN": "SC",
+}
+
+
+def normalize_discipline(value: str) -> str:
+    """
+    Converts any discipline into core discipline.
+
+    REQUIRED for:
+    ✅ IDG validation
+    ✅ task assignment
+    ✅ signature matching
+    """
+    return DISCIPLINE_NORMALIZATION_MAP.get(value, value)
+
+
+# ==========================================================
+# MASTER DISCIPLINE ENUM
+# ==========================================================
 
 class Discipline(str, enum.Enum):
-    # MEDICAL
+
     MD = "MD"
     DO = "DO"
     MEDICAL_DIRECTOR = "MEDICAL_DIRECTOR"
@@ -159,74 +181,28 @@ class Discipline(str, enum.Enum):
     NP = "NP"
     PA = "PA"
 
-    # NURSING
     RN = "RN"
     LVN = "LVN"
     LPN = "LPN"
 
-    # AIDE
     CHHA = "CHHA"
     AIDE = "AIDE"
 
-    # IDG CORE
     SW = "SW"
     MSW = "MSW"
     BSW = "BSW"
     LCSW = "LCSW"
+
     SC = "SC"
     CHAPLAIN = "CHAPLAIN"
 
-    BEREAVEMENT_COORDINATOR = "BEREAVEMENT_COORDINATOR"
-
-    # SUPPORT
-    PHARMACIST = "PHARMACIST"
-    DIETITIAN = "DIETITIAN"
-    RESPIRATORY_THERAPIST = "RESPIRATORY_THERAPIST"
-
-    # MANAGEMENT
     ADMIN = "ADMIN"
-    EXECUTIVE_DIRECTOR = "EXECUTIVE_DIRECTOR"
-    ADMINISTRATOR = "ADMINISTRATOR"
-    DIRECTOR = "DIRECTOR"
-    CLINICAL_DIRECTOR = "CLINICAL_DIRECTOR"
-    DPCS = "DPCS"
-
-    # OPERATIONS
-    INTAKE = "INTAKE"
     CASE_MANAGER = "CASE_MANAGER"
 
-    # REGULATORY
-    SURVEYOR = "SURVEYOR"
-    CONSULTANT = "CONSULTANT"
 
-    # VOLUNTEER
-    VOLUNTEER_COORDINATOR = "VOLUNTEER_COORDINATOR"
-    VOLUNTEER = "VOLUNTEER"
-
-    # SUPPORT STAFF
-    DRIVER = "DRIVER"
-    INTERPRETER = "INTERPRETER"
-    HOUSEKEEPER = "HOUSEKEEPER"
-
-
-# =====================================================================
-# BENEFIT PERIOD
-# =====================================================================
-
-class BenefitPeriodStatus(str, enum.Enum):
-    """
-    LEGACY COMPATIBILITY:
-    OPEN mapped to PENDING.
-
-    DO NOT use OPEN in new logic.
-    """
-
-    OPEN = "PENDING"
-    CLOSED = "CLOSED"
-
-# =====================================================================
+# ==========================================================
 # CARE SETTINGS
-# =====================================================================
+# ==========================================================
 
 class CareSettingEnum(str, enum.Enum):
     HOME = "HOME"
@@ -247,28 +223,19 @@ class SafetyResponsibilityEnum(str, enum.Enum):
     FACILITY_MANAGED = "FACILITY_MANAGED"
 
 
-# =====================================================================
-# FORM ENGINE (APP LEVEL TEXT)
-# =====================================================================
+# ==========================================================
+# VISIT FORMS
+# ==========================================================
 
 class VisitFormType(str, enum.Enum):
-    AFTER_DEATH = "AFTER_DEATH"
-    AFTER_HOURS = "AFTER_HOURS"
-    ANCILLARY_SUPPORT = "ANCILLARY_SUPPORT"
     ASSESS = "ASSESS"
-    BEREAVEMENT_VISIT = "BEREAVEMENT_VISIT"
-    DEATH_VISIT = "DEATH_VISIT"
-    DECLINED_VISIT = "DECLINED_VISIT"
-    MISSED_VISIT = "MISSED_VISIT"
-    OFFICE_HOURS = "OFFICE_HOURS"
-    ON_CALL_TRIAGE = "ON_CALL_TRIAGE"
-    RESPITE_RELIEF = "RESPITE_RELIEF"
     ROUTINE_VISIT = "ROUTINE_VISIT"
     SHORT_FORM = "SHORT_FORM"
-    SUPV_VISIT_ONLY = "SUPV_VISIT_ONLY"
-    VOLUNTEER_SUPPORT = "VOLUNTEER_SUPPORT"
-    WEEKENDS = "WEEKENDS"
     PRE_ADMIT_EVAL = "PRE_ADMIT_EVAL"
+    AFTER_DEATH = "AFTER_DEATH"
+    ON_CALL_TRIAGE = "ON_CALL_TRIAGE"
+    MISSED_VISIT = "MISSED_VISIT"
+    DECLINED_VISIT = "DECLINED_VISIT"
 
 
 class NoteFormFamily(str, enum.Enum):
@@ -278,3 +245,24 @@ class NoteFormFamily(str, enum.Enum):
     MEDICAL = "MEDICAL"
     SUPPORT = "SUPPORT"
     ADMIN = "ADMIN"
+
+
+# ==========================================================
+# EXPORTS
+# ==========================================================
+
+__all__ = [
+    "TaskStatus",
+    "TaskType",
+    "TaskOrigin",
+    "TaskRegulatoryBasis",
+    "CompletionReferenceType",
+    "TaskDiscipline",
+    "Discipline",
+    "CareSettingEnum",
+    "SafetyResponsibilityEnum",
+    "VisitFormType",
+    "NoteFormFamily",
+    "CORE_DISCIPLINES",
+    "normalize_discipline",
+]

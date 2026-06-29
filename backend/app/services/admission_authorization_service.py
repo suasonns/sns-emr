@@ -23,7 +23,11 @@ from app.services.task_benefit_period_linker import attach_active_benefit_period
 # ---------------------------------------------------------------------
 
 TASK_INITIAL_RN_ICA = "INITIAL_RN_ICA"
+TASK_INITIAL_MSW_ICA = "INITIAL_MSW_ICA"
+TASK_INITIAL_SC_ICA = "INITIAL_SC_ICA"
+TASK_INITIAL_BEREAVEMENT = "INITIAL_BEREAVEMENT"
 TASK_NOE_DUE = "NOE_DUE"
+TASK_IDG_REVIEW = "IDG_REVIEW"
 
 
 # ---------------------------------------------------------------------
@@ -71,11 +75,21 @@ def _as_date(value):
     return value.date() if hasattr(value, "date") else value
 
 
-def _set_due_fields(task: Task, due_at: datetime) -> None:
+def _set_due_fields(task: Task, due_at: datetime, *, when: datetime) -> None:
+    """
+    Set all due / SLA fields that may be required by the live DB schema.
+    """
     if hasattr(task, "due_at"):
         task.due_at = due_at
+
     if hasattr(task, "due_date"):
         task.due_date = due_at.date()
+
+    if hasattr(task, "sla_start_at"):
+        task.sla_start_at = when
+
+    if hasattr(task, "sla_due_at"):
+        task.sla_due_at = due_at
 
 
 def _active_recurring_statuses() -> list[TaskStatus]:
@@ -108,6 +122,95 @@ def _set_created_by(task: Task, created_by: Optional[uuid.UUID]) -> None:
         task.created_by = created_by
 
 
+def _set_task_defaults(
+    task: Task,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    task_type: TaskType,
+    discipline: TaskDiscipline,
+    regulatory_basis: TaskRegulatoryBasis,
+    origin: TaskOrigin,
+    due_at: datetime,
+    created_by: Optional[uuid.UUID],
+    when: datetime,
+) -> None:
+    """
+    Normalize all required fields for the current live task schema.
+    """
+    pending = _required_enum_member(TaskStatus, ["PENDING"])
+
+    task.tenant_id = tenant_id
+    task.patient_id = patient_id
+    task.task_type = task_type
+    task.status = pending
+    task.origin = origin
+    task.discipline = discipline
+    task.regulatory_basis = regulatory_basis
+
+    _set_due_fields(task, due_at, when=when)
+    _set_created_by(task, created_by)
+
+    if hasattr(task, "created_at") and getattr(task, "created_at", None) is None:
+        task.created_at = when
+
+    if hasattr(task, "updated_at"):
+        task.updated_at = when
+
+    if hasattr(task, "is_overdue") and getattr(task, "is_overdue", None) is None:
+        task.is_overdue = False
+
+    if hasattr(task, "escalation_level") and getattr(task, "escalation_level", None) is None:
+        task.escalation_level = 0
+
+
+def _new_task(
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    task_type: TaskType,
+    due_at: datetime,
+    created_by: Optional[uuid.UUID],
+    discipline: TaskDiscipline,
+    regulatory_basis: TaskRegulatoryBasis,
+    origin: TaskOrigin,
+) -> Task:
+    now = _now_utc()
+
+    task = Task(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=task_type,
+        status=_required_enum_member(TaskStatus, ["PENDING"]),
+        origin=origin,
+        discipline=discipline,
+        regulatory_basis=regulatory_basis,
+    )
+
+    _set_task_defaults(
+        task,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=task_type,
+        discipline=discipline,
+        regulatory_basis=regulatory_basis,
+        origin=origin,
+        due_at=due_at,
+        created_by=created_by,
+        when=now,
+    )
+
+    attach_active_benefit_period_to_task(
+        db=None,
+        task=task,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+    )
+
+    return task
+
+
 def _ensure_initial_task_pending_unique(
     db: Session,
     *,
@@ -125,11 +228,14 @@ def _ensure_initial_task_pending_unique(
 
     Used for onboarding tasks which must never duplicate:
     - INITIAL_RN_ICA
+    - INITIAL_MSW_ICA
+    - INITIAL_SC_ICA
+    - INITIAL_BEREAVEMENT
     - NOE_DUE
 
     Behavior:
     - if an existing task is found and is unresolved, normalize it to PENDING
-      and refresh its due date
+      and refresh due date / SLA fields
     - if an existing task is COMPLETED or WAIVED, preserve that outcome and do
       not create a duplicate
     """
@@ -155,7 +261,10 @@ def _ensure_initial_task_pending_unique(
 
         if current_status not in {completed, waived}:
             existing.status = pending
-            _set_due_fields(existing, due_at)
+            existing.origin = origin
+            existing.discipline = discipline
+            existing.regulatory_basis = regulatory_basis
+            _set_due_fields(existing, due_at, when=now)
             _touch_task(existing, when=now)
 
         return existing
@@ -171,16 +280,21 @@ def _ensure_initial_task_pending_unique(
         regulatory_basis=regulatory_basis,
     )
 
-    _set_created_by(task, created_by)
-    _set_due_fields(task, due_at)
-
-    if hasattr(task, "created_at"):
-        task.created_at = now
-    if hasattr(task, "updated_at"):
-        task.updated_at = now
+    _set_task_defaults(
+        task,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=task_type,
+        discipline=discipline,
+        regulatory_basis=regulatory_basis,
+        origin=origin,
+        due_at=due_at,
+        created_by=created_by,
+        when=now,
+    )
 
     attach_active_benefit_period_to_task(
-        db,
+        db=db,
         task=task,
         tenant_id=tenant_id,
         patient_id=patient_id,
@@ -229,7 +343,10 @@ def _ensure_active_task_by_type(
 
     if existing_active:
         existing_active.status = pending
-        _set_due_fields(existing_active, due_at)
+        existing_active.origin = origin
+        existing_active.discipline = discipline
+        existing_active.regulatory_basis = regulatory_basis
+        _set_due_fields(existing_active, due_at, when=now)
         _touch_task(existing_active, when=now)
         return existing_active
 
@@ -244,16 +361,21 @@ def _ensure_active_task_by_type(
         regulatory_basis=regulatory_basis,
     )
 
-    _set_created_by(task, created_by)
-    _set_due_fields(task, due_at)
-
-    if hasattr(task, "created_at"):
-        task.created_at = now
-    if hasattr(task, "updated_at"):
-        task.updated_at = now
+    _set_task_defaults(
+        task,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=task_type,
+        discipline=discipline,
+        regulatory_basis=regulatory_basis,
+        origin=origin,
+        due_at=due_at,
+        created_by=created_by,
+        when=now,
+    )
 
     attach_active_benefit_period_to_task(
-        db,
+        db=db,
         task=task,
         tenant_id=tenant_id,
         patient_id=patient_id,
@@ -275,9 +397,7 @@ def record_records_release_consent(
     user_id: Optional[uuid.UUID],
 ) -> Patient:
     """
-    PUBLIC CONTRACT: required by app.api.admission_authorization imports.
-
-    Records release consent only:
+    PUBLIC CONTRACT: records release consent only.
     - no admission authorization
     - no onboarding tasks
     """
@@ -312,7 +432,12 @@ def authorize_admission(
 
     Guarantees:
     - SOC immutable (no-op if already set)
+    - election_signed_at persisted if field exists
+    - hospice_election_date persisted if field exists
     - INITIAL_RN_ICA due +2 days (PENDING, strict unique)
+    - INITIAL_MSW_ICA due +5 days (PENDING, strict unique)
+    - INITIAL_SC_ICA due +5 days (PENDING, strict unique)
+    - INITIAL_BEREAVEMENT due +5 days (PENDING, strict unique)
     - NOE_DUE due +5 days (PENDING, strict unique)
     - IDG_REVIEW due +15 days (PENDING, active-task idempotent)
     """
@@ -339,20 +464,31 @@ def authorize_admission(
     if hasattr(patient, "election_signed_at") and getattr(patient, "election_signed_at", None) is None:
         patient.election_signed_at = election_signed_at
 
+    if hasattr(patient, "hospice_election_date") and getattr(patient, "hospice_election_date", None) is None:
+        try:
+            patient.hospice_election_date = incoming_soc
+        except Exception:
+            patient.hospice_election_date = election_signed_at
+
     if hasattr(patient, "updated_at"):
         patient.updated_at = _now_utc()
 
-    origin_manual = _required_enum_member(TaskOrigin, ["MANUAL", "SYSTEM"])
+    origin_admission = _required_enum_member(TaskOrigin, ["ADMISSION", "SYSTEM"])
     origin_periodic = _required_enum_member(TaskOrigin, ["PERIODIC", "SYSTEM"])
+
     rn_disc = _required_enum_member(TaskDiscipline, ["RN"])
+    sw_disc = _required_enum_member(TaskDiscipline, ["SW", "MSW"])
+    chaplain_disc = _required_enum_member(TaskDiscipline, ["CHAPLAIN", "SC"])
 
     rn_ica_type = _required_enum_member(TaskType, [TASK_INITIAL_RN_ICA])
+    msw_ica_type = _required_enum_member(TaskType, [TASK_INITIAL_MSW_ICA])
+    sc_ica_type = _required_enum_member(TaskType, [TASK_INITIAL_SC_ICA])
+    bereavement_type = _required_enum_member(TaskType, [TASK_INITIAL_BEREAVEMENT])
     noe_type = _required_enum_member(TaskType, [TASK_NOE_DUE])
 
     # Regulatory basis resolution:
     # keep fallback order explicit and deterministic
-    rn_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
-    noe_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
+    admission_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW", "POC_UPDATE"])
 
     # Onboarding tasks (strict unique)
     _ensure_initial_task_pending_unique(
@@ -363,8 +499,44 @@ def authorize_admission(
         due_at=election_signed_at + timedelta(days=2),
         created_by=authorized_by_user_id,
         discipline=rn_disc,
-        regulatory_basis=rn_basis,
-        origin=origin_manual,
+        regulatory_basis=admission_basis,
+        origin=origin_admission,
+    )
+
+    _ensure_initial_task_pending_unique(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=msw_ica_type,
+        due_at=election_signed_at + timedelta(days=5),
+        created_by=authorized_by_user_id,
+        discipline=sw_disc,
+        regulatory_basis=admission_basis,
+        origin=origin_admission,
+    )
+
+    _ensure_initial_task_pending_unique(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=sc_ica_type,
+        due_at=election_signed_at + timedelta(days=5),
+        created_by=authorized_by_user_id,
+        discipline=chaplain_disc,
+        regulatory_basis=admission_basis,
+        origin=origin_admission,
+    )
+
+    _ensure_initial_task_pending_unique(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        task_type=bereavement_type,
+        due_at=election_signed_at + timedelta(days=5),
+        created_by=authorized_by_user_id,
+        discipline=sw_disc,
+        regulatory_basis=admission_basis,
+        origin=origin_admission,
     )
 
     _ensure_initial_task_pending_unique(
@@ -375,12 +547,12 @@ def authorize_admission(
         due_at=election_signed_at + timedelta(days=5),
         created_by=authorized_by_user_id,
         discipline=rn_disc,
-        regulatory_basis=noe_basis,
-        origin=origin_manual,
+        regulatory_basis=admission_basis,
+        origin=origin_admission,
     )
 
     # IDG review cadence (active-task idempotent)
-    idg_type = _optional_enum_member(TaskType, ["IDG_REVIEW"])
+    idg_type = _optional_enum_member(TaskType, [TASK_IDG_REVIEW])
     if idg_type is not None:
         idg_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
 

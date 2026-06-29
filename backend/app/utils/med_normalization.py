@@ -1,68 +1,94 @@
-# app/utils/med_normalization.py
-
-"""
-Medication normalization utilities.
-
-Compliance notes:
-- Deterministic formatting only
-- No clinical inference (no route/frequency assumptions)
-- No database access
-- Safe for MAR/POC/IDG reconciliation matching
-"""
-
 from __future__ import annotations
+
 import re
-from typing import Optional, Tuple
+from decimal import Decimal, InvalidOperation
+from typing import Optional
 
 
-_whitespace_re = re.compile(r"\s+")
-# Matches common dose formats: 5 mg, 0.5mg, 10 mcg, 1 g, 650mg, etc.
-_dose_re = re.compile(
-    r"(?P<value>\d+(?:\.\d+)?)\s*(?P<unit>mcg|ug|mg|g|ml|mL|units|unit|iu|IU)\b",
-    flags=re.IGNORECASE,
-)
+# ---------------------------------------------------------
+# TEXT NORMALIZATION
+# ---------------------------------------------------------
 
-def normalize_text(text: Optional[str]) -> Optional[str]:
+_WS_RE = re.compile(r"\s+")
+
+
+def normalize_text(text: Optional[str]) -> str:
     """
-    Normalize free-text medication strings for matching:
-    - strip
-    - lowercase
-    - collapse whitespace
-    - keep punctuation (do not alter clinical meaning)
+    Normalize text safely for matching (non-destructive).
     """
     if text is None:
-        return None
-    cleaned = text.strip().lower()
-    cleaned = _whitespace_re.sub(" ", cleaned)
-    return cleaned
+        return ""
+
+    return _WS_RE.sub(" ", text.strip().lower())
 
 
-def normalize_dose(text: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+# ---------------------------------------------------------
+# DOSE NORMALIZATION (ENTERPRISE SAFE)
+# ---------------------------------------------------------
+
+_DOSE_RE = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s*(mcg|μg|ug|mg|g|gm|grams?|milligrams?)\s*$",
+    re.IGNORECASE,
+)
+
+# Complex forms we should NEVER transform (clinical safety)
+_COMPLEX_MARKERS = (
+    "/",
+    "ml",
+    "patch",
+    "%",
+    "unit",
+    "tab",
+    "caps",
+    "supp",
+)
+
+
+def normalize_dose(dose: Optional[str]) -> str:
     """
-    Extract a normalized (value, unit) dose from a med string.
+    Normalize mass-based medication doses to mg.
 
-    Returns:
-        (value, unit) where:
-        - value is a string number like "5" or "0.5"
-        - unit is normalized to lowercase: "mg", "mcg", "g", "ml", "units", "iu"
-    If no dose found, returns (None, None)
-
-    This is extraction-only; it does NOT convert units (e.g., mcg->mg).
+    Safety rules:
+    - Do NOT normalize volume (ml), compound, or route-dependent doses
+    - Preserve expressions like '5 mg/ml', '1 patch daily'
+    - Fail-safe: return original if unsure
     """
-    if not text:
-        return (None, None)
 
-    m = _dose_re.search(text)
+    if not dose:
+        return ""
+
+    d = normalize_text(dose)
+
+    # ---------------------------------------------------------
+    # HARD STOP: preserve complex clinical expressions
+    # ---------------------------------------------------------
+    if any(marker in d for marker in _COMPLEX_MARKERS):
+        return d
+
+    m = _DOSE_RE.match(d)
     if not m:
-        return (None, None)
+        return d
 
-    value = m.group("value")
-    unit = m.group("unit").lower()
+    try:
+        value = Decimal(m.group(1))
+    except InvalidOperation:
+        return d
 
-    # Normalize some equivalent unit spellings
-    if unit == "ug":
-        unit = "mcg"
-    if unit == "unit":
-        unit = "units"
+    unit = m.group(2).lower()
 
-    return (value, unit)
+    # ---------------------------------------------------------
+    # UNIT NORMALIZATION → mg
+    # ---------------------------------------------------------
+    if unit in ("mg", "milligram", "milligrams"):
+        mg = value
+    elif unit in ("g", "gm", "gram", "grams"):
+        mg = value * Decimal("1000")
+    elif unit in ("mcg", "ug", "μg"):
+        mg = value / Decimal("1000")
+    else:
+        return d
+
+    # prevent scientific notation
+    mg_str = format(mg.normalize(), "f")
+
+    return f"{mg_str}mg"

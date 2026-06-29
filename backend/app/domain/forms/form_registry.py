@@ -5,6 +5,7 @@ from typing import Any
 
 from app.models.enums import NoteFormFamily, TaskDiscipline
 
+
 # =========================================================
 # VISIT HEADER
 # =========================================================
@@ -23,8 +24,9 @@ VISIT_HEADER_FIELDS = [
     "form_type",
 ]
 
+
 # =========================================================
-# MODULES
+# MODULE KEYS
 # =========================================================
 
 MOD_PAIN = "pain"
@@ -34,14 +36,13 @@ MOD_NARRATIVE = "narrative"
 MOD_ROS = "review_of_systems"
 MOD_ORDERS = "orders"
 MOD_FUNCTIONAL_SCORES = "functional_scores"
-MOD_IDG_LINK = "idg_link"
-MOD_POC_LINK = "poc_link"
 
 MOD_PSYCHOSOCIAL = "psychosocial"
 MOD_SPIRITUAL = "spiritual"
 
 MOD_CC_ENTRY = "cc_shift_entry"
 MOD_CARE_PROVIDED = "care_provided"
+
 
 # =========================================================
 # HELPERS
@@ -69,6 +70,7 @@ def _value(v):
     if v is None:
         return None
     return str(getattr(v, "value", v)).strip().upper()
+
 
 # =========================================================
 # NORMALIZATION
@@ -98,8 +100,9 @@ def normalize_event_type(v):
 def normalize_level_of_care(v):
     return _value(v)
 
+
 # =========================================================
-# TASK DISCIPLINE → FORM FAMILY (CRITICAL)
+# TASK DISCIPLINE → FORM FAMILY
 # =========================================================
 
 TASK_DISCIPLINE_TO_FORM_FAMILY = {
@@ -107,6 +110,7 @@ TASK_DISCIPLINE_TO_FORM_FAMILY = {
     TaskDiscipline.LVN: NoteFormFamily.CLINICAL,
     TaskDiscipline.NP: NoteFormFamily.CLINICAL,
     TaskDiscipline.MD: NoteFormFamily.CLINICAL,
+
     TaskDiscipline.CHHA: NoteFormFamily.SUPPORT,
 
     TaskDiscipline.SW: NoteFormFamily.PSYCHOSOCIAL,
@@ -140,82 +144,86 @@ def note_matches_task_family(note_form_family, task_discipline):
 
     return _value(note_form_family) == required.value
 
+
 # =========================================================
-# FORM REGISTRY
+# FORM REGISTRY (PRODUCTION GRADE)
 # =========================================================
 
 FORM_REGISTRY = {
     "RN": {
-        "ROUTINE_VISIT": _pkg(
-            form_family=NoteFormFamily.CLINICAL,
-            primary_form="RN_ROUTINE_VISIT_NOTE",
-            modules=[MOD_PAIN, MOD_VITALS, MOD_SYMPTOMS, MOD_NARRATIVE],
-            attached_forms=["POC_UPDATE"],
-        ),
         "ASSESS": _pkg(
             form_family=NoteFormFamily.CLINICAL,
-            primary_form="HOPE_ADMISSION",
-            modules=[MOD_PAIN, MOD_VITALS, MOD_ROS, MOD_NARRATIVE],
+            primary_form="RN_ASSESS_V1",
+            modules=[MOD_PAIN, MOD_VITALS, MOD_ROS, MOD_NARRATIVE, MOD_FUNCTIONAL_SCORES],
+            attached_forms=[],
         ),
         "SHORT_FORM": _pkg(
             form_family=NoteFormFamily.CLINICAL,
-            primary_form="RN_SHORT_FORM_FALSE_ALARM",
+            primary_form="RN_SHORT_FORM_V1",
             modules=[MOD_PAIN, MOD_VITALS, MOD_NARRATIVE],
+            attached_forms=[],
+        ),
+        "SUPERVISORY": _pkg(
+            form_family=NoteFormFamily.CLINICAL,
+            primary_form="RN_SUPERVISORY_V1",
+            modules=[MOD_NARRATIVE],
+            attached_forms=["POC_UPDATE"],
         ),
     },
 
     "LVN": {
-        "ROUTINE_VISIT": _pkg(
-            form_family=NoteFormFamily.CLINICAL,
-            primary_form="LVN_ROUTINE_SN",
-            modules=[MOD_PAIN, MOD_VITALS, MOD_SYMPTOMS, MOD_NARRATIVE],
-        ),
         "SHORT_FORM": _pkg(
             form_family=NoteFormFamily.CLINICAL,
-            primary_form="LVN_SHORT_FORM_FALSE_ALARM",
+            primary_form="LVN_VISIT_V1",
             modules=[MOD_PAIN, MOD_VITALS, MOD_NARRATIVE],
+            attached_forms=[],
         ),
     },
 
     "AIDE": {
-        "ROUTINE_VISIT": _pkg(
+        "SHORT_FORM": _pkg(
             form_family=NoteFormFamily.SUPPORT,
-            primary_form="AIDE_VISIT_NOTE",
+            primary_form="AIDE_VISIT_V1",
             modules=[MOD_CARE_PROVIDED, MOD_NARRATIVE],
+            attached_forms=[],
         ),
     },
 
     "SW": {
-        "ROUTINE_VISIT": _pkg(
+        "SHORT_FORM": _pkg(
             form_family=NoteFormFamily.PSYCHOSOCIAL,
-            primary_form="SW_ROUTINE_VISIT",
+            primary_form="SW_VISIT_V1",
             modules=[MOD_PSYCHOSOCIAL, MOD_NARRATIVE],
+            attached_forms=[],
         ),
     },
 
     "CHAPLAIN": {
-        "ROUTINE_VISIT": _pkg(
+        "SHORT_FORM": _pkg(
             form_family=NoteFormFamily.SPIRITUAL,
-            primary_form="SC_ROUTINE_VISIT",
+            primary_form="SC_VISIT_V1",
             modules=[MOD_SPIRITUAL, MOD_NARRATIVE],
+            attached_forms=[],
         ),
     },
 }
 
+
 # =========================================================
-# ACCESS FUNCTIONS
+# ACCESS FUNCTIONS (SAFE)
 # =========================================================
 
 def get_base_form_config(*, discipline, form_type):
     d = normalize_discipline(discipline)
     f = normalize_form_type(form_type)
 
-    pkg = FORM_REGISTRY.get(d, {}).get(f)
+    if d not in FORM_REGISTRY:
+        raise ValueError(f"No registry for discipline: {d}")
 
-    if not pkg:
-        return None
+    if f not in FORM_REGISTRY[d]:
+        raise ValueError(f"No form type {f} for discipline {d}")
 
-    return deepcopy(pkg)
+    return deepcopy(FORM_REGISTRY[d][f])
 
 
 def get_event_form_config(*, discipline, event_type):

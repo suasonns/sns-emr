@@ -1,6 +1,6 @@
-
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.security import get_current_user, CurrentUser
 from app.core.visit_type_normalizer import normalize_visit_type
 
 from app.models.enums import (
@@ -22,14 +23,14 @@ from app.models.enums import (
     TaskOrigin,
     TaskRegulatoryBasis,
 )
-
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
 from app.models.task import Task
 from app.models.visit import Visit
-from app.models.chha_visit_outcome import CHHAVisitOutcome
-from app.services.chha_outcome_service import upsert_chha_outcome
+from app.models.med_reconciliation import MedReconciliationItem
+from app.models.sfv_requirement import SFVRequirement
 
+from app.services.chha_outcome_service import upsert_chha_outcome
 from app.services.audit_logger import log_event
 from app.services.bereavement_aggregation_engine import (
     BereavementAggregationEngine,
@@ -41,12 +42,15 @@ from app.services.dynamic_condition_detection_engine import (
 )
 from app.services.refusal_engine import record_refusal
 from app.services.task_completion import auto_complete_tasks_for_visit
-
 from app.domain.forms.form_resolution_service import resolve_form_package
 from app.services.visit_compliance_guards import (
     enforce_commlog_for_visit_status_change,
 )
-
+from app.services.hope_phase_b_engine import (
+    complete_sfv_requirement_from_visit,
+    process_huv_finalize,
+    process_initial_rn_ica_finalize,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +71,7 @@ ALLOWED_VISIT_TYPES: Set[str] = {
     "RN",
     "LVN",
     "NP",
+    "PA",
     "MD",
     "SW",
     "CHAPLAIN",
@@ -90,6 +95,7 @@ VISIT_CORRECTION_WINDOW_HOURS = 72
 ALLOWED_REOPEN_ROLES = {"ADMIN", "SUPERVISOR", "DON", "QA", "SYSTEM"}
 
 VISIT_TYPE_ALIASES: dict[str, str] = {
+    "SN": "RN",
     "MSW": "SW",
     "BSW": "SW",
     "LCSW": "SW",
@@ -110,6 +116,12 @@ GENERIC_NOTE_TYPES: Set[str] = {
     "FORM",
     "CLINICAL_NOTE",
 }
+
+ASSESSMENT_EVENT_FORM_TYPES: Set[str] = {
+    VisitFormType.ASSESS.value,
+}
+
+MODERATE_OR_SEVERE: Set[str] = {"MODERATE", "SEVERE"}
 
 # =========================================================
 # ENGINE SINGLETONS
@@ -141,6 +153,7 @@ class VisitStatusUpdate(BaseModel):
         ...,
         description="Allowed: MISSED, RESCHEDULED",
     )
+
     communications_log_id: Optional[uuid.UUID] = Field(
         None,
         description="Required when status is MISSED or RESCHEDULED",
@@ -188,6 +201,11 @@ class VisitCreateRequest(BaseModel):
         ),
     )
 
+    clinical_note: Optional[dict] = Field(
+        default=None,
+        description="Full ROS assessment structure including issues and POC",
+    )
+
 
 class CHHATaskResultItem(BaseModel):
     section_code: str
@@ -215,7 +233,8 @@ class CHHAOutcomeUpsertRequest(BaseModel):
     caregiver_understanding_confirmed: bool = False
 
     exception_narrative: Optional[str] = None
-    task_results: List[CHHATaskResultItem] = []
+    task_results: List[CHHATaskResultItem] = Field(default_factory=list)
+
 
 class RefusalRequest(BaseModel):
     discipline: str = Field(
@@ -284,6 +303,7 @@ class VisitCreateResponse(BaseModel):
 
     request_id: str
 
+
 class RefusalResponse(BaseModel):
     status: str
     patient_id: str
@@ -313,6 +333,7 @@ def _normalize_and_validate_form_type(raw: Optional[str]) -> str:
             detail=f"Invalid form_type '{raw}'. Allowed: {[e.value for e in VisitFormType]}",
         )
 
+
 def _normalize_schedule_type(raw: Optional[str]) -> Optional[str]:
     if not raw:
         return None
@@ -326,36 +347,36 @@ def _normalize_schedule_type(raw: Optional[str]) -> Optional[str]:
     return value
 
 
-from calendar import monthrange
-from sqlalchemy import and_
-from sqlalchemy.dialects.postgresql import JSONB  # only if already available/used elsewhere
-
-ASSESSMENT_EVENT_FORM_TYPES: Set[str] = {
-    VisitFormType.ASSESS.value,
-}
-
 def _normalize_event_type_for_form(
     form_type: str,
     raw: Optional[str],
 ) -> Optional[str]:
     """
-    event_type is only meaningful for assessment-driven workflows.
-    For all other visit workflows, do not block creation based on event_type.
-    """
-    if form_type not in ASSESSMENT_EVENT_FORM_TYPES:
-        return None
+    Normalize and validate event_type.
 
+    IMPORTANT:
+    - Do NOT remove event_type based on form_type
+    - Resolver needs event_type to decide final form
+    """
+
+    # ✅ Keep empty allowed
     if not raw:
         return None
 
     value = str(raw).strip().upper()
-    allowed = {"CHANGE_OF_CONDITION", "NEW_ORDER", "UPDATE_ASSESSMENT", "RECERT"}
+
+    allowed = {
+        "CHANGE_OF_CONDITION",
+        "NEW_ORDER",
+        "UPDATE_ASSESSMENT",
+        "RECERT",
+    }
 
     if value not in allowed:
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Invalid event_type '{raw}' for form_type '{form_type}'. "
+                f"Invalid event_type '{raw}'. "
                 f"Allowed: {sorted(allowed)}"
             ),
         )
@@ -371,6 +392,7 @@ def _normalize_and_validate_visit_type(raw: str) -> str:
         )
     return normalized
 
+
 def _canonicalize_discipline(raw: str) -> str:
     candidate = str(raw or "").strip().upper()
     candidate = VISIT_TYPE_ALIASES.get(candidate, candidate)
@@ -379,9 +401,13 @@ def _canonicalize_discipline(raw: str) -> str:
     if normalized not in ALLOWED_VISIT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid visit_type '{raw}'. Allowed: {sorted(ALLOWED_VISIT_TYPES | set(VISIT_TYPE_ALIASES.keys()))}",
+            detail=(
+                f"Invalid visit_type '{raw}'. Allowed: "
+                f"{sorted(ALLOWED_VISIT_TYPES | set(VISIT_TYPE_ALIASES.keys()))}"
+            ),
         )
     return normalized
+
 
 def _guard_against_generic_note_type(note_type: Optional[str], request_id: str) -> str:
     value = (note_type or "").strip().upper()
@@ -399,6 +425,7 @@ def _guard_against_generic_note_type(note_type: Optional[str], request_id: str) 
         )
     return value
 
+
 def _enforce_form_selection_rules(
     *,
     discipline: str,
@@ -415,18 +442,15 @@ def _enforce_form_selection_rules(
     - RN + issue -> ASSESS + UPDATE_ASSESSMENT
     - LVN + issue -> ROUTINE_VISIT (routine SN), never SHORT_FORM
     - LVN change of condition must be escalated operationally (captured later in workflow)
-
-    NOTE: Requires VisitFormType.ROUTINE_VISIT to exist in app.models.enums.
     """
     discipline = _canonicalize_discipline(discipline)
     form_type = _normalize_and_validate_form_type(form_type)
     schedule = _normalize_schedule_type(visit_schedule_type)
-    event = event_type  # already normalized upstream
+    event = event_type
 
     issue_present = event in ISSUE_EVENT_TYPES
     is_prn = schedule == "UNSCHEDULED"
 
-    # SOCIAL WORK FAMILY
     if discipline == "SW":
         if form_type != VisitFormType.ROUTINE_VISIT.value:
             raise HTTPException(
@@ -446,43 +470,38 @@ def _enforce_form_selection_rules(
             )
         return
 
-    # SHORT FORM = PRN FALSE ALARM ONLY FOR RN/LVN
     if form_type == VisitFormType.SHORT_FORM.value:
-        if discipline not in {"RN", "LVN"}:
-            raise HTTPException(
-                status_code=422,
-                detail="SHORT_FORM is only allowed for RN or LVN.",
-            )
 
         if not is_prn:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    "SHORT_FORM is only allowed for PRN/unscheduled visits "
-                    "with no issues found on assessment."
-                ),
+                detail="SHORT_FORM is only allowed for unscheduled (PRN) visits.",
             )
 
+        # ✅ CRITICAL FIX: AUTO-SWITCH BASED ON DISCIPLINE
+
         if issue_present:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "SHORT_FORM is not allowed when issues are present. "
-                    "RN must use ASSESS with UPDATE_ASSESSMENT. "
-                    "LVN must use ROUTINE_VISIT and escalate change of condition per protocol."
-                ),
-            )
+            if discipline == "RN":
+                # ✅ RN → COMPREHENSIVE ASSESSMENT
+                return  # let resolver switch to RN_ASSESS
+            elif discipline == "LVN":
+                # ✅ LVN → ROUTINE VISIT
+                return  # let resolver switch to LVN_ROUTINE
+
         return
 
-    # RN ISSUE PATH
     if discipline == "RN":
         if issue_present:
+
+            # ✅ DO NOT BLOCK SHORT_FORM — resolver will convert it
+            if form_type == VisitFormType.SHORT_FORM.value:
+                return
+
             if form_type != VisitFormType.ASSESS.value:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        "RN must use ASSESS when issues are present. "
-                        "For PRN with issues, use ASSESS + event_type=UPDATE_ASSESSMENT."
+                        "RN must use ASSESS when issues are present."
                     ),
                 )
 
@@ -497,21 +516,23 @@ def _enforce_form_selection_rules(
             return
         return
 
-    # LVN ISSUE PATH
     if discipline == "LVN":
         if issue_present:
+
+            # ✅ allow SHORT_FORM → resolver converts
+            if form_type == VisitFormType.SHORT_FORM.value:
+                return
+
             if form_type != VisitFormType.ROUTINE_VISIT.value:
                 raise HTTPException(
                     status_code=422,
                     detail=(
-                        "LVN with issues must use ROUTINE_VISIT (routine SN form). "
-                        "LVN cannot use SHORT_FORM when issues are present."
+                        "LVN with issues must use ROUTINE_VISIT."
                     ),
                 )
             return
         return
 
-    return
 
 def _get_request_id(request: Request, response: Optional[Response] = None) -> str:
     existing = (
@@ -525,6 +546,7 @@ def _get_request_id(request: Request, response: Optional[Response] = None) -> st
         response.headers["X-Request-ID"] = request_id
 
     return request_id
+
 
 def _extract_user_id_from_request(request: Request) -> Optional[uuid.UUID]:
     candidate_values = [
@@ -556,6 +578,7 @@ def _resolve_actor_user_id(db: Session, request: Request) -> uuid.UUID:
         raise HTTPException(status_code=500, detail="No users available")
     return row[0]
 
+
 def _set_db_context(
     db: Session,
     tenant_id: uuid.UUID,
@@ -565,6 +588,7 @@ def _set_db_context(
     db.info["tenant_id"] = tenant_id
     db.info["user_id"] = user_id
     db.info["request_id"] = request_id
+
 
 def _normalized_mode_from_visit(visit: Visit) -> str:
     raw_mode = None
@@ -595,6 +619,7 @@ def _visit_has_early_lock(visit: Visit) -> tuple[bool, Optional[str]]:
         if getattr(visit, attr, None) is not None:
             return True, attr
     return False, None
+
 
 def _visit_is_within_correction_window(visit: Visit, now: datetime) -> bool:
     finalized_at = getattr(visit, "finalized_at", None)
@@ -637,6 +662,7 @@ def _apply_reopen_metadata(
         )
         visit.details = details
 
+
 def _safe_log_event(
     db: Session,
     user_id: uuid.UUID,
@@ -668,6 +694,7 @@ def _safe_log_event(
             },
         )
 
+
 def _load_visit_for_update(db: Session, visit_id: uuid.UUID) -> Visit:
     visit = (
         db.query(Visit)
@@ -679,7 +706,6 @@ def _load_visit_for_update(db: Session, visit_id: uuid.UUID) -> Visit:
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
     return visit
-
 
 
 def _load_patient_for_update(db: Session, patient_id: uuid.UUID) -> Patient:
@@ -694,16 +720,12 @@ def _load_patient_for_update(db: Session, patient_id: uuid.UUID) -> Patient:
         raise HTTPException(status_code=404, detail="Patient not found")
     return patient
 
+
 # =========================================================
 # SUPERVISORY LOGIC HELPERS
 # =========================================================
 
 def _get_patient_refusal_flag(patient: Patient, service_key: str) -> bool:
-    """
-    Safe local refusal check.
-
-    Uses optional patient-level flags if they exist.
-    """
     key = service_key.strip().upper()
 
     if key == "CHHA":
@@ -719,9 +741,6 @@ def _get_patient_refusal_flag(patient: Patient, service_key: str) -> bool:
 
 
 def _patient_has_active_staff(patient: Patient, service_key: str) -> bool:
-    """
-    Determine whether the patient actively has the discipline on service.
-    """
     key = service_key.strip().upper()
 
     if key == "CHHA":
@@ -735,17 +754,33 @@ def _patient_has_active_staff(patient: Patient, service_key: str) -> bool:
 
 def _read_supervisory_targets_from_visit(visit: Visit) -> list[str]:
     """
-    Read supervisory targets from visit.details if present.
+    Extract supervisory target disciplines from visit.details.
+
+    Returns:
+        List[str] of normalized uppercase targets (e.g. ["LVN", "CHHA"]).
+
+    Rules:
+    - details must be a dict
+    - supervisory_targets must be a list
+    - values normalized to uppercase strings
+    - empty/invalid values filtered out
     """
+
     details = getattr(visit, "details", None)
+
     if not isinstance(details, dict):
         return []
 
     targets = details.get("supervisory_targets")
+
     if not isinstance(targets, list):
         return []
 
-    return [str(t).strip().upper() for t in targets if str(t).strip()]
+    return [
+        str(t).strip().upper()
+        for t in targets
+        if str(t).strip()
+    ]
 
 
 def _last_rn_supervisory_visit_for_target(
@@ -755,9 +790,6 @@ def _last_rn_supervisory_visit_for_target(
     patient_id: uuid.UUID,
     target: str,
 ) -> Optional[Visit]:
-    """
-    Return the most recent FINALIZED RN supervisory visit for a target.
-    """
     target = target.strip().upper()
 
     visits = (
@@ -792,13 +824,6 @@ def _is_chha_supervision_due(
     patient: Patient,
     now: datetime,
 ) -> bool:
-    """
-    CMS-backed logic:
-    - only relevant if CHHA services are active
-    - not applicable if CHHA services are refused
-    - on-site RN supervisory visit required at least every 14 days
-      when hospice aide services are active. 
-    """
     if not _patient_has_active_staff(patient, "CHHA"):
         return False
 
@@ -834,12 +859,6 @@ def _is_lvn_supervision_due(
     patient: Patient,
     now: datetime,
 ) -> bool:
-    """
-    SNS operational policy:
-    - only relevant if LVN services are active
-    - not applicable if LVN services are refused
-    - RN supervisory review expected monthly when LVN services remain active
-    """
     if not _patient_has_active_staff(patient, "LVN"):
         return False
 
@@ -880,17 +899,6 @@ def _determine_supervisory_context(
     validated_form_type: str,
     now: datetime,
 ) -> tuple[bool, list[str]]:
-    """
-    Determine if this new visit should be marked supervisory.
-
-    RULES:
-    - only RN ROUTINE_VISIT can satisfy routine supervisory context
-    - RN cannot supervise RN care
-    - supervision applies only when another discipline's services are active
-      and not refused
-    - CHHA supervision: every 14 days when aide services are active
-    - LVN supervision: monthly per SNS workflow policy
-    """
     if normalized_visit_type != "RN":
         return False, []
 
@@ -922,13 +930,6 @@ def _apply_supervisory_context_to_visit(
     is_supervisory: bool,
     supervisory_targets: list[str],
 ) -> None:
-    """
-    Persist supervisory context without requiring a schema migration.
-
-    Stores:
-    - visit.is_supervisory
-    - visit.details["supervisory_targets"]
-    """
     if hasattr(visit, "is_supervisory"):
         visit.is_supervisory = is_supervisory
 
@@ -942,41 +943,21 @@ def _apply_supervisory_context_to_visit(
 
         visit.details = details
 
+
 # =========================================================
 # TASK COMPLETION HELPERS
 # =========================================================
 
-def _complete_task_with_visit(task: Task, visit: Visit, now: datetime):
-    """
-    Canonical completion logic for visit-linked tasks.
-
-    Ensures:
-    - status = COMPLETED
-    - completed_at timestamp
-    - completion_reference_type = VISIT
-    - completion_reference_id = visit.id
-    - audit fields updated
-
-    Idempotent:
-    - Does nothing if task is already COMPLETED
-    """
-
-    # -----------------------------------------------------
-    # SAFETY VALIDATION
-    # -----------------------------------------------------
+def _complete_task_with_visit(task: Task, visit: Visit, now: datetime) -> None:
     if not getattr(task, "tenant_id", None):
         raise ValueError("Task missing tenant_id")
 
     if not getattr(visit, "id", None):
         raise ValueError("Visit missing id")
 
-    # Idempotency guard
     if task.status == TaskStatus.COMPLETED:
         return
 
-    # -----------------------------------------------------
-    # COMPLETE TASK
-    # -----------------------------------------------------
     task.status = TaskStatus.COMPLETED
     task.completed_at = now
 
@@ -988,9 +969,6 @@ def _complete_task_with_visit(task: Task, visit: Visit, now: datetime):
 
     task.completion_reference_id = visit.id
 
-    # -----------------------------------------------------
-    # AUDIT FIELDS
-    # -----------------------------------------------------
     if hasattr(task, "updated_at"):
         task.updated_at = now
 
@@ -1000,28 +978,11 @@ def _complete_task_with_visit(task: Task, visit: Visit, now: datetime):
             or getattr(visit, "provider_id", None)
         )
 
+
 def _complete_initial_task_for_visit(
     db: Session,
     visit: Visit,
 ) -> list[str]:
-    """
-    Complete initial discipline onboarding task tied to visit.
-
-    Rules:
-    - RN → INITIAL_RN_ICA
-    - SW → INITIAL_MSW_ICA
-    - CHAPLAIN → INITIAL_SC_ICA
-
-    Completion requires:
-    - status = COMPLETED
-    - completed_at timestamp
-    - completion_reference_type = VISIT
-    - completion_reference_id = visit.id
-    """
-
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
     if not getattr(visit, "tenant_id", None):
         raise ValueError("Visit missing tenant_id")
 
@@ -1033,26 +994,18 @@ def _complete_initial_task_for_visit(
         getattr(visit, "visit_discipline", "") or ""
     ).upper()
 
-    # -----------------------------------------------------
-    # RESOLVE TARGET TASK TYPE
-    # -----------------------------------------------------
     target_task_type = None
 
     if visit_type == "RN" or discipline == "RN":
         target_task_type = TaskType.INITIAL_RN_ICA
-
     elif visit_type == "SW" or discipline == "SW":
         target_task_type = TaskType.INITIAL_MSW_ICA
-
     elif visit_type == "CHAPLAIN" or discipline == "CHAPLAIN":
         target_task_type = TaskType.INITIAL_SC_ICA
 
     if not target_task_type:
         return []
 
-    # -----------------------------------------------------
-    # FIND ACTIVE TASK (CRITICAL FIX)
-    # -----------------------------------------------------
     task = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
@@ -1073,11 +1026,7 @@ def _complete_initial_task_for_visit(
     if not task:
         return []
 
-    # -----------------------------------------------------
-    # COMPLETE TASK (COMPLIANCE-SAFE)
-    # -----------------------------------------------------
     now = datetime.now(timezone.utc)
-
     _complete_task_with_visit(task, visit, now)
 
     logger.info(
@@ -1087,34 +1036,12 @@ def _complete_initial_task_for_visit(
         str(getattr(visit, "id", None)),
     )
 
-    task.completion_reference_id = visit.id
-
-    # -----------------------------------------------------
-    # AUDIT FIELDS
-    # -----------------------------------------------------
-    if hasattr(task, "updated_at"):
-        task.updated_at = now
-
-    if hasattr(task, "updated_by"):
-        task.updated_by = (
-            getattr(visit, "finalized_by", None)
-            or getattr(visit, "provider_id", None)
-        )
-
-    # -----------------------------------------------------
-    # LOGGING (OPTIONAL BUT GOOD)
-    # -----------------------------------------------------
-    logger.info(
-        "Completed initial task task_type=%s patient_id=%s via visit_id=%s",
-        target_task_type.value,
-        str(getattr(visit, "patient_id", None)),
-        str(getattr(visit, "id", None)),
-    )
-
     return [target_task_type.value]
+
 
 def _get_task_type_member(task_type_name: str):
     return getattr(TaskType, task_type_name, None)
+
 
 def _create_condition_trigger_task_if_missing(
     db: Session,
@@ -1124,19 +1051,6 @@ def _create_condition_trigger_task_if_missing(
     task_type_name: str,
     discipline_value: str,
 ) -> bool:
-    """
-    Create a condition-triggered task if no ACTIVE task exists.
-
-    ACTIVE = PENDING, IN_PROGRESS, OVERDUE
-
-    Returns:
-        True if created
-        False if skipped (already exists or invalid)
-    """
-
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
     if not getattr(patient, "tenant_id", None):
         raise ValueError("Patient missing tenant_id")
 
@@ -1145,9 +1059,6 @@ def _create_condition_trigger_task_if_missing(
         logger.warning("Missing TaskType enum member: %s", task_type_name)
         return False
 
-    # -----------------------------------------------------
-    # ACTIVE TASK CHECK (CRITICAL FIX)
-    # -----------------------------------------------------
     existing = (
         db.query(Task)
         .execution_options(skip_tenant_filter=True)
@@ -1168,9 +1079,6 @@ def _create_condition_trigger_task_if_missing(
     if existing:
         return False
 
-    # -----------------------------------------------------
-    # CREATE TASK
-    # -----------------------------------------------------
     task = Task(
         id=uuid.uuid4(),
         tenant_id=patient.tenant_id,
@@ -1182,18 +1090,12 @@ def _create_condition_trigger_task_if_missing(
         created_by=user_id,
     )
 
-    # -----------------------------------------------------
-    # DUE FIELDS
-    # -----------------------------------------------------
     if hasattr(task, "due_date"):
         task.due_date = now.date()
 
     if hasattr(task, "due_at"):
         task.due_at = now
 
-    # -----------------------------------------------------
-    # ENUM SAFE ASSIGNMENTS
-    # -----------------------------------------------------
     if hasattr(task, "origin"):
         task.origin = (
             TaskOrigin.SYSTEM
@@ -1214,9 +1116,6 @@ def _create_condition_trigger_task_if_missing(
     if hasattr(task, "alert_reason"):
         task.alert_reason = task_type_name
 
-    # -----------------------------------------------------
-    # FINALIZE
-    # -----------------------------------------------------
     db.add(task)
 
     logger.info(
@@ -1255,6 +1154,7 @@ def _fetch_visit_related_notes(db: Session, visit: Visit) -> list[Any]:
                 continue
 
             return query.all()
+
         except Exception:
             logger.debug(
                 "Note model unavailable or query failed for %s.%s",
@@ -1264,6 +1164,7 @@ def _fetch_visit_related_notes(db: Session, visit: Visit) -> list[Any]:
             )
 
     return []
+
 
 def _run_condition_detection_non_blocking(
     db: Session,
@@ -1336,7 +1237,6 @@ def _run_condition_detection_non_blocking(
         )
 
 
-
 def _run_bereavement_aggregation_non_blocking(
     db: Session,
     visit: Visit,
@@ -1380,22 +1280,12 @@ def _run_bereavement_aggregation_non_blocking(
             },
         )
 
+
 def _enforce_rn_supervisory_requirement(
     visit: Visit,
     patient: Patient,
     is_rn: bool,
 ) -> None:
-    """
-    Finalization integrity check.
-
-    Do NOT assume every RN routine visit is supervisory.
-    Supervisory applies only when:
-    - another discipline's services remain active
-    - supervision is due
-    - services were not refused
-
-    This function now only validates internal consistency.
-    """
     if not is_rn:
         return
 
@@ -1412,6 +1302,306 @@ def _enforce_rn_supervisory_requirement(
             status_code=422,
             detail="Supervisory RN visit is missing supervisory_targets context",
         )
+
+
+# =========================================================
+# PHASE B / HOPE HELPERS
+# =========================================================
+
+def _severity_rank(value: Optional[str]) -> int:
+    if not value:
+        return 0
+    code = str(value).strip().upper()
+    if code == "SEVERE":
+        return 3
+    if code == "MODERATE":
+        return 2
+    if code == "MILD":
+        return 1
+    return 0
+
+
+def _extract_j2051_impacts_from_notes(
+    *,
+    notes: list[ClinicalNote],
+    visit_id: uuid.UUID,
+    request_id: str,
+) -> tuple[Optional[str], Optional[str]]:
+    """
+    Extract Phase B trigger values for J2051 from structured note content.
+
+    Returns:
+    (
+        pain_impact,       # e.g. MODERATE / SEVERE / None
+        non_pain_impact,   # highest non-pain symptom impact if any
+    )
+
+    Supported pathways:
+    - content["assessment"]["pain"]["severity"]
+    - content["symptom_impact"] / content["symptomImpact"] dicts
+    """
+    pain_impact: Optional[str] = None
+    non_pain_impact: Optional[str] = None
+
+    logger.info(
+        "PHASE_B_J2051_EXTRACT: ENTERED visit_id=%s request_id=%s note_count=%s",
+        str(visit_id),
+        request_id,
+        len(notes),
+    )
+
+    for note in notes:
+        raw_content = getattr(note, "content", None)
+
+        logger.info(
+            "PHASE_B_J2051_EXTRACT: RAW_CONTENT type=%s value=%s",
+            type(raw_content),
+            raw_content,
+        )
+
+        data: Any = None
+
+        try:
+            if raw_content is None:
+                continue
+
+            if isinstance(raw_content, dict):
+                data = raw_content
+            elif isinstance(raw_content, str):
+                content_str = raw_content.strip()
+                if not content_str:
+                    continue
+                data = json.loads(content_str)
+                if isinstance(data, str):
+                    data = json.loads(data)
+            else:
+                continue
+        except Exception:
+            logger.exception(
+                "PHASE_B_J2051_EXTRACT: PARSE_FAILED visit_id=%s note_id=%s request_id=%s",
+                str(visit_id),
+                str(getattr(note, "id", None)),
+                request_id,
+            )
+            continue
+
+        if not isinstance(data, dict):
+            continue
+
+        assessment = data.get("assessment")
+        if isinstance(assessment, dict):
+            pain = assessment.get("pain")
+            if isinstance(pain, dict):
+                severity = pain.get("severity")
+                if severity:
+                    sev_code = str(severity).strip().upper()
+                    if _severity_rank(sev_code) > _severity_rank(pain_impact):
+                        pain_impact = sev_code
+
+            for key, value in assessment.items():
+                if str(key).strip().lower() == "pain":
+                    continue
+                if isinstance(value, dict):
+                    severity = value.get("severity")
+                    if severity:
+                        sev_code = str(severity).strip().upper()
+                        if _severity_rank(sev_code) > _severity_rank(non_pain_impact):
+                            non_pain_impact = sev_code
+
+        symptom_impact = data.get("symptom_impact") or data.get("symptomImpact")
+        if isinstance(symptom_impact, dict):
+            for key, value in symptom_impact.items():
+                key_code = str(key).strip().lower()
+                sev_code = str(value).strip().upper()
+                if key_code == "pain":
+                    if _severity_rank(sev_code) > _severity_rank(pain_impact):
+                        pain_impact = sev_code
+                else:
+                    if _severity_rank(sev_code) > _severity_rank(non_pain_impact):
+                        non_pain_impact = sev_code
+
+    logger.info(
+        "PHASE_B_J2051_EXTRACT: RESULT visit_id=%s pain_impact=%s non_pain_impact=%s request_id=%s",
+        str(visit_id),
+        pain_impact,
+        non_pain_impact,
+        request_id,
+    )
+
+    return pain_impact, non_pain_impact
+
+
+def _find_oldest_open_sfv_requirement_for_patient(
+    *,
+    db: Session,
+    patient_id: uuid.UUID,
+) -> Optional[SFVRequirement]:
+    return (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(
+            SFVRequirement.patient_id == patient_id,
+            SFVRequirement.status == "OPEN",
+        )
+        .order_by(SFVRequirement.due_at.asc())
+        .first()
+    )
+
+
+def _get_completed_huv_task_type_for_visit(
+    *,
+    db: Session,
+    visit: Visit,
+) -> Optional[str]:
+    completed = (
+        db.query(Task)
+        .execution_options(skip_tenant_filter=True)
+        .filter(
+            Task.tenant_id == visit.tenant_id,
+            Task.patient_id == visit.patient_id,
+            Task.status == TaskStatus.COMPLETED,
+            Task.completion_reference_id == visit.id,
+            Task.task_type.in_([TaskType.HUV1, TaskType.HUV2]),
+        )
+        .order_by(Task.completed_at.desc())
+        .first()
+    )
+
+    if not completed:
+        return None
+
+    return completed.task_type.value if hasattr(completed.task_type, "value") else str(completed.task_type)
+
+
+def _maybe_complete_open_sfv_for_visit(
+    *,
+    db: Session,
+    visit: Visit,
+    request_id: str,
+) -> Optional[SFVRequirement]:
+
+    open_requirement = _find_oldest_open_sfv_requirement_for_patient(
+        db=db,
+        patient_id=visit.patient_id,
+    )
+
+    if not open_requirement:
+        logger.info(
+            "PHASE_B_SFV_COMPLETE: NO_OPEN_REQUIREMENT visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+        return None
+
+    try:
+        completed_requirement = complete_sfv_requirement_from_visit(
+            db=db,
+            sfv_requirement_id=open_requirement.id,
+            completing_visit_id=visit.id,
+            completing_visit_datetime=visit.visit_datetime,
+            discipline=visit.visit_discipline,
+            visit_mode=getattr(visit, "visit_mode", None),
+        )
+
+        logger.info(
+            "PHASE_B_SFV_COMPLETE: COMPLETED requirement_id=%s visit_id=%s request_id=%s",
+            str(completed_requirement.id),
+            str(visit.id),
+            request_id,
+        )
+
+        return completed_requirement
+
+    except ValueError as exc:
+        logger.info(
+            "PHASE_B_SFV_COMPLETE: NOT_ELIGIBLE visit_id=%s requirement_id=%s reason=%s request_id=%s",
+            str(visit.id),
+            str(open_requirement.id),
+            str(exc),
+            request_id,
+        )
+        return None
+
+
+def _run_phase_b_finalize_hooks(
+    *,
+    db: Session,
+    visit: Visit,
+    completed_task_types: list[str],
+    notes: list[ClinicalNote],
+    request_id: str,
+) -> None:
+    pain_impact, non_pain_impact = _extract_j2051_impacts_from_notes(
+        notes=notes,
+        visit_id=visit.id,
+        request_id=request_id,
+    )
+
+    _maybe_complete_open_sfv_for_visit(
+        db=db,
+        visit=visit,
+        request_id=request_id,
+    )
+
+    if "INITIAL_RN_ICA" in completed_task_types:
+        logger.info(
+            "PHASE_B_HOOK: INITIAL_RN_ICA_TRIGGER visit_id=%s patient_id=%s request_id=%s",
+            str(visit.id),
+            str(visit.patient_id),
+            request_id,
+        )
+
+        result = process_initial_rn_ica_finalize(
+            db=db,
+            tenant_id=visit.tenant_id,
+            patient_id=visit.patient_id,
+            initial_rn_ica_visit_id=visit.id,
+            election_datetime=visit.visit_datetime,
+            j2051_pain_impact=pain_impact,
+            j2051_non_pain_impact=non_pain_impact,
+        )
+
+        logger.info(
+            "PHASE_B_HOOK: INITIAL_RN_ICA_RESULT visit_id=%s result=%s request_id=%s",
+            str(visit.id),
+            result,
+            request_id,
+        )
+
+    completed_huv_type = _get_completed_huv_task_type_for_visit(
+        db=db,
+        visit=visit,
+    )
+    if completed_huv_type in {"HUV1", "HUV2"}:
+        logger.info(
+            "PHASE_B_HOOK: HUV_TRIGGER visit_id=%s huv_type=%s patient_id=%s request_id=%s",
+            str(visit.id),
+            completed_huv_type,
+            str(visit.patient_id),
+            request_id,
+        )
+
+        result = process_huv_finalize(
+            db=db,
+            tenant_id=visit.tenant_id,
+            patient_id=visit.patient_id,
+            huv_task_type=completed_huv_type,
+            huv_visit_id=visit.id,
+            election_datetime=visit.visit_datetime,
+            completed_visit_datetime=visit.visit_datetime,
+            discipline=visit.visit_discipline,
+            j2051_pain_impact=pain_impact,
+            j2051_non_pain_impact=non_pain_impact,
+        )
+
+        logger.info(
+            "PHASE_B_HOOK: HUV_RESULT visit_id=%s result=%s request_id=%s",
+            str(visit.id),
+            result,
+            request_id,
+        )
+
 
 # =========================================================
 # VISIT STATUS CHANGE
@@ -1442,7 +1632,8 @@ def update_visit_status(
             detail=f"Invalid status '{payload.status}'. Allowed: {sorted(ALLOWED_STATUS_CHANGES)}",
         )
 
-    if (visit.status or "").upper() == "FINALIZED":
+    already_finalized = (visit.status or "").upper() == "FINALIZED"
+    if already_finalized:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -1512,7 +1703,7 @@ def update_visit_status(
         )
 
     return VisitMutationResponse(
-        status="updated",
+        status="already_finalized" if already_finalized else "finalized",
         visit_id=str(visit.id),
         request_id=request_id,
         completed_task_types=[],
@@ -1539,9 +1730,10 @@ def create_visit(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     request_id = _get_request_id(request, response)
-    user_id = _resolve_actor_user_id(db, request)
+    user_id = current_user.user_id
 
     patient = _load_patient_for_update(db, payload.patient_id)
     _set_db_context(db, patient.tenant_id, user_id, request_id)
@@ -1599,7 +1791,6 @@ def create_visit(
     )
 
     try:
-        
         db.add(visit)
         db.flush()
 
@@ -1610,14 +1801,34 @@ def create_visit(
         )
 
         form_config = resolve_form_package(
-
             discipline=normalized,
             form_type=validated_form_type,
             level_of_care=getattr(payload, "level_of_care", None),
             event_type=validated_event_type,
         )
 
-        if not form_config or not form_config.get("primary_form"):
+        # ---------------------------------------------------------
+        # COMPATIBILITY LAYER: support canonical resolver keys
+        # and legacy API-consumer keys
+        # ---------------------------------------------------------
+        resolved_primary_form = (
+            form_config.get("primary_form")
+            or form_config.get("form_key")
+        )
+
+        resolved_attached_forms = (
+            form_config.get("attached_forms")
+            or form_config.get("attached_form_keys")
+            or []
+        )
+
+        resolved_modules = (
+            form_config.get("modules")
+            or form_config.get("primary_modules")
+            or []
+        )
+
+        if not form_config or not resolved_primary_form:
             logger.error(
                 "FORM_RESOLUTION_FAILED",
                 extra={
@@ -1625,6 +1836,7 @@ def create_visit(
                     "form_type": validated_form_type,
                     "event_type": validated_event_type,
                     "request_id": request_id,
+                    "form_config": form_config,
                 },
             )
             raise HTTPException(
@@ -1633,13 +1845,13 @@ def create_visit(
             )
 
         primary_form = _guard_against_generic_note_type(
-            form_config.get("primary_form"),
+            resolved_primary_form,
             request_id=request_id,
         )
 
         attached_forms = [
             _guard_against_generic_note_type(name, request_id=request_id)
-            for name in list(form_config.get("attached_forms", []))
+            for name in list(resolved_attached_forms)
         ]
 
         resolved_form_family = form_config.get("form_family")
@@ -1649,52 +1861,120 @@ def create_visit(
             else resolved_form_family
         )
 
-        modules = list(form_config.get("modules", []))
+        modules = list(resolved_modules)
         resolved_by = form_config.get("resolved_by")
+        resolved_form_type = form_config.get("form_type") or validated_form_type
 
+        logger.info(
+            "CREATE_VISIT_DEBUG STEP 1 - PAYLOAD TYPE=%s VALUE=%s request_id=%s",
+            type(payload.clinical_note),
+            payload.clinical_note,
+            request_id,
+        )
+        # =========================================================
+        # POC TRIGGER DETECTION (STEP 1)
+        # =========================================================
+        note = payload.clinical_note or {}
+        assessment = note.get("assessment", {})
+
+        poc_update_required = False
+
+        pain_score = assessment.get("pain_score")
+        psychosocial = assessment.get("psychosocial")
+        spiritual = assessment.get("spiritual")
+
+        # Rule 1: Pain
+        if pain_score is not None and pain_score >= 5:
+            poc_update_required = True
+
+        # Rule 2: Psychosocial
+        if psychosocial:
+            poc_update_required = True
+
+        # Rule 3: Spiritual
+        if spiritual:
+            poc_update_required = True
+
+        logger.info(
+            "POC_TRIGGER_DETECTION visit_id=%s pain=%s psychosocial=%s spiritual=%s result=%s request_id=%s",
+            str(visit.id),
+            pain_score,
+            psychosocial,
+            spiritual,
+            poc_update_required,
+            request_id,
+        )
+        
         primary_note = ClinicalNote(
             id=uuid.uuid4(),
             visit_id=visit.id,
             author_id=user_id,
             tenant_id=visit.tenant_id,
             patient_id=visit.patient_id,
-            note_type=primary_form,
-            note_category=primary_form,
-            discipline=visit.visit_discipline,
-            form_family=form_family,
-            encounter_type="VISIT",
-            visit_origin="VISIT_CREATE",
+            note_type=primary_form,                 # ✅ REQUIRED: form identity
+            discipline=visit.visit_discipline,      # ✅ REQUIRED: source discipline
+            form_family=form_family,                # ✅ optional but valid
             status="DRAFT",
             encounter_date=now.date(),
-            content="",
+            content=(payload.clinical_note if payload.clinical_note is not None else {}),
             created_by=user_id,
             created_at=now,
             updated_at=now,
         )
+
+        logger.info(
+            "CREATE_VISIT_DEBUG STEP 2 - BEFORE ADD content=%s type=%s request_id=%s",
+            primary_note.content,
+            type(primary_note.content),
+            request_id,
+        )
+
         db.add(primary_note)
 
-        for form_name in attached_forms:
-            db.add(
-                ClinicalNote(
-                    id=uuid.uuid4(),
-                    visit_id=visit.id,
-                    author_id=user_id,
-                    tenant_id=visit.tenant_id,
-                    patient_id=visit.patient_id,
-                    note_type=form_name,
-                    note_category=form_name,
-                    discipline=visit.visit_discipline,
-                    form_family=form_family,
-                    encounter_type="VISIT",
-                    visit_origin="VISIT_CREATE",
-                    status="DRAFT",
-                    encounter_date=now.date(),
-                    content="",
-                    created_by=user_id,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
+        logger.info(
+            "CREATE_VISIT_DEBUG STEP 3 - AFTER ADD content=%s type=%s request_id=%s",
+            primary_note.content,
+            type(primary_note.content),
+            request_id,
+        )
+
+        db.flush()
+
+        logger.info(
+            "CREATE_VISIT_DEBUG STEP 4 - AFTER FLUSH content=%s type=%s request_id=%s",
+            primary_note.content,
+            type(primary_note.content),
+            request_id,
+        )
+
+        db.refresh(primary_note)
+
+        logger.info(
+            "CREATE_VISIT_DEBUG STEP 5 - AFTER REFRESH content=%s type=%s request_id=%s",
+            primary_note.content,
+            type(primary_note.content),
+            request_id,
+        )
+
+        for form_key in attached_forms:
+            attached_note = ClinicalNote(
+                id=uuid.uuid4(),
+                visit_id=visit.id,
+                author_id=user_id,
+                tenant_id=visit.tenant_id,
+                patient_id=visit.patient_id,
+                note_type=form_key,                 # ✅ Required
+                discipline=visit.visit_discipline,  # ✅ Required
+                form_family=form_family,            # ✅ Optional but valid
+                status="DRAFT",
+                encounter_date=now.date(),
+                content={},                         # ✅ Must never be None
+                created_by=user_id,
+                created_at=now,
+                updated_at=now,
+            )    
+
+            db.add(attached_note)
 
         _safe_log_event(
             db=db,
@@ -1740,7 +2020,7 @@ def create_visit(
     return VisitCreateResponse(
         visit_id=str(visit.id),
         visit_type=normalized,
-        form_type=validated_form_type,
+        form_type=resolved_form_type,
         form_family=form_family,
         primary_form=primary_form,
         attached_forms=attached_forms,
@@ -1751,6 +2031,7 @@ def create_visit(
         request_id=request_id,
     )
 
+
 @router.post("/{visit_id}/reopen")
 def reopen_visit(
     visit_id: uuid.UUID,
@@ -1758,10 +2039,11 @@ def reopen_visit(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
 ):
     request_id = _get_request_id(request, response)
-    user_id = _resolve_actor_user_id(db, request)
-    actor_role = _resolve_actor_role(request)
+    user_id = current_user.user_id
+    actor_role = str(getattr(current_user, "role", "SYSTEM")).strip().upper()
 
     visit = _load_visit_for_update(db, visit_id)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
@@ -1845,6 +2127,7 @@ def reopen_visit(
         ),
     }
 
+
 @router.post("/{visit_id}/chha-outcome")
 def upsert_chha_visit_outcome(
     visit_id: uuid.UUID,
@@ -1886,6 +2169,7 @@ def upsert_chha_visit_outcome(
         "outcome_id": str(outcome.id),
         "request_id": request_id,
     }
+
 
 # =========================================================
 # REFUSAL / RE-OFFER
@@ -1977,17 +2261,51 @@ def finalize_visit(
     request_id = _get_request_id(request, response)
     user_id = _resolve_actor_user_id(db, request)
 
+    logger.info(
+        "FINALIZE: ENTERED visit_id=%s request_id=%s user_id=%s",
+        str(visit_id),
+        request_id,
+        str(user_id),
+    )
+
     visit = _load_visit_for_update(db, visit_id)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
 
+    logger.info(
+        "FINALIZE: VISIT_LOADED visit_id=%s patient_id=%s tenant_id=%s status=%s request_id=%s",
+        str(visit.id),
+        str(visit.patient_id),
+        str(visit.tenant_id),
+        getattr(visit, "status", None),
+        request_id,
+    )
+
     mode = _normalized_mode_from_visit(visit)
+    logger.info(
+        "FINALIZE: MODE_CHECK visit_id=%s mode=%s request_id=%s",
+        str(visit.id),
+        mode,
+        request_id,
+    )
+
     if mode in TELEPHONE_MODES:
+        logger.warning(
+            "FINALIZE: BLOCKED_TELEPHONE_MODE visit_id=%s mode=%s request_id=%s",
+            str(visit.id),
+            mode,
+            request_id,
+        )
         raise HTTPException(
             status_code=400,
             detail="Telephone interactions are not visits",
         )
 
     if (visit.status or "").upper() == "FINALIZED":
+        logger.info(
+            "FINALIZE: ALREADY_FINALIZED_EARLY_RETURN visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         return VisitMutationResponse(
             status="already_finalized",
             visit_id=str(visit.id),
@@ -2007,7 +2325,21 @@ def finalize_visit(
 
     form_type = getattr(visit, "form_type", None)
 
+    logger.info(
+        "FINALIZE: VISIT_CONTEXT visit_id=%s visit_type=%s discipline=%s form_type=%s request_id=%s",
+        str(visit.id),
+        visit_type,
+        discipline,
+        form_type,
+        request_id,
+    )
+
     if not form_type:
+        logger.warning(
+            "FINALIZE: BLOCKED_MISSING_FORM_TYPE visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         raise HTTPException(
             status_code=422,
             detail="Visit cannot be finalized without form_type",
@@ -2018,6 +2350,14 @@ def finalize_visit(
 
     patient = _load_patient_for_update(db, visit.patient_id)
 
+    logger.info(
+        "FINALIZE: PATIENT_LOADED visit_id=%s patient_id=%s tenant_id=%s request_id=%s",
+        str(visit.id),
+        str(patient.id),
+        str(patient.tenant_id),
+        request_id,
+    )
+
     notes = (
         db.query(ClinicalNote)
         .filter(
@@ -2027,15 +2367,39 @@ def finalize_visit(
         .all()
     )
 
+    logger.info(
+        "FINALIZE: NOTES_LOADED visit_id=%s note_count=%s request_id=%s",
+        str(visit.id),
+        len(notes),
+        request_id,
+    )
+
     if not notes:
+        logger.warning(
+            "FINALIZE: BLOCKED_NO_CLINICAL_DOCUMENTATION visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         raise HTTPException(
             status_code=422,
             detail="Cannot finalize visit without clinical documentation",
         )
 
-    primary_notes = [n for n in notes if (n.note_type and n.note_category)]
+    primary_notes = [n for n in notes if n.note_type]
+
+    logger.info(
+        "FINALIZE: PRIMARY_NOTES_CHECK visit_id=%s primary_note_count=%s request_id=%s",
+        str(visit.id),
+        len(primary_notes),
+        request_id,
+    )
 
     if not primary_notes:
+        logger.warning(
+            "FINALIZE: BLOCKED_NO_VALID_CLINICAL_FORM visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         raise HTTPException(
             status_code=422,
             detail="Visit must contain at least one valid clinical form",
@@ -2046,6 +2410,69 @@ def finalize_visit(
         patient=patient,
         is_rn=is_rn,
     )
+
+    logger.info(
+        "FINALIZE: SUPERVISORY_REQUIREMENT_PASSED visit_id=%s request_id=%s",
+        str(visit.id),
+        request_id,
+    )
+
+    # =========================================================
+    # RECONCILIATION COMPLIANCE BLOCK (SHOW BLOCKING ITEMS)
+    # =========================================================
+    blocking_recon_items = (
+        db.query(MedReconciliationItem)
+        .filter(MedReconciliationItem.patient_id == visit.patient_id)
+        .filter(MedReconciliationItem.review_status == "PENDING")
+        .order_by(MedReconciliationItem.created_at.asc())
+        .all()
+    )
+
+    logger.info(
+        "FINALIZE: RECON_CHECK visit_id=%s pending_items=%s request_id=%s",
+        str(visit.id),
+        len(blocking_recon_items),
+        request_id,
+    )
+
+    if blocking_recon_items:
+        blocking_payload = [
+            {
+                "item_id": str(item.id),
+                "import_id": str(item.import_id) if getattr(item, "import_id", None) else None,
+                "med_name_raw": item.med_name_raw,
+                "med_name_normalized": getattr(item, "med_name_normalized", None),
+                "dose": getattr(item, "dose", None),
+                "route": getattr(item, "route", None),
+                "frequency": getattr(item, "frequency", None),
+                "review_status": item.review_status,
+                "comparison_review_reason": getattr(item, "comparison_review_reason", None),
+                "requires_immediate_review": getattr(item, "requires_immediate_review", False),
+                "is_critical_reaction": getattr(item, "is_critical_reaction", False),
+            }
+            for item in blocking_recon_items
+        ]
+
+        logger.warning(
+            "FINALIZE: BLOCKED_RECON_PENDING visit_id=%s count=%s request_id=%s items=%s",
+            str(visit.id),
+            len(blocking_payload),
+            request_id,
+            blocking_payload,
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "RECON_PENDING",
+                "message": (
+                    "Cannot finalize visit until all pending medication reconciliation "
+                    "items have been reviewed."
+                ),
+                "count": len(blocking_payload),
+                "blocking_items": blocking_payload,
+            },
+        )
 
     visit.status = "FINALIZED"
 
@@ -2059,7 +2486,19 @@ def finalize_visit(
     completed_task_types: list[str] = []
 
     try:
+        logger.info(
+            "FINALIZE: BEFORE_INITIAL_FLUSH visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
         db.flush()
+
+        logger.info(
+            "FINALIZE: AFTER_INITIAL_FLUSH visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
 
         _safe_log_event(
             db=db,
@@ -2076,6 +2515,11 @@ def finalize_visit(
         )
 
         if is_admin:
+            logger.info(
+                "FINALIZE: ADMIN_VISIT_COMMITTING_WITHOUT_CLINICAL_ENGINES visit_id=%s request_id=%s",
+                str(visit.id),
+                request_id,
+            )
             db.commit()
             return VisitMutationResponse(
                 status="finalized",
@@ -2083,6 +2527,12 @@ def finalize_visit(
                 request_id=request_id,
                 completed_task_types=[],
             )
+
+        logger.info(
+            "FINALIZE: BEFORE_POC_POLICY visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
 
         from app.services.poc_update_automation import on_visit_finalized_apply_poc_policy
 
@@ -2093,15 +2543,46 @@ def finalize_visit(
             finalized_by_user_id=user_id,
         )
 
+        logger.info(
+            "FINALIZE: AFTER_POC_POLICY visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
+        logger.info(
+            "FINALIZE: BEFORE_AUTO_COMPLETE_TASKS visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
         auto_complete_tasks_for_visit(
             db=db,
             visit=visit,
             user_id=user_id,
         )
 
+        logger.info(
+            "FINALIZE: AFTER_AUTO_COMPLETE_TASKS visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
         completed_task_types = _complete_initial_task_for_visit(
             db=db,
             visit=visit,
+        )
+
+        logger.info(
+            "FINALIZE: INITIAL_TASK_COMPLETION_DONE visit_id=%s completed_task_types=%s request_id=%s",
+            str(visit.id),
+            completed_task_types,
+            request_id,
+        )
+
+        logger.info(
+            "FINALIZE: BEFORE_CONDITION_DETECTION visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
         )
 
         _run_condition_detection_non_blocking(
@@ -2113,6 +2594,18 @@ def finalize_visit(
             request_id=request_id,
         )
 
+        logger.info(
+            "FINALIZE: AFTER_CONDITION_DETECTION visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
+        logger.info(
+            "FINALIZE: BEFORE_BEREAVEMENT_AGGREGATION visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
         _run_bereavement_aggregation_non_blocking(
             db=db,
             visit=visit,
@@ -2121,14 +2614,65 @@ def finalize_visit(
             request_id=request_id,
         )
 
+        logger.info(
+            "FINALIZE: AFTER_BEREAVEMENT_AGGREGATION visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
+        # =========================================================
+        # PHASE B / HOPE ENGINE
+        # =========================================================
+        logger.info(
+            "FINALIZE: BEFORE_PHASE_B_BLOCK visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
+        _run_phase_b_finalize_hooks(
+            db=db,
+            visit=visit,
+            completed_task_types=completed_task_types,
+            notes=notes,
+            request_id=request_id,
+        )
+
+        logger.info(
+            "FINALIZE: AFTER_PHASE_B_BLOCK visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
+        logger.info(
+            "FINALIZE: BEFORE_FINAL_COMMIT visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
+
         db.commit()
+
+        logger.info(
+            "FINALIZE: AFTER_FINAL_COMMIT visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
 
     except HTTPException:
         db.rollback()
+        logger.exception(
+            "FINALIZE: HTTP_EXCEPTION_ROLLBACK visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         raise
 
     except ValueError as exc:
         db.rollback()
+        logger.exception(
+            "FINALIZE: VALUE_ERROR_ROLLBACK visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(exc),
@@ -2137,12 +2681,10 @@ def finalize_visit(
     except Exception as exc:
         db.rollback()
         logger.exception(
-            "Visit finalization failed",
-            extra={
-                "visit_id": str(visit.id),
-                "patient_id": str(visit.patient_id),
-                "request_id": request_id,
-            },
+            "FINALIZE: FAILED_ROLLBACK visit_id=%s patient_id=%s request_id=%s",
+            str(visit.id),
+            str(visit.patient_id),
+            request_id,
         )
         raise HTTPException(
             status_code=500,

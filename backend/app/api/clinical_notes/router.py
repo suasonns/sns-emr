@@ -1,24 +1,20 @@
-# app/api/clinical_notes/router.py
-
 from __future__ import annotations
 
-from uuid import UUID
 from datetime import datetime
+from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
 from app.db_request_dependency import get_db_tenant_with_request_state
-
 from app.models.clinical_note import ClinicalNote
 from app.models.visit import Visit
-
 from app.services.clinical_note_service import (
     save_clinical_note,
     finalize_clinical_note,
 )
-
 from app.services.poc_review_gate import (
     POCReviewGateError,
     review_poc,
@@ -64,10 +60,10 @@ def _get_note_or_404(db: Session, note_id: UUID, tenant_id: UUID) -> ClinicalNot
 
 
 # =========================================================
-# CREATE NOTE (NO DOUBLE COMMIT)
+# CREATE NOTE ✅ CORRECTED
 # =========================================================
 
-@router.post("/")
+@router.post("/", status_code=status.HTTP_201_CREATED)
 def create_clinical_note(
     payload: dict,
     current_user=Depends(get_current_user),
@@ -81,58 +77,68 @@ def create_clinical_note(
         visit_id = UUID(str(visit_id_raw))
         visit = _get_visit_or_404(db, visit_id, current_user.tenant_id)
 
-        note = ClinicalNote()
-        now = _utcnow_naive()
+        # ✅ Extract metadata
+        metadata = payload.get("metadata") or {}
 
-        # Required input
-        note.visit_id = visit.id
-        note.note_type = str(payload.get("note_type") or "").strip().upper()
-        note.content = str(payload.get("content") or "").strip()
+        # ✅ Extract discipline EXACTLY as provided
+        discipline_value = metadata.get("discipline") or getattr(visit, "visit_discipline", None)
 
-        if not note.note_type:
-            raise HTTPException(status_code=400, detail="note_type is required")
-        if not note.content:
-            raise HTTPException(status_code=400, detail="content is required")
+        if not discipline_value:
+            raise HTTPException(
+                status_code=400,
+                detail="discipline is required",
+            )
 
-        # System fields
-        note.tenant_id = current_user.tenant_id
-        note.author_id = current_user.id
-        note.created_by = current_user.id
-        note.created_at = now
-        note.updated_at = now
-        note.status = "DRAFT"
+        # ✅ Validate discipline using YOUR domain
+        VALID_DISCIPLINES = {"RN", "LVN", "SN", "MSW", "CHAPLAIN", "PHYSICIAN"}
 
-        # Visit-derived
-        note.patient_id = visit.patient_id
-        note.care_level = getattr(visit, "care_level", None) or "ROUTINE"
-        note.visit_type = getattr(visit, "visit_type", None) or "RN"
-        note.visit_origin = getattr(visit, "visit_origin", None) or "SCHEDULED"
-        note.note_category = getattr(visit, "note_category", None)
-        note.encounter_type = getattr(visit, "encounter_type", None) or "ROUTINE"
-        note.discipline = getattr(visit, "discipline", None) or "RN"
-        note.encounter_date = getattr(visit, "encounter_date", None)
+        if discipline_value not in VALID_DISCIPLINES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid discipline: {discipline_value}",
+            )
 
-        note, validation = save_clinical_note(
-            db=db,
-            note=note,
-            user_id=current_user.id,
+        # ✅ Build ORM object (NO TRANSFORMATION)
+        new_note = ClinicalNote(
+            id=UUID(payload.get("id")) if payload.get("id") else None,
+            visit_id=visit.id,
+            author_id=current_user.user_id,
+            tenant_id=current_user.tenant_id,
+            patient_id=UUID(str(payload["patient_id"])) if payload.get("patient_id") else None,
+            note_type=payload.get("note_type"),
+            discipline=discipline_value,
+            form_family=payload.get("form_family"),
+            status="DRAFT",
+            encounter_date=_utcnow_naive().date(),
+            content=payload.get("content") or {},
+            plan_of_care_updates=payload.get("plan_of_care_updates") or {},
+            created_by=current_user.user_id,
         )
 
-        # ✅ DO NOT COMMIT AGAIN
+        # ✅ Save using service layer
+        note, _ = save_clinical_note(
+            db=db,
+            note=new_note,
+            user_id=current_user.user_id,
+        )
 
-        return {
-            "note_id": str(note.id),
-            "validation": validation,
-        }
+        return note
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create clinical note: {exc}"
+        ) from exc
 
 
 # =========================================================
-# REVIEW POC (STRICT + SAFE)
+# REVIEW POC
 # =========================================================
 
 @router.post("/{note_id}/pocs/{poc_id}/review")
@@ -146,20 +152,17 @@ def review_generated_poc(
     try:
         note = _get_note_or_404(db, note_id, current_user.tenant_id)
 
-        decision = str(payload.get("decision") or "").strip().upper()
-        comment = payload.get("comment")
+        decision = payload.get("decision")
+        if not decision:
+            raise HTTPException(status_code=400, detail="decision is required")
 
-        if decision not in {"ACCEPT", "DISMISS", "MODIFY"}:
-            raise HTTPException(
-                status_code=400,
-                detail="decision must be ACCEPT, DISMISS, or MODIFY",
-            )
+        comment = payload.get("comment")
 
         updated_poc = review_poc(
             note=note,
             poc_id=poc_id,
-            reviewer_user_id=current_user.id,
-            decision=decision,
+            reviewer_user_id=current_user.user_id,
+            decision=str(decision),
             comment=comment,
         )
 
@@ -170,7 +173,6 @@ def review_generated_poc(
         return {
             "note_id": str(note.id),
             "poc_id": poc_id,
-            "decision": decision,
             "status": updated_poc.get("status"),
             "reviewed": updated_poc.get("review", {}).get("reviewed"),
             "poc": updated_poc,
@@ -178,14 +180,19 @@ def review_generated_poc(
 
     except HTTPException:
         raise
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to review POC: {exc}"
+        ) from exc
 
 
 # =========================================================
-# FINALIZE NOTE (NO EXTRA COMMIT)
+# FINALIZE NOTE
 # =========================================================
 
 @router.post("/{note_id}/finalize")
@@ -197,31 +204,34 @@ def finalize_note(
     try:
         note = _get_note_or_404(db, note_id, current_user.tenant_id)
 
-        note, validation = finalize_clinical_note(
+        result = finalize_clinical_note(
             db=db,
             note=note,
-            user_id=current_user.id,
+            current_user=current_user,
         )
 
-        return {
-            "note_id": str(note.id),
-            "status": "FINALIZED",
-            "validation": validation,
-        }
+        return result
 
-    except POCReviewGateError as e:
+    except POCReviewGateError as exc:
+        db.rollback()
         raise HTTPException(
             status_code=409,
             detail={
-                "message": e.message,
-                "blocking_pocs": e.blocking_pocs,
+                "message": exc.message,
+                "blocking_pocs": exc.blocking_pocs,
             },
-        )
-
+        ) from exc
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to finalize note: {exc}"
+        ) from exc
 
 
 # =========================================================
@@ -239,6 +249,7 @@ def get_clinical_note(
 
 @router.get("/")
 def list_clinical_notes(
+    limit: int = Query(default=50, ge=1, le=200),
     current_user=Depends(get_current_user),
     db: Session = Depends(get_db_tenant_with_request_state),
 ):
@@ -246,6 +257,6 @@ def list_clinical_notes(
         db.query(ClinicalNote)
         .filter(ClinicalNote.tenant_id == current_user.tenant_id)
         .order_by(ClinicalNote.created_at.desc())
-        .limit(50)
+        .limit(limit)
         .all()
     )

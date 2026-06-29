@@ -4,6 +4,9 @@ Enterprise-grade database core for SNS Hospice EMR.
 
 from __future__ import annotations
 
+# 🔥 FORCE FULL MODEL REGISTRATION BEFORE SESSION USE
+import app.models  # DO NOT REMOVE
+
 # -----------------------------------------------------
 # Environment loading (CANONICAL)
 # -----------------------------------------------------
@@ -19,6 +22,7 @@ load_dotenv()
 
 import os
 import re
+import app.models  # DO NOT REMOVE
 from typing import Generator, Optional
 
 from sqlalchemy import create_engine, text

@@ -1,29 +1,48 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey
+import uuid
+from datetime import datetime, timezone
+
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
 
 from app.db.base import Base
 
+
 IDGStatusEnum = Enum(
+    "SCHEDULED",
+    "IN_PROGRESS",
+    "COMPLETED",
     name="idg_status_enum",
-    native_enum=True,
-    create_type=False,
 )
 
 
 class IDGMeeting(Base):
     """
-    Enterprise-grade IDG Meeting.
+    IDG Meeting (Authoritative scheduling entity)
 
-    Regulatory basis:
-    - CMS CoPs §418.56
+    One record = one patient’s IDG session
+
+    This drives:
+    - IDG tasks
+    - IDG reviews
+    - compliance audit
     """
 
     __tablename__ = "idg_meetings"
 
-    id = Column(UUID(as_uuid=True), primary_key=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "patient_id",
+            "meeting_date",
+            name="uq_idg_meeting_patient_date",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
 
     patient_id = Column(
         UUID(as_uuid=True),
@@ -34,21 +53,39 @@ class IDGMeeting(Base):
 
     benefit_period_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("benefit_periods.id"),
         nullable=True,
         index=True,
     )
 
-    status = Column(IDGStatusEnum, nullable=False)
-
     meeting_date = Column(
-        DateTime(timezone=False),
+        DateTime(timezone=True),
         nullable=False,
         index=True,
     )
 
+    status = Column(
+        IDGStatusEnum,
+        nullable=False,
+        default="SCHEDULED",
+    )
+
+    finalized_by = Column(UUID(as_uuid=True))
+    finalized_at = Column(DateTime(timezone=True))
+
+    # audit fields
+    created_by = Column(UUID(as_uuid=True))
+    rescheduled_reason = Column(String)
+    rescheduled_from = Column(DateTime(timezone=True))
+
     created_at = Column(
-        DateTime(timezone=False),
-        server_default=func.now(),
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )

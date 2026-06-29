@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from datetime import timedelta, timezone
+from datetime import timezone
 from sqlalchemy.orm import Session
 
 from app.models.task import Task
+from app.models.patient import Patient
+from app.models.idg_meeting import IDGMeeting
 from app.models.enums import (
     TaskType,
     TaskOrigin,
@@ -17,7 +19,7 @@ from app.services.task_benefit_period_linker import (
 
 
 # =========================================================
-# INTERNAL HELPER (IDEMPOTENT)
+# INTERNAL HELPER (IMPROVED IDEMPOTENCY)
 # =========================================================
 
 def _idg_task_exists(db: Session, tenant_id, patient_id) -> bool:
@@ -27,7 +29,10 @@ def _idg_task_exists(db: Session, tenant_id, patient_id) -> bool:
             Task.tenant_id == tenant_id,
             Task.patient_id == patient_id,
             Task.task_type == TaskType.IDG_REVIEW,
-            Task.status == TaskStatus.PENDING,
+            Task.status.in_([
+                TaskStatus.PENDING,
+                TaskStatus.IN_PROGRESS,
+            ]),
         )
         .first()
         is not None
@@ -35,33 +40,66 @@ def _idg_task_exists(db: Session, tenant_id, patient_id) -> bool:
 
 
 # =========================================================
+# UTC SAFE HELPER
+# =========================================================
+
+def _to_utc(dt):
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+# =========================================================
+# GET NEXT IDG MEETING (CORE FIX)
+# =========================================================
+
+def _get_next_idg_meeting(db: Session, tenant_id) -> IDGMeeting:
+    return (
+        db.query(IDGMeeting)
+        .filter(
+            IDGMeeting.tenant_id == tenant_id,
+            IDGMeeting.status == "SCHEDULED",
+        )
+        .order_by(IDGMeeting.scheduled_at.asc())
+        .first()
+    )
+
+
+# =========================================================
 # INITIAL IDG (ON ADMISSION)
 # =========================================================
 
-def schedule_initial_idg_on_admission(db, patient, soc_datetime):
-    """
-    Enterprise guarantees:
-    - No duplicate IDG tasks
-    - due_at + due_date set
-    - BP attached
-    - status explicitly set
-    """
+def schedule_initial_idg_on_admission(db, patient: Patient, soc_datetime):
+    if not patient or patient.status != "active":
+        return
 
     if _idg_task_exists(db, patient.tenant_id, patient.id):
-        return  # ✅ idempotency
+        return
 
-    due_at = soc_datetime.astimezone(timezone.utc) + timedelta(days=15)
+    meeting = _get_next_idg_meeting(db, patient.tenant_id)
+    if not meeting:
+        return  # ❗ no meeting = no task
+
+    due_at = _to_utc(meeting.scheduled_at)
 
     task = Task(
         tenant_id=patient.tenant_id,
         patient_id=patient.id,
         task_type=TaskType.IDG_REVIEW,
         origin=TaskOrigin.PERIODIC,
-        discipline=TaskDiscipline.RN,
+
+        # ✅ FIXED DISCIPLINE
+        discipline=TaskDiscipline.IDG_TEAM,
+
         regulatory_basis=TaskRegulatoryBasis.IDG_REVIEW,
-        status=TaskStatus.PENDING,  # ✅ explicit
+        status=TaskStatus.PENDING,
         due_date=due_at.date(),
         due_at=due_at,
+
+        # ✅ CRITICAL LINK
+        idg_meeting_id=meeting.id,
     )
 
     attach_active_benefit_period_to_task(
@@ -80,39 +118,47 @@ def schedule_initial_idg_on_admission(db, patient, soc_datetime):
 # =========================================================
 
 def schedule_next_idg_after_completion(db, completed_task):
-    """
-    Enterprise guarantees:
-    - Safe guard if completed_at is missing
-    - No duplicate scheduled IDG
-    - due_at enforced
-    - BP attached
-    """
+    if not completed_task or completed_task.status != TaskStatus.COMPLETED:
+        return
 
-    if not completed_task.completed_at:
-        return  # ✅ safety guard
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == completed_task.patient_id)
+        .first()
+    )
+
+    if not patient or patient.status != "active":
+        return
 
     if _idg_task_exists(
         db,
         completed_task.tenant_id,
         completed_task.patient_id,
     ):
-        return  # ✅ idempotency
+        return
 
-    due_at = (
-        completed_task.completed_at.astimezone(timezone.utc)
-        + timedelta(days=15)
-    )
+    meeting = _get_next_idg_meeting(db, completed_task.tenant_id)
+    if not meeting:
+        return
+
+    due_at = _to_utc(meeting.scheduled_at)
 
     next_task = Task(
         tenant_id=completed_task.tenant_id,
         patient_id=completed_task.patient_id,
         task_type=TaskType.IDG_REVIEW,
         origin=TaskOrigin.PERIODIC,
-        discipline=TaskDiscipline.RN,
+
+        # ✅ FIXED DISCIPLINE
+        discipline=TaskDiscipline.IDG_TEAM,
+
         regulatory_basis=TaskRegulatoryBasis.IDG_REVIEW,
-        status=TaskStatus.PENDING,  # ✅ explicit
+        status=TaskStatus.PENDING,
         due_date=due_at.date(),
         due_at=due_at,
+
+        # ✅ CRITICAL LINK
+        idg_meeting_id=meeting.id,
     )
 
     attach_active_benefit_period_to_task(

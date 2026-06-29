@@ -17,7 +17,7 @@ load_dotenv(".env.local")
 load_dotenv()
 
 # ---------------------------------------------------------
-# ✅ PYTHON PATH FIX (ENTERPRISE SAFE)
+# ✅ PYTHON PATH FIX
 # ---------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parents[1]
 
@@ -33,23 +33,56 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 # ---------------------------------------------------------
-# ✅ IMPORT ALL MODELS (CRITICAL)
+# ✅ IMPORT BASE
 # ---------------------------------------------------------
 from app.db.base import Base  # noqa: E402
 
-# ✅ IMPORTANT: force full model registry load
-import app.models  # noqa: F401
+# ---------------------------------------------------------
+# ✅ AUTO-LOAD ALL MODELS (HARDENED VERSION)
+# ---------------------------------------------------------
+import pkgutil
+import importlib
+import app.models
 
-# If you ever split models across modules, explicitly import:
-# import app.models.clinical_notes
-# import app.models.audit_logs
-# import app.models.notifications
-# etc.
 
+FAILED_IMPORTS = []
+
+
+def load_all_models():
+    for _, module_name, _ in pkgutil.walk_packages(
+        app.models.__path__,
+        app.models.__name__ + "."
+    ):
+        try:
+            importlib.import_module(module_name)
+        except Exception as e:
+            FAILED_IMPORTS.append((module_name, str(e)))
+
+
+load_all_models()
+
+# ✅ DEBUG OUTPUT (CRITICAL)
+print("\n================ MODEL LOAD DEBUG ================\n")
+
+if FAILED_IMPORTS:
+    print("❌ FAILED IMPORTS:")
+    for name, err in FAILED_IMPORTS:
+        print(f" - {name}: {err}")
+else:
+    print("✅ ALL MODELS IMPORTED SUCCESSFULLY")
+
+print("\n✅ LOADED TABLES:")
+print(sorted(Base.metadata.tables.keys()))
+
+print("\n=================================================\n")
+
+# ---------------------------------------------------------
+# ✅ TARGET METADATA
+# ---------------------------------------------------------
 target_metadata = Base.metadata
 
 # ---------------------------------------------------------
-# ✅ DATABASE URL (OWNER-FIRST)
+# ✅ DATABASE URL
 # ---------------------------------------------------------
 def get_database_url() -> str:
     url = (
@@ -76,16 +109,14 @@ def run_migrations_online() -> None:
     with engine.connect() as connection:
 
         # ✅ GLOBAL SCHEMA SAFETY
-        connection.execute(
-            sa.text("SET search_path TO public, core")
-        )
+        connection.execute(sa.text("SET search_path TO public, core"))
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
-            include_schemas=False,  # ✅ prevent tenant schema confusion
+            include_schemas=False,
         )
 
         with context.begin_transaction():
@@ -94,4 +125,7 @@ def run_migrations_online() -> None:
 # ---------------------------------------------------------
 # ✅ ENTRYPOINT
 # ---------------------------------------------------------
+if context.is_offline_mode():
+    raise RuntimeError("Offline migrations are not supported")
+
 run_migrations_online()

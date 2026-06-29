@@ -215,13 +215,6 @@ def _resolve_discipline_from_poc(poc: dict):
 def _map_poc_severity_to_priority(poc: dict) -> str:
     """
     Map clinical severity to operational task priority.
-
-    Supports values observed in current POC payloads:
-    - SEVERE
-    - HIGH
-    - MODERATE
-    - MILD
-    - UNSPECIFIED
     """
     clinical_summary = poc.get("clinical_summary", {}) or {}
     severity = _normalize_text(clinical_summary.get("severity", "UNSPECIFIED"))
@@ -289,7 +282,7 @@ def _resolve_escalation_route(priority: str, level: int) -> dict:
 def _resolve_assigned_user(
     db: Session,
     *,
-    role: str,
+    role: str | None,
     tenant_id=None,
 ):
     from app.models.user import User
@@ -310,6 +303,74 @@ def _resolve_assigned_user(
 
 
 # =========================================================
+# POC / JSON NORMALIZATION HELPERS
+# =========================================================
+
+def _get_pocs(note: ClinicalNote) -> list[dict[str, Any]]:
+    if not isinstance(note.plan_of_care_updates, dict):
+        note.plan_of_care_updates = {"meta": {}, "pocs": []}
+        flag_modified(note, "plan_of_care_updates")
+        return note.plan_of_care_updates["pocs"]
+
+    if "pocs" not in note.plan_of_care_updates or not isinstance(note.plan_of_care_updates["pocs"], list):
+        note.plan_of_care_updates["pocs"] = []
+        flag_modified(note, "plan_of_care_updates")
+
+    return note.plan_of_care_updates["pocs"]
+
+
+def _should_create_task_for_poc(poc: dict[str, Any]) -> bool:
+    """
+    Process only draft/active POCs that still represent work.
+    Skip dismissed/resolved items and already-reviewed accepted items.
+    """
+    status = _normalize_text(poc.get("status"))
+    if status in {"DISMISSED", "RESOLVED"}:
+        return False
+
+    review = poc.get("review", {})
+    if isinstance(review, dict):
+        reviewed = bool(review.get("reviewed", False))
+        decision = _normalize_text(review.get("decision"))
+
+        # If it was already accepted and reviewed, do not create a new review task
+        if reviewed and decision == "ACCEPT":
+            return False
+
+    return True
+
+
+def _append_task_history_event_if_missing(
+    poc: dict[str, Any],
+    *,
+    event: str,
+    task_id: str | None,
+    generated_at: str,
+) -> None:
+    history = poc.get("task_history")
+    if not isinstance(history, list):
+        history = []
+        poc["task_history"] = history
+
+    for existing in history:
+        if not isinstance(existing, dict):
+            continue
+        if (
+            existing.get("event") == event
+            and str(existing.get("task_id")) == str(task_id)
+        ):
+            return
+
+    history.append(
+        {
+            "event": event,
+            "task_id": task_id,
+            "generated_at": generated_at,
+        }
+    )
+
+
+# =========================================================
 # DEDUPE HELPERS
 # =========================================================
 
@@ -326,9 +387,6 @@ def _find_existing_open_task_for_problem(
 ):
     """
     Prevent duplicate open tasks for the same patient + problem code.
-
-    This is more precise than deduping only on task_type because multiple
-    problem codes can map to the same canonical task type.
     """
     query = (
         db.query(Task)
@@ -359,43 +417,45 @@ def process_pocs_to_tasks(
     Convert generated POCs into actionable tasks.
 
     Enterprise-safe behavior:
-    - use only supported TaskType enum members
-    - use canonical regulatory_basis = POC_UPDATE
-    - link created tasks to the triggering clinical note
-    - enforce required discipline on insert
-    - dedupe by patient + problem code + canonical task type
-    - annotate the POC JSON with task linkage
-    - stay transaction-neutral (caller owns commit/rollback)
+    - uses only supported TaskType enum members
+    - uses canonical regulatory_basis = POC_UPDATE
+    - links created tasks to the triggering clinical note
+    - enforces required discipline on insert
+    - dedupes by patient + problem code + canonical task type
+    - annotates the POC JSON with task linkage
+    - isolates notification failures from task creation
+    - stays transaction-neutral (caller owns commit/rollback)
     """
-    if not note or not note.plan_of_care_updates:
+
+    if not note:
         return
 
     if not getattr(note, "patient_id", None) or not getattr(note, "tenant_id", None):
         return
 
-    pocs = note.plan_of_care_updates.get("pocs", [])
-    if not isinstance(pocs, list) or not pocs:
+    pocs = _get_pocs(note)
+    if not pocs:
         return
 
     now = _utcnow()
+    now_iso = now.isoformat()
     changed = False
 
     for poc in pocs:
         if not isinstance(poc, dict):
             continue
 
-        # ---------------------------------------------
-        # PROBLEM
-        # ---------------------------------------------
-        problem = poc.get("problem", {}) or {}
-        problem_code = _normalize_problem_code(problem.get("code"))
+        if not _should_create_task_for_poc(poc):
+            continue
 
+        problem = poc.get("problem", {}) or {}
+        if not isinstance(problem, dict):
+            continue
+
+        problem_code = _normalize_problem_code(problem.get("code"))
         if not problem_code:
             continue
 
-        # ---------------------------------------------
-        # MAP → CANONICAL TASK TYPE
-        # ---------------------------------------------
         rule = POC_TO_TASK_MAP.get(problem_code)
         if not rule:
             logger.info(
@@ -411,9 +471,6 @@ def process_pocs_to_tasks(
             problem_code=problem_code,
         )
 
-        # ---------------------------------------------
-        # PREVENT DUPLICATE
-        # ---------------------------------------------
         existing = _find_existing_open_task_for_problem(
             db,
             note=note,
@@ -422,41 +479,34 @@ def process_pocs_to_tasks(
         )
 
         if existing:
+            existing_id = str(getattr(existing, "id", None)) if getattr(existing, "id", None) else None
+
             poc["task_generated"] = True
-            poc["task_id"] = str(getattr(existing, "id", None)) if getattr(existing, "id", None) else None
-            if "task_history" not in poc or not isinstance(poc["task_history"], list):
-                poc["task_history"] = []
-            poc["task_history"].append(
-                {
-                    "event": "TASK_LINKED_EXISTING",
-                    "task_id": str(getattr(existing, "id", None)) if getattr(existing, "id", None) else None,
-                    "generated_at": now.isoformat(),
-                }
+            poc["task_id"] = existing_id
+            _append_task_history_event_if_missing(
+                poc,
+                event="TASK_LINKED_EXISTING",
+                task_id=existing_id,
+                generated_at=now_iso,
             )
             changed = True
+
             logger.info(
                 "Skipped duplicate POC task for patient_id=%s note_id=%s problem_code=%s task_type=%s existing_task_id=%s",
                 str(getattr(note, "patient_id", None)),
                 str(getattr(note, "id", None)),
                 problem_code,
                 _enumish_text(task_type),
-                str(getattr(existing, "id", None)),
+                existing_id,
             )
             continue
 
-        # ---------------------------------------------
-        # PRIORITY + ESCALATION
-        # ---------------------------------------------
         priority = _map_poc_severity_to_priority(poc)
         escalation = _apply_escalation_rules(priority)
         sla_due_at = escalation["sla_due_at"]
         due_date = sla_due_at.date() if sla_due_at else now.date()
 
-        # ---------------------------------------------
-        # ROUTING
-        # ---------------------------------------------
         route = _resolve_escalation_route(priority, escalation["level"])
-
         assigned_role = route.get("role")
         notify_flag = bool(route.get("notify"))
 
@@ -466,14 +516,8 @@ def process_pocs_to_tasks(
             tenant_id=note.tenant_id,
         )
 
-        # ---------------------------------------------
-        # DISCIPLINE (REQUIRED BY DB)
-        # ---------------------------------------------
         discipline = _resolve_discipline_from_poc(poc)
 
-        # ---------------------------------------------
-        # CREATE TASK
-        # ---------------------------------------------
         new_task = Task(
             id=uuid4(),
             tenant_id=note.tenant_id,
@@ -482,7 +526,7 @@ def process_pocs_to_tasks(
             status=_pending_status(),
             discipline=discipline,
             priority=priority,
-            clinical_severity=poc.get("clinical_summary", {}).get("severity"),
+            clinical_severity=(poc.get("clinical_summary", {}) or {}).get("severity"),
             created_at=now,
             updated_at=now,
             due_date=due_date,
@@ -530,7 +574,7 @@ def process_pocs_to_tasks(
                 "poc_problem_display": problem.get("display"),
                 "poc_id": poc.get("poc_id"),
                 "note_id": str(getattr(note, "id", None)) if getattr(note, "id", None) else None,
-                "severity": poc.get("clinical_summary", {}).get("severity"),
+                "severity": (poc.get("clinical_summary", {}) or {}).get("severity"),
                 "discipline": _enumish_text(discipline),
             }
 
@@ -543,22 +587,21 @@ def process_pocs_to_tasks(
         db.add(new_task)
         db.flush()
 
+        task_id = str(getattr(new_task, "id", None)) if getattr(new_task, "id", None) else None
+
         poc["task_generated"] = True
-        poc["task_id"] = str(getattr(new_task, "id", None)) if getattr(new_task, "id", None) else None
-        if "task_history" not in poc or not isinstance(poc["task_history"], list):
-            poc["task_history"] = []
-        poc["task_history"].append(
-            {
-                "event": "TASK_GENERATED",
-                "task_id": str(getattr(new_task, "id", None)) if getattr(new_task, "id", None) else None,
-                "generated_at": now.isoformat(),
-            }
+        poc["task_id"] = task_id
+        _append_task_history_event_if_missing(
+            poc,
+            event="TASK_GENERATED",
+            task_id=task_id,
+            generated_at=now_iso,
         )
         changed = True
 
         logger.info(
             "Created POC task task_id=%s note_id=%s patient_id=%s task_type=%s problem_code=%s discipline=%s",
-            str(getattr(new_task, "id", None)),
+            task_id,
             str(getattr(note, "id", None)),
             str(getattr(note, "patient_id", None)),
             _enumish_text(task_type),
@@ -566,24 +609,30 @@ def process_pocs_to_tasks(
             _enumish_text(discipline),
         )
 
-        # ---------------------------------------------
-        # NOTIFICATION
-        # ---------------------------------------------
         if notify_flag and assigned_user_id:
-            create_notification(
-                db=db,
-                tenant_id=note.tenant_id,
-                user_id=assigned_user_id,
-                patient_id=note.patient_id,
-                title=f"New Task: {_enumish_text(task_type)}",
-                message=(
-                    f"You have been assigned a {priority} priority task "
-                    f"for POC problem {problem_code}."
-                ),
-                notification_type="TASK_ASSIGNED",
-                source_type="TASK",
-                source_id=new_task.id,
-            )
+            try:
+                create_notification(
+                    db=db,
+                    tenant_id=note.tenant_id,
+                    user_id=assigned_user_id,
+                    patient_id=note.patient_id,
+                    title=f"New Task: {_enumish_text(task_type)}",
+                    message=(
+                        f"You have been assigned a {priority} priority task "
+                        f"for POC problem {problem_code}."
+                    ),
+                    notification_type="TASK_ASSIGNED",
+                    source_type="TASK",
+                    source_id=new_task.id,
+                )
+            except Exception as exc:
+                logger.exception(
+                    "Notification failure for task_id=%s patient_id=%s note_id=%s: %s",
+                    task_id,
+                    str(getattr(note, "patient_id", None)),
+                    str(getattr(note, "id", None)),
+                    exc,
+                )
 
     if changed:
         flag_modified(note, "plan_of_care_updates")

@@ -8,32 +8,57 @@ IMPORTANT:
 - Deterministic and audit-safe
 """
 
+from __future__ import annotations
+
 from typing import Optional
 
 
-def normalize_drug_name(name: Optional[str]) -> Optional[str]:
+def normalize_drug_name(name: Optional[str]) -> str:
     """
     Normalize a medication name for consistent comparison and matching.
 
     Rules:
-    - Preserve original clinical meaning
+    - Preserve clinical meaning
     - Do NOT infer dosage, route, or frequency
     - Do NOT change intent, only formatting
     - Safe for MAR, POC, IDG, and reconciliation workflows
 
+    Behavior:
+    - Returns empty string for None or invalid input
+    - Lowercases for consistent matching (not for display)
+    - Collapses whitespace
+    - Removes surrounding punctuation noise
+
     Examples:
     - " Tylenol " -> "tylenol"
     - "Morphine Sulfate" -> "morphine sulfate"
-    - None -> None
+    - None -> ""
     """
 
+    # ---------------------------------------------------------
+    # SAFE INPUT HANDLING
+    # ---------------------------------------------------------
     if not name:
-        return name
+        return ""
 
-    # Basic normalization only
-    normalized = name.strip().lower()
+    # ensure string input
+    value = str(name)
 
-    # Collapse internal whitespace
+    # ---------------------------------------------------------
+    # BASIC NORMALIZATION
+    # ---------------------------------------------------------
+    normalized = value.strip().lower()
+
+    # collapse internal whitespace
     normalized = " ".join(normalized.split())
+
+    # ---------------------------------------------------------
+    # CLEAN COMMON NON-CLINICAL CHARACTERS
+    # ---------------------------------------------------------
+    # remove trademark symbols and common noise
+    normalized = normalized.replace("®", "").replace("™", "")
+
+    # strip leftover outer punctuation
+    normalized = normalized.strip(".,;:()[]{}")
 
     return normalized

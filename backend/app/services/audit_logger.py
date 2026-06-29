@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from sqlalchemy.orm import Session
@@ -11,6 +11,16 @@ from app.models.audit_log import AuditLog
 logger = logging.getLogger("audit")
 
 
+# =========================================================
+# ✅ TIME HELPER (CONSISTENT UTC)
+# =========================================================
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# =========================================================
+# MAIN LOGGER
+# =========================================================
 def log_event(
     *,
     request_id: Optional[str] = None,
@@ -32,18 +42,18 @@ def log_event(
     - Append-only
     - NEVER blocks clinical workflows
     - Tenant context enforced
-    - Uses SAVEPOINT to prevent poisoning outer transactions
+    - Uses SAVEPOINT to isolate audit writes
     """
 
     # ---------------------------------------------------------
-    # Resolve tenant + user context from DB session if omitted
+    # Resolve tenant + user context
     # ---------------------------------------------------------
     if db is not None:
         tenant_id = tenant_id or db.info.get("tenant_id")
         user_id = user_id or db.info.get("user_id")
 
     # ---------------------------------------------------------
-    # Console log (always safe)
+    # Console logging (always safe)
     # ---------------------------------------------------------
     if tenant_id:
         logger.info(
@@ -64,10 +74,12 @@ def log_event(
         )
 
     # ---------------------------------------------------------
-    # DB persistence (STRICTLY NON-BLOCKING)
+    # DB write (NON-BLOCKING)
     # ---------------------------------------------------------
     if db is None or tenant_id is None:
         return
+
+    now = _utcnow()
 
     try:
         audit = AuditLog(
@@ -79,20 +91,22 @@ def log_event(
             entity_type=str(entity_type) if entity_type else None,
             entity_id=str(entity_id) if entity_id else None,
             ip_address=ip,
-            metadata=metadata,
-            created_at=datetime.utcnow(),
+            metadata=metadata or {},                 # ✅ prevent None
+            created_at=now,                          # ✅ timezone-aware
+            updated_at=now,                          # ✅ REQUIRED COLUMN FIX
+            created_by=str(user_id) if user_id else None,
         )
 
-        # ✅ CRITICAL: use SAVEPOINT so audit failures do NOT rollback clinical tx
+        # ✅ SAVEPOINT (critical)
         with db.begin_nested():
             db.add(audit)
             db.flush()
 
-        # Only commit if audit logger is used standalone
+        # commit only if standalone
         if commit:
             db.commit()
 
     except Exception as e:
-        # ✅ NEVER rollback the outer transaction
+        # ✅ NEVER break clinical flow
         logger.exception("Audit log write failed (ignored): %s", e)
         return

@@ -2,27 +2,42 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.domain.forms.form_resolution_service import resolve_form_package
 from app.domain.tasks.task_form_rules import TASK_REQUIRED_FORMS
-from app.models.visit import Visit
 from app.models.clinical_note import ClinicalNote
+from app.models.med_reconciliation import MedReconciliationItem
 from app.models.task import Task
+from app.models.visit import Visit
 from app.services.clinical_note_validation_engine import (
     validate_and_trigger_incident,
 )
+from app.services.idg_completeness import validate_idg_completeness
 from app.services.poc_engine import generate_pocs_from_note
 from app.services.poc_review_gate import enforce_poc_review_gate
 from app.services.task_auto_complete_engine import auto_complete_tasks_from_note
 from app.services.task_engine import process_tasks_for_note
 
 logger = logging.getLogger("sns_emr")
+
+
+# =========================================================
+# TIME HELPERS
+# =========================================================
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _utc_now_iso() -> str:
+    return _utc_now().isoformat()
 
 
 # =========================================================
@@ -123,7 +138,7 @@ def _ensure_plan_of_care_updates(note: ClinicalNote) -> None:
     note.plan_of_care_updates = {
         "meta": {
             "version": "1.0",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": _utc_now_iso(),
             "note_id": str(note.id) if note.id else None,
             "patient_id": str(note.patient_id) if note.patient_id else None,
         },
@@ -139,7 +154,7 @@ def _sync_plan_of_care_meta(note: ClinicalNote) -> None:
     meta = note.plan_of_care_updates.get("meta", {}) or {}
 
     meta["version"] = meta.get("version") or "1.0"
-    meta["generated_at"] = meta.get("generated_at") or datetime.utcnow().isoformat()
+    meta["generated_at"] = meta.get("generated_at") or _utc_now_iso()
     meta["note_id"] = str(note.id) if note.id else None
     meta["patient_id"] = str(note.patient_id) if note.patient_id else None
 
@@ -158,7 +173,7 @@ def _ensure_required_timestamps(note: ClinicalNote) -> None:
     Some live DB environments still require explicit created_at/updated_at values
     even if the ORM model declares defaults.
     """
-    now = datetime.utcnow()
+    now = _utc_now()
 
     if getattr(note, "created_at", None) is None:
         note.created_at = now
@@ -230,10 +245,7 @@ def _apply_form_engine(note: ClinicalNote, db: Session) -> dict[str, Any]:
         care_setting=getattr(note, "care_setting", None),
     )
 
-    note.form_family = _coerce_form_family_value(
-        form_package.get("form_family")
-    )
-
+    note.form_family = _coerce_form_family_value(form_package.get("form_family"))
     note.form_key = form_package.get("primary_form")
 
     note.module_payload = {
@@ -259,7 +271,7 @@ def _build_clinical_context(form_package: dict[str, Any]) -> dict[str, Any]:
     """
     return {
         "form_resolution": form_package,
-        "generated_at": datetime.utcnow().isoformat(),
+        "generated_at": _utc_now_iso(),
     }
 
 
@@ -294,7 +306,7 @@ def _evaluate_clinical_compliance(form_package: dict[str, Any]) -> dict[str, Any
 
 
 # =========================================================
-# TASK SIGNAL GENERATOR (COMPLIANCE → TASKS)
+# TASK SIGNAL GENERATOR (COMPLIANCE -> TASKS)
 # =========================================================
 
 def _generate_compliance_task_signals(
@@ -404,6 +416,210 @@ def _sync_attached_forms(
 
 
 # =========================================================
+# INTERNAL — NOTE ENRICHMENT PIPELINE
+# =========================================================
+
+def _prepare_note_common_state(
+    db: Session,
+    *,
+    note: ClinicalNote,
+) -> dict[str, Any]:
+    """
+    Shared pre-persist orchestration for both draft save and finalize.
+    """
+    _ensure_plan_of_care_updates(note)
+    _ensure_required_timestamps(note)
+    _ensure_content(note)
+
+    form_package = _apply_form_engine(note, db)
+    clinical_context = _build_clinical_context(form_package)
+
+    _ensure_observed_data(note)
+    note.observed_data["system"]["clinical_context"] = clinical_context
+    flag_modified(note, "observed_data")
+
+    compliance = _evaluate_clinical_compliance(form_package)
+    compliance_payload = {
+        **compliance,
+        "evaluated_at": _utc_now_iso(),
+        "version": "1.0",
+    }
+
+    _ensure_audit_flags(note)
+    note.audit_flags["clinical_compliance"] = compliance_payload
+    note.audit_flags["task_signals"] = _generate_compliance_task_signals(compliance)
+    flag_modified(note, "audit_flags")
+
+    return form_package
+
+
+def _persist_note_and_children(
+    db: Session,
+    *,
+    note: ClinicalNote,
+    form_package: dict[str, Any],
+) -> None:
+    """
+    Persist the primary note first, then sync attached child forms.
+    """
+    _sync_plan_of_care_meta(note)
+    db.add(note)
+    db.flush()
+
+    _sync_attached_forms(
+        db,
+        note=note,
+        form_package=form_package,
+    )
+    db.flush()
+
+
+def _run_post_persist_note_engines(
+    db: Session,
+    *,
+    note: ClinicalNote,
+    user_id: UUID,
+) -> dict[str, Any]:
+    """
+    Run note validation + POC pipeline after note persistence.
+    """
+    validation_result = validate_and_trigger_incident(
+        db=db,
+        note=note,
+        actor_user_id=user_id,
+        actor_role="CLINICIAN",
+    )
+
+    generate_pocs_from_note(note)
+
+    logger.info(
+        "POC generated for clinical note note_id=%s patient_id=%s",
+        str(note.id),
+        str(note.patient_id),
+    )
+
+    from app.services.poc_task_engine import process_pocs_to_tasks
+
+    process_pocs_to_tasks(db=db, note=note)
+
+    _sync_plan_of_care_meta(note)
+    flag_modified(note, "plan_of_care_updates")
+
+    db.add(note)
+    db.flush()
+
+    return validation_result
+
+
+# =========================================================
+# INTERNAL — VISIT / RECON HELPERS
+# =========================================================
+
+def _get_visit_required(db: Session, note: ClinicalNote) -> Visit:
+    visit = db.query(Visit).filter(Visit.id == note.visit_id).first()
+    if not visit:
+        raise ValueError("Visit not found for clinical note")
+    return visit
+
+
+def _get_blocking_reconciliation_items(
+    db: Session,
+    *,
+    patient_id: UUID,
+) -> list[MedReconciliationItem]:
+    return (
+        db.query(MedReconciliationItem)
+        .filter(MedReconciliationItem.patient_id == patient_id)
+        .filter(MedReconciliationItem.review_status == "PENDING")
+        .order_by(MedReconciliationItem.created_at.asc())
+        .all()
+    )
+
+
+def _raise_if_reconciliation_pending(
+    db: Session,
+    *,
+    visit: Visit,
+) -> None:
+    blocking_recon_items = _get_blocking_reconciliation_items(
+        db,
+        patient_id=visit.patient_id,
+    )
+
+    logger.info(
+        "FINALIZE: RECON_CHECK visit_id=%s pending_items=%s N/A=%s",
+        str(visit.id),
+        len(blocking_recon_items),
+        "N/A",
+    )
+
+    if not blocking_recon_items:
+        return
+
+    blocking_payload = [
+        {
+            "item_id": str(item.id),
+            "import_id": str(item.import_id) if getattr(item, "import_id", None) else None,
+            "med_name_raw": item.med_name_raw,
+            "med_name_normalized": getattr(item, "med_name_normalized", None),
+            "dose": getattr(item, "dose", None),
+            "route": getattr(item, "route", None),
+            "frequency": getattr(item, "frequency", None),
+            "review_status": item.review_status,
+            "comparison_review_reason": getattr(item, "comparison_review_reason", None),
+            "requires_immediate_review": getattr(item, "requires_immediate_review", False),
+            "is_critical_reaction": getattr(item, "is_critical_reaction", False),
+        }
+        for item in blocking_recon_items
+    ]
+
+    logger.warning(
+        "FINALIZE: BLOCKED_RECON_PENDING visit_id=%s count=%s N/A=%s items=%s",
+        str(visit.id),
+        len(blocking_payload),
+        "N/A",
+        blocking_payload,
+    )
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "code": "RECON_PENDING",
+            "message": (
+                "Cannot finalize visit until all pending medication reconciliation "
+                "items have been reviewed."
+            ),
+            "count": len(blocking_payload),
+            "blocking_items": blocking_payload,
+        },
+    )
+
+
+def _raise_if_idg_incomplete(
+    db: Session,
+    *,
+    note: ClinicalNote,
+) -> None:
+    if not getattr(note, "idg_review_id", None):
+        return
+
+    missing = validate_idg_completeness(
+        db,
+        idg_review_id=note.idg_review_id,
+        tenant_id=note.tenant_id,
+    )
+
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "IDG_INCOMPLETE",
+                "missing": missing,
+            },
+        )
+
+
+# =========================================================
 # SAVE DRAFT
 # =========================================================
 
@@ -417,70 +633,14 @@ def save_clinical_note(
     Save a draft clinical note and run the standard note engines.
     """
     try:
-        _ensure_plan_of_care_updates(note)
-        _ensure_required_timestamps(note)
-        _ensure_content(note)
+        form_package = _prepare_note_common_state(db, note=note)
+        _persist_note_and_children(db, note=note, form_package=form_package)
 
-        # 1. Apply form engine + build context
-        form_package = _apply_form_engine(note, db)
-        clinical_context = _build_clinical_context(form_package)
-
-        _ensure_observed_data(note)
-        note.observed_data["system"]["clinical_context"] = clinical_context
-        flag_modified(note, "observed_data")
-
-        # 2. Compliance evaluation
-        compliance = _evaluate_clinical_compliance(form_package)
-        compliance_payload = {
-            **compliance,
-            "evaluated_at": datetime.utcnow().isoformat(),
-            "version": "1.0",
-        }
-
-        _ensure_audit_flags(note)
-        note.audit_flags["clinical_compliance"] = compliance_payload
-        note.audit_flags["task_signals"] = _generate_compliance_task_signals(compliance)
-        flag_modified(note, "audit_flags")
-
-        # 3. Save primary note first
-        db.add(note)
-        db.flush()
-
-        # 4. Attached form sync
-        _sync_attached_forms(
+        validation_result = _run_post_persist_note_engines(
             db,
             note=note,
-            form_package=form_package,
+            user_id=user_id,
         )
-        db.flush()
-
-        # 5. Existing engines
-        _sync_plan_of_care_meta(note)
-
-        validation_result = validate_and_trigger_incident(
-            db=db,
-            note=note,
-            actor_user_id=user_id,
-            actor_role="CLINICIAN",
-        )
-
-        generate_pocs_from_note(note)
-
-        logger.info(
-            "POC generated for draft clinical note note_id=%s patient_id=%s",
-            str(note.id),
-            str(note.patient_id),
-        )
-
-        from app.services.poc_task_engine import process_pocs_to_tasks
-
-        process_pocs_to_tasks(db=db, note=note)
-
-        _sync_plan_of_care_meta(note)
-        flag_modified(note, "plan_of_care_updates")
-
-        db.add(note)
-        db.flush()
 
         process_tasks_for_note(
             db=db,
@@ -519,77 +679,40 @@ def finalize_clinical_note(
     - persisted state before response
     """
     try:
-        _ensure_plan_of_care_updates(note)
-        _ensure_required_timestamps(note)
-        _ensure_content(note)
+        form_package = _prepare_note_common_state(db, note=note)
+        _persist_note_and_children(db, note=note, form_package=form_package)
 
-        # 1. Re-apply form engine + context
-        form_package = _apply_form_engine(note, db)
-        clinical_context = _build_clinical_context(form_package)
-
-        _ensure_observed_data(note)
-        note.observed_data["system"]["clinical_context"] = clinical_context
-        flag_modified(note, "observed_data")
-
-        # 2. Compliance evaluation + task signals
-        compliance = _evaluate_clinical_compliance(form_package)
-        compliance_payload = {
-            **compliance,
-            "evaluated_at": datetime.utcnow().isoformat(),
-            "version": "1.0",
-        }
-
-        _ensure_audit_flags(note)
-        note.audit_flags["clinical_compliance"] = compliance_payload
-        note.audit_flags["task_signals"] = _generate_compliance_task_signals(compliance)
-        flag_modified(note, "audit_flags")
-
-        # 3. Save + attached form sync
-        _sync_plan_of_care_meta(note)
-        db.add(note)
-        db.flush()
-
-        _sync_attached_forms(
+        validation_result = _run_post_persist_note_engines(
             db,
             note=note,
-            form_package=form_package,
-        )
-        db.flush()
-
-        # 4. Existing engines
-        validation_result = validate_and_trigger_incident(
-            db=db,
-            note=note,
-            actor_user_id=user_id,
-            actor_role="CLINICIAN",
+            user_id=user_id,
         )
 
-        generate_pocs_from_note(note)
-
-        from app.services.poc_task_engine import process_pocs_to_tasks
-
-        process_pocs_to_tasks(
-            db=db,
-            note=note,
-        )
-
-        _sync_plan_of_care_meta(note)
-        flag_modified(note, "plan_of_care_updates")
-
-        db.add(note)
-        db.flush()
-
+        _raise_if_idg_incomplete(db, note=note)
         enforce_poc_review_gate(note)
 
+        visit = _get_visit_required(db, note)
+        _raise_if_reconciliation_pending(db, visit=visit)
+
+        # First pass: create / update downstream tasks based on current note state
         process_tasks_for_note(
             db=db,
             note=note,
             user_id=user_id,
         )
 
+        # Finalize note state
         note.finalize(user_id=user_id)
 
+        # Validate forms required for task completion before final commit
         _validate_required_forms_for_tasks(db, note)
+
+        # Second pass: task transitions after finalized state
+        process_tasks_for_note(
+            db=db,
+            note=note,
+            user_id=user_id,
+        )
 
         auto_complete_tasks_from_note(
             db=db,

@@ -1,28 +1,57 @@
+from __future__ import annotations
+
 import re
 from decimal import Decimal, InvalidOperation
 
 _WS_RE = re.compile(r"\s+")
 
 _DOSE_RE = re.compile(
-    r"^\s*(\d+(\.\d+)?)\s*(mcg|μg|ug|mg|g|gm)\s*$",
+    r"^\s*(\d+(\.\d+)?)\s*(mcg|μg|ug|mg|g|gm|grams?|milligrams?)\s*$",
     re.IGNORECASE,
 )
 
-def normalize_text(val: str) -> str:
-    return _WS_RE.sub(" ", (val or "").strip().lower())
+# Anything we NEVER normalize (clinical safety)
+_COMPLEX_MARKERS = (
+    "/",
+    "ml",
+    "patch",
+    "%",
+    "unit",
+    "tab",
+    "caps",
+    "supp",
+)
 
-def normalize_dose(dose: str) -> str:
+
+def normalize_text(val: str | None) -> str:
+    """
+    Normalize spacing only.
+    DO NOT force lowercase globally (clinical abbreviations matter).
+    """
+    if val is None:
+        return ""
+    return _WS_RE.sub(" ", str(val).strip())
+
+
+def normalize_dose(dose: str | None) -> str:
     """
     Normalize mass units ONLY (mg/g/mcg).
-    mL, patches, mg/mL, etc are left untouched
-    to protect hospice comfort‑kit ladders.
+    Preserve all complex or structured medication instructions.
+
+    Safety rules:
+    - Do NOT normalize volume (mL), compound doses, or route-dependent formats
+    - Do NOT alter PRN / BID / Q4H structures
+    - Fail-safe: return original if unsure
     """
-    d = normalize_text(dose)
-    if not d:
+    if not dose:
         return ""
 
-    # Do NOT normalize volume-based or compound doses
-    if "/" in d or "ml" in d or "patch" in d:
+    d = normalize_text(dose).lower()
+
+    # ---------------------------------------------------------
+    # HARD STOP: DO NOT TOUCH COMPLEX EXPRESSIONS
+    # ---------------------------------------------------------
+    if any(marker in d for marker in _COMPLEX_MARKERS):
         return d
 
     m = _DOSE_RE.match(d)
@@ -35,13 +64,22 @@ def normalize_dose(dose: str) -> str:
         return d
 
     unit = m.group(3).lower()
-    if unit == "mg":
+
+    # ---------------------------------------------------------
+    # UNIT NORMALIZATION → mg
+    # ---------------------------------------------------------
+    if unit in ("mg", "milligram", "milligrams"):
         mg = value
-    elif unit in ("g", "gm"):
+    elif unit in ("g", "gm", "gram", "grams"):
         mg = value * Decimal("1000")
     elif unit in ("mcg", "ug", "μg"):
         mg = value / Decimal("1000")
     else:
         return d
 
-    return f"{mg.normalize()}mg"
+    # ---------------------------------------------------------
+    # SAFE STRING FORMAT (NO SCIENTIFIC NOTATION)
+    # ---------------------------------------------------------
+    mg_str = format(mg.normalize(), "f")
+
+    return f"{mg_str}mg"

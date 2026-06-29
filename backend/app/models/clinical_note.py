@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import uuid
 
 from sqlalchemy import (
     Boolean,
@@ -11,49 +12,35 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    Text,
     event,
     text,
+    Index,
+    UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
 from sqlalchemy.orm import relationship, synonym
 
 from app.models.base import BaseModel
 
 
-class ClinicalNote(BaseModel):
-    """
-    Enterprise-grade Clinical Note model.
+# ===================================================
+# CLINICAL NOTE
+# ===================================================
 
-    PURPOSE
-    - Maps the existing clinical_notes table
-    - Keeps business logic primarily in services / routers
-    - Adds production-safe ORM protections for required fields
-    - Preserves compatibility with existing service-layer naming patterns
-    """
+class ClinicalNote(BaseModel):
 
     __tablename__ = "clinical_notes"
 
     # ===================================================
-    # RELATIONSHIPS / OWNERSHIP
+    # RELATIONSHIPS
     # ===================================================
 
-    visit_id = Column(
-        ForeignKey("visits.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-
-    author_id = Column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+    visit_id = Column(ForeignKey("visits.id", ondelete="RESTRICT"), nullable=False, index=True)
+    author_id = Column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), nullable=True, index=True)
 
-    # ACTIVE VERSION POINTER
     current_version_id = Column(
         UUID(as_uuid=True),
         ForeignKey("clinical_note_versions.id", ondelete="RESTRICT"),
@@ -61,57 +48,38 @@ class ClinicalNote(BaseModel):
     )
 
     # ===================================================
-    # CORE CLASSIFICATION
+    # CORE
     # ===================================================
 
-    note_type = Column(String, nullable=False)
-
-    care_level = Column(String, nullable=True)
-    visit_type = Column(String, nullable=True)
-    visit_origin = Column(String, nullable=True)
-    note_category = Column(String, nullable=True)
-    encounter_type = Column(String, nullable=True)
-
-    # Discipline that owns / authored the note
-    discipline = Column(String, nullable=True)
+    note_type = Column(String(50), nullable=False)
+    discipline = Column(String(10), nullable=False)
 
     # ===================================================
-    # FORM ENGINE SUPPORT
+    # SUPERVISION
     # ===================================================
 
-    # High-level family bucket used for routing / discipline ownership
-    form_family = Column(String(64), nullable=True)
+    requires_countersign = Column(Boolean, nullable=False, default=False)
 
-    # Exact resolved form identity, e.g. HOPE_ADMISSION / ROUTINE_VISIT_NOTE / POC_UPDATE
-    form_key = Column(String(128), nullable=True, index=True)
+    countersigned_by = Column(UUID(as_uuid=True), nullable=True)
+    countersigned_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Structured modules / attached form metadata
-    module_payload = Column(JSON, nullable=True)
+    # ===================================================
+    # FORM ENGINE
+    # ===================================================
 
-    # Primary vs attached form support
-    is_primary_form = Column(
-        Boolean,
-        nullable=False,
-        server_default=text("true"),
-    )
+    form_family = Column(String(64))
+    form_key = Column(String(128), index=True)
 
-    # Self-reference for attached forms
+    module_payload = Column(JSON)
+
+    is_primary_form = Column(Boolean, nullable=False, server_default=text("true"))
+
     parent_form_id = Column(
         UUID(as_uuid=True),
         ForeignKey("clinical_notes.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
-
-    # ===================================================
-    # SERVICE-LAYER COMPATIBILITY ALIASES
-    # ===================================================
-    # Several services are already using:
-    # - note.is_primary
-    # - note.parent_note_id
-    #
-    # These synonyms preserve compatibility while keeping the DB column
-    # names stable and compliant with the current schema.
 
     is_primary = synonym("is_primary_form")
     parent_note_id = synonym("parent_form_id")
@@ -120,60 +88,32 @@ class ClinicalNote(BaseModel):
     # LIFECYCLE
     # ===================================================
 
-    status = Column(String, nullable=True)
-    encounter_date = Column(Date, nullable=True)
+    status = Column(String(20))
+    encounter_date = Column(Date)
 
-    finalized_at = Column(DateTime(timezone=True), nullable=True)
-    finalized_by = Column(UUID(as_uuid=True), nullable=True)
-    finalized_role_id = Column(UUID(as_uuid=True), nullable=True)
-    finalized_interface_id = Column(UUID(as_uuid=True), nullable=True)
+    finalized_at = Column(DateTime(timezone=True))
+    finalized_by = Column(UUID(as_uuid=True))
 
     # ===================================================
-    # CLINICAL DATA (STRUCTURED)
+    # CONTENT
     # ===================================================
 
-    # CRITICAL:
-    # - NOT NULL at DB level
-    # - ORM default protects omitted values
-    # - event listeners below protect explicit None
     content = Column(
-        Text,
+        JSONB,
         nullable=False,
-        default="",
-        server_default=text("''"),
+        default=dict,
+        server_default=text("'{}'::jsonb"),
     )
 
-    observed_data = Column(JSON, nullable=True)
-    patient_reported = Column(JSON, nullable=True)
-    caregiver_reported = Column(JSON, nullable=True)
-
-    assessment = Column(JSON, nullable=True)
-    interventions = Column(JSON, nullable=True)
-    plan_of_care_updates = Column(JSON, nullable=True)
-
-    # ===================================================
-    # VALIDATION / COMPLIANCE
-    # ===================================================
-
-    needs_clarification = Column(Boolean, nullable=True)
-    red_flags = Column(JSON, nullable=True)
-    audit_flags = Column(JSON, nullable=True)
-
-    # ===================================================
-    # INCIDENT ENGINE
-    # ===================================================
-
-    incident_required = Column(Boolean, nullable=True)
-    incident_status = Column(String, nullable=True)
-    incident_id = Column(UUID(as_uuid=True), nullable=True)
+    plan_of_care_updates = Column(JSON)
 
     # ===================================================
     # AUDIT
     # ===================================================
 
-    created_by = Column(UUID(as_uuid=True), nullable=True)
-    signed_by = Column(UUID(as_uuid=True), nullable=True)
-    signed_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True))
+    signed_by = Column(UUID(as_uuid=True))
+    signed_at = Column(DateTime(timezone=True))
 
     created_at = Column(
         DateTime(timezone=True),
@@ -188,10 +128,44 @@ class ClinicalNote(BaseModel):
     )
 
     # ===================================================
-    # RELATIONSHIPS
+    # CONSTRAINTS
     # ===================================================
 
-    visit = relationship("Visit", foreign_keys=[visit_id])
+    __table_args__ = (
+
+        CheckConstraint(
+            "discipline IN ('RN','LVN','NP','MD','SC','MSW','LCSW','BSW')",
+            name="ck_discipline_valid"
+        ),
+
+        CheckConstraint(
+            "(discipline != 'BSW') OR (requires_countersign = true)",
+            name="ck_bsw_requires_flag"
+        ),
+
+        CheckConstraint(
+            "(countersigned_by IS NULL AND countersigned_at IS NULL) OR "
+            "(countersigned_by IS NOT NULL AND countersigned_at IS NOT NULL)",
+            name="ck_countersign_pair"
+        ),
+
+        CheckConstraint(
+            "(discipline != 'BSW') OR "
+            "(finalized_at IS NULL OR countersigned_by IS NOT NULL)",
+            name="ck_bsw_finalize_requires_countersign"
+        ),
+
+        CheckConstraint(
+            "(countersigned_at IS NULL OR finalized_at IS NULL OR countersigned_at <= finalized_at)",
+            name="ck_countersign_before_finalize"
+        ),
+    )
+
+    # ===================================================
+    # ORM RELATIONSHIPS
+    # ===================================================
+
+    visit = relationship("Visit")
 
     current_version = relationship(
         "ClinicalNoteVersion",
@@ -202,53 +176,48 @@ class ClinicalNote(BaseModel):
 
     versions = relationship(
         "ClinicalNoteVersion",
-        foreign_keys="ClinicalNoteVersion.clinical_note_id",
         back_populates="clinical_note",
-        order_by="ClinicalNoteVersion.version_number",
-        cascade="save-update, merge",
-    )
-
-    parent_form = relationship(
-        "ClinicalNote",
-        remote_side="ClinicalNote.id",
-        foreign_keys=[parent_form_id],
-        back_populates="child_forms",
-        uselist=False,
-    )
-
-    child_forms = relationship(
-        "ClinicalNote",
-        foreign_keys=[parent_form_id],
-        back_populates="parent_form",
-        cascade="all, delete-orphan",
+        foreign_keys="ClinicalNoteVersion.clinical_note_id",
     )
 
     # ===================================================
-    # FINALIZE METHOD
+    # FINALIZE
     # ===================================================
 
-    def finalize(self, *, user_id):
-        if self.finalized_at is not None:
-            raise ValueError("Clinical note already finalized")
+    def finalize(self, *, user_id: uuid.UUID):
+
+        if self.finalized_at:
+            raise ValueError("Already finalized")
+
+        if not self.current_version_id:
+            raise ValueError("Cannot finalize note without version")
+
+        if self.discipline == "BSW" and not self.countersigned_by:
+            raise ValueError("BSW requires countersign")
 
         now = datetime.now(timezone.utc)
 
-        self.status = "SIGNED"
+        self.status = "FINALIZED"
         self.finalized_at = now
         self.finalized_by = user_id
         self.updated_at = now
 
 
-class ClinicalNoteVersion(BaseModel):
-    """
-    Immutable version history for clinical notes.
+# ===================================================
+# VERSION MODEL
+# ===================================================
 
-    PURPOSE
-    - Supports lock / amend / no-overwrite behavior
-    - Each saveable version is recorded independently
-    """
+class ClinicalNoteVersion(BaseModel):
 
     __tablename__ = "clinical_note_versions"
+
+    __table_args__ = (
+        UniqueConstraint(
+            "clinical_note_id",
+            "version_number",
+            name="uq_note_version_per_note"
+        ),
+    )
 
     clinical_note_id = Column(
         UUID(as_uuid=True),
@@ -258,13 +227,13 @@ class ClinicalNoteVersion(BaseModel):
     )
 
     version_number = Column(Integer, nullable=False)
+
     content = Column(
-        Text,
+        JSONB,
         nullable=False,
-        default="",
-        server_default=text("''"),
+        default=dict,
+        server_default=text("'{}'::jsonb"),
     )
-    amend_reason = Column(Text, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),
@@ -272,74 +241,60 @@ class ClinicalNoteVersion(BaseModel):
         server_default=text("NOW()"),
     )
 
-    created_by = Column(UUID(as_uuid=True), nullable=True)
-
-    is_active = Column(
-        Boolean,
-        nullable=False,
-        server_default=text("true"),
-    )
-
     clinical_note = relationship(
         "ClinicalNote",
-        foreign_keys=[clinical_note_id],
         back_populates="versions",
-    )
-
-    __table_args__ = (
-        CheckConstraint(
-            "version_number >= 1",
-            name="ck_clinical_note_versions_version_number_positive",
-        ),
+        foreign_keys=[clinical_note_id],
     )
 
 
 # ===================================================
-# ORM EVENT SAFETY
+# INDEXES
+# ===================================================
+
+Index("idx_clinical_note_countersign", "countersigned_by")
+
+Index(
+    "idx_clinical_note_versions_note_version",
+    "clinical_note_id",
+    "version_number"
+)
+
+
+# ===================================================
+# EVENTS
 # ===================================================
 
 @event.listens_for(ClinicalNote, "before_insert", propagate=True)
-def clinical_note_before_insert(mapper, connection, target):
-    """
-    Production-safe insert guard.
+def before_insert(mapper, connection, target):
 
-    Prevents DB NOT NULL violations for content and ensures timestamps exist
-    even when a service forgets to supply them.
-
-    IMPORTANT:
-    This protects current create_visit() paths where attached forms such as
-    POC_UPDATE may be created without explicit content.
-    """
     now = datetime.now(timezone.utc)
 
-    if getattr(target, "content", None) is None:
-        target.content = ""
+    if not target.content:
+        target.content = {}
 
-    if getattr(target, "created_at", None) is None:
-        target.created_at = now
+    target.created_at = target.created_at or now
+    target.updated_at = target.updated_at or now
 
-    if getattr(target, "updated_at", None) is None:
-        target.updated_at = now
+    if target.discipline == "BSW":
+        target.requires_countersign = True
+
+    if (target.countersigned_by and not target.countersigned_at) or \
+       (target.countersigned_at and not target.countersigned_by):
+        raise ValueError("Invalid countersign state")
 
 
 @event.listens_for(ClinicalNote, "before_update", propagate=True)
-def clinical_note_before_update(mapper, connection, target):
-    """
-    Production-safe update guard.
+def before_update(mapper, connection, target):
 
-    - Keeps updated_at current
-    - Prevents accidental NULL content on updates
-    """
-    if getattr(target, "content", None) is None:
-        target.content = ""
+    if not target.content:
+        target.content = {}
+
+    if target.finalized_at:
+        raise ValueError("Cannot modify finalized note")
+
+    if (target.countersigned_by and not target.countersigned_at) or \
+       (target.countersigned_at and not target.countersigned_by):
+        raise ValueError("Invalid countersign state")
 
     target.updated_at = datetime.now(timezone.utc)
-
-
-@event.listens_for(ClinicalNoteVersion, "before_insert", propagate=True)
-def clinical_note_version_before_insert(mapper, connection, target):
-    """
-    Version safety guard.
-    """
-    if getattr(target, "content", None) is None:
-        target.content = ""

@@ -5,7 +5,6 @@ Purpose:
 - Enforce CMS CoPs §418.56 IDG completeness requirements
 - Ensure interdisciplinary documentation integrity
 - Prevent IDG finalization with unresolved discrepancies
-- NO meeting-based logic (assessment-driven only)
 """
 
 from sqlalchemy.orm import Session
@@ -33,7 +32,7 @@ def _normalize(discipline: str) -> str:
 
 
 # ---------------------------------------------------------------------
-# Core Enforcement Entry Point (AUTHORITATIVE)
+# Core Enforcement Entry Point
 # ---------------------------------------------------------------------
 
 def validate_idg_ready_to_finalize(
@@ -43,7 +42,6 @@ def validate_idg_ready_to_finalize(
 ) -> None:
     """
     Raises HTTPException if the IDGReview cannot be finalized.
-    This is the SINGLE authoritative enforcement gate.
     """
 
     # -------------------------------------------------------------
@@ -62,6 +60,24 @@ def validate_idg_ready_to_finalize(
         )
 
     # -------------------------------------------------------------
+    # Prevent re-finalization
+    # -------------------------------------------------------------
+    if review.is_finalized:
+        raise HTTPException(
+            status_code=400,
+            detail="IDG review already finalized.",
+        )
+
+    # -------------------------------------------------------------
+    # CRITICAL: Must be linked to Plan of Care
+    # -------------------------------------------------------------
+    if not review.plan_of_care_version_id:
+        raise HTTPException(
+            status_code=400,
+            detail="IDG must be linked to a Plan of Care before finalization.",
+        )
+
+    # -------------------------------------------------------------
     # 1) Required discipline notes must exist AND be signed
     # -------------------------------------------------------------
     notes = (
@@ -70,11 +86,16 @@ def validate_idg_ready_to_finalize(
         .all()
     )
 
-    signed_disciplines = {
-        _normalize(note.discipline)
-        for note in notes
-        if note.signed_at is not None
-    }
+    signed_disciplines = set()
+
+    for note in notes:
+        if not note.note or not note.note.strip():
+            continue
+
+        if note.signed_at is None:
+            continue
+
+        signed_disciplines.add(_normalize(note.discipline))
 
     missing = REQUIRED_NOTE_DISCIPLINES - signed_disciplines
 
@@ -109,25 +130,27 @@ def validate_idg_ready_to_finalize(
         )
 
     # -------------------------------------------------------------
-    # 3) HARD STOP — unresolved interdisciplinary discrepancies
+    # 3) HARD STOP — unresolved discrepancies
     # -------------------------------------------------------------
     _enforce_idg_discrepancy_gate(
         db=db,
         patient_id=review.patient_id,
+        tenant_id=review.tenant_id,
     )
 
 
 # ---------------------------------------------------------------------
-# Discrepancy Gate (IDG HARD STOP)
+# Discrepancy Gate (HARD STOP)
 # ---------------------------------------------------------------------
 
 def _enforce_idg_discrepancy_gate(
     *,
     db: Session,
     patient_id: str,
+    tenant_id: str,
 ) -> None:
     """
-    Blocks IDG finalization if unresolved assessment discrepancies exist.
+    Blocks IDG finalization if unresolved discrepancies exist.
     """
 
     exists = db.execute(
@@ -136,11 +159,12 @@ def _enforce_idg_discrepancy_gate(
             SELECT 1
             FROM assessment_discrepancies
             WHERE patient_id = :pid
+              AND tenant_id = :tid
               AND resolved = false
             LIMIT 1
             """
         ),
-        {"pid": patient_id},
+        {"pid": patient_id, "tid": tenant_id},
     ).first()
 
     if exists:

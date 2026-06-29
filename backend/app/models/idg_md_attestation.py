@@ -1,23 +1,45 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, ForeignKey
+import uuid
+from datetime import datetime
+
+from sqlalchemy import Column, DateTime, ForeignKey, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
 
 from app.db.base import Base
 
 
 class IDGMDAttestation(Base):
     """
-    Physician attestation for IDG review.
+    Enterprise-grade MD Attestation for IDG Review.
 
-    Regulatory basis:
-    - CMS CoPs §418.56(c)(1)
+    Purpose:
+    - Confirms physician participation in IDG
+    - Required for regulatory compliance
+    - NOT an approval system (attestation only)
+
+    Compliance:
+    - Exactly ONE attestation per IDG review
+    - Must include timestamp when signed
     """
 
     __tablename__ = "idg_md_attestations"
 
-    id = Column(UUID(as_uuid=True), primary_key=True)
+    __table_args__ = (
+        UniqueConstraint("idg_review_id", name="uq_idg_md_attestation_review"),
+    )
+
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
 
     idg_review_id = Column(
         UUID(as_uuid=True),
@@ -26,34 +48,33 @@ class IDGMDAttestation(Base):
         index=True,
     )
 
-    md_user_id = Column(
+    physician_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=False,
         index=True,
+    )
+
+    is_signed = Column(
+        Boolean,
+        nullable=False,
+        default=False,
     )
 
     signed_at = Column(
-        DateTime(timezone=False),
-        nullable=False,
-    )
-
-    created_by = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id"),
+        DateTime(timezone=True),
         nullable=True,
-        index=True,
     )
 
     created_at = Column(
-        DateTime(timezone=False),
-        server_default=func.now(),
+        DateTime(timezone=True),
+        default=datetime.utcnow,
         nullable=False,
     )
 
     updated_at = Column(
-        DateTime(timezone=False),
-        server_default=func.now(),
-        onupdate=func.now(),
+        DateTime(timezone=True),
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
         nullable=False,
     )

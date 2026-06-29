@@ -1,14 +1,13 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
-from app.models.documentation_assessment import DocumentationAssessment
-from app.services.tenant_settings_service import TenantSettingsService
 from app.constants.guardrail_messages import RN_DOCUMENTATION_GUIDANCE
 
 
@@ -24,19 +23,55 @@ class GuardrailOutcome:
 
 class AdmissionGuardrailsService:
     """
-    Enterprise Hospice Admission Guardrails (Decision Support Only)
+    Enterprise Hospice Admission Guardrails (Policy-Driven)
 
-    - Deterministic decision support
-    - CMS / ACHC / CHAP survey‑defensible
-    - flush=False => NO persistence, NO audit (unit tests / dry run)
+    Goals:
+    - deterministic decision support
+    - runtime-safe imports
+    - no hardcoded regulatory thresholds
+    - audit traceability
+    - safe fallback behavior when optional policy/model layers do not exist
     """
 
-    SERVICE_VERSION = "v1.1"
+    SERVICE_VERSION = "v3.0"
 
     LCD_BAD = {"INCOMPLETE", "INCONSISTENT", "NARRATIVE_REQUIRED"}
-
     SEVERITY_ORDER = ["INFO", "WARNING", "HIGH", "CRITICAL"]
     MODES = {"OFF", "SILENT", "GUIDANCE", "STRICT"}
+
+    # =====================================================
+    # POLICY ENGINE (dynamic, no hardcoding)
+    # =====================================================
+
+    @staticmethod
+    def _get_policy(db: Session, tenant_id: str, key: str, default: Any):
+        """
+        Resolve a guardrail policy value dynamically.
+
+        Safe fallback behavior:
+        - if GuardrailPolicy model/table is not implemented yet, return default
+        - if query fails for any reason, return default
+        """
+        try:
+            from app.models.guardrail_policy import GuardrailPolicy  # lazy import
+
+            value = (
+                db.query(GuardrailPolicy.value)
+                .filter(
+                    GuardrailPolicy.tenant_id == tenant_id,
+                    GuardrailPolicy.policy_key == key,
+                )
+                .scalar()
+            )
+
+            return value if value is not None else default
+
+        except Exception:
+            return default
+
+    # =====================================================
+    # MAIN ENTRY
+    # =====================================================
 
     @staticmethod
     def assess_admission(
@@ -54,11 +89,9 @@ class AdmissionGuardrailsService:
         """
         Perform admission documentation risk assessment.
 
-        flush=False => decision support only (deterministic, no DB side effects)
-        flush=True  => persist assessment + audit (production behavior)
+        flush=False -> decision support only (no DB side effects)
+        flush=True  -> audit log persistence
         """
-
-        # ---- Preconditions ----
         if not db:
             raise RuntimeError("db session is required")
         if not tenant_id:
@@ -70,97 +103,124 @@ class AdmissionGuardrailsService:
         if admission is None:
             raise RuntimeError("admission object is required")
 
+        now = datetime.now(timezone.utc)
+        correlation_id = str(uuid.uuid4())
+
         mode = AdmissionGuardrailsService._get_guardrail_mode(db, tenant_id)
 
         narrative = (narrative_text or "").strip()
-
         flags: List[str] = []
         severity = "INFO"
         requires_md_review = False
 
-        # ---- Narrative checks ----
+        # =================================================
+        # Dynamic policies
+        # =================================================
+        min_narrative_length = AdmissionGuardrailsService._get_policy(
+            db,
+            tenant_id,
+            "MIN_NARRATIVE_LENGTH",
+            200,
+        )
+
+        require_decline = AdmissionGuardrailsService._get_policy(
+            db,
+            tenant_id,
+            "REQUIRE_MEASURABLE_DECLINE",
+            True,
+        )
+
+        # =================================================
+        # Narrative validation
+        # =================================================
         if not narrative:
             flags.append("MISSING_ELIGIBILITY_NARRATIVE")
             severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
-        elif len(narrative) < 200:
+        elif len(narrative) < int(min_narrative_length):
             flags.append("WEAK_ELIGIBILITY_NARRATIVE")
             severity = AdmissionGuardrailsService._escalate(severity, "WARNING")
 
-        # ---- Decline evidence ----
-        if not has_measurable_decline:
+        # =================================================
+        # Decline validation
+        # =================================================
+        if require_decline and not has_measurable_decline:
             flags.append("NO_MEASURABLE_EVIDENCE_OF_DECLINE")
             severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
 
-        # ---- LCD status ----
-        if lcd_status and lcd_status in AdmissionGuardrailsService.LCD_BAD:
-            flags.append(f"LCD_STATUS_{lcd_status}")
-            severity = AdmissionGuardrailsService._escalate(severity, "CRITICAL")
+        # =================================================
+        # LCD / documentation consistency check
+        # =================================================
+        if lcd_status:
+            lcd_code = str(lcd_status).strip().upper()
+            if lcd_code in AdmissionGuardrailsService.LCD_BAD:
+                flags.append(f"LCD_STATUS_{lcd_code}")
+                severity = AdmissionGuardrailsService._escalate(severity, "CRITICAL")
 
         if severity == "CRITICAL":
             requires_md_review = True
 
+        hard_stop = (mode == "STRICT" and severity in {"HIGH", "CRITICAL"})
         status = AdmissionGuardrailsService._map_status(severity)
 
-        # ---- Persistence & audit (ONLY when flush=True) ----
-        if mode != "OFF" and flush:
-            AdmissionGuardrailsService._persist_assessment(
-                db=db,
-                admission=admission,
-                tenant_id=tenant_id,
-                user_id=user_id,
-                patient_id=patient_id,
-                status=status,
-                severity=severity,
-                flags=flags,
-                requires_md_review=requires_md_review,
-            )
-
-            admission_id = (
-                admission.get("id")
-                if isinstance(admission, dict)
-                else getattr(admission, "id", "")
-            )
-
-            AdmissionGuardrailsService._audit(
-                db=db,
-                action="ADMISSION_RISK_ASSESSMENT",
-                entity_type="ADMISSION",
-                entity_id=str(admission_id or ""),
-                tenant_id=tenant_id,
-                user_id=user_id,
-                details={
-                    "status": status,
-                    "severity": severity,
-                    "flags": flags,
-                    "requires_md_review": requires_md_review,
-                    "rn_explanation": RN_DOCUMENTATION_GUIDANCE,
-                },
-            )
-
-            db.flush()
-
-        return {
+        result = {
             "status": status,
             "severity": severity,
             "flags": flags,
             "requires_md_review": requires_md_review,
+            "hard_stop": hard_stop,
             "rn_explanation": RN_DOCUMENTATION_GUIDANCE,
             "guardrail_mode": mode,
             "service_version": AdmissionGuardrailsService.SERVICE_VERSION,
         }
 
-    # -----------------------
-    # Helpers
-    # -----------------------
+        # =================================================
+        # Audit persistence
+        # =================================================
+        if mode != "OFF" and flush:
+            try:
+                AdmissionGuardrailsService._audit(
+                    db=db,
+                    action="ADMISSION_RISK_ASSESSMENT",
+                    entity_type="ADMISSION",
+                    entity_id=str(
+                        admission.get("id")
+                        if isinstance(admission, dict)
+                        else getattr(admission, "id", "")
+                    ),
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    correlation_id=correlation_id,
+                    details=result,
+                    now=now,
+                )
+                db.flush()
+            except Exception:
+                db.rollback()
+                raise
+
+        return result
+
+    # =====================================================
+    # HELPERS
+    # =====================================================
 
     @staticmethod
     def _get_guardrail_mode(db: Session, tenant_id: str) -> str:
+        """
+        Resolve guardrail mode from optional tenant settings service.
+        Safe fallback to GUIDANCE if the service is not present.
+        """
         try:
+            from app.services.tenant_settings_service import TenantSettingsService  # lazy import
+
             mode = TenantSettingsService.get_guardrail_mode(db, tenant_id)
-            if isinstance(mode, str) and mode.strip().upper() in AdmissionGuardrailsService.MODES:
-                return mode.strip().upper()
+            if isinstance(mode, str):
+                normalized = mode.strip().upper()
+                if normalized in AdmissionGuardrailsService.MODES:
+                    return normalized
         except Exception:
             pass
+
         return "GUIDANCE"
 
     @staticmethod
@@ -179,36 +239,6 @@ class AdmissionGuardrailsService:
         return "SUPPORTED"
 
     @staticmethod
-    def _persist_assessment(
-        *,
-        db: Session,
-        admission: Any,
-        tenant_id: str,
-        user_id: str,
-        patient_id: str,
-        status: str,
-        severity: str,
-        flags: List[str],
-        requires_md_review: bool,
-    ) -> None:
-        assessment = DocumentationAssessment(
-            tenant_id=tenant_id,
-            patient_id=patient_id,
-            admission_id=(
-                admission.get("id")
-                if isinstance(admission, dict)
-                else getattr(admission, "id", None)
-            ),
-            status=status,
-            severity=severity,
-            flags=flags,
-            requires_md_review=requires_md_review,
-            assessed_by=user_id,
-            assessed_at=datetime.utcnow(),
-        )
-        db.add(assessment)
-
-    @staticmethod
     def _audit(
         *,
         db: Session,
@@ -217,7 +247,9 @@ class AdmissionGuardrailsService:
         entity_id: str,
         tenant_id: str,
         user_id: str,
+        correlation_id: str,
         details: Dict[str, Any],
+        now: datetime,
     ) -> None:
         log = AuditLog(
             tenant_id=tenant_id,
@@ -225,7 +257,8 @@ class AdmissionGuardrailsService:
             entity_type=entity_type,
             entity_id=entity_id,
             performed_by=user_id,
+            correlation_id=correlation_id,
             details=details,
-            performed_at=datetime.utcnow(),
+            performed_at=now,
         )
         db.add(log)

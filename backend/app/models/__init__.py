@@ -2,121 +2,153 @@
 MODEL REGISTRY (ENTERPRISE SAFE)
 
 Purpose:
-- Forces registration of ALL ORM tables into Base.metadata
+- Forces registration of ALL ORM models into Base.metadata
 - Required for Alembic autogeneration
-- Prevents missing tables / DROP TABLE bugs
+- Guarantees relationship resolution at runtime
 
 RULES:
 - DO NOT REMOVE IMPORTS
-- DO NOT ADD BUSINESS LOGIC HERE
-- IMPORT ORDER MATTERS
+- DO NOT ADD BUSINESS LOGIC
+- USE ONLY ONE IMPORT STYLE (direct class import)
 """
 
 from __future__ import annotations
 
 # ---------------------------------------------------------
-# CORE FOUNDATION
+# ✅ LOAD BASE FIRST (CRITICAL)
 # ---------------------------------------------------------
 
-from app.models.tenant import Tenant  # noqa: F401
-from app.models.user import User  # noqa: F401
-from app.models.role import Role  # noqa: F401
-from app.models.interface import Interface  # noqa: F401
+from app.db.base import Base
+
 
 # ---------------------------------------------------------
-# PATIENT CORE (MUST LOAD BEFORE DEPENDENTS)
+# ✅ CORE FOUNDATION
 # ---------------------------------------------------------
 
-import app.models.patient  # noqa: F401
-import app.models.patient_payer  # noqa: F401
-import app.models.visit  # noqa: F401
-import app.models.benefit_period  # noqa: F401
+from app.models.tenant import Tenant
+from app.models.user import User
+from app.models.role import Role
+from app.models.interface import Interface
+
 
 # ---------------------------------------------------------
-# CORE CLINICAL / NOTES (EARLY LOAD)
+# ✅ PATIENT DOMAIN (LOAD EARLY)
 # ---------------------------------------------------------
 
-import app.models.clinical_note  # noqa: F401
-import app.models.notification  # noqa: F401
-import app.models.rn_recert_assessment  # noqa: F401
+from app.models.patient import Patient
+from app.models.patient_assignment import PatientAssignment
+from app.models.patient_payer import PatientPayer
+from app.models.patient_insurance import PatientInsurance
+from app.models.visit import Visit
+from app.models.benefit_period import BenefitPeriod
+
+# 🔴 REQUIRED for your error fix
+from app.models.medication import Medication
+
 
 # ---------------------------------------------------------
-# ✅ CHHA OUTCOME LAYER (NEW - SAFE ADD)
+# ✅ CLINICAL DOMAIN
 # ---------------------------------------------------------
 
-from app.models.chha_visit_outcome import CHHAVisitOutcome  # noqa: F401
-from app.models.chha_visit_task_result import CHHAVisitTaskResult  # noqa: F401
+from app.models.clinical_note import ClinicalNote
+from app.models.notification import Notification
+from app.models.rn_recert_assessment import RNRecertAssessment
+
 
 # ---------------------------------------------------------
-# PATIENT DEPENDENCIES (REQUIRED BY RELATIONSHIPS)
+# ✅ CHHA DOMAIN
 # ---------------------------------------------------------
 
-import app.models.service_coverage_decision  # noqa: F401
-import app.models.external_substance  # noqa: F401
+from app.models.chha_visit_outcome import CHHAVisitOutcome
+from app.models.chha_visit_task_result import CHHAVisitTaskResult
+
 
 # ---------------------------------------------------------
-# INCIDENTS / EVENTS (REQUIRED FOR TASK FK RESOLUTION)
+# ✅ PATIENT DEPENDENCIES
 # ---------------------------------------------------------
 
-import app.models.incident_report  # noqa: F401
+from app.models.service_coverage_decision import ServiceCoverageDecision
+from app.models.external_substance import ExternalSubstance
+
 
 # ---------------------------------------------------------
-# IDG / DOCUMENTATION
+# ✅ INCIDENT / EVENTS
 # ---------------------------------------------------------
 
-import app.models.idg_meeting  # noqa: F401
-import app.models.idg_review  # noqa: F401
-import app.models.idg_note  # noqa: F401
-import app.models.idg_signature  # noqa: F401
-import app.models.idg_md_attestation  # noqa: F401
+from app.models.incident_report import IncidentReport
 
-import app.models.document_record  # noqa: F401
-import app.models.document_notification  # noqa: F401
-import app.models.document_idg_resolution  # noqa: F401
 
-import app.models.assessment  # noqa: F401
-import app.models.assessment_reference  # noqa: F401
-import app.models.assessment_discrepancy  # noqa: F401
-import app.models.med_reconciliation  # noqa: F401
+# ---------------------------------------------------------
+# ✅ IDG / DOCUMENTATION
+# ---------------------------------------------------------
+
+from app.models.idg_meeting import IDGMeeting
+from app.models.idg_review import IDGReview
+from app.models.idg_note import IDGNote
+from app.models.idg_signature import IDGSignature
+from app.models.idg_md_attestation import IDGMDAttestation
+
+from app.models.document_record import DocumentRecord
+from app.models.document_notification import DocumentNotification
+from app.models.document_idg_resolution import DocumentIDGResolution
+
+from app.models.assessment import Assessment
+from app.models.assessment_reference import AssessmentReference
+from app.models.assessment_discrepancy import AssessmentDiscrepancy
+
+from app.models.med_reconciliation import (
+    MedReconciliationImport,
+    MedReconciliationItem,
+)
+
+
+# ---------------------------------------------------------
+# ✅ FORM ENGINE
+# ---------------------------------------------------------
 
 from app.models.form_registry_model import FormRegistryModel
 from app.models.form import Form
 from app.models.form_module import FormModule
 from app.models.form_package_module import FormPackageModule
 
-# ---------------------------------------------------------
-# TASKS / ACCESS
-# ---------------------------------------------------------
-
-import app.models.task  # noqa: F401
-import app.models.survey_access  # noqa: F401
 
 # ---------------------------------------------------------
-# RULE ENGINE (INERT)
+# ✅ TASKS / ACCESS
 # ---------------------------------------------------------
 
-import app.models.dx_primary_policy  # noqa: F401
-import app.models.drug_alias  # noqa: F401
-import app.models.eligibility  # noqa: F401
-import app.models.eligibility_decision  # noqa: F401
+from app.models.task import Task
+from app.models.survey_access import SurveyAccess
+
 
 # ---------------------------------------------------------
-# BILLING MODELS (REQUIRED FOR ALEMBIC)
+# ✅ BILLING (FIXED: DIRECT IMPORTS ONLY)
 # ---------------------------------------------------------
 
-import app.billing.models.billing_cycle  # noqa: F401
-import app.billing.models.billing_summary  # noqa: F401
-import app.billing.models.billing_snapshot  # noqa: F401
-import app.billing.models.patient_pos  # noqa: F401
-import app.billing.models.loc_events  # noqa: F401
-import app.billing.models.visit_minutes  # noqa: F401
-import app.billing.models.orders_snapshot  # noqa: F401
-import app.billing.models.payer  # noqa: F401
-import app.billing.models.authorization  # noqa: F401
-import app.billing.models.contract  # noqa: F401
+from app.billing.models.billing_cycle import BillingCycle
+from app.billing.models.billing_summary import BillingSummary
+from app.billing.models.billing_snapshot import BillingSnapshot
+from app.billing.models.patient_pos import PatientPOS
+from app.billing.models.loc_events import (
+    GIPPeriod,
+    RespitePeriod,
+    ContinuousCareEvent,
+)
+from app.billing.models.visit_minutes import VisitMinutes
+from app.billing.models.orders_snapshot import OrdersSnapshot
+from app.models.payer import Payer
+from app.billing.models.authorization import Authorization
+from app.billing.models.contract import Contract
+
 
 # ---------------------------------------------------------
-# AUDIT / EXPORT
+# ✅ AUDIT / EXPORT
 # ---------------------------------------------------------
 
-import app.billing.models.claim_export_log  # noqa: F401
+from app.billing.models.claim_export_log import ClaimExportLog
+
+
+# ---------------------------------------------------------
+# ✅ EXPORT
+# ---------------------------------------------------------
+
+__all__ = ["Base"]
