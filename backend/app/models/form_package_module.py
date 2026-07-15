@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, UniqueConstraint, Index
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    UniqueConstraint,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -35,11 +44,21 @@ class FormPackageModule(Base):
     # -------------------------------------------------
     # Control / behavior
     # -------------------------------------------------
-    display_order = Column(Integer, nullable=True)
+    display_order = Column(Integer, nullable=False)
 
-    is_required = Column(Boolean, nullable=False, default=True)
+    is_required = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
 
-    is_active = Column(Boolean, nullable=False, default=True)
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+    )
 
     # -------------------------------------------------
     # Audit fields (REQUIRED)
@@ -65,12 +84,28 @@ class FormPackageModule(Base):
     # Constraints + indexing
     # -------------------------------------------------
     __table_args__ = (
-        UniqueConstraint(
-            "form_registry_id",
-            "module_id",
-            name="uq_form_package_modules_registry_module",
-        ),
-        Index("ix_fpm_form", "form_registry_id"),
-        Index("ix_fpm_module", "module_id"),
-        Index("ix_fpm_active", "is_active"),
-    )
+            # Prevent duplicate modules per form (active rows only)
+            Index(
+                "uq_fpm_active_unique",
+                "form_registry_id",
+                "module_id",
+                unique=True,
+                postgresql_where=(Column("deleted_at").is_(None)),
+            ),
+
+            # Enforce deterministic ordering per form
+            UniqueConstraint(
+                "form_registry_id",
+                "display_order",
+                name="uq_form_registry_display_order",
+            ),
+
+            # Performance indexes
+            Index("ix_fpm_form", "form_registry_id"),
+            Index("ix_fpm_module", "module_id"),
+            Index(
+                "ix_fpm_active_registry",
+                "form_registry_id",
+                postgresql_where=(Column("is_active") == True),
+            ),
+        )

@@ -59,17 +59,42 @@ def save_note(
             user_id=current_user.id,
         )
 
+        content = (
+            saved_note.content
+            if isinstance(saved_note.content, dict)
+            else {}
+        )
+
+        validation = content.get("_validation", {})
+        audit_flags = content.get("audit_flags", {})
+        observed_data = content.get("observed_data", {})
+
         return {
             "note_id": str(saved_note.id),
             "form_key": saved_note.form_key,
             "form_family": saved_note.form_family,
             "care_level": saved_note.care_level,
-            "clinical_context": saved_note.observed_data,
-            "audit_flags": saved_note.audit_flags,
-            "warnings": getattr(result, "warnings", []),
-            "red_flags": getattr(result, "red_flags", []),
-            "incident_required": getattr(result, "incident_required", False),
-            "incident_status": getattr(result, "incident_status", None),
+            "clinical_context": observed_data,
+            "audit_flags": audit_flags,
+            "validation": validation,
+            "warnings": validation.get("warnings", []),
+            "red_flags": validation.get("red_flags", []),
+            "incident_required": validation.get(
+                "incident_required",
+                False,
+            ),
+            "incident_status": validation.get(
+                "incident_status",
+                None,
+            ),
+            "finalization_allowed": validation.get(
+                "finalization_allowed",
+                True,
+            ),
+            "compliance_blocking_items": validation.get(
+                "compliance_blocking_items",
+                [],
+            ),
         }
 
     except Exception as e:
@@ -103,13 +128,37 @@ def sign_note(
         user_id=current_user.id,
     )
 
+    content = (
+        updated_note.content
+        if isinstance(updated_note.content, dict)
+        else {}
+    )
+
+    validation = content.get("_validation", {})
+    audit_flags = content.get("audit_flags", {})
+
     return {
         "note_id": str(updated_note.id),
         "status": updated_note.status,
         "form_key": updated_note.form_key,
-        "audit_flags": updated_note.audit_flags,
-        "incident_required": updated_note.incident_required,
-        "incident_status": updated_note.incident_status,
-        "warnings": getattr(result, "warnings", []),
-        "red_flags": getattr(result, "red_flags", []),
+        "audit_flags": audit_flags,
+        "validation": validation,
+        "warnings": validation.get("warnings", []),
+        "red_flags": validation.get("red_flags", []),
+        "incident_required": validation.get(
+            "incident_required",
+            False,
+        ),
+        "incident_status": validation.get(
+            "incident_status",
+            None,
+        ),
+        "finalization_allowed": validation.get(
+            "finalization_allowed",
+            True,
+        ),
+            "compliance_blocking_items": validation.get(
+            "compliance_blocking_items",
+            [],
+        ),
     }

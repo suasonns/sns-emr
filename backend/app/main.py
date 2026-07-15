@@ -12,6 +12,27 @@ SNS Hospice EMR – FastAPI application entrypoint.
 Enterprise-grade initialization (stable + deterministic).
 """
 
+load_dotenv(".env.local")
+load_dotenv()
+
+# ---------------------------------------------------------------------
+# ENVIRONMENT SAFETY GUARD (CRITICAL)
+# ---------------------------------------------------------------------
+
+import os
+
+def validate_environment_safety() -> None:
+    env = os.getenv("ENVIRONMENT", "").lower()
+    bypass = os.getenv("ALLOW_DEV_DASHBOARD_BYPASS", "").lower()
+
+    if env != "development" and bypass == "true":
+        raise RuntimeError(
+            "❌ CRITICAL SECURITY ERROR: DEV DASHBOARD BYPASS ENABLED OUTSIDE DEVELOPMENT"
+        )
+
+# ✅ RUN IMMEDIATELY AFTER ENV LOAD
+validate_environment_safety()
+
 # ---------------------------------------------------------------------
 # CORE IMPORTS
 # ---------------------------------------------------------------------
@@ -20,7 +41,6 @@ import asyncio
 import hashlib
 import json
 import logging
-import os
 import re
 import subprocess
 from contextlib import asynccontextmanager
@@ -28,6 +48,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Set
 from app.services.overdue_service import mark_overdue_poc_tasks
+from app.core.tenant_routing_middleware import TenantRoutingMiddleware
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -82,28 +103,52 @@ def assert_alembic_in_sync() -> None:
 
     backend_root = _backend_root_dir()
 
-    current = subprocess.run(
-        ["alembic", "current"],
-        capture_output=True,
-        text=True,
-        cwd=str(backend_root),
-    )
-    heads = subprocess.run(
-        ["alembic", "heads"],
-        capture_output=True,
-        text=True,
-        cwd=str(backend_root),
-    )
+    def _run(cmd: list[str]) -> str:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(backend_root),
+        )
 
-    current_ids = _alembic_revision_ids(current.stdout)
-    head_ids = _alembic_revision_ids(heads.stdout)
+        # ✅ combine stdout + stderr (important on Windows)
+        output = (result.stdout or "") + (result.stderr or "")
+        return output.strip()
 
-    STARTUP_STATUS["alembic_current"] = sorted(current_ids)
-    STARTUP_STATUS["alembic_heads"] = sorted(head_ids)
+    current_output = _run(["alembic", "current"])
+    heads_output = _run(["alembic", "heads"])
 
-    if current_ids != head_ids:
-        raise RuntimeError("DATABASE SCHEMA DRIFT DETECTED — Alembic mismatch")
+    # -----------------------------------------------------
+    # ✅ DEBUG (TEMP — REMOVE LATER)
+    # -----------------------------------------------------
+    print("\n===== ALEMBIC DEBUG START =====")
+    print("RAW CURRENT OUTPUT:")
+    print(current_output)
+    print("RAW HEADS OUTPUT:")
+    print(heads_output)
+    print("===== ALEMBIC DEBUG END =====\n")
 
+    STARTUP_STATUS["alembic_current"] = current_output
+    STARTUP_STATUS["alembic_heads"] = heads_output
+
+    # -----------------------------------------------------
+    # ✅ SAFE PARSING (FIXED)
+    # -----------------------------------------------------
+    if not current_output:
+        raise RuntimeError(
+            "❌ Alembic current returned empty output — cannot validate schema"
+        )
+
+    current_match = re.search(r"\b[0-9a-f]{7,40}\b", current_output)
+    head_matches = re.findall(r"\b[0-9a-f]{7,40}\b", heads_output)
+
+    current_rev = current_match.group(0) if current_match else None
+
+    if not current_rev or current_rev not in head_matches:
+        raise RuntimeError(
+            f"❌ DATABASE SCHEMA DRIFT DETECTED — {current_rev} != {head_matches}"
+        )
 
 # ---------------------------------------------------------------------
 # DB PROBE
@@ -130,15 +175,35 @@ def assert_db_probe() -> None:
 def check_model_schema_alignment() -> None:
     from app.db.session import SessionLocal
     from app.db.base import Base
+    import app.models
 
     db = SessionLocal()
     try:
+        
+        db_name = db.execute(
+            text("select current_database()")
+        ).scalar()
+
+        schema_name = db.execute(
+            text("select current_schema()")
+        ).scalar()
+        
         rows = db.execute(
             text(
                 """
-                SELECT table_name, column_name
-                FROM information_schema.columns
-                WHERE table_schema='public'
+                SELECT
+                    c.relname AS table_name,
+                    a.attname AS column_name
+                FROM pg_class c
+                JOIN pg_namespace n
+                    ON n.oid = c.relnamespace
+                JOIN pg_attribute a
+                    ON a.attrelid = c.oid
+                WHERE
+                    n.nspname = 'public'
+                    AND c.relkind = 'r'
+                    AND a.attnum > 0
+                    AND NOT a.attisdropped
                 """
             )
         ).fetchall()
@@ -150,7 +215,10 @@ def check_model_schema_alignment() -> None:
         missing_tables = []
         missing_columns = []
 
-        for table_name, table in Base.metadata.tables.items():
+        for metadata_name, table in Base.metadata.tables.items():
+
+            table_name = table.name
+
             if table_name not in db_tables:
                 missing_tables.append(table_name)
                 continue
@@ -290,7 +358,7 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-
+# fastapi_app.add_middleware(TenantRoutingMiddleware)
 # ---------------------------------------------------------------------
 # ROUTERS
 # ---------------------------------------------------------------------

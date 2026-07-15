@@ -17,7 +17,7 @@ from app.services.clinical_note_service import (
 )
 from app.services.poc_review_gate import (
     POCReviewGateError,
-    review_poc,
+    enforce_poc_review_gate,
 )
 
 router = APIRouter(prefix="/clinical-notes", tags=["Clinical Notes"])
@@ -202,12 +202,16 @@ def finalize_note(
     db: Session = Depends(get_db_tenant_with_request_state),
 ):
     try:
-        note = _get_note_or_404(db, note_id, current_user.tenant_id)
+        note = _get_note_or_404(
+            db,
+            note_id,
+            current_user.tenant_id,
+        )
 
         result = finalize_clinical_note(
             db=db,
             note=note,
-            current_user=current_user,
+            user_id=current_user.user_id,
         )
 
         return result
@@ -221,18 +225,23 @@ def finalize_note(
                 "blocking_pocs": exc.blocking_pocs,
             },
         ) from exc
+
     except HTTPException:
         raise
+
     except ValueError as exc:
         db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
     except Exception as exc:
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to finalize note: {exc}"
+            detail=f"Failed to finalize note: {exc}",
         ) from exc
-
 
 # =========================================================
 # READ ONLY

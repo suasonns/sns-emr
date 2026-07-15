@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import (
     Boolean,
     Column,
     Date,
     DateTime,
+    ForeignKey,
     Index,
     String,
     text,
@@ -23,12 +26,13 @@ class PatientPayer(Base):
         Index("ix_patient_payers_subscriber", "subscriber_id"),
     )
 
-    # DB is actually varchar, so model must match DB
-    id = Column(String, primary_key=True)
+    # ✅ FIXED: UUID PRIMARY KEY
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    # DB is actually varchar, not UUID
+    # ✅ FIXED: UUID FOREIGN KEY
     patient_id = Column(
-        String,
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
         nullable=False,
         index=True,
     )
@@ -60,20 +64,15 @@ class PatientPayer(Base):
         nullable=True,
         server_default=text("now()"),
     )
+
     created_by = Column(
         UUID(as_uuid=True),
         nullable=True,
     )
 
-    # IMPORTANT:
-    # Use explicit cast for the legacy varchar -> uuid join.
-    # Use viewonly=True to avoid unsafe writes through a mismatched FK.
-    # Use lazy="noload" to prevent circular JSON recursion:
-    # Patient -> payers -> patient -> payers -> ...
+    # ✅ FIXED: NORMAL FK RELATIONSHIP
     patient = relationship(
         "Patient",
-        primaryjoin="cast(foreign(PatientPayer.patient_id), UUID(as_uuid=True)) == Patient.id",
         back_populates="payers",
-        viewonly=True,
         lazy="noload",
     )

@@ -1,6 +1,10 @@
 from app.services.eligibility.lcd_loader import load_ca_hospice_lcds
 from app.config.lcd.loader import load_lcd_configs
 
+from app.services.eligibility.evidence_harvester import (
+    harvest_clinical_facts,
+)
+
 from app.rules.base import RuleContext, Workflow, DiagnosisItem
 from app.rules.registry import get_rules_for_workflow
 from app.rules.enforcement import apply_rules
@@ -58,7 +62,7 @@ def evaluate_hospice_eligibility(patient, admission_date):
             )
             for dx in getattr(patient, "secondary_diagnoses", [])
         ],
-        facts={},  # EF/BNP/NYHA will be added later
+        facts=harvest_clinical_facts(patient),
     )
 
     # ---------------------------------------------------------

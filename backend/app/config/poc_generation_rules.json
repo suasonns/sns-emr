@@ -1,0 +1,400 @@
+{
+  "version": "1.0.0",
+  "governance": {
+    "comorbidity_only_prefixes": [
+      "F",
+      "R",
+      "V",
+      "W",
+      "X",
+      "Y",
+      "Z"
+    ],
+    "rule": "F/R/V/W/X/Y/Z code families are comorbidity-only, never primary, never promotable, but may generate Plan of Care content when used as secondary, comorbidity, or contributing condition."
+  },
+  "rules": {
+    "I50": {
+      "condition": "CHF",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "CARDIAC_DECLINE",
+          "label": "Cardiac disease progression with activity intolerance or symptom burden",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain comfortable with reduced cardiac symptom burden.",
+        "Caregiver will verbalize understanding of cardiac symptom monitoring and when to notify hospice."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess edema, dyspnea, fatigue, activity tolerance and medication effectiveness."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cardiac decline and care plan effectiveness."
+        }
+      ]
+    },
+    "J44": {
+      "condition": "COPD",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "RESPIRATORY_DECLINE",
+          "label": "Respiratory disease progression with dyspnea and activity intolerance",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain comfortable with reduced respiratory distress.",
+        "Caregiver will verbalize understanding of dyspnea management."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess respiratory status and effectiveness of interventions."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review respiratory decline, dyspnea burden and plan of care effectiveness."
+        }
+      ]
+    },
+    "F01": {
+      "condition": "VASCULAR_DEMENTIA",
+      "diagnosis_classification": "COMORBIDITY_ONLY",
+      "rule_scope": "COMORBIDITY_ONLY",
+      "primary_allowed": false,
+      "promotable_to_primary": false,
+      "allowed_contexts": [
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "COGNITIVE_DECLINE",
+          "label": "Vascular dementia contributing to cognitive and functional decline",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable with support appropriate to cognitive decline.",
+        "Caregiver will verbalize understanding of cognitive decline and safety needs."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess cognitive status, safety risks, functional decline and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping and available support system."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cognitive decline, caregiver burden, safety needs and plan of care effectiveness."
+        }
+      ]
+    },
+    "F02": {
+      "condition": "DEMENTIA_IN_OTHER_DISEASES",
+      "diagnosis_classification": "COMORBIDITY_ONLY",
+      "rule_scope": "COMORBIDITY_ONLY",
+      "primary_allowed": false,
+      "promotable_to_primary": false,
+      "allowed_contexts": [
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "COGNITIVE_DECLINE",
+          "label": "Dementia associated with another disease contributing to cognitive and functional decline",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable with support appropriate to cognitive decline.",
+        "Caregiver will verbalize understanding of disease-related cognitive decline and care needs."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess cognitive status, communication ability, safety risks, functional decline and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver coping, support system and need for additional resources."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cognitive decline, caregiver burden, safety needs and plan of care effectiveness."
+        }
+      ]
+    },
+    "F03": {
+      "condition": "DEMENTIA",
+      "diagnosis_classification": "COMORBIDITY_ONLY",
+      "rule_scope": "COMORBIDITY_ONLY",
+      "primary_allowed": false,
+      "promotable_to_primary": false,
+      "allowed_contexts": [
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "COGNITIVE_DECLINE",
+          "label": "Dementia contributing to cognitive and functional decline",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable.",
+        "Caregiver will verbalize understanding of disease progression."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess cognitive status, safety risks and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden and support needs."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cognitive decline, caregiver burden, safety needs and plan of care effectiveness."
+        }
+      ]
+    },
+    "G30": {
+      "condition": "ALZHEIMERS_DISEASE",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "COGNITIVE_DECLINE",
+          "label": "Alzheimer's disease progression with cognitive and functional decline",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable with support appropriate to cognitive decline.",
+        "Caregiver will verbalize understanding of dementia progression and safety needs."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess cognitive status, FAST stage when applicable, safety risks, functional decline and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping, support system and need for additional resources."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cognitive decline, FAST stage, caregiver burden, safety needs and plan of care effectiveness."
+        }
+      ]
+    },
+        "G31.1": {
+      "condition": "SENILE_DEGENERATION_OF_BRAIN",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "COGNITIVE_DECLINE",
+          "label": "Senile degeneration of brain with cognitive and functional decline",
+          "severity": "MODERATE"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable with support appropriate to cognitive and functional decline.",
+        "Caregiver will verbalize understanding of disease progression and care needs."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess cognitive status, safety risks, functional decline, nutrition risk and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping and available support system."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review cognitive decline, functional decline, caregiver support needs and plan of care effectiveness."
+        }
+      ]
+    },
+
+    "G12.21": {
+      "condition": "ALS",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "ALS_PROGRESSIVE_DECLINE",
+          "label": "Progressive neurologic decline associated with ALS",
+          "severity": "HIGH"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable throughout progressive neurologic decline.",
+        "Caregiver will verbalize understanding of disease progression, symptom management, and hospice support plan."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess respiratory status, swallowing ability, communication ability, mobility, safety risks, and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping, support system, and psychosocial needs."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review neurologic decline, respiratory status, nutritional status, caregiver burden, and plan of care effectiveness."
+        }
+      ]
+    },
+
+    "I69": {
+      "condition": "STROKE_SEQUELAE",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+      "problems": [
+        {
+          "code": "STROKE_SEQUELAE",
+          "label": "Neurologic deficits following stroke with progressive care needs",
+          "severity": "HIGH"
+        }
+      ],
+      "goals": [
+        "Patient will remain safe and comfortable with support appropriate to neurologic deficits.",
+        "Caregiver will verbalize understanding of stroke-related care needs and safety precautions."
+      ],
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess mobility, communication deficits, swallowing status, safety risks and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping and support system."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review neurologic deficits, safety risks, caregiver support needs and plan of care effectiveness."
+        }
+      ]
+    },
+
+    "G20": {
+      "condition": "END_STAGE_PARKINSON_DISEASE",
+      "diagnosis_classification": "PRIMARY_CANDIDATE",
+      "rule_scope": "PRIMARY_ALLOWED_WITH_EVIDENCE",
+      "primary_allowed": true,
+      "promotable_to_primary": true,
+
+      "requires_advanced_disease_evidence": true,
+
+      "evidence_gate": {
+      "functional_decline_required": true,
+      "minimum_supporting_indicators": 2
+    },
+
+      "allowed_contexts": [
+        "PRIMARY",
+        "SECONDARY",
+        "COMORBIDITY",
+        "CONTRIBUTING_CONDITION"
+      ],
+
+      "problems": [
+        {
+          "code": "END_STAGE_PARKINSON_DECLINE",
+          "label": "End-stage Parkinson disease with progressive neurologic and functional decline",
+          "severity": "HIGH"
+        }
+      ],
+
+      "goals": [
+        "Patient will remain safe and comfortable throughout progressive neurologic decline.",
+        "Caregiver will verbalize understanding of disease progression, fall prevention, aspiration precautions, and hospice plan of care."
+      ],
+
+      "interventions": [
+        {
+          "discipline": "RN",
+          "text": "Assess mobility, balance, swallowing status, communication ability, respiratory status, safety risks and caregiver understanding."
+        },
+        {
+          "discipline": "MSW",
+          "text": "Assess caregiver burden, coping ability and support system."
+        },
+        {
+          "discipline": "IDG",
+          "text": "Review neurologic decline, aspiration risk, nutrition status, caregiver support needs and plan of care effectiveness."
+        }
+      ]
+    }
+  }
+}

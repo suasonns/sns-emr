@@ -1,0 +1,136 @@
+{
+  "policy_name": "SNS Hospice EMR ICD-10 Primary Diagnosis Blocking Policy",
+  "policy_version": "2026.07.12-v2",
+  "status": "active",
+  "purpose": "Prevent non-terminal, manifestation, symptom, external-cause, or administrative ICD-10 categories from being selected as the hospice primary diagnosis while still allowing clinically relevant secondary, comorbidity, contributing, and supporting diagnoses.",
+  "scope": {
+    "applies_to": [
+      "Referral Intake Primary Diagnosis",
+      "Facesheet Primary Diagnosis",
+      "RN ICA Primary Diagnosis Review",
+      "CTI Primary Diagnosis",
+      "POC Primary Diagnosis",
+      "Eligibility Primary Diagnosis Validation",
+      "Compliance Validation Engine"
+    ],
+    "does_not_block": [
+      "Secondary Diagnosis",
+      "Related Diagnosis",
+      "Comorbidity",
+      "Contributing Condition",
+      "RN ICA Finding",
+      "CTI Supporting Diagnosis",
+      "POC Supporting Diagnosis",
+      "IDG Supporting Diagnosis"
+    ]
+  },
+  "primary_diagnosis_prefix_blocks": [
+    {
+      "prefix": "F",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "Mental, Behavioral, and Neurodevelopmental Disorders",
+      "reason": "This category is not appropriate as the hospice primary diagnosis when the underlying terminal disease process should be identified.",
+      "user_message": "This diagnosis cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process. This code may be used as a secondary, comorbidity, or supporting diagnosis when clinically appropriate."
+    },
+    {
+      "prefix": "R",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "Symptoms, Signs, and Abnormal Clinical or Laboratory Findings",
+      "reason": "Symptoms, signs, and ill-defined conditions should not be used as the principal diagnosis when a related definitive diagnosis exists.",
+      "user_message": "This symptom or sign code cannot be selected as the hospice primary diagnosis. Select the definitive terminal disease process. This code may be used as supporting documentation when clinically appropriate."
+    },
+    {
+      "prefix": "V",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "External Causes of Morbidity",
+      "reason": "External cause codes do not represent the terminal disease process for hospice primary diagnosis selection.",
+      "user_message": "This external cause code cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process."
+    },
+    {
+      "prefix": "W",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "External Causes of Morbidity",
+      "reason": "External cause codes do not represent the terminal disease process for hospice primary diagnosis selection.",
+      "user_message": "This external cause code cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process."
+    },
+    {
+      "prefix": "X",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "External Causes of Morbidity",
+      "reason": "External cause codes do not represent the terminal disease process for hospice primary diagnosis selection.",
+      "user_message": "This external cause code cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process."
+    },
+    {
+      "prefix": "Y",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "External Causes of Morbidity",
+      "reason": "External cause codes do not represent the terminal disease process for hospice primary diagnosis selection.",
+      "user_message": "This external cause code cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process."
+    },
+    {
+      "prefix": "Z",
+      "block_primary_dx": true,
+      "allow_secondary_dx": true,
+      "allow_comorbidity": true,
+      "allow_contributing_condition": true,
+      "category": "Factors Influencing Health Status and Contact with Health Services",
+      "reason": "Status, encounter, and administrative codes should not drive hospice terminal diagnosis selection.",
+      "user_message": "This status or encounter code cannot be selected as the hospice primary diagnosis. Select the underlying terminal disease process. This code may be used as supporting information when clinically appropriate."
+    }
+  ],
+  "explicit_never_primary_codes": {
+    "status": "active",
+    "source_documents": [
+      "CT ICD-10 Diag Codes Not Primary.pdf",
+      "ICD10_Never_Primary_Diag.pdf",
+      "Inappropriate_Primary_Dx_ICD10_Codes_List.pdf",
+      "Not_allowable_Diagnosis_Codes.pdf"
+    ],
+    "codes": [
+      "F03",
+      "F0150",
+      "F01511",
+      "F01518",
+      "F0152",
+      "F0153"
+    ]
+  },
+  "default_behavior": {
+    "if_prefix_rule_matches_primary_dx": "block_primary_only",
+    "if_explicit_code_matches_primary_dx": "block_primary_only",
+    "if_no_rule_matches": "allow_primary_dx_pending_eligibility_validation",
+    "secondary_dx_default": "allow",
+    "comorbidity_default": "allow",
+    "contributing_condition_default": "allow"
+  },
+  "validation_messages": {
+    "primary_block_title": "Primary Diagnosis Not Allowed",
+    "primary_block_default_message": "This ICD-10 diagnosis is not allowed as the hospice primary diagnosis. Select the underlying terminal disease process. This diagnosis may still be used as a secondary, comorbidity, contributing, or supporting diagnosis when clinically appropriate.",
+    "eligibility_reminder": "ICD-10 validity does not automatically establish hospice eligibility. LCD criteria, decline evidence, clinical documentation, CTI support, and physician certification must still be validated."
+  },
+  "governance_notes": [
+    "This policy blocks selected ICD-10 categories as hospice primary diagnosis only.",
+    "This policy does not prevent use as secondary diagnosis, comorbidity, contributing factor, or supporting diagnosis unless a future rule explicitly says otherwise.",
+    "This file is local, editable, and intentionally separated from database migrations.",
+    "Updates to this file should be reviewed before production use.",
+    "CMS, NHPCO, ICD-10-CM, LCD, and payer guidance should be reviewed before expanding explicit_never_primary_codes."
+  ]
+}

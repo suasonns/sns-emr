@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "status": "active",
+  "description": "SNS Hospice EMR Eligibility Evidence Registry. Defines eligibility evidence elements, visibility rules, harvesting requirements, validation requirements, and workflow usage.",
+
+  "evidence_categories": {
+    "functional_status": {
+      "label": "Functional Status"
+    },
+    "disease_progression": {
+      "label": "Disease Progression"
+    },
+    "nutrition": {
+      "label": "Nutrition"
+    },
+    "safety": {
+      "label": "Safety"
+    },
+    "caregiver_support": {
+      "label": "Caregiver Support"
+    },
+    "communication": {
+      "label": "Communication"
+    }
+  },
+
+  "evidence_fields": {
+    "pps": {
+      "label": "Palliative Performance Scale",
+      "category": "functional_status",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "kps": {
+      "label": "Karnofsky Performance Status",
+      "category": "functional_status",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "fast_stage": {
+      "label": "FAST Stage",
+      "category": "disease_progression",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "nyha_class": {
+      "label": "NYHA Functional Classification",
+      "category": "disease_progression",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "adl_dependency_count": {
+      "label": "ADL Dependency Count",
+      "category": "functional_status",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "adl_dependency_level": {
+      "label": "ADL Dependency Level",
+      "category": "functional_status",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "is_bedbound": {
+      "label": "Bedbound Status",
+      "category": "functional_status",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "oral_intake_decline": {
+      "label": "Oral Intake Decline",
+      "category": "nutrition",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "weight_loss_lbs": {
+      "label": "Weight Loss (lbs)",
+      "category": "nutrition",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "dysphagia": {
+      "label": "Dysphagia",
+      "category": "nutrition",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "fall_risk": {
+      "label": "Fall Risk",
+      "category": "safety",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "caregiver_stress": {
+      "label": "Caregiver Stress",
+      "category": "caregiver_support",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "communication_ability": {
+      "label": "Communication Ability",
+      "category": "communication",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
+    "speech_pattern": {
+      "label": "Speech Pattern",
+      "category": "communication",
+      "harvest": true,
+      "required_when_visible": false,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    }
+  }
+}

@@ -50,11 +50,11 @@ class BillingSummary(Base):
         index=True,
     )
 
-    # IMPORTANT:
-    # billing_cycles.id is currently VARCHAR in the live DB,
-    # so this FK MUST also be String for now.
+    # ---------------------------------------------------------
+    # ✅ FIXED: MUST MATCH billing_cycles.id (UUID)
+    # ---------------------------------------------------------
     billing_cycle_id = Column(
-        String,
+        UUID(as_uuid=True),
         ForeignKey("billing_cycles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,

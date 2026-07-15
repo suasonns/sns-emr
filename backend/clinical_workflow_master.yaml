@@ -1,0 +1,55 @@
+version: 1.0
+
+description: >
+  Central mapping for assessment_type → visit_type → form_type.
+  No logic allowed outside this file.
+
+rules:
+
+  RN:
+    ICA:
+      visit_type: SOC
+      form: RN_ICA
+      day_range: [0, 0]
+
+    SFV:
+      visit_type: ROUTINE
+      form: RN_SFV
+      day_range: [0, 2]
+      requires_separate_visit: true
+      note: "can be same day, different visit"
+
+    HUV1:
+      visit_type: ROUTINE
+      form: RN_HUV
+      day_range: [6, 15]
+
+    HUV2:
+      visit_type: ROUTINE
+      form: RN_HUV
+      day_range: [16, 30]
+
+    COMPREHENSIVE:
+      visit_type: PRN
+      form: RN_COMPREHENSIVE
+
+  LVN:
+    ROUTINE:
+      visit_type: ANY
+      form: LVN_ROUTINE_NOTE
+
+  MSW:
+    ICA:
+      visit_type: SOC
+      form: MSW_ICA_FORM
+    ROUTINE:
+      visit_type: ROUTINE
+      form: MSW_VISIT
+
+  SC:
+    ICA:
+      visit_type: SOC
+      form: SC_ICA_FORM
+    ROUTINE:
+      visit_type: ROUTINE
+      form: SC_VISIT

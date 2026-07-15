@@ -32,17 +32,23 @@ def patient_id(db_session, tenant_id):
     """
     Create a minimal patient row using the currently shared Patient model.
     """
+    user_id = db_session.execute(
+        text("SELECT id FROM users LIMIT 1")
+    ).scalar()
+
+    assert user_id is not None
+    
     patient = Patient(
         tenant_id=tenant_id,
         mrn=f"BPTEST-{uuid4().hex[:8]}",
         full_name="Benefit Period Guardrail Test",
         date_of_birth=date(1940, 1, 1),
         primary_diagnosis="Terminal illness",
-
-        # Required lifecycle defaults
         status="ACTIVE",
         admission_status="PRE_REFERRAL",
+        created_by=user_id,
     )
+    
     db_session.add(patient)
     db_session.flush()
     return patient.id

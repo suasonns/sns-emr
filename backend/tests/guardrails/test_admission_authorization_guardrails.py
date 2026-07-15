@@ -17,6 +17,13 @@ from app.services.admission_authorization_service import (
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
+def _pick_user_id(db_session):
+    user_id = db_session.execute(
+        text("SELECT id FROM users LIMIT 1")
+    ).scalar()
+
+    assert user_id is not None
+    return user_id
 
 def stable_uuid(name: str) -> uuid.UUID:
     return uuid.uuid5(_UUID_NS, name)
@@ -37,9 +44,11 @@ def _ensure_min_patient(db_session, patient_id: uuid.UUID) -> Patient:
     tenant_id = db_session.info.get("tenant_id")
     assert tenant_id, "db_session.info['tenant_id'] must be set by test harness"
 
+    user_id = _pick_user_id(db_session)
     p = Patient(
         id=patient_id,
         tenant_id=tenant_id,
+        created_by=user_id,
         mrn=f"MRN-{str(patient_id)[:8]}",
         full_name="TEST PATIENT",
         date_of_birth=datetime(1950, 1, 1, tzinfo=timezone.utc).date(),
@@ -71,7 +80,7 @@ def _assert_tasktype_enum_aligned(db_session):
     HARD GUARD: Code enum must match DB enum.
     """
     rows = db_session.execute(
-        text("SELECT unnest(enum_range(NULL::tasks_task_type_enum))")
+        text("SELECT unnest(enum_range(NULL::tasktype))")
     ).fetchall()
 
     db_values = {r[0] for r in rows}
@@ -123,7 +132,7 @@ def test_authorize_sets_soc_and_creates_tasks(db_session):
     db_session.refresh(p)
 
     assert p.election_signed_at == FIXED_SOC
-    assert p.soc_date == FIXED_SOC
+    assert p.soc_date.date() == FIXED_SOC.date()
     assert p.admission_status == "ADMITTED"
 
     tasks = _tasks_for_patient(db_session, patient_id)

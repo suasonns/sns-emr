@@ -45,6 +45,13 @@ class PocTriggerPolicy(str, Enum):
 
 
 # =========================================================
+# CONSTANTS
+# =========================================================
+
+DEFAULT_POC_CYCLE_DAYS = 14
+
+
+# =========================================================
 # DECISION MODEL
 # =========================================================
 
@@ -89,6 +96,7 @@ def normalize_acuity_state(value: Optional[str]) -> AcuityState:
 
     Unknown values safely resolve to ROUTINE.
     """
+
     if not value:
         return AcuityState.ROUTINE
 
@@ -108,6 +116,7 @@ def _determine_care_model(
     """
     Determine the staffing care model from patient support flags.
     """
+
     chha = bool(has_chha)
     lvn = bool(has_lvn)
 
@@ -135,7 +144,44 @@ def _has_support_staff(
     - CHHA
     - LVN
     """
+
     return bool(has_chha or has_lvn)
+
+
+def _is_visit_marked_supervisory(visit) -> bool:
+    """
+    Determine whether a visit is explicitly marked as supervisory.
+
+    Important:
+    - INITIAL_RN_ICA is NOT supervisory.
+    - Routine RN visit is NOT automatically supervisory.
+    - Supervisory status must come from:
+        1. visit.is_supervisory = True
+        2. form_type == SUPV_VISIT_ONLY
+        3. visit.details["is_supervisory"] = True
+
+    This function is defensive because Visit rows may not all have
+    the same attributes during development/migration.
+    """
+
+    if visit is None:
+        return False
+
+    form_type = str(getattr(visit, "form_type", "") or "").strip().upper()
+
+    if form_type == "SUPV_VISIT_ONLY":
+        return True
+
+    if bool(getattr(visit, "is_supervisory", False)):
+        return True
+
+    details = getattr(visit, "details", None)
+
+    if isinstance(details, dict):
+        if bool(details.get("is_supervisory", False)):
+            return True
+
+    return False
 
 
 # =========================================================
@@ -188,6 +234,7 @@ def determine_care_model(
     normalized_has_wounds = bool(has_wounds)
 
     acuity = normalize_acuity_state(acuity_state)
+
     support_present = _has_support_staff(
         has_chha=normalized_has_chha,
         has_lvn=normalized_has_lvn,
@@ -200,7 +247,7 @@ def determine_care_model(
 
     # ---------------------------------------------------------
     # CRISIS:
-    # same-day RN review behavior, not routine periodic anchoring.
+    # Same-day RN review behavior, not routine periodic anchoring.
     # ---------------------------------------------------------
     if acuity == AcuityState.CRISIS:
         return CareModelDecision(
@@ -218,15 +265,15 @@ def determine_care_model(
         )
 
     # ---------------------------------------------------------
-    # ROUTINE:
-    # supervisory RN required for routine periodic POC anchoring.
+    # ROUTINE WITH WOUNDS:
+    # Supervisory RN still required for routine periodic POC anchoring.
     # ---------------------------------------------------------
     if normalized_has_wounds:
         return CareModelDecision(
             care_model=care_model,
             supervisory_required=True,
             poc_trigger_policy=PocTriggerPolicy.SUPERVISORY_RN_ONLY,
-            poc_due_days=14,
+            poc_due_days=DEFAULT_POC_CYCLE_DAYS,
             has_support_staff=support_present,
             has_wounds=True,
             acuity_state=acuity,
@@ -236,12 +283,16 @@ def determine_care_model(
             ),
         )
 
+    # ---------------------------------------------------------
+    # ROUTINE WITH SUPPORT STAFF:
+    # LVN/CHHA support requires supervisory RN anchor.
+    # ---------------------------------------------------------
     if support_present:
         return CareModelDecision(
             care_model=care_model,
             supervisory_required=True,
             poc_trigger_policy=PocTriggerPolicy.SUPERVISORY_RN_ONLY,
-            poc_due_days=14,
+            poc_due_days=DEFAULT_POC_CYCLE_DAYS,
             has_support_staff=True,
             has_wounds=False,
             acuity_state=acuity,
@@ -251,11 +302,15 @@ def determine_care_model(
             ),
         )
 
+    # ---------------------------------------------------------
+    # ROUTINE RN-ONLY:
+    # Locked Phase 1 rule still requires supervisory RN anchor.
+    # ---------------------------------------------------------
     return CareModelDecision(
         care_model=CareModel.RN_ONLY,
         supervisory_required=True,
         poc_trigger_policy=PocTriggerPolicy.SUPERVISORY_RN_ONLY,
-        poc_due_days=14,
+        poc_due_days=DEFAULT_POC_CYCLE_DAYS,
         has_support_staff=False,
         has_wounds=False,
         acuity_state=acuity,
@@ -268,7 +323,7 @@ def determine_care_model(
 
 def should_anchor_poc_from_rn_visit(
     *,
-    is_supervisory_visit: bool,
+    visit,
     decision: CareModelDecision,
 ) -> bool:
     """
@@ -281,7 +336,7 @@ def should_anchor_poc_from_rn_visit(
         operational review behavior.
 
     ROUTINE:
-      - SUPERVISORY_RN_ONLY returns True only when the visit is marked supervisory.
+      - SUPERVISORY_RN_ONLY returns True only when the visit is explicitly marked supervisory.
       - Non-supervisory RN visits must not anchor routine PERIODIC POC_UPDATE behavior.
 
     Legacy defensive behavior:
@@ -290,12 +345,30 @@ def should_anchor_poc_from_rn_visit(
         is explicitly SAME_DAY_ANY_RN_CRISIS.
       - This prevents old policy values from reintroducing drift.
     """
+
+    if decision is None:
+        return False
+
+    is_supervisory = _is_visit_marked_supervisory(visit)
+
+    # ---------------------------------------------------------
+    # CRISIS:
+    # Any finalized RN visit may trigger same-day POC review.
+    # This is not routine periodic anchoring.
+    # ---------------------------------------------------------
     if decision.poc_trigger_policy == PocTriggerPolicy.SAME_DAY_ANY_RN_CRISIS:
         return True
 
+    # ---------------------------------------------------------
+    # ROUTINE:
+    # Supervisory RN only.
+    # ---------------------------------------------------------
     if decision.poc_trigger_policy == PocTriggerPolicy.SUPERVISORY_RN_ONLY:
-        return bool(is_supervisory_visit)
+        return bool(is_supervisory)
 
-    # Defensive handling for legacy / drift-prone policy values.
-    # Do not allow ANY_RN or ANY_RN_WOUND_OVERRIDE to anchor routine periodic POC.
-    return bool(is_supervisory_visit)
+    # ---------------------------------------------------------
+    # LEGACY / DEFENSIVE:
+    # Do not allow ANY_RN or ANY_RN_WOUND_OVERRIDE to bypass the
+    # supervisory requirement for routine periodic POC updates.
+    # ---------------------------------------------------------
+    return bool(is_supervisory)

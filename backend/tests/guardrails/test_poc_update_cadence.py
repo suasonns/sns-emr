@@ -19,6 +19,9 @@ from app.services.poc_update_automation import on_visit_finalized_apply_poc_poli
 
 TENANT_ID = uuid.UUID("01271980-0000-0000-0000-000005101977")
 
+SYSTEM_TEST_USER_ID = uuid.UUID(
+    "11111111-1111-1111-1111-111111111111"
+)
 
 def stable_uuid(name: str) -> uuid.UUID:
     """Deterministic UUID helper for tests."""
@@ -49,6 +52,7 @@ def _ensure_patient(db_session, patient_id: uuid.UUID, *, acuity_state: str = "R
             status="ACTIVE",
             admission_status="PRE_REFERRAL",
             acuity_state=acuity_state,
+            created_by=SYSTEM_TEST_USER_ID,
             created_at=now,
             updated_at=now,
         )

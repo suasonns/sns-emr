@@ -1,0 +1,150 @@
+{
+  "version": "1.0",
+  "description": "Admission task generation registry for SNS Hospice EMR. This registry only uses current DB-backed enum values.",
+  "status_task_rules": {
+    "POTENTIAL_ADMISSION": [
+      {
+        "task_type": "CLINICAL_REVIEW_REQUIRED",
+        "alert_reason": "Clinical evidence packet and admission readiness review are required before SOC.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      }
+    ],
+    "ADMISSION_SCHEDULED": [
+      {
+        "task_type": "CLINICAL_FOLLOWUP",
+        "alert_reason": "Admission coordination follow-up is required before SOC.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      }
+    ],
+    "TRANSFER_PENDING": [
+      {
+        "task_type": "CLINICAL_REVIEW_REQUIRED",
+        "alert_reason": "Transfer eligibility, benefit period, days used, days remaining, transfer orders, and transfer CTI must be reviewed before SOC.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      }
+    ],
+    "SOC_IN_PROGRESS": [
+      {
+        "task_type": "CLINICAL_REVIEW_REQUIRED",
+        "alert_reason": "SOC admission workflow is in progress and must be completed with required admission documentation.",
+        "due_hours": 0,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      }
+    ],
+    "ADMITTED": [
+      {
+        "task_type": "INITIAL_RN_ICA",
+        "alert_reason": "Initial RN comprehensive assessment is required on admission day.",
+        "due_hours": 0,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      },
+      {
+        "task_type": "INITIAL_MSW_ICA",
+        "alert_reason": "Initial MSW assessment is required when MSW services are accepted.",
+        "due_hours": 120,
+        "discipline": "MSW",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": "msw_ordered",
+        "assigned_role": "MSW",
+        "priority": "MEDIUM"
+      },
+      {
+        "task_type": "INITIAL_SC_ICA",
+        "alert_reason": "Initial spiritual counselor assessment is required when spiritual care services are accepted.",
+        "due_hours": 120,
+        "discipline": "SC",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": "sc_ordered",
+        "assigned_role": "SC",
+        "priority": "MEDIUM"
+      },
+      {
+        "task_type": "INITIAL_BEREAVEMENT",
+        "alert_reason": "RN bereavement review is required when MSW and spiritual care services are refused.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": "rn_bereavement_required",
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      },
+      {
+        "task_type": "CERTIFICATION",
+        "alert_reason": "Certification workflow is required after admission.",
+        "due_hours": 48,
+        "discipline": "MD",
+        "regulatory_basis": "CERTIFICATION",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "MD",
+        "priority": "HIGH"
+      },
+      {
+        "task_type": "POC_REVIEW_REQUIRED",
+        "alert_reason": "Initial plan of care review is required after RN admission assessment.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "POC_UPDATE",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "RN",
+        "priority": "HIGH"
+      },
+      {
+        "task_type": "NOE_DUE",
+        "alert_reason": "NOE workflow is required for Medicare admission.",
+        "due_hours": 120,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": "is_medicare",
+        "assigned_role": "BILLING",
+        "priority": "HIGH"
+      }
+    ],
+    "NON_ADMIT": [
+      {
+        "task_type": "OTHER",
+        "alert_reason": "Non-admit documentation and referral closure are required.",
+        "due_hours": 24,
+        "discipline": "RN",
+        "regulatory_basis": "CONDITION_TRIGGER",
+        "origin": "ADMISSION",
+        "condition": null,
+        "assigned_role": "ADMIN",
+        "priority": "MEDIUM"
+      }
+    ]
+  }
+}

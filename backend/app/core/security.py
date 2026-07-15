@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
-from uuid import UUID
+from uuid import uuid4, UUID
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -93,45 +93,54 @@ def get_current_access(
 
 bearer_scheme = HTTPBearer(auto_error=True)
 
-
 def create_access_token(
     *,
-    subject: str,
+    user_id: UUID,   # ✅ enforce correct identity
     role: str,
-    tenant_id: str,
+    tenant_id: UUID,
     expires_delta: Optional[timedelta] = None,
     email: Optional[str] = None,
     full_name: Optional[str] = None,
 ) -> str:
     """
-    Creates a signed JWT access token for a clinical user.
+    Creates a secure JWT access token for a clinical user.
     """
+
+    if not SECRET_KEY or len(SECRET_KEY) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SECRET_KEY must be set and at least 32 characters",
+        )
+
     now = datetime.now(timezone.utc)
     expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
 
     payload: Dict[str, Any] = {
-        "sub": subject,
+        # ✅ CORE IDENTITY
+        "sub": str(user_id),          # ✅ ALWAYS DB USER ID
+        "tenant_id": str(tenant_id),
         "role": role,
-        "tenant_id": tenant_id,
+
+        # ✅ TOKEN CONTROL
+        "typ": "access",             # ✅ token type
+        "jti": str(uuid4()),         # ✅ unique token id
+
+        # ✅ SECURITY / VALIDATION
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
+
+        # ✅ TIMING
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
 
+    # ✅ OPTIONAL CLAIMS
     if email:
         payload["email"] = email
     if full_name:
         payload["full_name"] = full_name
 
-    if not SECRET_KEY or len(SECRET_KEY) < 32:
-        if APP_ENV != "development":
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="SECRET_KEY must be set and at least 32 characters",
-            )
-
-    return jwt.encode(payload, SECRET_KEY or "DEV_ONLY_CHANGE_ME_NOW_32CHARS_MIN", algorithm=ALGORITHM)
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
@@ -147,10 +156,10 @@ def decode_access_token(token: str) -> Dict[str, Any]:
             issuer=JWT_ISSUER,
         )
         return payload
-    except JWTError:
+    except JWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
+            detail=f"JWT validation failed: {str(exc)}",
         )
 
 

@@ -396,18 +396,33 @@ def process_tasks_for_note(
 ) -> None:
     """
     Generate tasks based on:
+
     - incident_required
-    - red_flags
-    - needs_clarification
+    - validation clarification items
+    - validation red flags
 
     IMPORTANT:
-    POC-generated note tasks are handled by app.services.poc_task_engine
-    before this function runs. This function must not create duplicate
-    POC follow-up tasks.
+    POC-generated note tasks are handled by the canonical
+    POC workflow and must not be duplicated here.
 
     This function does not commit.
     Caller owns transaction boundary.
     """
+
+    validation = {}
+
+    if isinstance(getattr(note, "content", None), dict):
+        validation = note.content.get("_validation", {}) or {}
+
+    clarification_items = validation.get(
+        "needs_clarification",
+        [],
+    )
+
+    red_flags = validation.get(
+        "red_flags",
+        [],
+    )
 
     # -----------------------------------------------------
     # INCIDENT TASK
@@ -426,7 +441,7 @@ def process_tasks_for_note(
     # -----------------------------------------------------
     # CLARIFICATION TASK
     # -----------------------------------------------------
-    if _has_items(note.needs_clarification):
+    if _has_items(clarification_items):
         _create_note_task(
             db=db,
             note=note,
@@ -440,7 +455,7 @@ def process_tasks_for_note(
     # -----------------------------------------------------
     # CLINICAL REVIEW TASK
     # -----------------------------------------------------
-    if _has_items(note.red_flags):
+    if _has_items(red_flags):
         _create_note_task(
             db=db,
             note=note,
@@ -451,16 +466,7 @@ def process_tasks_for_note(
             regulatory_basis_candidate=("CLINICAL_REVIEW", "OTHER"),
         )
 
-    # -----------------------------------------------------
-    # POC-GENERATED TASKS
-    # -----------------------------------------------------
-    # Disabled intentionally.
-    # Canonical note-triggered POC follow-up tasks are created by
-    # app.services.poc_task_engine.process_pocs_to_tasks().
-    # Leaving a second bridge here creates duplicate rows with incomplete
-    # traceability (for example null clinical_note_id / null alert_reason).
     return
-
 
 # =========================================================
 # POC -> TASK BRIDGE (LEGACY / NO-OP)

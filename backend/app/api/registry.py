@@ -36,6 +36,7 @@ from app.api.eligibility.routes import router as eligibility_router
 from app.api.rules.routes import router as rules_router
 from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
+from app.api.routes.plan_of_care import router as poc_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -54,6 +55,7 @@ from app.api.task_scheduling import router as task_scheduling_router
 # WORKFLOW
 from app.api.patient_assignments import router as patient_assignments_router
 from app.api.soc_orders import router as soc_orders_router
+from app.api.admission import router as admission_router
 
 # EXTERNAL
 from app.api.coverage import router as coverage_router
@@ -122,7 +124,9 @@ def register_routers(app: FastAPI) -> None:
         idg_router,
         dashboard_router,
         clinical_translation_router,  # ✅ ADD THIS
-
+        
+        poc_router,
+        
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
         tasks_router,
 
@@ -139,6 +143,7 @@ def register_routers(app: FastAPI) -> None:
         admission_authorization.router,
         med_reconciliation.router,
         soc_orders_router,
+        admission_router,
 
         # Existing task system
         task_completion_router,

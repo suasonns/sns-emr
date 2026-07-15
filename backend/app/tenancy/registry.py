@@ -1,72 +1,109 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from typing import Optional
 
+from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.core.database import SessionLocal
+logger = logging.getLogger("sns_emr")
 
+
+# =========================================================
+# DATA MODEL
+# =========================================================
 
 @dataclass(frozen=True)
 class TenantRecord:
     tenant_id: str
-    schema_name: str
+    schema_name: str   # kept for compatibility
     display_name: str
     status: str
 
 
+# =========================================================
+# CORE TENANT RESOLUTION (PRODUCTION SAFE)
+# =========================================================
+
 def get_tenant_by_id(db: Session, tenant_id: str) -> TenantRecord:
     """
-    ✅ CANONICAL TENANT REGISTRY (ENTERPRISE)
+    ✅ CANONICAL TENANT REGISTRY (ENTERPRISE SAFE)
 
-    - Single source of truth (DB-backed: core.tenants)
-    - ACTIVE lifecycle enforced
-    - SQLAlchemy 2.x safe (text())
+    - Uses public.tenants as single source of truth
+    - NO schema_name dependency (single schema model)
+    - Enforces ACTIVE tenant lifecycle
+    - Fail-safe rollback
     """
-    stmt = text(
-        """
-        SELECT id, schema_name, display_name, status
-        FROM core.tenants
-        WHERE id = :tenant_id
-        """
-    )
-    row = db.execute(stmt, {"tenant_id": tenant_id}).fetchone()
 
-    if not row:
-        raise RuntimeError(f"Unknown tenant_id: {tenant_id}")
+    try:
+        stmt = text("""
+            SELECT id, display_name, status
+            FROM public.tenants
+            WHERE id = :tenant_id
+        """)
 
-    if row.status != "ACTIVE":
-        raise RuntimeError(f"Tenant not active: {tenant_id}")
+        row = db.execute(stmt, {"tenant_id": tenant_id}).fetchone()
 
-    return TenantRecord(
-        tenant_id=str(row.id),
-        schema_name=row.schema_name,
-        display_name=row.display_name,
-        status=row.status,
-    )
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tenant not found: {tenant_id}",
+            )
 
+        if row.status != "ACTIVE":
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tenant not active: {tenant_id}",
+            )
+
+        return TenantRecord(
+            tenant_id=str(row.id),
+            schema_name="public",  # ✅ FIXED: single schema model
+            display_name=row.display_name,
+            status=row.status,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Tenant lookup failed for tenant_id=%s",
+            tenant_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Tenant registry lookup failed",
+        ) from exc
+
+
+# =========================================================
+# SCHEMA RESOLUTION
+# =========================================================
 
 def get_tenant_schema_name(db: Session, tenant_id: str) -> str:
     """
-    ✅ ONLY approved way to resolve tenant schema name (DB-backed)
+    ✅ SINGLE SOURCE OF TRUTH
+
+    - Always returns public schema
+    - Future-proof if multi-schema is reintroduced
     """
-    return get_tenant_by_id(db, tenant_id).schema_name
+    return "public"
 
 
-def assert_known_tenant(tenant_id: str) -> None:
+# =========================================================
+# BACKWARD-COMPATIBILITY SHIM
+# =========================================================
+
+def assert_known_tenant(db: Session, tenant_id: str) -> None:
     """
-    ✅ BACKWARD-COMPATIBILITY SHIM (DO NOT USE IN NEW CODE)
+    ✅ SAFE VALIDATION ENTRY POINT
 
-    Some legacy routers import assert_known_tenant at module import time.
-    This function exists ONLY to prevent startup crashes and to provide
-    the same safety boundary: tenant must exist and be ACTIVE.
-
-    New code should NOT call this; it should call:
-        get_tenant_schema_name(db, tenant_id)
+    - Uses SAME session
+    - Enforces existence + ACTIVE state
+    - No hidden transactions
     """
-    db: Session = SessionLocal()
-    try:
-        _ = get_tenant_by_id(db, tenant_id)
-    finally:
-        db.close()
+    _ = get_tenant_by_id(db, tenant_id)

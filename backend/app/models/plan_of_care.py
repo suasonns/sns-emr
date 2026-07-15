@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, String
+from sqlalchemy import Column, DateTime, String, Index, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -16,38 +16,78 @@ class PlanOfCare(Base):
 
     Purpose:
     - Represents patient-level hospice Plan of Care (POC)
-    - Tracks active plan and links to versions (future structure)
+    - Tracks active plan and links to versions
 
     Compliance:
     - MUST reflect current plan state
     - MUST support traceability of updates
-    - MUST be auditable over time
+    - MUST preserve historical versions (audit requirement)
     """
 
     __tablename__ = "plan_of_care"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    __table_args__ = (
+        Index("idx_poc_patient_id", "patient_id"),
+        Index("idx_poc_tenant_id", "tenant_id"),
+        Index("idx_poc_status", "status"),
+    )
 
-    patient_id = Column(UUID(as_uuid=True), nullable=False, index=True)
-    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4
+    )
 
-    status = Column(String, nullable=False, default="ACTIVE")
+    patient_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True
+    )
 
-    # 🔥 TEMPORARY: FK REMOVED (stabilization phase)
-    current_version_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True
+    )
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    created_by_user_id = Column(UUID(as_uuid=True), nullable=True)
+    # ✅ Controlled lifecycle status
+    status = Column(
+        String,
+        nullable=False,
+        default="ACTIVE",  # ACTIVE | INACTIVE | ARCHIVED
+    )
 
-    # 🔥 TEMP: relationship disabled until version table is added
-    # versions = relationship(
-    #     "PlanOfCareVersion",
-    #     back_populates="plan_of_care",
-    # )
+    # ✅ pointer to current active version
+    current_version_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True
+    )
+
+    # ✅ RELATIONSHIP (CRITICAL FIX)
+    versions = relationship(
+        "PlanOfCareVersion",
+        back_populates="plan_of_care",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="PlanOfCareVersion.created_at.desc()",
+    )
+
+    # ✅ audit fields
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        nullable=True
+    )
 
     updated_at = Column(
-        DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        DateTime(timezone=True),
         nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )

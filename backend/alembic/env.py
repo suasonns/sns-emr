@@ -10,11 +10,16 @@ from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 
+# ✅ Alembic script access (for validation guard)
+from alembic.script import ScriptDirectory
+
+
 # ---------------------------------------------------------
-# ✅ ENVIRONMENT (MUST BE FIRST)
+# ✅ ENVIRONMENT (SAFE + ORDERED)
 # ---------------------------------------------------------
-load_dotenv(".env.local")
-load_dotenv()
+load_dotenv(".env.local", override=True)
+load_dotenv(override=False)
+
 
 # ---------------------------------------------------------
 # ✅ PYTHON PATH FIX
@@ -24,6 +29,7 @@ BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+
 # ---------------------------------------------------------
 # ✅ ALEMBIC CONFIG
 # ---------------------------------------------------------
@@ -32,26 +38,27 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+
 # ---------------------------------------------------------
 # ✅ IMPORT BASE
 # ---------------------------------------------------------
 from app.db.base import Base  # noqa: E402
 
-# ---------------------------------------------------------
-# ✅ AUTO-LOAD ALL MODELS (HARDENED VERSION)
-# ---------------------------------------------------------
-import pkgutil
-import importlib
-import app.models
 
+# ---------------------------------------------------------
+# ✅ AUTO-LOAD MODELS (FAIL FAST)
+# ---------------------------------------------------------
+import pkgutil  # noqa: E402
+import importlib  # noqa: E402
+import app.models  # noqa: E402
 
-FAILED_IMPORTS = []
+FAILED_IMPORTS: list[tuple[str, str]] = []
 
 
 def load_all_models():
     for _, module_name, _ in pkgutil.walk_packages(
         app.models.__path__,
-        app.models.__name__ + "."
+        app.models.__name__ + ".",
     ):
         try:
             importlib.import_module(module_name)
@@ -61,28 +68,88 @@ def load_all_models():
 
 load_all_models()
 
-# ✅ DEBUG OUTPUT (CRITICAL)
-print("\n================ MODEL LOAD DEBUG ================\n")
-
 if FAILED_IMPORTS:
-    print("❌ FAILED IMPORTS:")
-    for name, err in FAILED_IMPORTS:
-        print(f" - {name}: {err}")
-else:
-    print("✅ ALL MODELS IMPORTED SUCCESSFULLY")
+    raise RuntimeError(
+        f"Model import failures detected: {FAILED_IMPORTS}"
+    )
 
-print("\n✅ LOADED TABLES:")
-print(sorted(Base.metadata.tables.keys()))
-
-print("\n=================================================\n")
 
 # ---------------------------------------------------------
 # ✅ TARGET METADATA
 # ---------------------------------------------------------
 target_metadata = Base.metadata
 
+
 # ---------------------------------------------------------
-# ✅ DATABASE URL
+# ✅ BLOCK DESTRUCTIVE AUTOGENERATE (CRITICAL LOCK)
+# ---------------------------------------------------------
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "table":
+        if reflected and compare_to is None:
+            return False
+
+    if type_ == "column":
+        if reflected and compare_to is None:
+            return False
+
+    return True
+
+
+# ---------------------------------------------------------
+# ✅ MIGRATION VALIDATION GUARD (RUNTIME PROTECTION)
+# ---------------------------------------------------------
+def validate_migration_safety():
+    script = ScriptDirectory.from_config(config)
+
+    revision = script.get_current_head()
+    rev = script.get_revision(revision)
+
+    if not rev:
+        return
+
+    migration_path = Path(rev.module.__file__)
+    content = migration_path.read_text()
+
+    # ✅ Extract ONLY upgrade() block
+    import re
+
+    upgrade_match = re.search(
+        r"def upgrade\(.*?\):(.*?)(def downgrade|$)",
+        content,
+        re.S,
+    )
+
+    if not upgrade_match:
+        return
+
+    upgrade_content = upgrade_match.group(1)
+
+    dangerous_ops = [
+        "op.drop_table",
+        "op.drop_column",
+        "op.drop_index",
+    ]
+
+    violations = [op for op in dangerous_ops if op in upgrade_content]
+
+    if violations:
+        raise RuntimeError(
+            f"""
+🚨 UNSAFE MIGRATION DETECTED (UPGRADE ONLY)
+
+Revision: {revision}
+File: {migration_path}
+
+Blocked operations in upgrade():
+{violations}
+
+✅ Fix: Remove destructive operations from upgrade().
+"""
+        )
+
+
+# ---------------------------------------------------------
+# ✅ DATABASE URL (STRICT)
 # ---------------------------------------------------------
 def get_database_url() -> str:
     url = (
@@ -94,33 +161,56 @@ def get_database_url() -> str:
     if not url:
         raise RuntimeError("DATABASE URL not configured")
 
+    if "sns_emr_dev_clean" not in url:
+        raise RuntimeError(
+            f"WRONG DATABASE DETECTED: {url}. Expected sns_emr_dev_clean"
+        )
+
+    print(f"[ALEMBIC] Using DATABASE_URL: {url}")
+
     return url
 
+
 # ---------------------------------------------------------
-# ✅ RUN MIGRATIONS (ONLINE ONLY)
+# ✅ RUN MIGRATIONS (ONLINE ONLY, ENTERPRISE SAFE)
 # ---------------------------------------------------------
 def run_migrations_online() -> None:
+    # BLOCK BAD MIGRATIONS BEFORE EXECUTION
+    validate_migration_safety()
+
     engine = create_engine(
         get_database_url(),
         future=True,
-        isolation_level="AUTOCOMMIT",
+        pool_pre_ping=True,
     )
 
-    with engine.connect() as connection:
+    with engine.begin() as connection:
 
-        # ✅ GLOBAL SCHEMA SAFETY
-        connection.execute(sa.text("SET search_path TO public, core"))
+        # ✅ FORCE SCHEMA
+        connection.exec_driver_sql("SET search_path = public")
 
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            include_object=include_object,
             include_schemas=False,
+            version_table_schema="public",
+            transaction_per_migration=True,
         )
 
-        with context.begin_transaction():
-            context.run_migrations()
+        try:
+            with context.begin_transaction():
+                context.run_migrations()
+
+            print(" Alembic migration completed successfully")
+
+        except Exception as e:
+            print(" MIGRATION FAILED")
+            print(f"Error: {str(e)}")
+            raise
+
 
 # ---------------------------------------------------------
 # ✅ ENTRYPOINT

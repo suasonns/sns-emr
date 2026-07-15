@@ -18,6 +18,13 @@ from app.models.enums import (
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
+def _pick_user_id(db_session):
+    user_id = db_session.execute(
+        text("SELECT id FROM users LIMIT 1")
+    ).scalar()
+
+    assert user_id is not None
+    return user_id
 
 def stable_uuid(name: str) -> uuid.UUID:
     return uuid.uuid5(_UUID_NS, name)
@@ -41,6 +48,7 @@ def _ensure_min_patient(db_session, patient_id: uuid.UUID) -> Patient:
     tenant_id = db_session.info.get("tenant_id")
     assert tenant_id, "db_session.info['tenant_id'] must be set by test harness"
 
+    user_id = _pick_user_id(db_session)
     p = Patient(
         id=patient_id,
         tenant_id=tenant_id,
@@ -50,6 +58,7 @@ def _ensure_min_patient(db_session, patient_id: uuid.UUID) -> Patient:
         primary_diagnosis="TEST DX",
         status="ACTIVE",
         admission_status="PRE_REFERRAL",
+        created_by=user_id,
         acuity_state="ROUTINE",
     )
     db_session.add(p)

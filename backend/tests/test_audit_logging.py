@@ -37,9 +37,10 @@ def test_audit_log_written_on_create_visit(client, rn_headers, db_session):
     response = client.post(
         "/visits/",
         headers=rn_headers,
-        params={
+        json={
             "patient_id": str(patient.id),
             "visit_type": "RN",
+            "form_type": "ROUTINE_VISIT",
         },
     )
     assert response.status_code == 201, response.text

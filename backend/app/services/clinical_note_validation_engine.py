@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -14,6 +14,9 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
 
+from app.services.eligibility.eligibility_registry_service import (
+    is_required_when_visible,
+)
 
 # =========================================================
 # CONSTANTS
@@ -21,6 +24,7 @@ from app.models.incident_report import IncidentReport
 
 NOTE_STATUS_DRAFT = "DRAFT"
 NOTE_STATUS_SIGNED = "SIGNED"
+NOTE_STATUS_FINALIZED = "FINALIZED"
 
 INCIDENT_STATUS_NONE = "NONE"
 INCIDENT_STATUS_PENDING = "PENDING"
@@ -37,15 +41,32 @@ INCIDENT_SEVERITY_SIGNIFICANT = "SIGNIFICANT"
 INCIDENT_SEVERITY_SENTINEL = "SENTINEL"
 
 DISCIPLINES_ALLOWED = {"RN", "LVN", "MSW", "SC", "HHA", "CHHA", "MD", "NP"}
-CARE_LEVELS_ALLOWED = {"RC", "CC", "GIP", "RSP", "ROUTINE", "CRISIS"}
-ENCOUNTER_TYPES_ALLOWED = {"COMPREHENSIVE", "ROUTINE", "PRN", "IDG", "DISCIPLINE"}
+
+CARE_LEVELS_ALLOWED = {
+    "RC",
+    "CC",
+    "GIP",
+    "RSP",
+    "ROUTINE",
+    "CRISIS",
+}
+
+ENCOUNTER_TYPES_ALLOWED = {
+    "COMPREHENSIVE",
+    "ROUTINE",
+    "PRN",
+    "IDG",
+    "DISCIPLINE",
+}
 
 REQUIRED_FULL_ROS_SECTIONS = {
+    "constitutional",
     "neurological",
     "cardiovascular",
     "respiratory",
     "gastrointestinal",
     "genitourinary",
+    "endocrine",
     "musculoskeletal",
     "integumentary",
     "psychosocial",
@@ -61,6 +82,304 @@ REQUIRED_FOCUSED_ROS_SECTIONS = {
     "genitourinary",
 }
 
+# =========================================================
+# FUNCTIONAL ASSESSMENT GOVERNANCE
+# =========================================================
+
+FUNCTIONAL_ASSESSMENT_REQUIRED_NOTE_TYPES = {
+    "INITIAL_RN_ICA",
+    "RN_ICA",
+    "RN_ASSESS",
+    "RN_ASSESS_V1",
+    "RN_HOPE_ADMISSION",
+    "UPDATE_ASSESSMENT",
+    "RN_UPDATE_ASSESSMENT",
+    "RECERTIFICATION",
+    "RECERTIFICATION_ASSESSMENT",
+    "RN_RECERTIFICATION",
+    "RN_RECERT_ASSESSMENT",
+    "RN_RECERT",
+    "RECERT",
+}
+
+DEMENTIA_DIAGNOSIS_KEYWORDS = {
+    "DEMENTIA",
+    "ALZHEIMER",
+    "ALZHEIMER'S",
+    "SENILE DEGENERATION",
+    "LEWY BODY",
+    "FRONTOTEMPORAL",
+    "VASCULAR DEMENTIA",
+    "PICK",
+    "F01",
+    "F02",
+    "F03",
+    "G30",
+}
+
+CARDIAC_DIAGNOSIS_KEYWORDS = {
+    "CHF",
+    "CONGESTIVE HEART FAILURE",
+    "HEART FAILURE",
+    "END STAGE HEART",
+    "END-STAGE HEART",
+    "END STAGE CARDIAC",
+    "END-STAGE CARDIAC",
+    "CARDIOMYOPATHY",
+    "ISCHEMIC CARDIOMYOPATHY",
+    "SYSTOLIC HEART FAILURE",
+    "DIASTOLIC HEART FAILURE",
+    "I50",
+    "I42",
+}
+
+ROS_SECTION_ALIASES = {
+    "constitutional": "constitutional",
+    "general": "constitutional",
+
+    "endo": "endocrine",
+    "endocrine": "endocrine",
+
+    "neuro": "neurological",
+    "neuro_mental": "neurological",
+    "neuro_behavior": "neurological",
+
+    "cardiac": "cardiovascular",
+    "cardio": "cardiovascular",
+
+    "pulmonary": "respiratory",
+    "resp": "respiratory",
+
+    "gi": "gastrointestinal",
+    "gastro": "gastrointestinal",
+
+    "gu": "genitourinary",
+    "urinary": "genitourinary",
+
+    "msk": "musculoskeletal",
+    "mobility": "musculoskeletal",
+
+    "skin": "integumentary",
+    "integument": "integumentary",
+
+    "psych": "psychosocial",
+    "psychosocial_support": "psychosocial",
+    "psychosocial_screening": "psychosocial",
+
+    "spiritual_distress": "spiritual",
+    "spiritual_screening": "spiritual",
+}
+
+ROS_COMPLETENESS_RULES: dict[str, dict[str, Any]] = {
+        "constitutional": {
+        "label": "Constitutional",
+        "minimum_any_fields": [
+            "fatigue",
+            "weakness",
+            "fever",
+            "chills",
+            "weight_loss",
+            "activity_tolerance",
+            "general_appearance",
+            "constitutional_narrative",
+            "narrative",
+        ],
+    },
+    "neurological": {
+        "label": "Neurological / Mental Status",
+        "minimum_any_fields": [
+            "mental_status",
+            "orientation",
+            "cognitive_status",
+            "communication_ability",
+            "speech_pattern",
+            "confusion",
+            "agitation",
+            "anxiety",
+            "neuro_narrative",
+            "narrative",
+        ],
+    },
+    "cardiovascular": {
+        "label": "Cardiovascular",
+        "minimum_any_fields": [
+            "heart_rhythm",
+            "edema",
+            "edema_location",
+            "pulse_assessment",
+            "chest_pain",
+            "dizziness",
+            "syncope",
+            "cardiac_findings",
+            "cardiovascular_narrative",
+            "narrative",
+        ],
+    },
+    "respiratory": {
+        "label": "Respiratory",
+        "minimum_any_fields": [
+            "dyspnea",
+            "dyspnea_level",
+            "oxygen_use",
+            "oxygen_used",
+            "oxygen_lpm",
+            "lung_sounds",
+            "respiratory_effort",
+            "cough",
+            "secretions",
+            "orthopnea",
+            "respiratory_narrative",
+            "narrative",
+        ],
+    },
+    "gastrointestinal": {
+        "label": "Gastrointestinal",
+        "minimum_any_fields": [
+            "appetite",
+            "oral_intake",
+            "food_intake",
+            "nausea",
+            "vomiting",
+            "constipation",
+            "diarrhea",
+            "bowel_pattern",
+            "dysphagia",
+            "nutrition",
+            "gi_narrative",
+            "narrative",
+        ],
+    },
+    "genitourinary": {
+        "label": "Genitourinary",
+        "minimum_any_fields": [
+            "continence",
+            "incontinence",
+            "foley",
+            "catheter",
+            "urinary_frequency",
+            "urinary_retention",
+            "dysuria",
+            "hematuria",
+            "gu_narrative",
+            "narrative",
+        ],
+    },
+    "endocrine": {
+        "label": "Endocrine",
+        "minimum_any_fields": [
+            "diabetes",
+            "blood_sugar",
+            "hypoglycemia",
+            "hyperglycemia",
+            "polyuria",
+            "polydipsia",
+            "thyroid_condition",
+            "endocrine_narrative",
+            "narrative",
+        ],
+    },
+    "musculoskeletal": {
+        "label": "Musculoskeletal / Mobility",
+        "minimum_any_fields": [
+            "mobility",
+            "ambulation",
+            "transfer_status",
+            "strength",
+            "rom",
+            "contractures",
+            "fall_history",
+            "assistive_device",
+            "bedbound",
+            "musculoskeletal_narrative",
+            "narrative",
+        ],
+    },
+    "integumentary": {
+        "label": "Skin / Integumentary",
+        "minimum_any_fields": [
+            "skin_integrity",
+            "skin_color",
+            "skin_temperature",
+            "skin_turgor",
+            "pressure_injury",
+            "wound",
+            "wound_assessment",
+            "skin_tear",
+            "bruising",
+            "edema",
+            "comprehensive_skin_assessment",
+            "skin_narrative",
+            "narrative",
+        ],
+    },
+    "psychosocial": {
+        "label": "RN Psychosocial Screening",
+        "minimum_any_fields": [
+            "support_system",
+            "primary_caregiver",
+            "caregiver_availability",
+            "patient_coping",
+            "family_coping",
+            "caregiver_stress",
+            "psychosocial_concerns",
+            "msw_need",
+            "psychosocial_narrative",
+            "narrative",
+        ],
+    },
+    "spiritual": {
+        "label": "RN Spiritual Screening",
+        "minimum_any_fields": [
+            "faith_preference",
+            "spiritual_concerns",
+            "spiritual_distress",
+            "chaplain_needed",
+            "clergy_requested",
+            "sc_need",
+            "spiritual_narrative",
+            "narrative",
+        ],
+    },
+}
+
+VITALS_RECOMMENDED_FIELDS = {
+    "bp",
+    "pulse",
+    "respirations",
+    "temperature",
+    "spo2",
+}
+
+MUAC_REQUIRED_WHEN_PRESENT = {
+    "value_cm",
+    "arm",
+}
+
+VALID_MUAC_ARMS = {"LEFT", "RIGHT"}
+
+VALID_SELF_REPORT_PAIN_SCALES = {
+    "NUMERIC",
+    "VERBAL",
+    "FACES",
+}
+
+VALID_OBSERVATIONAL_PAIN_SCALES = {
+    "PAINAD",
+    "FLACC",
+}
+
+REQUIRED_RN_ICA_SECTIONS = {
+    "functional_status": "Functional Status",
+    "communication_sensory": "Communication / Sensory",
+    "medication_management": "Medication Management",
+    "support_assessment": "Support Assessment",
+    "teaching_needs": "Teaching Needs",
+    "nutrition": "Nutrition",
+    "sleep_rest": "Sleep / Rest",
+    "environment_safety": "Environment Safety",
+    "bereavement_screening": "Bereavement Screening",
+    "death_imminent": "Death Is Imminent (J0050)",
+}
 
 # =========================================================
 # RESULT DTO
@@ -71,18 +390,14 @@ class ValidationResult:
     warnings: list[str]
     red_flags: list[str]
     audit_flags: list[str]
-
-    # IMPORTANT:
-    # clinical_notes.needs_clarification is a BOOLEAN column.
-    # Therefore this DTO exposes both:
-    # - needs_clarification: boolean summary
-    # - clarification_items: list of reasons
     needs_clarification: bool
     clarification_items: list[str]
-
     incident_required: bool
     incident_status: str
     incident_id: UUID | None
+    finalization_allowed: bool = True
+    compliance_blocking_items: list[dict[str, Any]] = field(default_factory=list)
+    compliance_summary: dict[str, Any] = field(default_factory=dict)
 
 
 # =========================================================
@@ -91,74 +406,115 @@ class ValidationResult:
 
 def validate_and_trigger_incident(
     db: Session,
-    *,
     note: ClinicalNote,
     actor_user_id: UUID | None,
     actor_role: str = "SYSTEM_ENGINE",
 ) -> ValidationResult:
-    """
-    Non-blocking validation + incident auto-trigger engine.
-
-    Behavior:
-    - Reads observed_data, patient_reported, caregiver_reported, assessment,
-      interventions, and plan_of_care_updates.
-    - Writes validation summaries to:
-        - note.red_flags          JSON list
-        - note.audit_flags        JSON list
-        - note.needs_clarification BOOLEAN
-    - Auto-creates incident_reports placeholder when incident criteria are met.
-    - Does NOT block signing.
-    - Does NOT commit internally. Transaction ownership belongs to caller.
-    """
-
     warnings: list[str] = []
     red_flags: list[str] = []
     audit_flags: list[str] = []
     clarification_items: list[str] = []
+    compliance_blocking_items: list[dict[str, Any]] = []
 
-    observed = _obj(note.observed_data)
-    patient_reported = _obj(note.patient_reported)
-    caregiver_reported = _obj(note.caregiver_reported)
-    assessment = _obj(note.assessment)
-    interventions = _obj(note.interventions)
-    _ = _obj(note.plan_of_care_updates)
+    content = _content(note)
 
-    _validate_core_classification(note, warnings, red_flags)
+    observed = _extract_json_block(note, content, "observed_data", ["observed"])
+    patient_reported = _extract_json_block(note, content, "patient_reported")
+    caregiver_reported = _extract_json_block(note, content, "caregiver_reported")
+    assessment = _extract_json_block(note, content, "assessment")
+    interventions = _extract_json_block(note, content, "interventions")
+
+    _validate_core_classification(
+        note,
+        content,
+        warnings,
+        red_flags,
+    )
+
     _validate_truth_layers(
-        observed=observed,
-        patient_reported=patient_reported,
-        caregiver_reported=caregiver_reported,
-        clarification_items=clarification_items,
+        observed,
+        patient_reported,
+        caregiver_reported,
+        assessment,
+        interventions,
+        clarification_items,
     )
+
     _validate_required_ros(
-        note=note,
-        observed=observed,
-        assessment=assessment,
-        warnings=warnings,
-        audit_flags=audit_flags,
+        note,
+        content,
+        observed,
+        assessment,
+        warnings,
+        audit_flags,
+        compliance_blocking_items,
     )
+
+    _validate_required_functional_assessments(
+        note,
+        content,
+        assessment,
+        warnings,
+        audit_flags,
+        compliance_blocking_items,
+    )
+    
+    # TEMPORARILY DISABLED
+    # RN ICA section modules have not yet been implemented
+    # in the form registry/frontend payload structure.
+    #
+    # _validate_required_rn_ica_sections(
+    #     note,
+    #     content,
+    #     assessment,
+    #     warnings,
+    #     audit_flags,
+    #     compliance_blocking_items,
+    # )
+    
+    _validate_vitals_and_muac(
+        content,
+        observed,
+        assessment,
+        warnings,
+        audit_flags,
+        compliance_blocking_items,
+    )
+
+    _validate_pain_assessment(
+        content,
+        observed,
+        assessment,
+        warnings,
+        audit_flags,
+        compliance_blocking_items,
+    )
+
     _validate_symptom_interventions(
-        observed=observed,
-        interventions=interventions,
-        warnings=warnings,
+        observed,
+        assessment,
+        interventions,
+        warnings,
     )
+
     _validate_discipline_specific(
-        note=note,
-        observed=observed,
-        assessment=assessment,
-        warnings=warnings,
+        note,
+        content,
+        observed,
+        assessment,
+        warnings,
     )
 
     incident_decision = _detect_incident(
-        note=note,
-        observed=observed,
-        patient_reported=patient_reported,
-        caregiver_reported=caregiver_reported,
-        assessment=assessment,
-        interventions=interventions,
-        warnings=warnings,
-        red_flags=red_flags,
-        clarification_items=clarification_items,
+        note,
+        observed,
+        patient_reported,
+        caregiver_reported,
+        assessment,
+        interventions,
+        warnings,
+        red_flags,
+        clarification_items,
     )
 
     incident_id: UUID | None = None
@@ -166,45 +522,52 @@ def validate_and_trigger_incident(
 
     if incident_decision["required"]:
         incident_id = _ensure_incident_report(
-            db=db,
-            note=note,
-            actor_user_id=actor_user_id,
-            incident_type=incident_decision["incident_type"],
-            incident_severity=incident_decision["incident_severity"],
-            observed=observed,
-            patient_reported=patient_reported,
-            caregiver_reported=caregiver_reported,
-            assessment=assessment,
-            interventions=interventions,
+            db,
+            note,
+            actor_user_id,
+            incident_decision["incident_type"],
+            incident_decision["incident_severity"],
+            observed,
+            patient_reported,
+            caregiver_reported,
+            assessment,
+            interventions,
         )
         incident_status = INCIDENT_STATUS_PENDING
         audit_flags.append(f"incident_triggered:{incident_decision['incident_type']}")
 
-    # ---------------------------------------------------------
-    # CRITICAL FIX:
-    # needs_clarification is BOOLEAN in clinical_notes.
-    # Do NOT assign list here.
-    # ---------------------------------------------------------
-    note.needs_clarification = bool(clarification_items)
+    finalization_allowed = len(compliance_blocking_items) == 0
 
-    note.red_flags = _merge_json_list(note.red_flags, red_flags)
-    note.audit_flags = _merge_json_list(note.audit_flags, audit_flags)
-    note.incident_required = bool(incident_decision["required"])
-    note.incident_status = incident_status
+    compliance_summary = {
+        "finalization_allowed": finalization_allowed,
+        "blocking_item_count": len(compliance_blocking_items),
+        "warnings_count": len(warnings),
+        "red_flags_count": len(red_flags),
+        "audit_flags_count": len(audit_flags),
+        "needs_clarification": bool(clarification_items),
+    }
 
-    if incident_id and hasattr(note, "incident_id"):
-        note.incident_id = incident_id
-
-    _flag_json_modified(note, "red_flags")
-    _flag_json_modified(note, "audit_flags")
+    _persist_validation_result_to_note(
+        note,
+        warnings,
+        red_flags,
+        audit_flags,
+        clarification_items,
+        bool(incident_decision["required"]),
+        incident_status,
+        incident_id,
+        finalization_allowed,
+        compliance_blocking_items,
+        compliance_summary,
+    )
 
     _write_audit_log(
-        db=db,
-        actor_user_id=actor_user_id,
-        actor_role=actor_role,
-        action="CLINICAL_NOTE_VALIDATED",
-        entity_type="clinical_note",
-        entity_id=note.id,
+        db,
+        actor_user_id,
+        actor_role,
+        "CLINICAL_NOTE_VALIDATED",
+        "clinical_note",
+        note.id,
     )
 
     db.add(note)
@@ -219,6 +582,9 @@ def validate_and_trigger_incident(
         incident_required=bool(incident_decision["required"]),
         incident_status=incident_status,
         incident_id=incident_id,
+        finalization_allowed=finalization_allowed,
+        compliance_blocking_items=compliance_blocking_items,
+        compliance_summary=compliance_summary,
     )
 
 
@@ -228,14 +594,15 @@ def validate_and_trigger_incident(
 
 def _validate_core_classification(
     note: ClinicalNote,
+    content: dict[str, Any],
     warnings: list[str],
     red_flags: list[str],
 ) -> None:
-    care_level = _clean_upper(getattr(note, "care_level", None))
-    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
-    discipline = _clean_upper(getattr(note, "discipline", None))
-    visit_type = _clean_upper(getattr(note, "visit_type", None))
-    visit_origin = _clean_upper(getattr(note, "visit_origin", None))
+    care_level = _clean_upper(_note_value(note, content, "care_level"))
+    encounter_type = _clean_upper(_note_value(note, content, "encounter_type"))
+    discipline = _clean_upper(_note_value(note, content, "discipline"))
+    visit_type = _clean_upper(_note_value(note, content, "visit_type"))
+    visit_origin = _clean_upper(_note_value(note, content, "visit_origin"))
 
     if care_level and care_level not in CARE_LEVELS_ALLOWED:
         red_flags.append(f"invalid_care_level:{care_level}")
@@ -251,10 +618,11 @@ def _validate_core_classification(
 
 
 def _validate_truth_layers(
-    *,
     observed: dict[str, Any],
     patient_reported: dict[str, Any],
     caregiver_reported: dict[str, Any],
+    assessment: dict[str, Any],
+    interventions: dict[str, Any],
     clarification_items: list[str],
 ) -> None:
     if observed and not isinstance(observed, dict):
@@ -266,47 +634,729 @@ def _validate_truth_layers(
     if caregiver_reported and not isinstance(caregiver_reported, dict):
         clarification_items.append("caregiver_reported must be structured json object")
 
+    if assessment and not isinstance(assessment, dict):
+        clarification_items.append("assessment must be structured json object")
+
+    if interventions and not isinstance(interventions, dict):
+        clarification_items.append("interventions must be structured json object")
+
 
 def _validate_required_ros(
-    *,
     note: ClinicalNote,
+    content: dict[str, Any],
     observed: dict[str, Any],
     assessment: dict[str, Any],
     warnings: list[str],
     audit_flags: list[str],
+    compliance_blocking_items: list[dict[str, Any]],
 ) -> None:
-    ros = _obj(observed.get("review_of_systems") or assessment.get("review_of_systems"))
-    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
+    raw_ros = _extract_review_of_systems(
+        content,
+        observed,
+        assessment,
+    )
 
-    if encounter_type == "COMPREHENSIVE":
-        missing = sorted(section for section in REQUIRED_FULL_ROS_SECTIONS if section not in ros)
+    ros = _canonicalize_ros(raw_ros)
+
+    encounter_type = _clean_upper(
+        _note_value(note, content, "encounter_type")
+    )
+
+    discipline = _clean_upper(
+        _note_value(note, content, "discipline")
+    )
+
+    note_type = _clean_upper(
+        _note_value(note, content, "note_type")
+    )
+
+    form_key = _clean_upper(
+        _note_value(note, content, "form_key")
+    )
+
+    form_type = _clean_upper(
+        _note_value(note, content, "form_type")
+    )
+
+    is_rn_ica = (
+        discipline == "RN"
+        and (
+            note_type in {
+                "RN_ASSESS",
+                "RN_ASSESS_V1",
+                "RN_HOPE_ADMISSION",
+            }
+            or form_key in {
+                "RN_ASSESS",
+                "RN_ASSESS_V1",
+                "RN_HOPE_ADMISSION",
+            }
+            or form_type in {
+                "ASSESS",
+                "COMPREHENSIVE",
+            }
+        )
+    )
+
+    requires_full_ros = (
+        encounter_type == "COMPREHENSIVE"
+        or is_rn_ica
+    )
+
+    if requires_full_ros:
+        missing = sorted(
+            section
+            for section in REQUIRED_FULL_ROS_SECTIONS
+            if section not in ros
+        )
+
         if missing:
-            warnings.append(f"comprehensive_missing_ros:{', '.join(missing)}")
+            warnings.append(
+                f"comprehensive_missing_ros:{', '.join(missing)}"
+            )
             audit_flags.append("full_ros_incomplete")
 
+            for section in missing:
+                _add_blocker(
+                    compliance_blocking_items,
+                    "Review of Systems",
+                    _section_label(section),
+                    None,
+                    f"{_section_label(section)} assessment missing",
+                    "RN_ICA_REQUIRED",
+                    "Required comprehensive RN ICA review-of-systems section is missing.",
+                    f"Complete the {_section_label(section)} assessment section.",
+                    _navigation(
+                        "Review of Systems",
+                        "review_of_systems",
+                        "Review of Systems",
+                        section,
+                        _section_label(section),
+                        section,
+                        f"{_section_label(section)} Assessment",
+                    ),
+                    [
+                        "RN_ICA_FINALIZATION",
+                        "INITIAL_RN_ICA_TASK_COMPLETION",
+                        "BILLING_READINESS",
+                    ],
+                )
+
+        for section in sorted(REQUIRED_FULL_ROS_SECTIONS):
+            if section not in ros:
+                continue
+
+            section_data = _obj(ros.get(section))
+
+            if not _ros_section_is_complete(section, section_data):
+                warnings.append(
+                    f"comprehensive_incomplete_ros_section:{section}"
+                )
+                audit_flags.append("full_ros_incomplete")
+
+                _add_blocker(
+                    compliance_blocking_items,
+                    "Review of Systems",
+                    _section_label(section),
+                    None,
+                    f"{_section_label(section)} assessment incomplete",
+                    "RN_ICA_REQUIRED",
+                    "Section is present but does not contain enough assessment data to support a compliant comprehensive RN ICA.",
+                    f"Document assessment findings for {_section_label(section)}.",
+                    _navigation(
+                        "Review of Systems",
+                        "review_of_systems",
+                        "Review of Systems",
+                        section,
+                        _section_label(section),
+                        section,
+                        f"{_section_label(section)} Assessment",
+                    ),
+                    [
+                        "RN_ICA_FINALIZATION",
+                        "INITIAL_RN_ICA_TASK_COMPLETION",
+                        "BILLING_READINESS",
+                    ],
+                )
+
     elif encounter_type in {"ROUTINE", "PRN"}:
-        present = {section for section in REQUIRED_FOCUSED_ROS_SECTIONS if section in ros}
+        present = {
+            section
+            for section in REQUIRED_FOCUSED_ROS_SECTIONS
+            if section in ros
+        }
+
         if not present:
             warnings.append("routine_or_prn_note_missing_focused_ros")
             audit_flags.append("focused_ros_missing")
 
+def _validate_required_rn_ica_sections(
+    note: ClinicalNote,
+    content: dict[str, Any],
+    assessment: dict[str, Any],
+    warnings: list[str],
+    audit_flags: list[str],
+    compliance_blocking_items: list[dict[str, Any]],
+) -> None:
+    discipline = _clean_upper(
+        _note_value(note, content, "discipline")
+    )
+
+    note_type = _clean_upper(
+        _note_value(note, content, "note_type")
+    )
+
+    form_key = _clean_upper(
+        _note_value(note, content, "form_key")
+    )
+
+    form_type = _clean_upper(
+        _note_value(note, content, "form_type")
+    )
+
+    is_rn_ica = (
+        discipline == "RN"
+        and (
+            note_type in {
+                "RN_ASSESS",
+                "RN_ASSESS_V1",
+                "RN_HOPE_ADMISSION",
+            }
+            or form_key in {
+                "RN_ASSESS",
+                "RN_ASSESS_V1",
+                "RN_HOPE_ADMISSION",
+            }
+            or form_type in {
+                "ASSESS",
+                "COMPREHENSIVE",
+            }
+        )
+    )
+
+    if not is_rn_ica:
+        return
+
+    for section_code, section_title in REQUIRED_RN_ICA_SECTIONS.items():
+
+        section_data = _obj(
+            assessment.get(section_code)
+        )
+
+        if section_data:
+            continue
+
+        warnings.append(
+            f"required_rn_ica_section_missing:{section_code}"
+        )
+
+        audit_flags.append(
+            "required_rn_ica_section_missing"
+        )
+
+        _add_blocker(
+            compliance_blocking_items,
+            section_title,
+            section_title,
+            None,
+            f"{section_title} missing",
+            "RN_ICA_REQUIRED",
+            f"{section_title} section is required for RN ICA completion.",
+            f"Complete the {section_title} section.",
+            _navigation(
+                section_title,
+                section_code,
+                section_title,
+                section_code,
+                section_title,
+                section_code,
+                section_title,
+            ),
+            [
+                "RN_ICA_FINALIZATION",
+                "INITIAL_RN_ICA_TASK_COMPLETION",
+                "BILLING_READINESS",
+            ],
+        )
+def _validate_required_functional_assessments(
+    note: ClinicalNote,
+    content: dict[str, Any],
+    assessment: dict[str, Any],
+    warnings: list[str],
+    audit_flags: list[str],
+    compliance_blocking_items: list[dict[str, Any]],
+) -> None:
+    """
+    Functional assessment governance.
+
+    Required only for formal RN disease progression workflows:
+
+    - RN ICA
+    - RN Update Assessment
+    - RN Recertification Assessment
+
+    Always required when workflow applies:
+    - PPS
+    - KPS
+
+    Conditionally required when clinically relevant:
+    - FAST when dementia-related diagnosis exists
+    - NYHA when cardiac-related diagnosis exists
+
+    Routine and PRN visits are not required to document
+    PPS, KPS, FAST, or NYHA.
+    """
+
+    discipline = _clean_upper(
+        _note_value(note, content, "discipline")
+    )
+
+    note_type = _clean_upper(
+        _note_value(note, content, "note_type")
+    )
+
+    form_key = _clean_upper(
+        _note_value(note, content, "form_key")
+    )
+
+    form_type = _clean_upper(
+        _note_value(note, content, "form_type")
+    )
+
+    assessment_type = _clean_upper(
+        _note_value(note, content, "assessment_type")
+    )
+
+    visit_type = _clean_upper(
+        _note_value(note, content, "visit_type")
+    )
+
+    if discipline != "RN":
+        return
+
+    classification_values = {
+        note_type,
+        form_key,
+        form_type,
+        assessment_type,
+        visit_type,
+    }
+
+    is_formal_functional_assessment = bool(
+        classification_values.intersection(
+            FUNCTIONAL_ASSESSMENT_REQUIRED_NOTE_TYPES
+        )
+    )
+
+    if not is_formal_functional_assessment:
+        return
+
+    def collect_text(value: Any, output: list[str]) -> None:
+        if value is None:
+            return
+
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if cleaned:
+                output.append(cleaned)
+            return
+
+        if isinstance(value, (int, float, bool)):
+            output.append(str(value))
+            return
+
+        if isinstance(value, dict):
+            for nested_value in value.values():
+                collect_text(nested_value, output)
+            return
+
+        if isinstance(value, list):
+            for nested_value in value:
+                collect_text(nested_value, output)
+            return
+
+    diagnosis_text_parts: list[str] = []
+
+    diagnosis_sources = [
+        content.get("primary_diagnosis"),
+        content.get("primary_dx"),
+        content.get("primary_dx_code"),
+        content.get("primary_diagnosis_description"),
+        content.get("diagnosis"),
+        content.get("diagnoses"),
+        content.get("secondary_diagnoses"),
+        content.get("comorbidities"),
+        content.get("related_diagnoses"),
+        assessment.get("primary_diagnosis"),
+        assessment.get("primary_dx"),
+        assessment.get("primary_dx_code"),
+        assessment.get("primary_diagnosis_description"),
+        assessment.get("diagnosis"),
+        assessment.get("diagnoses"),
+        assessment.get("secondary_diagnoses"),
+        assessment.get("comorbidities"),
+        assessment.get("related_diagnoses"),
+    ]
+
+    for diagnosis_source in diagnosis_sources:
+        collect_text(diagnosis_source, diagnosis_text_parts)
+
+    diagnosis_text = " ".join(diagnosis_text_parts).upper()
+
+    dementia_related = any(
+        keyword in diagnosis_text
+        for keyword in DEMENTIA_DIAGNOSIS_KEYWORDS
+    )
+
+    cardiac_related = any(
+        keyword in diagnosis_text
+        for keyword in CARDIAC_DIAGNOSIS_KEYWORDS
+    )
+
+    pps = (
+        content.get("pps")
+        or content.get("pps_score")
+        or assessment.get("pps")
+        or assessment.get("pps_score")
+        or _obj(content.get("functional_scores")).get("pps")
+        or _obj(content.get("functional_scores")).get("pps_score")
+        or _obj(assessment.get("functional_scores")).get("pps")
+        or _obj(assessment.get("functional_scores")).get("pps_score")
+        or _obj(content.get("functional_assessment")).get("pps")
+        or _obj(content.get("functional_assessment")).get("pps_score")
+        or _obj(assessment.get("functional_assessment")).get("pps")
+        or _obj(assessment.get("functional_assessment")).get("pps_score")
+        or _obj(content.get("scores")).get("pps")
+        or _obj(content.get("scores")).get("pps_score")
+        or _obj(assessment.get("scores")).get("pps")
+        or _obj(assessment.get("scores")).get("pps_score")
+    )
+
+    kps = (
+        content.get("kps")
+        or content.get("kps_score")
+        or assessment.get("kps")
+        or assessment.get("kps_score")
+        or _obj(content.get("functional_scores")).get("kps")
+        or _obj(content.get("functional_scores")).get("kps_score")
+        or _obj(assessment.get("functional_scores")).get("kps")
+        or _obj(assessment.get("functional_scores")).get("kps_score")
+        or _obj(content.get("functional_assessment")).get("kps")
+        or _obj(content.get("functional_assessment")).get("kps_score")
+        or _obj(assessment.get("functional_assessment")).get("kps")
+        or _obj(assessment.get("functional_assessment")).get("kps_score")
+        or _obj(content.get("scores")).get("kps")
+        or _obj(content.get("scores")).get("kps_score")
+        or _obj(assessment.get("scores")).get("kps")
+        or _obj(assessment.get("scores")).get("kps_score")
+    )
+
+    fast = (
+        content.get("fast")
+        or content.get("fast_stage")
+        or content.get("fast_score")
+        or assessment.get("fast")
+        or assessment.get("fast_stage")
+        or assessment.get("fast_score")
+        or _obj(content.get("functional_scores")).get("fast")
+        or _obj(content.get("functional_scores")).get("fast_stage")
+        or _obj(content.get("functional_scores")).get("fast_score")
+        or _obj(assessment.get("functional_scores")).get("fast")
+        or _obj(assessment.get("functional_scores")).get("fast_stage")
+        or _obj(assessment.get("functional_scores")).get("fast_score")
+        or _obj(content.get("functional_assessment")).get("fast")
+        or _obj(content.get("functional_assessment")).get("fast_stage")
+        or _obj(content.get("functional_assessment")).get("fast_score")
+        or _obj(assessment.get("functional_assessment")).get("fast")
+        or _obj(assessment.get("functional_assessment")).get("fast_stage")
+        or _obj(assessment.get("functional_assessment")).get("fast_score")
+        or _obj(content.get("scores")).get("fast")
+        or _obj(content.get("scores")).get("fast_stage")
+        or _obj(content.get("scores")).get("fast_score")
+        or _obj(assessment.get("scores")).get("fast")
+        or _obj(assessment.get("scores")).get("fast_stage")
+        or _obj(assessment.get("scores")).get("fast_score")
+    )
+
+    nyha = (
+        content.get("nyha")
+        or content.get("nyha_class")
+        or assessment.get("nyha")
+        or assessment.get("nyha_class")
+        or _obj(content.get("functional_scores")).get("nyha")
+        or _obj(content.get("functional_scores")).get("nyha_class")
+        or _obj(assessment.get("functional_scores")).get("nyha")
+        or _obj(assessment.get("functional_scores")).get("nyha_class")
+        or _obj(content.get("functional_assessment")).get("nyha")
+        or _obj(content.get("functional_assessment")).get("nyha_class")
+        or _obj(assessment.get("functional_assessment")).get("nyha")
+        or _obj(assessment.get("functional_assessment")).get("nyha_class")
+        or _obj(content.get("scores")).get("nyha")
+        or _obj(content.get("scores")).get("nyha_class")
+        or _obj(assessment.get("scores")).get("nyha")
+        or _obj(assessment.get("scores")).get("nyha_class")
+    )
+
+    required_scores: list[dict[str, str]] = [
+        {
+            "key": "pps",
+            "label": "PPS",
+            "value": pps,
+            "reason": (
+                "PPS is required for RN ICA, Update Assessment, "
+                "and Recertification Assessment."
+            ),
+            "correction": (
+                "Document a PPS score before finalizing this assessment."
+            ),
+        },
+        {
+            "key": "kps",
+            "label": "KPS",
+            "value": kps,
+            "reason": (
+                "KPS is required for RN ICA, Update Assessment, "
+                "and Recertification Assessment."
+            ),
+            "correction": (
+                "Document a KPS score before finalizing this assessment."
+            ),
+        },
+    ]
+
+    if (
+        dementia_related
+        and is_required_when_visible(
+            "fast_stage"
+        )
+    ):
+        required_scores.append(
+            {
+                "key": "fast",
+                "label": "FAST",
+                "value": fast,
+                "reason": (
+                    "FAST is required because a dementia-related diagnosis "
+                    "is documented and dementia progression is clinically relevant."
+                ),
+                "correction": (
+                    "Document a FAST stage before finalizing this assessment."
+                ),
+            }
+        )
+
+    if (
+        cardiac_related
+        and is_required_when_visible(
+            "nyha_class"
+        )
+    ):
+        required_scores.append(
+            {
+                "key": "nyha",
+                "label": "NYHA",
+                "value": nyha,
+                "reason": (
+                    "NYHA is required because a cardiac diagnosis is documented "
+                    "and cardiac progression is clinically relevant."
+                ),
+                "correction": (
+                    "Document an NYHA classification before finalizing this assessment."
+                ),
+            }
+        )
+
+    for required_score in required_scores:
+        score_key = required_score["key"]
+        score_label = required_score["label"]
+        score_value = required_score["value"]
+
+        if not _empty(score_value):
+            continue
+
+        warnings.append(
+            f"functional_assessment_missing:{score_key}"
+        )
+
+        audit_flags.append(
+            "functional_assessment_missing"
+        )
+
+        _add_blocker(
+            compliance_blocking_items,
+            "Functional Assessment",
+            score_label,
+            score_key,
+            f"{score_label} missing",
+            "RN_ICA_REQUIRED",
+            required_score["reason"],
+            required_score["correction"],
+            _navigation(
+                "Functional Assessment",
+                "functional_assessment",
+                "Functional Assessment",
+                score_key,
+                score_label,
+                score_key,
+                f"{score_label} Score",
+            ),
+            [
+                "RN_ICA_FINALIZATION",
+                "INITIAL_RN_ICA_TASK_COMPLETION",
+                "BILLING_READINESS",
+            ],
+        )
+    
+def _validate_vitals_and_muac(
+    content: dict[str, Any],
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+    warnings: list[str],
+    audit_flags: list[str],
+    compliance_blocking_items: list[dict[str, Any]],
+) -> None:
+    vitals = _extract_vitals(content, observed, assessment)
+
+    if not vitals:
+        warnings.append("vitals_missing")
+        audit_flags.append("vitals_missing")
+        return
+
+    missing_recommended = sorted(
+        field for field in VITALS_RECOMMENDED_FIELDS if _empty(vitals.get(field))
+    )
+
+    if missing_recommended:
+        warnings.append(f"vitals_missing_recommended:{', '.join(missing_recommended)}")
+        audit_flags.append("vitals_incomplete")
+
+    muac = _obj(vitals.get("muac") or assessment.get("muac") or observed.get("muac"))
+
+    if muac:
+        missing_muac = sorted(
+            field for field in MUAC_REQUIRED_WHEN_PRESENT if _empty(muac.get(field))
+        )
+
+        if missing_muac:
+            warnings.append(f"muac_incomplete:{', '.join(missing_muac)}")
+            audit_flags.append("muac_incomplete")
+
+            _add_blocker(
+                compliance_blocking_items,
+                "Vitals / Measurements",
+                "MUAC",
+                None,
+                "MUAC measurement incomplete",
+                "RN_ICA_REQUIRED",
+                "MUAC was started but required MUAC value or arm side is missing.",
+                "Complete MUAC value in centimeters and select Left or Right arm.",
+                _navigation(
+                    "Vitals / Measurements",
+                    "vitals",
+                    "Vitals / Measurements",
+                    "muac",
+                    "MUAC",
+                    "muac",
+                    "MUAC Measurement",
+                ),
+                [
+                    "RN_ICA_FINALIZATION",
+                    "BILLING_READINESS",
+                ],
+            )
+
+        arm = _clean_upper(muac.get("arm"))
+        if arm and arm not in VALID_MUAC_ARMS:
+            warnings.append(f"muac_invalid_arm:{arm}")
+            audit_flags.append("muac_invalid_arm")
+
+
+def _validate_pain_assessment(
+    content: dict[str, Any],
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+    warnings: list[str],
+    audit_flags: list[str],
+    compliance_blocking_items: list[dict[str, Any]],
+) -> None:
+    pain = _extract_pain(content, observed, assessment)
+
+    if not pain:
+        return
+
+    pain_present = (
+        _truthy(pain.get("pain_present"))
+        or _numeric(pain.get("severity")) > 0
+        or _numeric(pain.get("pain_score")) > 0
+    )
+
+    if not pain_present:
+        return
+
+    self_report_capable = pain.get("self_report_capable")
+
+    if self_report_capable is None:
+        warnings.append("pain_present_without_self_report_capability")
+        audit_flags.append("pain_assessment_incomplete")
+        _add_pain_blocker(
+            compliance_blocking_items,
+            "Pain self-report capability missing",
+            "Pain is present but the note does not identify whether the patient can reliably self-report pain.",
+            "Document whether the patient can reliably self-report pain.",
+            "self_report_capable",
+            "Can Patient Reliably Self-Report Pain?",
+        )
+        return
+
+    scale_used = _clean_upper(pain.get("pain_scale_used"))
+
+    if _truthy(self_report_capable):
+        if scale_used not in VALID_SELF_REPORT_PAIN_SCALES:
+            warnings.append("pain_self_report_without_valid_scale")
+            audit_flags.append("pain_assessment_incomplete")
+            _add_pain_blocker(
+                compliance_blocking_items,
+                "Pain scale missing",
+                "Patient can self-report pain but no valid numeric/verbal pain scale is documented.",
+                "Select Numeric, Verbal, or Faces pain scale and document score/response.",
+                "pain_scale_used",
+                "Pain Scale Used",
+            )
+
+    else:
+        if scale_used not in VALID_OBSERVATIONAL_PAIN_SCALES:
+            warnings.append("pain_nonverbal_without_painad_or_flacc")
+            audit_flags.append("pain_assessment_incomplete")
+            _add_pain_blocker(
+                compliance_blocking_items,
+                "Observational pain scale missing",
+                "Patient cannot reliably self-report pain. PAINAD or FLACC is required.",
+                "Complete PAINAD or FLACC assessment.",
+                "pain_scale_used",
+                "Pain Scale Used",
+            )
+
 
 def _validate_symptom_interventions(
-    *,
     observed: dict[str, Any],
+    assessment: dict[str, Any],
     interventions: dict[str, Any],
     warnings: list[str],
 ) -> None:
-    pain = _obj(observed.get("pain"))
-    respiratory = _obj(observed.get("respiratory"))
-    skin = _obj(observed.get("skin"))
+    pain = _extract_pain({}, observed, assessment)
+    respiratory = _obj(observed.get("respiratory") or assessment.get("respiratory"))
+    skin = _obj(observed.get("skin") or assessment.get("skin"))
 
-    if _truthy(pain.get("pain_present")) or _numeric(pain.get("severity")) > 0:
+    if (
+        _truthy(pain.get("pain_present"))
+        or _numeric(pain.get("severity")) > 0
+        or _numeric(pain.get("pain_score")) > 0
+    ):
         if not interventions.get("pain"):
             warnings.append("pain_present_without_documented_intervention")
 
-    dyspnea_level = str(respiratory.get("dyspnea_level") or "").upper()
-    if dyspnea_level in {"MODERATE", "SEVERE"} and not interventions.get("respiratory"):
+    dyspnea_level = _clean_upper(respiratory.get("dyspnea_level") or respiratory.get("dyspnea"))
+    if dyspnea_level in {"MODERATE", "SEVERE", "AT_REST"} and not interventions.get("respiratory"):
         warnings.append("moderate_or_severe_dyspnea_without_intervention")
 
     if _truthy(skin.get("skin_tear")) and not interventions.get("skin"):
@@ -314,15 +1364,15 @@ def _validate_symptom_interventions(
 
 
 def _validate_discipline_specific(
-    *,
     note: ClinicalNote,
+    content: dict[str, Any],
     observed: dict[str, Any],
     assessment: dict[str, Any],
     warnings: list[str],
 ) -> None:
-    discipline = _clean_upper(getattr(note, "discipline", None))
-    encounter_type = _clean_upper(getattr(note, "encounter_type", None))
-    visit_type = _clean_upper(getattr(note, "visit_type", None))
+    discipline = _clean_upper(_note_value(note, content, "discipline"))
+    encounter_type = _clean_upper(_note_value(note, content, "encounter_type"))
+    visit_type = _clean_upper(_note_value(note, content, "visit_type"))
 
     if discipline in {"MSW", "SC"}:
         baseline_ref = assessment.get("rn_baseline_reference_id")
@@ -330,7 +1380,7 @@ def _validate_discipline_specific(
             warnings.append("msw_sc_comprehensive_note_missing_rn_baseline_reference")
 
     if discipline in {"HHA", "CHHA"}:
-        adls = _obj(observed.get("adls"))
+        adls = _obj(observed.get("adls") or assessment.get("adls"))
         if not adls:
             warnings.append("hha_note_missing_adl_observation")
 
@@ -344,7 +1394,6 @@ def _validate_discipline_specific(
 # =========================================================
 
 def _detect_incident(
-    *,
     note: ClinicalNote,
     observed: dict[str, Any],
     patient_reported: dict[str, Any],
@@ -368,9 +1417,9 @@ def _detect_incident(
         or _truthy(_obj(observed.get("incident")).get("fall"))
     )
 
-    skin = _obj(observed.get("skin"))
-    injury = _obj(observed.get("injury"))
-    med_event = _obj(observed.get("medication_event"))
+    skin = _obj(observed.get("skin") or assessment.get("skin"))
+    injury = _obj(observed.get("injury") or assessment.get("injury"))
+    med_event = _obj(observed.get("medication_event") or assessment.get("medication_event"))
     disposition = _obj(assessment.get("disposition"))
 
     skin_tear = _truthy(skin.get("skin_tear")) or _truthy(injury.get("skin_tear"))
@@ -409,16 +1458,19 @@ def _detect_incident(
         "no",
         "no injury",
     }
+
     injury_observed = any([skin_tear, bruise, laceration, fracture])
 
     if caregiver_no_injury and injury_observed:
         red_flags.append("reported_no_injury_but_clinician_observed_injury")
         clarification_items.append("family/facility report of no injury differs from clinician findings")
         incident_required = True
+
         if incident_type == INCIDENT_TYPE_OTHER and (fall_reported or fall_observed):
             incident_type = INCIDENT_TYPE_FALL
 
-    if incident_required and getattr(note, "note_category", None) == "MISSED_VISIT":
+    note_category = _clean_upper(_note_value(note, _content(note), "note_category"))
+    if incident_required and note_category == "MISSED_VISIT":
         warnings.append("incident flagged on note that appears to be a missed visit; review workflow context")
 
     return {
@@ -434,7 +1486,6 @@ def _detect_incident(
 
 def _ensure_incident_report(
     db: Session,
-    *,
     note: ClinicalNote,
     actor_user_id: UUID | None,
     incident_type: str,
@@ -455,6 +1506,7 @@ def _ensure_incident_report(
         )
         .first()
     )
+
     if existing:
         return existing.id
 
@@ -497,24 +1549,359 @@ def _ensure_incident_report(
     db.flush()
 
     _write_audit_log(
-        db=db,
-        actor_user_id=actor_user_id,
-        actor_role="SYSTEM_ENGINE",
-        action="INCIDENT_AUTO_CREATED",
-        entity_type="incident_report",
-        entity_id=incident.id,
+        db,
+        actor_user_id,
+        "SYSTEM_ENGINE",
+        "INCIDENT_AUTO_CREATED",
+        "incident_report",
+        incident.id,
     )
 
     return incident.id
 
 
 # =========================================================
-# AUDIT LOGGING (BEST EFFORT)
+# COMPLIANCE BLOCKER HELPERS
+# =========================================================
+
+def _add_blocker(
+    blocking_items: list[dict[str, Any]],
+    section: str,
+    subsection: str,
+    item_code: str | None,
+    label: str,
+    compliance_type: str,
+    reason: str,
+    correction_required: str,
+    navigation: dict[str, Any],
+    blocks: list[str],
+) -> None:
+    blocking_items.append(
+        {
+            "section": section,
+            "subsection": subsection,
+            "item_code": item_code,
+            "label": label,
+            "compliance_type": compliance_type,
+            "severity": "HARD_STOP",
+            "reason": reason,
+            "correction_required": correction_required,
+            "navigation": navigation,
+            "blocks": blocks,
+        }
+    )
+
+
+def _add_pain_blocker(
+    blocking_items: list[dict[str, Any]],
+    label: str,
+    reason: str,
+    correction_required: str,
+    field_code: str,
+    field_label: str,
+) -> None:
+    _add_blocker(
+        blocking_items,
+        "Pain Assessment",
+        "Pain Assessment",
+        None,
+        label,
+        "RN_ICA_REQUIRED",
+        reason,
+        correction_required,
+        _navigation(
+            "Pain Assessment",
+            "pain_assessment",
+            "Pain Assessment",
+            "pain",
+            "Pain Assessment",
+            field_code,
+            field_label,
+        ),
+        [
+            "RN_ICA_FINALIZATION",
+            "INITIAL_RN_ICA_TASK_COMPLETION",
+            "BILLING_READINESS",
+        ],
+    )
+
+
+def _navigation(
+    ui_panel: str,
+    section_code: str,
+    section_title: str,
+    subsection_code: str,
+    subsection_title: str,
+    field_code: str,
+    field_label: str,
+    button_label: str = "Fix Now",
+) -> dict[str, Any]:
+    return {
+        "ui_tab": "RN ICA",
+        "ui_panel": ui_panel,
+        "section_code": section_code,
+        "section_title": section_title,
+        "subsection_code": subsection_code,
+        "subsection_title": subsection_title,
+        "field_code": field_code,
+        "field_label": field_label,
+        "scroll_anchor": f"{section_code}.{subsection_code}.{field_code}",
+        "button_label": button_label,
+    }
+
+
+# =========================================================
+# EXTRACTION HELPERS
+# =========================================================
+
+def _content(note: ClinicalNote) -> dict[str, Any]:
+    return note.content if isinstance(getattr(note, "content", None), dict) else {}
+
+
+def _extract_json_block(
+    note: ClinicalNote,
+    content: dict[str, Any],
+    key: str,
+    aliases: list[str] | None = None,
+) -> dict[str, Any]:
+    aliases = aliases or []
+
+    direct = getattr(note, key, None)
+    if isinstance(direct, dict):
+        return direct
+
+    value = content.get(key)
+    if isinstance(value, dict):
+        return value
+
+    for alias in aliases:
+        alias_value = content.get(alias)
+        if isinstance(alias_value, dict):
+            return alias_value
+
+    return {}
+
+
+def _note_value(note: ClinicalNote, content: dict[str, Any], key: str) -> Any:
+    if hasattr(note, key):
+        value = getattr(note, key)
+        if value is not None:
+            return value
+
+    if key in content:
+        return content.get(key)
+
+    metadata = _obj(content.get("metadata"))
+    if key in metadata:
+        return metadata.get(key)
+
+    visit = _obj(content.get("visit"))
+    if key in visit:
+        return visit.get(key)
+
+    return None
+
+
+def _extract_review_of_systems(
+    content: dict[str, Any],
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    candidates = [
+        observed.get("review_of_systems"),
+        assessment.get("review_of_systems"),
+        content.get("review_of_systems"),
+        _obj(content.get("assessment")).get("review_of_systems"),
+    ]
+
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            return candidate
+
+    direct_ros: dict[str, Any] = {}
+    search_keys = REQUIRED_FULL_ROS_SECTIONS.union(set(ROS_SECTION_ALIASES.keys()))
+
+    for key in search_keys:
+        if key in assessment and isinstance(assessment.get(key), dict):
+            direct_ros[key] = assessment[key]
+
+        if key in observed and isinstance(observed.get(key), dict):
+            direct_ros[key] = observed[key]
+
+        if key in content and isinstance(content.get(key), dict):
+            direct_ros[key] = content[key]
+
+    return direct_ros
+
+
+def _extract_vitals(
+    content: dict[str, Any],
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    candidates = [
+        observed.get("vitals"),
+        assessment.get("vitals"),
+        content.get("vitals"),
+        _obj(content.get("assessment")).get("vitals"),
+    ]
+
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            return candidate
+
+    return {}
+
+
+def _extract_pain(
+    content: dict[str, Any],
+    observed: dict[str, Any],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    candidates = [
+        observed.get("pain"),
+        observed.get("pain_assessment"),
+        assessment.get("pain"),
+        assessment.get("pain_assessment"),
+        content.get("pain"),
+        content.get("pain_assessment"),
+        _obj(content.get("assessment")).get("pain"),
+        _obj(content.get("assessment")).get("pain_assessment"),
+    ]
+
+    for candidate in candidates:
+        if isinstance(candidate, dict):
+            return candidate
+
+    legacy_pain_score = assessment.get("pain_score") or content.get("pain_score")
+    if legacy_pain_score is not None:
+        return {
+            "pain_present": True,
+            "pain_score": legacy_pain_score,
+            "severity": legacy_pain_score,
+        }
+
+    return {}
+
+
+# =========================================================
+# ROS HELPERS
+# =========================================================
+
+def _canonicalize_ros(raw_ros: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+
+    for raw_key, value in raw_ros.items():
+        key = str(raw_key or "").strip().lower()
+        canonical = ROS_SECTION_ALIASES.get(key, key)
+        result[canonical] = value
+
+    return result
+
+def _ros_section_is_complete(
+    section: str,
+    section_data: dict[str, Any],
+) -> bool:
+    if not section_data:
+        return False
+
+    if _value_present(section_data.get("assessment")):
+        return True
+
+    if _value_present(section_data.get("findings")):
+        return True
+
+    if _value_present(section_data.get("narrative")):
+        return True
+
+    rules = ROS_COMPLETENESS_RULES.get(section)
+
+    if not rules:
+        return bool(section_data)
+
+    minimum_fields = rules.get("minimum_any_fields") or []
+
+    return _has_any_deep(
+        section_data,
+        minimum_fields,
+    )
+
+def _has_any_deep(data: dict[str, Any], keys: list[str]) -> bool:
+    for key in keys:
+        if _value_present(data.get(key)):
+            return True
+
+    for value in data.values():
+        if isinstance(value, dict) and _has_any_deep(value, keys):
+            return True
+
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict) and _has_any_deep(item, keys):
+                    return True
+
+                if _value_present(item):
+                    return True
+
+    return False
+
+
+def _section_label(section: str) -> str:
+    rule = ROS_COMPLETENESS_RULES.get(section)
+    if rule:
+        return str(rule.get("label") or section)
+
+    return str(section).replace("_", " ").title()
+
+
+# =========================================================
+# PERSISTENCE HELPERS
+# =========================================================
+
+def _persist_validation_result_to_note(
+    note: ClinicalNote,
+    warnings: list[str],
+    red_flags: list[str],
+    audit_flags: list[str],
+    clarification_items: list[str],
+    incident_required: bool,
+    incident_status: str,
+    incident_id: UUID | None,
+    finalization_allowed: bool,
+    compliance_blocking_items: list[dict[str, Any]],
+    compliance_summary: dict[str, Any],
+) -> None:
+    content = _content(note)
+
+    if not isinstance(content, dict):
+        content = {}
+
+    validation_payload = {
+        "warnings": warnings,
+        "red_flags": red_flags,
+        "audit_flags": audit_flags,
+        "needs_clarification": bool(clarification_items),
+        "clarification_items": clarification_items,
+        "incident_required": incident_required,
+        "incident_status": incident_status,
+        "incident_id": str(incident_id) if incident_id else None,
+        "finalization_allowed": finalization_allowed,
+        "compliance_blocking_items": compliance_blocking_items,
+        "compliance_summary": compliance_summary,
+    }
+
+    content["_validation"] = validation_payload
+
+    note.content = content
+
+    _flag_json_modified(note, "content")
+
+# =========================================================
+# AUDIT LOGGING
 # =========================================================
 
 def _write_audit_log(
     db: Session,
-    *,
     actor_user_id: UUID | None,
     actor_role: str,
     action: str,
@@ -560,13 +1947,11 @@ def _write_audit_log(
                 },
             )
     except SQLAlchemyError:
-        # Best-effort only.
-        # Do not rollback the caller's clinical note transaction.
         return
 
 
 # =========================================================
-# HELPERS
+# GENERAL HELPERS
 # =========================================================
 
 def _obj(value: Any) -> dict[str, Any]:
@@ -598,7 +1983,15 @@ def _truthy(value: Any) -> bool:
         return value != 0
 
     if isinstance(value, str):
-        return value.strip().lower() in {"true", "yes", "y", "1", "present", "required"}
+        return value.strip().lower() in {
+            "true",
+            "yes",
+            "y",
+            "1",
+            "present",
+            "required",
+            "positive",
+        }
 
     return False
 
@@ -610,8 +2003,51 @@ def _numeric(value: Any) -> float:
         return 0.0
 
 
+def _empty(value: Any) -> bool:
+    if value is None:
+        return True
+
+    if isinstance(value, str) and not value.strip():
+        return True
+
+    if isinstance(value, dict) and not value:
+        return True
+
+    if isinstance(value, list) and not value:
+        return True
+
+    return False
+
+
+def _value_present(value: Any) -> bool:
+    if value is None:
+        return False
+
+    if isinstance(value, bool):
+        return True
+
+    if isinstance(value, (int, float)):
+        return True
+
+    if isinstance(value, str):
+        return bool(value.strip())
+
+    if isinstance(value, dict):
+        return bool(value)
+
+    if isinstance(value, list):
+        return bool(value)
+
+    return False
+
+
+# =========================================================
+# INCIDENT COERCION HELPERS
+# =========================================================
+
 def _coerce_report_party(data: dict[str, Any]) -> str | None:
     reported_by = str(data.get("reported_by") or "").strip().upper()
+
     if reported_by in {
         "PATIENT",
         "PCG",
@@ -633,6 +2069,7 @@ def _coerce_report_party(data: dict[str, Any]) -> str | None:
 
 def _coerce_witness_party(data: dict[str, Any]) -> str | None:
     witnessed = str(data.get("witnessed_by") or "").strip().upper()
+
     if witnessed in {
         "NOT_WITNESSED",
         "STAFF",
@@ -669,7 +2106,15 @@ def _coerce_area(observed: dict[str, Any], assessment: dict[str, Any]) -> str | 
         or ""
     ).strip().upper()
 
-    approved = {"PT_ROOM_BEDROOM", "HALLWAY", "BATHROOM", "STEPS", "KITCHEN", "OTHER"}
+    approved = {
+        "PT_ROOM_BEDROOM",
+        "HALLWAY",
+        "BATHROOM",
+        "STEPS",
+        "KITCHEN",
+        "OTHER",
+    }
+
     return area if area in approved else None
 
 
@@ -680,13 +2125,32 @@ def _coerce_surface(observed: dict[str, Any], assessment: dict[str, Any]) -> str
         or ""
     ).strip().upper()
 
-    approved = {"CARPET", "RUNNER", "THROW_AWAY_RUG", "SLAB", "WOOD", "OTHER"}
+    approved = {
+        "CARPET",
+        "RUNNER",
+        "THROW_AWAY_RUG",
+        "SLAB",
+        "WOOD",
+        "OTHER",
+    }
+
     return surface if surface in approved else None
 
 
 def _coerce_medication_used(observed: dict[str, Any]) -> str | None:
-    med_used = str(_obj(observed.get("medication_event")).get("medication_used") or "").strip().upper()
-    approved = {"NONE", "ANALGESIC", "SEDATIVE", "OPIATE", "OTHER"}
+    med_used = str(
+        _obj(observed.get("medication_event")).get("medication_used")
+        or ""
+    ).strip().upper()
+
+    approved = {
+        "NONE",
+        "ANALGESIC",
+        "SEDATIVE",
+        "OPIATE",
+        "OTHER",
+    }
+
     return med_used if med_used in approved else None
 
 

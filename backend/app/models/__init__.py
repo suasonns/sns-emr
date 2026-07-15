@@ -42,6 +42,9 @@ from app.models.patient_insurance import PatientInsurance
 from app.models.visit import Visit
 from app.models.benefit_period import BenefitPeriod
 
+from app.models.patient_facesheet import PatientFaceSheet
+from app.models.patient_diagnosis import PatientDiagnosis
+
 # 🔴 REQUIRED for your error fix
 from app.models.medication import Medication
 
@@ -96,6 +99,7 @@ from app.models.assessment import Assessment
 from app.models.assessment_reference import AssessmentReference
 from app.models.assessment_discrepancy import AssessmentDiscrepancy
 
+from app.models.clinical_workflow_map import ClinicalWorkflowMap
 from app.models.med_reconciliation import (
     MedReconciliationImport,
     MedReconciliationItem,
@@ -146,6 +150,22 @@ from app.billing.models.contract import Contract
 
 from app.billing.models.claim_export_log import ClaimExportLog
 
+
+# ---------------------------------------------------------
+# ✅ POC PHYSICIAN APPROVAL TRACKING
+# ---------------------------------------------------------
+
+from app.models.poc_physician_approval import (
+    PocPhysicianApproval,
+    PocPhysicianApprovalDocument,
+    PocPhysicianApprovalAuditEvent,
+)
+
+# ---------------------------------------------------------
+# ✅ EXPORT
+# ---------------------------------------------------------
+
+__all__ = ["Base"]
 
 # ---------------------------------------------------------
 # ✅ EXPORT

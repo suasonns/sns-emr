@@ -31,6 +31,26 @@ class User(BaseModel):
         nullable=False,
     )
 
+    first_name = Column(
+        String(100),
+        nullable=True,
+    )
+
+    middle_name = Column(
+        String(100),
+        nullable=True,
+    )
+
+    last_name = Column(
+        String(100),
+        nullable=True,
+    )
+
+    display_name = Column(
+        String(200),
+        nullable=True,
+    )
+
     # =========================================================
     # ROLE (FUNCTIONAL ROLE)
     # =========================================================

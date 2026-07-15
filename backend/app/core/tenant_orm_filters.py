@@ -5,9 +5,9 @@ import uuid
 
 from sqlalchemy import event
 from sqlalchemy.orm import Session, with_loader_criteria
-from sqlalchemy.sql import false, true
 
 from app.models.base import BaseModel
+from app.core.tenant_context import get_current_tenant
 
 logger = logging.getLogger("tenant")
 
@@ -26,7 +26,7 @@ def _normalize_tenant_id(value):
     try:
         return uuid.UUID(str(value))
     except Exception:
-        return value
+        return None
 
 
 # =========================================================
@@ -36,15 +36,11 @@ def _normalize_tenant_id(value):
 @event.listens_for(Session, "do_orm_execute")
 def _tenant_filter(execute_state) -> None:
     """
-    Enterprise ORM tenant filter.
+    Enterprise ORM tenant filter (GLOBAL ENFORCEMENT)
 
-    Behavior:
-    - tenant_id = UUID → enforce tenant filtering
-    - tenant_id = None → SUPER ADMIN MODE (no filtering)
-
-    Security:
-    - tenant-scoped models are protected in normal mode
-    - super-admin mode explicitly bypasses filtering
+    Rules:
+    - tenant_id present → enforce isolation
+    - tenant_id None → SUPER ADMIN MODE
     """
 
     if not execute_state.is_select:
@@ -53,15 +49,16 @@ def _tenant_filter(execute_state) -> None:
     if execute_state.execution_options.get("skip_tenant_filter", False):
         return
 
-    tenant_id = _normalize_tenant_id(
-        execute_state.session.info.get("tenant_id")
-    )
+    tenant_id = _normalize_tenant_id(get_current_tenant())
 
-    # ✅ SUPER ADMIN MODE — NO FILTER AT ALL
+    # ✅ SUPER ADMIN MODE
     if tenant_id is None:
-        logger.warning("TENANT FILTER: SUPER ADMIN MODE ENABLED (no tenant filtering)")
+        logger.warning(
+            "TENANT FILTER: SUPER ADMIN MODE ENABLED (no tenant filtering)"
+        )
         return
 
+    # ✅ GLOBAL FILTER (ALL TENANT MODELS)
     execute_state.statement = execute_state.statement.options(
         with_loader_criteria(
             BaseModel,
@@ -69,10 +66,9 @@ def _tenant_filter(execute_state) -> None:
                 cls.tenant_id == tenant_id
                 if getattr(cls, "__tenant_scoped__", False)
                 and hasattr(cls, "tenant_id")
-                else true()
+                else True
             ),
             include_aliases=True,
-            track_closure_variables=False,
         )
     )
 
@@ -84,23 +80,27 @@ def _tenant_filter(execute_state) -> None:
 @event.listens_for(Session, "before_flush")
 def _tenant_stamp_and_block(session: Session, flush_context, instances) -> None:
     """
-    Behavior:
-    - tenant_id = UUID → enforce tenant isolation ✅
-    - tenant_id = None → SUPER ADMIN MODE (no restriction)
+    Enterprise write protection
 
-    Enterprise Rules:
-    - auto-stamp tenant_id when missing
-    - prevent cross-tenant writes
+    Rules:
+    - tenant_id present → enforce strict isolation
+    - tenant_id None → SUPER ADMIN MODE
+
+    Guarantees:
+    - no cross-tenant writes
+    - auto-stamp new records
     """
 
     if session.info.get("skip_tenant_filter", False):
         return
 
-    tenant_id = _normalize_tenant_id(session.info.get("tenant_id"))
+    tenant_id = _normalize_tenant_id(get_current_tenant())
 
-    # ✅ SUPER ADMIN MODE — ALLOW ALL WRITES
+    # ✅ SUPER ADMIN MODE
     if tenant_id is None:
-        logger.warning("TENANT WRITE: SUPER ADMIN MODE (write allowed across tenants)")
+        logger.warning(
+            "TENANT WRITE: SUPER ADMIN MODE ENABLED (cross-tenant allowed)"
+        )
         return
 
     if not tenant_id:

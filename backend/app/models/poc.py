@@ -8,7 +8,7 @@ Design principles:
 - Indentation-safe (ASCII only)
 """
 
-from sqlalchemy import Boolean, Column, DateTime, Text
+from sqlalchemy import Boolean, Column, DateTime, Text, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func, text
 
@@ -17,6 +17,19 @@ from app.db.base import Base
 
 class POCProblemTemplate(Base):
     __tablename__ = "poc_problem_templates"
+
+    __table_args__ = (
+        # ✅ prevents duplicate templates per condition
+        UniqueConstraint(
+            "condition",
+            "problem_label",
+            name="uq_poc_template_condition_problem",
+        ),
+
+        # ✅ performance indexes
+        Index("idx_poc_template_condition", "condition"),
+        Index("idx_poc_template_active", "is_active"),
+    )
 
     # ------------------------------------------------------------------
     # Primary key
@@ -59,6 +72,26 @@ class POCProblemTemplate(Base):
         doc="Creation timestamp (audit-safe)",
     )
 
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+        doc="Last update timestamp (audit-safe)",
+    )
+
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+        doc="Optional audit field for creator",
+    )
+
+    updated_by_user_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+        doc="Optional audit field for last editor",
+    )
+
     # ------------------------------------------------------------------
     # Enterprise safety helpers (NO DB side effects)
     # ------------------------------------------------------------------
@@ -73,4 +106,5 @@ class POCProblemTemplate(Base):
             "problem_label": self.problem_label,
             "is_active": self.is_active,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

@@ -1,4 +1,7 @@
 import uuid
+
+from sqlalchemy import text
+
 from datetime import datetime, timezone, timedelta
 
 import pytest
@@ -19,6 +22,13 @@ def stable_uuid(name: str) -> uuid.UUID:
 
 SOC = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
 
+def _pick_user_id(db_session):
+    user_id = db_session.execute(
+        text("SELECT id FROM users LIMIT 1")
+    ).scalar()
+
+    assert user_id is not None
+    return user_id
 
 def _ensure_patient(db_session, pid: uuid.UUID):
     p = db_session.get(Patient, pid)
@@ -27,6 +37,7 @@ def _ensure_patient(db_session, pid: uuid.UUID):
 
     tenant_id = db_session.info.get("tenant_id")
     assert tenant_id
+    user_id = _pick_user_id(db_session)
 
     p = Patient(
         id=pid,
@@ -38,6 +49,7 @@ def _ensure_patient(db_session, pid: uuid.UUID):
         status="ACTIVE",
         admission_status="PRE_REFERRAL",
         acuity_state="ROUTINE",
+        created_by=user_id,
     )
     db_session.add(p)
     db_session.commit()

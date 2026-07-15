@@ -4,55 +4,68 @@ Tenant resolver (Phase 3.2)
 ENTERPRISE GUARANTEES:
 - READ-ONLY
 - Queries ONLY core.tenants
+- Returns BOTH tenant_id and schema_name
 - NO schema switching
 - NO routing
-- NO clinical table access
 - SAFE to import anywhere
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
+from uuid import UUID
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
-def resolve_tenant_schema(
+def resolve_tenant_context(
     *,
     db: Session,
     tenant_code: Optional[str],
-) -> Optional[str]:
+) -> Tuple[Optional[UUID], Optional[str]]:
     """
-    Resolve a tenant code to a PostgreSQL schema name.
+    Resolve a tenant_code into tenant_id and schema_name.
+
+    Returns:
+        (tenant_id, schema_name)
 
     Behavior:
-    - tenant_code is None or empty -> return None
-    - tenant_code not found -> return None
-    - tenant exists but not ACTIVE -> return None
-    - tenant exists and ACTIVE -> return schema_name
+    - tenant_code is None → (None, None)
+    - tenant not found → (None, None)
+    - tenant not ACTIVE → (None, None)
+    - tenant ACTIVE → (tenant_id, schema_name)
 
     IMPORTANT:
-    - This function is READ-ONLY
-    - Queries ONLY core.tenants
-    - Does NOT mutate session state
+    - READ-ONLY
+    - No session mutation
     """
 
     if not tenant_code:
-        return None
+        return None, None
+
+    tenant_code = tenant_code.strip().upper()
 
     row = db.execute(
         text(
             """
-            SELECT schema_name
+            SELECT id, schema_name
             FROM core.tenants
             WHERE tenant_code = :tenant_code
               AND status = 'ACTIVE'
+            LIMIT 1
             """
         ),
         {"tenant_code": tenant_code},
     ).fetchone()
 
     if not row:
-        return None
+        return None, None
 
-    return row[0]
+    tenant_id, schema_name = row
+
+    # ✅ DEFENSIVE VALIDATION
+    if not schema_name:
+        return None, None
+
+    return tenant_id, schema_name

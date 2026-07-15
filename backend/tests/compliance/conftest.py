@@ -53,7 +53,7 @@ if app is None:
 from app.models.visit import Visit
 from app.models.user import User
 from app.models.patient import Patient
-
+from app.models.enums import VisitFormType
 
 # ---------------------------------------------------------
 # Deterministic helpers (enterprise-grade)
@@ -248,6 +248,9 @@ def routine_rn_visit(db_session, provider_user, ensure_patient):
 
     existing = db_session.get(Visit, visit_id)
     if existing:
+        existing.form_type = VisitFormType.ASSESS.value
+        db_session.commit()
+        db_session.refresh(existing)
         return existing
 
     visit = Visit(
@@ -257,12 +260,14 @@ def routine_rn_visit(db_session, provider_user, ensure_patient):
         provider_id=provider_user.id,
         visit_type="RN",
         visit_discipline="RN",
+        form_type=VisitFormType.ASSESS.value,
         acuity_state_at_visit="ROUTINE",
         is_supervisory=False,
         visit_datetime=FIXED_NOW_UTC,
         status="DRAFT",
         visit_mode="IN_PERSON",
     )
+    
     db_session.add(visit)
     db_session.commit()
     return visit

@@ -3,7 +3,9 @@
   "disease": "PULMONARY_COPD_RESPIRATORY_FAILURE",
   "lcd_reference": "LCD Hospice Eligibility Determination – Pulmonary Disease",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+  "eligibility_result": {
+  "status": "PENDING"
+  },
 
   "group_combination_rule": "ALL_GROUPS_REQUIRED",
 

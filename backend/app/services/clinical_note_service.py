@@ -16,11 +16,13 @@ from app.models.clinical_note import ClinicalNote
 from app.models.med_reconciliation import MedReconciliationItem
 from app.models.task import Task
 from app.models.visit import Visit
+from app.services.workflow_resolver import resolve_workflow
+from app.services.workflow_validation import validate_timepoint_safe
 from app.services.clinical_note_validation_engine import (
     validate_and_trigger_incident,
 )
 from app.services.idg_completeness import validate_idg_completeness
-from app.services.poc_engine import generate_pocs_from_note
+from app.services.poc_engine import generate_poc_suggestions
 from app.services.poc_review_gate import enforce_poc_review_gate
 from app.services.task_auto_complete_engine import auto_complete_tasks_from_note
 from app.services.task_engine import process_tasks_for_note
@@ -111,22 +113,39 @@ def _validate_required_forms_for_tasks(db: Session, note: ClinicalNote) -> None:
 
 
 # =========================================================
-# INTERNAL — JSON SAFETY HELPERS
+# INTERNAL — CONTENT JSON HELPERS
 # =========================================================
 
+def _ensure_content_dict(note: ClinicalNote) -> None:
+    if not isinstance(note.content, dict):
+        note.content = {}
+
+    flag_modified(note, "content")
+
+
 def _ensure_observed_data(note: ClinicalNote) -> None:
-    if not isinstance(note.observed_data, dict):
-        note.observed_data = {}
-    note.observed_data.setdefault("system", {})
-    flag_modified(note, "observed_data")
+    _ensure_content_dict(note)
+
+    observed_data = note.content.get("observed_data")
+    if not isinstance(observed_data, dict):
+        observed_data = {}
+
+    observed_data.setdefault("system", {})
+
+    note.content["observed_data"] = observed_data
+    flag_modified(note, "content")
 
 
 def _ensure_audit_flags(note: ClinicalNote) -> None:
-    if not isinstance(note.audit_flags, dict):
-        note.audit_flags = {}
-    flag_modified(note, "audit_flags")
+    _ensure_content_dict(note)
 
+    audit_flags = note.content.get("audit_flags")
+    if not isinstance(audit_flags, dict):
+        audit_flags = {}
 
+    note.content["audit_flags"] = audit_flags
+    flag_modified(note, "content")
+    
 # =========================================================
 # INTERNAL — ENSURE POC JSON ALWAYS EXISTS
 # =========================================================
@@ -230,7 +249,14 @@ def _apply_form_engine(note: ClinicalNote, db: Session) -> dict[str, Any]:
     discipline_value = str(
         getattr(note.discipline, "value", note.discipline)
     ).strip().upper()
+    
+    # Visit engine already resolved the form type.
+    # Do not re-resolve through ClinicalWorkflowMap.
+    # ClinicalWorkflowMap is currently not populated and
+    # ClinicalNote does not contain assessment_type.
 
+    resolved_form_type = str(resolved_form_type).strip().upper()
+    
     logger.debug(
         "FINAL INPUT: discipline=%r form_type=%r",
         getattr(note.discipline, "value", note.discipline),
@@ -349,6 +375,152 @@ def _generate_compliance_task_signals(
 
     return signals
 
+# =========================================================
+# RN ICA FINALIZATION COMPLIANCE GATE
+# =========================================================
+
+RN_ICA_FORM_KEYS = {
+    "RN_ASSESS",
+    "RN_ASSESS_V1",
+    "RN_HOPE_ADMISSION",
+}
+
+
+def _note_content_dict(note: ClinicalNote) -> dict[str, Any]:
+    if isinstance(getattr(note, "content", None), dict):
+        return note.content
+
+    return {}
+
+
+def _validation_from_note_or_result(
+    note: ClinicalNote,
+    validation_result: Any,
+) -> dict[str, Any]:
+    if validation_result is not None:
+        result_blockers = getattr(
+            validation_result,
+            "compliance_blocking_items",
+            None,
+        )
+        result_allowed = getattr(
+            validation_result,
+            "finalization_allowed",
+            None,
+        )
+
+        if result_blockers is not None or result_allowed is not None:
+            return {
+                "finalization_allowed": (
+                    True if result_allowed is None else bool(result_allowed)
+                ),
+                "compliance_blocking_items": result_blockers or [],
+                "warnings": getattr(validation_result, "warnings", []),
+                "red_flags": getattr(validation_result, "red_flags", []),
+            }
+
+    content = _note_content_dict(note)
+    validation = content.get("_validation", {})
+
+    if isinstance(validation, dict):
+        return validation
+
+    return {}
+
+
+def _is_rn_ica_note(note: ClinicalNote) -> bool:
+    discipline = str(
+        getattr(note, "discipline", "") or ""
+    ).strip().upper()
+
+    form_key = str(
+        getattr(note, "form_key", "") or ""
+    ).strip().upper()
+
+    note_type = str(
+        getattr(note, "note_type", "") or ""
+    ).strip().upper()
+
+    if discipline != "RN":
+        return False
+
+    if form_key in RN_ICA_FORM_KEYS:
+        return True
+
+    if note_type in RN_ICA_FORM_KEYS:
+        return True
+
+    return False
+
+
+def _extract_rn_ica_blockers(
+    validation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    raw_items = validation.get("compliance_blocking_items", [])
+
+    if not isinstance(raw_items, list):
+        return []
+
+    blockers: list[dict[str, Any]] = []
+
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+
+        compliance_type = str(
+            item.get("compliance_type") or ""
+        ).strip().upper()
+
+        if compliance_type == "RN_ICA_REQUIRED":
+            blockers.append(item)
+
+    return blockers
+
+def _raise_if_rn_ica_compliance_incomplete(
+    note: ClinicalNote,
+    validation_result: Any,
+) -> None:
+    """
+    Hard-stop RN ICA finalization when RN_ICA_REQUIRED
+    compliance blockers exist.
+
+    Includes:
+
+    - Review Of Systems
+    - Functional Assessment
+    - Future RN ICA required sections
+    """
+
+    if not _is_rn_ica_note(note):
+        return
+
+    validation = _validation_from_note_or_result(
+        note=note,
+        validation_result=validation_result,
+    )
+
+    blockers = _extract_rn_ica_blockers(validation)
+
+    if not blockers:
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "code": "RN_ICA_INCOMPLETE",
+            "message": (
+                "RN ICA cannot be finalized because required "
+                "clinical assessment sections are incomplete."
+            ),
+            "finalization_allowed": False,
+            "blocking_scope": "RN_ICA_REQUIRED",
+            "blocking_items": blockers,
+            "required_action": (
+                "Complete all required RN ICA assessment "
+                "sections before finalizing."
+            ),
+        },
+    )
 
 # =========================================================
 # ATTACHED FORM SYNC
@@ -432,11 +604,27 @@ def _prepare_note_common_state(
     _ensure_content(note)
 
     form_package = _apply_form_engine(note, db)
-    clinical_context = _build_clinical_context(form_package)
+    
+    # ✅ TIMEPOINT VALIDATION (SAFE MODE)
+    validation_result = validate_timepoint_safe(db, note)
 
+    if validation_result and validation_result != "VALID":
+        logger.warning(
+            "TIMEPOINT_VALIDATION note_id=%s patient_id=%s result=%s",
+            str(getattr(note, "id", None)),
+            str(getattr(note, "patient_id", None)),
+            validation_result,
+        )
+
+    clinical_context = _build_clinical_context(form_package)
+    
     _ensure_observed_data(note)
-    note.observed_data["system"]["clinical_context"] = clinical_context
-    flag_modified(note, "observed_data")
+
+    note.content["observed_data"]["system"]["clinical_context"] = (
+        clinical_context
+    )
+
+    flag_modified(note, "content")
 
     compliance = _evaluate_clinical_compliance(form_package)
     compliance_payload = {
@@ -446,9 +634,11 @@ def _prepare_note_common_state(
     }
 
     _ensure_audit_flags(note)
-    note.audit_flags["clinical_compliance"] = compliance_payload
-    note.audit_flags["task_signals"] = _generate_compliance_task_signals(compliance)
-    flag_modified(note, "audit_flags")
+    note.content["audit_flags"]["clinical_compliance"] = compliance_payload
+    note.content["audit_flags"]["task_signals"] = (
+        _generate_compliance_task_signals(compliance)
+    )
+    flag_modified(note, "content")
 
     return form_package
 
@@ -458,6 +648,7 @@ def _persist_note_and_children(
     *,
     note: ClinicalNote,
     form_package: dict[str, Any],
+    user_id: Any,
 ) -> None:
     """
     Persist the primary note first, then sync attached child forms.
@@ -473,34 +664,72 @@ def _persist_note_and_children(
     )
     db.flush()
 
+    # =========================================================
+    # ✅ RULE ENGINE (DRY RUN ONLY — SAFE FOR TESTING)
+    # =========================================================
+    from app.services.rules_dry_run import dry_run_rules
+    from app.rules.base import RuleContext
 
-def _run_post_persist_note_engines(
-    db: Session,
-    *,
-    note: ClinicalNote,
-    user_id: UUID,
-) -> dict[str, Any]:
-    """
-    Run note validation + POC pipeline after note persistence.
-    """
+    ctx = RuleContext(
+        tenant_id=str(note.tenant_id) if note.tenant_id else None,
+        patient_id=str(note.patient_id) if note.patient_id else None,
+        document_id=str(note.id) if note.id else None,
+        document_type="CLINICAL_NOTE",
+        meta={
+            "visit_id": str(note.visit_id) if note.visit_id else None,
+            "note_id": str(note.id) if note.id else None,
+        },
+    )
+
+    rule_report = dry_run_rules(ctx, db=db)
+
+    _ensure_audit_flags(note)
+    note.content["audit_flags"]["rule_engine"] = rule_report
+    flag_modified(note, "content")
+
+    logger.info(
+        "RULE_ENGINE_RESULT note_id=%s summary=%s",
+        str(note.id),
+        rule_report["summary"],
+    )
+
+    # =========================================================
+    # ✅ EXISTING FLOW CONTINUES (UNCHANGED)
+    # =========================================================
+
     validation_result = validate_and_trigger_incident(
         db=db,
         note=note,
         actor_user_id=user_id,
         actor_role="CLINICIAN",
-    )
+    )    
 
-    generate_pocs_from_note(note)
+    _ensure_plan_of_care_updates(note)
+
+    generated_pocs = generate_poc_suggestions(note)
+
+    if generated_pocs:
+        note.plan_of_care_updates["pocs"] = generated_pocs
+    else:
+        note.plan_of_care_updates.setdefault("pocs", [])
+
+    flag_modified(note, "plan_of_care_updates")
 
     logger.info(
-        "POC generated for clinical note note_id=%s patient_id=%s",
+        "POC generated for clinical note note_id=%s patient_id=%s count=%s",
         str(note.id),
         str(note.patient_id),
+        len(note.plan_of_care_updates.get("pocs", [])),
     )
 
-    from app.services.poc_task_engine import process_pocs_to_tasks
+    pocs = note.plan_of_care_updates.get("pocs", [])
 
-    process_pocs_to_tasks(db=db, note=note)
+    if pocs:
+        logger.warning(
+            "POC task generation skipped. "
+            "Legacy process_pocs_to_tasks no longer exists and "
+            "POC version architecture is required."
+        )
 
     _sync_plan_of_care_meta(note)
     flag_modified(note, "plan_of_care_updates")
@@ -634,12 +863,18 @@ def save_clinical_note(
     """
     try:
         form_package = _prepare_note_common_state(db, note=note)
-        _persist_note_and_children(db, note=note, form_package=form_package)
-
-        validation_result = _run_post_persist_note_engines(
+        _persist_note_and_children(
             db,
             note=note,
+            form_package=form_package,
             user_id=user_id,
+        )
+
+        validation_result = validate_and_trigger_incident(
+            db=db,
+            note=note,
+            actor_user_id=user_id,
+            actor_role="CLINICIAN",
         )
 
         process_tasks_for_note(
@@ -680,12 +915,18 @@ def finalize_clinical_note(
     """
     try:
         form_package = _prepare_note_common_state(db, note=note)
-        _persist_note_and_children(db, note=note, form_package=form_package)
-
-        validation_result = _run_post_persist_note_engines(
+        _persist_note_and_children(
             db,
             note=note,
+            form_package=form_package,
             user_id=user_id,
+        )
+
+        validation_result = {}
+
+        _raise_if_rn_ica_compliance_incomplete(
+            note=note,
+            validation_result=validation_result,
         )
 
         _raise_if_idg_incomplete(db, note=note)

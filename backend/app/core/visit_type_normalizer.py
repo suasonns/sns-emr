@@ -19,6 +19,7 @@ CANONICAL_VISIT_TYPES = {
     "SW",
     "CHAPLAIN",
     "AIDE",
+    "ADMINISTRATIVE",
 }
 
 

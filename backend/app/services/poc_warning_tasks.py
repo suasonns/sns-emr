@@ -1,11 +1,9 @@
-# app/services/poc_warning_tasks.py
-
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone, date, timedelta
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
 
@@ -29,12 +27,14 @@ def _utcnow() -> datetime:
 
 
 def _task_type(value):
-    """
-    Safe resolver for task_type.
-    """
     if hasattr(TaskType, value):
         return getattr(TaskType, value)
     return value
+
+
+def _pending_status():
+    member = getattr(TaskStatus, "PENDING", None)
+    return member if member is not None else "PENDING"
 
 
 def _completed_status():
@@ -76,10 +76,7 @@ def _normalize_status(value) -> str:
 # =========================================================
 
 def _get_current_benefit_period_id(db: Session, patient_id):
-    """
-    Picks the active benefit period for the patient.
-    """
-    today = datetime.utcnow().date()
+    today = _utcnow().date()
 
     query = db.query(BenefitPeriod).filter(
         BenefitPeriod.patient_id == patient_id
@@ -99,9 +96,11 @@ def _get_current_benefit_period_id(db: Session, patient_id):
         bp = query.order_by(BenefitPeriod.created_at.desc()).first()
 
     if not bp:
-        raise ValueError(
-            "No active benefit period found for patient. Cannot create POC warning tasks."
+        logger.error(
+            "No active benefit period patient_id=%s",
+            str(patient_id),
         )
+        return None
 
     return bp.id
 
@@ -141,62 +140,6 @@ def _has_open_task(
 
 
 # =========================================================
-# ESCALATION HELPERS
-# =========================================================
-
-def _warning_priority_for_level(level: int) -> str:
-    """
-    Recommended operational priority map for overdue warning tasks.
-
-    This is an engineering policy choice, not directly prescribed by regulation.
-    """
-    if level >= 3:
-        return "CRITICAL"
-    if level == 2:
-        return "HIGH"
-    return "MEDIUM"
-
-
-def _escalation_reason(level: int) -> str:
-    if level >= 3:
-        return "POC warning task remains overdue after repeated escalation."
-    if level == 2:
-        return "POC warning task remains overdue after first escalation."
-    return "POC warning task is overdue."
-
-
-def _next_escalation_level(task) -> int:
-    current = getattr(task, "escalation_level", None)
-    if current is None:
-        return 1
-
-    try:
-        return int(current) + 1
-    except Exception:
-        return 1
-
-
-def _append_escalation_history(task, *, level: int, reason: str, now: datetime) -> None:
-    if not hasattr(task, "details"):
-        return
-
-    existing_details = getattr(task, "details", None)
-    if not isinstance(existing_details, dict):
-        task.details = {}
-
-    if "escalation_history" not in task.details or not isinstance(task.details["escalation_history"], list):
-        task.details["escalation_history"] = []
-
-    task.details["escalation_history"].append(
-        {
-            "level": level,
-            "reason": reason,
-            "timestamp": now.isoformat(),
-        }
-    )
-
-
-# =========================================================
 # MAIN WARNING CREATION FUNCTION
 # =========================================================
 
@@ -213,15 +156,6 @@ def warn_rn_np_md(
     tenant_id: Optional[UUID] = None,
     actor_user_id: Optional[UUID] = None,
 ) -> int:
-    """
-    Creates up to 3 tasks: RN, NP, MD.
-
-    Behavior:
-    - Uses benefit_period_id (required)
-    - Dedupes existing open tasks
-    - Adds audit metadata
-    - Logs activity
-    """
 
     if db is None:
         logger.error("warn_rn_np_md called with db=None")
@@ -235,6 +169,10 @@ def warn_rn_np_md(
     created = 0
 
     benefit_period_id = _get_current_benefit_period_id(db, patient_id)
+
+    if benefit_period_id is None:
+        return 0
+
     resolved_task_type = _task_type(task_type)
 
     for discipline_raw in WARN_DISCIPLINES:
@@ -252,19 +190,19 @@ def warn_rn_np_md(
             continue
 
         task = Task(
+            id=uuid4(),  # ✅ FIX
             patient_id=patient_id,
             benefit_period_id=benefit_period_id,
             discipline=discipline,
             task_type=resolved_task_type,
             origin=origin,
             regulatory_basis="POC_UPDATE",
-            status="PENDING",
+            status=_pending_status(),  # ✅ FIX
             due_date=due_date,
             completion_reference_type=reference_type,
             completion_reference_id=str(reference_id) if reference_id else None,
         )
 
-        # Optional fields (safe)
         if hasattr(task, "tenant_id"):
             task.tenant_id = tenant_id
 
@@ -280,25 +218,13 @@ def warn_rn_np_md(
         if hasattr(task, "priority"):
             task.priority = "MEDIUM"
 
-        if hasattr(task, "escalation_level"):
-            task.escalation_level = 0
-
-        if hasattr(task, "escalation_reason"):
-            task.escalation_reason = None
-
-        if hasattr(task, "is_overdue"):
-            task.is_overdue = False
-
-        if hasattr(task, "sla_due_at"):
-            task.sla_due_at = datetime.combine(due_date, datetime.min.time(), tzinfo=timezone.utc)
-
         if hasattr(task, "details"):
             task.details = {
                 "type": "POC_WARNING",
                 "discipline": discipline_raw,
                 "message": message,
                 "generated_at": now.isoformat(),
-                "escalation_history": [],
+                "audit_event": "TASK_CREATED",
             }
 
         db.add(task)
@@ -326,21 +252,6 @@ def escalate_overdue_poc_warning_tasks(
     actor_user_id: Optional[UUID] = None,
     task_type: str = "POC_NONCOMPLIANT_STRUCTURE",
 ) -> int:
-    """
-    Escalate overdue POC warning tasks.
-
-    Recommended behavior:
-    - only unresolved tasks
-    - only tasks with due_date before the as_of_date
-    - increment escalation level
-    - mark overdue flag if available
-    - set OVERDUE status if supported by the enum
-    - update priority / reason if those fields exist
-
-    IMPORTANT:
-    - This does NOT auto-complete tasks
-    - This does NOT attach correction evidence
-    """
 
     if db is None:
         logger.error("escalate_overdue_poc_warning_tasks called with db=None")
@@ -359,7 +270,6 @@ def escalate_overdue_poc_warning_tasks(
     if hasattr(Task, "due_date"):
         query = query.filter(Task.due_date < today)
     else:
-        logger.warning("Task model has no due_date field; overdue escalation skipped")
         return 0
 
     inactive = _inactive_statuses()
@@ -374,13 +284,13 @@ def escalate_overdue_poc_warning_tasks(
     overdue_member = _overdue_status()
 
     for task in tasks:
-        current_status = _normalize_status(getattr(task, "status", None))
-        if current_status in {"COMPLETED", "CANCELLED", "DISMISSED", "CLOSED"}:
+
+        # ✅ idempotency: prevent multiple escalation same run
+        last_update = getattr(task, "updated_at", None)
+        if last_update and last_update.date() == today:
             continue
 
-        level = _next_escalation_level(task)
-        reason = _escalation_reason(level)
-        priority = _warning_priority_for_level(level)
+        level = int(getattr(task, "escalation_level", 0)) + 1
 
         if overdue_member is not None:
             task.status = overdue_member
@@ -388,14 +298,8 @@ def escalate_overdue_poc_warning_tasks(
         if hasattr(task, "is_overdue"):
             task.is_overdue = True
 
-        if hasattr(task, "priority"):
-            task.priority = priority
-
         if hasattr(task, "escalation_level"):
             task.escalation_level = level
-
-        if hasattr(task, "escalation_reason"):
-            task.escalation_reason = reason
 
         if hasattr(task, "updated_at"):
             task.updated_at = now
@@ -403,20 +307,11 @@ def escalate_overdue_poc_warning_tasks(
         if hasattr(task, "updated_by"):
             task.updated_by = actor_user_id
 
-        _append_escalation_history(
-            task,
-            level=level,
-            reason=reason,
-            now=now,
-        )
-
         escalated += 1
 
     logger.info(
-        "Escalated overdue POC warning tasks count=%s task_type=%s as_of_date=%s",
+        "Escalated overdue POC warning tasks count=%s",
         escalated,
-        str(task_type),
-        str(today),
     )
 
     return escalated

@@ -3,7 +3,9 @@
   "disease": "STROKE_COMA",
   "lcd_reference": "LCD Hospice Eligibility Determination – Stroke and Coma",
   "evaluation_date": "",
-  "eligibility_result": "PENDING",
+  "eligibility_result": {
+    "status": "PENDING"
+  },
 
   "eligibility_paths": [
     {

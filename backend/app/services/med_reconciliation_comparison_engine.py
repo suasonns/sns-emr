@@ -115,4 +115,5 @@ def _same_dose(a: MedicationSnapshot, b: MedicationSnapshot) -> bool:
     return a.dose_normalized == b.dose_normalized
 
 
-def _same_route
+def _same_route(a: MedicationSnapshot, b: MedicationSnapshot) -> bool:
+    return a.route_normalized == b.route_normalized

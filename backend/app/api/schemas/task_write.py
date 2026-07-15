@@ -14,12 +14,17 @@ class TaskCompletePayload(BaseModel):
     """
 
     completion_reference_type: CompletionReferenceType = Field(
-        example="VISIT",
         description="Type of evidence used to complete the task",
+        json_schema_extra={
+            "example": "VISIT"
+        },
     )
+
     completion_reference_id: UUID = Field(
-        example="4d132a34-8518-4a54-8aba-8479155495f5",
         description="UUID of the evidence record (usually a finalized visit)",
+        json_schema_extra={
+            "example": "4d132a34-8518-4a54-8aba-8479155495f5"
+        },
     )
 
 
@@ -32,6 +37,8 @@ class TaskCompleteJSONRequest(TaskCompletePayload):
     """
 
     task_id: UUID = Field(
-        example="f7ec0ba6-839c-4aa7-95e8-49f324519f90",
         description="Task UUID to complete",
+        json_schema_extra={
+            "example": "f7ec0ba6-839c-4aa7-95e8-49f324519f90"
+        },
     )

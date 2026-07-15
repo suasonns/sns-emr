@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
@@ -14,23 +15,13 @@ from sqlalchemy import (
     Index,
     String,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
 
 
 class HospiceServiceLevel(str, Enum):
-    """
-    Canonical hospice levels of care for SNS EMR.
-
-    CMS hospice payment categories include:
-    - General inpatient care
-    - Inpatient respite care
-    - Continuous home care
-    - Routine home care
-
-    This model file covers the non-routine levels represented by these tables.
-    """
     GIP = "GIP"
     RESPITE = "RESPITE"
     CONTINUOUS_CARE = "CONTINUOUS_CARE"
@@ -40,17 +31,20 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# ---------------------------------------------------------
+# GIP PERIOD
+# ---------------------------------------------------------
 class GIPPeriod(Base):
     __tablename__ = "gip_periods"
 
-    id = Column(String, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    tenant_id = Column(String, nullable=True, index=True)
-    patient_id = Column(String, ForeignKey("patients.id"), nullable=False, index=True)
-    visit_id = Column(String, ForeignKey("visits.id"), nullable=True, index=True)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id"), nullable=True, index=True)
 
-    service_level = Column(String, nullable=False, default=HospiceServiceLevel.GIP.value)
-    status = Column(String, nullable=False, default="ACTIVE")
+    service_level = Column(String(32), nullable=False, default=HospiceServiceLevel.GIP.value)
+    status = Column(String(32), nullable=False, default="ACTIVE")
 
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
@@ -59,8 +53,9 @@ class GIPPeriod(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
-    created_by = Column(String, nullable=True)
-    updated_by = Column(String, nullable=True)
+
+    created_by = Column(UUID(as_uuid=True), nullable=True)
+    updated_by = Column(UUID(as_uuid=True), nullable=True)
 
     patient = relationship("Patient", foreign_keys=[patient_id])
     visit = relationship("Visit", foreign_keys=[visit_id])
@@ -71,17 +66,20 @@ class GIPPeriod(Base):
     )
 
 
+# ---------------------------------------------------------
+# RESPITE PERIOD
+# ---------------------------------------------------------
 class RespitePeriod(Base):
     __tablename__ = "respite_periods"
 
-    id = Column(String, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    tenant_id = Column(String, nullable=True, index=True)
-    patient_id = Column(String, ForeignKey("patients.id"), nullable=False, index=True)
-    visit_id = Column(String, ForeignKey("visits.id"), nullable=True, index=True)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id"), nullable=True, index=True)
 
-    service_level = Column(String, nullable=False, default=HospiceServiceLevel.RESPITE.value)
-    status = Column(String, nullable=False, default="ACTIVE")
+    service_level = Column(String(32), nullable=False, default=HospiceServiceLevel.RESPITE.value)
+    status = Column(String(32), nullable=False, default="ACTIVE")
 
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
@@ -90,8 +88,9 @@ class RespitePeriod(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
-    created_by = Column(String, nullable=True)
-    updated_by = Column(String, nullable=True)
+
+    created_by = Column(UUID(as_uuid=True), nullable=True)
+    updated_by = Column(UUID(as_uuid=True), nullable=True)
 
     patient = relationship("Patient", foreign_keys=[patient_id])
     visit = relationship("Visit", foreign_keys=[visit_id])
@@ -102,17 +101,20 @@ class RespitePeriod(Base):
     )
 
 
+# ---------------------------------------------------------
+# CONTINUOUS CARE EVENT
+# ---------------------------------------------------------
 class ContinuousCareEvent(Base):
     __tablename__ = "continuous_care_events"
 
-    id = Column(String, primary_key=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    tenant_id = Column(String, nullable=True, index=True)
-    patient_id = Column(String, ForeignKey("patients.id"), nullable=False, index=True)
-    visit_id = Column(String, ForeignKey("visits.id"), nullable=True, index=True)
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False, index=True)
+    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id"), nullable=True, index=True)
 
-    service_level = Column(String, nullable=False, default=HospiceServiceLevel.CONTINUOUS_CARE.value)
-    status = Column(String, nullable=False, default="ACTIVE")
+    service_level = Column(String(32), nullable=False, default=HospiceServiceLevel.CONTINUOUS_CARE.value)
+    status = Column(String(32), nullable=False, default="ACTIVE")
 
     start_date = Column(Date, nullable=False, index=True)
     end_date = Column(Date, nullable=False, index=True)
@@ -121,8 +123,9 @@ class ContinuousCareEvent(Base):
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
-    created_by = Column(String, nullable=True)
-    updated_by = Column(String, nullable=True)
+
+    created_by = Column(UUID(as_uuid=True), nullable=True)
+    updated_by = Column(UUID(as_uuid=True), nullable=True)
 
     patient = relationship("Patient", foreign_keys=[patient_id])
     visit = relationship("Visit", foreign_keys=[visit_id])

@@ -43,10 +43,10 @@ class BillingSnapshot(Base):
     )
 
     # ---------------------------------------------------------
-    # OPTIONAL BILLING CONTEXT (FIXED TYPE ✅)
+    # ✅ FIXED: MATCH billing_cycles.id (UUID)
     # ---------------------------------------------------------
     billing_cycle_id = Column(
-        String,  # ✅ MUST MATCH billing_cycles.id (VARCHAR)
+        UUID(as_uuid=True),
         ForeignKey("billing_cycles.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -64,20 +64,18 @@ class BillingSnapshot(Base):
     version = Column(
         String(50),
         nullable=True,
-        doc="Optional version tag or sequence number",
     )
 
     # ---------------------------------------------------------
-    # SNAPSHOT DATA (CRITICAL FOR AUDIT)
+    # SNAPSHOT DATA
     # ---------------------------------------------------------
     data = Column(
         JSON,
         nullable=False,
-        doc="Full serialized billing snapshot payload",
     )
 
     # ---------------------------------------------------------
-    # AUDIT FIELDS (CRITICAL)
+    # AUDIT FIELDS
     # ---------------------------------------------------------
     created_at = Column(
         DateTime(timezone=True),
@@ -86,10 +84,7 @@ class BillingSnapshot(Base):
         index=True,
     )
 
-    created_by = Column(
-        String(255),
-        nullable=True,
-    )
+    created_by = Column(String(255), nullable=True)
 
     # ---------------------------------------------------------
     # RELATIONSHIPS

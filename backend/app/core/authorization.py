@@ -11,6 +11,8 @@ VALID_ROLES = {
     "RN",
     "LVN",
     "LPN",
+    "CHHA",
+    "VOLUNTEER",
     "MD",
     "NP",
     "SW",
@@ -29,12 +31,13 @@ VALID_VISIT_TYPES = {
     "CHAPLAIN",
     "CHHA",
     "AIDE",
+    "VOLUNTEER",
 }
 
 VALID_ACTIONS = {
-    "document",
-    "finalize",
-    "review",
+    "DOCUMENT",
+    "FINALIZE",
+    "REVIEW",
 }
 
 
@@ -43,7 +46,7 @@ VALID_ACTIONS = {
 # =========================================================
 
 def _normalize(value: str) -> str:
-    return value.strip().upper()
+    return str(value).strip().upper()
 
 
 # =========================================================
@@ -59,12 +62,29 @@ def authorize_documentation(
     """
     Enterprise-grade clinical authorization.
 
-    Guarantees:
-    ✅ role validation
-    ✅ visit_type validation
-    ✅ action validation
-    ✅ discipline enforcement
-    ✅ future extensibility (F2F / CTI / attestation)
+    Rules:
+
+    RN
+        RN, NP, MD, Medical Director
+
+    CHHA
+        CHHA documents CHHA
+        RN/LVN/LPN may also document
+
+    Volunteer
+        Volunteer documents volunteer
+
+    Social Work
+        SW documents SW
+
+    Chaplain
+        Chaplain documents Chaplain
+
+    Physician
+        MD/NP and Medical Director roles
+
+    Finalization
+        RN/NP/MD/Medical Director roles only
     """
 
     # -----------------------------------------------------
@@ -84,7 +104,7 @@ def authorize_documentation(
         )
 
     # -----------------------------------------------------
-    # Validate visit_type
+    # Validate visit type
     # -----------------------------------------------------
     if visit_type not in VALID_VISIT_TYPES:
         raise HTTPException(
@@ -102,60 +122,118 @@ def authorize_documentation(
         )
 
     # -----------------------------------------------------
-    # RN VISIT RULES
+    # RN
     # -----------------------------------------------------
     if visit_type == "RN":
-        if user_role not in {"RN", "NP", "MD", "MEDICAL_DIRECTOR"}:
+        if user_role not in {
+            "RN",
+            "NP",
+            "MD",
+            "MEDICAL_DIRECTOR",
+            "ALTERNATE_MEDICAL_DIRECTOR",
+            "MEDICAL_DIRECTOR_DESIGNEE",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only RN/NP/MD can document RN visits",
+                detail="Only RN/NP/MD roles can document RN visits",
             )
 
     # -----------------------------------------------------
-    # CHHA / AIDE RULES
+    # CHHA / AIDE
     # -----------------------------------------------------
-    if visit_type in {"CHHA", "AIDE"}:
-        if user_role not in {"RN", "LVN", "LPN"}:
+    elif visit_type in {"CHHA", "AIDE"}:
+        if user_role not in {
+            "CHHA",
+            "RN",
+            "LVN",
+            "LPN",
+        }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only nursing staff can document CHHA/AIDE visits",
+                detail="User not authorized to document CHHA visits",
+            )
+
+    # -----------------------------------------------------
+    # VOLUNTEER
+    # -----------------------------------------------------
+    elif visit_type == "VOLUNTEER":
+        if user_role not in {
+            "VOLUNTEER",
+            "RN",
+            "NP",
+            "MD",
+            "MEDICAL_DIRECTOR",
+            "ALTERNATE_MEDICAL_DIRECTOR",
+            "MEDICAL_DIRECTOR_DESIGNEE",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not authorized to document volunteer visits",
             )
 
     # -----------------------------------------------------
     # SOCIAL WORK
     # -----------------------------------------------------
-    if visit_type == "SW" and user_role != "SW":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only SW can document social work visits",
-        )
+    elif visit_type == "SW":
+        if user_role not in {
+            "SW",
+            "RN",
+            "NP",
+            "MD",
+            "MEDICAL_DIRECTOR",
+            "ALTERNATE_MEDICAL_DIRECTOR",
+            "MEDICAL_DIRECTOR_DESIGNEE",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not authorized to document social work visits",
+            )
 
     # -----------------------------------------------------
     # CHAPLAIN
     # -----------------------------------------------------
-    if visit_type == "CHAPLAIN" and user_role != "CHAPLAIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Chaplain can document chaplain visits",
-        )
+    elif visit_type == "CHAPLAIN":
+        if user_role != "CHAPLAIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only chaplain may document chaplain visits",
+            )
 
     # -----------------------------------------------------
-    # PHYSICIAN VISITS
+    # PHYSICIAN / NP
     # -----------------------------------------------------
-    if visit_type in {"MD", "NP"}:
+    elif visit_type in {"MD", "NP"}:
         if user_role not in {
             "MD",
             "NP",
             "MEDICAL_DIRECTOR",
             "ALTERNATE_MEDICAL_DIRECTOR",
+            "MEDICAL_DIRECTOR_DESIGNEE",
         }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only physician/NP roles can document MD/NP visits",
+                detail="Only physician roles may document MD/NP visits",
             )
 
     # -----------------------------------------------------
-    # FINALIZATION RULES
+    # LVN
+    # -----------------------------------------------------
+    elif visit_type == "LVN":
+        if user_role not in {
+            "LVN",
+            "LPN",
+            "RN",
+            "NP",
+            "MD",
+            "MEDICAL_DIRECTOR",
+        }:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User not authorized to document LVN visits",
+            )
+
+    # -----------------------------------------------------
+    # Finalization
     # -----------------------------------------------------
     if action == "FINALIZE":
         if user_role not in {
@@ -164,13 +242,11 @@ def authorize_documentation(
             "MD",
             "MEDICAL_DIRECTOR",
             "ALTERNATE_MEDICAL_DIRECTOR",
+            "MEDICAL_DIRECTOR_DESIGNEE",
         }:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="User not authorized to finalize clinical documentation",
             )
 
-    # -----------------------------------------------------
-    # SUCCESS
-    # -----------------------------------------------------
     return True

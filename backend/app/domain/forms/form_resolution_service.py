@@ -175,19 +175,46 @@ def _close_db_if_owned(db: Session, owned: bool) -> None:
 # DB LOOKUP HELPERS
 # =====================================================
 
-def _fetch_modules_for_form(db: Session, form_registry_id: Any) -> list[str]:
-    rows = (
-        db.query(FormModule.module_key)
-        .join(
-            FormPackageModule,
-            FormPackageModule.module_id == FormModule.id,
-        )
-        .filter(FormPackageModule.form_registry_id == form_registry_id)
-        .order_by(FormModule.module_key.asc())
+from sqlalchemy import text
+
+def _fetch_modules_for_form(db_session, form_registry_id):
+    result = db_session.execute(
+        text("""
+            SELECT module_id
+            FROM form_package_modules
+            WHERE form_registry_id = :form_id
+            ORDER BY display_order
+        """),
+        {"form_id": form_registry_id},
+    )
+
+    rows = result.fetchall()
+
+    if not rows:
+        return []
+
+    module_ids = [row[0] for row in rows]
+
+    modules = (
+        db_session.query(FormModule)
+        .filter(FormModule.id.in_(module_ids))
         .all()
     )
-    return [row.module_key for row in rows]
 
+    module_lookup = {
+        m.id: m.module_key
+        for m in modules
+    }
+
+    ordered_modules = []
+
+    for module_id in module_ids:
+        key = module_lookup.get(module_id)
+
+        if key:
+            ordered_modules.append(key)
+
+    return ordered_modules
 
 def _find_active_form_by_key(
     db: Session,
@@ -214,68 +241,94 @@ def _mapped_form_key_for_request(
     event_type: str | None,
 ) -> str:
     """
-    Map request semantics -> canonical live DB-backed form_key.
-
-    This mapping is intentionally explicit to prevent drift.
+    Deterministic mapping:
+    discipline + form_type + event_type → canonical form_key
     """
 
     d = normalize_discipline(discipline)
     f = normalize_form_type(form_type)
-    
-    
+    e = normalize_event_type(event_type)
+
+    # =====================================================
+    # ✅ RN LOGIC (HIGHEST COMPLEXITY)
+    # =====================================================
     if d == "RN":
+
+        # ✅ SOC ALWAYS PRIORITY
         if f == "ASSESS":
             return "RN_ASSESS"
+
         if f == "ROUTINE_VISIT":
             return "RN_ROUTINE"
+
         if f == "SHORT_FORM":
             return "RN_ROUTINE"
+
         if f == "SUPV_VISIT_ONLY":
             return "RN_SUPV"
+
         raise ValueError(
-            f"RN form_type '{f}' is not configured in the DB-backed form engine yet"
+            f"RN form_type '{f}' is not configured in resolver"
         )
 
+    # =====================================================
+    # ✅ LVN LOGIC
+    # =====================================================
     if d == "LVN":
-        if f == "ROUTINE_VISIT":
+        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
             return "LVN_ROUTINE"
-        if f == "SHORT_FORM":
-            return "LVN_ROUTINE"
+
         raise ValueError(
-            f"LVN form_type '{f}' is not configured in the DB-backed form engine yet"
+            f"LVN cannot perform form_type '{f}'"
         )
 
+    # =====================================================
+    # ✅ LPN LOGIC (optional but clean)
+    # =====================================================
+    if d == "LPN":
+        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
+            return "LPN_ROUTINE"
+
+        raise ValueError(
+            f"LPN cannot perform form_type '{f}'"
+        )
+
+    # =====================================================
+    # ✅ MSW
+    # =====================================================
     if d == "MSW":
-        if f == "ROUTINE_VISIT":
+        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
             return "MSW_ROUTINE"
-        if f == "SHORT_FORM":
-            return "MSW_ROUTINE"
+
         raise ValueError(
-            f"MSW form_type '{f}' is not configured in the DB-backed form engine yet"
+            f"MSW cannot perform form_type '{f}'"
         )
 
+    # =====================================================
+    # ✅ CHAPLAIN
+    # =====================================================
     if d == "CHAPLAIN":
-        if f == "ROUTINE_VISIT":
+        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
             return "CHAPLAIN_ROUTINE"
-        if f == "SHORT_FORM":
-            return "CHAPLAIN_ROUTINE"
+
         raise ValueError(
-            f"CHAPLAIN form_type '{f}' is not configured in the DB-backed form engine yet"
+            f"CHAPLAIN cannot perform form_type '{f}'"
         )
 
+    # =====================================================
+    # ✅ AIDE
+    # =====================================================
     if d == "AIDE":
-        if f == "ROUTINE_VISIT":
+        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
             return "HHA_VISIT"
-        if f == "SHORT_FORM":
-            return "HHA_VISIT"
+
         raise ValueError(
-            f"AIDE form_type '{f}' is not configured in the DB-backed form engine yet"
+            f"AIDE cannot perform form_type '{f}'"
         )
 
     raise ValueError(
-        f"No DB-backed form mapping exists for discipline={d}, form_type={f}"
+        f"No mapping exists for discipline={d}, form_type={f}, event_type={e}"
     )
-
 
 def _attached_form_keys_for_request(
     *,
@@ -371,8 +424,11 @@ def resolve_form_package(
             raise ValueError(
                 f"Configured form_key '{target_form_key}' does not exist or is inactive"
             )
-
-        modules = _fetch_modules_for_form(db_session, form.id)
+        
+        modules = _fetch_modules_for_form(
+            db_session,
+            form.id,
+        )
 
         if not modules:
             raise ValueError(

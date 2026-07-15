@@ -472,7 +472,14 @@ def authorize_admission(
 
     if hasattr(patient, "updated_at"):
         patient.updated_at = _now_utc()
+        
+    # Admission status transition
+    if hasattr(patient, "admission_status"):
+        patient.admission_status = "ADMITTED"
 
+    if hasattr(patient, "status"):
+        patient.status = "ACTIVE"
+        
     origin_admission = _required_enum_member(TaskOrigin, ["ADMISSION", "SYSTEM"])
     origin_periodic = _required_enum_member(TaskOrigin, ["PERIODIC", "SYSTEM"])
 

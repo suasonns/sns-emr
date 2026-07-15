@@ -33,6 +33,7 @@ class Base(DeclarativeBase):
 # CORE PATIENT DOMAIN
 import app.models.patient
 import app.models.patient_assignment
+import app.models.patient_diagnosis
 import app.models.task
 import app.models.benefit_period
 

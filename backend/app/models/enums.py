@@ -123,17 +123,14 @@ class TaskDiscipline(str, enum.Enum):
     BSW = "BSW"
     LCSW = "LCSW"
 
-    # ✅ SPIRITUAL CARE (CANONICAL)
     SC = "SC"
-
-    # ✅ LEGACY / DISPLAY ONLY
     CHAPLAIN = "CHAPLAIN"
 
     AIDE = "AIDE"
 
 
 # ==========================================================
-# ✅ DISCIPLINE NORMALIZATION (CRITICAL)
+# ✅ DISCIPLINE NORMALIZATION
 # ==========================================================
 
 DISCIPLINE_NORMALIZATION_MAP = {
@@ -157,14 +154,6 @@ DISCIPLINE_NORMALIZATION_MAP = {
 
 
 def normalize_discipline(value: str) -> str:
-    """
-    Converts any discipline into core discipline.
-
-    REQUIRED for:
-    ✅ IDG validation
-    ✅ task assignment
-    ✅ signature matching
-    """
     return DISCIPLINE_NORMALIZATION_MAP.get(value, value)
 
 
@@ -224,8 +213,16 @@ class SafetyResponsibilityEnum(str, enum.Enum):
 
 
 # ==========================================================
-# VISIT FORMS
+# ✅ VISIT ENUMS (FIXED + ENTERPRISE SAFE)
 # ==========================================================
+
+class VisitEventType(str, enum.Enum):
+    SOC = "SOC"
+    CHANGE_OF_CONDITION = "CHANGE_OF_CONDITION"
+    NEW_ORDER = "NEW_ORDER"
+    RECERT = "RECERT"
+    UPDATE_ASSESSMENT = "UPDATE_ASSESSMENT"
+
 
 class VisitFormType(str, enum.Enum):
     ASSESS = "ASSESS"
@@ -248,6 +245,90 @@ class NoteFormFamily(str, enum.Enum):
 
 
 # ==========================================================
+# DIAGNOSIS ENUMS (POSTGRESQL-BACKED — MUST MATCH DB)
+# ==========================================================
+
+class DiagnosisType(str, enum.Enum):
+    """
+    Classification of a patient diagnosis.
+
+    Governance:
+    - PRIMARY: official or proposed terminal/hospice primary diagnosis.
+    - SECONDARY: supporting diagnosis related to the hospice clinical picture.
+    - COMORBIDITY: active medical condition relevant to care, coverage,
+      medication relatedness, or IDG/POC planning.
+    """
+
+    PRIMARY = "PRIMARY"
+    SECONDARY = "SECONDARY"
+    COMORBIDITY = "COMORBIDITY"
+
+
+class DiagnosisStatus(str, enum.Enum):
+    """
+    Lifecycle state of a diagnosis.
+
+    PROPOSED:
+        Entered from referral/intake or suggested by RN/MD review but not yet
+        accepted as the official active diagnosis.
+
+    ACTIVE:
+        Current accepted diagnosis.
+
+    REJECTED:
+        Not accepted by Medical Director or clinical review.
+
+    HISTORICAL:
+        Previously active or previously proposed diagnosis retained for audit.
+    """
+
+    PROPOSED = "PROPOSED"
+    ACTIVE = "ACTIVE"
+    REJECTED = "REJECTED"
+    HISTORICAL = "HISTORICAL"
+
+
+class DiagnosisSource(str, enum.Enum):
+    """
+    Source workflow or authority that produced the diagnosis.
+
+    REFERRAL:
+        Diagnosis from referral packet, hospital record, facility record,
+        family report, or intake entry.
+
+    RN_ICA:
+        Diagnosis reviewed or entered during RN Initial Comprehensive Assessment.
+
+    SPECIALIST:
+        Diagnosis recommended/documented by treating specialist.
+
+    ATTENDING_PHYSICIAN:
+        Diagnosis from attending physician.
+
+    MEDICAL_DIRECTOR:
+        Diagnosis accepted/changed by hospice Medical Director.
+
+    CTI:
+        Diagnosis used in Certification of Terminal Illness.
+
+    RECERT:
+        Diagnosis used or updated during recertification.
+
+    MD:
+        Generic physician source retained for compatibility.
+    """
+
+    REFERRAL = "REFERRAL"
+    RN_ICA = "RN_ICA"
+    SPECIALIST = "SPECIALIST"
+    ATTENDING_PHYSICIAN = "ATTENDING_PHYSICIAN"
+    MEDICAL_DIRECTOR = "MEDICAL_DIRECTOR"
+    CTI = "CTI"
+    RECERT = "RECERT"
+    MD = "MD"
+
+
+# ==========================================================
 # EXPORTS
 # ==========================================================
 
@@ -261,8 +342,12 @@ __all__ = [
     "Discipline",
     "CareSettingEnum",
     "SafetyResponsibilityEnum",
+    "VisitEventType",
     "VisitFormType",
     "NoteFormFamily",
+    "DiagnosisType",
+    "DiagnosisStatus",
+    "DiagnosisSource",
     "CORE_DISCIPLINES",
     "normalize_discipline",
 ]

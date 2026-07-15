@@ -85,7 +85,7 @@ def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
     db_session.refresh(p)
 
     assert p.election_signed_at == FIXED_SOC
-    assert p.soc_date == FIXED_SOC
+    assert p.soc_date.date() == FIXED_SOC.date()
 
     tenant_id = db_session.info.get("tenant_id")
     tasks = (

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import List
+
 from sqlalchemy.orm import Session
 
-from app.models.idg_review import IDGReview
 from app.models.idg_note import IDGNote
+from app.models.idg_review import IDGReview
 
 
 def validate_idg_completeness(
@@ -14,10 +15,11 @@ def validate_idg_completeness(
     tenant_id,
 ) -> List[str]:
     """
-    Returns list of missing required elements.
-    Empty list = COMPLETE
+    Validate IDG review completeness.
 
-    Must be called inside transaction-safe workflow (e.g. FOR UPDATE context)
+    Returns:
+        list[str]: Missing or invalid IDG elements.
+        Empty list means the IDG review is complete.
     """
 
     review = (
@@ -34,35 +36,14 @@ def validate_idg_completeness(
 
     missing: List[str] = []
 
-    # =====================================================
-    # CORE FIELDS
-    # =====================================================
-
-    if not review.meeting_date:
-        missing.append("meeting_date")
+    if not review.review_date:
+        missing.append("review_date")
 
     if not review.patient_id:
         missing.append("patient_id")
 
-    if not review.benefit_period_id:
-        missing.append("benefit_period_id")
-
-    # =====================================================
-    # PLAN OF CARE
-    # =====================================================
-
-    if not review.primary_diagnosis:
-        missing.append("primary_diagnosis")
-
-    if not review.goals_of_care:
-        missing.append("goals_of_care")
-
-    if not review.interventions:
-        missing.append("interventions")
-
-    # =====================================================
-    # DISCIPLINE NOTES
-    # =====================================================
+    if not review.summary:
+        missing.append("summary")
 
     notes = (
         db.query(IDGNote)
@@ -73,36 +54,41 @@ def validate_idg_completeness(
         .all()
     )
 
-    # ✅ enforce uniqueness per discipline
     disciplines_seen = set()
     note_map = {}
 
-    for note in notes:
-        if note.discipline in disciplines_seen:
-            missing.append(f"{note.discipline}_duplicate_note")
+    for note_record in notes:
+        discipline = note_record.discipline
+
+        if discipline in disciplines_seen:
+            missing.append(f"{discipline}_duplicate_note")
             continue
 
-        disciplines_seen.add(note.discipline)
-        note_map[note.discipline] = note
+        disciplines_seen.add(discipline)
+        note_map[discipline] = note_record
 
-    # ✅ required IDG disciplines (enterprise-complete)
-    REQUIRED_DISCIPLINES = ["RN", "MSW", "MD", "SC"]
+    required_disciplines = [
+        "RN",
+        "MSW",
+        "MD",
+        "SC",
+    ]
 
-    for discipline in REQUIRED_DISCIPLINES:
-
+    for discipline in required_disciplines:
         if discipline not in note_map:
             missing.append(f"{discipline}_note_missing")
             continue
 
-        note = note_map[discipline]
+        note_record = note_map[discipline]
 
-        # ✅ safe content validation (no strip crash)
-        if not note.content:
+        if not note_record.note:
             missing.append(f"{discipline}_note_empty")
             continue
 
-        if isinstance(note.content, str):
-            if note.content.strip() == "":
-                missing.append(f"{discipline}_note_empty")
+        if (
+            isinstance(note_record.note, str)
+            and note_record.note.strip() == ""
+        ):
+            missing.append(f"{discipline}_note_empty")
 
     return missing

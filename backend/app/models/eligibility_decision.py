@@ -1,12 +1,16 @@
+from __future__ import annotations
+
+import uuid
+
 from sqlalchemy import (
     Column,
-    Integer,
     String,
     Date,
     DateTime,
     ForeignKey,
     Index,
 )
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
 from app.models.base import BaseModel
@@ -27,16 +31,26 @@ class EligibilityDecision(BaseModel):
     # ---------------------------------------------------------
     # Identity
     # ---------------------------------------------------------
-    id = Column(Integer, primary_key=True)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
 
     # ---------------------------------------------------------
     # Relationships
     # ---------------------------------------------------------
     patient_id = Column(
-        Integer,
+        UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
+    )
+
+    created_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
     )
 
     # ---------------------------------------------------------

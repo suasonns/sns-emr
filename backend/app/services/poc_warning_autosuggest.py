@@ -20,7 +20,7 @@ logger = logging.getLogger("sns_emr")
 # HELPERS
 # =========================================================
 
-def _utcnow():
+def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
@@ -28,9 +28,6 @@ def _task_type_noncompliant():
     """
     Safe resolver for POC_NONCOMPLIANT_STRUCTURE task type.
     """
-    value = getattr(Task, "task_type", None)
-
-    # Try enum first
     return "POC_NONCOMPLIANT_STRUCTURE"
 
 
@@ -57,14 +54,13 @@ def suggest_close_poc_noncompliant_structure_tasks(
     actor_user_id: Optional[UUID] = None,
 ) -> int:
     """
-    Auto-suggest closure by attaching a corrected POC note as evidence
-    to existing open POC_NONCOMPLIANT_STRUCTURE tasks.
+    Auto-suggest closure by attaching a corrected POC note as evidence.
 
     Behavior:
     - DOES NOT mark tasks completed
-    - ONLY attaches evidence when missing
+    - Attaches or corrects evidence linkage
     - idempotent-safe
-    - audit-friendly
+    - audit-safe (append-only metadata)
     """
 
     # -----------------------------------------------------
@@ -107,37 +103,50 @@ def suggest_close_poc_noncompliant_structure_tasks(
     # UPDATE LOOP
     # -----------------------------------------------------
     for task in tasks:
-        # idempotency guard
-        if getattr(task, "completion_reference_id", None) == str(corrected_note_id):
+
+        existing_ref_id = getattr(task, "completion_reference_id", None)
+
+        # ✅ IDENTITY GUARD (TRUE IDEMPOTENT)
+        if existing_ref_id == str(corrected_note_id):
             continue
 
-        # only attach if empty
-        if (
-            getattr(task, "completion_reference_type", None) is None
-            and not getattr(task, "completion_reference_id", None)
-        ):
-            if hasattr(task, "completion_reference_type"):
-                task.completion_reference_type = _reference_type_note()
+        # ✅ ATTACH OR CORRECT LINKAGE
+        if hasattr(task, "completion_reference_type"):
+            task.completion_reference_type = _reference_type_note()
 
-            if hasattr(task, "completion_reference_id"):
-                task.completion_reference_id = str(corrected_note_id)
+        if hasattr(task, "completion_reference_id"):
+            task.completion_reference_id = str(corrected_note_id)
 
-            # ✅ audit fields
-            if hasattr(task, "updated_at"):
-                task.updated_at = now
+        # -------------------------------------------------
+        # AUDIT FIELDS
+        # -------------------------------------------------
+        if hasattr(task, "updated_at"):
+            task.updated_at = now
 
-            if hasattr(task, "updated_by"):
-                task.updated_by = actor_user_id
+        if hasattr(task, "updated_by"):
+            task.updated_by = actor_user_id
 
-            # ✅ optional metadata
-            if hasattr(task, "details") and isinstance(task.details, dict):
-                task.details["autosuggest"] = {
-                    "type": "POC_NONCOMPLIANT_STRUCTURE",
-                    "linked_note_id": str(corrected_note_id),
-                    "linked_at": now.isoformat(),
-                }
+        # -------------------------------------------------
+        # APPEND-ONLY METADATA (CRITICAL FIX)
+        # -------------------------------------------------
+        if hasattr(task, "details"):
 
-            updated += 1
+            existing_details = getattr(task, "details", None)
+
+            if not isinstance(existing_details, dict):
+                task.details = {}
+
+            if "autosuggest_history" not in task.details:
+                task.details["autosuggest_history"] = []
+
+            task.details["autosuggest_history"].append({
+                "type": "POC_NONCOMPLIANT_STRUCTURE",
+                "linked_note_id": str(corrected_note_id),
+                "linked_at": now.isoformat(),
+                "actor_user_id": str(actor_user_id),
+            })
+
+        updated += 1
 
     # -----------------------------------------------------
     # LOGGING

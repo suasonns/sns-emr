@@ -50,7 +50,7 @@ async def clinical_access_guard(request: Request, call_next):
 
                 # ✅ AUDIT LOG (CRITICAL)
                 logger.warning(
-                    "🚫 Clinical access blocked",
+                    "Clinical access blocked",
                     extra={
                         "event": "clinical_access_denied",
                         "path": path,
@@ -67,4 +67,3 @@ async def clinical_access_guard(request: Request, call_next):
                 )
 
     return await call_next(request)
-``

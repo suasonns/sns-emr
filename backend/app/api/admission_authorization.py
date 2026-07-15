@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -16,34 +16,80 @@ from app.services.admission_authorization_service import (
     authorize_admission,
 )
 
-router = APIRouter(prefix="/admissions", tags=["admissions"])
+router = APIRouter(
+    prefix="/admissions",
+    tags=["admissions"],
+)
 
 
 class RecordsReleaseRequest(BaseModel):
-    signed_at: datetime = Field(..., json_schema_extra={"example": "2026-05-29T12:00:00Z"})
+    signed_at: datetime = Field(
+        ...,
+        json_schema_extra={
+            "example": "2026-05-29T12:00:00Z"
+        },
+    )
 
 
 class AuthorizeAdmissionRequest(BaseModel):
-    election_signed_at: datetime = Field(..., json_schema_extra={"example": "2026-05-29T14:00:00Z"})
+    election_signed_at: datetime = Field(
+        ...,
+        json_schema_extra={
+            "example": "2026-05-29T14:00:00Z"
+        },
+    )
 
 
-@router.post("/{patient_id}/records-release", status_code=status.HTTP_200_OK)
+def _resolve_user_id(user):
+    """
+    SNS EMR authentication compatibility layer.
+
+    Current systems may expose either:
+
+        user.user_id
+
+    or
+
+        user.id
+
+    This prevents production failures when
+    authentication implementations evolve.
+    """
+
+    return (
+        getattr(user, "user_id", None)
+        or getattr(user, "id", None)
+    )
+
+
+@router.post(
+    "/{patient_id}/records-release",
+    status_code=status.HTTP_200_OK,
+)
 def records_release(
     patient_id: uuid.UUID,
     payload: RecordsReleaseRequest,
     db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
+    actor_user_id = _resolve_user_id(user)
+
+    if not actor_user_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Authenticated user identity missing",
+        )
+
     patient = record_records_release_consent(
         db,
         patient_id=patient_id,
         signed_at=payload.signed_at,
-        user_id=user.id,
+        user_id=actor_user_id,
     )
 
     log_event(
-        user_id=user.id,
-        role=(user.role or "").upper(),
+        user_id=actor_user_id,
+        role=(getattr(user, "role", "") or "").upper(),
         action="RECORDS_RELEASE_SIGNED",
         entity_type="patient",
         entity_id=str(patient.id),
@@ -51,26 +97,41 @@ def records_release(
     )
 
     db.commit()
-    return {"patient_id": str(patient.id), "admission_status": patient.admission_status}
+
+    return {
+        "patient_id": str(patient.id),
+        "admission_status": patient.admission_status,
+    }
 
 
-@router.post("/{patient_id}/authorize", status_code=status.HTTP_200_OK)
+@router.post(
+    "/{patient_id}/authorize",
+    status_code=status.HTTP_200_OK,
+)
 def authorize(
     patient_id: uuid.UUID,
     payload: AuthorizeAdmissionRequest,
     db: Session = Depends(get_db_tenant),
     user=Depends(get_current_user),
 ):
+    actor_user_id = _resolve_user_id(user)
+
+    if not actor_user_id:
+        raise HTTPException(
+            status_code=500,
+            detail="Authenticated user identity missing",
+        )
+
     patient = authorize_admission(
         db,
         patient_id=patient_id,
         election_signed_at=payload.election_signed_at,
-        authorized_by_user_id=user.id,
+        authorized_by_user_id=actor_user_id,
     )
 
     log_event(
-        user_id=user.id,
-        role=(user.role or "").upper(),
+        user_id=actor_user_id,
+        role=(getattr(user, "role", "") or "").upper(),
         action="AUTHORIZE_ADMISSION",
         entity_type="patient",
         entity_id=str(patient.id),
@@ -78,8 +139,13 @@ def authorize(
     )
 
     db.commit()
+
     return {
         "patient_id": str(patient.id),
         "admission_status": patient.admission_status,
-        "soc_date": patient.soc_date.isoformat() if patient.soc_date else None,
+        "soc_date": (
+            patient.soc_date.isoformat()
+            if patient.soc_date
+            else None
+        ),
     }

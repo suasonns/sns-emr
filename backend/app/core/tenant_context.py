@@ -24,8 +24,9 @@ def set_current_tenant(tenant_id: Optional[UUID]) -> None:
     Sets the current request tenant context.
 
     Safe for async / multi-request environments.
-    Must only be called at request-boundary (middleware or auth layer).
+    Must only be called at request boundary (middleware or auth).
     """
+
     if tenant_id is not None and not isinstance(tenant_id, UUID):
         raise ValueError("tenant_id must be a UUID or None")
 
@@ -44,6 +45,21 @@ def get_current_tenant() -> Optional[UUID]:
         UUID → when tenant context is set
         None → when no tenant context is available
 
-    This function is SAFE to call anywhere in the application.
+    Safe to call anywhere in the application.
     """
+
     return _current_tenant_id.get()
+
+
+# =========================================================
+# CLEAR (OPTIONAL HARDENING)
+# =========================================================
+
+def clear_current_tenant() -> None:
+    """
+    Explicitly clears tenant context.
+
+    Recommended for middleware cleanup.
+    """
+
+    _current_tenant_id.set(None)

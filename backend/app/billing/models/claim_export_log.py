@@ -42,8 +42,11 @@ class ClaimExportLog(Base):
         index=True,
     )
 
+    # ---------------------------------------------------------
+    # ✅ FIXED: MATCH billing_cycles.id (UUID)
+    # ---------------------------------------------------------
     billing_cycle_id = Column(
-        String,  # ✅ FIX: must match billing_cycles.id (VARCHAR)
+        UUID(as_uuid=True),
         ForeignKey("billing_cycles.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
@@ -52,10 +55,7 @@ class ClaimExportLog(Base):
     # ---------------------------------------------------------
     # EXPORT DATA
     # ---------------------------------------------------------
-    file_path = Column(
-        String,
-        nullable=False,
-    )
+    file_path = Column(String, nullable=False)
 
     export_type = Column(
         String(50),
@@ -71,7 +71,7 @@ class ClaimExportLog(Base):
     )
 
     # ---------------------------------------------------------
-    # OVERRIDE TRACKING (CRITICAL FOR COMPLIANCE)
+    # OVERRIDE TRACKING
     # ---------------------------------------------------------
     override_used = Column(
         Boolean,
@@ -79,18 +79,12 @@ class ClaimExportLog(Base):
         default=False,
     )
 
-    override_reason = Column(
-        String,
-        nullable=True,
-    )
+    override_reason = Column(String, nullable=True)
 
-    override_approved_by = Column(
-        String,
-        nullable=True,
-    )
+    override_approved_by = Column(String, nullable=True)
 
     # ---------------------------------------------------------
-    # AUDIT FIELDS (REQUIRED)
+    # AUDIT FIELDS
     # ---------------------------------------------------------
     created_at = Column(
         DateTime(timezone=True),
@@ -102,7 +96,6 @@ class ClaimExportLog(Base):
     created_by = Column(
         String(255),
         nullable=True,
-        doc="User who triggered export",
     )
 
     # ---------------------------------------------------------

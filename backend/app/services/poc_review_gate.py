@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+import logging
 from uuid import UUID
+from typing import Optional
 
-from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.orm import Session
 
-from app.models.clinical_note import ClinicalNote
+from app.models.plan_of_care import PlanOfCare
+from app.models.plan_of_care_version import PlanOfCareVersion
 
-POC_REVIEW_VERSION = "3.0.0"
-VALID_DECISIONS = {"APPROVE", "REJECT", "NEEDS_REVISION"}
+
+logger = logging.getLogger("sns_emr")
 
 
 # =========================================================
@@ -17,156 +18,157 @@ VALID_DECISIONS = {"APPROVE", "REJECT", "NEEDS_REVISION"}
 # =========================================================
 
 class POCReviewGateError(Exception):
-    def __init__(self, message: str, blocking_pocs: list[dict[str, Any]]) -> None:
+    def __init__(self, message: str, blocking_reason: str) -> None:
         super().__init__(message)
         self.message = message
-        self.blocking_pocs = blocking_pocs
+        self.blocking_reason = blocking_reason
 
 
 # =========================================================
-# PUBLIC API
+# REVIEW FUNCTION (✅ NEW)
 # =========================================================
-
-def enforce_poc_review_gate(note: ClinicalNote) -> None:
-    blocking_pocs = get_unreviewed_required_pocs(note)
-    if blocking_pocs:
-        raise POCReviewGateError(
-            message="Clinical note cannot be finalized until all required POC reviews are completed.",
-            blocking_pocs=blocking_pocs,
-        )
-
-
-def get_unreviewed_required_pocs(note: ClinicalNote) -> list[dict[str, Any]]:
-    container = _get_container(note)
-    pocs = container["pocs"]
-
-    blocking: list[dict[str, Any]] = []
-    for poc in pocs:
-        if not isinstance(poc, dict):
-            continue
-
-        review = _normalize_review(poc.get("review"))
-        required = bool(review.get("required", True))
-        reviewed = bool(review.get("reviewed", False))
-
-        if required and not reviewed:
-            problem = poc.get("problem") if isinstance(poc.get("problem"), dict) else {}
-            blocking.append(
-                {
-                    "poc_id": poc.get("poc_id"),
-                    "status": poc.get("status"),
-                    "problem_code": problem.get("code"),
-                    "problem_name": problem.get("name"),
-                    "reason": "POC requires clinician review before finalization.",
-                }
-            )
-
-    return blocking
-
 
 def review_poc(
     *,
-    note: ClinicalNote,
-    poc_id: str,
-    reviewer_user_id: UUID,
+    note,
+    poc_id,
+    reviewer_user_id,
     decision: str,
     comment: str | None = None,
-) -> dict[str, Any]:
-    normalized_decision = (decision or "").strip().upper()
-    if normalized_decision not in VALID_DECISIONS:
-        raise ValueError(f"Invalid POC review decision '{decision}'")
+) -> dict:
+    """
+    Review/approve/reject a generated POC entry.
 
-    container = _get_container(note)
-    pocs = container["pocs"]
+    Behavior:
+    - Updates note.plan_of_care_updates
+    - Enforces valid decisions
+    - Appends review metadata (audit-safe)
+    """
 
-    target: dict[str, Any] | None = None
-    for poc in pocs:
-        if isinstance(poc, dict) and str(poc.get("poc_id")) == str(poc_id):
-            target = poc
-            break
+    if not hasattr(note, "plan_of_care_updates") or not isinstance(note.plan_of_care_updates, dict):
+        raise ValueError("Invalid POC structure on note")
 
-    if target is None:
+    poc = note.plan_of_care_updates.get(poc_id)
+
+    if not poc:
         raise ValueError("POC not found")
 
-    review = _normalize_review(target.get("review"))
-    review["required"] = True
-    review["reviewed"] = True
-    review["reviewed_by"] = str(reviewer_user_id)
-    review["reviewed_at"] = _utc_now_iso()
-    review["decision"] = normalized_decision
-    review["comment"] = comment
+    decision = str(decision).upper()
 
-    target["review"] = review
-    target["last_updated_at"] = _utc_now_iso()
-    target["status"] = _map_decision_to_status(normalized_decision)
+    if decision not in {"APPROVED", "REJECTED"}:
+        raise ValueError("Invalid decision value")
 
-    container["meta"] = _meta()
-    flag_modified(note, "plan_of_care_updates")
-    return target
+    # ✅ ensure structure
+    if not isinstance(poc, dict):
+        raise ValueError("Invalid POC format")
+
+    # ✅ append-only review history (audit safe)
+    review_entry = {
+        "reviewed": True,
+        "decision": decision,
+        "comment": comment,
+        "reviewed_by": str(reviewer_user_id),
+    }
+
+    if "review_history" not in poc or not isinstance(poc.get("review_history"), list):
+        poc["review_history"] = []
+
+    poc["review_history"].append(review_entry)
+
+    # ✅ update current state
+    poc["status"] = decision
+    poc["review"] = review_entry
+
+    note.plan_of_care_updates[poc_id] = poc
+
+    logger.info(
+        "POC_REVIEWED note_id=%s poc_id=%s decision=%s reviewer=%s",
+        str(getattr(note, "id", None)),
+        str(poc_id),
+        decision,
+        str(reviewer_user_id),
+    )
+
+    return poc
 
 
 # =========================================================
-# INTERNAL HELPERS
+# PUBLIC API — REVIEW GATE
 # =========================================================
 
-def _get_container(note: ClinicalNote) -> dict[str, Any]:
-    if not isinstance(note.plan_of_care_updates, dict):
-        note.plan_of_care_updates = {
-            "meta": _meta(),
-            "pocs": [],
-        }
-        flag_modified(note, "plan_of_care_updates")
-        return note.plan_of_care_updates
+def enforce_poc_review_gate(
+    db: Session,
+    *,
+    patient_id: UUID,
+    tenant_id: Optional[UUID] = None,
+    actor_user_id: Optional[UUID] = None,
+) -> None:
+    """
+    Blocks clinical actions if no APPROVED Plan of Care exists.
+    """
 
-    if "meta" not in note.plan_of_care_updates or not isinstance(note.plan_of_care_updates["meta"], dict):
-        note.plan_of_care_updates["meta"] = _meta()
-        flag_modified(note, "plan_of_care_updates")
+    if not has_approved_plan_of_care(
+        db=db,
+        patient_id=patient_id,
+        tenant_id=tenant_id,
+    ):
+        logger.warning(
+            "POC_REVIEW_BLOCK patient_id=%s tenant_id=%s actor=%s",
+            str(patient_id),
+            str(tenant_id),
+            str(actor_user_id),
+        )
 
-    if "pocs" not in note.plan_of_care_updates or not isinstance(note.plan_of_care_updates["pocs"], list):
-        note.plan_of_care_updates["pocs"] = []
-        flag_modified(note, "plan_of_care_updates")
-
-    return note.plan_of_care_updates
-
-
-def _normalize_review(value: Any) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        return {
-            "required": True,
-            "reviewed": False,
-            "reviewed_by": None,
-            "reviewed_at": None,
-            "decision": None,
-            "comment": None,
-        }
-
-    payload = {
-        "required": bool(value.get("required", True)),
-        "reviewed": bool(value.get("reviewed", False)),
-        "reviewed_by": value.get("reviewed_by"),
-        "reviewed_at": value.get("reviewed_at"),
-        "decision": value.get("decision"),
-        "comment": value.get("comment"),
-    }
-    return payload
+        raise POCReviewGateError(
+            message="Clinical action blocked: No approved Plan of Care found.",
+            blocking_reason="POC must be approved before proceeding."
+        )
 
 
-def _map_decision_to_status(decision: str) -> str:
-    mapping = {
-        "APPROVE": "REVIEWED",
-        "REJECT": "REJECTED",
-        "NEEDS_REVISION": "NEEDS_REVISION",
-    }
-    return mapping.get(decision, "DRAFT")
+# =========================================================
+# CHECK APPROVED POC
+# =========================================================
 
+def has_approved_plan_of_care(
+    db: Session,
+    *,
+    patient_id: UUID,
+    tenant_id: Optional[UUID] = None,
+) -> bool:
+    """
+    Checks if patient has an APPROVED POC version.
+    """
 
-def _meta() -> dict[str, Any]:
-    return {
-        "name": "POC_REVIEW_GATE",
-        "version": POC_REVIEW_VERSION,
-        "generated_at": _utc_now_iso(),
-    }
+    query = db.query(PlanOfCare).filter(
+        PlanOfCare.patient_id == patient_id
+    )
 
+    if tenant_id is not None and hasattr(PlanOfCare, "tenant_id"):
+        query = query.filter(PlanOfCare.tenant_id == tenant_id)
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    poc = query.order_by(PlanOfCare.created_at.desc()).first()
+
+    if not poc or not getattr(poc, "current_version_id", None):
+        return False
+
+    version_query = db.query(PlanOfCareVersion).filter(
+        PlanOfCareVersion.id == poc.current_version_id,
+        PlanOfCareVersion.approval_status == "APPROVED",
+    )
+
+    if tenant_id is not None and hasattr(PlanOfCareVersion, "tenant_id"):
+        version_query = version_query.filter(
+            PlanOfCareVersion.tenant_id == tenant_id
+        )
+
+    version = version_query.first()
+
+    if poc.current_version_id and version is None:
+        logger.error(
+            "POC_DATA_INCONSISTENT patient_id=%s poc_id=%s version_id=%s",
+            str(patient_id),
+            str(getattr(poc, "id", None)),
+            str(poc.current_version_id),
+        )
+
+    return version is not None

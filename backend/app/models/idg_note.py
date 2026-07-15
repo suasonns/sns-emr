@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
-from sqlalchemy import Column, DateTime, ForeignKey, Text, String, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.sql import func
 
 from app.db.base import Base
 
@@ -14,12 +21,14 @@ class IDGNote(Base):
     Enterprise-grade IDG discipline note.
 
     Purpose:
-    - Captures interdisciplinary participation during IDG
-    - Required for compliance with hospice regulations
+    - Captures interdisciplinary participation during IDG.
+    - Supports IDG completeness validation.
+    - Preserves discipline-specific documentation.
 
-    Compliance:
-    - One note per discipline per IDG review
-    - Must include signed timestamp
+    Current database-safe version:
+    - Does not include signed_by.
+    - Does not include updated_by.
+    - Uses existing DB-compatible columns only.
     """
 
     __tablename__ = "idg_notes"
@@ -87,13 +96,13 @@ class IDGNote(Base):
 
     created_at = Column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=func.now(),
         nullable=False,
     )
 
     updated_at = Column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )

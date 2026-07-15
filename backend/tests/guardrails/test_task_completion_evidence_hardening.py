@@ -20,6 +20,9 @@ from app.services.task_completion_evidence import complete_task_with_evidence
 
 TENANT_ID = uuid.UUID("01271980-0000-0000-0000-000005101977")
 
+SYSTEM_TEST_USER_ID = uuid.UUID(
+    "11111111-1111-1111-1111-111111111111"
+)
 
 def _fixed_due() -> datetime:
     return datetime(2099, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
@@ -41,6 +44,7 @@ def _ensure_patient(db_session, patient_id: uuid.UUID) -> Patient:
         status="ACTIVE",
         admission_status="PRE_REFERRAL",
         acuity_state="ROUTINE",
+        created_by=SYSTEM_TEST_USER_ID,
         created_at=now,
         updated_at=now,
     )

@@ -4,7 +4,7 @@ from app.models.enums import TaskType
 
 def test_tasktype_enum_matches_database(db_session):
     rows = db_session.execute(
-        text("SELECT unnest(enum_range(NULL::tasks_task_type_enum))")
+        text("SELECT unnest(enum_range(NULL::tasktype))")
     ).fetchall()
 
     db_values = {r[0] for r in rows}

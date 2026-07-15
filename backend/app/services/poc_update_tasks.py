@@ -56,7 +56,7 @@ def handle_poc_update_on_visit_finalize(
         return
 
     # =========================================================
-    # TRACE LOG (COMPLIANCE CRITICAL)
+    # TRACE LOG (ENTRY)
     # =========================================================
     logger.info(
         "POC_UPDATE wrapper invoked visit_id=%s patient_id=%s finalized_by=%s",
@@ -74,6 +74,13 @@ def handle_poc_update_on_visit_finalize(
             visit=visit,
             patient=patient,
             finalized_by_user_id=finalized_by_user_id,
+        )
+
+        # ✅ FINAL FIX — SUCCESS LOG (REQUIRED)
+        logger.info(
+            "POC_UPDATE automation completed visit_id=%s patient_id=%s",
+            str(getattr(visit, "id", None)),
+            str(getattr(patient, "id", None)),
         )
 
     except Exception as exc:

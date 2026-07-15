@@ -1,8 +1,15 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import (
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -23,53 +30,79 @@ class PlanOfCareVersion(Base):
 
     plan_of_care_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("plan_of_care.id"),
+        ForeignKey("plan_of_care.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
-    version_number = Column(Integer, nullable=False, index=True)
+    version_number = Column(
+        Integer,
+        nullable=False,
+        index=True,
+    )
 
     based_on_version_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("plan_of_care_versions.id"),
+        ForeignKey("plan_of_care_versions.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
     )
 
-    # 🔥 CRITICAL FIX — MUST MATCH MIGRATION
     snapshot_json = Column(
         JSONB,
         nullable=False,
-        default=dict,
+        default=lambda: {},
     )
 
     approval_status = Column(
         String,
         nullable=False,
         default="PENDING",
+        index=True,
     )
 
-    approved_at = Column(DateTime(timezone=True), nullable=True)
-    approved_by_user_id = Column(UUID(as_uuid=True), nullable=True)
+    approved_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    approved_by_user_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
 
     created_at = Column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
 
-    created_by_user_id = Column(UUID(as_uuid=True), nullable=True)
-
-    # ✅ relationship to parent POC
-    plan_of_care = relationship(
-        "PlanOfCare",
-        back_populates="versions"
+    created_by_user_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
     )
 
-    # ✅ self-referencing lineage
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+    plan_of_care = relationship(
+        "PlanOfCare",
+        back_populates="versions",
+    )
+
     based_on_version = relationship(
         "PlanOfCareVersion",
         remote_side=[id],
-        uselist=False
+        uselist=False,
+    )
+
+    physician_approvals = relationship(
+        "PocPhysicianApproval",
+        primaryjoin="PlanOfCareVersion.id==foreign(PocPhysicianApproval.poc_version_id)",
+        lazy="selectin",
+        viewonly=True,
     )

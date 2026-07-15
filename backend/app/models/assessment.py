@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Numeric
+from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Numeric, Index
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -12,30 +12,68 @@ class Assessment(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    # --------------------------------------------------
+    # ✅ RELATIONS
+    # --------------------------------------------------
+    patient_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("patients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
+    visit_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("visits.id"),
+        nullable=True,
+        index=True
+    )
+
+    document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_records.id"),
+        nullable=True
+    )
+
+    # --------------------------------------------------
+    # ✅ CORE CLINICAL
+    # --------------------------------------------------
     discipline = Column(String(10), nullable=False)
     assessment_type = Column(String(50), nullable=False)
 
     occurred_at = Column(DateTime(timezone=True), nullable=False)
 
+    # SOC reference for HUV logic
+    soc_date = Column(DateTime(timezone=True), nullable=False)
+
+    # --------------------------------------------------
+    # ✅ SIGNATURE
+    # --------------------------------------------------
     signed_at = Column(DateTime(timezone=True), nullable=True)
     signed_by = Column(UUID(as_uuid=True), nullable=True)
 
-    status = Column(String(10), nullable=False, default="DRAFT")
+    status = Column(String(20), nullable=False, default="DRAFT")
 
+    # --------------------------------------------------
+    # ✅ CLINICAL RISK
+    # --------------------------------------------------
     risk_score = Column(Numeric, nullable=True)
     risk_level = Column(String(20), nullable=True)
 
+    # --------------------------------------------------
+    # ✅ DATA PAYLOAD
+    # --------------------------------------------------
     data_json = Column(JSONB, nullable=False, default=dict)
 
-    document_id = Column(UUID(as_uuid=True), ForeignKey("document_records.id"), nullable=True)
-    visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id"), nullable=True)
-
+    # --------------------------------------------------
+    # ✅ AUDIT
+    # --------------------------------------------------
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
-    # Relationships (SAFE — no cascade deletes on parent direction)
+    # --------------------------------------------------
+    # ✅ RELATIONSHIPS
+    # --------------------------------------------------
     patient = relationship("Patient", backref="assessments")
     visit = relationship("Visit", backref="assessments")
     document = relationship("DocumentRecord", backref="assessments")
@@ -57,4 +95,11 @@ class Assessment(Base):
         "AssessmentDiscrepancy",
         foreign_keys="[AssessmentDiscrepancy.comparing_assessment_id]",
         back_populates="comparing_assessment"
+    )
+
+    # --------------------------------------------------
+    # ✅ INDEXES (CRITICAL FOR TIMEPOINT RULES)
+    # --------------------------------------------------
+    __table_args__ = (
+        Index("idx_assessment_patient_time", "patient_id", "occurred_at"),
     )

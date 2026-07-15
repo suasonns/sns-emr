@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
-    Text,
-    Boolean,
-    UniqueConstraint,
     Index,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.sql import func
 
 from app.db.base import Base
 
@@ -22,13 +22,15 @@ class IDGReview(Base):
     Enterprise-grade IDG Review.
 
     Purpose:
-    - Represents patient-level interdisciplinary review
-    - Links IDGMeeting to PlanOfCareVersion
+    - Represents patient-level interdisciplinary review.
+    - Links IDG meeting activities to care planning workflows.
+    - Supports audit-defensible IDG compliance.
 
     Compliance:
-    - MUST be tied to POC (future enforcement)
-    - MUST track disciplines and MD attestation externally
-    - MUST be audit traceable (who, when, what)
+    - Must be tenant isolated.
+    - Must be audit traceable.
+    - Must support IDG review history.
+    - Must support future POC linkage enforcement.
     """
 
     __tablename__ = "idg_reviews"
@@ -40,14 +42,28 @@ class IDGReview(Base):
             "review_date",
             name="uq_idg_review_patient_bp_date",
         ),
-        # ✅ PERFORMANCE + QUERY OPTIMIZATION
-        Index("ix_idg_reviews_patient_bp", "patient_id", "benefit_period_id"),
-        Index("ix_idg_reviews_review_date", "review_date"),
+        Index(
+            "ix_idg_reviews_patient_bp",
+            "patient_id",
+            "benefit_period_id",
+        ),
+        Index(
+            "ix_idg_reviews_review_date",
+            "review_date",
+        ),
     )
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
 
-    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        nullable=False,
+        index=True,
+    )
 
     patient_id = Column(
         UUID(as_uuid=True),
@@ -75,37 +91,58 @@ class IDGReview(Base):
         index=True,
     )
 
-    summary = Column(Text, nullable=False)
+    summary = Column(
+        Text,
+        nullable=False,
+    )
 
-    poc_action = Column(Text, nullable=True)
+    poc_action = Column(
+        Text,
+        nullable=True,
+    )
 
-    # 🔥 TEMP: FK removed for stabilization phase
+    # FK intentionally deferred during stabilization phase.
     plan_of_care_version_id = Column(
         UUID(as_uuid=True),
         nullable=True,
         index=True,
     )
 
-    is_finalized = Column(Boolean, nullable=False, default=False)
+    is_finalized = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
 
-    finalized_by = Column(UUID(as_uuid=True), nullable=True)
+    finalized_by = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
 
-    finalized_at = Column(DateTime(timezone=True), nullable=True)
+    finalized_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
-    created_by = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
 
     created_at = Column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
+        server_default=func.now(),
         nullable=False,
     )
 
     updated_at = Column(
         DateTime(timezone=True),
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )
 
-    # ✅ OPTIONAL (ENTERPRISE HARDENING)
-    updated_by = Column(UUID(as_uuid=True), nullable=True)
+    updated_by = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
