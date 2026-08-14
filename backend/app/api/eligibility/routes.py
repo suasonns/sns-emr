@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -10,6 +11,7 @@ from app.models.eligibility import (
     EligibilityRuleset,
     EligibilityAssessment,
 )
+from app.services.eligibility.engine import evaluate_hospice_eligibility
 
 router = APIRouter(
     prefix="/eligibility",
@@ -51,6 +53,12 @@ class EvaluationResponse(BaseModel):
     eligible: bool
     score: int
     observations_snapshot: Dict[str, Any]
+
+
+class LCDEvaluateRequest(BaseModel):
+    patient: Dict[str, Any] = Field(default_factory=dict)
+    facts: Dict[str, Any] = Field(default_factory=dict)
+    admission_date: Optional[str] = None
 
 
 class AssessmentCreateRequest(BaseModel):
@@ -155,6 +163,27 @@ def evaluate_ruleset(
         "score": score,
         "observations_snapshot": payload.observations,
     }
+
+
+@router.post(
+    "/lcd-evaluate",
+    status_code=status.HTTP_200_OK,
+)
+def evaluate_lcd(
+    payload: LCDEvaluateRequest,
+    db: Session = Depends(get_db),
+):
+    """Evaluate the selected hospice LCD against the supplied patient and evidence facts."""
+    del db
+    patient_data = dict(payload.patient or {})
+    for key, value in (payload.facts or {}).items():
+        if key not in patient_data:
+            patient_data[key] = value
+
+    patient_obj = SimpleNamespace(**patient_data)
+    admission_date = payload.admission_date or datetime.utcnow().date().isoformat()
+
+    return evaluate_hospice_eligibility(patient_obj, admission_date)
 
 
 # ---------------------------------------------------------------------

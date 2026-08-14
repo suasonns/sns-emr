@@ -332,3 +332,86 @@ def get_audit_dashboard_patients(
         "patient_count": len(rows),
         "patients": [dict(row) for row in rows],
     }
+
+
+# =========================================================
+# CENSUS WORKSPACE
+# =========================================================
+
+@router.get("/census")
+def get_audit_dashboard_census(
+    request: Request,
+    tenant_id: Optional[UUID] = Query(
+        None,
+        description="Optional explicit tenant_id override",
+    ),
+    limit: int = Query(
+        500,
+        ge=1,
+        le=1000,
+        description="Maximum number of patient rows to return",
+    ),
+    db: Session = Depends(get_db),
+):
+    resolved_tenant_id = _resolve_tenant_id(request, db, tenant_id)
+
+    rows = db.execute(
+        text(
+            """
+            WITH latest_visit AS (
+                SELECT DISTINCT ON (v.patient_id)
+                    v.patient_id,
+                    v.visit_datetime AS last_visit_at,
+                    u.full_name AS attending_physician
+                FROM visits v
+                LEFT JOIN users u ON u.id = v.provider_id
+                WHERE v.tenant_id = :tenant_id
+                ORDER BY v.patient_id, v.visit_datetime DESC, v.updated_at DESC
+            ),
+            primary_payer AS (
+                SELECT DISTINCT ON (pp.patient_id)
+                    pp.patient_id,
+                    pp.payer_name
+                FROM patient_payers pp
+                ORDER BY
+                    pp.patient_id,
+                    COALESCE(pp.is_primary, false) DESC,
+                    COALESCE(pp.updated_at, pp.created_at) DESC NULLS LAST,
+                    pp.id
+            )
+            SELECT
+                p.id::text AS patient_id,
+                p.mrn,
+                p.full_name,
+                p.date_of_birth,
+                p.primary_diagnosis,
+                p.status AS patient_status,
+                p.admission_status,
+                COALESCE(p.on_service_at, p.soc_date, p.hospice_election_date::timestamp) AS admission_at,
+                p.discharge_date,
+                p.discharge_reason,
+                COALESCE(lv.attending_physician, '—') AS attending_physician,
+                COALESCE(pp.payer_name, '—') AS payer_name,
+                lv.last_visit_at,
+                CASE
+                    WHEN p.status = 'DECEASED' OR p.admission_status = 'DECEASED' THEN 'Deceased'
+                    WHEN p.status = 'DISCHARGED' OR p.admission_status = 'DISCHARGED' OR p.discharge_date IS NOT NULL THEN 'Discharged'
+                    WHEN p.status = 'REVOKED' OR p.admission_status = 'REVOKED' OR p.not_admitted_at IS NOT NULL THEN 'Revoked'
+                    ELSE 'Active'
+                END AS census_bucket
+            FROM patients p
+            LEFT JOIN latest_visit lv ON lv.patient_id = p.id
+            LEFT JOIN primary_payer pp ON pp.patient_id = p.id::text
+            WHERE p.tenant_id = :tenant_id
+            ORDER BY p.full_name ASC
+            LIMIT :limit
+            """
+        ),
+        {"tenant_id": resolved_tenant_id, "limit": limit},
+    ).mappings().all()
+
+    return {
+        "tenant_id": str(resolved_tenant_id),
+        "patient_count": len(rows),
+        "patients": [dict(row) for row in rows],
+    }

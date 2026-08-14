@@ -322,17 +322,19 @@ def authorize_admission(
     if not tenant_id:
         raise ValueError("Patient is missing tenant_id")
 
-    incoming_soc = election_signed_at.date()
     existing_soc = _as_date(getattr(patient, "soc_date", None))
 
-    # SOC immutability
+    # SOC immutability: preserve the actual signed timestamp, not the midnight date value.
     if existing_soc is None:
         try:
-            patient.soc_date = incoming_soc
+            patient.soc_date = election_signed_at
         except Exception:
             patient.soc_date = election_signed_at
 
     # Admission authorization stamps (set once)
+    if hasattr(patient, "admission_status"):
+        patient.admission_status = "ADMITTED"
+
     if hasattr(patient, "admission_authorized_at") and getattr(patient, "admission_authorized_at", None) is None:
         patient.admission_authorized_at = election_signed_at
 

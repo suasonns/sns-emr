@@ -37,9 +37,59 @@ class DryRunResponse(BaseModel):
     summary: Dict[str, Any]
     results: List[Any]
 
+
+class ICDRecommendationRequest(BaseModel):
+    text: str = Field(default="", description="Clinical documentation text to scan for diagnosis candidates")
+    patient_id: Optional[str] = Field(default=None, description="Optional patient id to enrich suggestions with real diagnosis and note evidence")
+    max_results: int = Field(default=5, ge=1, le=10)
+
+
+class ICDRecommendationResponse(BaseModel):
+    suggestions: List[Dict[str, Any]]
+    guardrails: Dict[str, Any]
+    evidence: Optional[Dict[str, Any]] = None
+
+
 # ---------------------------------------------------------------------
 # ROUTE
 # ---------------------------------------------------------------------
+
+@router.post(
+    "/icd-recommendations",
+    response_model=ICDRecommendationResponse,
+    status_code=status.HTTP_200_OK,
+)
+def icd_recommendations(
+    payload: ICDRecommendationRequest,
+    db: Session = Depends(get_db_tenant),
+    user=Depends(get_current_user),
+):
+    """Return recommendation-only ICD candidates based on clinical evidence text and any linked patient evidence."""
+    from app.services.icd_intelligence import gather_patient_evidence, primary_dx_guardrails, recommend_icd_candidates
+
+    evidence = gather_patient_evidence(
+        db,
+        payload.patient_id,
+        tenant_id=getattr(user, "tenant_id", None),
+    )
+    suggestions = recommend_icd_candidates(
+        payload.text,
+        max_results=payload.max_results,
+        patient_evidence=evidence if evidence.get("text") else None,
+    )
+
+    return {
+        "suggestions": suggestions,
+        "guardrails": primary_dx_guardrails(),
+        "evidence": {
+            "patient_id": payload.patient_id,
+            "source_count": evidence.get("source_count", 0),
+            "diagnosis_sources": evidence.get("diagnosis_sources", []),
+            "clinical_notes": evidence.get("clinical_notes", []),
+            "text": evidence.get("text", ""),
+        },
+    }
+
 
 @router.post(
     "/dry-run",

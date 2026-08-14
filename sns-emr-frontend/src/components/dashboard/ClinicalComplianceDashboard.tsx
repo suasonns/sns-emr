@@ -1,10 +1,8 @@
 // src/components/dashboard/ClinicalComplianceDashboard.tsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  ClinicalComplianceDashboardResponse,
-  fetchClinicalComplianceDashboard,
-} from "../../api/dashboard";
+import { fetchClinicalComplianceDashboard } from "../../api/dashboard";
+import type { ClinicalComplianceDashboardResponse } from "../../api/dashboard";
 
 const StatCard: React.FC<{ title: string; value: number }> = ({ title, value }) => {
   return (

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, String, Index, CheckConstraint, text
+from sqlalchemy import Boolean, Column, String, Index, CheckConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import BaseModel
@@ -53,6 +53,20 @@ class Tenant(BaseModel):
         String(32),
         nullable=False,
         server_default=text("'ACTIVE'"),
+        index=True,
+    )
+
+    ai_enabled = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        index=True,
+    )
+
+    billing_enabled = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
         index=True,
     )
 

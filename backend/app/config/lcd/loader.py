@@ -117,8 +117,8 @@ def _validate_lcd_schema(file_name: str, data: Dict[str, Any]) -> None:
     if not isinstance(data["lcd_reference"], str) or not data["lcd_reference"].strip():
         raise LCDConfigError(f"{file_name} field 'lcd_reference' must be a non-empty string")
 
-    if not isinstance(data["eligibility_result"], dict):
-        raise LCDConfigError(f"{file_name} field 'eligibility_result' must be an object")
+    if not isinstance(data["eligibility_result"], (dict, str)):
+        raise LCDConfigError(f"{file_name} field 'eligibility_result' must be an object or string")
 
     if not isinstance(data["activation_rules"], dict):
         raise LCDConfigError(f"{file_name} field 'activation_rules' must be an object")

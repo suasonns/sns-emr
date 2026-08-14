@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 420" role="img" aria-label="Back body outline">
+  <g fill="#edf2f7" stroke="#cbd5e1" stroke-width="2">
+    <circle cx="110" cy="30" r="24" />
+    <path d="M96 60 L110 48 L124 60 L138 84 L146 120 L150 182 L142 238 C136 282 130 316 120 348 L118 388 H102 L100 348 C90 316 84 282 78 238 L70 182 L74 120 L82 84 Z" />
+    <path d="M86 96 L58 132 L46 170 L60 178 L76 146 L92 120 Z" />
+    <path d="M134 96 L162 132 L174 170 L160 178 L144 146 L128 120 Z" />
+    <path d="M100 176 L90 250 L92 388 H106 L110 298 L108 176 Z" />
+    <path d="M120 176 L130 250 L128 388 H114 L110 298 L112 176 Z" />
+    <path d="M108 176 H112 V300 H108 Z" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5" />
+  </g>
+</svg>

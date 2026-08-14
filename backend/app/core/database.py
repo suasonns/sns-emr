@@ -56,7 +56,7 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    connect_args={"options": "-csearch_path=public"},
+    connect_args={"options": "-csearch_path=public -c TimeZone=UTC"},
 )
 
 SessionLocal = sessionmaker(
@@ -65,8 +65,6 @@ SessionLocal = sessionmaker(
     autocommit=False,
     expire_on_commit=False,
 )
-
-DEV_TENANT_ID = None  # existing behavior, unchanged
 
 # -----------------------------------------------------
 # STARTUP SAFETY CHECKS (ENTERPRISE GUARDRAIL)

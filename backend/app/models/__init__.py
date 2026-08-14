@@ -27,6 +27,7 @@ from app.models.interface import Interface  # noqa: F401
 # PATIENT CORE (MUST LOAD BEFORE DEPENDENTS)
 # ---------------------------------------------------------
 
+import app.models.patient_assignment  # noqa: F401
 import app.models.patient  # noqa: F401
 import app.models.patient_payer  # noqa: F401
 import app.models.visit  # noqa: F401
@@ -39,6 +40,9 @@ import app.models.benefit_period  # noqa: F401
 import app.models.clinical_note  # noqa: F401
 import app.models.notification  # noqa: F401
 import app.models.rn_recert_assessment  # noqa: F401
+import app.models.rnica_assessment  # noqa: F401
+import app.models.msw_ica_assessment  # noqa: F401
+import app.models.communications_log  # noqa: F401
 
 # ---------------------------------------------------------
 # ✅ CHHA OUTCOME LAYER (NEW - SAFE ADD)

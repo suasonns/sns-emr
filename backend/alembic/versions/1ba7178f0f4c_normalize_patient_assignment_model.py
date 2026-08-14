@@ -22,6 +22,26 @@ def upgrade() -> None:
     bind = op.get_bind()
     inspector = inspect(bind)
 
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'assignment_discipline_enum') THEN
+                CREATE TYPE assignment_discipline_enum AS ENUM (
+                    'MD', 'DO', 'MEDICAL_DIRECTOR', 'ATTENDING_PHYSICIAN', 'NP', 'PA',
+                    'RN', 'LVN', 'LPN', 'CHHA', 'AIDE',
+                    'SW', 'MSW', 'BSW', 'LCSW', 'SC', 'CHAPLAIN',
+                    'BEREAVEMENT_COORDINATOR', 'PHARMACIST', 'DIETITIAN',
+                    'RESPIRATORY_THERAPIST', 'ADMIN', 'EXECUTIVE_DIRECTOR', 'ADMINISTRATOR',
+                    'DIRECTOR', 'CLINICAL_DIRECTOR', 'DPCS', 'INTAKE', 'CASE_MANAGER',
+                    'SURVEYOR', 'CONSULTANT', 'VOLUNTEER_COORDINATOR', 'VOLUNTEER',
+                    'DRIVER', 'INTERPRETER', 'HOUSEKEEPER'
+                );
+            END IF;
+        END $$;
+        """
+    )
+
     # =====================================================
     # CHECK IF TABLE EXISTS
     # =====================================================
@@ -73,3 +93,4 @@ def downgrade() -> None:
     op.drop_index("ix_pa_patient_id", table_name="patient_assignments")
 
     op.drop_table("patient_assignments")
+    op.execute("DROP TYPE IF EXISTS assignment_discipline_enum")
