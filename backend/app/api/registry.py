@@ -12,6 +12,7 @@ from app.api.routes import forms
 
 # COMMUNICATIONS LOG
 from app.api.communications_log.router import router as communications_log_router
+from app.api.notifications import router as notifications_router
 
 # CORE TENANT ROUTES
 from app.api import (
@@ -43,6 +44,7 @@ from app.api.idg.router import router as idg_router
 from app.api.dashboard.router import router as dashboard_router
 from app.api.audit_dashboard import router as audit_dashboard_router
 from app.api.clinical_translation import router as clinical_translation_router  # ✅ ADD THIS
+from app.api.patient_charts import router as patient_charts_router
 
 # ✅ NEW TASK ROUTER (THIS IS THE FIX)
 from app.api.tasks import router as tasks_router
@@ -66,9 +68,6 @@ from app.billing.api.export_router import router as export_router
 from app.billing.api.claim_status_router import router as claim_status_router
 from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
-
-# DEV / TEST
-from app.api.dev_test import router as dev_test_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -118,10 +117,13 @@ def register_routers(app: FastAPI) -> None:
         forms.router,
         notes.router,
         communications_log_router,
+        notifications_router,
         clinical_notes_router,
         idg_router,
         dashboard_router,
         clinical_translation_router,  # ✅ ADD THIS
+
+        patient_charts_router,
 
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
         tasks_router,
@@ -157,7 +159,6 @@ def register_routers(app: FastAPI) -> None:
         claim_status_router,
         audit_router,
         billing_router,
-        dev_test_router,
     ]
 
     for router in tenant_routes:

@@ -1,4 +1,5 @@
-import { Box, Typography } from "@mui/material";
+import { Box, Button, Typography } from "@mui/material";
+import { Link } from "react-router-dom";
 
 export default function Header({
   user,
@@ -24,6 +25,15 @@ export default function Header({
       <Typography variant="body2" color="text.secondary">
         Role: {user.role}
       </Typography>
+
+      <Button
+        component={Link}
+        to="/portal"
+        variant="outlined"
+        size="small"
+      >
+        Open Portal
+      </Button>
     </Box>
   );
 }

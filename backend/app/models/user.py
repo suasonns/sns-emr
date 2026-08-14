@@ -26,6 +26,11 @@ class User(BaseModel):
         nullable=False,
     )
 
+    password_hash = Column(
+        String(255),
+        nullable=False,
+    )
+
     full_name = Column(
         String,
         nullable=False,

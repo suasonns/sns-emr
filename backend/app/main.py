@@ -296,9 +296,7 @@ fastapi_app.add_middleware(
 # ---------------------------------------------------------------------
 
 from app.api.registry import register_routers
-from app.api.debug import router as debug_router
 
-fastapi_app.include_router(debug_router)
 register_routers(fastapi_app)
 
 

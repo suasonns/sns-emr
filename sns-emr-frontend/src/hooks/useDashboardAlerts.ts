@@ -2,7 +2,8 @@
 // src/hooks/useDashboardAlerts.ts
 
 import { useEffect, useMemo, useState } from 'react';
-import { fetchSidebarAlertCounts, SidebarAlertCounts } from '../api/dashboard';
+import { fetchSidebarAlertCounts } from '../api/dashboard';
+import type { SidebarAlertCounts } from '../api/dashboard';
 
 const DEFAULT_COUNTS: SidebarAlertCounts = {
   tasks: 0,

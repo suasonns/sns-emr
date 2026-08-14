@@ -392,3 +392,117 @@ This system will become:
 ✅ Survey-defensible hospice platform  
 
 ---
+
+# ✅ ICA EXPANSION BACKLOG (CURRENT ACTIVE QUEUE)
+
+## ACTIVE
+
+### Shared ICA Contract
+
+Status: ACTIVE
+
+Purpose:
+- Define one shared assessment lifecycle for all discipline ICA workflows.
+- Reuse the same save/load/lock/intelligence patterns across RN, MSW, and SC.
+- Keep evidence sourcing tied to patient data, diagnosis sources, and clinical notes instead of form-only state.
+
+Requirements:
+- common assessment_id / patient_id / status / locked model
+- common API contract for save, update, load, lock, and intelligence
+- common recommendation-only clinical intelligence output
+- discipline-specific form payload while sharing the same governance model
+
+### RN ICA Intelligence
+
+Status: DONE
+
+Completed:
+- RN ICA assessment saved and persisted via the canonical visits API
+- RN ICA route remains live in the app shell
+- RN ICA intelligence service generates risk findings and recommendations from assessment + evidence
+- UI surfaces RN ICA intelligence in the existing screen
+- targeted validation passed for the current engine path
+
+---
+
+## NEXT
+
+### MSW ICA
+
+Status: NEXT
+
+Scope:
+- build the MSW ICA assessment structure and route using the shared ICA contract
+- capture psychosocial support, caregiver burden, resource barriers, social isolation, and financial risk
+- pull evidence from patient notes, diagnosis context, and social context records
+- create save/load/lock/intelligence endpoints
+- surface a discipline-specific intelligence panel in the MSW workflow
+
+Required outputs:
+- support risk summary
+- resource-gap flags
+- caregiver stress indicators
+- missing evidence warnings
+- recommendation-only intervention priorities
+
+### SC ICA
+
+Status: NEXT
+
+Scope:
+- build the SC ICA assessment structure and route using the same shared contract
+- document spiritual distress, faith/cultural considerations, chaplain needs, and grief support concerns
+- source support from patient notes, family context, and chaplain documentation
+- create save/load/lock/intelligence endpoints
+- surface a discipline-specific intelligence panel in the SC workflow
+
+Required outputs:
+- spiritual distress flags
+- chaplain need cues
+- family support and meaning-making concerns
+- referral and follow-up recommendations
+- missing evidence warnings
+
+---
+
+## DEFERRED
+
+### Full audit-survival completion
+
+Status: DEFERRED
+
+This remains outside the active discipline ICA queue until the shared contract and the RN/MSW/SC flows are stable and validated.
+
+Deferred items:
+- full audit-trail finalization model
+- final cross-discipline review automation
+- downstream care-plan reconciliation work
+- larger compliance automation beyond the current intelligence layer
+
+---
+
+## DONE
+
+### RN ICA foundation
+
+Status: DONE
+
+Completed work:
+- RN ICA route is live and usable in the app shell
+- canonical backend persistence exists under the visits API
+- RN ICA runtime validation passed
+- RN ICA intelligence is implemented and surfaced in the screen
+- active phase remains aligned to the clinical intelligence foundation and ICD engine
+
+---
+
+# ✅ CONTINUATION ORDER
+
+1. Complete the shared ICA contract
+2. Implement MSW ICA using that shared model
+3. Implement SC ICA using that same model
+4. Expand downstream task and review automation only after the shared layer is stable
+
+This is the correct next sequence because RN ICA is already validated and is the reference implementation for the discipline-specific pattern.
+
+---

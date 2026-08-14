@@ -1,3 +1,5 @@
+import { getAccessToken } from "./session";
+
 // src/api/dashboard.ts
 
 // =========================================================
@@ -62,9 +64,33 @@ export type ClinicalComplianceDashboardResponse = {
   blocked_patients: DashboardPatientBlocker[];
 };
 
+export type ClinicalAlertMetric = {
+  key: string;
+  label: string;
+  value: number;
+};
+
+export type ClinicalAlertRow = {
+  alert_id: string;
+  priority: string;
+  alert_type: string;
+  patient_id: string;
+  patient_name: string;
+  description: string;
+  generated: string | null;
+  status: string;
+  source_type: string;
+};
+
+export type ClinicalAlertsResponse = {
+  metrics: ClinicalAlertMetric[];
+  alerts: ClinicalAlertRow[];
+};
+
 export type TenantDashboardResponse = {
   tenant_id: string;
   ai_enabled: boolean;
+  billing_enabled: boolean;
   dashboard: ClinicalComplianceDashboardResponse;
 };
 
@@ -139,8 +165,14 @@ export type PatientComplianceDetailResponse = {
 // =========================================================
 
 async function fetchJson<T>(url: string): Promise<T> {
+  const token = getAccessToken();
   const res = await fetch(url, {
     credentials: "include",
+    headers: token
+      ? {
+          Authorization: `Bearer ${token}`,
+        }
+      : undefined,
   });
 
   if (!res.ok) {
@@ -155,27 +187,35 @@ async function fetchJson<T>(url: string): Promise<T> {
 // =========================================================
 
 export function fetchTenantDashboard(): Promise<TenantDashboardResponse> {
-  return fetchJson<TenantDashboardResponse>("/dashboard/tenant");
+  return fetchJson<TenantDashboardResponse>("/api/dashboard/tenant");
 }
 
 export function fetchOwnerDashboard(): Promise<OwnerDashboardResponse> {
-  return fetchJson<OwnerDashboardResponse>("/dashboard/owner");
+  return fetchJson<OwnerDashboardResponse>("/api/dashboard/owner");
+}
+
+export function fetchClinicalComplianceDashboard(): Promise<ClinicalComplianceDashboardResponse> {
+  return fetchJson<ClinicalComplianceDashboardResponse>("/api/dashboard/clinical-compliance");
+}
+
+export function fetchClinicalAlerts(): Promise<ClinicalAlertsResponse> {
+  return fetchJson<ClinicalAlertsResponse>("/api/dashboard/clinical-alerts");
 }
 
 export function fetchBillingDashboard(): Promise<BillingDashboardResponse> {
-  return fetchJson<BillingDashboardResponse>("/dashboard/billing");
+  return fetchJson<BillingDashboardResponse>("/api/dashboard/billing");
 }
 
 // ✅ STEP 13 — CLAIM LIFECYCLE API
 export function fetchClaimLifecycle(): Promise<ClaimLifecycleResponse> {
-  return fetchJson<ClaimLifecycleResponse>("/dashboard/claim-lifecycle");
+  return fetchJson<ClaimLifecycleResponse>("/api/dashboard/claim-lifecycle");
 }
 
 export function fetchPatientComplianceDetail(
   patientId: string
 ): Promise<PatientComplianceDetailResponse> {
   return fetchJson<PatientComplianceDetailResponse>(
-    `/dashboard/clinical-compliance/patients/${patientId}`
+    `/api/dashboard/clinical-compliance/patients/${patientId}`
   );
 }
 

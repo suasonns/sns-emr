@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import jwt, JWTError
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.core.security import SECRET_KEY, ALGORITHM, JWT_AUDIENCE, JWT_ISSUER
+from app.core.security import decode_access_token
 
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 # =========================================================
@@ -40,11 +39,15 @@ VALID_ROLES = {
 
 @dataclass(frozen=True)
 class CurrentUser:
-    user_id: uuid.UUID
+    id: uuid.UUID
     role: str
     tenant_id: Optional[uuid.UUID] = None
     email: Optional[str] = None
     is_system: bool = False
+
+    @property
+    def user_id(self) -> uuid.UUID:
+        return self.id
 
 
 # =========================================================
@@ -52,19 +55,7 @@ class CurrentUser:
 # =========================================================
 
 def _decode_token(token: str) -> dict:
-    try:
-        return jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM],
-            audience=JWT_AUDIENCE,
-            issuer=JWT_ISSUER,
-        )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+    return decode_access_token(token)
 
 
 # =========================================================
@@ -72,8 +63,13 @@ def _decode_token(token: str) -> dict:
 # =========================================================
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
 ) -> CurrentUser:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
 
     token = credentials.credentials
     payload = _decode_token(token)
@@ -96,7 +92,7 @@ def get_current_user(
 
     try:
         return CurrentUser(
-            user_id=uuid.UUID(user_id),
+            id=uuid.UUID(user_id),
             role=str(role),
             tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
             email=payload.get("email"),

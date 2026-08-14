@@ -20,6 +20,12 @@ from app.models.tenant_mixin import TenantScopedMixin
 class Patient(TenantScopedMixin, BaseModel):
     __tablename__ = "patients"
 
+    def __init__(self, **kwargs):
+        kwargs.setdefault("status", "ACTIVE")
+        kwargs.setdefault("admission_status", "PRE_REFERRAL")
+        kwargs.setdefault("acuity_state", "ROUTINE")
+        super().__init__(**kwargs)
+
     # ---------------------------------------------------------
     # TENANT ISOLATION (COMPLIANCE CRITICAL)
     # ---------------------------------------------------------
@@ -46,6 +52,7 @@ class Patient(TenantScopedMixin, BaseModel):
     status = Column(
         String(32),
         nullable=False,
+        default="ACTIVE",
         server_default=text("'ACTIVE'"),
         index=True,
     )
@@ -72,6 +79,7 @@ class Patient(TenantScopedMixin, BaseModel):
     admission_status = Column(
         String(32),
         nullable=False,
+        default="PRE_REFERRAL",
         server_default=text("'PRE_REFERRAL'"),
         index=True,
     )
@@ -92,6 +100,7 @@ class Patient(TenantScopedMixin, BaseModel):
     acuity_state = Column(
         String(32),
         nullable=False,
+        default="ROUTINE",
         server_default=text("'ROUTINE'"),
         index=True,
     )

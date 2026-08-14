@@ -3,19 +3,21 @@ import { Box } from "@mui/material";
 import Sidebar from "../components/layout/Sidebar";
 import Header from "../components/layout/Header";
 
-import BillingDashboard from "./BillingDashboard";
+import SNSAnalytics from "./SNSAnalytics";
 import TenantDashboard from "./TenantDashboard";
 import OwnerDashboard from "./OwnerDashboard";
+import { getCurrentUser } from "../api/session";
 
 // =========================================================
 // COMPONENT
 // =========================================================
 
 export default function DashboardPage({ role }: { role: string }) {
+  const currentUser = getCurrentUser();
   const user = {
     name: "Admin User", // ✅ replace later with real auth
     role,
-    tenant_name: role === "OWNER" ? "All Tenants" : "Love & Faith Hospice",
+    tenant_name: role === "OWNER" ? "All Tenants" : currentUser?.tenant_name ?? "Love & Faith Hospice Services Inc.",
   };
 
   // =========================================================
@@ -25,7 +27,7 @@ export default function DashboardPage({ role }: { role: string }) {
   let content: React.ReactNode;
 
   if (role === "BILLER") {
-    content = <BillingDashboard />;
+    content = <SNSAnalytics />;
   } else if (role === "TENANT_ADMIN" || role === "CLINICIAN") {
     content = <TenantDashboard />;
   } else if (role === "OWNER") {

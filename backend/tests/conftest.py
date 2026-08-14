@@ -1,11 +1,17 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import os
+import uuid
 from dataclasses import dataclass
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
-from app.main import fastapi_app
 from app.core.database import SessionLocal
+from app.core.security import create_access_token
+from app.main import fastapi_app
+from app.models.tenant import Tenant
 
 
 # ---------------------------------------------------------------------
@@ -21,20 +27,17 @@ def client():
 # Auth Helpers
 # ---------------------------------------------------------------------
 
+def _test_tenant_id() -> str:
+    return os.getenv("REAL_TENANT_ID", "01271980-0000-0000-0000-000005101977")
+
+
 def login_headers(client: TestClient, user_id: str, role: str) -> dict:
-    r = client.post(
-        "/auth/dev-login",
-        json={
-            "user_id": user_id,
-            "role": role,
-            "tenant_id": "01271980-0000-0000-0000-000005101977",
-        },
+    token = create_access_token(
+        subject=str(uuid.uuid4()),
+        role=role,
+        tenant_id=_test_tenant_id(),
+        email=f"{user_id}@example.com",
     )
-    assert r.status_code == 200, r.text
-
-    token = r.json().get("access_token")
-    assert token, f"dev-login returned no access_token: {r.json()}"
-
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -54,7 +57,7 @@ def volunteer_headers(client):
 
 
 # ---------------------------------------------------------------------
-# Database Session (TEST‑ONLY BYPASS)
+# Database Session (TEST-ONLY BYPASS)
 # ---------------------------------------------------------------------
 
 @pytest.fixture()
@@ -67,9 +70,28 @@ def db_session():
     """
     session = SessionLocal()
 
-    # ✅ REQUIRED FOR UNIT TESTS
+    tenant_id = _test_tenant_id()
+
+    session.execute(text("DELETE FROM tasks WHERE tenant_id = CAST(:tenant_id AS UUID)"), {"tenant_id": tenant_id})
+    session.execute(text("DELETE FROM patients WHERE tenant_id = CAST(:tenant_id AS UUID)"), {"tenant_id": tenant_id})
+    session.commit()
+
+    tenant = session.get(Tenant, tenant_id)
+    if tenant is None:
+        session.add(
+            Tenant(
+                id=tenant_id,
+                legal_name="Love & Faith Hospice",
+                display_name="Love & Faith",
+                npi="1234567890",
+                tenant_type="DEV",
+                status="ACTIVE",
+            )
+        )
+        session.commit()
+
     session.info["skip_tenant_filter"] = True
-    session.info["tenant_id"] = "01271980-0000-0000-0000-000005101977"
+    session.info["tenant_id"] = tenant_id
 
     try:
         yield session
@@ -88,6 +110,4 @@ class _TestTenant:
 
 @pytest.fixture()
 def tenant():
-    return _TestTenant(
-        id="01271980-0000-0000-0000-000005101977"
-    )
+    return _TestTenant(id=_test_tenant_id())

@@ -9,10 +9,40 @@
       "title": "Hospice - Determining Terminal Status",
       "effective_date": "2019-11-14",
       "status": "ACTIVE",
-      "diagnosis_groups": [],
-      "general_decline_criteria": [],
-      "disease_specific_criteria": [],
-      "required_documentation": []
+      "diagnosis_groups": [
+        "ALS_END_STAGE",
+        "CANCER_METASTATIC",
+        "DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION",
+        "ESRD_KIDNEY_DISEASE",
+        "GENERAL_DECLINE_TERMINAL_STATUS",
+        "HEART_FAILURE",
+        "HIV_END_STAGE",
+        "LIVER_DISEASE_END_STAGE",
+        "PULMONARY_COPD_RESPIRATORY_FAILURE",
+        "STROKE_COMA"
+      ],
+      "general_decline_criteria": [
+        "KPS or PPS less than 70",
+        "decline in functional status",
+        "2+ ADLs dependent"
+      ],
+      "disease_specific_criteria": [
+        "CHF / heart failure markers (NYHA IV, refractory disease)",
+        "COPD / respiratory failure with hypoxia or hypercapnia",
+        "ESRD / renal failure with dialysis or severe renal compromise",
+        "HIV / AIDS end stage evidence",
+        "ALS / motor neuron disease progression",
+        "Metastatic cancer / terminal malignancy",
+        "Dementia / Alzheimer’s / senile degeneration",
+        "Liver failure / end-stage liver disease",
+        "Stroke / coma criteria"
+      ],
+      "required_documentation": [
+        "Primary diagnosis documentation",
+        "Clinical status decline or terminal disease evidence",
+        "Supportive functional decline and nutritional marker data",
+        "Disease-specific LCD documentation per diagnosis family"
+      ]
     }
   ]
 }

@@ -8,8 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 def _sync_database_url() -> str:
     """
-    Build a psycopg2 sync URL for code paths that must not use asyncpg
-    (e.g., dev-login, RLS session variable flows, some admin tasks).
+    Build a psycopg2 sync URL for code paths that must not use asyncpg.
     """
     url = os.getenv("DATABASE_URL") or ""
     if not url:

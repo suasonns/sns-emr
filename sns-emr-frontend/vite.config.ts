@@ -1,15 +1,58 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// ✅ ENTERPRISE SPA ROUTING SAFE CONFIG
 export default defineConfig({
   plugins: [react()],
-
   server: {
     port: 5173,
     host: true,
-
-    // ✅ THIS IS THE FIX FOR /billing 404
-    historyApiFallback: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/auth": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/dashboard": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/visits": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/patient-charts": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    port: 4173,
+    host: true,
+    proxy: {
+      "/api": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/auth": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/dashboard": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/visits": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+      "/patient-charts": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+      },
+    },
   },
 });

@@ -44,7 +44,7 @@ export default function Sidebar({
     role === "OWNER"
       ? "Owner Dashboard"
       : role === "BILLER"
-      ? "Billing Dashboard"
+      ? "Analytics Hub"
       : "Tenant Dashboard";
 
   // ✅ NAV ITEMS
@@ -53,18 +53,21 @@ export default function Sidebar({
       return [
         { label: "Owner Dashboard", path: "/owner", badge: total },
         { label: "Tenant Dashboard", path: "/tenant", badge: counts.blockers },
-        { label: "Billing Dashboard", path: "/billing", badge: counts.incidents },
+        { label: "Analytics Hub", path: "/billing", badge: counts.incidents },
+        { label: "Portal Preview", path: "/portal", badge: 0 },
       ];
     }
 
     if (role === "BILLER") {
       return [
-        { label: "Billing Dashboard", path: "/billing", badge: counts.tasks },
+      { label: "Analytics Hub", path: "/billing", badge: counts.tasks },
+        { label: "Portal Preview", path: "/portal", badge: 0 },
       ];
     }
 
     return [
       { label: "Tenant Dashboard", path: "/tenant", badge: total },
+      { label: "Portal Preview", path: "/portal", badge: 0 },
     ];
   }, [role, counts, total]);
 
