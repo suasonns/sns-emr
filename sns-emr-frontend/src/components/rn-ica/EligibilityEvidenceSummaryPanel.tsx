@@ -1,5 +1,3 @@
-import React from "react";
-
 type SummaryItem = {
   label: string;
   value: any;
