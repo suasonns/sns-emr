@@ -485,6 +485,20 @@ def authorize_admission(
         db.flush()
 
     # --------------------------------------------------
+    # PATIENT-LEVEL STAMPS (read by dashboard + charts)
+    # --------------------------------------------------
+
+    # SOC immutability: preserve the actual signed timestamp, not the midnight date value.
+    if _as_date(getattr(patient, "soc_date", None)) is None:
+        patient.soc_date = election_signed_at
+
+    if hasattr(patient, "admission_status"):
+        patient.admission_status = "ADMITTED"
+
+    if hasattr(patient, "admission_authorized_at") and getattr(patient, "admission_authorized_at", None) is None:
+        patient.admission_authorized_at = election_signed_at
+
+    # --------------------------------------------------
     # AUTHORIZATION + ELECTION SIGNATURE
     # --------------------------------------------------
 

@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
+from app.models.patient import Patient
+from app.models.rnica_assessment import RnicaAssessment
 from app.models.task import Task
+from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
 
 
@@ -66,6 +69,19 @@ class DashboardNoteFlagItem:
     incident_status: str | None
     red_flags: list[str]
     needs_clarification: list[str]
+
+
+@dataclass
+class DashboardClinicalAlertItem:
+    alert_id: str
+    priority: str
+    alert_type: str
+    patient_id: str
+    patient_name: str
+    description: str
+    generated: str | None
+    status: str
+    source_type: str
 
 
 @dataclass
@@ -202,6 +218,190 @@ def get_patient_compliance_detail(
         "tasks": [asdict(_map_task(task)) for task in tasks],
         "incidents": [asdict(_map_incident(incident)) for incident in incidents],
         "notes": [asdict(_map_note(note)) for note in notes],
+    }
+
+
+def get_clinical_alerts_dashboard(
+    db: Session,
+    *,
+    tenant_id: UUID,
+) -> dict[str, Any]:
+    alert_rows: list[DashboardClinicalAlertItem] = []
+
+    task_rows = (
+        db.query(Task, Patient.full_name.label("patient_name"))
+        .join(Patient, Patient.id == Task.patient_id)
+        .filter(Task.tenant_id == tenant_id)
+        .filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.ESCALATED]))
+        .order_by(Task.created_at.desc())
+        .all()
+    )
+
+    for task, patient_name in task_rows:
+        severity = _task_alert_priority(task)
+        alert_rows.append(
+            DashboardClinicalAlertItem(
+                alert_id=f"task:{task.id}",
+                priority=severity,
+                alert_type=_task_alert_title(task),
+                patient_id=str(task.patient_id),
+                patient_name=patient_name,
+                description=_task_alert_description(task),
+                generated=_iso(getattr(task, "created_at", None) or getattr(task, "due_at", None)),
+                status="Open" if _enumish(getattr(task, "status", None)).upper() != "COMPLETED" else "Acknowledged",
+                source_type="TASK",
+            )
+        )
+
+    incident_rows = (
+        db.query(IncidentReport, Patient.full_name.label("patient_name"))
+        .join(Patient, Patient.id == IncidentReport.patient_id)
+        .filter(IncidentReport.tenant_id == tenant_id)
+        .filter(IncidentReport.signed_at.is_(None))
+        .order_by(IncidentReport.created_at.desc(), IncidentReport.incident_date.desc())
+        .all()
+    )
+
+    for incident, patient_name in incident_rows:
+        alert_rows.append(
+            DashboardClinicalAlertItem(
+                alert_id=f"incident:{incident.id}",
+                priority=_incident_alert_priority(incident),
+                alert_type=_enumish(getattr(incident, "incident_type", None)) or "Incident",
+                patient_id=str(incident.patient_id),
+                patient_name=patient_name,
+                description=_incident_alert_description(incident),
+                generated=_iso(getattr(incident, "created_at", None) or getattr(incident, "incident_date", None)),
+                status="Open",
+                source_type="INCIDENT",
+            )
+        )
+
+    note_rows = (
+        db.query(ClinicalNote, Patient.full_name.label("patient_name"))
+        .join(Patient, Patient.id == ClinicalNote.patient_id)
+        .filter(ClinicalNote.tenant_id == tenant_id)
+        .filter(
+            ClinicalNote.incident_required.is_(True)
+            | (ClinicalNote.red_flags.isnot(None))
+            | (ClinicalNote.needs_clarification.isnot(None))
+        )
+        .order_by(ClinicalNote.created_at.desc())
+        .all()
+    )
+
+    for note, patient_name in note_rows:
+        alert_rows.append(
+            DashboardClinicalAlertItem(
+                alert_id=f"note:{note.id}",
+                priority=_note_alert_priority(note),
+                alert_type=_enumish(getattr(note, "form_key", None)) or _enumish(getattr(note, "note_type", None)) or "Clinical Note",
+                patient_id=str(note.patient_id),
+                patient_name=patient_name,
+                description=_note_alert_description(note),
+                generated=_iso(getattr(note, "created_at", None) or getattr(note, "encounter_date", None)),
+                status="Open" if _truthy(getattr(note, "incident_required", False)) else "Acknowledged",
+                source_type="NOTE",
+            )
+        )
+
+    if not alert_rows:
+        patient = (
+            db.query(Patient)
+            .filter(Patient.tenant_id == tenant_id)
+            .order_by(Patient.created_at.desc())
+            .first()
+        )
+
+        if patient is not None:
+            assessment = (
+                db.query(RnicaAssessment)
+                .filter(RnicaAssessment.patient_id == patient.id)
+                .order_by(RnicaAssessment.created_at.desc())
+                .first()
+            )
+
+            if assessment is not None:
+                full_name = getattr(patient, "full_name", "Unknown Patient")
+                election_signed = getattr(patient, "election_signed_at", None) is not None
+                admission_status = _enumish(getattr(patient, "admission_status", None)) or "Unknown"
+                locked = _truthy(getattr(assessment, "locked", False))
+                finalization = getattr(assessment, "form_data", {}) or {}
+                poc_completed = bool(
+                    finalization.get("finalization", {}).get("pocGenerationCompleted", False)
+                )
+
+                if not election_signed:
+                    alert_rows.append(
+                        DashboardClinicalAlertItem(
+                            alert_id=f"patient:{patient.id}:election",
+                            priority="High",
+                            alert_type="Election Packet Review",
+                            patient_id=str(patient.id),
+                            patient_name=full_name,
+                            description=(
+                                f"{full_name} has no signed election packet on file and needs review."
+                            ),
+                            generated=_iso(getattr(patient, "updated_at", None) or getattr(patient, "created_at", None)),
+                            status="Open",
+                            source_type="PATIENT",
+                        )
+                    )
+
+                if admission_status in {"PRE_REFERRAL", "PENDING"}:
+                    alert_rows.append(
+                        DashboardClinicalAlertItem(
+                            alert_id=f"patient:{patient.id}:admission",
+                            priority="Critical" if admission_status == "PRE_REFERRAL" else "High",
+                            alert_type="Admission Status Review",
+                            patient_id=str(patient.id),
+                            patient_name=full_name,
+                            description=(
+                                f"{full_name} is still marked {admission_status.lower().replace('_', ' ')} "
+                                "and needs admission follow-up."
+                            ),
+                            generated=_iso(getattr(patient, "updated_at", None) or getattr(patient, "created_at", None)),
+                            status="Open",
+                            source_type="PATIENT",
+                        )
+                    )
+
+                if locked or poc_completed:
+                    alert_rows.append(
+                        DashboardClinicalAlertItem(
+                            alert_id=f"assessment:{assessment.id}",
+                            priority="Medium",
+                            alert_type="RNICA Finalized",
+                            patient_id=str(patient.id),
+                            patient_name=full_name,
+                            description=(
+                                f"RNICA assessment for {full_name} is locked and care plan finalization is recorded."
+                            ),
+                            generated=_iso(getattr(assessment, "locked_at", None) or getattr(assessment, "created_at", None)),
+                            status="Acknowledged",
+                            source_type="ASSESSMENT",
+                        )
+                    )
+
+    alert_rows.sort(
+        key=lambda item: (
+            _priority_rank(item.priority),
+            item.generated or "",
+        ),
+        reverse=True,
+    )
+
+    open_count = sum(1 for item in alert_rows if item.status == "Open")
+    critical_count = sum(1 for item in alert_rows if item.priority == "Critical")
+    resolved_count = sum(1 for item in alert_rows if item.status != "Open")
+
+    return {
+        "metrics": [
+            {"key": "open_alerts", "label": "Total Open Alerts", "value": open_count},
+            {"key": "critical_alerts", "label": "Critical Priority", "value": critical_count},
+            {"key": "resolved_alerts", "label": "Resolved Today", "value": resolved_count},
+        ],
+        "alerts": [asdict(item) for item in alert_rows[:100]],
     }
 
 
@@ -571,6 +771,80 @@ def _iso(value: Any) -> str | None:
     if hasattr(value, "isoformat"):
         return value.isoformat()
     return str(value)
+
+
+def _priority_rank(priority: str) -> int:
+    priority = (priority or "").upper()
+    if priority == "CRITICAL":
+        return 3
+    if priority == "HIGH":
+        return 2
+    if priority == "MEDIUM":
+        return 1
+    return 0
+
+
+def _task_alert_priority(task: Task) -> str:
+    status = _enumish(getattr(task, "status", None)).upper()
+    task_type = _enumish(getattr(task, "task_type", None)).upper()
+    if status in {"OVERDUE", "ESCALATED"}:
+        return "Critical"
+    if task_type in {"CLINICAL_REVIEW_REQUIRED", "POC_REVIEW_REQUIRED", "F2F"}:
+        return "High"
+    return "Medium"
+
+
+def _incident_alert_priority(incident: IncidentReport) -> str:
+    severity = _enumish(getattr(incident, "incident_severity", None)).upper()
+    if severity in {"CRITICAL", "SENTINEL"}:
+        return "Critical"
+    if severity in {"HIGH", "MAJOR"}:
+        return "High"
+    return "Medium"
+
+
+def _note_alert_priority(note: ClinicalNote) -> str:
+    if _truthy(getattr(note, "incident_required", False)):
+        return "High"
+    if len(_listish(getattr(note, "red_flags", None))) > 0:
+        return "Medium"
+    return "Medium"
+
+
+def _task_alert_title(task: Task) -> str:
+    alert_reason = _enumish(getattr(task, "alert_reason", None))
+    if alert_reason:
+        return alert_reason
+    return _enumish(getattr(task, "task_type", None)) or "Task"
+
+
+def _task_alert_description(task: Task) -> str:
+    for field in ("alert_reason", "escalation_reason", "priority", "clinical_severity"):
+        value = getattr(task, field, None)
+        if value:
+            return str(value)
+    return _enumish(getattr(task, "task_type", None)) or "Open task requires review."
+
+
+def _incident_alert_description(incident: IncidentReport) -> str:
+    for field in ("narrative", "place", "area", "injury_type", "other_injury_text"):
+        value = getattr(incident, field, None)
+        if value:
+            text_value = str(value).strip()
+            if text_value:
+                return text_value
+    return _enumish(getattr(incident, "incident_type", None)) or "Incident requires review."
+
+
+def _note_alert_description(note: ClinicalNote) -> str:
+    flags = _listish(getattr(note, "red_flags", None))
+    if flags:
+        return flags[0]
+    clarification = _listish(getattr(note, "needs_clarification", None))
+    if clarification:
+        return clarification[0]
+    content = str(getattr(note, "content", "") or "").strip()
+    return content[:120] if content else "Clinical note requires review."
 
 def get_claim_lifecycle_dashboard(
     db: Session,

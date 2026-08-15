@@ -37,6 +37,12 @@ from app.models.visit import Visit
 from app.models.med_reconciliation import MedReconciliationItem
 from app.models.sfv_requirement import SFVRequirement
 from app.models.admission import Admission
+from app.models.chha_visit_outcome import CHHAVisitOutcome
+from app.models.rnica_assessment import RnicaAssessment
+from app.models.msw_ica_assessment import MswIcaAssessment
+from app.services.icd_intelligence import gather_patient_evidence
+from app.services.rnica_intelligence import build_rnica_intelligence
+from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 
 from app.services.chha_outcome_service import upsert_chha_outcome
 from app.services.diagnosis_sync_service import sync_official_primary_diagnosis
@@ -158,6 +164,239 @@ def get_db(request: Request) -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
+
+
+@router.post("/rnica/save")
+def save_rnica_assessment(payload: dict, db: Session = Depends(get_db)):
+    patient_id_raw = (payload or {}).get("patientId")
+    form_data = (payload or {}).get("formData") or {}
+
+    if not patient_id_raw:
+        raise HTTPException(status_code=422, detail="patientId is required")
+
+    try:
+        patient_uuid = uuid.UUID(str(patient_id_raw))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
+
+    patient_exists = db.execute(
+        text("SELECT 1 FROM patients WHERE id = :patient_id LIMIT 1"),
+        {"patient_id": patient_uuid},
+    ).first()
+    if patient_exists is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    assessment = RnicaAssessment(
+        patient_id=patient_uuid,
+        form_data=form_data,
+        assessment_type="RNICA",
+        status="DRAFT",
+        locked=False,
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+
+    return {"assessmentId": str(assessment.id), "status": "saved"}
+
+
+@router.get("/rnica/{assessment_id}")
+def get_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": record.form_data or {},
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.put("/rnica/{assessment_id}")
+def update_rnica_assessment(assessment_id: str, payload: dict, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    form_data = (payload or {}).get("formData") or record.form_data or {}
+    record.form_data = form_data
+    record.status = "DRAFT"
+    db.commit()
+
+    return {
+        "assessmentId": str(record.id),
+        "status": "updated",
+        "locked": record.locked,
+    }
+
+
+@router.post("/rnica/{assessment_id}/lock")
+def lock_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    record.locked = True
+    record.status = "LOCKED"
+    record.locked_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"assessmentId": str(record.id), "status": "locked", "locked": True}
+
+
+@router.get("/rnica/{assessment_id}/intelligence")
+def get_rnica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    patient_id = str(record.patient_id) if record.patient_id else None
+    patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
+
+    intelligence = build_rnica_intelligence(
+        record.form_data or {},
+        patient_id=patient_id,
+        patient_evidence=patient_evidence,
+    )
+    return intelligence
+
+
+@router.post("/msw-ica/save")
+def save_msw_ica_assessment(payload: dict, db: Session = Depends(get_db)):
+    patient_id_raw = (payload or {}).get("patientId")
+    form_data = (payload or {}).get("formData") or {}
+
+    if not patient_id_raw:
+        raise HTTPException(status_code=422, detail="patientId is required")
+
+    try:
+        patient_uuid = uuid.UUID(str(patient_id_raw))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
+
+    patient_exists = db.execute(
+        text("SELECT 1 FROM patients WHERE id = :patient_id LIMIT 1"),
+        {"patient_id": patient_uuid},
+    ).first()
+    if patient_exists is None:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    assessment = MswIcaAssessment(
+        patient_id=patient_uuid,
+        form_data=form_data,
+        assessment_type="MSWICA",
+        status="DRAFT",
+        locked=False,
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return {"assessmentId": str(assessment.id), "status": "saved"}
+
+
+@router.get("/msw-ica/{assessment_id}")
+def get_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(MswIcaAssessment).filter(MswIcaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": record.form_data or {},
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.put("/msw-ica/{assessment_id}")
+def update_msw_ica_assessment(assessment_id: str, payload: dict, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(MswIcaAssessment).filter(MswIcaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    form_data = (payload or {}).get("formData") or record.form_data or {}
+    record.form_data = form_data
+    record.status = "DRAFT"
+    db.commit()
+    return {
+        "assessmentId": str(record.id),
+        "status": "updated",
+        "locked": record.locked,
+    }
+
+
+@router.post("/msw-ica/{assessment_id}/lock")
+def lock_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(MswIcaAssessment).filter(MswIcaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    record.locked = True
+    record.status = "LOCKED"
+    record.locked_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"assessmentId": str(record.id), "status": "locked", "locked": True}
+
+
+@router.get("/msw-ica/{assessment_id}/intelligence")
+def get_msw_ica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(MswIcaAssessment).filter(MswIcaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    patient_id = str(record.patient_id) if record.patient_id else None
+    patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
+
+    return build_msw_ica_intelligence(
+        record.form_data or {},
+        patient_id=patient_id,
+        patient_evidence=patient_evidence,
+    )
 
 
 # =========================================================

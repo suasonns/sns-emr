@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, date
 import uuid
 
@@ -7,7 +8,7 @@ from sqlalchemy import text
 from app.models.patient import Patient
 
 
-DEV_TENANT_ID = uuid.UUID("01271980-0000-0000-0000-000005101977")
+TEST_TENANT_ID = uuid.UUID(os.getenv("REAL_TENANT_ID", "01271980-0000-0000-0000-000005101977"))
 
 
 def _ensure_user_id(db_session):
@@ -20,7 +21,7 @@ def _create_patient(db_session, acuity_state: str):
 
     patient = Patient(
         id=uuid.uuid4(),
-        tenant_id=DEV_TENANT_ID,
+        tenant_id=TEST_TENANT_ID,
         mrn=f"TEST-{uuid.uuid4().hex[:10]}",
         full_name="Test Patient",
         date_of_birth=date(1950, 1, 1),
