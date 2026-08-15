@@ -3,23 +3,25 @@
 # ---------------------------------------------------------------------
 
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv(".env.local")
-load_dotenv()
+env_path = Path(__file__).resolve().parents[1] / ".env.local"
+# Real environment variables (shell / CI / cloud) always win over dotenv files.
+load_dotenv(dotenv_path=env_path, override=False)
+
 
 """
 SNS Hospice EMR – FastAPI application entrypoint.
 Enterprise-grade initialization (stable + deterministic).
 """
 
-load_dotenv(".env.local")
-load_dotenv()
 
 # ---------------------------------------------------------------------
 # ENVIRONMENT SAFETY GUARD (CRITICAL)
 # ---------------------------------------------------------------------
 
 import os
+
 
 def validate_environment_safety() -> None:
     env = os.getenv("ENVIRONMENT", "").lower()
@@ -30,8 +32,10 @@ def validate_environment_safety() -> None:
             "❌ CRITICAL SECURITY ERROR: DEV DASHBOARD BYPASS ENABLED OUTSIDE DEVELOPMENT"
         )
 
+
 # ✅ RUN IMMEDIATELY AFTER ENV LOAD
 validate_environment_safety()
+
 
 # ---------------------------------------------------------------------
 # CORE IMPORTS
@@ -47,12 +51,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Set
-from app.services.overdue_service import mark_overdue_poc_tasks
-from app.core.tenant_routing_middleware import TenantRoutingMiddleware
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
+
+from app.services.overdue_service import mark_overdue_poc_tasks
+from app.core.tenant_routing_middleware import TenantRoutingMiddleware
+
 
 # ---------------------------------------------------------------------
 # LOGGING CONFIG
@@ -62,7 +68,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
 )
+
 logger = logging.getLogger("sns_emr")
+
 
 # ---------------------------------------------------------------------
 # STARTUP STATUS
@@ -81,6 +89,7 @@ STARTUP_STATUS: Dict[str, Any] = {
     "warnings": [],
 }
 
+
 # ---------------------------------------------------------------------
 # HELPERS
 # ---------------------------------------------------------------------
@@ -98,73 +107,134 @@ def _backend_root_dir() -> Path:
 # ---------------------------------------------------------------------
 
 def assert_alembic_in_sync() -> None:
+    """
+    Ensures that the database schema is fully migrated to the latest revision.
+    Hard fails if drift is detected.
+
+    Enterprise-grade:
+    - deterministic
+    - failure-safe
+    - audit-traceable
+    """
+
+    import os
+
+    from alembic.config import Config as AlembicConfig
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+
+    # -----------------------------------------------------
+    # OPTIONAL SKIP (ONLY FOR LOCAL / CI OVERRIDE)
+    # -----------------------------------------------------
     if os.getenv("SKIP_ALEMBIC_CHECK", "").lower() in {"1", "true"}:
         return
 
     backend_root = _backend_root_dir()
+    ini_path = backend_root / "alembic.ini"
 
-    def _run(cmd: list[str]) -> str:
-        result = subprocess.run(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            cwd=str(backend_root),
+    if not ini_path.is_file():
+        raise RuntimeError(f"❌ Alembic config not found: {ini_path}")
+
+    try:
+        # -----------------------------------------------------
+        # HEAD REVISIONS (FROM MIGRATION SCRIPTS)
+        # -----------------------------------------------------
+        alembic_cfg = AlembicConfig(str(ini_path))
+        # script_location may be ini-relative; anchor it to the backend root
+        alembic_cfg.set_main_option("script_location", str(backend_root / "alembic"))
+
+        script = ScriptDirectory.from_config(alembic_cfg)
+        head_set = set(script.get_heads())
+
+        # -----------------------------------------------------
+        # CURRENT REVISIONS (FROM alembic_version TABLE)
+        # -----------------------------------------------------
+        from app.core.database import engine
+
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection)
+            current_set = set(context.get_current_heads())
+
+        STARTUP_STATUS["alembic_current"] = sorted(current_set)
+        STARTUP_STATUS["alembic_heads"] = sorted(head_set)
+
+        # -----------------------------------------------------
+        # VALIDATION
+        # -----------------------------------------------------
+        if not head_set:
+            raise RuntimeError(
+                f"❌ No Alembic head revisions detected in {backend_root / 'alembic'}"
+            )
+
+        if not current_set:
+            raise RuntimeError(
+                "❌ Database has no Alembic revision stamped "
+                f"(expected_heads={sorted(head_set)}). Run `alembic upgrade head`."
+            )
+
+        if current_set != head_set:
+            raise RuntimeError(
+                f"❌ DATABASE SCHEMA DRIFT DETECTED — "
+                f"current={sorted(current_set)} expected_heads={sorted(head_set)}"
+            )
+
+    except Exception as e:
+        # -----------------------------------------------------
+        # ENTERPRISE ERROR TRACEABILITY
+        # -----------------------------------------------------
+        error_msg = str(e)
+
+        STARTUP_STATUS["warnings"].append(
+            {"alembic_check_error": error_msg}
         )
 
-        # ✅ combine stdout + stderr (important on Windows)
-        output = (result.stdout or "") + (result.stderr or "")
-        return output.strip()
-
-    current_output = _run(["alembic", "current"])
-    heads_output = _run(["alembic", "heads"])
-
-    # -----------------------------------------------------
-    # ✅ DEBUG (TEMP — REMOVE LATER)
-    # -----------------------------------------------------
-    print("\n===== ALEMBIC DEBUG START =====")
-    print("RAW CURRENT OUTPUT:")
-    print(current_output)
-    print("RAW HEADS OUTPUT:")
-    print(heads_output)
-    print("===== ALEMBIC DEBUG END =====\n")
-
-    STARTUP_STATUS["alembic_current"] = current_output
-    STARTUP_STATUS["alembic_heads"] = heads_output
-
-    # -----------------------------------------------------
-    # ✅ SAFE PARSING (FIXED)
-    # -----------------------------------------------------
-    if not current_output:
-        raise RuntimeError(
-            "❌ Alembic current returned empty output — cannot validate schema"
-        )
-
-    current_match = re.search(r"\b[0-9a-f]{7,40}\b", current_output)
-    head_matches = re.findall(r"\b[0-9a-f]{7,40}\b", heads_output)
-
-    current_rev = current_match.group(0) if current_match else None
-
-    if not current_rev or current_rev not in head_matches:
-        raise RuntimeError(
-            f"❌ DATABASE SCHEMA DRIFT DETECTED — {current_rev} != {head_matches}"
-        )
+        raise
 
 # ---------------------------------------------------------------------
 # DB PROBE
 # ---------------------------------------------------------------------
 
 def assert_db_probe() -> None:
+    """
+    Verifies database connectivity and basic query execution.
+    Safe for production: no writes, no side effects, deterministic.
+    """
+
     from app.db.session import SessionLocal
+    from sqlalchemy import text
 
     db = SessionLocal()
+
     try:
+        # -----------------------------------------------------
+        # BASIC CONNECTIVITY TEST (READ-ONLY)
+        # -----------------------------------------------------
         db.execute(text("SELECT 1"))
-        db.execute(text("CREATE TEMP TABLE IF NOT EXISTS sns_probe(x int)"))
-        db.execute(text("INSERT INTO sns_probe(x) VALUES (1)"))
-        db.rollback()
+
+        # -----------------------------------------------------
+        # SUCCESS FLAG
+        # -----------------------------------------------------
         STARTUP_STATUS["db_probe_ok"] = True
+
+    except Exception as e:
+        # -----------------------------------------------------
+        # STRUCTURED ERROR HANDLING (CRITICAL)
+        # -----------------------------------------------------
+        error_msg = f"db-probe-failed: {str(e)}"
+
+        STARTUP_STATUS["db_probe_ok"] = False
+        STARTUP_STATUS["warnings"].append(
+            {"db_probe_error": error_msg}
+        )
+
+        raise RuntimeError(
+            f"❌ DATABASE PROBE FAILED — {error_msg}"
+        )
+
     finally:
+        # -----------------------------------------------------
+        # GUARANTEED CLEANUP
+        # -----------------------------------------------------
         db.close()
 
 
@@ -175,19 +245,10 @@ def assert_db_probe() -> None:
 def check_model_schema_alignment() -> None:
     from app.db.session import SessionLocal
     from app.db.base import Base
-    import app.models
+    import app.models  # ensures models are registered
 
     db = SessionLocal()
     try:
-        
-        db_name = db.execute(
-            text("select current_database()")
-        ).scalar()
-
-        schema_name = db.execute(
-            text("select current_schema()")
-        ).scalar()
-        
         rows = db.execute(
             text(
                 """
@@ -208,15 +269,21 @@ def check_model_schema_alignment() -> None:
             )
         ).fetchall()
 
+        # -----------------------------------------------------
+        # BUILD DB TABLE MAP
+        # -----------------------------------------------------
         db_tables: Dict[str, Set[str]] = {}
+
         for table_name, column_name in rows:
             db_tables.setdefault(table_name, set()).add(column_name)
 
         missing_tables = []
         missing_columns = []
 
-        for metadata_name, table in Base.metadata.tables.items():
-
+        # -----------------------------------------------------
+        # COMPARE MODEL vs DB
+        # -----------------------------------------------------
+        for table in Base.metadata.tables.values():
             table_name = table.name
 
             if table_name not in db_tables:
@@ -224,19 +291,41 @@ def check_model_schema_alignment() -> None:
                 continue
 
             db_cols = db_tables[table_name]
+
             for col in table.columns:
                 if col.name not in db_cols:
                     missing_columns.append(f"{table_name}.{col.name}")
 
+        # -----------------------------------------------------
+        # RESULT HANDLING
+        # -----------------------------------------------------
         if missing_tables or missing_columns:
             warning = {
                 "missing_tables": missing_tables,
                 "missing_columns": missing_columns,
             }
+
             STARTUP_STATUS["warnings"].append(warning)
-            logger.warning("⚠️ MODEL ↔ DB drift detected (non-blocking): %s", warning)
+
+            logger.warning(
+                "⚠️ MODEL ↔ DB drift detected (non-blocking): %s",
+                warning,
+            )
         else:
             STARTUP_STATUS["model_schema_ok"] = True
+
+    except Exception as e:
+        # -----------------------------------------------------
+        # HARDENED ERROR HANDLING (ENTERPRISE REQUIRED)
+        # -----------------------------------------------------
+        error_msg = f"model-schema-check-failed: {str(e)}"
+
+        STARTUP_STATUS["warnings"].append(
+            {"model_schema_check_error": error_msg}
+        )
+
+        logger.exception("⚠️ Model-schema alignment check failed")
+
     finally:
         db.close()
 
@@ -246,26 +335,84 @@ def check_model_schema_alignment() -> None:
 # ---------------------------------------------------------------------
 
 def log_schema_hash() -> None:
+    """
+    Computes a deterministic hash of the database schema.
+
+    Enterprise-grade:
+    - stable ordering
+    - extended schema coverage
+    - environment-consistent hashing
+    - audit-safe logging
+    """
+
     from app.db.session import SessionLocal
+    from sqlalchemy import text
+    import hashlib
+    import json
 
     db = SessionLocal()
+
     try:
+        # -----------------------------------------------------
+        # FETCH SCHEMA (DETERMINISTIC ORDER)
+        # -----------------------------------------------------
         rows = db.execute(
             text(
                 """
-                SELECT table_name, column_name, data_type
+                SELECT
+                    table_name,
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    column_default,
+                    ordinal_position
                 FROM information_schema.columns
-                WHERE table_schema='public'
-                ORDER BY table_name
+                WHERE table_schema = 'public'
+                ORDER BY table_name, ordinal_position
                 """
             )
         ).fetchall()
 
-        payload = [{"t": r[0], "c": r[1], "d": r[2]} for r in rows]
-        schema_hash = hashlib.sha256(json.dumps(payload).encode()).hexdigest()
+        # -----------------------------------------------------
+        # BUILD PAYLOAD
+        # -----------------------------------------------------
+        payload = [
+            {
+                "table": r[0],
+                "column": r[1],
+                "type": r[2],
+                "nullable": r[3],
+                "default": r[4],
+                "position": r[5],
+            }
+            for r in rows
+        ]
 
+        # -----------------------------------------------------
+        # STABLE HASH GENERATION
+        # -----------------------------------------------------
+        schema_hash = hashlib.sha256(
+            json.dumps(payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+        # -----------------------------------------------------
+        # STORE + LOG
+        # -----------------------------------------------------
         STARTUP_STATUS["schema_hash_sha256"] = schema_hash
         logger.info("✅ schema hash: %s", schema_hash)
+
+    except Exception as e:
+        # -----------------------------------------------------
+        # ERROR TRACEABILITY (CRITICAL)
+        # -----------------------------------------------------
+        error_msg = f"schema-hash-failed: {str(e)}"
+
+        STARTUP_STATUS["warnings"].append(
+            {"schema_hash_error": error_msg}
+        )
+
+        logger.exception("⚠️ Schema hash computation failed")
+
     finally:
         db.close()
 
@@ -301,6 +448,7 @@ async def lifespan(app: FastAPI):
             scheduler_task = asyncio.create_task(overdue_scheduler())
             STARTUP_STATUS["scheduler_started"] = True
             logger.info("✅ Overdue scheduler started")
+
         except Exception as scheduler_exc:
             STARTUP_STATUS["warnings"].append(
                 {"scheduler_start_failed": str(scheduler_exc)}
@@ -313,6 +461,9 @@ async def lifespan(app: FastAPI):
         yield
 
     except Exception as e:
+        # -------------------------------------------------------------
+        # STRUCTURED STARTUP FAILURE RECORDING
+        # -------------------------------------------------------------
         STARTUP_STATUS["error"] = str(e)
         logger.exception("🛑 Startup failed")
         raise
@@ -327,11 +478,25 @@ async def lifespan(app: FastAPI):
                 await scheduler_task
             except asyncio.CancelledError:
                 logger.info("✅ Overdue scheduler stopped")
+            except Exception as shutdown_exc:
+                STARTUP_STATUS["warnings"].append(
+                    {"scheduler_shutdown_failed": str(shutdown_exc)}
+                )
+                logger.warning(
+                    "⚠️ Overdue scheduler shutdown issue: %s",
+                    shutdown_exc,
+                )
 
 
 # ---------------------------------------------------------------------
 # APP
 # ---------------------------------------------------------------------
+
+import os
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+ENV = os.getenv("ENVIRONMENT", "development").lower()
 
 fastapi_app = FastAPI(
     title="SNS Hospice EMR",
@@ -341,24 +506,37 @@ fastapi_app = FastAPI(
 
 
 # ---------------------------------------------------------------------
-# MODELS (REGISTER METADATA)
+# MODELS (ENSURE REGISTRATION)
 # ---------------------------------------------------------------------
 
 import app.models  # noqa
 
 
 # ---------------------------------------------------------------------
-# CORS
+# MIDDLEWARE
 # ---------------------------------------------------------------------
+
+# ✅ SECURE CORS (ENV-BASED)
+if ENV == "production":
+    allowed_origins = [
+        "https://your-frontend-domain.com",
+    ]
+else:
+    allowed_origins = ["*"]
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+# ✅ TENANT ROUTING (ENABLE IF REQUIRED)
+# from app.core.tenant_routing_middleware import TenantRoutingMiddleware
 # fastapi_app.add_middleware(TenantRoutingMiddleware)
+
+
 # ---------------------------------------------------------------------
 # ROUTERS
 # ---------------------------------------------------------------------
@@ -366,19 +544,45 @@ fastapi_app.add_middleware(
 from app.api.registry import register_routers
 from app.api.debug import router as debug_router
 
-fastapi_app.include_router(debug_router)
+# ✅ DEBUG ROUTES ONLY IN NON-PRODUCTION
+if ENV != "production":
+    fastapi_app.include_router(debug_router)
+
 register_routers(fastapi_app)
 
 
 # ---------------------------------------------------------------------
-# HEALTH
+# HEALTH ENDPOINTS
 # ---------------------------------------------------------------------
 
 @fastapi_app.get("/health")
 def health():
-    return {"status": "ok"}
+    """
+    Lightweight health check (load balancer safe).
+    """
+    return {
+        "status": "ok",
+        "environment": ENV,
+    }
 
 
 @fastapi_app.get("/system/startup-status")
 def startup_status():
+    """
+    Full startup diagnostics (internal use).
+    """
     return STARTUP_STATUS
+
+
+@fastapi_app.get("/system/ready")
+def readiness_check():
+    """
+    Production readiness probe:
+    reflects real system state.
+    """
+    return {
+        "ready": STARTUP_STATUS.get("checks_passed", False),
+        "db": STARTUP_STATUS.get("db_probe_ok", False),
+        "scheduler": STARTUP_STATUS.get("scheduler_started", False),
+    }
+

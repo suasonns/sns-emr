@@ -17,7 +17,8 @@ from alembic.script import ScriptDirectory
 # ---------------------------------------------------------
 # ✅ ENVIRONMENT (SAFE + ORDERED)
 # ---------------------------------------------------------
-load_dotenv(".env.local", override=True)
+# Real environment variables (shell / CI / cloud) always win over dotenv files.
+load_dotenv(".env.local", override=False)
 load_dotenv(override=False)
 
 
@@ -151,6 +152,13 @@ Blocked operations in upgrade():
 # ---------------------------------------------------------
 # ✅ DATABASE URL (STRICT)
 # ---------------------------------------------------------
+def _redact_url(url: str) -> str:
+    try:
+        return sa.engine.make_url(url).render_as_string(hide_password=True)
+    except Exception:
+        return "<unparseable-database-url>"
+
+
 def get_database_url() -> str:
     url = (
         os.getenv("MIGRATION_DATABASE_URL")
@@ -161,12 +169,15 @@ def get_database_url() -> str:
     if not url:
         raise RuntimeError("DATABASE URL not configured")
 
-    if "sns_emr_dev_clean" not in url:
+    # Guard only applies when an expected database name is declared (local/dev).
+    expected_db = os.getenv("EXPECTED_DB", "").strip()
+
+    if expected_db and expected_db not in url:
         raise RuntimeError(
-            f"WRONG DATABASE DETECTED: {url}. Expected sns_emr_dev_clean"
+            f"WRONG DATABASE DETECTED: {_redact_url(url)}. Expected {expected_db}"
         )
 
-    print(f"[ALEMBIC] Using DATABASE_URL: {url}")
+    print(f"[ALEMBIC] Using DATABASE_URL: {_redact_url(url)}")
 
     return url
 
