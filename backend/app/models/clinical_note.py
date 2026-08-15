@@ -45,7 +45,13 @@ class ClinicalNote(BaseModel):
 
     current_version_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("clinical_note_versions.id", ondelete="RESTRICT"),
+        # use_alter breaks the clinical_notes <-> clinical_note_versions cycle at create time
+        ForeignKey(
+            "clinical_note_versions.id",
+            ondelete="RESTRICT",
+            use_alter=True,
+            name="fk_clinical_notes_current_version_id",
+        ),
         nullable=True,
     )
 

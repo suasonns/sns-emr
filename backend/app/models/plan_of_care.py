@@ -79,7 +79,13 @@ class PlanOfCare(Base):
 
     current_version_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("plan_of_care_versions.id", ondelete="SET NULL"),
+        # use_alter breaks the plan_of_care <-> plan_of_care_versions cycle at create time
+        ForeignKey(
+            "plan_of_care_versions.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_plan_of_care_current_version_id",
+        ),
         nullable=True,
         index=True,
     )
