@@ -12,3 +12,5 @@ python-jose[cryptography]
 passlib[bcrypt]
 
 python-multipart
+
+reportlab==4.2.2
