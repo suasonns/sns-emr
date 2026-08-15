@@ -1,3 +1,5 @@
+# services/admission_authorization_service.py
+
 from __future__ import annotations
 
 import uuid
@@ -8,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.models.patient import Patient
 from app.models.task import Task
+from app.models.admission import Admission
 from app.models.enums import (
     TaskDiscipline,
     TaskOrigin,
@@ -428,58 +431,92 @@ def authorize_admission(
     authorized_by_user_id: Optional[uuid.UUID],
 ) -> Patient:
     """
-    Admission authorization (production stable).
+    Admission authorization — PRODUCTION SAFE (fixed)
 
-    Guarantees:
-    - SOC immutable (no-op if already set)
-    - election_signed_at persisted if field exists
-    - hospice_election_date persisted if field exists
-    - INITIAL_RN_ICA due +2 days (PENDING, strict unique)
-    - INITIAL_MSW_ICA due +5 days (PENDING, strict unique)
-    - INITIAL_SC_ICA due +5 days (PENDING, strict unique)
-    - INITIAL_BEREAVEMENT due +5 days (PENDING, strict unique)
-    - NOE_DUE due +5 days (PENDING, strict unique)
-    - IDG_REVIEW due +15 days (PENDING, active-task idempotent)
+    ✅ SOC owned by Admission
+    ✅ Task engine untouched
+    ✅ Idempotency preserved
     """
+
     patient = db.query(Patient).filter(Patient.id == patient_id).one()
     tenant_id = getattr(patient, "tenant_id", None)
-
+        
     if not tenant_id:
         raise ValueError("Patient is missing tenant_id")
+    
+    now = _now_utc()
+    
+    # ✅ LOAD LATEST ADMISSION (authoritative)
+    admission = (
+        db.query(Admission)
+        .filter(Admission.tenant_id == tenant_id)
+        .filter(Admission.patient_id == patient.id)
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
 
-    incoming_soc = election_signed_at.date()
-    existing_soc = _as_date(getattr(patient, "soc_date", None))
+    if not admission:
+        admission = Admission(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+        )
 
-    # SOC immutability
-    if existing_soc is None:
-        try:
-            patient.soc_date = incoming_soc
-        except Exception:
-            patient.soc_date = election_signed_at
+        # safest defaults for current schema
+        if hasattr(admission, "status") and getattr(admission, "status", None) is None:
+            admission.status = "PENDING"
 
-    # Admission authorization stamps (set once)
-    if hasattr(patient, "admission_authorized_at") and getattr(patient, "admission_authorized_at", None) is None:
-        patient.admission_authorized_at = election_signed_at
+        # admission_date is owned by SOC workflow
+        # do not set during authorization
 
-    if hasattr(patient, "election_signed_at") and getattr(patient, "election_signed_at", None) is None:
-        patient.election_signed_at = election_signed_at
+        if hasattr(admission, "created_at") and getattr(admission, "created_at", None) is None:
+            admission.created_at = now
 
-    if hasattr(patient, "hospice_election_date") and getattr(patient, "hospice_election_date", None) is None:
-        try:
-            patient.hospice_election_date = incoming_soc
-        except Exception:
-            patient.hospice_election_date = election_signed_at
+        if hasattr(admission, "created_by"):
+            admission.created_by = authorized_by_user_id
 
+        if hasattr(admission, "updated_at"):
+            admission.updated_at = now
+
+        if hasattr(admission, "updated_by"):
+            admission.updated_by = authorized_by_user_id
+
+        db.add(admission)
+        db.flush()
+
+    # --------------------------------------------------
+    # AUTHORIZATION + ELECTION SIGNATURE
+    # --------------------------------------------------
+
+    if admission.admission_authorized_at is None:
+        admission.admission_authorized_at = election_signed_at
+
+    if admission.election_signed_at is None:
+        admission.election_signed_at = election_signed_at
+    
+    # --------------------------------------------------
+    # ✅ STATUS TRANSITION
+    # --------------------------------------------------
+
+    if hasattr(admission, "status"):
+        admission.status = "AUTHORIZED"
+
+    if not authorized_by_user_id:
+        raise ValueError("authorized_by_user_id is required for authorization")
+
+    admission.admission_authorized_by = authorized_by_user_id
+    
+    admission.updated_at = now
+    admission.updated_by = authorized_by_user_id
+
+    # ✅ Patient only gets timestamp update
     if hasattr(patient, "updated_at"):
-        patient.updated_at = _now_utc()
-        
-    # Admission status transition
-    if hasattr(patient, "admission_status"):
-        patient.admission_status = "ADMITTED"
+        patient.updated_at = now
 
-    if hasattr(patient, "status"):
-        patient.status = "ACTIVE"
-        
+    # --------------------------------------------------
+    # ✅ EXISTING TASK ENGINE (UNCHANGED)
+    # --------------------------------------------------
+
     origin_admission = _required_enum_member(TaskOrigin, ["ADMISSION", "SYSTEM"])
     origin_periodic = _required_enum_member(TaskOrigin, ["PERIODIC", "SYSTEM"])
 
@@ -493,11 +530,9 @@ def authorize_admission(
     bereavement_type = _required_enum_member(TaskType, [TASK_INITIAL_BEREAVEMENT])
     noe_type = _required_enum_member(TaskType, [TASK_NOE_DUE])
 
-    # Regulatory basis resolution:
-    # keep fallback order explicit and deterministic
     admission_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW", "POC_UPDATE"])
 
-    # Onboarding tasks (strict unique)
+    # ✅ KEEP ORIGINAL IDENTITY / UNIQUENESS LOGIC
     _ensure_initial_task_pending_unique(
         db,
         tenant_id=tenant_id,
@@ -558,8 +593,9 @@ def authorize_admission(
         origin=origin_admission,
     )
 
-    # IDG review cadence (active-task idempotent)
+    # ✅ IDG REVIEW (RECURRING SAFE)
     idg_type = _optional_enum_member(TaskType, [TASK_IDG_REVIEW])
+
     if idg_type is not None:
         idg_basis = _required_enum_member(TaskRegulatoryBasis, ["IDG_REVIEW"])
 
@@ -577,4 +613,5 @@ def authorize_admission(
 
     db.commit()
     db.refresh(patient)
+
     return patient

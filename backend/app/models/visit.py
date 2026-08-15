@@ -17,6 +17,9 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
+# ✅ ADD THIS LINE
+from sqlalchemy.orm import relationship
+
 from app.db.base import Base
 
 
@@ -71,7 +74,16 @@ class Visit(Base):
         nullable=False,
         index=True,
     )
+    
+    admission_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("admissions.id"),
+        nullable=False,
+        index=True,
+    )
 
+    admission = relationship("Admission", backref="visits")
+    
     provider_id = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="RESTRICT"),

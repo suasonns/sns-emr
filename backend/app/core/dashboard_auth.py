@@ -1,3 +1,5 @@
+# api/core/dashboard_auth.py
+
 from __future__ import annotations
 
 import os
@@ -7,7 +9,7 @@ from typing import Optional
 
 from fastapi import HTTPException, status
 
-from app.core.auth import CurrentUser
+from app.core.security import CurrentUser
 
 
 # =========================================================

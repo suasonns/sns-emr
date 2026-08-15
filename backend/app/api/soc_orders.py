@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.models.patient import Patient
+from app.models.admission import Admission
 from app.tenancy.registry import assert_known_tenant
 
 # ✅ CRITICAL SERVICES
@@ -116,12 +117,23 @@ def finalize_rn_admission_order(
     # ✅ ADMISSION AUTHORIZATION (CORRECT SERVICE)
     # -----------------------------------------------------
 
-    election_signed_at = getattr(patient, "soc_date", None)
+    latest_admission = (
+        db.query(Admission)
+        .filter(Admission.patient_id == patient.id)
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+    
+    election_signed_at = (
+        latest_admission.election_signed_at
+        if latest_admission
+        else None
+    )
 
     if not election_signed_at:
         raise HTTPException(
             status_code=400,
-            detail="SOC / election_signed_at must be set before admission.",
+            detail="election_signed_at must be set before admission authorization.",
         )
 
     try:

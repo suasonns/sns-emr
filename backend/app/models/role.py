@@ -1,3 +1,5 @@
+# models/role.py
+
 import uuid
 from sqlalchemy import Column, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID

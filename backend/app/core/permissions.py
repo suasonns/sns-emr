@@ -4,7 +4,7 @@ from typing import Iterable, Optional
 
 from fastapi import Depends, HTTPException, status
 
-from app.core.auth import get_current_user, CurrentUser
+from app.core.security import get_current_user, CurrentUser
 from app.core.security import get_current_access
 
 

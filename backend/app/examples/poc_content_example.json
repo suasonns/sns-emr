@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "engine_version": "1.0.0",
+    "generated_at": "2026-07-18T09:18:00-07:00",
+    "source_kind": "ICA",
+    "change_reason": "Initial POC creation",
+    "generated_from": {
+      "assessment_ids": [],
+      "source_forms": [],
+      "rule_set_version": "1.0.0"
+    }
+  },
+  "problems": [
+    {
+      "problem_code": "CARDIAC_DECLINE",
+      "label": "Cardiac disease progression with activity intolerance or symptom burden",
+      "description": null,
+      "severity": "MODERATE",
+      "source_diagnosis_code": "I50",
+      "source_condition": "CHF",
+      "diagnosis_context": "PRIMARY",
+      "rule_key": "I50",
+      "source_kind": "RULE_GENERATED",
+      "status": "ACTIVE",
+      "sort_order": 100,
+      "goals": [
+        {
+          "goal_text": "Patient will remain comfortable with reduced cardiac symptom burden.",
+          "measurable_outcome": null,
+          "target_timeframe": null,
+          "source_kind": "RULE_GENERATED",
+          "status": "ACTIVE",
+          "sort_order": 100,
+          "interventions": [
+            {
+              "discipline": "RN",
+              "intervention_text": "Assess edema, dyspnea, fatigue, activity tolerance and medication effectiveness.",
+              "frequency": null,
+              "instructions": null,
+              "source_kind": "RULE_GENERATED",
+              "status": "ACTIVE",
+              "sort_order": 100
+            },
+            {
+              "discipline": "IDG",
+              "intervention_text": "Review cardiac decline and care plan effectiveness.",
+              "frequency": null,
+              "instructions": null,
+              "source_kind": "RULE_GENERATED",
+              "status": "ACTIVE",
+              "sort_order": 200
+            }
+          ]
+        },
+        {
+          "goal_text": "Caregiver will verbalize understanding of cardiac symptom monitoring and when to notify hospice.",
+          "measurable_outcome": null,
+          "target_timeframe": null,
+          "source_kind": "RULE_GENERATED",
+          "status": "ACTIVE",
+          "sort_order": 200,
+          "interventions": []
+        }
+      ]
+    }
+  ]
+}

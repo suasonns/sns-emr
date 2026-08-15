@@ -1,162 +1,107 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, Optional
 
-from app.rules.base import BaseRule, Workflow
+from app.rules.base import BaseRule
+
+
+def _get_cms_rule(rule_key: str) -> Optional[dict]:
+    """
+    Safe dynamic lookup into the CMS rulepack loaded by the compliance engine.
+
+    File-agnostic: does not depend on JSON or YAML filenames.
+    """
+    try:
+        from app.compliance.rule_loader import load_active_rulepacks
+    except Exception:
+        return None
+
+    try:
+        packs = load_active_rulepacks()
+        cms_items = packs.get("CMS", [])
+    except Exception:
+        return None
+
+    for item in cms_items:
+        if not isinstance(item, dict):
+            continue
+
+        rules = item.get("rules", {})
+        if not isinstance(rules, dict):
+            continue
+
+        rule_value = rules.get(rule_key)
+        if isinstance(rule_value, dict):
+            return rule_value
+
+    return None
 
 
 class FunctionalDeclineReadinessRule(BaseRule):
     """
-    Functional decline audit-readiness rule.
+    Functional decline audit-readiness rule (WARN-only).
 
-    Purpose:
-    - Evaluate whether core functional decline evidence is present.
-    - Use harvested facts from RuleContext.facts.
-    - Support survey defensibility and eligibility readiness.
-    - Do not determine hospice eligibility.
-    - Do not make clinical decisions.
-
-    Scope:
-    - PPS
-    - KPS
-    - FAST when dementia-related diagnosis is present
-
-    This rule is WARN-only.
+    Used when hospice eligibility depends heavily on measurable decline,
+    poor intake, reduced performance status, or progressive dependence.
     """
 
-    rule_id = "FUNCTIONAL_DECLINE_READINESS"
-    rule_name = "Functional decline audit readiness (PPS / KPS / FAST)"
-    workflows = {Workflow.ADMISSION, Workflow.RECERTIFICATION}
-
-    DEMENTIA_KEYWORDS = {
-        "DEMENTIA",
-        "ALZHEIMER",
-        "ALZHEIMER'S",
-        "SENILE DEGENERATION",
-        "LEWY BODY",
-        "FRONTOTEMPORAL",
-        "VASCULAR DEMENTIA",
-        "PICK",
-        "F01",
-        "F02",
-        "F03",
-        "G30",
-    }
+    rule_id = "FUNCTIONAL_DECLINE_AUDIT_READINESS"
+    rule_name = "Functional decline audit readiness"
 
     def evaluate(self, ctx):
-        facts = ctx.facts or {}
-        missing: list[str] = []
+        cms_terminal_rule = _get_cms_rule("eligibility_terminal_illness")
 
-        pps = facts.get("pps")
-        kps = facts.get("kps")
-        fast_stage = facts.get("fast_stage")
+        facts: Dict[str, Any] = ctx.facts or {}
+        missing = []
 
-        diagnosis_text = self._collect_diagnosis_text(ctx)
-        dementia_related = self._contains_any_keyword(
-            diagnosis_text,
-            self.DEMENTIA_KEYWORDS,
-        )
+        # Performance status
+        if facts.get("pps_score") is None and facts.get("kps_score") is None:
+            missing.append("pps_score_or_kps_score")
 
-        if self._empty(pps):
-            missing.append("pps")
+        # Functional decline / ADL dependence
+        if facts.get("adl_decline") is None and facts.get("dependence_adls") is None:
+            missing.append("adl_decline_or_dependence_adls")
 
-        if self._empty(kps):
-            missing.append("kps")
+        # Nutritional decline
+        if (
+            facts.get("weight_loss_percent_6_months") is None
+            and facts.get("poor_intake") is None
+        ):
+            missing.append("weight_loss_or_poor_intake")
 
-        if dementia_related and self._empty(fast_stage):
-            missing.append("fast_stage")
+        # Physical decline indicators
+        if facts.get("falls") is None and facts.get("progressive_weakness") is None:
+            missing.append("falls_or_progressive_weakness")
 
+        # Care needs escalation
+        if (
+            facts.get("caregiver_burden") is None
+            and facts.get("increased_assistance_needs") is None
+        ):
+            missing.append("caregiver_burden_or_increased_assistance_needs")
+
+        details: Dict[str, Any] = {}
+
+        # Attach CMS rule metadata (audit trace)
+        if cms_terminal_rule is not None:
+            details["cms_terminal_rule_loaded"] = True
+            details["cms_terminal_rule_version"] = cms_terminal_rule.get("version")
+        else:
+            details["cms_terminal_rule_loaded"] = False
+
+        # WARN path
         if missing:
+            details["missing_elements"] = missing
+
             return self.warn_result(
                 reason="Functional decline supporting documentation incomplete",
-                details={
-                    "missing_elements": missing,
-                    "dementia_related": dementia_related,
-                    "rule_scope": [
-                        "pps",
-                        "kps",
-                        "fast_stage_when_dementia_related",
-                    ],
-                },
+                details=details,
                 evidence=facts,
             )
 
+        # PASS path
         return self.pass_result(
             reason="Functional decline supporting documentation present",
-            details={
-                "dementia_related": dementia_related,
-                "rule_scope": [
-                    "pps",
-                    "kps",
-                    "fast_stage_when_dementia_related",
-                ],
-            },
+            details=details,
             evidence=facts,
         )
-
-    def _collect_diagnosis_text(self, ctx) -> str:
-        values: list[str] = []
-
-        primary_dx = getattr(ctx, "primary_dx", None)
-        secondary_dx = getattr(ctx, "secondary_dx", []) or []
-
-        if primary_dx:
-            self._collect_text(getattr(primary_dx, "icd10", None), values)
-            self._collect_text(getattr(primary_dx, "description", None), values)
-
-        for diagnosis in secondary_dx:
-            self._collect_text(getattr(diagnosis, "icd10", None), values)
-            self._collect_text(getattr(diagnosis, "description", None), values)
-
-        return " ".join(values).upper()
-
-    def _collect_text(self, value: Any, output: list[str]) -> None:
-        if value is None:
-            return
-
-        if isinstance(value, str):
-            cleaned = value.strip()
-            if cleaned:
-                output.append(cleaned)
-            return
-
-        if isinstance(value, (int, float, bool)):
-            output.append(str(value))
-            return
-
-        if isinstance(value, dict):
-            for nested_value in value.values():
-                self._collect_text(nested_value, output)
-            return
-
-        if isinstance(value, list):
-            for nested_value in value:
-                self._collect_text(nested_value, output)
-            return
-
-    def _contains_any_keyword(
-        self,
-        text: str,
-        keywords: set[str],
-    ) -> bool:
-        normalized = str(text or "").upper()
-
-        if not normalized:
-            return False
-
-        return any(keyword in normalized for keyword in keywords)
-
-    def _empty(self, value: Any) -> bool:
-        if value is None:
-            return True
-
-        if isinstance(value, str):
-            return not value.strip()
-
-        if isinstance(value, list):
-            return len(value) == 0
-
-        if isinstance(value, dict):
-            return len(value) == 0
-
-        return False

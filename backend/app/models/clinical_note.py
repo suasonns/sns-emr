@@ -36,6 +36,8 @@ class ClinicalNote(BaseModel):
     # ===================================================
 
     visit_id = Column(ForeignKey("visits.id", ondelete="RESTRICT"), nullable=False, index=True)
+    
+    # Primary authorship field (single source of truth)
     author_id = Column(ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
 
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
@@ -93,6 +95,20 @@ class ClinicalNote(BaseModel):
 
     finalized_at = Column(DateTime(timezone=True))
     finalized_by = Column(UUID(as_uuid=True))
+    
+    entered_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("NOW()"),
+    )
+
+    is_late_entry = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false")
+    )
+
+    late_entry_reason = Column(String(255), nullable=True)
 
     # ===================================================
     # CONTENT
@@ -106,11 +122,13 @@ class ClinicalNote(BaseModel):
     )
 
     plan_of_care_updates = Column(JSON)
-
+    
+    raw_transcript = Column(JSONB, nullable=True)
+    
     # ===================================================
     # AUDIT
     # ===================================================
-
+    # Legacy compatibility field (do not use as primary authorship)
     created_by = Column(UUID(as_uuid=True))
     signed_by = Column(UUID(as_uuid=True))
     signed_at = Column(DateTime(timezone=True))
@@ -126,7 +144,9 @@ class ClinicalNote(BaseModel):
         nullable=False,
         server_default=text("NOW()"),
     )
-
+    
+    updated_by_user_id = Column(UUID(as_uuid=True), nullable=True)
+    
     # ===================================================
     # CONSTRAINTS
     # ===================================================
@@ -158,6 +178,11 @@ class ClinicalNote(BaseModel):
         CheckConstraint(
             "(countersigned_at IS NULL OR finalized_at IS NULL OR countersigned_at <= finalized_at)",
             name="ck_countersign_before_finalize"
+        ),
+        
+        CheckConstraint(
+            "(is_late_entry = false) OR (late_entry_reason IS NOT NULL)",
+            name="ck_late_entry_requires_reason"
         ),
     )
 

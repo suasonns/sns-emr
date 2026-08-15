@@ -1,3 +1,5 @@
+# app/services/admission/admission_status_history_service.py
+
 from __future__ import annotations
 
 from typing import Optional
@@ -66,7 +68,7 @@ class AdmissionStatusHistoryService:
         return history
 
     @staticmethod
-    def update_patient_status(
+    def update_status_snapshot(
         *,
         db: Session,
         patient: Patient,
@@ -76,7 +78,7 @@ class AdmissionStatusHistoryService:
         notes: Optional[str] = None,
     ) -> AdmissionStatusHistory:
         """
-        Update patient admission status
+        Update patient admission status snapshot
         and automatically create history record.
         """
 

@@ -1,275 +1,280 @@
 from __future__ import annotations
 
+import json
 import logging
-import os
-import re
 import uuid
-from typing import Any, Dict, Optional
+from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.security import create_access_token
 
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-# ✅ ✅ ✅ PLACE IT RIGHT HERE (TOP-LEVEL CONSTANT)
-# =========================================================
-# TENANT REGISTRY (CONTROL LAYER)
-# =========================================================
-
-TENANT_REGISTRY = {
-    "01271980-0000-0000-0000-000005101977": {
-        "legal_name": "LOVE AND FAITH HOSPICE",
-        "display_name": "Love and Faith Hospice",
-        "npi": "1275143653",
-        "ein": "851033525",
-        "ccn": "B51771",
-        "entity_id": "4583772",
-    },
-    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa": {
-        "legal_name": "Angela Hospice",
-        "display_name": "Angela Hospice",
-        "npi": "1111111111",
-    },
-    "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb": {
-        "legal_name": "Silva Hospice",
-        "display_name": "Silva Hospice",
-        "npi": "2222222222",
-    },
-}
-
 # =========================================================
 # REQUEST MODEL
 # =========================================================
 
-class DevLoginRequest(BaseModel):
-    user_id: str
-    role: str
-    tenant_id: Optional[uuid.UUID] = None
+class LoginRequest(BaseModel):
+    email: str
+    role: Optional[str] = None
 
 
 # =========================================================
 # HELPERS
 # =========================================================
 
-def _ensure_dev_only() -> None:
-    env = (os.getenv("ENV") or os.getenv("ENVIRONMENT") or "development").lower()
-    if env not in {"development", "dev", "local", "test"}:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="dev-login is disabled outside development environments",
-        )
-
-
-def _is_truthy(value: Optional[str], default: bool = False) -> bool:
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
-
-
-def _dev_email(user_id: str, tenant_id: Optional[uuid.UUID]) -> str:
-    suffix = str(tenant_id)[:8] if tenant_id else "system"
-    return f"{user_id}+{suffix}@sns.dev".lower()
-
-
-def _safe_ident(name: str) -> str:
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-        raise ValueError(f"Unsafe SQL identifier: {name!r}")
-    return f'"{name}"'
-
-
-def _deterministic_dev_npi(tenant_id: uuid.UUID) -> str:
-    return str(tenant_id.int % 10**10).zfill(10)
-
-
-# =========================================================
-# TENANT CHECK (SINGLE SOURCE OF TRUTH)
-# =========================================================
-
-def _public_tenant_exists(db: Session, tenant_id: uuid.UUID) -> bool:
-    try:
-        result = db.execute(
-            text("""
-                SELECT 1 FROM public.tenants
-                WHERE id = :tid
-                LIMIT 1
-            """),
-            {"tid": tenant_id},
-        ).scalar()
-
-        return bool(result)
-
-    except Exception:
-        db.rollback()
-        logger.exception("public.tenants lookup failed")
-        raise
-
-
-def _ensure_public_tenant_for_dev(db: Session, tenant_id: uuid.UUID) -> None:
-    if _public_tenant_exists(db, tenant_id):
-        return
-
-    tenant_key = str(tenant_id)
-
-    if tenant_key not in TENANT_REGISTRY:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Tenant {tenant_key} not registered",
-        )
-
-    t = TENANT_REGISTRY[tenant_key]
-
-    db.execute(
-        text("""
-            INSERT INTO public.tenants (
-                id,
-                legal_name,
-                display_name,
-                npi,
-                status
-            )
-            VALUES (
-                :id,
-                :legal_name,
-                :display_name,
-                :npi,
-                'ACTIVE'
-            )
-            ON CONFLICT (id) DO NOTHING
-        """),
-        {
-            "id": tenant_key,
-            "legal_name": t["legal_name"],
-            "display_name": t["display_name"],
-            "npi": t["npi"],
-        },
-    )
-
-    db.commit()   # temporary debug-proof commit
-
-# =========================================================
-# ENDPOINT
-# =========================================================
-
-@router.post("/dev-login")
-def dev_login(
-    payload: DevLoginRequest = Body(...),
-    db: Session = Depends(get_db),
+def _get_active_user(
+    db: Session,
+    *,
+    email: str,
 ):
-    _ensure_dev_only()
+    row = db.execute(
+        text(
+            """
+            SELECT
+                id,
+                tenant_id,
+                email,
+                role,
+                active
+            FROM public.users
+            WHERE lower(email) = lower(:email)
+            LIMIT 1
+            """
+        ),
+        {"email": email},
+    ).mappings().first()
 
-    # ✅ ALWAYS CLEAN START
-    db.rollback()
+    if not row:
+        return None
+    if not row["active"]:
+        return None
 
-    role = payload.role.strip().upper()
+    return row
 
-    if not role:
-        raise HTTPException(status_code=422, detail="role is required")
 
-    is_system = role in {"OWNER", "BILLING"}
+def _is_active_tenant(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+) -> bool:
+    result = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM public.tenants
+            WHERE id = :tenant_id
+              AND status = 'ACTIVE'
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": str(tenant_id)},
+    ).scalar()
 
-    if not is_system and not payload.tenant_id:
-        raise HTTPException(status_code=422, detail="tenant_id required")
+    return bool(result)
 
-    # =====================================================
-    # TENANT VALIDATION
-    # =====================================================
 
-    if payload.tenant_id:
-        try:
-            db.rollback()
-
-            exists = _public_tenant_exists(db, payload.tenant_id)
-
-            logger.info(
-                "Tenant check tenant_id=%s exists=%s",
-                payload.tenant_id,
-                exists,
-            )
-
-            if not exists:
-                db.rollback()
-                _ensure_public_tenant_for_dev(db, payload.tenant_id)
-
-        except Exception as exc:
-            db.rollback()
-            logger.exception("Tenant validation failed")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Tenant validation failed: {exc}",
-            )
-
-    # =====================================================
-    # USER UPSERT
-    # =====================================================
-
-    user_uuid = uuid.uuid5(
-        uuid.NAMESPACE_DNS,
-        f"{payload.tenant_id}:{payload.user_id}:{role}",
-    )
-
-    email = _dev_email(payload.user_id, payload.tenant_id)
-
+def _write_auth_audit_log(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID,
+    email: str,
+    role: str,
+    success: bool,
+    request: Request,
+    failure_reason: str | None = None,
+) -> None:
     try:
         db.execute(
-            text("""
-                INSERT INTO public.users (
+            text(
+                """
+                INSERT INTO public.audit_logs (
                     id,
                     tenant_id,
-                    full_name,
-                    email,
+                    user_id,
                     role,
-                    access_level,
-                    active,
-                    created_at,
-                    updated_at
+                    action,
+                    entity_type,
+                    entity_id,
+                    description,
+                    metadata,
+                    ip_address,
+                    request_id,
+                    created_by,
+                    created_at
                 )
                 VALUES (
-                :uid,
-                :tid,
-                :name,
-                :email,
-                :role,
-                'FULL_ACCESS',
-                true,
-                NOW(),
-                NOW()
+                    :id,
+                    :tenant_id,
+                    :user_id,
+                    :role,
+                    'LOGIN',
+                    'auth',
+                    NULL,
+                    :description,
+                    CAST(:metadata AS jsonb),
+                    :ip_address,
+                    :request_id,
+                    :created_by,
+                    NOW()
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "tenant_id": str(tenant_id),
+                "user_id": str(user_id),
+                "role": role,
+                "description": "User login success" if success else "User login failed",
+                "metadata": json.dumps(
+                    {
+                        "email": email,
+                        "role": role,
+                        "success": success,
+                        "failure_reason": failure_reason,
+                    }
+                ),
+                "ip_address": request.client.host if request.client else None,
+                "request_id": str(uuid.uuid4()),
+                "created_by": str(user_id),
+            },
+        )
+    except Exception:
+        logger.exception("auth audit log write failed")
+
+
+# =========================================================
+# ENDPOINTS
+# =========================================================
+
+@router.post("/login")
+def login(
+    request: Request,
+    payload: LoginRequest = Body(...),
+    db: Session = Depends(get_db),
+):
+    email = payload.email.strip().lower()
+
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="email is required",
+        )
+
+    try:
+        db.rollback()
+
+        user = _get_active_user(
+            db,
+            email=email,
+        )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="invalid credentials",
+                headers={"WWW-Authenticate": "Bearer"},
             )
-            ON CONFLICT (tenant_id, email) DO UPDATE
-            SET
-                full_name = EXCLUDED.full_name,
-                role = EXCLUDED.role,
-                updated_at = NOW()
-        """),
-        {
-            "uid": user_uuid,
-            "tid": payload.tenant_id,
-            "name": payload.user_id,
-            "email": email,
-            "role": role,
-        },
-    )
+
+        user_id = uuid.UUID(str(user["id"]))
+        tenant_id = uuid.UUID(str(user["tenant_id"]))
+        db_role = str(user["role"]).strip().upper()
+
+        if payload.role:
+            requested_role = payload.role.strip().upper()
+
+            if requested_role != db_role:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="role mismatch",
+                )
+
+        if not _is_active_tenant(
+            db,
+            tenant_id=tenant_id,
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="inactive tenant",
+            )
+
+        token = create_access_token(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            role=db_role,
+            email=email,
+        )
+
+        _write_auth_audit_log(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            email=email,
+            role=db_role,
+            success=True,
+            request=request,
+        )
 
         db.commit()
 
-    except Exception:
+        logger.info(
+            "LOGIN success tenant_id=%s user_id=%s email=%s role=%s",
+            tenant_id,
+            user_id,
+            email,
+            db_role,
+        )
+
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user_id": str(user_id),
+            "tenant_id": str(tenant_id),
+            "role": db_role,
+            "email": email,
+        }
+
+    except HTTPException as exc:
         db.rollback()
-        logger.exception("User upsert failed")
+
+        try:
+            user = _get_active_user(
+                db,
+                email=email,
+            )
+
+            if user:
+                _write_auth_audit_log(
+                    db,
+                    tenant_id=uuid.UUID(str(user["tenant_id"])),
+                    user_id=uuid.UUID(str(user["id"])),
+                    email=email,
+                    role=str(user["role"]).strip().upper(),
+                    success=False,
+                    failure_reason=exc.detail if isinstance(exc.detail, str) else "auth failure",
+                    request=request,
+                )
+                db.commit()
+
+        except Exception:
+            db.rollback()
+
         raise
 
-    token = create_access_token(
-        user_id=user_uuid,
-        role=role,
-        tenant_id=payload.tenant_id,
-    )
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-    }
+    except Exception:
+        db.rollback()
+        logger.exception("login failed unexpectedly")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="authentication failed",
+        )

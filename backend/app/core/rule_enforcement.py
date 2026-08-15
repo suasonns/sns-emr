@@ -1,5 +1,5 @@
-import os
 from enum import Enum
+from app.core.settings import settings
 
 
 class RuleEnforcementMode(str, Enum):
@@ -14,7 +14,10 @@ def get_rule_enforcement_mode() -> RuleEnforcementMode:
     Defaults to EVALUATE_ONLY for safety.
     Any invalid value will fail closed (no enforcement).
     """
-    value = os.getenv("RULE_ENFORCEMENT_MODE", "EVALUATE_ONLY").upper()
+
+    raw_value = getattr(settings, "RULE_ENFORCEMENT_MODE", None)
+    value = (raw_value or "EVALUATE_ONLY").upper()
+
     try:
         return RuleEnforcementMode(value)
     except ValueError:
@@ -32,8 +35,10 @@ def rule_enforcement_enabled() -> bool:
 
     This prevents accidental enforcement in local/dev environments.
     """
-    allow_enforcement = os.getenv("ALLOW_RULE_ENFORCEMENT", "false").lower() == "true"
-    if not allow_enforcement:
+
+    # Primary safety gate
+    if not getattr(settings, "ALLOW_RULE_ENFORCEMENT", False):
         return False
 
+    # Mode check
     return get_rule_enforcement_mode() == RuleEnforcementMode.ENFORCE

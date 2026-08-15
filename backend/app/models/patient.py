@@ -1,26 +1,27 @@
+# models/patient.py
+
 from __future__ import annotations
 
 from uuid import uuid4
-from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
-    String,
     Date,
     DateTime,
     ForeignKey,
-    Text,
     Index,
+    String,
+    Text,
     text,
-    Boolean,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base
-from app.models.patient_facesheet import PatientFaceSheet
-
+from app.models.admission_status_history import AdmissionStatusHistory
 
 class Patient(Base):
     __tablename__ = "patients"
@@ -36,17 +37,11 @@ class Patient(Base):
         nullable=False,
         index=True,
     )
-    
-    facesheets = relationship(
-        "PatientFaceSheet",
-        back_populates="patient",
-        cascade="all, delete-orphan"
-    )
+
     # ---------------------------------------------------------
     # Core identity
     # ---------------------------------------------------------
     mrn = Column(String(64), nullable=False, index=True)
-    full_name = Column(String(255), nullable=False)
     date_of_birth = Column(Date, nullable=False)
 
     ssn_last4 = Column(String(4), nullable=True)
@@ -62,6 +57,15 @@ class Patient(Base):
         index=True,
     )
 
+    patient_type = Column(
+        String(32),
+        nullable=False,
+        server_default=text("'PRODUCTION'"),
+        index=True,
+    )
+    
+    training_label = Column(Text, nullable=True)
+    
     # ---------------------------------------------------------
     # Hospice lifecycle
     # ---------------------------------------------------------
@@ -74,10 +78,8 @@ class Patient(Base):
     discharge_projected_date = Column(DateTime(timezone=True), nullable=True)
     discharge_comments = Column(Text, nullable=True)
 
-    # ✅ FIXED (critical)
     discharge_plan_reviewed = Column(Boolean, nullable=True)
 
-    # ✅ checklist (good)
     discharge_notified = Column(Boolean, nullable=True)
     discharge_explained = Column(Boolean, nullable=True)
     discharge_readmission_explained = Column(Boolean, nullable=True)
@@ -89,9 +91,8 @@ class Patient(Base):
     # SOC / admission
     # ---------------------------------------------------------
     records_release_signed_at = Column(DateTime(timezone=True), nullable=True)
+
     election_signed_at = Column(DateTime(timezone=True), nullable=True)
-    soc_date = Column(DateTime(timezone=True), nullable=True)
-    on_service_at = Column(DateTime(timezone=True), nullable=True)
 
     admission_status = Column(
         String(32),
@@ -101,6 +102,7 @@ class Patient(Base):
     )
 
     admission_authorized_at = Column(DateTime(timezone=True), nullable=True)
+
     admission_authorized_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
@@ -108,6 +110,7 @@ class Patient(Base):
     )
 
     not_admitted_at = Column(DateTime(timezone=True), nullable=True)
+
     not_admitted_reason = Column(Text, nullable=True)
 
     # ---------------------------------------------------------
@@ -124,12 +127,12 @@ class Patient(Base):
     crisis_ended_at = Column(DateTime(timezone=True), nullable=True)
 
     # ---------------------------------------------------------
-    # Audit (CRITICAL)
+    # Audit
     # ---------------------------------------------------------
     created_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
-        nullable=False,  # ✅ FIXED
+        nullable=False,
         index=True,
     )
 
@@ -139,7 +142,7 @@ class Patient(Base):
         server_default=func.now(),
     )
 
-    updated_by = Column(  # ✅ MOVED HERE (correct)
+    updated_by = Column(
         UUID(as_uuid=True),
         ForeignKey("users.id"),
         nullable=True,
@@ -159,24 +162,36 @@ class Patient(Base):
     # ---------------------------------------------------------
     # Relationships
     # ---------------------------------------------------------
+    facesheets = relationship(
+        "PatientFaceSheet",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
     insurances = relationship(
         "PatientInsurance",
         back_populates="patient",
         cascade="all, delete-orphan",
     )
-
+    
+    admissions = relationship(
+        "Admission",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+    
     medications = relationship(
         "Medication",
         back_populates="patient",
         cascade="all, delete-orphan",
     )
-    
+
     diagnoses = relationship(
         "PatientDiagnosis",
         back_populates="patient",
         cascade="all, delete-orphan",
     )
-    
+
     assignments = relationship(
         "PatientAssignment",
         back_populates="patient",
@@ -193,7 +208,7 @@ class Patient(Base):
         "AdmissionStatusHistory",
         back_populates="patient",
         cascade="all, delete-orphan",
-        order_by="AdmissionStatusHistory.changed_at",
+        order_by=AdmissionStatusHistory.changed_at,
     )
 
     benefit_periods = relationship(

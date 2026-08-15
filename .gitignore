@@ -70,3 +70,16 @@ backend/sns-emr-integrity-check.ps1
 sns-emr-no-drift.ps1
 # Sensitive local docs (never commit secrets)
 /docs/*Ownership*Script*.txt
+
+# ======================
+# Scratch checkouts (separate clone, not part of this tree)
+# ======================
+copilot-worktrees/
+
+# ======================
+# Database dumps (may contain PHI — never commit)
+# ======================
+phase1_complete_backup.sql
+backend/backup.sql
+backend/sns_backup.dump
+*.dump

@@ -1,62 +1,47 @@
+# models/idg_review.py
+
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import (
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Index,
-    Text,
-    UniqueConstraint,
-)
+from sqlalchemy import Boolean, Column, DateTime, Index, Text, text
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.sql import func
 
 from app.db.base import Base
 
 
 class IDGReview(Base):
     """
-    Enterprise-grade IDG Review.
+    Patient-level IDG review record.
 
-    Purpose:
-    - Represents patient-level interdisciplinary review.
-    - Links IDG meeting activities to care planning workflows.
-    - Supports audit-defensible IDG compliance.
+    This table is the patient review container for IDG.
+    It should connect the patient, benefit period, IDG meeting,
+    summary, POC action decision, plan-of-care version, and
+    finalization state.
 
-    Compliance:
-    - Must be tenant isolated.
-    - Must be audit traceable.
-    - Must support IDG review history.
-    - Must support future POC linkage enforcement.
+    This table should not duplicate POC problems, goals,
+    interventions, signatures, MD approvals, or intelligence items.
+    Those have separate existing SSOT tables.
     """
 
     __tablename__ = "idg_reviews"
 
     __table_args__ = (
-        UniqueConstraint(
-            "patient_id",
-            "benefit_period_id",
-            "review_date",
-            name="uq_idg_review_patient_bp_date",
-        ),
-        Index(
-            "ix_idg_reviews_patient_bp",
-            "patient_id",
-            "benefit_period_id",
-        ),
-        Index(
-            "ix_idg_reviews_review_date",
-            "review_date",
-        ),
+        Index("ix_idg_reviews_tenant_id", "tenant_id"),
+        Index("ix_idg_reviews_patient_id", "patient_id"),
+        Index("ix_idg_reviews_idg_meeting_id", "idg_meeting_id"),
+        Index("ix_idg_reviews_benefit_period_id", "benefit_period_id"),
+        Index("ix_idg_reviews_review_date", "review_date"),
+        Index("ix_idg_reviews_plan_of_care_version_id", "plan_of_care_version_id"),
+        Index("ix_idg_reviews_is_finalized", "is_finalized"),
     )
 
     id = Column(
         UUID(as_uuid=True),
         primary_key=True,
         default=uuid.uuid4,
+        nullable=False,
     )
 
     tenant_id = Column(
@@ -67,15 +52,13 @@ class IDGReview(Base):
 
     patient_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("patients.id"),
         nullable=False,
         index=True,
     )
 
     idg_meeting_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("idg_meetings.id"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -87,13 +70,13 @@ class IDGReview(Base):
 
     review_date = Column(
         DateTime(timezone=True),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
     summary = Column(
         Text,
-        nullable=False,
+        nullable=True,
     )
 
     poc_action = Column(
@@ -101,7 +84,6 @@ class IDGReview(Base):
         nullable=True,
     )
 
-    # FK intentionally deferred during stabilization phase.
     plan_of_care_version_id = Column(
         UUID(as_uuid=True),
         nullable=True,
@@ -111,7 +93,8 @@ class IDGReview(Base):
     is_finalized = Column(
         Boolean,
         nullable=False,
-        default=False,
+        server_default=text("false"),
+        index=True,
     )
 
     finalized_by = Column(
@@ -131,15 +114,15 @@ class IDGReview(Base):
 
     created_at = Column(
         DateTime(timezone=True),
-        server_default=func.now(),
         nullable=False,
+        server_default=text("NOW()"),
     )
 
     updated_at = Column(
         DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
         nullable=False,
+        server_default=text("NOW()"),
+        onupdate=datetime.utcnow,
     )
 
     updated_by = Column(

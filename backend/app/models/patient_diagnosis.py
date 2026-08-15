@@ -1,3 +1,5 @@
+# models/patient_diagnosis.py
+
 from __future__ import annotations
 
 from uuid import uuid4

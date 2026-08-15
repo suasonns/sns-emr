@@ -1,3 +1,14 @@
+"""
+DEPRECATED
+
+DO NOT ADD NEW IMPORTS FROM THIS FILE.
+
+Migration target:
+app.core.security
+
+Scheduled for removal after all dependencies migrated.
+"""
+
 from __future__ import annotations
 
 import uuid
@@ -71,39 +82,8 @@ def _decode_token(token: str) -> dict:
 # DEPENDENCY
 # =========================================================
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> CurrentUser:
-
-    token = credentials.credentials
-    payload = _decode_token(token)
-
-    user_id = payload.get("sub")
-    role = payload.get("role")
-    tenant_id = payload.get("tenant_id")
-
-    if not user_id or not role:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token missing required claims",
-        )
-
-    if role not in VALID_ROLES:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Invalid role: {role}",
-        )
-
-    try:
-        return CurrentUser(
-            user_id=uuid.UUID(user_id),
-            role=str(role),
-            tenant_id=uuid.UUID(tenant_id) if tenant_id else None,
-            email=payload.get("email"),
-            is_system=False,
-        )
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token values",
-        )
+def get_current_user(*args, **kwargs):
+    raise RuntimeError(
+        "Legacy auth.py get_current_user called. "
+        "Use app.core.security.get_current_user"
+    )

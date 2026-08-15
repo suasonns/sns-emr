@@ -15,14 +15,22 @@ def _fetch_patient_row(db: Session, patient_id: str) -> dict:
     sql = text(
         """
         SELECT
-            id::text AS id,
-            tenant_id::text AS tenant_id,
-            full_name,
-            mrn,
-            date_of_birth,
-            primary_diagnosis
-        FROM patients
-        WHERE id::text = :patient_id
+            p.id::text AS id,
+            p.tenant_id::text AS tenant_id,
+            p.mrn,
+            p.date_of_birth,
+            p.primary_diagnosis,
+
+            -- SSOT NAME SOURCE
+            pf.first_name,
+            pf.middle_name,
+            pf.last_name
+
+        FROM patients p
+        LEFT JOIN patient_facesheet pf
+            ON pf.patient_id = p.id
+
+        WHERE p.id::text = :patient_id
         LIMIT 1
         """
     )
@@ -102,9 +110,20 @@ def _fetch_patient_payers(db: Session, patient_id: str) -> list[dict]:
         ORDER BY id
         """
     )
-
     rows = db.execute(sql, {"patient_id": patient_id}).mappings().all()
     return [dict(r) for r in rows]
+
+
+def _build_patient_name(first_name, middle_name, last_name) -> str | None:
+    if not first_name and not last_name:
+        return None
+
+    middle_initial = middle_name[0] if middle_name else None
+
+    if middle_initial:
+        return f"{last_name}, {first_name} {middle_initial}"
+
+    return f"{last_name}, {first_name}"
 
 
 def _build_claim_header(patient: dict, cycle: dict, snapshot: dict) -> dict:
@@ -125,9 +144,15 @@ def _build_claim_header(patient: dict, cycle: dict, snapshot: dict) -> dict:
 
 
 def _build_patient_block(patient: dict) -> dict:
+    patient_name = _build_patient_name(
+        patient.get("first_name"),
+        patient.get("middle_name"),
+        patient.get("last_name"),
+    )
+
     return {
         "patient_id": patient.get("id"),
-        "patient_name": patient.get("full_name"),
+        "patient_name": patient_name,
         "mrn": patient.get("mrn"),
         "date_of_birth": (
             str(patient["date_of_birth"]) if patient.get("date_of_birth") else None
@@ -163,7 +188,6 @@ def _build_payer_block(payers: list[dict]) -> dict:
 def _build_claim_lines(snapshot: dict) -> list[dict]:
     raw_lines = snapshot.get("claim_lines", [])
     result: list[dict] = []
-
     for idx, line in enumerate(raw_lines, start=1):
         result.append(
             {

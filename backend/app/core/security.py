@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,7 +19,10 @@ APP_ENV = os.getenv("APP_ENV", "development").lower()
 
 SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+ACCESS_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
+)
 
 JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-emr")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-emr-users")
@@ -32,13 +35,22 @@ ALLOWED_AUTH_MODES = {"TOKEN", "SYSTEM"}
 if AUTH_MODE not in ALLOWED_AUTH_MODES:
     raise RuntimeError(f"Invalid AUTH_MODE: {AUTH_MODE}")
 
-# Fail closed outside development
 if APP_ENV != "development":
-    if not SECRET_KEY or len(SECRET_KEY) < 32:
-        raise RuntimeError("SECRET_KEY must be set and at least 32 characters outside development")
+    if not SECRET_KEY:
+        raise RuntimeError("SECRET_KEY must be configured outside development")
+
+    if len(SECRET_KEY) < 32:
+        raise RuntimeError(
+            "SECRET_KEY must be configured and >= 32 characters"
+        )
+
+    if AUTH_MODE != "TOKEN":
+        raise RuntimeError("Production requires AUTH_MODE=TOKEN")
 
     if AUTH_MODE == "SYSTEM" and not SYSTEM_ACCESS_KEY:
-        raise RuntimeError("SYSTEM_ACCESS_KEY must be set when AUTH_MODE=SYSTEM outside development")
+        raise RuntimeError(
+            "SYSTEM_ACCESS_KEY must be configured when AUTH_MODE=SYSTEM"
+        )
 
 
 # =========================================================
@@ -51,7 +63,6 @@ class CurrentUser:
     role: str
     tenant_id: UUID
     email: Optional[str] = None
-    full_name: Optional[str] = None
     is_system: bool = False
 
 
@@ -62,26 +73,23 @@ class SystemAccessContext:
 
 
 # =========================================================
-# SYSTEM ACCESS (INFRA / ADMIN ONLY)
+# SYSTEM ACCESS
 # =========================================================
 
 def get_current_access(
     x_system_key: str = Header(..., alias="X-System-Key"),
 ) -> SystemAccessContext:
-    """
-    Intended only for infra/admin endpoints.
-    Do NOT use this for clinical user endpoints.
-    """
     if not SYSTEM_ACCESS_KEY:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="System access is not configured",
+            detail="System access not configured",
         )
 
     if x_system_key != SYSTEM_ACCESS_KEY:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="System access denied",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return SystemAccessContext()
@@ -93,120 +101,155 @@ def get_current_access(
 
 bearer_scheme = HTTPBearer(auto_error=True)
 
+
+def _require_secret_key() -> None:
+    if not SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SECRET_KEY is not configured",
+        )
+
+    if len(SECRET_KEY) < 32:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="SECRET_KEY must be configured and >= 32 characters",
+        )
+
+
 def create_access_token(
     *,
-    user_id: UUID,   # ✅ enforce correct identity
+    user_id: UUID,
     role: str,
     tenant_id: UUID,
     expires_delta: Optional[timedelta] = None,
     email: Optional[str] = None,
-    full_name: Optional[str] = None,
 ) -> str:
-    """
-    Creates a secure JWT access token for a clinical user.
-    """
-
-    if not SECRET_KEY or len(SECRET_KEY) < 32:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="SECRET_KEY must be set and at least 32 characters",
-        )
+    _require_secret_key()
 
     now = datetime.now(timezone.utc)
-    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
+    expire = now + (
+        expires_delta
+        or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
 
     payload: Dict[str, Any] = {
-        # ✅ CORE IDENTITY
-        "sub": str(user_id),          # ✅ ALWAYS DB USER ID
+        "sub": str(user_id),
         "tenant_id": str(tenant_id),
-        "role": role,
-
-        # ✅ TOKEN CONTROL
-        "typ": "access",             # ✅ token type
-        "jti": str(uuid4()),         # ✅ unique token id
-
-        # ✅ SECURITY / VALIDATION
+        "role": str(role).strip().upper(),
+        "typ": "access",
+        "jti": str(uuid4()),
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
-
-        # ✅ TIMING
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
     }
 
-    # ✅ OPTIONAL CLAIMS
     if email:
         payload["email"] = email
-    if full_name:
-        payload["full_name"] = full_name
 
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
 
 
 def decode_access_token(token: str) -> Dict[str, Any]:
-    """
-    Decodes and validates a JWT access token.
-    """
+    _require_secret_key()
+
     try:
         payload = jwt.decode(
             token,
-            SECRET_KEY or "DEV_ONLY_CHANGE_ME_NOW_32CHARS_MIN",
+            SECRET_KEY,
             algorithms=[ALGORITHM],
             audience=JWT_AUDIENCE,
             issuer=JWT_ISSUER,
         )
-        return payload
-    except JWTError as exc:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"JWT validation failed: {str(exc)}",
+            detail="JWT validation failed",
+            headers={"WWW-Authenticate": "Bearer"},
         )
+
+    if payload.get("typ") != "access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return payload
 
 
 # =========================================================
-# CLINICAL USER DEPENDENCY (TOKEN MODE)
+# CURRENT USER
 # =========================================================
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials = Depends(
+        bearer_scheme
+    ),
 ) -> CurrentUser:
-    """
-    Clinical user dependency.
-    Use for patient/visit/note/task/CTI/F2F endpoints.
-    """
+
     if AUTH_MODE != "TOKEN":
+
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Clinical user auth is not enabled in current AUTH_MODE",
+            detail="Clinical user authentication is disabled",
         )
 
-    token = credentials.credentials
-    payload = decode_access_token(token)
+    if credentials.scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Bearer token required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = decode_access_token(
+        credentials.credentials
+    )
 
     subject = payload.get("sub")
     role = payload.get("role")
     tenant_id = payload.get("tenant_id")
 
-    if not subject or not role or not tenant_id:
+    if not subject:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token payload missing required claims",
+            detail="Missing sub claim",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not role:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing role claim",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not tenant_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing tenant_id claim",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     try:
-        user_id = UUID(str(subject))
+        user_uuid = UUID(str(subject))
         tenant_uuid = UUID(str(tenant_id))
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token claims contain invalid UUIDs",
+            detail="Invalid UUID claims",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     return CurrentUser(
-        user_id=user_id,
-        role=str(role),
+        user_id=user_uuid,
+        role=str(role).strip().upper(),
         tenant_id=tenant_uuid,
         email=payload.get("email"),
-        full_name=payload.get("full_name"),
         is_system=False,
     )

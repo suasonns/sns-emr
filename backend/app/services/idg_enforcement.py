@@ -1,3 +1,5 @@
+# services/idg_enforcement.py
+
 """
 Enterprise-grade IDG finalization enforcement.
 
@@ -14,13 +16,17 @@ from fastapi import HTTPException
 from app.models.idg_review import IDGReview
 from app.models.idg_note import IDGNote
 from app.models.idg_md_attestation import IDGMDAttestation
-
+from app.services.tenant_settings_service import TenantSettingsService
 
 # ---------------------------------------------------------------------
-# Configuration
+# Default policy fallback
 # ---------------------------------------------------------------------
 
-REQUIRED_NOTE_DISCIPLINES = {"RN", "MSW", "SC"}
+DEFAULT_REQUIRED_NOTE_DISCIPLINES = {
+    "RN",
+    "MSW",
+    "SC",
+}
 
 
 # ---------------------------------------------------------------------
@@ -86,18 +92,26 @@ def validate_idg_ready_to_finalize(
         .all()
     )
 
-    signed_disciplines = set()
+    documented_disciplines: set[str] = set()
 
     for note in notes:
         if not note.note or not note.note.strip():
             continue
 
-        if note.signed_at is None:
-            continue
+        documented_disciplines.add(_normalize(note.discipline))
 
-        signed_disciplines.add(_normalize(note.discipline))
+    try:
+        required_disciplines = (
+            TenantSettingsService.get_idg_required_note_disciplines(
+                db=db,
+                tenant_id=review.tenant_id,
+                review_type=getattr(review, "review_type", None),
+            )
+        )
+    except Exception:
+        required_disciplines = DEFAULT_REQUIRED_NOTE_DISCIPLINES
 
-    missing = REQUIRED_NOTE_DISCIPLINES - signed_disciplines
+    missing = required_disciplines - documented_disciplines
 
     if missing:
         raise HTTPException(
@@ -123,10 +137,16 @@ def validate_idg_ready_to_finalize(
             detail="Cannot finalize IDG. Missing MD attestation.",
         )
 
-    if getattr(attestation, "signed_at", None) is None:
+    if not getattr(attestation, "attested", False):
         raise HTTPException(
             status_code=400,
-            detail="Cannot finalize IDG. MD attestation is not signed.",
+            detail="Cannot finalize IDG. MD attestation is not complete.",
+        )
+
+    if getattr(attestation, "attested_at", None) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot finalize IDG. MD attestation timestamp is missing.",
         )
 
     # -------------------------------------------------------------

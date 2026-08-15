@@ -1,13 +1,17 @@
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from fastapi import HTTPException
+# services/certification_service.py
 
-from app.models.certification import Certification
+from datetime import datetime, timedelta
+
+from fastapi import HTTPException
+from sqlalchemy.orm import Session
+
 from app.models.benefit_period import BenefitPeriod
+from app.models.certification import Certification
+
 from app.services.recert_f2f_enforcement import (
     bp_index_date_derived,
-    require_f2f_completed_for_bp3_plus,
     complete_task_with_evidence,
+    require_f2f_completed_for_bp3_plus,
 )
 
 
@@ -19,17 +23,55 @@ def create_or_finalize_cert(
     signed_by_role,
     signed_by_user_id=None,
 ):
-    bp = db.query(BenefitPeriod).filter(BenefitPeriod.id == benefit_period_id).first()
+    bp = (
+        db.query(BenefitPeriod)
+        .filter(BenefitPeriod.id == benefit_period_id)
+        .first()
+    )
+
     if not bp:
-        raise HTTPException(status_code=404, detail="Benefit period not found")
+        raise HTTPException(
+            status_code=404,
+            detail="Benefit period not found",
+        )
+
+    if str(bp.patient_id) != str(patient_id):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Benefit period does not belong "
+                "to the specified patient."
+            ),
+        )
 
     role = (signed_by_role or "").upper()
+
     if role not in ("MD", "NP"):
-        raise HTTPException(status_code=400, detail="signed_by_role must be MD or NP")
+        raise HTTPException(
+            status_code=400,
+            detail="signed_by_role must be MD or NP",
+        )
 
-    idx = bp_index_date_derived(db, patient_id, benefit_period_id)
+    existing_cert = (
+        db.query(Certification)
+        .filter(
+            Certification.patient_id == patient_id,
+            Certification.benefit_period_id == benefit_period_id,
+            Certification.status == "FINALIZED",
+        )
+        .order_by(Certification.signed_at.desc())
+        .first()
+    )
 
-    # ✅ BP3+ enforcement: F2F must be completed before recertification
+    if existing_cert:
+        return existing_cert
+
+    idx = bp_index_date_derived(
+        db,
+        patient_id,
+        benefit_period_id,
+    )
+
     if idx >= 3:
         require_f2f_completed_for_bp3_plus(
             db,
@@ -37,9 +79,7 @@ def create_or_finalize_cert(
             benefit_period_id=benefit_period_id,
         )
 
-    # ✅ Timing guard: certification/recertification cannot be signed >15 days early
-    now = datetime.utcnow()
-    signed_at = now
+    signed_at = datetime.utcnow()
     effective_date = bp.start_date
 
     earliest_allowed = datetime.combine(
@@ -50,10 +90,18 @@ def create_or_finalize_cert(
     if signed_at < earliest_allowed:
         raise HTTPException(
             status_code=400,
-            detail="Certification/recertification cannot be signed more than 15 days before period start.",
+            detail=(
+                "Certification/recertification "
+                "cannot be signed more than 15 days "
+                "before period start."
+            ),
         )
 
-    cert_type = "INITIAL" if idx == 1 else "RECERT"
+    cert_type = (
+        "INITIAL"
+        if idx == 1
+        else "RECERT"
+    )
 
     cert = Certification(
         patient_id=patient_id,
@@ -67,10 +115,14 @@ def create_or_finalize_cert(
     )
 
     db.add(cert)
-    db.flush()  # get cert.id for task evidence
+    db.flush()
 
-    # ✅ Complete the correct task with evidence
-    task_type = "CERTIFICATION" if idx == 1 else "RECERTIFICATION"
+    task_type = (
+        "CERTIFICATION"
+        if idx == 1
+        else "RECERTIFICATION"
+    )
+
     complete_task_with_evidence(
         db,
         patient_id=patient_id,
@@ -82,4 +134,5 @@ def create_or_finalize_cert(
 
     db.commit()
     db.refresh(cert)
+
     return cert

@@ -1,3 +1,4 @@
+# services/idg_pdf.py
 from reportlab.lib.pagesizes import LETTER
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import inch
@@ -112,3 +113,4 @@ def generate_idg_report_pdf(records: list) -> BytesIO:
     buffer.seek(0)
 
     return buffer
+

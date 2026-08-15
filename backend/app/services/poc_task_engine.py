@@ -1,3 +1,5 @@
+# backend/app/services/poc_task_engine.py
+
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -111,9 +113,31 @@ def process_poc_version_to_tasks(
         return
 
     poc_data = poc_version.snapshot_json or {}
-    pocs = poc_data.get("pocs", [])
 
-    if not isinstance(pocs, list) or not pocs:
+    # Legacy draft-generator shape
+    if isinstance(poc_data.get("pocs"), list):
+        pocs = poc_data["pocs"]
+
+    # Canonical compiler shape
+    elif isinstance(poc_data.get("problems"), list):
+        pocs = [
+            {
+                "poc_id": problem.get("problem_code"),
+                "problem": {
+                    "code": problem.get("problem_code"),
+                    "label": problem.get("label"),
+                },
+                "clinical_summary": {
+                    "severity": problem.get("severity"),
+                },
+            }
+            for problem in poc_data["problems"]
+        ]
+
+    else:
+        return
+
+    if not pocs:
         return
 
     now = _utcnow()

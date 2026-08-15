@@ -1,15 +1,48 @@
+from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
 from app.rules.base import BaseRule
-from app.compliance.rule_loader import load_cms_rules
+
+
+def _get_cms_rule(rule_key: str) -> Optional[dict]:
+    """
+    Safe dynamic lookup into the CMS rulepack loaded by the compliance engine.
+
+    This implementation is file-agnostic and works with YAML or any future format.
+    """
+    try:
+        from app.compliance.rule_loader import load_active_rulepacks
+    except Exception:
+        return None
+
+    try:
+        packs = load_active_rulepacks()
+        cms_items = packs.get("CMS", [])
+    except Exception:
+        return None
+
+    for item in cms_items:
+        if not isinstance(item, dict):
+            continue
+
+        rules = item.get("rules", {})
+        if not isinstance(rules, dict):
+            continue
+
+        rule_value = rules.get(rule_key)
+        if isinstance(rule_value, dict):
+            return rule_value
+
+    return None
 
 
 class ESRDReadinessRule(BaseRule):
     """
     ESRD / CKD5 audit-readiness rule (WARN-only).
 
-    Triggered only when primary diagnosis looks renal failure/ESRD.
+    Triggered only when primary diagnosis looks renal failure / ESRD.
     Checks for common supporting documentation elements.
-
-    Now supports dynamic CMS rule integration (non-breaking).
     """
 
     rule_id = "ESRD_AUDIT_READINESS"
@@ -18,38 +51,32 @@ class ESRDReadinessRule(BaseRule):
     _RENAL_PREFIXES = ("N18.6", "N18.5", "Z99.2")
 
     def evaluate(self, ctx):
-        primary = (ctx.primary_dx.icd10 if ctx.primary_dx else "") or ""
+        primary = (ctx.primary_dx.icd10 if getattr(ctx, "primary_dx", None) else "") or ""
         code = primary.strip().upper()
 
-        # ✅ Load CMS dynamic rules (SAFE)
-        rules = load_cms_rules()
-        cms_rule = rules.get("eligibility_terminal_illness")
+        cms_terminal_rule = _get_cms_rule("eligibility_terminal_illness")
 
-        # ✅ OPTIONAL DEBUG (remove after testing)
-        # print("CMS RULE LOADED:", cms_rule)
-
-        # ✅ Skip if not ESRD/CKD5 diagnosis
-        if not any(code.startswith(p) for p in self._RENAL_PREFIXES):
+        if not any(code.startswith(prefix) for prefix in self._RENAL_PREFIXES):
             return self.pass_result(
                 reason="Not an ESRD/CKD5 primary diagnosis; ESRD readiness not applicable."
             )
 
-        facts = ctx.facts or {}
+        facts: Dict[str, Any] = ctx.facts or {}
         missing = []
 
-        # ✅ Dialysis status (critical for audit)
+        # Dialysis status
         if facts.get("dialysis_status") is None and facts.get("dialysis_stopped") is None:
             missing.append("dialysis_status_or_stopped")
 
-        # ✅ Objective renal function
+        # Renal function
         if facts.get("egfr") is None and facts.get("crcl") is None:
             missing.append("egfr_or_crcl")
 
-        # ✅ Symptoms or metabolic evidence
+        # Uremic condition / metabolic problems
         if facts.get("uremic_symptoms") is None and facts.get("metabolic_derangement") is None:
             missing.append("uremic_symptoms_or_metabolic_derangement")
 
-        # ✅ General decline evidence
+        # Functional / nutritional decline
         if (
             facts.get("functional_decline") is None
             and facts.get("poor_intake") is None
@@ -57,22 +84,30 @@ class ESRDReadinessRule(BaseRule):
         ):
             missing.append("decline_evidence_functional_or_intake_or_weight_loss")
 
-        # ✅ WARN if missing elements
+        details: Dict[str, Any] = {
+            "primary_dx": code,
+        }
+
+        # Attach CMS rule metadata (audit trace)
+        if cms_terminal_rule is not None:
+            details["cms_terminal_rule_loaded"] = True
+            details["cms_terminal_rule_version"] = cms_terminal_rule.get("version")
+        else:
+            details["cms_terminal_rule_loaded"] = False
+
+        # WARN path
         if missing:
+            details["missing_elements"] = missing
+
             return self.warn_result(
                 reason="ESRD supporting documentation incomplete",
-                details={
-                    "missing_elements": missing,
-                    "primary_dx": code,
-                },
+                details=details,
                 evidence=facts,
             )
 
-        # ✅ PASS
+        # PASS path
         return self.pass_result(
             reason="ESRD supporting documentation present",
-            details={
-                "primary_dx": code,
-            },
+            details=details,
             evidence=facts,
         )

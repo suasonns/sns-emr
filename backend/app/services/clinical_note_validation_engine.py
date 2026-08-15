@@ -17,6 +17,10 @@ from app.models.incident_report import IncidentReport
 from app.services.eligibility.eligibility_registry_service import (
     is_required_when_visible,
 )
+from app.domain.clinical.rn_ica_keys import (
+    RN_ICA_ACCEPTED_KEYS,
+    is_rn_ica_key,
+)
 
 # =========================================================
 # CONSTANTS
@@ -368,18 +372,153 @@ VALID_OBSERVATIONAL_PAIN_SCALES = {
     "FLACC",
 }
 
-REQUIRED_RN_ICA_SECTIONS = {
-    "functional_status": "Functional Status",
-    "communication_sensory": "Communication / Sensory",
-    "medication_management": "Medication Management",
-    "support_assessment": "Support Assessment",
-    "teaching_needs": "Teaching Needs",
-    "nutrition": "Nutrition",
-    "sleep_rest": "Sleep / Rest",
-    "environment_safety": "Environment Safety",
-    "bereavement_screening": "Bereavement Screening",
-    "death_imminent": "Death Is Imminent (J0050)",
-}
+RN_ICA_REQUIRED_FIELD_GROUPS = [
+    {
+        "label": "Primary Diagnosis",
+        "section": "Diagnosis Review",
+        "paths": [
+            "diagnoses.primaryDiagnosis",
+            "primary_diagnosis",
+            "terminal_diagnosis",
+        ],
+    },
+    {
+        "label": "LCD Eligibility Narrative",
+        "section": "Eligibility Narrative",
+        "paths": [
+            "diagnoses.lcdEligibilityNarrative",
+            "lcd_eligibility_narrative",
+            "assessment_summary",
+            "nursing_summary",
+        ],
+    },
+    {
+        "label": "Disease Trajectory",
+        "section": "Disease Trajectory",
+        "paths": [
+            "diagnoses.diseaseTrajectory",
+            "disease_trajectory",
+            "assessment_summary",
+        ],
+    },
+    {
+        "label": "PPS",
+        "section": "Performance Status",
+        "paths": [
+            "performanceStatus.pps",
+            "functional_assessment.pps",
+            "functional_scores.pps",
+            "pps",
+            "pps_score",
+        ],
+    },
+    {
+        "label": "KPS",
+        "section": "Performance Status",
+        "paths": [
+            "performanceStatus.kps",
+            "functional_assessment.kps",
+            "functional_scores.kps",
+            "kps",
+            "kps_score",
+        ],
+    },
+    {
+        "label": "Code Status",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.codeStatus",
+            "code_status",
+        ],
+    },
+    {
+        "label": "Life-Sustaining Treatment Preference",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.lifeSustainingTreatmentPreference",
+            "life_sustaining_treatment_preference",
+        ],
+    },
+    {
+        "label": "Hospitalization Preference",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.hospitalizationPreference",
+            "hospitalization_preference",
+        ],
+    },
+    {
+        "label": "Pain Screening",
+        "section": "Pain Assessment",
+        "paths": [
+            "pain.verbalizesPain",
+            "pain.pain_score",
+            "pain_score",
+        ],
+    },
+    {
+        "label": "Respiratory Rate",
+        "section": "Vitals / Respiratory",
+        "paths": [
+            "vitals.respirations",
+            "respiratory.respiratoryRate",
+            "respiratory_rate",
+        ],
+    },
+    {
+        "label": "Weight",
+        "section": "Nutrition / Measurements",
+        "paths": [
+            "vitals.weight",
+            "nutrition.weight",
+            "weight",
+        ],
+    },
+    {
+        "label": "Appetite / Intake",
+        "section": "Nutrition",
+        "paths": [
+            "nutrition.appetite",
+            "gastrointestinal.appetite",
+            "appetite",
+        ],
+    },
+    {
+        "label": "ADL Assistance Required",
+        "section": "Functional Status",
+        "paths": [
+            "functionalStatus.adlAssistanceRequired",
+            "functional_status.adl_assistance_required",
+            "adl_assistance_required",
+        ],
+    },
+    {
+        "label": "Mobility Decline",
+        "section": "Functional Status",
+        "paths": [
+            "functionalStatus.mobilityDecline",
+            "functional_status.mobility_decline",
+            "mobility_decline",
+        ],
+    },
+    {
+        "label": "Cognitive Decline",
+        "section": "Neurological / Cognitive",
+        "paths": [
+            "neurological.cognitiveDecline",
+            "cognitive_decline",
+        ],
+    },
+    {
+        "label": "Plan of Care Narrative",
+        "section": "Plan of Care",
+        "paths": [
+            "planOfCare.summary",
+            "plan_of_care",
+            "nursing_summary",
+        ],
+    },
+]
 
 # =========================================================
 # RESULT DTO
@@ -459,18 +598,14 @@ def validate_and_trigger_incident(
         compliance_blocking_items,
     )
     
-    # TEMPORARILY DISABLED
-    # RN ICA section modules have not yet been implemented
-    # in the form registry/frontend payload structure.
-    #
-    # _validate_required_rn_ica_sections(
-    #     note,
-    #     content,
-    #     assessment,
-    #     warnings,
-    #     audit_flags,
-    #     compliance_blocking_items,
-    # )
+    _validate_required_rn_ica_sections(
+        note,
+        content,
+        assessment,
+        warnings,
+        audit_flags,
+        compliance_blocking_items,
+    )
     
     _validate_vitals_and_muac(
         content,
@@ -681,16 +816,8 @@ def _validate_required_ros(
     is_rn_ica = (
         discipline == "RN"
         and (
-            note_type in {
-                "RN_ASSESS",
-                "RN_ASSESS_V1",
-                "RN_HOPE_ADMISSION",
-            }
-            or form_key in {
-                "RN_ASSESS",
-                "RN_ASSESS_V1",
-                "RN_HOPE_ADMISSION",
-            }
+            is_rn_ica_key(note_type)
+            or is_rn_ica_key(form_key)
             or form_type in {
                 "ASSESS",
                 "COMPREHENSIVE",
@@ -698,9 +825,11 @@ def _validate_required_ros(
         )
     )
 
+    if is_rn_ica:
+        return
+
     requires_full_ros = (
         encounter_type == "COMPREHENSIVE"
-        or is_rn_ica
     )
 
     if requires_full_ros:
@@ -798,86 +927,51 @@ def _validate_required_rn_ica_sections(
     audit_flags: list[str],
     compliance_blocking_items: list[dict[str, Any]],
 ) -> None:
-    discipline = _clean_upper(
-        _note_value(note, content, "discipline")
-    )
-
-    note_type = _clean_upper(
-        _note_value(note, content, "note_type")
-    )
-
-    form_key = _clean_upper(
-        _note_value(note, content, "form_key")
-    )
-
-    form_type = _clean_upper(
-        _note_value(note, content, "form_type")
-    )
-
-    is_rn_ica = (
-        discipline == "RN"
-        and (
-            note_type in {
-                "RN_ASSESS",
-                "RN_ASSESS_V1",
-                "RN_HOPE_ADMISSION",
-            }
-            or form_key in {
-                "RN_ASSESS",
-                "RN_ASSESS_V1",
-                "RN_HOPE_ADMISSION",
-            }
-            or form_type in {
-                "ASSESS",
-                "COMPREHENSIVE",
-            }
-        )
-    )
-
-    if not is_rn_ica:
+    if not _is_rn_ica_workflow(note, content):
         return
 
-    for section_code, section_title in REQUIRED_RN_ICA_SECTIONS.items():
+    rn_ica = _rn_ica_payload(content, assessment)
 
-        section_data = _obj(
-            assessment.get(section_code)
+    if not rn_ica:
+        warnings.append("rn_ica_payload_missing")
+        audit_flags.append("rn_ica_payload_missing")
+
+        _add_rn_ica_required_field_blocker(
+            compliance_blocking_items,
+            label="RN ICA Payload",
+            section="RN ICA",
+            path="assessment",
+        )
+        return
+
+    for field_group in RN_ICA_REQUIRED_FIELD_GROUPS:
+        path, value = _first_present_path(
+            rn_ica,
+            field_group["paths"],
         )
 
-        if section_data:
+        if path and not _empty(value):
             continue
 
+        expected_path = field_group["paths"][0]
+        label = field_group["label"]
+        section = field_group["section"]
+
         warnings.append(
-            f"required_rn_ica_section_missing:{section_code}"
+            f"rn_ica_required_missing:{expected_path}"
         )
 
         audit_flags.append(
-            "required_rn_ica_section_missing"
+            "rn_ica_required_missing"
         )
 
-        _add_blocker(
+        _add_rn_ica_required_field_blocker(
             compliance_blocking_items,
-            section_title,
-            section_title,
-            None,
-            f"{section_title} missing",
-            "RN_ICA_REQUIRED",
-            f"{section_title} section is required for RN ICA completion.",
-            f"Complete the {section_title} section.",
-            _navigation(
-                section_title,
-                section_code,
-                section_title,
-                section_code,
-                section_title,
-                section_code,
-                section_title,
-            ),
-            [
-                "RN_ICA_FINALIZATION",
-                "INITIAL_RN_ICA_TASK_COMPLETION",
-                "BILLING_READINESS",
-            ],
+            label=label,
+            section=section,
+            path=expected_path,
         )
+        
 def _validate_required_functional_assessments(
     note: ClinicalNote,
     content: dict[str, Any],
@@ -1701,6 +1795,123 @@ def _note_value(note: ClinicalNote, content: dict[str, Any], key: str) -> Any:
 
     return None
 
+def _get_path(data: dict[str, Any], path: str) -> Any:
+    current: Any = data
+
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+
+        current = current.get(part)
+
+    return current
+
+
+def _first_present_path(data: dict[str, Any], paths: list[str]) -> tuple[str | None, Any]:
+    for path in paths:
+        value = _get_path(data, path)
+
+        if not _empty(value):
+            return path, value
+
+    return None, None
+
+
+def _is_rn_ica_workflow(
+    note: ClinicalNote,
+    content: dict[str, Any],
+) -> bool:
+    discipline = _clean_upper(
+        _note_value(note, content, "discipline")
+    )
+
+    if discipline != "RN":
+        return False
+
+    note_type = _clean_upper(
+        _note_value(note, content, "note_type")
+    )
+
+    form_key = _clean_upper(
+        _note_value(note, content, "form_key")
+    )
+
+    form_type = _clean_upper(
+        _note_value(note, content, "form_type")
+    )
+
+    assessment_type = _clean_upper(
+        _note_value(note, content, "assessment_type")
+    )
+
+    return (
+        is_rn_ica_key(note_type)
+        or is_rn_ica_key(form_key)
+        or is_rn_ica_key(assessment_type)
+        or form_type in {
+            "ASSESS",
+            "COMPREHENSIVE",
+        }
+    )
+
+
+def _rn_ica_payload(
+    content: dict[str, Any],
+    assessment: dict[str, Any],
+) -> dict[str, Any]:
+    """
+    Supports both legacy flat RN assessment payloads and newer RNICA.jsx payloads.
+    """
+    if isinstance(assessment, dict) and assessment:
+        return assessment
+
+    for key in [
+        "rn_ica",
+        "rnica",
+        "payload",
+        "form_payload",
+        "structured_payload",
+        "assessment",
+    ]:
+        candidate = content.get(key)
+
+        if isinstance(candidate, dict) and candidate:
+            return candidate
+
+    return content if isinstance(content, dict) else {}
+
+
+def _add_rn_ica_required_field_blocker(
+    compliance_blocking_items: list[dict[str, Any]],
+    *,
+    label: str,
+    section: str,
+    path: str,
+) -> None:
+    _add_blocker(
+        compliance_blocking_items,
+        section,
+        label,
+        path,
+        f"{label} missing",
+        "RN_ICA_REQUIRED",
+        f"{label} is required before RN ICA finalization.",
+        f"Complete {label}.",
+        _navigation(
+            section,
+            path.split(".")[0],
+            section,
+            path,
+            label,
+            path,
+            label,
+        ),
+        [
+            "RN_ICA_FINALIZATION",
+            "INITIAL_RN_ICA_TASK_COMPLETION",
+            "BILLING_READINESS",
+        ],
+    )
 
 def _extract_review_of_systems(
     content: dict[str, Any],

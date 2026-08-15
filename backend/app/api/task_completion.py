@@ -1,3 +1,5 @@
+# api/task_completion.py
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -9,6 +11,8 @@ from sqlalchemy.orm import Session
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.core.task_completion_guard import assert_task_completion_is_valid
+from app.compliance.cms.evidence import evaluate as evaluate_evidence_rule
+from app.utils.time import utc_now
 
 from app.models.task import Task
 from app.models.visit import Visit
@@ -276,7 +280,7 @@ def complete_task_by_note(
         completion_reference_id=note.id,
         completed_by=getattr(user, "id", None),
     )
-
+    
     assert_task_completion_is_valid(
         status=task.status,
         completed_at=task.completed_at,

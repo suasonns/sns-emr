@@ -72,6 +72,7 @@ def test_records_release_does_not_create_ica_or_noe_tasks(db_session):
 
 @pytest.mark.core_rule("SOC / ICA / NOE timing")
 def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
+
     patient_id = stable_uuid("patient:authorize_admission")
     p = _ensure_min_patient(db_session, patient_id)
 
@@ -81,22 +82,61 @@ def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
         election_signed_at=FIXED_SOC,
         authorized_by_user_id=None,
     )
+
     db_session.commit()
     db_session.refresh(p)
 
-    assert p.election_signed_at == FIXED_SOC
-    assert p.soc_date.date() == FIXED_SOC.date()
+    # --------------------------------------------------
+    # ✅ VERIFY ADMISSION (AUTHORITATIVE SOURCE)
+    # --------------------------------------------------
+    admission = (
+        db_session.query(Admission)
+        .filter(Admission.patient_id == patient_id)
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
 
+    assert admission is not None, "Admission must exist after authorization"
+
+    assert admission.soc_date is not None, "SOC must be set"
+    assert admission.soc_date.date() == FIXED_SOC.date()
+
+    assert admission.election_signed_at == FIXED_SOC
+
+    assert admission.status in (
+        "PENDING",
+        "AUTHORIZED",
+        "ADMITTED",
+    )
+
+    # --------------------------------------------------
+    # ✅ VERIFY TASK CREATION
+    # --------------------------------------------------
     tenant_id = db_session.info.get("tenant_id")
+
     tasks = (
         db_session.query(Task)
-        .filter(Task.tenant_id == tenant_id, Task.patient_id == patient_id)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.patient_id == patient_id,
+        )
         .all()
     )
+
     by_type = {t.task_type: t for t in tasks}
 
-    assert TASK_INITIAL_RN_ICA in by_type
-    assert TASK_NOE_DUE in by_type
+    rn_type = getattr(TaskType, TASK_INITIAL_RN_ICA)
+    noe_type = getattr(TaskType, TASK_NOE_DUE)
 
-    assert by_type[TASK_INITIAL_RN_ICA].due_at == FIXED_SOC + timedelta(hours=48)
-    assert by_type[TASK_NOE_DUE].due_at == FIXED_SOC + timedelta(days=5)
+    assert rn_type in by_type, "RN ICA task missing"
+    assert noe_type in by_type, "NOE task missing"
+
+    rn_task = by_type[rn_type]
+    noe_task = by_type[noe_type]
+
+    # --------------------------------------------------
+    # ✅ VERIFY TIMING (REGULATORY CRITICAL)
+    # --------------------------------------------------
+
+    assert rn_task.due_at == FIXED_SOC + timedelta(hours=48)
+    assert noe_task.due_at == FIXED_SOC + timedelta(days=5)

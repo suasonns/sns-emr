@@ -1,3 +1,5 @@
+# backend/app/services/clinical_note_service.py
+
 from __future__ import annotations
 
 import logging
@@ -26,6 +28,15 @@ from app.services.poc_engine import generate_poc_suggestions
 from app.services.poc_review_gate import enforce_poc_review_gate
 from app.services.task_auto_complete_engine import auto_complete_tasks_from_note
 from app.services.task_engine import process_tasks_for_note
+from app.domain.clinical.rn_ica_keys import (
+    RN_ICA_ACCEPTED_KEYS,
+    RN_ICA_CANONICAL_FORM_KEY,
+    RN_ICA_CANONICAL_NOTE_TYPE,
+    RN_ICA_DISPLAY_NAME,
+    is_rn_ica_key,
+    normalize_rn_ica_content,
+    normalize_rn_ica_key,
+)
 
 logger = logging.getLogger("sns_emr")
 
@@ -189,8 +200,8 @@ def _sync_plan_of_care_meta(note: ClinicalNote) -> None:
 
 def _ensure_required_timestamps(note: ClinicalNote) -> None:
     """
-    Some live DB environments still require explicit created_at/updated_at values
-    even if the ORM model declares defaults.
+    Ensure explicit timestamps exist for environments where ORM/server defaults
+    may not populate before flush.
     """
     now = _utc_now()
 
@@ -200,6 +211,9 @@ def _ensure_required_timestamps(note: ClinicalNote) -> None:
     if getattr(note, "updated_at", None) is None:
         note.updated_at = now
 
+    if getattr(note, "entered_at", None) is None:
+        note.entered_at = now
+
 
 # =========================================================
 # CONTENT SAFETY (CRITICAL - PREVENT NOT NULL FAILURES)
@@ -207,15 +221,14 @@ def _ensure_required_timestamps(note: ClinicalNote) -> None:
 
 def _ensure_content(note: ClinicalNote) -> None:
     """
-    Enforce NOT NULL constraint safety for clinical_notes.content.
-
-    Rules:
-    - Convert None -> empty string for draft/system notes
-    - Preserve existing valid content
-    - Required for DB integrity and audit reliability
+    Enforce NOT NULL and JSON-shape safety for clinical_notes.content.
     """
     if getattr(note, "content", None) is None:
-        note.content = ""
+        note.content = {}
+        return
+
+    if not isinstance(note.content, dict):
+        note.content = {}
 
 
 # =========================================================
@@ -274,11 +287,13 @@ def _apply_form_engine(note: ClinicalNote, db: Session) -> dict[str, Any]:
     note.form_family = _coerce_form_family_value(form_package.get("form_family"))
     note.form_key = form_package.get("primary_form")
 
+    normalized_form_type = normalize_rn_ica_key(resolved_form_type)
+
     note.module_payload = {
         "modules": form_package.get("modules", []),
         "attached_forms": form_package.get("attached_forms", []),
         "resolved_by": form_package.get("resolved_by"),
-        "form_type": resolved_form_type,
+        "form_type": normalized_form_type,
     }
     flag_modified(note, "module_payload")
 
@@ -379,11 +394,7 @@ def _generate_compliance_task_signals(
 # RN ICA FINALIZATION COMPLIANCE GATE
 # =========================================================
 
-RN_ICA_FORM_KEYS = {
-    "RN_ASSESS",
-    "RN_ASSESS_V1",
-    "RN_HOPE_ADMISSION",
-}
+RN_ICA_FORM_KEYS = RN_ICA_ACCEPTED_KEYS
 
 
 def _note_content_dict(note: ClinicalNote) -> dict[str, Any]:
@@ -433,24 +444,13 @@ def _is_rn_ica_note(note: ClinicalNote) -> bool:
         getattr(note, "discipline", "") or ""
     ).strip().upper()
 
-    form_key = str(
-        getattr(note, "form_key", "") or ""
-    ).strip().upper()
-
-    note_type = str(
-        getattr(note, "note_type", "") or ""
-    ).strip().upper()
-
     if discipline != "RN":
         return False
 
-    if form_key in RN_ICA_FORM_KEYS:
-        return True
-
-    if note_type in RN_ICA_FORM_KEYS:
-        return True
-
-    return False
+    return (
+        is_rn_ica_key(getattr(note, "note_type", None))
+        or is_rn_ica_key(getattr(note, "form_key", None))
+    )
 
 
 def _extract_rn_ica_blockers(
@@ -552,12 +552,18 @@ def _sync_attached_forms(
         .all()
     )
     existing_keys = {
-        child.form_key for child in existing_children if getattr(child, "form_key", None)
+        normalize_rn_ica_key(child.form_key)
+        for child in existing_children
+        if getattr(child, "form_key", None)
     }
 
     for child_form_key in attached_forms:
-        if child_form_key in existing_keys:
+        normalized_child_form_key = normalize_rn_ica_key(child_form_key)
+
+        if normalized_child_form_key in existing_keys:
             continue
+
+        normalized_child_form_key = normalize_rn_ica_key(child_form_key)
 
         child_note = ClinicalNote(
             id=uuid.uuid4(),
@@ -566,15 +572,12 @@ def _sync_attached_forms(
             visit_id=note.visit_id,
             author_id=note.author_id,
             created_by=note.created_by,
+            updated_by_user_id=note.author_id,
             discipline=note.discipline,
-            care_level=note.care_level,
-            visit_type=note.visit_type,
-            note_type=child_form_key,
-            note_category=child_form_key,
-            encounter_type=note.encounter_type,
-            content="",
+            note_type=normalized_child_form_key,
+            content={},
             form_family=note.form_family,
-            form_key=child_form_key,
+            form_key=normalized_child_form_key,
             module_payload={"modules": []},
             is_primary=False,
             parent_note_id=note.id,
@@ -586,6 +589,99 @@ def _sync_attached_forms(
         _ensure_content(child_note)
         db.add(child_note)
 
+def _ensure_note_audit_identity(note: ClinicalNote, user_id: UUID) -> None:
+    """
+    Enforce audit identity fields for note authorship/update tracking.
+
+    Rules:
+    - author_id is the single source of truth for authorship
+    - created_by is maintained only for legacy compatibility
+    - updated_by_user_id tracks the last modifier
+    """
+    if not getattr(note, "author_id", None):
+        note.author_id = user_id
+
+    if not getattr(note, "created_by", None):
+        note.created_by = user_id
+
+    note.updated_by_user_id = user_id
+
+
+def _capture_raw_transcript(note: ClinicalNote) -> None:
+    """
+    Preserve original AI/voice/scribe source text in raw_transcript when present.
+    """
+    if getattr(note, "raw_transcript", None):
+        return
+
+    if not isinstance(getattr(note, "content", None), dict):
+        return
+
+    content = note.content
+
+    raw = (
+        content.get("raw_transcript")
+        or content.get("voice_transcript")
+        or content.get("dictation")
+        or content.get("transcript")
+    )
+
+    if raw is not None:
+        note.raw_transcript = raw
+        
+def _canonicalize_rn_ica_identity(note: ClinicalNote) -> None:
+    """
+    Production canonicalization for RN ICA identity.
+
+    Database/source-of-truth storage:
+    - note_type = RN_ASSESS
+    - form_key = RN_ASSESS
+    - content.note_type = RN_ASSESS
+    - content.form_key = RN_ASSESS
+    - content.display_note_type = RN ICA
+
+    Accepted inbound aliases:
+    - RN_ICA
+    - INITIAL_RN_ICA
+    - RN_ASSESS
+    - RN_ASSESS_V1
+    - RN_HOPE_ADMISSION
+    """
+    discipline = str(
+        getattr(note, "discipline", "") or ""
+    ).strip().upper()
+
+    if discipline != "RN":
+        return
+
+    note_type_is_rn_ica = is_rn_ica_key(getattr(note, "note_type", None))
+    form_key_is_rn_ica = is_rn_ica_key(getattr(note, "form_key", None))
+
+    content = getattr(note, "content", None)
+    content_is_rn_ica = False
+
+    if isinstance(content, dict):
+        content_is_rn_ica = (
+            is_rn_ica_key(content.get("note_type"))
+            or is_rn_ica_key(content.get("form_key"))
+            or str(content.get("display_note_type") or "").strip().upper() == "RN ICA"
+        )
+
+    if not (note_type_is_rn_ica or form_key_is_rn_ica or content_is_rn_ica):
+        return
+
+    note.note_type = RN_ICA_CANONICAL_NOTE_TYPE
+    note.form_key = RN_ICA_CANONICAL_FORM_KEY
+
+    if not isinstance(note.content, dict):
+        note.content = {}
+
+    note.content = normalize_rn_ica_content(note.content)
+    note.content["note_type"] = RN_ICA_CANONICAL_NOTE_TYPE
+    note.content["form_key"] = RN_ICA_CANONICAL_FORM_KEY
+    note.content["display_note_type"] = RN_ICA_DISPLAY_NAME
+
+    flag_modified(note, "content")
 
 # =========================================================
 # INTERNAL — NOTE ENRICHMENT PIPELINE
@@ -595,16 +691,32 @@ def _prepare_note_common_state(
     db: Session,
     *,
     note: ClinicalNote,
+    user_id: UUID,
 ) -> dict[str, Any]:
-    """
-    Shared pre-persist orchestration for both draft save and finalize.
-    """
+
     _ensure_plan_of_care_updates(note)
     _ensure_required_timestamps(note)
     _ensure_content(note)
+    _ensure_note_audit_identity(note, user_id)
+    _capture_raw_transcript(note)
+    _canonicalize_rn_ica_identity(note)
+
+    # =========================================================
+    # ✅ LOAD VISIT CONTEXT
+    # =========================================================
+    visit = None
+    if getattr(note, "visit_id", None):
+        visit = db.query(Visit).filter(Visit.id == note.visit_id).first()
+
+    # =========================================================
+    # ✅ CARE LEVEL SNAPSHOT (AUDIT SAFE)
+    # =========================================================
+    if visit and getattr(visit, "care_level", None):
+        note.care_level_snapshot = visit.care_level
 
     form_package = _apply_form_engine(note, db)
-    
+    _canonicalize_rn_ica_identity(note)
+
     # ✅ TIMEPOINT VALIDATION (SAFE MODE)
     validation_result = validate_timepoint_safe(db, note)
 
@@ -617,7 +729,7 @@ def _prepare_note_common_state(
         )
 
     clinical_context = _build_clinical_context(form_package)
-    
+
     _ensure_observed_data(note)
 
     note.content["observed_data"]["system"]["clinical_context"] = (
@@ -862,19 +974,17 @@ def save_clinical_note(
     Save a draft clinical note and run the standard note engines.
     """
     try:
-        form_package = _prepare_note_common_state(db, note=note)
-        _persist_note_and_children(
+        form_package = _prepare_note_common_state(
+            db,
+            note=note,
+            user_id=user_id,
+        )
+        
+        validation_result = _persist_note_and_children(
             db,
             note=note,
             form_package=form_package,
             user_id=user_id,
-        )
-
-        validation_result = validate_and_trigger_incident(
-            db=db,
-            note=note,
-            actor_user_id=user_id,
-            actor_role="CLINICIAN",
         )
 
         process_tasks_for_note(
@@ -882,7 +992,12 @@ def save_clinical_note(
             note=note,
             user_id=user_id,
         )
-
+        
+        # =========================================================
+        # ✅ SAVE AUDIT SAFETY
+        # =========================================================
+        note.updated_by_user_id = user_id
+        
         db.add(note)
         db.commit()
         db.refresh(note)
@@ -914,15 +1029,18 @@ def finalize_clinical_note(
     - persisted state before response
     """
     try:
-        form_package = _prepare_note_common_state(db, note=note)
-        _persist_note_and_children(
+        form_package = _prepare_note_common_state(
+            db,
+            note=note,
+            user_id=user_id,
+        )
+
+        validation_result = _persist_note_and_children(
             db,
             note=note,
             form_package=form_package,
             user_id=user_id,
         )
-
-        validation_result = {}
 
         _raise_if_rn_ica_compliance_incomplete(
             note=note,
@@ -945,6 +1063,19 @@ def finalize_clinical_note(
         # Finalize note state
         note.finalize(user_id=user_id)
 
+        # =========================================================
+        # ✅ FINALIZE AUDIT SAFETY
+        # =========================================================
+        now = _utc_now()
+
+        if not note.signed_by:
+            note.signed_by = user_id
+
+        if not note.signed_at:
+            note.signed_at = now
+
+        note.updated_by_user_id = user_id
+
         # Validate forms required for task completion before final commit
         _validate_required_forms_for_tasks(db, note)
 
@@ -960,7 +1091,7 @@ def finalize_clinical_note(
             note=note,
             user_id=user_id,
         )
-
+        
         db.add(note)
         db.commit()
         db.refresh(note)

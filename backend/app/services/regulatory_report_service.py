@@ -1,3 +1,5 @@
+# backend/app/services/regulatory_report_service.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -32,27 +34,30 @@ def certify_and_lock_report(
     user_id,
 ) -> RegulatoryReport:
     """
-    Enterprise-safe placeholder implementation.
+    Production-safe placeholder.
 
-    Purpose:
-    - Unblocks startup (import resolution)
-    - Provides deterministic behavior for /regulatory-reports/{id}/certify
+    This implementation intentionally performs no
+    certification, persistence, locking, audit logging,
+    or integrity-hash generation.
 
-    Replace later with real persistence logic:
-    - Load report row
-    - Check lock status
-    - Set certified fields
-    - Compute integrity hash
-    - Commit in caller-controlled transaction if desired
+    A future implementation should:
+
+    - Load the report from storage
+    - Validate existence
+    - Validate lock state
+    - Generate integrity hash
+    - Record certification metadata
+    - Write audit entries
+    - Persist transaction
+
+    Until then, return a non-certified object with
+    no fabricated certification data.
     """
 
-    # NOTE: This is a minimal deterministic object to keep runtime stable.
-    # DO NOT raise internal errors; service layer can raise ReportNotFound/ReportLocked
-    # once real DB models are wired.
     return RegulatoryReport(
         id=str(report_id),
-        status="CERTIFIED",
-        certified_at=datetime.utcnow(),
-        certified_by=str(user_id),
-        integrity_hash="demo_hash",
+        status="PENDING",
+        certified_at=None,
+        certified_by=None,
+        integrity_hash=None,
     )

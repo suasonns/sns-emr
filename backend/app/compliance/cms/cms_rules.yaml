@@ -1,0 +1,71 @@
+rule_set: cms.core
+version: 2026.07
+
+pack:
+  regulator: CMS
+  version: 2026.07
+  enabled: true
+
+metadata:
+  source: CMS
+  description: Core CMS hospice compliance rules
+
+rules:
+  eligibility_terminal_illness:
+    enabled: true
+    source: CMS
+    version: 2026-01
+    description: >-
+      Patient prognosis must be six months or less if the disease follows its normal course.
+    max_prognosis_months: 6
+
+  poc_update_timing:
+    enabled: true
+    source: CMS
+    version: 2026.05
+    description: >-
+      Plan of care update handling for RN visits. Crisis visits require same-day follow-up.
+      Routine visits use configurable supervisory timing.
+    routine_supervisory_due_days: 14
+    crisis_same_day: true
+
+  evidence_linkage:
+    enabled: true
+    source: CMS
+    version: 2026.05
+    description: >-
+      Completed compliance-related tasks must retain linked evidence reference type and identifier.
+
+  certification_required:
+    enabled: true
+    source: CMS
+    version: 2026-01
+    description: >-
+      Certification must be present before billing.
+
+    conditions:
+      certification_present:
+        operator: equals
+        value: true
+
+    actions:
+      on_fail:
+        type: validation
+        message: "Certification is required before billing"
+
+  documentation_required:
+    enabled: true
+    source: CMS
+    version: 2026-05
+    description: >-
+      Documentation must support medical necessity.
+
+    conditions:
+      documentation_complete:
+        operator: equals
+        value: true
+
+    actions:
+      on_fail:
+        type: validation
+        message: "Documentation must support medical necessity"

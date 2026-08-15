@@ -1,3 +1,5 @@
+# services/idg_review_automation.py
+
 from __future__ import annotations
 
 from datetime import timezone
@@ -62,7 +64,7 @@ def _get_next_idg_meeting(db: Session, tenant_id) -> IDGMeeting:
             IDGMeeting.tenant_id == tenant_id,
             IDGMeeting.status == "SCHEDULED",
         )
-        .order_by(IDGMeeting.scheduled_at.asc())
+        .order_by(IDGMeeting.meeting_date.asc())
         .first()
     )
 
@@ -82,7 +84,7 @@ def schedule_initial_idg_on_admission(db, patient: Patient, soc_datetime):
     if not meeting:
         return  # ❗ no meeting = no task
 
-    due_at = _to_utc(meeting.scheduled_at)
+    due_at = _to_utc(meeting.meeting_date)
 
     task = Task(
         tenant_id=patient.tenant_id,
@@ -141,7 +143,7 @@ def schedule_next_idg_after_completion(db, completed_task):
     if not meeting:
         return
 
-    due_at = _to_utc(meeting.scheduled_at)
+    due_at = _to_utc(meeting.meeting_date)
 
     next_task = Task(
         tenant_id=completed_task.tenant_id,
@@ -170,3 +172,4 @@ def schedule_next_idg_after_completion(db, completed_task):
     )
 
     db.add(next_task)
+    

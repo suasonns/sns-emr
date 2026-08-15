@@ -43,7 +43,7 @@ from app.api.clinical_notes.router import router as clinical_notes_router
 from app.api.idg.router import router as idg_router
 from app.api.dashboard.router import router as dashboard_router
 from app.api.audit_dashboard import router as audit_dashboard_router
-from app.api.clinical_translation import router as clinical_translation_router  # ✅ ADD THIS
+from app.api.clinical_translation import router as clinical_translation_router
 
 # ✅ NEW TASK ROUTER (THIS IS THE FIX)
 from app.api.tasks import router as tasks_router
@@ -56,6 +56,7 @@ from app.api.task_scheduling import router as task_scheduling_router
 from app.api.patient_assignments import router as patient_assignments_router
 from app.api.soc_orders import router as soc_orders_router
 from app.api.admission import router as admission_router
+from app.api.admission_diagnosis import router as admission_diagnosis_router
 
 # EXTERNAL
 from app.api.coverage import router as coverage_router
@@ -68,9 +69,6 @@ from app.billing.api.export_router import router as export_router
 from app.billing.api.claim_status_router import router as claim_status_router
 from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
-
-# DEV / TEST
-from app.api.dev_test import router as dev_test_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -144,6 +142,7 @@ def register_routers(app: FastAPI) -> None:
         med_reconciliation.router,
         soc_orders_router,
         admission_router,
+        admission_diagnosis_router,
 
         # Existing task system
         task_completion_router,
@@ -162,7 +161,6 @@ def register_routers(app: FastAPI) -> None:
         claim_status_router,
         audit_router,
         billing_router,
-        dev_test_router,
     ]
 
     for router in tenant_routes:

@@ -1,3 +1,5 @@
+# services/admission_guardrails_service.py
+
 from __future__ import annotations
 
 import uuid
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
 from app.constants.guardrail_messages import RN_DOCUMENTATION_GUIDANCE
+from app.services.tenant_settings_service import TenantSettingsService
 
 
 @dataclass(frozen=True)
@@ -46,26 +49,16 @@ class AdmissionGuardrailsService:
     @staticmethod
     def _get_policy(db: Session, tenant_id: str, key: str, default: Any):
         """
-        Resolve a guardrail policy value dynamically.
-
-        Safe fallback behavior:
-        - if GuardrailPolicy model/table is not implemented yet, return default
-        - if query fails for any reason, return default
+        Resolve a tenant-scoped guardrail policy value.
         """
+
         try:
-            from app.models.guardrail_policy import GuardrailPolicy  # lazy import
-
-            value = (
-                db.query(GuardrailPolicy.value)
-                .filter(
-                    GuardrailPolicy.tenant_id == tenant_id,
-                    GuardrailPolicy.policy_key == key,
-                )
-                .scalar()
+            return TenantSettingsService.get_policy_value(
+                db=db,
+                tenant_id=tenant_id,
+                policy_key=key,
+                default=default,
             )
-
-            return value if value is not None else default
-
         except Exception:
             return default
 
@@ -116,19 +109,25 @@ class AdmissionGuardrailsService:
         # =================================================
         # Dynamic policies
         # =================================================
-        min_narrative_length = AdmissionGuardrailsService._get_policy(
-            db,
-            tenant_id,
-            "MIN_NARRATIVE_LENGTH",
-            200,
-        )
+        try:
+            min_narrative_length = TenantSettingsService.get_int_policy(
+                db=db,
+                tenant_id=tenant_id,
+                policy_key="MIN_NARRATIVE_LENGTH",
+                default=200,
+            )
+        except Exception:
+            min_narrative_length = 200
 
-        require_decline = AdmissionGuardrailsService._get_policy(
-            db,
-            tenant_id,
-            "REQUIRE_MEASURABLE_DECLINE",
-            True,
-        )
+        try:
+            require_decline = TenantSettingsService.get_bool_policy(
+                db=db,
+                tenant_id=tenant_id,
+                policy_key="REQUIRE_MEASURABLE_DECLINE",
+                default=True,
+            )
+        except Exception:
+            require_decline = True
 
         # =================================================
         # Narrative validation
@@ -207,12 +206,10 @@ class AdmissionGuardrailsService:
     @staticmethod
     def _get_guardrail_mode(db: Session, tenant_id: str) -> str:
         """
-        Resolve guardrail mode from optional tenant settings service.
-        Safe fallback to GUIDANCE if the service is not present.
+        Resolve guardrail mode from tenant settings.
         """
-        try:
-            from app.services.tenant_settings_service import TenantSettingsService  # lazy import
 
+        try:
             mode = TenantSettingsService.get_guardrail_mode(db, tenant_id)
             if isinstance(mode, str):
                 normalized = mode.strip().upper()

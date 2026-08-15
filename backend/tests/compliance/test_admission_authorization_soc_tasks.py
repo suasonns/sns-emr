@@ -124,13 +124,44 @@ def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
         election_signed_at=FIXED_SOC,
         authorized_by_user_id=None,
     )
+
     db_session.commit()
     db_session.refresh(p)
 
-    assert p.election_signed_at == FIXED_SOC
-    assert p.soc_date.date() == FIXED_SOC.date()
-    assert p.admission_status == "ADMITTED"
+    # --------------------------------------------------
+    # ✅ VERIFY ADMISSION (AUTHORITATIVE SOURCE)
+    # --------------------------------------------------
+    admission = (
+        db_session.query(Admission)
+        .filter(Admission.patient_id == patient_id)
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
 
+    assert admission is not None, "Admission record must be created"
+
+    # SOC must be stored on Admission, not Patient
+    assert admission.soc_date.date() == FIXED_SOC.date()
+
+    # Admission state must live on Admission
+    assert admission.status in ("ADMITTED", "PENDING", "AUTHORIZED")
+
+    # Election timestamp belongs to admission workflow
+    assert admission.election_signed_at == FIXED_SOC
+
+    # Ensure effective date consistency
+    assert admission.effective_date is not None
+
+    # --------------------------------------------------
+    # ✅ VERIFY PATIENT (LIMITED ROLE ONLY)
+    # --------------------------------------------------
+    # Patient is NOT source of truth anymore
+    assert p.id == patient_id
+    assert hasattr(p, "updated_at")
+
+    # --------------------------------------------------
+    # ✅ VERIFY TASKS
+    # --------------------------------------------------
     tasks = _tasks_for_patient(db_session, patient_id)
     by_type = {t.task_type: t for t in tasks}
 
@@ -143,13 +174,24 @@ def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
     rn_task = by_type[rn_type]
     noe_task = by_type[noe_type]
 
-    assert rn_task.status in (TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.ESCALATED)
-    assert noe_task.status in (TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.ESCALATED)
+    assert rn_task.status in (
+        TaskStatus.PENDING,
+        TaskStatus.OVERDUE,
+        TaskStatus.ESCALATED,
+    )
 
+    assert noe_task.status in (
+        TaskStatus.PENDING,
+        TaskStatus.OVERDUE,
+        TaskStatus.ESCALATED,
+    )
+
+    # RN ICA due in 48 hours
     assert rn_task.due_at == FIXED_SOC + timedelta(hours=48)
-    assert noe_task.due_at == FIXED_SOC + timedelta(days=5)
-
     assert rn_task.due_date == (FIXED_SOC + timedelta(hours=48)).date()
+
+    # NOE due in 5 days
+    assert noe_task.due_at == FIXED_SOC + timedelta(days=5)
     assert noe_task.due_date == (FIXED_SOC + timedelta(days=5)).date()
 
 

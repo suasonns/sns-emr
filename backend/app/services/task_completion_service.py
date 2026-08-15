@@ -1,6 +1,10 @@
+# FILE: task_completion_service.py
+
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -8,11 +12,20 @@ from sqlalchemy.orm import Session
 
 from app.models.task import Task
 from app.models.enums import TaskStatus, CompletionReferenceType
+from app.models.clinical_note import ClinicalNote
+
 from app.domain.forms.form_registry import (
     required_form_family_for_task_discipline,
     note_matches_task_family,
 )
-from app.models.clinical_note import ClinicalNote
+
+from app.services.poc_review_gate import enforce_poc_gate
+
+logger = logging.getLogger("sns_emr")
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _validate_note_family_matches_task(
@@ -20,14 +33,6 @@ def _validate_note_family_matches_task(
     task: Task,
     note_id: UUID,
 ) -> None:
-    """
-    Enforce discipline-aware note family matching.
-
-    Examples:
-    - RN task -> CLINICAL note family
-    - MSW task -> PSYCHOSOCIAL note family
-    - SC task -> SPIRITUAL note family
-    """
     note = (
         db.query(ClinicalNote)
         .filter(ClinicalNote.id == note_id)
@@ -66,95 +71,82 @@ def complete_task_with_evidence(
     task: Task,
     reference_type: CompletionReferenceType,
     reference_id: UUID,
-    user_id: UUID | None,
+    user_id: Optional[UUID],
 ) -> Task:
     """
-    Enterprise-grade completion:
+    Task completion (PRODUCTION VERSION)
 
-    - sets status=COMPLETED
-    - requires evidence reference_type + reference_id
-    - sets completed_at timestamp
-    - enforces discipline-aware note family validation
-    - audit-safe (updated_at, updated_by)
+    - Enforces Plan of Care exists ✅
+    - Requires evidence ✅
+    - Validates note type ✅
+    - Sets timestamps ✅
     """
 
-    # -----------------------------------------------------
-    # VALIDATION
-    # -----------------------------------------------------
-    if not getattr(task, "tenant_id", None):
-        raise HTTPException(
-            status_code=500,
-            detail="Task missing tenant context",
-        )
-
-    # Already completed → idempotent behavior
-    if task.status == TaskStatus.COMPLETED:
-        return task
-
-    if reference_type is None or reference_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Completion evidence is required.",
-        )
-
-    # -----------------------------------------------------
-    # FORM FAMILY VALIDATION (CRITICAL)
-    # -----------------------------------------------------
-    if reference_type in (
-        CompletionReferenceType.NOTE,
-        CompletionReferenceType.CLINICAL_NOTE,
-    ):
-        _validate_note_family_matches_task(
-            db=db,
-            task=task,
-            note_id=reference_id,
-        )
-
-    # -----------------------------------------------------
-    # COMPLETE TASK
-    # -----------------------------------------------------
-    now = datetime.now(timezone.utc)
-
-    task.status = TaskStatus.COMPLETED
-    task.completed_at = now
-    task.completion_reference_type = reference_type
-    task.completion_reference_id = reference_id
-
-    # -----------------------------------------------------
-    # AUDIT FIELDS
-    # -----------------------------------------------------
-    if hasattr(task, "updated_at"):
-        task.updated_at = now
-
-    if hasattr(task, "updated_by"):
-        task.updated_by = user_id
-
-    # Optional (future-proof)
-    # if hasattr(task, "completed_by"):
-    #     task.completed_by = user_id
-
-    # -----------------------------------------------------
-    # FINALIZE
-    # -----------------------------------------------------
-    db.add(task)
-    db.flush()
-
-    # -----------------------------------------------------
-    # LOGGING (IMPORTANT)
-    # -----------------------------------------------------
     try:
-        import logging
-        logger = logging.getLogger("sns_emr")
+        now = _utcnow()
 
+        # ✅ STEP 1 — POC GATE (CRITICAL)
+        enforce_poc_gate(
+            db=db,
+            tenant_id=task.tenant_id,
+            patient_id=task.patient_id,
+            admission_id=getattr(task, "admission_id", None),
+            actor_user_id=user_id,
+        )
+
+        # ✅ STEP 2 — BASIC VALIDATION
+        if task.status == TaskStatus.COMPLETED:
+            return task
+
+        if not reference_type or not reference_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Completion evidence is required.",
+            )
+
+        # ✅ STEP 3 — NOTE VALIDATION
+        if reference_type in (
+            CompletionReferenceType.NOTE,
+            CompletionReferenceType.CLINICAL_NOTE,
+        ):
+            _validate_note_family_matches_task(
+                db=db,
+                task=task,
+                note_id=reference_id,
+            )
+
+        # ✅ STEP 4 — COMPLETE TASK
+        task.status = TaskStatus.COMPLETED
+        task.completed_at = now
+        task.completion_reference_type = reference_type
+        task.completion_reference_id = reference_id
+
+        # ✅ STEP 5 — AUDIT FIELDS
+        if hasattr(task, "updated_at"):
+            task.updated_at = now
+        if hasattr(task, "updated_by"):
+            task.updated_by = user_id
+
+        # ✅ STEP 6 — SAVE
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+
+        # ✅ STEP 7 — LOG
         logger.info(
-            "Task completed with evidence task_id=%s type=%s ref_type=%s ref_id=%s",
-            str(getattr(task, "id", None)),
-            str(getattr(task, "task_type", None)),
+            "TASK_COMPLETED task_id=%s patient_id=%s ref_type=%s ref_id=%s",
+            str(task.id),
+            str(task.patient_id),
             str(reference_type),
             str(reference_id),
         )
-    except Exception:
-        # Logging must never break workflow
-        pass
 
-    return task
+        return task
+
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "TASK_COMPLETION_FAILED task_id=%s",
+            str(getattr(task, "id", None)),
+        )
+        raise

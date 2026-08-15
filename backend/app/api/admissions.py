@@ -1,5 +1,3 @@
-# app/api/admissions.py
-
 from __future__ import annotations
 
 from datetime import datetime
@@ -19,26 +17,15 @@ from app.services.admission_guardrails_service import AdmissionGuardrailsService
 router = APIRouter(prefix="/api/patients", tags=["Admissions"])
 
 
-# ==========================================================
-# Request model: supports ACK_REQUIRED workflow
-# ==========================================================
-
 class AdmitPatientRequest(BaseModel):
     acknowledged: bool = Field(
         default=False,
-        description="Acknowledges HIGH/CRITICAL documentation guidance (clinical decision remains with staff).",
+        description="Acknowledges HIGH/CRITICAL documentation guidance.",
     )
 
 
-# ==========================================================
-# Hard validation: objective gates only (your policy)
-# - allergy must be documented
-# - dx discrepancy must be resolved (NOE/CTI/RN Primary Dx mismatch)
-# - RN IA primary dx must exist
-# NOTE: tenant-safe reads
-# ==========================================================
-
 def enforce_admission_requirements(db: Session, patient_id: str, tenant_id: str) -> None:
+
     row = (
         db.execute(
             text(
@@ -58,24 +45,20 @@ def enforce_admission_requirements(db: Session, patient_id: str, tenant_id: str)
     )
 
     if not row:
-        # Do not leak existence across tenants
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    # Allergy gate (objective requirement)
     if row["allergy_state"] in (None, "NOT_DOCUMENTED", "UNKNOWN"):
         raise HTTPException(
             status_code=409,
-            detail="Admission cannot be finalized until allergy status is documented (NKDA or allergy list).",
+            detail="Allergy status must be documented before admission.",
         )
 
-    # Dx discrepancy gate (your ONLY hard-block clinical integrity rule)
     if row["dx_discrepancy_open"] is True:
         raise HTTPException(
             status_code=409,
-            detail="Admission cannot be finalized until diagnosis discrepancy is reconciled.",
+            detail="Diagnosis discrepancy must be resolved before admission.",
         )
 
-    # RN IA PRIMARY Dx required (objective requirement)
     rn_dx_exists = db.execute(
         text(
             """
@@ -95,18 +78,9 @@ def enforce_admission_requirements(db: Session, patient_id: str, tenant_id: str)
     if not rn_dx_exists:
         raise HTTPException(
             status_code=409,
-            detail="Admission cannot be finalized until RN Initial Assessment primary diagnosis is documented.",
+            detail="RN Initial Assessment primary diagnosis is required.",
         )
 
-
-# ==========================================================
-# Admit endpoint
-# - Applies hard validation (objective blocks only)
-# - Runs guardrails (decision support only)
-# - Surfaces rn_explanation
-# - ACK_REQUIRED for HIGH/CRITICAL guidance (workflow pause only)
-# - Tenant-safe update + audit
-# ==========================================================
 
 @router.post("/{patient_id}/admit", status_code=status.HTTP_200_OK)
 def admit_patient(
@@ -124,36 +98,184 @@ def admit_patient(
 
     try:
         with db.begin():
-            # 1) Hard validation (objective requirements only)
+
             enforce_admission_requirements(db, patient_id, tenant_id)
 
-            # 2) Guardrails (decision support only)
-            admission_context = {"id": patient_id, "patient_id": patient_id}
-            result = AdmissionGuardrailsService.assess_admission(
+            # --------------------------------------------------
+            # ✅ LOAD PATIENT
+            # --------------------------------------------------
+            patient_row = (
+                db.execute(
+                    text(
+                        """
+                        SELECT patient_type
+                        FROM patients
+                        WHERE id = :pid
+                          AND tenant_id = :tenant_id
+                        """
+                    ),
+                    {"pid": patient_id, "tenant_id": tenant_id},
+                )
+                .mappings()
+                .first()
+            )
+
+            if not patient_row:
+                raise HTTPException(status_code=404, detail="Patient not found")
+
+            if patient_row["patient_type"] in ("TRAINING", "DEMO", "TEST"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Training/demo patients cannot be admitted.",
+                )
+
+            # --------------------------------------------------
+            # ✅ LOAD LATEST ADMISSION (AUTHORITATIVE)
+            # --------------------------------------------------
+            admission_ctx = (
+                db.execute(
+                    text(
+                        """
+                        SELECT id, soc_date, status, admission_authorized_at
+                        FROM admissions
+                        WHERE patient_id = :pid
+                          AND tenant_id = :tenant_id
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"pid": patient_id, "tenant_id": tenant_id},
+                )
+                .mappings()
+                .first()
+            )
+
+            if not admission_ctx:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Admission authorization required before admit.",
+                )
+
+            # --------------------------------------------------
+            # ✅ ENFORCE AUTHORIZATION
+            # --------------------------------------------------
+            if admission_ctx["admission_authorized_at"] is None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Admission must be authorized before activation.",
+                )
+            
+            # ✅ SOC ENFORCEMENT (EDGE CASE)
+            if admission_ctx["status"] == "AUTHORIZED" and admission_ctx["soc_date"] is None:
+                raise HTTPException(
+                status_code=409,
+                detail="SOC must be set before admission activation.",
+            )
+            
+            if admission_ctx["status"] not in ("AUTHORIZED", "PENDING"):
+                raise HTTPException(
+                    status_code=409,
+                    detail="Admission is not in a valid state for activation.",
+                )
+
+            # --------------------------------------------------
+            # ✅ SOC VALIDATION
+            # --------------------------------------------------
+            soc_datetime = admission_ctx["soc_date"]
+
+            if soc_datetime is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="SOC date/time must be entered before admission.",
+                )
+
+            now = datetime.utcnow()
+
+            if soc_datetime > now:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Cannot admit before SOC date/time.",
+                )
+            
+            # ✅ GUARDRAILS CHECK (MUST RUN BEFORE ACTIVATION)
+            guardrail_result = AdmissionGuardrailsService.assess_admission(
                 db=db,
-                admission=admission_context,
+                admission={"id": admission_ctx["id"], "patient_id": patient_id},
                 user_id=user_id,
                 tenant_id=tenant_id,
                 patient_id=patient_id,
             )
 
-            severity = (result.get("severity") or "INFO").upper()
-            flags: List[Any] = result.get("flags", []) or []
-            mode = (result.get("guardrail_mode") or "GUIDANCE").upper()
-            rn_explanation = result.get("rn_explanation")  # centralized, compliance-approved wording
+            severity = (guardrail_result.get("severity") or "INFO").upper()
 
-            # 3) ACK_REQUIRED workflow pause (NOT a denial, NOT a clinical block)
             if severity in {"HIGH", "CRITICAL"} and not acknowledged:
                 return {
                     "blocked": True,
                     "reason": "ACK_REQUIRED",
-                    "guardrail_mode": mode,
-                    "guardrail": {"severity": severity, "flags": flags},
-                    "rn_explanation": rn_explanation,
+                    "guardrail": guardrail_result,
                 }
+            
+            # --------------------------------------------------
+            # ✅ BLOCK DUPLICATE ACTIVE ADMISSION
+            # --------------------------------------------------
+            existing_active = (
+                db.execute(
+                    text(
+                        """
+                        SELECT id
+                        FROM admissions
+                        WHERE patient_id = :pid
+                          AND tenant_id = :tenant_id
+                          AND status = 'ACTIVE'
+                        LIMIT 1
+                        """
+                    ),
+                    {"pid": patient_id, "tenant_id": tenant_id},
+                )
+                .mappings()
+                .first()
+            )
 
-            # 4) Tenant-safe status transition
+            if existing_active:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Active admission already exists.",
+                )
+
+            # --------------------------------------------------
+            # ✅ ACTIVATE ADMISSION (SAFE SCOPE)
+            # --------------------------------------------------
             updated = db.execute(
+                text(
+                    """
+                    UPDATE admissions
+                    SET status = 'ACTIVE',
+                        admission_date = :now,
+                        admitted_by = :user_id
+                    WHERE id = :admission_id
+                      AND patient_id = :pid
+                      AND tenant_id = :tenant_id
+                    """
+                ),
+                {
+                    "now": now,
+                    "user_id": user_id,
+                    "admission_id": admission_ctx["id"],
+                    "pid": patient_id,
+                    "tenant_id": tenant_id,
+                },
+            ).rowcount
+
+            if updated == 0:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to activate admission.",
+                )
+
+            # --------------------------------------------------
+            # ✅ UPDATE PATIENT STATE
+            # --------------------------------------------------
+            db.execute(
                 text(
                     """
                     UPDATE patients
@@ -163,142 +285,38 @@ def admit_patient(
                     """
                 ),
                 {"pid": patient_id, "tenant_id": tenant_id},
-            ).rowcount
+            )
 
-            if updated == 0:
-                # Do not leak cross-tenant existence
-                raise HTTPException(status_code=404, detail="Patient not found")
-
-            # 5) Audit the admission event (survey-defensible)
-            now = datetime.utcnow()
+            # --------------------------------------------------
+            # ✅ AUDIT LOG (ENTERPRISE)
+            # --------------------------------------------------
             audit = AuditLog()
+            audit.tenant_id = tenant_id
+            audit.user_id = user_id
+            audit.action = "PATIENT_ADMITTED"
+            audit.entity_type = "PATIENT"
+            audit.entity_id = patient_id
+            audit.created_at = now
 
-            if hasattr(audit, "tenant_id"):
-                audit.tenant_id = tenant_id
-            if hasattr(audit, "user_id"):
-                audit.user_id = user_id
-            if hasattr(audit, "actor_user_id"):
-                audit.actor_user_id = user_id
-            if hasattr(audit, "action"):
-                audit.action = "PATIENT_ADMITTED"
-            if hasattr(audit, "entity_type"):
-                audit.entity_type = "PATIENT"
-            if hasattr(audit, "entity"):
-                audit.entity = "PATIENT"
-            if hasattr(audit, "entity_id"):
-                audit.entity_id = patient_id
-            if hasattr(audit, "timestamp"):
-                audit.timestamp = now
-            if hasattr(audit, "created_at"):
-                audit.created_at = now
-            if hasattr(audit, "details"):
-                audit.details = {
-                    "guardrail_mode": mode,
-                    "severity": severity,
-                    "flags": flags,
-                    "rn_explanation": rn_explanation,
-                    "acknowledged": acknowledged,
-                }
-            if hasattr(audit, "changes"):
-                audit.changes = {
-                    "guardrail_mode": mode,
-                    "severity": severity,
-                    "flags": flags,
-                    "rn_explanation": rn_explanation,
-                    "acknowledged": acknowledged,
-                }
+            audit.details = {
+                "admission_id": str(admission_ctx["id"]),
+                "previous_status": admission_ctx["status"],
+                "new_status": "ACTIVE",
+                "soc_date": soc_datetime.isoformat(),
+            }
+
+            audit.changes = audit.details
 
             db.add(audit)
 
-        # success response (include rn_explanation)
         return {
             "patient_id": patient_id,
+            "admission_id": str(admission_ctx["id"]),
             "status": "ACTIVE",
-            "guardrail_mode": mode,
-            "guardrail": {
-                "severity": severity,
-                "flags": flags,
-                "requires_md_review": bool(result.get("requires_md_review", False)),
-            },
-            "rn_explanation": rn_explanation,
+            "soc_date": soc_datetime.isoformat(),
         }
 
     except HTTPException:
         raise
     except Exception:
         raise
-
-
-# ==========================================================
-# NOE readiness endpoint (tenant-safe)
-# ==========================================================
-
-@router.get("/{patient_id}/noe-readiness", status_code=status.HTTP_200_OK)
-def noe_readiness(
-    patient_id: str,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-) -> Dict[str, Any]:
-    """
-    Determine whether the patient is ready for NOE submission.
-    This endpoint NEVER mutates data. It only reports readiness + reasons.
-    """
-    tenant_id = current_user.tenant_id
-
-    row = (
-        db.execute(
-            text(
-                """
-                SELECT
-                    patient_status,
-                    allergy_state,
-                    dx_discrepancy_open
-                FROM patient_face_sheet_view
-                WHERE patient_id = :pid
-                  AND tenant_id = :tenant_id
-                """
-            ),
-            {"pid": patient_id, "tenant_id": tenant_id},
-        )
-        .mappings()
-        .first()
-    )
-
-    if not row:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    reasons: List[str] = []
-
-    if row["patient_status"] != "ACTIVE":
-        reasons.append("Patient is not admitted (status is not ACTIVE)")
-
-    if row["allergy_state"] in (None, "NOT_DOCUMENTED", "UNKNOWN"):
-        reasons.append("Allergy status not documented (NKDA or allergy list required)")
-
-    if row["dx_discrepancy_open"] is True:
-        reasons.append("Diagnosis discrepancy is still open")
-
-    rn_dx_exists = db.execute(
-        text(
-            """
-            SELECT 1
-            FROM diagnosis_sources
-            WHERE patient_id = :pid
-              AND tenant_id = :tenant_id
-              AND source = 'RN_IA'
-              AND dx_type = 'PRIMARY'
-              AND is_active = true
-            LIMIT 1
-            """
-        ),
-        {"pid": patient_id, "tenant_id": tenant_id},
-    ).scalar()
-
-    if not rn_dx_exists:
-        reasons.append("RN Initial Assessment primary diagnosis is missing")
-
-    return {
-        "patient_id": patient_id,
-        "ready": len(reasons) == 0,
-        "reasons": reasons,
-    }

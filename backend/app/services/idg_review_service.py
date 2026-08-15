@@ -1,5 +1,14 @@
+# services/idg_review_service.py
+
 from datetime import datetime, timezone
 import logging
+from typing import Optional
+
+from fastapi import HTTPException
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.models.idg_review import IDGReview
 
 logger = logging.getLogger(__name__)
 
@@ -52,10 +61,17 @@ def finalize_idg_review(
 
         db.commit()
 
+    except HTTPException:
+        db.rollback()
+        raise
+
     except Exception:
         db.rollback()
         logger.exception("IDG finalization failed")
-        raise HTTPException(500, "IDG finalization failed")
+        raise HTTPException(
+            status_code=500,
+            detail="IDG finalization failed",
+        )
 
     db.refresh(review)
     return review

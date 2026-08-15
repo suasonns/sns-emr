@@ -13,6 +13,9 @@ from app.models.task import Task
 from app.api.schemas.task_read import TaskResponse
 from app.tenancy.registry import assert_known_tenant
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -128,18 +131,6 @@ def rn_dashboard_tasks(
     user=Depends(require_valid_tenant),
 ):
     tenant_id = user.tenant_id
-
-    print("RN DASHBOARD HIT")
-    print(f"tenant_id={tenant_id}")
-
-    updated = run_overdue_engine(
-        db=db,
-        tenant_id=tenant_id,
-    )
-
-    print(f"overdue_engine_updated={updated}")
-
-    db.commit()
 
     return (
         db.query(Task)

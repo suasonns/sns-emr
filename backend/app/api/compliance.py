@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 
 from app.core.db import get_db
 from app.core.permissions import require_roles
-from app.core.auth import CurrentUser
+from app.core.security import CurrentUser
 
 from app.models.idg_review import IDGReview
 from app.models.visit import Visit

@@ -19,6 +19,7 @@ from app.db_tenant_dependency import get_db_tenant
 
 from app.models.patient import Patient
 from app.models.user import User
+from app.models.admission import Admission
 from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
@@ -37,7 +38,11 @@ from app.models.enums import (
     TaskDiscipline,
     TaskRegulatoryBasis,
 )
-
+from app.services.admission.admission_guardrail_service import (
+    AdmissionGuardrailService,
+    TrainingModeBlockedError,
+    AdmissionPrerequisiteError,
+)
 from app.services.icd10_resolver_service import (
     ICD10ResolutionError,
     resolve_icd10_diagnosis_for_use,
@@ -47,7 +52,11 @@ from app.services.diagnosis_sync_service import (
 )
 from enum import Enum
 
+from datetime import datetime
 
+class AdmitPatientRequest(BaseModel):
+    acknowledged: bool = False
+    soc_date: datetime
 class PatientCategory(str, Enum):
     ACTIVE = "ACTIVE"
     PENDING = "PENDING"
@@ -88,6 +97,40 @@ def _tenant_id_uuid(user) -> uuid.UUID:
         raise HTTPException(401, "Missing tenant")
     return uuid.UUID(str(user.tenant_id))
 
+def _get_latest_admission(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+) -> Admission | None:
+    return (
+        db.query(Admission)
+        .filter(
+            Admission.tenant_id == tenant_id,
+            Admission.patient_id == patient_id,
+        )
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+
+
+def _get_active_admission(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+) -> Admission | None:
+    return (
+        db.query(Admission)
+        .filter(
+            Admission.tenant_id == tenant_id,
+            Admission.patient_id == patient_id,
+            Admission.status == "ADMITTED",
+            Admission.discharged_at.is_(None),
+        )
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
 
 # =========================================================
 # ROUTER
@@ -109,23 +152,12 @@ class PatientCreate(BaseModel):
 
 
 class PatientUpdate(BaseModel):
-    full_name: str | None = None
+    first_name: str | None = None
+    middle_name: str | None = None
+    last_name: str | None = None
+    
     primary_diagnosis: str | None = None
     status: str | None = None
-
-    admission_status: str | None = None
-
-    discharge_reason: str | None = None
-    discharge_initiated_by: str | None = None
-    discharge_plan_reviewed: bool | None = None
-
-    discharge_notified: bool | None = None
-    discharge_explained: bool | None = None
-    discharge_readmission_explained: bool | None = None
-    discharge_medication_instruction: bool | None = None
-    discharge_contact_provided: bool | None = None
-    discharge_referral_provided: bool | None = None
-
 
 # =========================================================
 # LIST PATIENTS ✅ UNCHANGED
@@ -144,83 +176,241 @@ def list_patients(
         raise HTTPException(403, "Inactive or missing user")
 
     access_level = db_user.access_level or "ROLE_BASED"
-    
+
     # -----------------------------------------------------
     # Discipline-restricted roles
     # -----------------------------------------------------
-    # CHHA and Volunteer users must not enumerate
-    # patient lists from the patient registry endpoint.
-    # They must access patient information through
-    # assigned workflow-specific routes only.
-    if user.role in {
-        "CHHA",
-        "VOLUNTEER",
-    }:
+    if user.role in {"CHHA", "VOLUNTEER"}:
         raise HTTPException(
             status_code=403,
             detail="User is not authorized to list patients",
         )
-    
-    query = db.query(Patient).filter(
-        Patient.tenant_id == tenant_id
+
+    # -----------------------------------------------------
+    # Latest admission per patient (tenant-scoped)
+    # -----------------------------------------------------
+    latest_admission_sq = (
+        db.query(
+            Admission.patient_id.label("patient_id"),
+            func.max(Admission.created_at).label("max_created_at"),
+        )
+        .filter(Admission.tenant_id == tenant_id)
+        .group_by(Admission.patient_id)
+        .subquery()
     )
 
+    # -----------------------------------------------------
+    # Base query:
+    # Pull Patient + latest Admission + FaceSheet identity
+    # -----------------------------------------------------
+    query = (
+        db.query(
+            Patient,
+            Admission,
+            PatientFaceSheet.first_name.label("first_name"),
+            PatientFaceSheet.middle_name.label("middle_name"),
+            PatientFaceSheet.last_name.label("last_name"),
+        )
+        .outerjoin(
+            PatientFaceSheet,
+            PatientFaceSheet.patient_id == Patient.id,
+        )
+        .outerjoin(
+            latest_admission_sq,
+            latest_admission_sq.c.patient_id == Patient.id,
+        )
+        .outerjoin(
+            Admission,
+            (Admission.patient_id == Patient.id)
+            & (Admission.tenant_id == tenant_id)
+            & (Admission.created_at == latest_admission_sq.c.max_created_at),
+        )
+        .filter(
+            Patient.tenant_id == tenant_id
+        )
+    )
+
+    # -----------------------------------------------------
+    # Access scoping
+    # Use EXISTS instead of JOIN to avoid duplicate rows
+    # -----------------------------------------------------
     FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
 
     if not (
         user.role in FULL_ACCESS_ROLES
         or access_level == "FULL_ACCESS"
     ):
-        query = (
-            query.join(
-                PatientAssignment,
-                Patient.id == PatientAssignment.patient_id
-            )
+        assignment_exists = (
+            db.query(PatientAssignment.id)
             .filter(
+                PatientAssignment.patient_id == Patient.id,
                 PatientAssignment.tenant_id == tenant_id,
                 PatientAssignment.user_id == user.user_id,
             )
-            .distinct()
+            .exists()
         )
 
-    if category == "ACTIVE":
+        query = query.filter(assignment_exists)
+
+    # -----------------------------------------------------
+    # Category filters
+    # -----------------------------------------------------
+    if category == PatientCategory.ACTIVE:
         query = query.filter(
-            Patient.admission_status == "ADMITTED"
+            Admission.status == "ADMITTED",
+            Admission.discharged_at.is_(None),
         )
 
-    elif category == "PENDING":
+    elif category == PatientCategory.PENDING:
         query = query.filter(
-            Patient.admission_status == "PENDING"
+            (Admission.status == "PENDING") |
+            (Admission.id.is_(None))
         )
 
-    elif category == "PROSPECTIVE":
+    elif category == PatientCategory.PROSPECTIVE:
         query = query.filter(
-            Patient.admission_status.in_(["PRE_REFERRAL", "PROSPECT"])
+            Admission.status.in_(["PRE_REFERRAL", "PROSPECT"])
         )
 
-    elif category == "NON_ADMITS":
+    elif category == PatientCategory.NON_ADMITS:
         query = query.filter(
-            Patient.not_admitted_at.isnot(None)
+            Admission.status == "NON_ADMIT"
         )
 
-    elif category == "DISCHARGED_30":
+    elif category == PatientCategory.DISCHARGED_30:
         query = query.filter(
-            Patient.discharge_date.isnot(None),
-            Patient.discharge_date >= func.current_date() - text("INTERVAL '30 days'")
+            Admission.discharged_at.isnot(None),
+            Admission.discharged_at >= func.now() - text("INTERVAL '30 days'")
         )
 
-    elif category == "DISCHARGED_ALL":
+    elif category == PatientCategory.DISCHARGED_ALL:
         query = query.filter(
-            Patient.discharge_date.isnot(None)
+            Admission.discharged_at.isnot(None)
         )
 
-    elif category == "ALL":
+    elif category == PatientCategory.ALL:
         pass
 
     else:
         raise HTTPException(400, f"Invalid category: {category}")
 
-    return query.order_by(Patient.full_name).all()
+    # -----------------------------------------------------
+    # Ordered rows
+    # IMPORTANT:
+    # - no .distinct(Patient.id)
+    # - stable sort
+    # -----------------------------------------------------
+    rows = query.order_by(
+        func.coalesce(PatientFaceSheet.last_name, ""),
+        func.coalesce(PatientFaceSheet.first_name, ""),
+        Patient.mrn,
+        Patient.id,
+    ).all()
+
+    if not rows:
+        return []
+
+    # -----------------------------------------------------
+    # Collect patient ids for one diagnosis batch query
+    # -----------------------------------------------------
+    patient_ids = [patient.id for patient, _, _, _, _ in rows]
+
+    active_dx_rows = (
+        db.query(PatientDiagnosis)
+        .filter(
+            PatientDiagnosis.tenant_id == tenant_id,
+            PatientDiagnosis.patient_id.in_(patient_ids),
+            PatientDiagnosis.status == DiagnosisStatus.ACTIVE,
+            PatientDiagnosis.active.is_(True),
+            PatientDiagnosis.resolved_date.is_(None),
+        )
+        .order_by(
+            PatientDiagnosis.patient_id.asc(),
+            PatientDiagnosis.created_at.asc(),
+        )
+        .all()
+    )
+
+    # -----------------------------------------------------
+    # Build compact diagnosis summary map
+    # -----------------------------------------------------
+    diagnosis_map: dict[str, dict] = {}
+
+    for dx in active_dx_rows:
+        pid = str(dx.patient_id)
+
+        if pid not in diagnosis_map:
+            diagnosis_map[pid] = {
+                "primary": None,
+                "secondary_count": 0,
+                "comorbidity_count": 0,
+                "has_terminal_primary": False,
+                "has_related_secondary": False,
+                "has_related_comorbidity": False,
+            }
+
+        dx_type = _enum_value(dx.diagnosis_type)
+
+        if dx_type == DiagnosisType.PRIMARY.value:
+            diagnosis_map[pid]["primary"] = {
+                "id": str(dx.id),
+                "display_name": f"{dx.display_name} ({dx.icd10_code})" if dx.icd10_code else dx.display_name,
+                "diagnosis_description": dx.diagnosis_description,
+                "source": _enum_value(dx.source),
+                "is_terminal": dx.is_terminal,
+                "is_related_to_terminal": dx.is_related_to_terminal,
+                "effective_date": dx.effective_date,
+            }
+            diagnosis_map[pid]["has_terminal_primary"] = bool(dx.is_terminal)
+
+        elif dx_type == DiagnosisType.SECONDARY.value:
+            diagnosis_map[pid]["secondary_count"] += 1
+            if dx.is_related_to_terminal:
+                diagnosis_map[pid]["has_related_secondary"] = True
+
+        elif dx_type == DiagnosisType.COMORBIDITY.value:
+            diagnosis_map[pid]["comorbidity_count"] += 1
+            if dx.is_related_to_terminal:
+                diagnosis_map[pid]["has_related_comorbidity"] = True
+
+    # -----------------------------------------------------
+    # Explicit response payload
+    # -----------------------------------------------------
+    results = []
+
+    for patient, admission, first_name, middle_name, last_name in rows:
+        pid = str(patient.id)
+
+        dx_summary = diagnosis_map.get(pid, {
+            "primary": None,
+            "secondary_count": 0,
+            "comorbidity_count": 0,
+            "has_terminal_primary": False,
+            "has_related_secondary": False,
+            "has_related_comorbidity": False,
+        })
+
+        results.append({
+            "id": pid,
+            "mrn": patient.mrn,
+            "first_name": first_name,
+            "middle_name": middle_name or None,
+            "last_name": last_name,
+            "date_of_birth": patient.date_of_birth,
+            "status": patient.status,
+            "primary_diagnosis": patient.primary_diagnosis,
+            "admission_status": admission.status if admission else "PENDING",
+            "acuity_state": patient.acuity_state,
+            "hospice_election_date": admission.effective_date if admission else patient.hospice_election_date,
+            "created_at": patient.created_at,
+            "updated_at": patient.updated_at,
+            "created_by": str(patient.created_by) if patient.created_by else None,
+            "updated_by": str(patient.updated_by) if patient.updated_by else None,
+            "patient_type": patient.patient_type,
+            "diagnosis_summary": dx_summary,
+        })
+
+    return results
 
 def _clean_name_part(value: str | None) -> str | None:
     if value is None:
@@ -234,51 +424,24 @@ def _clean_name_part(value: str | None) -> str | None:
     return cleaned
 
 
-def _compose_full_name_for_patient(
+def _normalize_name_parts(
     *,
     first_name: str,
     middle_name: str | None,
     last_name: str,
-) -> tuple[str, str | None, str, str]:
-    """
-    Build Patient.full_name from structured name fields.
-
-    Database compatibility:
-    - patients table still stores full_name
-    - patient_facesheet stores first_name / middle_name / last_name
-
-    API governance:
-    - New patient creation must accept structured names
-    - full_name becomes an internal compatibility field only
-    """
+) -> tuple[str, str | None, str]:
 
     cleaned_first = _clean_name_part(first_name)
     cleaned_middle = _clean_name_part(middle_name)
     cleaned_last = _clean_name_part(last_name)
 
     if not cleaned_first:
-        raise HTTPException(
-            status_code=400,
-            detail="first_name is required",
-        )
+        raise HTTPException(400, "first_name is required")
 
     if not cleaned_last:
-        raise HTTPException(
-            status_code=400,
-            detail="last_name is required",
-        )
+        raise HTTPException(400, "last_name is required")
 
-    parts = [
-        cleaned_first,
-        cleaned_middle,
-        cleaned_last,
-    ]
-
-    full_name = " ".join(
-        part for part in parts if part
-    )
-
-    return cleaned_first, cleaned_middle, cleaned_last, full_name
+    return cleaned_first, cleaned_middle, cleaned_last
 
 def _parse_primary_diagnosis_input(
     db: Session,
@@ -488,6 +651,20 @@ def _get_diagnosis_summary_payload(
             for diagnosis in active_comorbidities
         ],
     }
+
+def _generate_mrn_for_tenant(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+) -> str:
+    count = (
+        db.query(func.count(Patient.id))
+        .filter(Patient.tenant_id == tenant_id)
+        .scalar()
+        or 0
+    )
+
+    return "LFH-" + str(count + 1).zfill(6)
     
 # =========================================================
 # CREATE PATIENT ✅ FIXED (AUTO MRN)
@@ -501,12 +678,10 @@ def create_patient(
 ):
     tenant_id = _tenant_id_uuid(user)
 
-    first_name, middle_name, last_name, full_name = (
-        _compose_full_name_for_patient(
-            first_name=payload.first_name,
-            middle_name=payload.middle_name,
-            last_name=payload.last_name,
-        )
+    first_name, middle_name, last_name = _normalize_name_parts(
+        first_name=payload.first_name,
+        middle_name=payload.middle_name,
+        last_name=payload.last_name,
     )
 
     primary_icd10_code, primary_diagnosis_description, primary_display_name = (
@@ -524,13 +699,21 @@ def create_patient(
             detail="Invalid user identity (created_by required)",
         )
 
-    count = db.query(
-        func.count(Patient.id)
-    ).scalar() or 0
+    db_user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
 
-    mrn_value = (
-        "LFH-"
-        + str(count + 1).zfill(6)
+    if not db_user or not db_user.active:
+        raise HTTPException(
+            status_code=403,
+            detail="Inactive or missing user",
+        )
+
+    mrn_value = _generate_mrn_for_tenant(
+        db,
+        tenant_id=tenant_id,
     )
 
     patient_id = uuid.uuid4()
@@ -540,16 +723,24 @@ def create_patient(
         id=patient_id,
         tenant_id=tenant_id,
         mrn=mrn_value,
-        full_name=full_name,
         date_of_birth=payload.date_of_birth,
+
+        # ✅ CLINICAL WORKFLOW SOURCE OF TRUTH
+        admission_status="REFERRAL",
+
+        # ✅ KEEP ONLY IF USED ELSEWHERE (NON-WORKFLOW UI / LEGACY)
+        status="PENDING",
+        
+        # ✅ REQUIRED FIELDS
         primary_diagnosis=primary_display_name,
-        status="ACTIVE",
-        admission_status="PRE_REFERRAL",
         acuity_state="ROUTINE",
+
         created_by=user_id,
+        created_at=now,
     )
 
     facesheet = PatientFaceSheet(
+        tenant_id=tenant_id,
         patient_id=patient_id,
         first_name=first_name,
         middle_name=middle_name,
@@ -577,9 +768,19 @@ def create_patient(
         created_by=user_id,
     )
 
+    admission = Admission(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        status="PENDING",
+        admission_date=now.replace(tzinfo=None),
+        created_at=now.replace(tzinfo=None),
+        created_by=user_id,
+    )
+
     db.add(patient)
     db.add(facesheet)
     db.add(diagnosis)
+    db.add(admission)
 
     try:
         db.commit()
@@ -587,29 +788,43 @@ def create_patient(
         db.rollback()
         raise
 
+    # ✅ refresh after commit
     db.refresh(patient)
+    db.refresh(admission)
+
+    # ✅ ✅ ENFORCEMENT CHECK (ADD THIS BLOCK)
+    fs_check = db.query(PatientFaceSheet).filter(
+        PatientFaceSheet.patient_id == patient.id,
+        PatientFaceSheet.tenant_id == tenant_id,
+    ).first()
+
+    if not fs_check:
+        raise HTTPException(
+            status_code=500,
+            detail="CRITICAL: Facesheet missing — invalid patient record"
+        )
 
     created_by_name = (
         db.query(
             func.coalesce(
                 User.display_name,
-                User.full_name,
                 User.email,
             )
         )
-        .filter(
-            User.id == patient.created_by
-        )
+        .filter(User.id == patient.created_by)
         .scalar()
+    )
+
+    patient_name = " ".join(
+        part for part in [first_name, middle_name, last_name] if part
     )
 
     return {
         "id": str(patient.id),
         "mrn": patient.mrn,
         "first_name": first_name,
-        "middle_name": middle_name,
+        "middle_name": middle_name or None,
         "last_name": last_name,
-        "full_name": patient.full_name,
         "date_of_birth": patient.date_of_birth,
         "primary_diagnosis": patient.primary_diagnosis,
         "status": patient.status,
@@ -760,8 +975,6 @@ class FaceSheetCreate(BaseModel):
 
     ref_date: date | None = None
 
-    soc_date: date | None = None
-
     recert_date: date | None = None
 
     # ==================================================
@@ -871,19 +1084,31 @@ def save_facesheet(
     facesheet = (
         db.query(PatientFaceSheet)
         .filter(
-            PatientFaceSheet.patient_id == patient.id
+            PatientFaceSheet.patient_id == patient.id,
+            PatientFaceSheet.tenant_id == tenant_id
         )
         .first()
     )
 
+    data = payload.model_dump(exclude_unset=True)
+    
+    if facesheet:
+        if "first_name" in data:
+            facesheet.first_name = data["first_name"]
+        if "middle_name" in data:
+            facesheet.middle_name = data["middle_name"]
+        if "last_name" in data:
+            facesheet.last_name = data["last_name"]
+        facesheet.updated_by = user_id
+        facesheet.updated_at = datetime.now(timezone.utc)
+
     if not facesheet:
         facesheet = PatientFaceSheet(
             patient_id=patient.id,
+            tenant_id=tenant_id,
             created_by=str(user_id),
         )
         db.add(facesheet)
-
-    data = payload.model_dump(exclude_unset=True)
 
     if "primary_diagnosis" in data:
         primary_diagnosis_value = data.get("primary_diagnosis")
@@ -930,7 +1155,7 @@ def save_facesheet(
         if hasattr(facesheet, field):
             setattr(facesheet, field, value)
 
-    facesheet.updated_by = str(user_id)
+    facesheet.updated_by = user_id
     facesheet.updated_at = datetime.now(timezone.utc)
 
     try:
@@ -957,251 +1182,242 @@ def get_facesheet(
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_tenant_user),
 ):
+    # --------------------------------------------------
+    # ✅ TENANT CONTEXT
+    # --------------------------------------------------
     tenant_id = _tenant_id_uuid(user)
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
+    # --------------------------------------------------
+    # ✅ LOAD PATIENT (STRICT TENANT ISOLATION)
+    # --------------------------------------------------
+    patient = (
+        db.query(Patient)
+        .filter(
+            Patient.id == patient_id,
+            Patient.tenant_id == tenant_id,
+        )
+        .first()
+    )
 
     if not patient:
-        raise HTTPException(404, "Patient not found")
-
-    facesheet = (
-    db.query(PatientFaceSheet)
-    .filter(
-        PatientFaceSheet.patient_id == patient.id
-    )
-    .first()
-)
-
-    if not facesheet:
         raise HTTPException(
             status_code=404,
-            detail="Facesheet not found"
+            detail="Patient not found",
         )
-    
+
+    # --------------------------------------------------
+    # ✅ LOAD FACE SHEET (STRICT TENANT ISOLATION)
+    # --------------------------------------------------
+    facesheet = (
+        db.query(PatientFaceSheet)
+        .filter(
+            PatientFaceSheet.patient_id == patient.id,
+            PatientFaceSheet.tenant_id == tenant_id
+        )
+        .first()
+    )
+
+    # --------------------------------------------------
+    # ✅ HARD DATA INTEGRITY ENFORCEMENT
+    # --------------------------------------------------
+    if not facesheet:
+        raise HTTPException(
+            status_code=500,
+            detail="Facesheet integrity error: record missing",
+        )
+
+    # --------------------------------------------------
+    # ✅ DIAGNOSIS SUMMARY
+    # --------------------------------------------------
     diagnosis_summary = _get_diagnosis_summary_payload(
         db,
         tenant_id=tenant_id,
         patient_id=patient.id,
     )
     
+    active_admission = _get_active_admission(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    # --------------------------------------------------
+    # ✅ CANONICAL PATIENT NAME (REQUIRED)
+    # --------------------------------------------------
+    patient_name = " ".join(
+        part for part in [
+            facesheet.first_name,
+            facesheet.middle_name,
+            facesheet.last_name,
+        ] if part
+    )
+
+    if not patient_name:
+        patient_name = "IDENTITY_MISSING"
+
+    # --------------------------------------------------
+    # ✅ STRUCTURED RESPONSE (ENTERPRISE CONTRACT)
+    # --------------------------------------------------
     return {
+        "patient_id": str(patient.id),
         "mrn": patient.mrn,
-        "full_name": patient.full_name,
+        
+        "identity": {
+            "first_name": facesheet.first_name,
+            "middle_name": facesheet.middle_name or None,
+            "last_name": facesheet.last_name,
+            "dob": facesheet.dob,
+            "ssn": facesheet.ssn,
+            "gender": facesheet.gender,
+            "race": facesheet.race,
+            "ethnicity": facesheet.ethnicity,
+            "language": facesheet.language,
+            "religion": facesheet.religion,
+            "marital_status": facesheet.marital_status,
+            "phone": facesheet.phone,
+        },
 
-        # --------------------------------------------------
-        # PERSONAL
-        # --------------------------------------------------
-        "first_name": facesheet.first_name,
-        "middle_name": facesheet.middle_name,
-        "last_name": facesheet.last_name,
+        "address": {
+            "address": facesheet.address,
+            "city": facesheet.city,
+            "state": facesheet.state,
+            "zip": facesheet.zip,
+        },
 
-        "ssn": facesheet.ssn,
+        "insurance": {
+            "primary_payer": facesheet.primary_payer,
+            "primary_policy_number": facesheet.primary_policy_number,
+            "mbi_number": facesheet.mbi_number,
+            "secondary_payer": facesheet.secondary_payer,
+            "secondary_policy_number": facesheet.secondary_policy_number,
+        },
 
-        "address": facesheet.address,
-        "city": facesheet.city,
-        "state": facesheet.state,
-        "zip": facesheet.zip,
+        "authorization": {
+            "requires_prior_authorization":
+                facesheet.requires_prior_authorization,
+            "authorization_required_for":
+                facesheet.authorization_required_for,
+            "authorization_number":
+                facesheet.authorization_number,
+            "authorization_status":
+                facesheet.authorization_status,
+            "authorization_start_date":
+                facesheet.authorization_start_date,
+            "authorization_end_date":
+                facesheet.authorization_end_date,
+        },
 
-        "phone": facesheet.phone,
-        "dob": facesheet.dob,
+        "clinical": {
+            "primary_diagnosis": facesheet.primary_diagnosis,
+            "secondary_diagnoses": facesheet.secondary_diagnoses,
+            "diagnoses": diagnosis_summary,
+            "active_primary_diagnosis":
+                diagnosis_summary["primary"],
+            "active_secondary_diagnoses":
+                diagnosis_summary["secondary"],
+            "active_comorbidities":
+                diagnosis_summary["comorbidities"],
+            "has_allergies": facesheet.has_allergies,
+            "allergies": facesheet.allergies,
+        },
 
-        "gender": facesheet.gender,
-        "race": facesheet.race,
-        "ethnicity": facesheet.ethnicity,
+        "level_of_care": {
+            "current_level_of_care":
+                facesheet.current_level_of_care,
+            "loc_effective_date":
+                facesheet.loc_effective_date,
+        },
 
-        "language": facesheet.language,
-        "religion": facesheet.religion,
-        "marital_status": facesheet.marital_status,
+        "place_of_service": {
+            "current_pos_type":
+                facesheet.current_pos_type,
+            "current_pos_name":
+                facesheet.current_pos_name,
+            "current_pos_address":
+                facesheet.current_pos_address,
+            "room_number":
+                facesheet.room_number,
+            "pos_start_date":
+                facesheet.pos_start_date,
+            "pos_end_date":
+                facesheet.pos_end_date,
+        },
 
-        # --------------------------------------------------
-        # INSURANCE
-        # --------------------------------------------------
-        "primary_payer": facesheet.primary_payer,
-        "primary_policy_number": facesheet.primary_policy_number,
+        "contacts": {
+            "responsible_party": {
+                "name": facesheet.responsible_party_name,
+                "relationship":
+                    facesheet.responsible_party_relationship,
+                "phone":
+                    facesheet.responsible_party_phone,
+            },
+            "emergency_contact": {
+                "name": facesheet.emergency_contact_name,
+                "relationship":
+                    facesheet.emergency_contact_relationship,
+                "phone":
+                    facesheet.emergency_contact_phone,
+            },
+        },
 
-        "mbi_number": facesheet.mbi_number,
+        "physicians": {
+            "attending": {
+                "name":
+                    facesheet.attending_physician_name,
+                "npi":
+                    facesheet.attending_physician_npi,
+                "following":
+                    facesheet.attending_physician_following,
+            },
+            "medical_director": {
+                "name":
+                    facesheet.medical_director_name,
+                "npi":
+                    facesheet.medical_director_npi,
+            },
+            "medical_director_designee": {
+                "name":
+                    facesheet.medical_director_designee_name,
+                "npi":
+                    facesheet.medical_director_designee_npi,
+            },
+            "associate_medical_director": {
+                "name":
+                    facesheet.associate_medical_director_name,
+                "npi":
+                    facesheet.associate_medical_director_npi,
+            },
+        },
 
-        "secondary_payer": facesheet.secondary_payer,
-        "secondary_policy_number": facesheet.secondary_policy_number,
+        "vendors": {
+            "pharmacy": {
+                "name": facesheet.pharmacy_name,
+                "phone": facesheet.pharmacy_phone,
+                "fax": facesheet.pharmacy_fax,
+            },
+            "dme": {
+                "name": facesheet.dme_vendor_name,
+                "phone": facesheet.dme_vendor_phone,
+            },
+            "mortuary": {
+                "name": facesheet.mortuary_name,
+                "phone": facesheet.mortuary_phone,
+            },
+        },
 
-        # --------------------------------------------------
-        # AUTHORIZATION
-        # --------------------------------------------------
-        "requires_prior_authorization":
-            facesheet.requires_prior_authorization,
+        "service_dates": {
+            "admission_status": active_admission.status if active_admission else "PENDING",
+            "soc_date": active_admission.soc_date if active_admission else None,
+            "effective_date": active_admission.effective_date if active_admission else None,
+            "admission_date": active_admission.admission_date if active_admission else None,
+            "ref_date": facesheet.ref_date,
+            "recert_date": facesheet.recert_date,
+        },
 
-        "authorization_required_for":
-            facesheet.authorization_required_for,
-
-        "authorization_number":
-            facesheet.authorization_number,
-
-        "authorization_status":
-            facesheet.authorization_status,
-
-        "authorization_start_date":
-            facesheet.authorization_start_date,
-
-        "authorization_end_date":
-            facesheet.authorization_end_date,
-
-        # --------------------------------------------------
-        # CLINICAL
-        # --------------------------------------------------
-        "primary_diagnosis": facesheet.primary_diagnosis,
-
-        "secondary_diagnoses":
-            facesheet.secondary_diagnoses,
-
-        "diagnoses":
-            diagnosis_summary,
-
-        "active_primary_diagnosis":
-            diagnosis_summary["primary"],
-
-        "active_secondary_diagnoses":
-            diagnosis_summary["secondary"],
-
-        "active_comorbidities":
-            diagnosis_summary["comorbidities"],
-
-        "has_allergies":
-            facesheet.has_allergies,
-
-        "allergies":
-            facesheet.allergies,
-
-        # --------------------------------------------------
-        # LEVEL OF CARE
-        # --------------------------------------------------
-        "current_level_of_care":
-            facesheet.current_level_of_care,
-
-        "loc_effective_date":
-            facesheet.loc_effective_date,
-
-        # --------------------------------------------------
-        # POS
-        # --------------------------------------------------
-        "current_pos_type":
-            facesheet.current_pos_type,
-
-        "current_pos_name":
-            facesheet.current_pos_name,
-
-        "current_pos_address":
-            facesheet.current_pos_address,
-
-        "room_number":
-            facesheet.room_number,
-
-        "pos_start_date":
-            facesheet.pos_start_date,
-
-        "pos_end_date":
-            facesheet.pos_end_date,
-
-        # --------------------------------------------------
-        # RESPONSIBLE PARTY
-        # --------------------------------------------------
-        "responsible_party_name":
-            facesheet.responsible_party_name,
-
-        "responsible_party_relationship":
-            facesheet.responsible_party_relationship,
-
-        "responsible_party_phone":
-            facesheet.responsible_party_phone,
-
-        # --------------------------------------------------
-        # EMERGENCY CONTACT
-        # --------------------------------------------------
-        "emergency_contact_name":
-            facesheet.emergency_contact_name,
-
-        "emergency_contact_relationship":
-            facesheet.emergency_contact_relationship,
-
-        "emergency_contact_phone":
-            facesheet.emergency_contact_phone,
-
-        # --------------------------------------------------
-        # PHYSICIANS
-        # --------------------------------------------------
-        "attending_physician_name":
-            facesheet.attending_physician_name,
-
-        "attending_physician_npi":
-            facesheet.attending_physician_npi,
-
-        "attending_physician_following":
-            facesheet.attending_physician_following,
-
-        "medical_director_name":
-            facesheet.medical_director_name,
-
-        "medical_director_npi":
-            facesheet.medical_director_npi,
-
-        "medical_director_designee_name":
-            facesheet.medical_director_designee_name,
-
-        "medical_director_designee_npi":
-            facesheet.medical_director_designee_npi,
-
-        "associate_medical_director_name":
-            facesheet.associate_medical_director_name,
-
-        "associate_medical_director_npi":
-            facesheet.associate_medical_director_npi,
-
-        # --------------------------------------------------
-        # VENDORS
-        # --------------------------------------------------
-        "pharmacy_name":
-            facesheet.pharmacy_name,
-
-        "pharmacy_phone":
-            facesheet.pharmacy_phone,
-
-        "pharmacy_fax":
-            facesheet.pharmacy_fax,
-
-        "dme_vendor_name":
-            facesheet.dme_vendor_name,
-
-        "dme_vendor_phone":
-            facesheet.dme_vendor_phone,
-
-        # --------------------------------------------------
-        # MORTUARY
-        # --------------------------------------------------
-        "mortuary_name":
-            facesheet.mortuary_name,
-
-        "mortuary_phone":
-            facesheet.mortuary_phone,
-
-        # --------------------------------------------------
-        # SERVICE DATES
-        # --------------------------------------------------
-        "soc_date":
-            facesheet.soc_date,
-
-        "ref_date":
-            facesheet.ref_date,
-
-        "recert_date":
-            facesheet.recert_date,
-
-        # --------------------------------------------------
-        # NOTES
-        # --------------------------------------------------
-        "special_instructions":
-            facesheet.special_instructions,
+        "notes": {
+            "special_instructions":
+                facesheet.special_instructions,
+        },
     }
     
 # =========================================================
@@ -1247,45 +1463,6 @@ def update_patient(
             status_code=500,
             detail="Invalid user identity",
         )
-
-    final_status = data.get(
-        "admission_status",
-        patient.admission_status,
-    )
-
-    final_discharge_reason = data.get(
-        "discharge_reason",
-        patient.discharge_reason,
-    )
-
-    final_initiated_by = data.get(
-        "discharge_initiated_by",
-        patient.discharge_initiated_by,
-    )
-
-    final_plan_reviewed = data.get(
-        "discharge_plan_reviewed",
-        patient.discharge_plan_reviewed,
-    )
-
-    if final_status == "DISCHARGED":
-        if not final_discharge_reason:
-            raise HTTPException(
-                status_code=400,
-                detail="discharge_reason is required",
-            )
-
-        if not final_initiated_by:
-            raise HTTPException(
-                status_code=400,
-                detail="discharge_initiated_by is required",
-            )
-
-        if final_plan_reviewed is None:
-            raise HTTPException(
-                status_code=400,
-                detail="discharge_plan_reviewed is required",
-            )
 
     if "primary_diagnosis" in data:
         primary_diagnosis_value = data.get("primary_diagnosis")
@@ -1342,7 +1519,22 @@ def update_patient(
 
     db.refresh(patient)
 
-    return patient
+    latest_admission = _get_latest_admission(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    return {
+        "id": str(patient.id),
+        "mrn": patient.mrn,
+        "date_of_birth": patient.date_of_birth,
+        "primary_diagnosis": patient.primary_diagnosis,
+        "status": patient.status,
+        "admission_status": latest_admission.status if latest_admission else "PENDING",
+        "created_at": patient.created_at,
+        "updated_at": patient.updated_at,
+    }
 
 # ---------------------------------------------------------
 # ✅ VALIDATION HELPERS
@@ -1401,6 +1593,7 @@ def build_name_variants(patient):
             "last_name": last
         })
 
+
         # ✅ 2. MIDDLE INITIAL
         variants.append({
             "first_name": first,
@@ -1451,9 +1644,18 @@ def run_eligibility_with_retry(patient, eligibility_client):
 @router.post("/{patient_id}/admit")
 def admit_patient(
     patient_id: uuid.UUID,
+    payload: AdmitPatientRequest,
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_tenant_user),
 ):
+    """
+    Legacy compatibility endpoint.
+
+    IMPORTANT:
+    - Admission is no longer directly mutated here.
+    - This endpoint now delegates to manual SOC-triggered admission logic.
+    - Keep this only if existing clients still call /patients/{patient_id}/admit.
+    """
     tenant_id = _tenant_id_uuid(user)
 
     patient = db.query(Patient).filter(
@@ -1464,145 +1666,100 @@ def admit_patient(
     if not patient:
         raise HTTPException(404, "Patient not found")
 
-    now = datetime.now(timezone.utc)
-
-    # --------------------------------------------------
-    # ✅ VALIDATION: READY FOR ADMISSION
-    # --------------------------------------------------
-    if not patient.primary_diagnosis:
-        raise HTTPException(400, "Primary diagnosis required for admission")
-
-    if not patient.election_signed_at:
-        raise HTTPException(400, "Election must be signed before admission")
-
-    if not patient.records_release_signed_at:
-        raise HTTPException(400, "Records release must be signed")
-
-    # --------------------------------------------------
-    # ✅ AUTHORIZE ADMISSION
-    # --------------------------------------------------
-    user_id = getattr(user, "id", None) \
-        or getattr(user, "user_id", None) \
+    user_id = (
+        getattr(user, "id", None)
+        or getattr(user, "user_id", None)
         or getattr(user, "sub", None)
+    )
 
     if not user_id:
         raise HTTPException(500, "Invalid user identity")
 
-    patient.admission_authorized_at = now
-    patient.admission_authorized_by = user_id
-
-    # --------------------------------------------------
-    # ✅ SET SOC (START OF CARE)
-    # --------------------------------------------------
-    if not patient.soc_date:
-        patient.soc_date = now
-
-    # --------------------------------------------------
-    # ✅ FINAL TRANSITION
-    # --------------------------------------------------
-    patient.admission_status = "ADMITTED"
-    patient.on_service_at = now
-
-    # --------------------------------------------------
-    # ✅ TASK CREATOR (FIXED FOR YOUR DB SCHEMA)
-    # --------------------------------------------------
-    def create_task(
-        task_type,
-        alert_reason,
-        due_hours,
-        discipline,
-        regulatory_basis
-    ):
-        return Task(
-            id=uuid.uuid4(),
-            tenant_id=tenant_id,
-            patient_id=patient.id,
-            task_type=task_type,
-            alert_reason=alert_reason,
-            status=TaskStatus.PENDING,
-            origin=TaskOrigin.SYSTEM,
-            discipline=discipline,
-            regulatory_basis=regulatory_basis,
-            created_at=now,
-            due_at=now + timedelta(hours=due_hours),
-            created_by=str(user_id),
+    try:
+        result = AdmissionGuardrailService.set_soc_datetime(
+            db=db,
+            patient=patient,
+            soc_datetime=payload.soc_date,
+            actor_user_id=user_id,
+            trigger_source="RN" if user.role in {"RN", "NP", "MD"} else "OFFICE",
+            commit=True,
         )
+    except TrainingModeBlockedError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except AdmissionPrerequisiteError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
-    # --------------------------------------------------
-    # ✅ CREATE ADMISSION TASKS (ENUM-VALID)
-    # --------------------------------------------------
-    tasks = [
+    # Only create admission tasks if admission actually happened
+    if result.get("admitted"):
+        now = datetime.now(timezone.utc)
 
-        create_task(
-            TaskType.CERTIFICATION,
-            "Physician Hospice Certification",
-            48,
-            TaskDiscipline.MD,
-            TaskRegulatoryBasis.CERTIFICATION
-        ),
+        def create_task(
+            task_type,
+            alert_reason,
+            due_hours,
+            discipline,
+            regulatory_basis
+        ):
+            return Task(
+                id=uuid.uuid4(),
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                task_type=task_type,
+                alert_reason=alert_reason,
+                status=TaskStatus.PENDING,
+                origin=TaskOrigin.SYSTEM,
+                discipline=discipline,
+                regulatory_basis=regulatory_basis,
+                created_at=now,
+                due_at=now + timedelta(hours=due_hours),
+                created_by=user_id,
+            )
 
-        create_task(
-            TaskType.POC_REVIEW_REQUIRED,
-            "Establish Plan of Care",
-            24,
-            TaskDiscipline.RN,
-            TaskRegulatoryBasis.POC_UPDATE
-        ),
+        tasks = [
+            create_task(
+                TaskType.CERTIFICATION,
+                "Physician Hospice Certification",
+                48,
+                TaskDiscipline.MD,
+                TaskRegulatoryBasis.CERTIFICATION
+            ),
+            create_task(
+                TaskType.POC_REVIEW_REQUIRED,
+                "Establish Plan of Care",
+                24,
+                TaskDiscipline.RN,
+                TaskRegulatoryBasis.POC_UPDATE
+            ),
+            create_task(
+                TaskType.CLINICAL_REVIEW_REQUIRED,
+                "Admission Clinical Review",
+                24,
+                TaskDiscipline.RN,
+                TaskRegulatoryBasis.CONDITION_TRIGGER
+            ),
+        ]
 
-        create_task(
-            TaskType.CLINICAL_REVIEW_REQUIRED,
-            "Admission Clinical Review",
-            24,
-            TaskDiscipline.RN,
-            TaskRegulatoryBasis.CONDITION_TRIGGER
-        ),
-    ]
+        for t in tasks:
+            db.add(t)
 
-    for t in tasks:
-        db.add(t)
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
-    # --------------------------------------------------
-    # ✅ SAVE
-    # --------------------------------------------------
-    db.commit()
-    db.refresh(patient)
-
-    return {
-        "status": "ADMITTED",
-        "soc_date": patient.soc_date
-    }
-
-@router.post("/{patient_id}/authorize-admission")
-def authorize_admission(
-    patient_id: uuid.UUID,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    tenant_id = _tenant_id_uuid(user)
-
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-
-    now = datetime.now(timezone.utc)
-
-    user_id = getattr(user, "id", None) \
-        or getattr(user, "user_id", None) \
-        or getattr(user, "sub", None)
-
-    if not user_id:
-        raise HTTPException(500, "Invalid user identity")
-
-    patient.admission_authorized_at = now
-    patient.admission_authorized_by = user_id
-
-    db.commit()
-
-    return {"status": "AUTHORIZED"}
+    return result
 
 # =========================================================
 # NON ADMIT
@@ -1624,8 +1781,22 @@ def non_admit_patient(
     if not patient:
         raise HTTPException(404, "Patient not found")
 
-    patient.admission_status = "NON_ADMIT"
-    patient.not_admitted_at = datetime.now(timezone.utc)
+    admission = _get_latest_admission(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    if not admission:
+        raise HTTPException(500, "Admission record missing")
+
+    now = datetime.now(timezone.utc)
+
+    admission.status = "NON_ADMIT"
+    admission.updated_at = now.replace(tzinfo=None)
+    admission.updated_by = getattr(user, "user_id", None) or getattr(user, "id", None) or getattr(user, "sub", None)
+
+    patient.not_admitted_at = now
 
     db.commit()
     return {"status": "NON_ADMIT"}
@@ -1734,7 +1905,8 @@ def patient_chart_summary(
     facesheet = (
         db.query(PatientFaceSheet)
         .filter(
-            PatientFaceSheet.patient_id == patient.id
+            PatientFaceSheet.patient_id == patient.id,
+            PatientFaceSheet.tenant_id == tenant_id
         )
         .first()
     )
@@ -1745,13 +1917,31 @@ def patient_chart_summary(
         patient_id=patient.id,
     )
     
+    active_admission = _get_active_admission(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+        
     visits = db.query(Visit).filter(
         Visit.patient_id == patient_id,
         Visit.tenant_id == tenant_id
     ).order_by(Visit.visit_datetime.desc()).all()
 
     return {
-        "patient": patient,
+            "patient": {
+            "id": str(patient.id),
+            "mrn": patient.mrn,
+            "date_of_birth": patient.date_of_birth,
+            "primary_diagnosis": patient.primary_diagnosis,
+            "status": patient.status,
+            "admission_status": active_admission.status if active_admission else "PENDING",
+            "soc_date": active_admission.soc_date if active_admission else None,
+            "effective_date": active_admission.effective_date if active_admission else None,
+            "admission_date": active_admission.admission_date if active_admission else None,
+            "created_at": patient.created_at,
+            "updated_at": patient.updated_at,
+        },
 
         "diagnoses": diagnosis_summary,
 

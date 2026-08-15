@@ -16,12 +16,17 @@ def get_billing_queue(
     q: str | None = None,
 ):
     """
-    ✅ ENTERPRISE-SAFE BILLING QUEUE SERVICE
+    ENTERPRISE-SAFE BILLING QUEUE SERVICE
+
+    SSOT rule:
+    - Patient identity is sourced from patient_facesheet
+      first_name / middle_name / last_name
+    - patients.full_name is not used
 
     Features:
-    - Safe patient identity display fields
-    - Non-breaking LEFT JOIN
-    - Search by patient_id, full_name, MRN, DOB
+    - Safe patient identity display fields from patient_facesheet
+    - Non-breaking LEFT JOIN to patient_facesheet
+    - Search by patient_id, MRN, DOB, first_name, middle_name, last_name
     - Audit logging for billing queue access
     - Audit logging is NON-BLOCKING (billing queue still works if audit fails)
     """
@@ -30,8 +35,20 @@ def get_billing_queue(
     SELECT
         bs.patient_id,
 
+        -- STRUCTURED PATIENT DISPLAY NAME (SSOT = patient_facesheet)
+        NULLIF(
+            TRIM(
+                CONCAT_WS(
+                    ' ',
+                    pf.first_name,
+                    pf.middle_name,
+                    pf.last_name
+                )
+            ),
+            ''
+        ) AS patient_name,
+
         -- SAFE DISPLAY FIELDS
-        COALESCE(p.full_name, NULL) AS patient_name,
         COALESCE(p.mrn, NULL) AS patient_mrn,
         COALESCE(p.date_of_birth::text, NULL) AS patient_dob,
 
@@ -49,6 +66,9 @@ def get_billing_queue(
 
     LEFT JOIN patients p
         ON p.id = bs.patient_id
+
+    LEFT JOIN patient_facesheet pf
+        ON pf.patient_id = p.id
 
     WHERE 1=1
     """
@@ -74,14 +94,17 @@ def get_billing_queue(
         query += """
         AND (
             bs.patient_id::text ILIKE :search
-            OR p.full_name ILIKE :search
             OR p.mrn ILIKE :search
             OR p.date_of_birth::text LIKE :search
+            OR pf.first_name ILIKE :search
+            OR pf.middle_name ILIKE :search
+            OR pf.last_name ILIKE :search
+            OR CONCAT_WS(' ', pf.first_name, pf.middle_name, pf.last_name) ILIKE :search
         )
         """
         params["search"] = f"%{q}%"
 
-    query += " ORDER BY bs.created_at DESC"
+    query += " ORDER BY bs.created_at DESC, p.mrn ASC"
 
     # ---------------------------------------------------------
     # RUN QUERY
@@ -126,7 +149,7 @@ def get_billing_queue(
 
 def get_billing_tenants(db: Session):
     """
-    ✅ SAFE VERSION
+    SAFE VERSION
     Returns tenant IDs for billing filter dropdown.
     """
 

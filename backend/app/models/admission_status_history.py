@@ -22,28 +22,10 @@ class AdmissionStatusHistory(Base):
     Admission Status Audit Trail
 
     Purpose:
-    - Track every admission status movement.
-    - Preserve admission workflow history.
-    - Support QA review.
-    - Support survey readiness.
-    - Support leadership review.
-    - Support compliance investigations.
-
-    Examples:
-
-    REFERRAL
-        -> POTENTIAL_ADMISSION
-
-    POTENTIAL_ADMISSION
-        -> ADMISSION_SCHEDULED
-
-    ADMISSION_SCHEDULED
-        -> SOC_IN_PROGRESS
-
-    SOC_IN_PROGRESS
-        -> ADMITTED
-
-    Any transition must create a history record.
+    - Track every admission status movement
+    - Preserve workflow history
+    - Support QA + survey readiness
+    - Provide medico-legal audit evidence
     """
 
     __tablename__ = "admission_status_history"
@@ -52,29 +34,26 @@ class AdmissionStatusHistory(Base):
     # Identity
     # ---------------------------------------------------------
 
-    id = Column(
-        UUID(as_uuid=True),
-        primary_key=True,
-        default=uuid4,
-    )
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
 
     tenant_id = Column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "tenants.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
 
     patient_id = Column(
         UUID(as_uuid=True),
-        ForeignKey(
-            "patients.id",
-            ondelete="CASCADE",
-        ),
+        ForeignKey("patients.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+
+    admission_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("admissions.id", ondelete="SET NULL"),
+        nullable=True,
         index=True,
     )
 
@@ -84,7 +63,7 @@ class AdmissionStatusHistory(Base):
 
     previous_status = Column(
         String(32),
-        nullable=False,
+        nullable=True,  # ✅ FIXED
         index=True,
     )
 
@@ -113,18 +92,11 @@ class AdmissionStatusHistory(Base):
     )
 
     # ---------------------------------------------------------
-    # Reasoning / Documentation
+    # Reasoning
     # ---------------------------------------------------------
 
-    reason = Column(
-        Text,
-        nullable=True,
-    )
-
-    notes = Column(
-        Text,
-        nullable=True,
-    )
+    reason = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
 
     # ---------------------------------------------------------
     # Relationships
@@ -139,24 +111,29 @@ class AdmissionStatusHistory(Base):
         "User",
         foreign_keys=[changed_by],
     )
-
+    
+    admission = relationship(
+        "Admission",
+        back_populates="status_history",
+    )
+    
     # ---------------------------------------------------------
     # Indexes
     # ---------------------------------------------------------
 
     __table_args__ = (
         Index(
-            "ix_admission_status_history_patient_changed_at",
+            "ix_adm_hist_patient_time",
             "patient_id",
             "changed_at",
         ),
         Index(
-            "ix_admission_status_history_tenant_patient",
+            "ix_adm_hist_tenant_patient",
             "tenant_id",
             "patient_id",
         ),
         Index(
-            "ix_admission_status_history_previous_new",
+            "ix_adm_hist_prev_new",
             "previous_status",
             "new_status",
         ),

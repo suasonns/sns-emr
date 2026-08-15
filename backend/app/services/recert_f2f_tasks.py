@@ -2,100 +2,194 @@ from sqlalchemy.orm import Session
 
 from app.models.benefit_period import BenefitPeriod
 from app.models.task import Task
+from app.models.enums import (
+    TaskType,
+    TaskStatus,
+    TaskOrigin,
+    TaskRegulatoryBasis,
+)
 
 
-def _bp_index_for_period(db: Session, *, patient_id, benefit_period_id) -> int:
+ACTIVE_STATUSES = [
+    TaskStatus.PENDING,
+    TaskStatus.IN_PROGRESS,
+    TaskStatus.OVERDUE,
+]
+
+
+def _bp_index_for_period(
+    db: Session,
+    *,
+    patient_id,
+    tenant_id,
+    benefit_period_id,
+) -> int:
     """
     Date-derived benefit period index:
-      1 = BP1, 2 = BP2, 3+ = BP3+
+      1 = BP1
+      2 = BP2
+      3+ = BP3+
     """
+
     bps = (
         db.query(BenefitPeriod)
-        .filter(BenefitPeriod.patient_id == patient_id)
+        .filter(
+            BenefitPeriod.patient_id == patient_id,
+            BenefitPeriod.tenant_id == tenant_id,
+        )
         .order_by(BenefitPeriod.start_date.asc())
         .all()
     )
+
     for idx, bp in enumerate(bps, start=1):
-        if str(bp.id) == str(benefit_period_id):
+        if bp.id == benefit_period_id:
             return idx
+
     return 1
 
 
-def seed_recert_f2f_tasks_for_benefit_period(db: Session, *, benefit_period: BenefitPeriod):
-    """
-    Seeds Recert/F2F tasks when a benefit period is created.
+def _task_exists(
+    db: Session,
+    *,
+    benefit_period_id,
+    task_type,
+) -> bool:
+    return (
+        db.query(Task.id)
+        .filter(
+            Task.benefit_period_id == benefit_period_id,
+            Task.task_type == task_type,
+            Task.status.in_(ACTIVE_STATUSES),
+        )
+        .first()
+        is not None
+    )
 
-    Rules (date-derived index):
-      BP1: (optional) CERTIFICATION task
-      BP2: RECERTIFICATION task
-      BP3+: F2F task + RECERTIFICATION task
 
-    Notes:
-      - task_type enum must include CERTIFICATION, RECERTIFICATION, F2F
-      - regulatory_basis enum uses CERTIFICATION and F2F (already in your DB)
+def seed_recert_f2f_tasks_for_benefit_period(
+    db: Session,
+    *,
+    benefit_period: BenefitPeriod,
+):
     """
+    Production-grade task seeding.
+
+    Rules:
+      BP1  -> CERTIFICATION
+      BP2  -> RECERTIFICATION
+      BP3+ -> F2F + RECERTIFICATION
+
+    Guarantees:
+      - Idempotent
+      - No duplicate task creation
+      - Tenant-safe BP indexing
+      - Enum-safe values
+      - Caller controls transaction
+    """
+
     patient_id = benefit_period.patient_id
-    bp_index = _bp_index_for_period(db, patient_id=patient_id, benefit_period_id=benefit_period.id)
+    tenant_id = benefit_period.tenant_id
     start_date = benefit_period.start_date
 
-    # Assign ownership discipline (MD is typical; NP also valid)
+    bp_index = _bp_index_for_period(
+        db,
+        patient_id=patient_id,
+        tenant_id=tenant_id,
+        benefit_period_id=benefit_period.id,
+    )
+
     owner = "MD"
 
-    # --- BP1: optional CTI/certification task (audit-friendly) ---
+    # ---------------------------------------------------------
+    # BP1
+    # ---------------------------------------------------------
     if bp_index == 1:
-        db.add(
-            Task(
-                patient_id=patient_id,
-                benefit_period_id=benefit_period.id,
-                task_type="CERTIFICATION",
-                origin="ADMISSION",
-                discipline=owner,
-                regulatory_basis="CERTIFICATION",
-                due_date=start_date,
-                status="PENDING",
+
+        if not _task_exists(
+            db,
+            benefit_period_id=benefit_period.id,
+            task_type=TaskType.CERTIFICATION,
+        ):
+            db.add(
+                Task(
+                    tenant_id=tenant_id,
+                    patient_id=patient_id,
+                    benefit_period_id=benefit_period.id,
+                    task_type=TaskType.CERTIFICATION,
+                    origin=TaskOrigin.ADMISSION,
+                    discipline=owner,
+                    regulatory_basis=TaskRegulatoryBasis.CERTIFICATION,
+                    due_date=start_date,
+                    status=TaskStatus.PENDING,
+                )
             )
-        )
+
         return
 
-    # --- BP2: recertification required ---
+    # ---------------------------------------------------------
+    # BP2
+    # ---------------------------------------------------------
     if bp_index == 2:
-        db.add(
-            Task(
-                patient_id=patient_id,
-                benefit_period_id=benefit_period.id,
-                task_type="RECERTIFICATION",
-                origin="PERIODIC",
-                discipline=owner,
-                regulatory_basis="CERTIFICATION",
-                due_date=start_date,
-                status="PENDING",
+
+        if not _task_exists(
+            db,
+            benefit_period_id=benefit_period.id,
+            task_type=TaskType.RECERTIFICATION,
+        ):
+            db.add(
+                Task(
+                    tenant_id=tenant_id,
+                    patient_id=patient_id,
+                    benefit_period_id=benefit_period.id,
+                    task_type=TaskType.RECERTIFICATION,
+                    origin=TaskOrigin.PERIODIC,
+                    discipline=owner,
+                    regulatory_basis=TaskRegulatoryBasis.CERTIFICATION,
+                    due_date=start_date,
+                    status=TaskStatus.PENDING,
+                )
             )
-        )
+
         return
 
-    # --- BP3+: F2F + recertification required ---
-    db.add(
-        Task(
-            patient_id=patient_id,
-            benefit_period_id=benefit_period.id,
-            task_type="F2F",
-            origin="PERIODIC",
-            discipline=owner,
-            regulatory_basis="F2F",
-            due_date=start_date,
-            status="PENDING",
-        )
-    )
+    # ---------------------------------------------------------
+    # BP3+
+    # ---------------------------------------------------------
 
-    db.add(
-        Task(
-            patient_id=patient_id,
-            benefit_period_id=benefit_period.id,
-            task_type="RECERTIFICATION",
-            origin="PERIODIC",
-            discipline=owner,
-            regulatory_basis="CERTIFICATION",
-            due_date=start_date,
-            status="PENDING",
+    if not _task_exists(
+        db,
+        benefit_period_id=benefit_period.id,
+        task_type=TaskType.F2F,
+    ):
+        db.add(
+            Task(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                benefit_period_id=benefit_period.id,
+                task_type=TaskType.F2F,
+                origin=TaskOrigin.PERIODIC,
+                discipline=owner,
+                regulatory_basis=TaskRegulatoryBasis.F2F,
+                due_date=start_date,
+                status=TaskStatus.PENDING,
+            )
         )
-    )
+
+    if not _task_exists(
+        db,
+        benefit_period_id=benefit_period.id,
+        task_type=TaskType.RECERTIFICATION,
+    ):
+        db.add(
+            Task(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                benefit_period_id=benefit_period.id,
+                task_type=TaskType.RECERTIFICATION,
+                origin=TaskOrigin.PERIODIC,
+                discipline=owner,
+                regulatory_basis=TaskRegulatoryBasis.CERTIFICATION,
+                due_date=start_date,
+                status=TaskStatus.PENDING,
+            )
+        )

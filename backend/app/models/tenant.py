@@ -1,3 +1,5 @@
+# models/tenant.py
+
 from __future__ import annotations
 
 from sqlalchemy import Column, String, Index, CheckConstraint, text

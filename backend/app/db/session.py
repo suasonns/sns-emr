@@ -13,11 +13,15 @@ IMPORTANT:
 - Tenant-safe endpoints must use get_db_tenant instead
 """
 
+from __future__ import annotations
+
 from typing import Generator
 
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal  # canonical session factory
+
+__all__ = ["get_db"]
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -36,7 +40,7 @@ def get_db() -> Generator[Session, None, None]:
 
     Tenant-safe endpoints must explicitly depend on get_db_tenant.
     """
-    db = SessionLocal()
+    db: Session = SessionLocal()
     try:
         yield db
     finally:

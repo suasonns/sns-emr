@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
 
-from app.core.auth import CurrentUser, get_current_user
+from app.core.security import CurrentUser, get_current_user
 
 
 # =========================================================

@@ -64,9 +64,13 @@ from app.services.poc_rule_loader import (
 #       Medical Director diagnosis update
 # - If a facesheet row is missing, this service creates a minimal
 #   patient_facesheet row as a chart-integrity failsafe.
-# - If a facesheet exists but identity fields are blank, this service
-#   backfills identity fields from the Patient record without overwriting
-#   existing facesheet-entered values.
+# - Patient identity is sourced only from PatientFaceSheet
+#   first_name / middle_name / last_name.
+# - This service must not reconstruct patient identity from legacy
+#   patient-level name fields.
+# - If a facesheet row is missing, this service may create a minimal
+#   diagnosis mirror row only if the PatientFaceSheet database model
+#   allows that shape; otherwise caller must create facesheet first.
 # =========================================================
 
 
@@ -180,88 +184,6 @@ def _resolve_actor_id(
         return patient_created_by
 
     return None
-
-
-def _split_full_name(
-    full_name: Any,
-) -> tuple[str | None, str | None, str | None]:
-    """
-    Best-effort split of Patient.full_name into facesheet fields.
-
-    This is only used as a fallback when intake-specific
-    first_name / middle_name / last_name fields are missing.
-
-    This does not replace intake validation.
-    """
-
-    if full_name is None:
-        return None, None, None
-
-    text_value = str(full_name).strip()
-
-    if not text_value:
-        return None, None, None
-
-    parts = [
-        part.strip()
-        for part in text_value.split()
-        if part.strip()
-    ]
-
-    if not parts:
-        return None, None, None
-
-    if len(parts) == 1:
-        return parts[0], None, None
-
-    if len(parts) == 2:
-        return parts[0], None, parts[1]
-
-    first_name = parts[0]
-    last_name = parts[-1]
-    middle_name = " ".join(parts[1:-1]) or None
-
-    return first_name, middle_name, last_name
-
-
-def _backfill_facesheet_identity_from_patient(
-    *,
-    facesheet: PatientFaceSheet,
-    patient: Patient,
-) -> bool:
-    """
-    Fill blank facesheet identity fields from Patient without overwriting
-    existing facesheet-entered values.
-
-    Returns True if any field changed.
-    """
-
-    changed = False
-
-    first_name, middle_name, last_name = _split_full_name(
-        getattr(patient, "full_name", None)
-    )
-
-    if not getattr(facesheet, "first_name", None) and first_name:
-        facesheet.first_name = first_name
-        changed = True
-
-    if not getattr(facesheet, "middle_name", None) and middle_name:
-        facesheet.middle_name = middle_name
-        changed = True
-
-    if not getattr(facesheet, "last_name", None) and last_name:
-        facesheet.last_name = last_name
-        changed = True
-
-    patient_dob = getattr(patient, "date_of_birth", None)
-
-    if not getattr(facesheet, "dob", None) and patient_dob:
-        facesheet.dob = patient_dob
-        changed = True
-
-    return changed
-
 
 def _diagnosis_failure_result(
     *,
@@ -579,15 +501,8 @@ def sync_official_primary_diagnosis(
     facesheet_identity_backfilled = False
 
     if not facesheet:
-        first_name, middle_name, last_name = _split_full_name(
-            getattr(patient, "full_name", None)
-        )
-
         facesheet = PatientFaceSheet(
             patient_id=patient.id,
-            first_name=first_name,
-            middle_name=middle_name,
-            last_name=last_name,
             dob=getattr(patient, "date_of_birth", None),
             primary_diagnosis=display_name,
             created_by=actor_id,
@@ -599,7 +514,7 @@ def sync_official_primary_diagnosis(
 
         facesheet_created = True
         facesheet_updated = True
-        facesheet_identity_backfilled = True
+        facesheet_identity_backfilled = False
 
     else:
         previous_facesheet_dx = getattr(
@@ -610,12 +525,7 @@ def sync_official_primary_diagnosis(
 
         facesheet.primary_diagnosis = display_name
         facesheet_updated = True
-
-        if _backfill_facesheet_identity_from_patient(
-            facesheet=facesheet,
-            patient=patient,
-        ):
-            facesheet_identity_backfilled = True
+        facesheet_identity_backfilled = False
 
         if hasattr(facesheet, "updated_at"):
             facesheet.updated_at = now

@@ -21,23 +21,46 @@ from app.db.base import Base
 
 class PatientFaceSheet(Base):
     __tablename__ = "patient_facesheet"
-    
+
     __table_args__ = (
+        Index(
+            "ix_patient_facesheet_tenant_patient",
+            "tenant_id",
+            "patient_id",
+        ),
         Index(
             "ix_patient_facesheet_patient_id",
             "patient_id",
         ),
     )
 
-    # --------------------------------------------------
-    # ✅ PRIMARY KEY
-    # --------------------------------------------------
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+    )
+    
+    patient_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
+        nullable=False,
+    )
 
     # --------------------------------------------------
-    # ✅ RELATIONSHIP
+    # ✅ TENANT + RELATIONSHIP
     # --------------------------------------------------
-    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id"), nullable=False)
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id"),
+        nullable=False,
+        index=True,
+    )
+    
+    patient_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("patients.id"),
+        nullable=False,
+    )
 
     patient = relationship("Patient", back_populates="facesheets")
 

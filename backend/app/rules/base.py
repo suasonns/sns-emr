@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 from abc import ABC, abstractmethod
+from datetime import datetime, date
+from uuid import UUID
 
+
+# =========================================================
+# ENUMS
+# =========================================================
 
 class RuleOutcome(str, Enum):
     PASS = "PASS"
@@ -13,8 +19,8 @@ class RuleOutcome(str, Enum):
 
 
 class RuleSeverity(str, Enum):
-    WARN = "WARN"     # Advisory, never blocks
-    BLOCK = "BLOCK"   # Blocking only when enforcement is enabled
+    WARN = "WARN"      # Advisory, never blocks
+    BLOCK = "BLOCK"    # Blocking when enforcement enabled
 
 
 class Workflow(str, Enum):
@@ -23,112 +29,154 @@ class Workflow(str, Enum):
     IDG = "IDG"
 
 
+# =========================================================
+# DIAGNOSIS MODEL
+# =========================================================
+
 @dataclass(frozen=True)
 class DiagnosisItem:
     """
-    Represents a diagnosis code entry (primary or secondary) with optional relatedness.
+    Represents a diagnosis entry (primary or secondary).
     """
     icd10: str
     description: Optional[str] = None
     is_related_to_primary: Optional[bool] = None
 
 
-@dataclass
+# =========================================================
+# RULE CONTEXT (IMMUTABLE)
+# =========================================================
+
+@dataclass(frozen=True)
 class RuleContext:
     """
-    Minimal, audit-safe context passed into rule evaluation.
+    Audit-safe evaluation context.
 
-    Rules MUST NOT mutate context.
-    Context carries patient + tenant scope and the evidence/facts required
-    to make a defensible recommendation or decision.
+    Rules MUST NOT mutate this object.
     """
-    tenant_id: Optional[str] = None
-    patient_id: Optional[str] = None
+
+    # Identity
+    tenant_id: Optional[UUID] = None
+    patient_id: Optional[UUID] = None
 
     workflow: Workflow = Workflow.ADMISSION
 
-    # Dates (use strings or date objects depending on your system)
-    admission_date: Optional[Any] = None
-    benefit_period_id: Optional[str] = None
+    # Dates
+    admission_date: Optional[date] = None
+    benefit_period_id: Optional[UUID] = None
 
     # Document provenance
-    document_id: Optional[str] = None
-    document_type: Optional[str] = None  # e.g., HNP/H&P, ECHO, LAB
+    document_id: Optional[UUID] = None
+    document_type: Optional[str] = None
 
     # Diagnoses
     primary_dx: Optional[DiagnosisItem] = None
     secondary_dx: List[DiagnosisItem] = field(default_factory=list)
 
-    # Extracted facts (evidence graph inputs)
-    # Example keys: "ef", "bnp", "nyha", "weight_loss_percent_6_months"
-    facts: Dict[str, Any] = field(default_factory=dict)
+    # Evidence (structured inputs only)
+    facts: Dict[str, object] = field(default_factory=dict)
 
-    # Any extra workflow metadata
-    meta: Dict[str, Any] = field(default_factory=dict)
+    # Execution metadata (important for tracing)
+    meta: Dict[str, object] = field(default_factory=dict)
 
+
+# =========================================================
+# RULE RESULT (AUDIT READY)
+# =========================================================
 
 @dataclass(frozen=True)
 class RuleResult:
     """
-    Output of a rule evaluation. This must be audit-ready.
+    Output of rule evaluation.
+
+    MUST be fully audit traceable.
     """
+
     rule_id: str
     rule_name: str
+
     outcome: RuleOutcome
     severity: RuleSeverity
+
     reason: str
 
-    # Optional structured details for UI/audit packet
-    details: Dict[str, Any] = field(default_factory=dict)
+    # TIMESTAMP (REQUIRED FOR AUDIT)
+    created_at: datetime
 
-    # Optional reference to evidence (document id, snippet keys, etc.)
-    evidence: Dict[str, Any] = field(default_factory=dict)
+    # Optional structured metadata
+    details: Dict[str, object] = field(default_factory=dict)
 
+    # Evidence references (IDs, keys, etc.)
+    evidence: Dict[str, object] = field(default_factory=dict)
+
+    # Traceability
+    regulator: Optional[str] = None
+    rule_version: Optional[str] = None
+
+
+# =========================================================
+# BASE RULE INTERFACE
+# =========================================================
 
 class BaseRule(ABC):
     """
     Base interface for all rules.
-    Rules evaluate and return a RuleResult.
-    Rules DO NOT enforce, raise, or write to DB.
     """
 
     rule_id: str = "UNSET_RULE_ID"
     rule_name: str = "UNSET_RULE_NAME"
 
+    regulator: Optional[str] = None
+    version: Optional[str] = None
+
     @abstractmethod
     def evaluate(self, ctx: RuleContext) -> RuleResult:
         raise NotImplementedError
 
-    # Helper factories (consistent output)
-    def pass_result(self, reason: str = "PASS", **kwargs) -> RuleResult:
+    # =====================================================
+    # HELPER OUTPUTS (STANDARDIZED)
+    # =====================================================
+
+    def _base_result(
+        self,
+        outcome: RuleOutcome,
+        severity: RuleSeverity,
+        reason: str,
+        **kwargs,
+    ) -> RuleResult:
         return RuleResult(
             rule_id=self.rule_id,
             rule_name=self.rule_name,
-            outcome=RuleOutcome.PASS,
-            severity=RuleSeverity.WARN,
+            outcome=outcome,
+            severity=severity,
             reason=reason,
+            created_at=datetime.utcnow(),
             details=kwargs.get("details", {}),
             evidence=kwargs.get("evidence", {}),
+            regulator=self.regulator,
+            rule_version=self.version,
+        )
+
+    def pass_result(self, reason: str = "PASS", **kwargs) -> RuleResult:
+        return self._base_result(
+            RuleOutcome.PASS,
+            RuleSeverity.WARN,
+            reason,
+            **kwargs,
         )
 
     def warn_result(self, reason: str, **kwargs) -> RuleResult:
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            outcome=RuleOutcome.WARN,
-            severity=RuleSeverity.WARN,
-            reason=reason,
-            details=kwargs.get("details", {}),
-            evidence=kwargs.get("evidence", {}),
+        return self._base_result(
+            RuleOutcome.WARN,
+            RuleSeverity.WARN,
+            reason,
+            **kwargs,
         )
 
     def block_result(self, reason: str, **kwargs) -> RuleResult:
-        return RuleResult(
-            rule_id=self.rule_id,
-            rule_name=self.rule_name,
-            outcome=RuleOutcome.VIOLATION,
-            severity=RuleSeverity.BLOCK,
-            reason=reason,
-            details=kwargs.get("details", {}),
-            evidence=kwargs.get("evidence", {}),
+        return self._base_result(
+            RuleOutcome.VIOLATION,
+            RuleSeverity.BLOCK,
+            reason,
+            **kwargs,
         )
