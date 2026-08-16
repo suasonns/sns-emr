@@ -73,7 +73,7 @@ def _fetch_latest_snapshot_for_cycle(
     sql = text(
         """
         SELECT data
-        FROM billing_snapshot
+        FROM billing_snapshots
         WHERE patient_id = :patient_id
           AND data ->> 'billing_cycle_id' = :billing_cycle_id
         ORDER BY id DESC
