@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const CLAIMS = [
   { id: 'CLM-88301', patient: 'Martha Stevens', date: 'Oct 24, 2025', amount: '$1,450.00', payer: 'Medicare', status: 'Submitted', statusColor: COLORS.blue, days: '1 Day' },

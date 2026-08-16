@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const INDICATORS = [
   { measure: 'Pain Assessment Timeliness', target: '95.0%', actual: '96.2%', status: 'Met', statusColor: '#10b796' },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const STAFF = [
   { name: 'Emily Watson', role: 'RN', license: 'RN-48291', expiry: '12/15/2025', patients: '7', status: 'Active', statusColor: '#10b796', phone: '(512) 555-0143', highlight: true },

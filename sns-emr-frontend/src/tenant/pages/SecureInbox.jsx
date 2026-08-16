@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const MESSAGES = [
   { from: 'MD Office', subject: 'Updated orders for Martha Stevens', time: '08:14 AM', unread: true, tone: COLORS.teal },

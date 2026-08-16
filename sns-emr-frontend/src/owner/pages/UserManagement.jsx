@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../OwnerDashboard';
+import { COLORS, S } from '../design';
 
 const USERS = [
   { name: 'Sarah Jenkins', email: 'sarah.j@gracehospice.com', role: 'Super Admin', roleColor: COLORS.purple, tenant: 'Grace Hospice Care', status: 'Active', statusColor: COLORS.green, lastLogin: '3m ago' },

@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const DAYS = ['Mon 10/24', 'Tue 10/25', 'Wed 10/26', 'Thu 10/27', 'Fri 10/28', 'Sat 10/29', 'Sun 10/30'];
 const TIMES = ['08:00 AM', '10:00 AM', '12:00 PM', '02:00 PM', '04:00 PM'];

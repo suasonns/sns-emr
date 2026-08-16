@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const STATS = [
   { label: 'Active Patients', value: '247', tone: COLORS.teal },

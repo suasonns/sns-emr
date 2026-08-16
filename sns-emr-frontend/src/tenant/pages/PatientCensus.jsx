@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const PATIENTS = [
   { name: 'Martha Stevens', mrn: '22938', dx: 'CHF', level: 'Routine', rn: 'John Higgins', poc: '3 days', pocColor: COLORS.red, status: 'Active', statusColor: COLORS.green, highlight: true },

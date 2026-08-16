@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../OwnerDashboard';
+import { COLORS, S } from '../design';
 
 const MRR_DATA = [
   { month: 'Jun', value: '$128.4K', height: 100 },

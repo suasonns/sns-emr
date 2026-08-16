@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { COLORS, S } from '../TenantDashboard';
+import { COLORS, S } from '../design';
 
 const initialSettings = {
   platformName: 'Grace Hospice Care',

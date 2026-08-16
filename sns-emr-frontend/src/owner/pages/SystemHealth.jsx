@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../OwnerDashboard';
+import { COLORS, S } from '../design';
 
 const SERVICES = [
   { name: 'API Gateway', dot: COLORS.green, latency: '14ms', uptime: '99.99%' },

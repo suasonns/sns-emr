@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../OwnerDashboard';
+import { COLORS, S } from '../design';
 
 const TABS = ['General', 'Security', 'Notifications', 'Billing', 'AI Config', 'Integrations'];
 

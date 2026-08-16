@@ -1,5 +1,5 @@
 import React from 'react';
-import { COLORS, S } from '../OwnerDashboard';
+import { COLORS, S } from '../design';
 
 const TENANTS = [
   { name: 'Grace Hospice Care', plan: 'Pro', status: 'Active', statusColor: COLORS.green, patients: 312, users: 48, lastActive: '3m ago', health: 98, barColor: COLORS.green },
