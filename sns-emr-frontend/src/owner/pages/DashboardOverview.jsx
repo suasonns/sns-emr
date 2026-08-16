@@ -26,7 +26,33 @@ const PERF = [
   { label: 'Storage Used', value: '2.1TB / 5TB', barWidth: '42%', color: COLORS.blue },
 ];
 
-export default function DashboardOverview() {
+export default function DashboardOverview({ data = null, loading = false, error = '' }) {
+  const fmt = (value, fallback) =>
+    typeof value === 'number' ? value.toLocaleString() : fallback;
+
+  // Real counts once /dashboard/owner returns them; placeholders until then.
+  const liveStats = [
+    { label: 'Active Tenants', value: fmt(data?.total_tenants, '24'), sub: '▲ 2 this month', subColor: COLORS.teal, dot: COLORS.green },
+    { label: 'Active Tasks', value: fmt(data?.active_tasks, '3,847'), sub: 'Across all agencies', subColor: COLORS.blue, dot: COLORS.green },
+    { label: 'System Incidents', value: fmt(data?.system_incidents, '0'), sub: 'Reported incidents', subColor: COLORS.green, dot: COLORS.green },
+    { label: 'Clinical Notes', value: fmt(data?.clinical_notes, '186'), sub: 'Recorded to date', subColor: COLORS.purple, dot: COLORS.green },
+  ];
+
+  const tenantRows =
+    Array.isArray(data?.tenant_summary) && data.tenant_summary.length > 0
+      ? data.tenant_summary.map((t) => ({
+          name: t.name ?? t.legal_name ?? t.display_name ?? '—',
+          plan: t.plan ?? '—',
+          status: t.status ?? '—',
+          statusColor: t.status === 'ACTIVE' ? COLORS.green : COLORS.orange,
+          patients: t.patients ?? '—',
+          users: t.users ?? '—',
+          lastActive: t.last_active ?? '—',
+          health: typeof t.health === 'number' ? t.health : 0,
+          barColor: COLORS.green,
+        }))
+      : TENANTS;
+
   return (
     <div>
       <div style={S.header}>
@@ -35,19 +61,22 @@ export default function DashboardOverview() {
           <p style={S.pageSubtitle}>Real-time monitoring and multi-tenant performance orchestration.</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 13, color: COLORS.muted }}>SYS_STATUS: ACTIVE</span>
+          <span style={{ fontSize: 13, color: COLORS.muted }}>
+            {loading ? 'SYS_STATUS: LOADING' : error ? 'SYS_STATUS: UNAVAILABLE' : 'SYS_STATUS: ACTIVE'}
+          </span>
           <button style={S.btn(COLORS.teal)}>RE-SYNC OK</button>
         </div>
       </div>
 
+      {error ? (
+        <div style={{ ...S.card, borderColor: COLORS.orange, color: COLORS.orange, fontSize: 13 }}>
+          {error}
+        </div>
+      ) : null}
+
       {/* Top Stats Row 1 */}
       <div style={S.statsRow}>
-        {[
-          { label: 'Active Tenants', value: '24', sub: '▲ 2 this month', subColor: COLORS.teal, dot: COLORS.green },
-          { label: 'Total Patients', value: '3,847', sub: 'Across all agencies', subColor: COLORS.blue, dot: COLORS.green },
-          { label: 'System Uptime', value: '99.97%', sub: 'Healthy SLA', subColor: COLORS.green, dot: COLORS.green },
-          { label: 'Active Users (24h)', value: '186', sub: 'Live sessions', subColor: COLORS.purple, dot: COLORS.green },
-        ].map((s, i) => (
+        {liveStats.map((s, i) => (
           <div key={i} style={S.statCard}>
             <div style={S.statDot(s.dot)} />
             <p style={S.statLabel}>{s.label}</p>
@@ -91,7 +120,7 @@ export default function DashboardOverview() {
               </tr>
             </thead>
             <tbody>
-              {TENANTS.map((t, i) => (
+              {tenantRows.map((t, i) => (
                 <tr key={i}>
                   <td style={S.tableCellBold}>{t.name}</td>
                   <td style={S.tableCell}>{t.plan}</td>

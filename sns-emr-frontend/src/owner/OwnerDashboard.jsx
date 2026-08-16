@@ -112,25 +112,27 @@ export default function OwnerDashboard() {
   };
 
   const renderPage = () => {
+    const pageProps = { data: dashboardData, loading, error };
+
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardOverview />;
+        return <DashboardOverview {...pageProps} />;
       case 'tenants':
-        return <TenantManagement />;
+        return <TenantManagement {...pageProps} />;
       case 'health':
-        return <SystemHealth />;
+        return <SystemHealth {...pageProps} />;
       case 'users':
-        return <UserManagement />;
+        return <UserManagement {...pageProps} />;
       case 'audit':
-        return <AuditLogs />;
+        return <AuditLogs {...pageProps} />;
       case 'analytics':
-        return <Analytics />;
+        return <Analytics {...pageProps} />;
       case 'settings':
-        return <Settings />;
+        return <Settings {...pageProps} />;
       case 'ai':
-        return <AICommandCenter />;
+        return <AICommandCenter {...pageProps} />;
       default:
-        return <DashboardOverview />;
+        return <DashboardOverview {...pageProps} />;
     }
   };
 

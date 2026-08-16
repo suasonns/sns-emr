@@ -60,7 +60,27 @@ const ACTIVITY_LOG = [
 
 const QUICK_PROMPTS = ['Denial trends', 'Revenue forecast', 'Compliance risks', 'Tenant health', 'System performance', 'Billing bottlenecks'];
 
-export default function AICommandCenter() {
+export default function AICommandCenter({ data = null, loading = false, error = '' }) {
+  // Real incidents drive the anomaly feed once the backend reports them; the
+  // sample entries stand in while the platform has no data.
+  const incidents = Array.isArray(data?.recent_incidents) ? data.recent_incidents : [];
+
+  const anomalies = incidents.length
+    ? incidents.map((incident) => ({
+        icon: '🔴',
+        title: incident.title ?? incident.incident_type ?? 'Incident',
+        time: incident.occurred_at ?? incident.created_at ?? '',
+        desc: incident.description ?? incident.summary ?? '',
+        severity: `SEVERITY: ${String(incident.severity ?? 'UNKNOWN').toUpperCase()}`,
+        sevColor: COLORS.red,
+        action: 'Investigate',
+      }))
+    : ANOMALIES;
+
+  const anomalyCount = incidents.length
+    ? String(incidents.length)
+    : String(ANOMALIES.length);
+
   return (
     <div>
       <div style={S.header}>
@@ -71,7 +91,9 @@ export default function AICommandCenter() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', background: COLORS.green + '22', borderRadius: 20 }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: COLORS.green }} />
-            <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.green }}>AI Engine: Active</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.green }}>
+              {loading ? 'AI Engine: Loading' : error ? 'AI Engine: Unavailable' : 'AI Engine: Active'}
+            </span>
           </span>
           <span style={{ fontSize: 12, color: COLORS.muted }}>Last Analysis: 2 min ago</span>
         </div>
@@ -80,7 +102,7 @@ export default function AICommandCenter() {
       {/* Stats */}
       <div style={S.statsRow}>
         {[
-          { label: 'ACTIVE ANOMALIES', value: '3', sub: 'Requiring immediate audit', subExtra: '● Pulsing', subExtraColor: COLORS.red, dot: COLORS.red },
+          { label: 'ACTIVE ANOMALIES', value: anomalyCount, sub: 'Requiring immediate audit', subExtra: '● Pulsing', subExtraColor: COLORS.red, dot: COLORS.red },
           { label: 'PREDICTIONS GENERATED', value: '847', sub: '90-day pipeline insights', dot: COLORS.green },
           { label: 'RECOMMENDATIONS', value: '12', sub: 'Ranked auto-action opportunities', dot: COLORS.green },
           { label: 'AI CONFIDENCE SCORE', value: '94.2%', sub: 'Overall analysis model health', dot: COLORS.green },
@@ -150,7 +172,7 @@ Key Finding: Valley Hospice denial spike is driven by 73% increase in "Missing F
         <div style={S.card}>
           <h3 style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, margin: '0 0 4px' }}>ACTIVE ANOMALIES</h3>
           <p style={{ fontSize: 12, color: COLORS.muted, margin: '0 0 20px' }}>AI-detected issues requiring attention</p>
-          {ANOMALIES.map((a, i) => (
+          {anomalies.map((a, i) => (
             <div key={i} style={{ padding: 16, background: COLORS.bg, borderRadius: 10, marginBottom: 12, border: `1px solid ${COLORS.border}` }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.white }}>{a.icon} {a.title}</span>
