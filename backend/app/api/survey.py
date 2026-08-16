@@ -6,6 +6,7 @@ from sqlalchemy import text
 from app.core.bulk_reauth_guard import require_bulk_print_reauth
 from app.core.bulk_rules import is_bulk_action
 from app.core.database import get_db
+from app.core.permissions import has_permission
 from app.dependencies.auth import get_current_user
 
 from app.services.chart_pdf import generate_chart_summary_pdf

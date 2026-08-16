@@ -35,6 +35,13 @@ export function getCurrentUser(): SessionUser | null {
   }
 }
 
+// Platform-owner surface only. Tenant admins must not qualify.
+const OWNER_ROLES = new Set(["OWNER"]);
+
+export function hasOwnerRole(user: SessionUser | null): boolean {
+  return !!user && OWNER_ROLES.has(String(user.role ?? "").toUpperCase());
+}
+
 export function setCurrentUser(user: SessionUser): void {
   localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
 }

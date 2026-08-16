@@ -19,6 +19,13 @@ import React, { useState, useCallback, useMemo, useEffect } from "react";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
 import { fetchPatientSummary } from "../api/patientCharts";
+import {
+  saveRnicaAssessment,
+  getRnicaAssessment,
+  updateRnicaAssessment,
+  lockRnicaAssessment,
+  getRnicaIntelligence,
+} from "../api/icaAssessments";
 import PatientContextSidebar from "./PatientContextSidebar";
 
 // ════════════════════════════════════════════════════════════════
@@ -586,47 +593,16 @@ const INITIAL_FORM = {
 // 3. API SERVICE — 4 Backend Endpoints
 // ════════════════════════════════════════════════════════════════
 
+// Delegates to the shared client so requests carry the auth token.
 const api = {
-  async saveRNICAAssessment(patientId, formData) {
-    const res = await fetch(`${API_BASE}/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId, formData }),
-    });
-    if (!res.ok) throw new Error(`Save failed: ${res.status}`);
-    return res.json();
-  },
-
-  async getRNICAAssessment(assessmentId) {
-    const res = await fetch(`${API_BASE}/${assessmentId}`);
-    if (!res.ok) throw new Error(`Get failed: ${res.status}`);
-    return res.json();
-  },
-
-  async updateRNICAAssessment(assessmentId, formData) {
-    const res = await fetch(`${API_BASE}/${assessmentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formData }),
-    });
-    if (!res.ok) throw new Error(`Update failed: ${res.status}`);
-    return res.json();
-  },
-
-  async lockRNICAAssessment(assessmentId) {
-    const res = await fetch(`${API_BASE}/${assessmentId}/lock`, {
-      method: "POST",
-    });
-    if (!res.ok) throw new Error(`Lock failed: ${res.status}`);
-    return res.json();
-  },
-
-  async getRNICAIntelligence(assessmentId) {
-    if (!assessmentId) return null;
-    const res = await fetch(`${API_BASE}/${assessmentId}/intelligence`, { method: "GET" });
-    if (!res.ok) throw new Error(`RN ICA intelligence request failed: ${res.status}`);
-    return res.json();
-  },
+  saveRNICAAssessment: (patientId, formData) =>
+    saveRnicaAssessment({ patientId, formData }),
+  getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
+  updateRNICAAssessment: (assessmentId, formData) =>
+    updateRnicaAssessment(assessmentId, formData),
+  lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
+  getRNICAIntelligence: (assessmentId) =>
+    assessmentId ? getRnicaIntelligence(assessmentId) : null,
 };
 
 

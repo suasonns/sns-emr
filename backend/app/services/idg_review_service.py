@@ -9,6 +9,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.idg_review import IDGReview
+from app.services.idg_enforcement import validate_idg_ready_to_finalize
+from app.services.idg_review_tasks import complete_current_idg_review_task
+from app.services.task_service import complete_task
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,11 @@
+export { default as DashboardOverview } from './DashboardOverview';
+export { default as PatientCensus } from './PatientCensus';
+export { default as Admissions } from './Admissions';
+export { default as Clinical } from './Clinical';
+export { default as Scheduling } from './Scheduling';
+export { default as Billing } from './Billing';
+export { default as StaffManagement } from './StaffManagement';
+export { default as QAPICompliance } from './QAPICompliance';
+export { default as Reports } from './Reports';
+export { default as SecureInbox } from './SecureInbox';
+export { default as Settings } from './Settings';

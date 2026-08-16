@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import SNSAnalytics from "./pages/SNSAnalytics";
 import LoginPage from "./pages/LoginPage";
+import OwnerDashboard from "./owner/OwnerDashboard";
 import RequireAuth from "./components/RequireAuth";
 
 // ✅ ENTERPRISE ROUTER (FIXED JSX)
@@ -18,7 +19,7 @@ export default function App() {
         <Route path="/billing" element={<RequireAuth><Navigate to="/analytics" replace /></RequireAuth>} />
         <Route path="/analytics" element={<RequireAuth><SNSAnalytics /></RequireAuth>} />
         <Route path="/tenant" element={<RequireAuth><Navigate to="/analytics?section=census" replace /></RequireAuth>} />
-        <Route path="/owner" element={<RequireAuth><Navigate to="/analytics?section=settings" replace /></RequireAuth>} />
+        <Route path="/owner" element={<RequireAuth><OwnerDashboard /></RequireAuth>} />
         <Route path="/rnica" element={<RequireAuth><Navigate to="/analytics?section=rnica" replace /></RequireAuth>} />
         <Route path="/msw-ica" element={<RequireAuth><Navigate to="/analytics?section=msw-ica" replace /></RequireAuth>} />
         <Route path="/sc-ica" element={<RequireAuth><Navigate to="/analytics?section=sc-ica" replace /></RequireAuth>} />

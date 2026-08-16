@@ -300,6 +300,55 @@ def complete_task_with_visit_evidence(
         }
 
 
+def create_and_complete_same_day_crisis_poc(
+    *,
+    db: Session,
+    patient: Patient,
+    visit: Visit,
+    benefit_period_id=None,
+) -> Task:
+    """
+    Crisis policy: the POC update is raised and satisfied by the same RN visit.
+
+    Re-finalizing the same visit must not raise a second task, so an existing
+    task already evidenced by this visit is returned unchanged.
+    """
+
+    tenant_id = _resolve_tenant_id(patient=patient, visit=visit)
+
+    existing_query = _apply_tenant_scope(
+        db.query(Task).filter(
+            Task.patient_id == patient.id,
+            Task.task_type == _task_type_poc_update(),
+        ),
+        tenant_id=tenant_id,
+    )
+
+    if hasattr(Task, "completion_reference_id"):
+        already = existing_query.filter(
+            Task.completion_reference_id == visit.id
+        ).first()
+    else:
+        already = existing_query.filter(Task.visit_id == visit.id).first()
+
+    if already:
+        return already
+
+    task = create_poc_task(
+        db=db,
+        patient=patient,
+        due_date=_resolve_visit_service_date(visit),
+        origin=_default_manual_origin(),
+        benefit_period_id=benefit_period_id,
+        visit=visit,
+    )
+
+    complete_task_with_visit_evidence(task=task, visit=visit)
+    db.flush()
+
+    return task
+
+
 # =========================================================
 # MAIN ENTRY
 # =========================================================

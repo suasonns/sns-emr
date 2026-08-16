@@ -1,5 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchPatientSummary } from "../api/patientCharts";
+import {
+  saveMswIcaAssessment,
+  getMswIcaAssessment,
+  updateMswIcaAssessment,
+  lockMswIcaAssessment,
+  getMswIcaIntelligence,
+} from "../api/icaAssessments";
 
 const API_BASE = "/visits/msw-ica";
 const DEFAULT_PATIENT_ID = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
@@ -164,40 +171,15 @@ function Card({ title, subtitle, id, children }) {
   );
 }
 
+// Delegates to the shared client so requests carry the auth token.
 const api = {
-  async saveMSWICAAssessment(patientId, formData) {
-    const res = await fetch(`${API_BASE}/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ patientId, formData }),
-    });
-    if (!res.ok) throw new Error(`MSW ICA save failed: ${res.status}`);
-    return res.json();
-  },
-  async getMSWICAAssessment(assessmentId) {
-    const res = await fetch(`${API_BASE}/${assessmentId}`);
-    if (!res.ok) throw new Error(`MSW ICA get failed: ${res.status}`);
-    return res.json();
-  },
-  async updateMSWICAAssessment(assessmentId, formData) {
-    const res = await fetch(`${API_BASE}/${assessmentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ formData }),
-    });
-    if (!res.ok) throw new Error(`MSW ICA update failed: ${res.status}`);
-    return res.json();
-  },
-  async lockMSWICAAssessment(assessmentId) {
-    const res = await fetch(`${API_BASE}/${assessmentId}/lock`, { method: "POST" });
-    if (!res.ok) throw new Error(`MSW ICA lock failed: ${res.status}`);
-    return res.json();
-  },
-  async getMSWICAIntelligence(assessmentId) {
-    const res = await fetch(`${API_BASE}/${assessmentId}/intelligence`, { method: "GET" });
-    if (!res.ok) throw new Error(`MSW ICA intelligence failed: ${res.status}`);
-    return res.json();
-  },
+  saveMSWICAAssessment: (patientId, formData) =>
+    saveMswIcaAssessment({ patientId, formData }),
+  getMSWICAAssessment: (assessmentId) => getMswIcaAssessment(assessmentId),
+  updateMSWICAAssessment: (assessmentId, formData) =>
+    updateMswIcaAssessment(assessmentId, formData),
+  lockMSWICAAssessment: (assessmentId) => lockMswIcaAssessment(assessmentId),
+  getMSWICAIntelligence: (assessmentId) => getMswIcaIntelligence(assessmentId),
 };
 
 export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: existingAssessmentId = undefined }) {

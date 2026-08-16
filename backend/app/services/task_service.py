@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.task import Task
 from app.models.med_reconciliation import MedReconciliationItem
+from app.models.enums import CompletionReferenceType
 
 
 # =========================================================
