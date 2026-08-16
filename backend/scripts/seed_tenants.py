@@ -45,6 +45,8 @@ TENANTS = [
         "legal_name": "Love & Faith Hospice",
         "display_name": "Love & Faith",
         "npi": "1275143653",
+        "ein": "851033525",
+        "ptan": "B51771",
         "tenant_type": "PRODUCTION",
         "environment_tag": PERMANENT,
         "ai_enabled": True,
@@ -56,40 +58,48 @@ TENANTS = [
         "display_name": "Angela Hospice (Training)",
         # npi is required; training agencies get an obviously non-real placeholder.
         "npi": "0000000001",
+        "ein": None,
+        "ptan": None,
         "tenant_type": "TRAINING",
         "environment_tag": PERMANENT,
         "ai_enabled": True,
-        "billing_enabled": True,
+        "billing_enabled": False,
     },
     {
         "env_var": "DEV_TENANT_DUMMY_B",
         "legal_name": "Silva Hospice",
         "display_name": "Silva Hospice (Training)",
         "npi": "0000000002",
+        "ein": None,
+        "ptan": None,
         "tenant_type": "TRAINING",
         "environment_tag": PERMANENT,
         "ai_enabled": True,
-        "billing_enabled": True,
+        "billing_enabled": False,
     },
     {
         "env_var": "DEV_TENANT_A_ID",
         "legal_name": "Dev Tenant A",
         "display_name": "Dev Tenant A",
         "npi": "0000000003",
+        "ein": None,
+        "ptan": None,
         "tenant_type": "DEV",
         "environment_tag": TEMPORARY,
         "ai_enabled": True,
-        "billing_enabled": True,
+        "billing_enabled": False,
     },
     {
         "env_var": "DEV_TENANT_B_ID",
         "legal_name": "Dev Tenant B",
         "display_name": "Dev Tenant B",
         "npi": "0000000004",
+        "ein": None,
+        "ptan": None,
         "tenant_type": "DEV",
         "environment_tag": TEMPORARY,
         "ai_enabled": True,
-        "billing_enabled": True,
+        "billing_enabled": False,
     },
 ]
 
@@ -117,6 +127,8 @@ def seed(db) -> None:
         tenant.legal_name = spec["legal_name"]
         tenant.display_name = spec["display_name"]
         tenant.npi = spec["npi"]
+        tenant.ein = spec["ein"]
+        tenant.ptan = spec["ptan"]
         tenant.tenant_type = spec["tenant_type"]
         tenant.environment_tag = spec["environment_tag"]
         tenant.status = "ACTIVE"

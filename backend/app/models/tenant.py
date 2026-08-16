@@ -37,6 +37,24 @@ class Tenant(BaseModel):
     # Must be exactly 10 digits (validated below)
 
     # ---------------------------------------------------------
+    # OPERATING AUTHORITY (REQUIRED TO BILL MEDICARE)
+    # ---------------------------------------------------------
+
+    ein = Column(
+        String(10),
+        nullable=True,
+        index=True,
+    )
+    # Employer Identification Number, 9 digits, stored unformatted.
+
+    ptan = Column(
+        String(32),
+        nullable=True,
+        index=True,
+    )
+    # Provider Transaction Access Number / CMS Certification Number.
+
+    # ---------------------------------------------------------
     # TENANT TYPE (CRITICAL FOR BILLING + UI)
     # ---------------------------------------------------------
 
@@ -114,7 +132,18 @@ class Tenant(BaseModel):
             "char_length(npi) = 10",
             name="ck_tenant_npi_length",
         ),
+        # A start-up agency can be onboarded without Medicare credentials, but
+        # it cannot bill until an EIN and PTAN are on file.
+        CheckConstraint(
+            "billing_enabled = false "
+            "OR (ein IS NOT NULL AND ptan IS NOT NULL)",
+            name="ck_tenant_billing_requires_operating_authority",
+        ),
 
+        CheckConstraint(
+            "ein IS NULL OR char_length(ein) = 9",
+            name="ck_tenant_ein_length",
+        ),
         Index(
             "ix_tenants_type_status",
             "tenant_type",
