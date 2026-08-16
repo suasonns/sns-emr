@@ -11,6 +11,7 @@ from app.models.task import Task
 from app.models.enums import TaskType, TaskStatus, CompletionReferenceType
 from app.services.admission_authorization_service import authorize_admission
 from app.services.task_completion_evidence import complete_task_with_evidence
+from tests.conftest import TEST_USER_ID
 
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -78,7 +79,7 @@ def test_idg_task_created_on_admission_due_soc_plus_15(db_session):
         db_session,
         patient_id=pid,
         election_signed_at=SOC,
-        authorized_by_user_id=None,
+        authorized_by_user_id=TEST_USER_ID,
     )
     db_session.commit()
 
@@ -96,7 +97,7 @@ def test_idg_completion_schedules_next_due_plus_15(db_session):
         db_session,
         patient_id=pid,
         election_signed_at=SOC,
-        authorized_by_user_id=None,
+        authorized_by_user_id=TEST_USER_ID,
     )
     db_session.commit()
 

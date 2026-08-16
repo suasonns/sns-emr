@@ -10,6 +10,8 @@ from app.services.admission_authorization_service import (
     TASK_INITIAL_RN_ICA,
     TASK_NOE_DUE,
 )
+from app.models.admission import Admission
+from tests.conftest import TEST_USER_ID
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
@@ -79,7 +81,7 @@ def test_authorize_sets_soc_and_creates_rn_ica_and_noe_tasks(db_session):
         db_session,
         patient_id=patient_id,
         election_signed_at=FIXED_SOC,
-        authorized_by_user_id=None,
+        authorized_by_user_id=TEST_USER_ID,
     )
 
     db_session.commit()
