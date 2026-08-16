@@ -58,6 +58,9 @@ from app.api.task_scheduling import router as task_scheduling_router
 from app.api.patient_assignments import router as patient_assignments_router
 from app.api.soc_orders import router as soc_orders_router
 from app.api.admission import router as admission_router
+from app.api.print import router as print_router
+from app.api.auth_reauth import router as auth_reauth_router
+from app.api.internal_superuser import router as internal_superuser_router
 from app.api.admission_diagnosis import router as admission_diagnosis_router
 
 # EXTERNAL
@@ -146,6 +149,9 @@ def register_routers(app: FastAPI) -> None:
         med_reconciliation.router,
         soc_orders_router,
         admission_router,
+        print_router,
+        auth_reauth_router,
+        internal_superuser_router,
         admission_diagnosis_router,
 
         # Existing task system

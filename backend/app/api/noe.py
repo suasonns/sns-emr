@@ -14,7 +14,7 @@ from app.services.noe_pdf import fill_noe_pdf
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/patients", tags=["NOE"])
+router = APIRouter(prefix="/patients", tags=["NOE"])
 
 
 # ---------------------------------------------------------------------
@@ -174,13 +174,23 @@ def generate_noe_pdf(
 
     user_id = current_user.get("id") if isinstance(current_user, dict) else None
 
+    tenant_id = (
+        current_user.get("tenant_id")
+        if isinstance(current_user, dict)
+        else getattr(current_user, "tenant_id", None)
+    )
+
+    if not tenant_id:
+        raise HTTPException(status_code=401, detail="Missing tenant")
+
     readiness = db.execute(
         text("""
             SELECT patient_status, allergy_state
             FROM patient_face_sheet_view
             WHERE patient_id = :pid
+              AND tenant_id = :tenant_id
         """),
-        {"pid": patient_id},
+        {"pid": patient_id, "tenant_id": str(tenant_id)},
     ).mappings().first()
 
     if not readiness:
@@ -199,13 +209,14 @@ def generate_noe_pdf(
             SELECT icd_code
             FROM diagnosis_sources
             WHERE patient_id = :pid
+              AND tenant_id = :tenant_id
               AND source = 'RN_IA'
               AND dx_type = 'PRIMARY'
               AND is_active = true
             ORDER BY documented_at DESC
             LIMIT 1
         """),
-        {"pid": patient_id},
+        {"pid": patient_id, "tenant_id": str(tenant_id)},
     ).mappings().first()
 
     if not rn_dx:
