@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sns-emr-frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: sns-emr-frontend/package-lock.json
+
+      - run: npm ci
+
+      # Same command DigitalOcean runs, so TS errors fail here first.
+      - run: npm run build
+
+  backend:
+    name: Backend schema and import
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sns
+          POSTGRES_PASSWORD: sns
+          POSTGRES_DB: sns_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql+psycopg2://sns:sns@127.0.0.1:5432/sns_ci
+      APP_ENV: development
+      ENV: local
+      AUTH_MODE: TOKEN
+      SECRET_KEY: ci-secret-key-that-is-at-least-32-characters-long
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # The failure that broke this project: migrations that only worked
+      # against a hand-shaped database. This proves they build from nothing.
+      - name: Migrations build an empty database
+        run: alembic upgrade head
+
+      - name: Schema matches models (no drift)
+        run: |
+          alembic revision --autogenerate -m ci-drift-probe
+          if grep -qE "op\.(create_table|add_column|drop_column|create_index|alter_column)" alembic/versions/*ci_drift_probe.py; then
+            echo "::error::Models and migrations have drifted. Generate a migration."
+            cat alembic/versions/*ci_drift_probe.py
+            exit 1
+          fi
+          echo "No drift detected."
+
+      - name: Application imports
+        run: python -c "import app.main"
+
+      - name: Tests
+        # Not yet gating: the suite has known failures inherited from the
+        # branch merge. Remove continue-on-error once it is green.
+        continue-on-error: true
+        run: |
+          pip install pytest httpx
+          python -m pytest -q --tb=short
