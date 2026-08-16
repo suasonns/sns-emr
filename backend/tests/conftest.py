@@ -13,6 +13,9 @@ from app.core.security import create_access_token
 from app.db.base import Base
 from app.main import fastapi_app
 from app.models.tenant import Tenant
+from app.models.user import User
+
+TEST_USER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 
 # ---------------------------------------------------------------------
@@ -94,6 +97,21 @@ def db_session():
                 npi="1234567890",
                 tenant_type="DEV",
                 status="ACTIVE",
+            )
+        )
+        session.commit()
+
+    # Tests reference this well-known id as created_by/provider; the generated
+    # schema enforces the FK to users that the old database lacked.
+    if session.get(User, TEST_USER_ID) is None:
+        session.add(
+            User(
+                id=TEST_USER_ID,
+                tenant_id=uuid.UUID(tenant_id),
+                email="test.user@sns.local",
+                full_name="Test User",
+                role="RN",
+                active=True,
             )
         )
         session.commit()

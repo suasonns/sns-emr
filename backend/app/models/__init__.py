@@ -85,6 +85,12 @@ from app.models.idg_review import IDGReview
 from app.models.idg_note import IDGNote
 from app.models.idg_signature import IDGSignature
 from app.models.idg_md_attestation import IDGMDAttestation
+from app.models.idg_attendee import IDGAttendee
+from app.models.idg_justification import IDGJustification
+from app.models.dx_primary_policy import DxPrimaryPolicy
+from app.models.eligibility_decision import EligibilityDecision
+from app.models.diagnosis_source import DiagnosisSource
+from app.models.security_activity_event import SecurityActivityEvent
 
 from app.models.document_record import DocumentRecord
 from app.models.idg_intelligence_item import IDGIntelligenceItem
