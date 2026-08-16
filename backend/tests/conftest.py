@@ -10,6 +10,7 @@ from sqlalchemy import text
 
 from app.core.database import SessionLocal
 from app.core.security import create_access_token
+from app.db.base import Base
 from app.main import fastapi_app
 from app.models.tenant import Tenant
 
@@ -72,8 +73,15 @@ def db_session():
 
     tenant_id = _test_tenant_id()
 
-    session.execute(text("DELETE FROM tasks WHERE tenant_id = CAST(:tenant_id AS UUID)"), {"tenant_id": tenant_id})
-    session.execute(text("DELETE FROM patients WHERE tenant_id = CAST(:tenant_id AS UUID)"), {"tenant_id": tenant_id})
+    # Delete child rows before parents; the generated schema enforces the FKs
+    # that the old hand-built database did not.
+    _RETAINED = {"tenants", "users", "roles", "interfaces"}
+    for table in reversed(Base.metadata.sorted_tables):
+        if table.name in _RETAINED or "tenant_id" not in table.c:
+            continue
+        session.execute(
+            table.delete().where(table.c.tenant_id == uuid.UUID(tenant_id))
+        )
     session.commit()
 
     tenant = session.get(Tenant, tenant_id)

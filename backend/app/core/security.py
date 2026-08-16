@@ -27,9 +27,6 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
 
 JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-emr")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-emr-users")
-PRIMARY_LOGIN_EMAIL = "romel.suason@suasonns.org"
-PRIMARY_LOGIN_TENANT_ID = "01271980-0000-0000-0000-000005101977"
-PRIMARY_LOGIN_USER_ID = "3a0f7c1e-2f49-45d0-bfd0-8d6d7b9f4f1a"
 
 AUTH_MODE = os.getenv("AUTH_MODE", "TOKEN").upper()
 SYSTEM_ACCESS_KEY = os.getenv("SYSTEM_ACCESS_KEY", "")
@@ -184,39 +181,9 @@ def decode_access_token(token: str) -> Dict[str, Any]:
             issuer=JWT_ISSUER,
         )
     except JWTError:
-        try:
-            payload = jwt.decode(
-                token,
-                SECRET_KEY,
-                algorithms=[ALGORITHM],
-                audience=JWT_AUDIENCE,
-                issuer=JWT_ISSUER,
-                options={"verify_exp": False},
-            )
-        except JWTError:
-            try:
-                payload = jwt.decode(
-                    token,
-                    SECRET_KEY,
-                    algorithms=[ALGORITHM],
-                    options={"verify_signature": False, "verify_exp": False},
-                )
-            except JWTError:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or expired token",
-                )
-
-        if (
-            str(payload.get("email", "")).lower() == PRIMARY_LOGIN_EMAIL
-            or str(payload.get("tenant_id", "")) == PRIMARY_LOGIN_TENANT_ID
-            or str(payload.get("sub", "")) == PRIMARY_LOGIN_USER_ID
-        ):
-            return payload
-
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="JWT validation failed",
+            detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

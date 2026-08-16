@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
 from app.core.security import get_current_user
+from app.core.roles import role_matches
 from app.db_tenant_dependency import get_db_tenant
 
 from app.models.patient import Patient
@@ -237,7 +238,7 @@ def list_patients(
     FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
 
     if not (
-        user.role in FULL_ACCESS_ROLES
+        role_matches(user.role, FULL_ACCESS_ROLES)
         or access_level == "FULL_ACCESS"
     ):
         assignment_exists = (

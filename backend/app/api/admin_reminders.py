@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.roles import role_matches
 from app.dependencies.auth import get_current_user
 from app.services.document_reminders import run_document_reminders
 
@@ -16,7 +17,7 @@ def run_reminders(
     current_user=Depends(get_current_user),
 ):
     # Restrict to admin / system roles
-    if current_user.role not in {"ADMIN", "SYSTEM"}:
+    if not role_matches(current_user.role, {"ADMIN", "SYSTEM"}):
         raise HTTPException(status_code=403, detail="Forbidden")
 
     run_document_reminders(

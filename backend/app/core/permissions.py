@@ -6,6 +6,7 @@ from fastapi import Depends, HTTPException, status
 
 from app.core.security import get_current_user, CurrentUser
 from app.core.security import get_current_access
+from app.core.roles import role_matches
 
 
 # =========================================================
@@ -47,12 +48,11 @@ def require_roles(allowed_roles: Optional[Iterable[str]] = None):
     """
 
     def dependency(user: CurrentUser = Depends(get_current_user)):
-        if allowed_roles is not None:
-            if user.role not in allowed_roles:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail=f"Role '{user.role}' not allowed",
-                )
+        if not role_matches(user.role, allowed_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Role '{user.role}' not allowed",
+            )
         return user
 
     return dependency

@@ -53,6 +53,7 @@ if app is None:
 from app.models.visit import Visit
 from app.models.user import User
 from app.models.patient import Patient
+from app.models.admission import Admission
 from app.models.enums import VisitFormType
 
 # ---------------------------------------------------------
@@ -240,9 +241,36 @@ def ensure_patient(db_session, provider_user):
 
 
 @pytest.fixture
-def routine_rn_visit(db_session, provider_user, ensure_patient):
+def ensure_admission(db_session, provider_user, ensure_patient):
+    """Visits require an admission (visits.admission_id is NOT NULL)."""
+
+    def _ensure(patient_id):
+        ensure_patient(patient_id)
+
+        admission_id = stable_uuid(f"admission:{patient_id}")
+        existing = db_session.get(Admission, admission_id)
+        if existing:
+            return existing
+
+        admission = Admission(
+            id=admission_id,
+            tenant_id=db_session.info.get("tenant_id"),
+            patient_id=patient_id,
+            admission_date=FIXED_NOW_UTC,
+            created_by=provider_user.id,
+        )
+        db_session.add(admission)
+        db_session.flush()
+        return admission
+
+    return _ensure
+
+
+@pytest.fixture
+def routine_rn_visit(db_session, provider_user, ensure_patient, ensure_admission):
     patient_id = stable_uuid("patient:routine_rn")
     ensure_patient(patient_id)
+    admission = ensure_admission(patient_id)
 
     visit_id = stable_uuid("visit:routine_rn")
 
@@ -257,6 +285,7 @@ def routine_rn_visit(db_session, provider_user, ensure_patient):
         id=visit_id,
         tenant_id=db_session.info.get("tenant_id"),
         patient_id=patient_id,
+        admission_id=admission.id,
         provider_id=provider_user.id,
         visit_type="RN",
         visit_discipline="RN",
@@ -273,9 +302,10 @@ def routine_rn_visit(db_session, provider_user, ensure_patient):
     return visit
 
 @pytest.fixture
-def administrative_visit(db_session, provider_user, ensure_patient):
+def administrative_visit(db_session, provider_user, ensure_patient, ensure_admission):
     patient_id = stable_uuid("patient:administrative")
     ensure_patient(patient_id)
+    admission = ensure_admission(patient_id)
 
     visit_id = stable_uuid("visit:administrative")
 
@@ -287,6 +317,7 @@ def administrative_visit(db_session, provider_user, ensure_patient):
         id=visit_id,
         tenant_id=db_session.info.get("tenant_id"),
         patient_id=patient_id,
+        admission_id=admission.id,
         provider_id=provider_user.id,
         visit_type="ADMINISTRATIVE",
         visit_discipline="ADMINISTRATIVE",
@@ -301,11 +332,12 @@ def administrative_visit(db_session, provider_user, ensure_patient):
     return visit
 
 @pytest.fixture
-def telephone_rn_visit(db_session, provider_user, ensure_patient):
+def telephone_rn_visit(db_session, provider_user, ensure_patient, ensure_admission):
     require_visit_attr("visit_mode")
 
     patient_id = stable_uuid("patient:telephone_rn")
     ensure_patient(patient_id)
+    admission = ensure_admission(patient_id)
 
     visit_id = stable_uuid("visit:telephone_rn")
 
@@ -317,6 +349,7 @@ def telephone_rn_visit(db_session, provider_user, ensure_patient):
         id=visit_id,
         tenant_id=db_session.info.get("tenant_id"),
         patient_id=patient_id,
+        admission_id=admission.id,
         provider_id=provider_user.id,
         visit_type="RN",
         visit_discipline="RN",
