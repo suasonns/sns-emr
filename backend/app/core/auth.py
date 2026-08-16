@@ -30,6 +30,8 @@ VALID_ROLES = {
     "MEDICAL_DIRECTOR_DESIGNEE",
     "ADMINISTRATOR",
     "DPCS",
+    # Platform owner; required by require_owner and the owner dashboard.
+    "OWNER",
 }
 
 

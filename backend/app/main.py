@@ -103,6 +103,39 @@ def _backend_root_dir() -> Path:
 
 
 # ---------------------------------------------------------------------
+# STARTUP MIGRATION (OPT-IN)
+# ---------------------------------------------------------------------
+
+def run_migrations_on_start() -> None:
+    """
+    Applies migrations before the startup checks when RUN_MIGRATIONS_ON_START
+    is set, so a fresh environment can build its own schema without a separate
+    pre-deploy step.
+    """
+
+    import os
+
+    if os.getenv("RUN_MIGRATIONS_ON_START", "").lower() not in {"1", "true"}:
+        return
+
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    backend_root = _backend_root_dir()
+    ini_path = backend_root / "alembic.ini"
+
+    if not ini_path.is_file():
+        raise RuntimeError(f"❌ Alembic config not found: {ini_path}")
+
+    alembic_cfg = AlembicConfig(str(ini_path))
+    alembic_cfg.set_main_option("script_location", str(backend_root / "alembic"))
+
+    logger.info("Running database migrations on startup")
+    command.upgrade(alembic_cfg, "head")
+    STARTUP_STATUS["migrations_applied_on_start"] = True
+
+
+# ---------------------------------------------------------------------
 # ALEMBIC CHECK (HARD STOP)
 # ---------------------------------------------------------------------
 
@@ -110,11 +143,6 @@ def assert_alembic_in_sync() -> None:
     """
     Ensures that the database schema is fully migrated to the latest revision.
     Hard fails if drift is detected.
-
-    Enterprise-grade:
-    - deterministic
-    - failure-safe
-    - audit-traceable
     """
 
     import os
@@ -431,6 +459,7 @@ async def lifespan(app: FastAPI):
         # -------------------------------------------------------------
         # HARD STARTUP CHECKS
         # -------------------------------------------------------------
+        run_migrations_on_start()
         assert_alembic_in_sync()
         assert_db_probe()
         check_model_schema_alignment()

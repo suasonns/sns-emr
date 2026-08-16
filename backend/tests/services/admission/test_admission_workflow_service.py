@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import Mock, patch
 
@@ -202,6 +203,7 @@ def test_start_soc(
         patient=patient,
         changed_by=uuid4(),
         role="RN",
+        soc_datetime=datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
     )
 
     assert result["success"] is True
@@ -240,6 +242,7 @@ def test_complete_admission(
         patient=patient,
         changed_by=uuid4(),
         role="RN",
+        admit_datetime=datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc),
     )
 
     assert result["success"] is True

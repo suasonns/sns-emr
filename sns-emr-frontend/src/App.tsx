@@ -20,6 +20,7 @@ export default function App() {
         <Route path="/analytics" element={<RequireAuth><SNSAnalytics /></RequireAuth>} />
         <Route path="/tenant" element={<RequireAuth><Navigate to="/analytics?section=census" replace /></RequireAuth>} />
         <Route path="/owner" element={<RequireAuth><OwnerDashboard /></RequireAuth>} />
+        <Route path="/owner/:section" element={<RequireAuth><OwnerDashboard /></RequireAuth>} />
         <Route path="/rnica" element={<RequireAuth><Navigate to="/analytics?section=rnica" replace /></RequireAuth>} />
         <Route path="/msw-ica" element={<RequireAuth><Navigate to="/analytics?section=msw-ica" replace /></RequireAuth>} />
         <Route path="/sc-ica" element={<RequireAuth><Navigate to="/analytics?section=sc-ica" replace /></RequireAuth>} />
