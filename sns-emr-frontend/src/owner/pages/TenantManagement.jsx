@@ -48,8 +48,8 @@ export default function TenantManagement() {
       </div>
 
       {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center' }}>
+        <div style={{ position: 'relative', flex: 1 }}>
           <span style={{ position: 'absolute', left: 12, top: 10, fontSize: 14, color: COLORS.dim }}>🔍</span>
           <input style={S.searchBar} placeholder="Search agencies by name, region, or database ID..." readOnly />
         </div>
@@ -70,7 +70,7 @@ export default function TenantManagement() {
       {/* Table + Detail Panel */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 24 }}>
         {/* Table */}
-        <div style={{ ...S.card, padding: 18 }}>
+        <div style={S.card}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr>
@@ -81,10 +81,7 @@ export default function TenantManagement() {
             </thead>
             <tbody>
               {TENANTS.map((t, i) => (
-                <tr
-                  key={i}
-                  style={i === 0 ? { background: 'rgba(16,183,162,0.06)', boxShadow: 'inset 0 0 0 1px rgba(16,183,162,0.08)' } : {}}
-                >
+                <tr key={i} style={i === 0 ? { background: 'rgba(16,183,162,0.06)' } : {}}>
                   <td style={{ ...S.tableCell, fontWeight: 600, color: COLORS.white }}>{t.name}</td>
                   <td style={{ ...S.tableCell }}><span style={S.badge(t.statusColor + '22', t.statusColor)}>{t.status}</span></td>
                   <td style={S.tableCell}>
@@ -106,10 +103,10 @@ export default function TenantManagement() {
         </div>
 
         {/* Detail Panel */}
-        <div style={{ ...S.card, padding: 18 }}>
+        <div style={S.card}>
           <p style={{ fontSize: 12, fontWeight: 700, color: COLORS.muted, margin: '0 0 4px', letterSpacing: 0.5 }}>SELECTED TENANT</p>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 4px' }}>Grace Hospice Care</h3>
-          <p style={{ fontSize: 11, color: COLORS.muted, margin: '0 0 20px' }}>ID: tenant_grace_991b2</p>
+          <p style={{ fontSize: 11, color: COLORS.muted, margin: '0 0 24px' }}>ID: tenant_grace_991b2</p>
 
           <h4 style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, margin: '0 0 12px' }}>Quick Diagnostics</h4>
           {[
@@ -123,13 +120,13 @@ export default function TenantManagement() {
             </div>
           ))}
 
-          <h4 style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, margin: '22px 0 12px' }}>Administrative Actions</h4>
+          <h4 style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, margin: '24px 0 12px' }}>Administrative Actions</h4>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: COLORS.bg, borderRadius: 8, border: `1px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: COLORS.bg, borderRadius: 8 }}>
               <span>⚙️</span>
               <span style={{ fontSize: 13, color: COLORS.muted }}>SaaS Billing Configuration</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: COLORS.bg, borderRadius: 8, border: `1px solid ${COLORS.border}` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', background: COLORS.bg, borderRadius: 8 }}>
               <span>📄</span>
               <span style={{ fontSize: 13, color: COLORS.muted }}>Export Compliance Audit</span>
             </div>
