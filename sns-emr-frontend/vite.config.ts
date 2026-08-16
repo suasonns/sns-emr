@@ -32,7 +32,7 @@ export default defineConfig({
   preview: {
     port: 4173,
     host: true,
-    allowedHosts: "all",
+    allowedHosts: true,
     proxy: {
       "/api": {
         target: "http://localhost:8000",
