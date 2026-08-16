@@ -507,6 +507,17 @@ def authorize_admission(
 
     if admission.election_signed_at is None:
         admission.election_signed_at = election_signed_at
+
+    # SOC lives on the admission and the chart reads it from there. Election
+    # signature establishes it, and it never moves once established.
+    if admission.soc_date is None:
+        admission.soc_date = election_signed_at
+
+        if getattr(admission, "effective_date", None) is None:
+            admission.effective_date = election_signed_at
+
+        if getattr(admission, "admission_date", None) is None:
+            admission.admission_date = election_signed_at
     
     # --------------------------------------------------
     # ✅ STATUS TRANSITION

@@ -10,6 +10,7 @@ from app.models.enums import (
     TaskStatus,
 )
 from app.services.task_overdue_engine import run_overdue_engine
+from tests.conftest import TEST_USER_ID
 
 
 def test_overdue_engine_marks_tasks(db_session):
@@ -20,8 +21,8 @@ def test_overdue_engine_marks_tasks(db_session):
     is in the past is marked OVERDUE by the engine.
     """
 
-    tenant_id = uuid.uuid4()
-    user_id = uuid.uuid4()
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    user_id = TEST_USER_ID
 
     # -----------------------------------------------------
     # Create patient required by FK constraints

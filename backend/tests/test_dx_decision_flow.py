@@ -3,21 +3,55 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
-from app.db.session import SessionLocal
 from app.models.patient import Patient
 from app.models.admission import Admission
 from app.models.patient_diagnosis import PatientDiagnosis
-from app.models.enums import DiagnosisType, DiagnosisStatus
+from app.models.enums import DiagnosisType, DiagnosisStatus, DiagnosisSource
 from app.services.admission_cloning_service import clone_previous_admission
 from app.services.admission_dx_validation_engine import AdmissionDxValidationEngine
 
 
-PATIENT_ID = uuid.UUID("22acc303-cd29-42d6-8083-18b2541d1c6b")
-
-
 def _get_patient(db):
-    patient = db.query(Patient).filter(Patient.id == PATIENT_ID).first()
-    assert patient is not None, "Patient not found"
+    tenant_id = uuid.UUID(db.info["tenant_id"])
+    user_id = _get_existing_user_id(db)
+    patient_id = uuid.uuid4()
+    patient = Patient(
+        id=patient_id,
+        tenant_id=tenant_id,
+        mrn=f"MRN-{patient_id.hex[:8]}",
+        date_of_birth=datetime(1950, 1, 1).date(),
+        primary_diagnosis="TEST DX",
+        status="ACTIVE",
+        admission_status="PRE_REFERRAL",
+        acuity_state="ROUTINE",
+        created_by=user_id,
+    )
+    db.add(patient)
+    db.flush()
+
+    prior_admission = Admission(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        status="AUTHORIZED",
+        admission_date=datetime.now(timezone.utc),
+        created_by=user_id,
+    )
+    db.add(prior_admission)
+    db.add(
+        PatientDiagnosis(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            diagnosis_type=DiagnosisType.PRIMARY,
+            status=DiagnosisStatus.ACTIVE,
+            source=DiagnosisSource.REFERRAL,
+            icd10_code="C25.9",
+            diagnosis_description="Malignant neoplasm of pancreas",
+            display_name="Pancreatic cancer",
+        )
+    )
+    db.flush()
     return patient
 
 
@@ -85,9 +119,8 @@ def _create_new_admission(db, patient, user_id):
     return new_admission
 
 
-def test_dx_decision_same_primary():
-    db = SessionLocal()
-
+def test_dx_decision_same_primary(db_session):
+    db = db_session
     try:
         patient = _get_patient(db)
         user_id = _get_existing_user_id(db)
@@ -134,12 +167,10 @@ def test_dx_decision_same_primary():
 
     finally:
         db.rollback()
-        db.close()
 
 
-def test_dx_decision_changed_primary():
-    db = SessionLocal()
-
+def test_dx_decision_changed_primary(db_session):
+    db = db_session
     try:
         patient = _get_patient(db)
         user_id = _get_existing_user_id(db)
@@ -190,4 +221,3 @@ def test_dx_decision_changed_primary():
 
     finally:
         db.rollback()
-        db.close()

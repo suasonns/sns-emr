@@ -62,7 +62,7 @@ def _test_tenant_id() -> str:
 
 def login_headers(client: TestClient, user_id: str, role: str) -> dict:
     token = create_access_token(
-        user_id=uuid.uuid4(),
+        user_id=TEST_USER_ID,
         role=role,
         tenant_id=uuid.UUID(_test_tenant_id()),
         email=f"{user_id}@example.com",

@@ -1,5 +1,5 @@
 def test_telephone_visit_never_closes_tasks(
-    client, telephone_rn_visit
+    client, rn_headers, telephone_rn_visit
 ):
     """
     COMPLIANCE TEST:
@@ -7,7 +7,8 @@ def test_telephone_visit_never_closes_tasks(
     """
 
     response = client.post(
-        f"/visits/{telephone_rn_visit.id}/finalize"
+        f"/visits/{telephone_rn_visit.id}/finalize",
+        headers=rn_headers,
     )
 
     assert response.status_code == 400
