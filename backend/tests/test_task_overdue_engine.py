@@ -29,7 +29,6 @@ def test_overdue_engine_marks_tasks(db_session):
     patient = Patient(
         tenant_id=tenant_id,
         mrn=f"TEST-{uuid.uuid4().hex[:8]}",
-        full_name="Overdue Engine Test Patient",
         date_of_birth=date(1940, 1, 1),
         primary_diagnosis="C34.90",
         created_by=user_id,

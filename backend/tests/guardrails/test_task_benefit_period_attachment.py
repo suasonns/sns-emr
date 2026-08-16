@@ -40,7 +40,6 @@ def patient(db_session, tenant_id):
         tenant_id=tenant_id,
         created_by=user_id,
         mrn=f"TASKTEST-{uuid4().hex[:8]}",
-        full_name="Task BP Attachment Test",
         date_of_birth=date(1950, 1, 1),
         primary_diagnosis="Terminal condition",
         status="ACTIVE",

@@ -46,7 +46,6 @@ def _ensure_patient(db_session, patient_id: uuid.UUID, *, acuity_state: str = "R
             id=patient_id,
             tenant_id=TENANT_ID,
             mrn=f"POC-{str(patient_id)[:8]}",
-            full_name="POC Cadence Test Patient",
             date_of_birth=date(1940, 1, 1),
             primary_diagnosis="C34.90",
             status="ACTIVE",

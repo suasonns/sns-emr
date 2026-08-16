@@ -30,7 +30,8 @@ class User(BaseModel):
 
     password_hash = Column(
         String(255),
-        nullable=False,
+        # Null until a password is set; login rejects users without a hash.
+        nullable=True,
     )
 
     full_name = Column(

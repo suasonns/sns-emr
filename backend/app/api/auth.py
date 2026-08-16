@@ -57,11 +57,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(
-        subject=str(user.id),
+        user_id=user.id,
         role=str(user.role),
-        tenant_id=str(user.tenant_id),
+        tenant_id=user.tenant_id,
         email=user.email,
-        full_name=user.full_name,
     )
 
     return {
@@ -90,7 +89,9 @@ def change_password(
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    if not verify_password_hash(payload.current_password, user.password_hash):
+    if not user.password_hash or not verify_password_hash(
+        payload.current_password, user.password_hash
+    ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     user.password_hash = hash_password(payload.new_password)

@@ -33,9 +33,9 @@ def _test_tenant_id() -> str:
 
 def login_headers(client: TestClient, user_id: str, role: str) -> dict:
     token = create_access_token(
-        subject=str(uuid.uuid4()),
+        user_id=uuid.uuid4(),
         role=role,
-        tenant_id=_test_tenant_id(),
+        tenant_id=uuid.UUID(_test_tenant_id()),
         email=f"{user_id}@example.com",
     )
     return {"Authorization": f"Bearer {token}"}

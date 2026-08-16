@@ -53,7 +53,6 @@ def _ensure_patient(db_session, pid: uuid.UUID) -> Patient:
         id=pid,
         tenant_id=tenant_id,
         mrn=f"MRN-{str(pid)[:8]}",
-        full_name="TEST PATIENT",
         date_of_birth=datetime(1950, 1, 1, tzinfo=timezone.utc).date(),
         primary_diagnosis="TEST DX",
         status="ACTIVE",

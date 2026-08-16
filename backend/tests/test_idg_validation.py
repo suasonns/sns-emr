@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.idg_note import IDGNote
 from app.models.idg_review import IDGReview
-from app.services.idg_validator import (
+from app.services.idg_completeness import (
     validate_idg_completeness,
 )
 
@@ -55,7 +55,6 @@ def create_note(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         patient_id=review.patient_id,
-        benefit_period_id=review.benefit_period_id,
         idg_review_id=review.id,
         discipline=discipline,
         note=note,

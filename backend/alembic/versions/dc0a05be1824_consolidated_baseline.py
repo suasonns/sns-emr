@@ -1,8 +1,8 @@
 ﻿"""consolidated baseline
 
-Revision ID: 0dbb57ec3dcd
+Revision ID: dc0a05be1824
 Revises: 
-Create Date: 2026-08-15 16:54:44.754908
+Create Date: 2026-08-15 17:02:03.969974
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '0dbb57ec3dcd'
+revision: str = 'dc0a05be1824'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -256,9 +256,9 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_idg_meetings'))
     )
     op.create_index(op.f('ix_idg_meetings_benefit_period_id'), 'idg_meetings', ['benefit_period_id'], unique=False)
-    op.create_index('ix_idg_meetings_meeting_date', 'idg_meetings', ['meeting_date'], unique=False)
-    op.create_index(op.f('ix_idg_meetings_patient_id'), 'idg_meetings', ['patient_id'], unique=False)
-    op.create_index(op.f('ix_idg_meetings_status'), 'idg_meetings', ['status'], unique=False)
+    op.create_index(op.f('ix_idg_meetings_meeting_date'), 'idg_meetings', ['meeting_date'], unique=False)
+    op.create_index('ix_idg_meetings_patient_id', 'idg_meetings', ['patient_id'], unique=False)
+    op.create_index('ix_idg_meetings_status', 'idg_meetings', ['status'], unique=False)
     op.create_index(op.f('ix_idg_meetings_tenant_id'), 'idg_meetings', ['tenant_id'], unique=False)
     op.create_table('idg_priority_rules',
     sa.Column('id', sa.UUID(), nullable=False),
@@ -302,12 +302,12 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id', name=op.f('pk_idg_reviews'))
     )
     op.create_index('ix_idg_reviews_benefit_period_id', 'idg_reviews', ['benefit_period_id'], unique=False)
-    op.create_index('ix_idg_reviews_idg_meeting_id', 'idg_reviews', ['idg_meeting_id'], unique=False)
+    op.create_index(op.f('ix_idg_reviews_idg_meeting_id'), 'idg_reviews', ['idg_meeting_id'], unique=False)
     op.create_index(op.f('ix_idg_reviews_is_finalized'), 'idg_reviews', ['is_finalized'], unique=False)
-    op.create_index(op.f('ix_idg_reviews_patient_id'), 'idg_reviews', ['patient_id'], unique=False)
-    op.create_index('ix_idg_reviews_plan_of_care_version_id', 'idg_reviews', ['plan_of_care_version_id'], unique=False)
-    op.create_index(op.f('ix_idg_reviews_review_date'), 'idg_reviews', ['review_date'], unique=False)
-    op.create_index('ix_idg_reviews_tenant_id', 'idg_reviews', ['tenant_id'], unique=False)
+    op.create_index('ix_idg_reviews_patient_id', 'idg_reviews', ['patient_id'], unique=False)
+    op.create_index(op.f('ix_idg_reviews_plan_of_care_version_id'), 'idg_reviews', ['plan_of_care_version_id'], unique=False)
+    op.create_index('ix_idg_reviews_review_date', 'idg_reviews', ['review_date'], unique=False)
+    op.create_index(op.f('ix_idg_reviews_tenant_id'), 'idg_reviews', ['tenant_id'], unique=False)
     op.create_table('idg_signatures',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=False),
@@ -325,11 +325,11 @@ def upgrade() -> None:
     sa.UniqueConstraint('idg_review_id', 'user_id', name='uq_idg_signature_review_user')
     )
     op.create_index(op.f('ix_idg_signatures_discipline'), 'idg_signatures', ['discipline'], unique=False)
-    op.create_index('ix_idg_signatures_idg_review_id', 'idg_signatures', ['idg_review_id'], unique=False)
+    op.create_index(op.f('ix_idg_signatures_idg_review_id'), 'idg_signatures', ['idg_review_id'], unique=False)
     op.create_index('ix_idg_signatures_patient_id', 'idg_signatures', ['patient_id'], unique=False)
-    op.create_index('ix_idg_signatures_signed_at', 'idg_signatures', ['signed_at'], unique=False)
+    op.create_index(op.f('ix_idg_signatures_signed_at'), 'idg_signatures', ['signed_at'], unique=False)
     op.create_index(op.f('ix_idg_signatures_tenant_id'), 'idg_signatures', ['tenant_id'], unique=False)
-    op.create_index(op.f('ix_idg_signatures_user_id'), 'idg_signatures', ['user_id'], unique=False)
+    op.create_index('ix_idg_signatures_user_id', 'idg_signatures', ['user_id'], unique=False)
     op.create_table('incident_reports',
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('tenant_id', sa.UUID(), nullable=False),
@@ -656,9 +656,9 @@ def upgrade() -> None:
     sa.UniqueConstraint('idg_review_id', name='uq_idg_md_attestation_review')
     )
     op.create_index(op.f('ix_idg_md_attestations_attested_at'), 'idg_md_attestations', ['attested_at'], unique=False)
-    op.create_index(op.f('ix_idg_md_attestations_attested_by'), 'idg_md_attestations', ['attested_by'], unique=False)
+    op.create_index('ix_idg_md_attestations_attested_by', 'idg_md_attestations', ['attested_by'], unique=False)
     op.create_index(op.f('ix_idg_md_attestations_idg_review_id'), 'idg_md_attestations', ['idg_review_id'], unique=False)
-    op.create_index('ix_idg_md_attestations_patient_id', 'idg_md_attestations', ['patient_id'], unique=False)
+    op.create_index(op.f('ix_idg_md_attestations_patient_id'), 'idg_md_attestations', ['patient_id'], unique=False)
     op.create_index('ix_idg_md_attestations_status', 'idg_md_attestations', ['status'], unique=False)
     op.create_index('ix_idg_md_attestations_tenant_id', 'idg_md_attestations', ['tenant_id'], unique=False)
     op.create_table('idg_notes',
@@ -680,9 +680,9 @@ def upgrade() -> None:
     sa.UniqueConstraint('idg_review_id', 'discipline', name='uq_idg_note_review_discipline')
     )
     op.create_index('ix_idg_notes_created_at', 'idg_notes', ['created_at'], unique=False)
-    op.create_index(op.f('ix_idg_notes_discipline'), 'idg_notes', ['discipline'], unique=False)
+    op.create_index('ix_idg_notes_discipline', 'idg_notes', ['discipline'], unique=False)
     op.create_index('ix_idg_notes_idg_review_id', 'idg_notes', ['idg_review_id'], unique=False)
-    op.create_index(op.f('ix_idg_notes_patient_id'), 'idg_notes', ['patient_id'], unique=False)
+    op.create_index('ix_idg_notes_patient_id', 'idg_notes', ['patient_id'], unique=False)
     op.create_index('ix_idg_notes_status', 'idg_notes', ['status'], unique=False)
     op.create_index(op.f('ix_idg_notes_tenant_id'), 'idg_notes', ['tenant_id'], unique=False)
     op.create_table('payers',
@@ -801,7 +801,7 @@ def upgrade() -> None:
     op.create_table('users',
     sa.Column('tenant_id', sa.UUID(), nullable=False),
     sa.Column('email', sa.String(), nullable=False),
-    sa.Column('password_hash', sa.String(length=255), nullable=False),
+    sa.Column('password_hash', sa.String(length=255), nullable=True),
     sa.Column('full_name', sa.String(), nullable=False),
     sa.Column('first_name', sa.String(length=100), nullable=True),
     sa.Column('middle_name', sa.String(length=100), nullable=True),
@@ -3371,16 +3371,16 @@ def downgrade() -> None:
     op.drop_table('payers')
     op.drop_index(op.f('ix_idg_notes_tenant_id'), table_name='idg_notes')
     op.drop_index('ix_idg_notes_status', table_name='idg_notes')
-    op.drop_index(op.f('ix_idg_notes_patient_id'), table_name='idg_notes')
+    op.drop_index('ix_idg_notes_patient_id', table_name='idg_notes')
     op.drop_index('ix_idg_notes_idg_review_id', table_name='idg_notes')
-    op.drop_index(op.f('ix_idg_notes_discipline'), table_name='idg_notes')
+    op.drop_index('ix_idg_notes_discipline', table_name='idg_notes')
     op.drop_index('ix_idg_notes_created_at', table_name='idg_notes')
     op.drop_table('idg_notes')
     op.drop_index('ix_idg_md_attestations_tenant_id', table_name='idg_md_attestations')
     op.drop_index('ix_idg_md_attestations_status', table_name='idg_md_attestations')
-    op.drop_index('ix_idg_md_attestations_patient_id', table_name='idg_md_attestations')
+    op.drop_index(op.f('ix_idg_md_attestations_patient_id'), table_name='idg_md_attestations')
     op.drop_index(op.f('ix_idg_md_attestations_idg_review_id'), table_name='idg_md_attestations')
-    op.drop_index(op.f('ix_idg_md_attestations_attested_by'), table_name='idg_md_attestations')
+    op.drop_index('ix_idg_md_attestations_attested_by', table_name='idg_md_attestations')
     op.drop_index(op.f('ix_idg_md_attestations_attested_at'), table_name='idg_md_attestations')
     op.drop_table('idg_md_attestations')
     op.drop_index('ix_idg_justification_tenant_id', table_name='idg_justification_notes')
@@ -3444,19 +3444,19 @@ def downgrade() -> None:
     op.drop_table('med_reconciliation_audit_logs')
     op.drop_table('interfaces')
     op.drop_table('incident_reports')
-    op.drop_index(op.f('ix_idg_signatures_user_id'), table_name='idg_signatures')
+    op.drop_index('ix_idg_signatures_user_id', table_name='idg_signatures')
     op.drop_index(op.f('ix_idg_signatures_tenant_id'), table_name='idg_signatures')
-    op.drop_index('ix_idg_signatures_signed_at', table_name='idg_signatures')
+    op.drop_index(op.f('ix_idg_signatures_signed_at'), table_name='idg_signatures')
     op.drop_index('ix_idg_signatures_patient_id', table_name='idg_signatures')
-    op.drop_index('ix_idg_signatures_idg_review_id', table_name='idg_signatures')
+    op.drop_index(op.f('ix_idg_signatures_idg_review_id'), table_name='idg_signatures')
     op.drop_index(op.f('ix_idg_signatures_discipline'), table_name='idg_signatures')
     op.drop_table('idg_signatures')
-    op.drop_index('ix_idg_reviews_tenant_id', table_name='idg_reviews')
-    op.drop_index(op.f('ix_idg_reviews_review_date'), table_name='idg_reviews')
-    op.drop_index('ix_idg_reviews_plan_of_care_version_id', table_name='idg_reviews')
-    op.drop_index(op.f('ix_idg_reviews_patient_id'), table_name='idg_reviews')
+    op.drop_index(op.f('ix_idg_reviews_tenant_id'), table_name='idg_reviews')
+    op.drop_index('ix_idg_reviews_review_date', table_name='idg_reviews')
+    op.drop_index(op.f('ix_idg_reviews_plan_of_care_version_id'), table_name='idg_reviews')
+    op.drop_index('ix_idg_reviews_patient_id', table_name='idg_reviews')
     op.drop_index(op.f('ix_idg_reviews_is_finalized'), table_name='idg_reviews')
-    op.drop_index('ix_idg_reviews_idg_meeting_id', table_name='idg_reviews')
+    op.drop_index(op.f('ix_idg_reviews_idg_meeting_id'), table_name='idg_reviews')
     op.drop_index('ix_idg_reviews_benefit_period_id', table_name='idg_reviews')
     op.drop_table('idg_reviews')
     op.drop_index(op.f('ix_idg_priority_rules_keyword'), table_name='idg_priority_rules')
@@ -3464,9 +3464,9 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_idg_priority_rules_category'), table_name='idg_priority_rules')
     op.drop_table('idg_priority_rules')
     op.drop_index(op.f('ix_idg_meetings_tenant_id'), table_name='idg_meetings')
-    op.drop_index(op.f('ix_idg_meetings_status'), table_name='idg_meetings')
-    op.drop_index(op.f('ix_idg_meetings_patient_id'), table_name='idg_meetings')
-    op.drop_index('ix_idg_meetings_meeting_date', table_name='idg_meetings')
+    op.drop_index('ix_idg_meetings_status', table_name='idg_meetings')
+    op.drop_index('ix_idg_meetings_patient_id', table_name='idg_meetings')
+    op.drop_index(op.f('ix_idg_meetings_meeting_date'), table_name='idg_meetings')
     op.drop_index(op.f('ix_idg_meetings_benefit_period_id'), table_name='idg_meetings')
     op.drop_table('idg_meetings')
     op.drop_index(op.f('ix_idg_intelligence_items_tenant_id'), table_name='idg_intelligence_items')

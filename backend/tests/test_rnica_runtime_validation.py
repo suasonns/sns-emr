@@ -20,7 +20,6 @@ def test_rnica_assessment_save_get_update_and_lock(client, db_session):
             id=uuid.uuid4(),
             tenant_id=tenant_id,
             mrn=f"RNICA-{uuid.uuid4().hex[:12]}",
-            full_name="RNICA Runtime Test Patient",
             date_of_birth=date(1988, 7, 23),
             primary_diagnosis="Hospice qualifying diagnosis",
             status="ACTIVE",

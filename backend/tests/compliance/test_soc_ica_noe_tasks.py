@@ -31,7 +31,6 @@ def _ensure_min_patient(db_session, patient_id: uuid.UUID):
         id=patient_id,
         tenant_id=db_session.info.get("tenant_id"),
         mrn=f"MRN-{str(patient_id)[:8]}",
-        full_name="TEST PATIENT",
         date_of_birth=datetime(1950, 1, 1, tzinfo=timezone.utc).date(),
         primary_diagnosis="TEST DX",
         status="ACTIVE",
