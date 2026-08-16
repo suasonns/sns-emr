@@ -16,7 +16,7 @@ from app.services.admission.guardrail_assessment_service import (
 )
 
 
-router = APIRouter(prefix="/api/patients", tags=["Admissions"])
+router = APIRouter(prefix="/patients", tags=["Admissions"])
 
 
 class AdmitPatientRequest(BaseModel):

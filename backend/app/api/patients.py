@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import uuid
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from typing import Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
@@ -37,12 +37,6 @@ from app.models.enums import (
     TaskOrigin,
     TaskType,
     TaskDiscipline,
-    TaskRegulatoryBasis,
-)
-from app.services.admission.admission_guardrail_service import (
-    AdmissionGuardrailService,
-    TrainingModeBlockedError,
-    AdmissionPrerequisiteError,
 )
 from app.services.icd10_resolver_service import (
     ICD10ResolutionError,
@@ -55,9 +49,6 @@ from enum import Enum
 
 from datetime import datetime
 
-class AdmitPatientRequest(BaseModel):
-    acknowledged: bool = False
-    soc_date: datetime
 class PatientCategory(str, Enum):
     ACTIVE = "ACTIVE"
     PENDING = "PENDING"
@@ -1641,126 +1632,8 @@ def run_eligibility_with_retry(patient, eligibility_client):
 # =========================================================
 # ADMIT PATIENT
 # =========================================================
-
-@router.post("/{patient_id}/admit")
-def admit_patient(
-    patient_id: uuid.UUID,
-    payload: AdmitPatientRequest,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    """
-    Legacy compatibility endpoint.
-
-    IMPORTANT:
-    - Admission is no longer directly mutated here.
-    - This endpoint now delegates to manual SOC-triggered admission logic.
-    - Keep this only if existing clients still call /patients/{patient_id}/admit.
-    """
-    tenant_id = _tenant_id_uuid(user)
-
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-
-    user_id = (
-        getattr(user, "id", None)
-        or getattr(user, "user_id", None)
-        or getattr(user, "sub", None)
-    )
-
-    if not user_id:
-        raise HTTPException(500, "Invalid user identity")
-
-    try:
-        result = AdmissionGuardrailService.set_soc_datetime(
-            db=db,
-            patient=patient,
-            soc_datetime=payload.soc_date,
-            actor_user_id=user_id,
-            trigger_source="RN" if user.role in {"RN", "NP", "MD"} else "OFFICE",
-            commit=True,
-        )
-    except TrainingModeBlockedError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-    except AdmissionPrerequisiteError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=str(exc),
-        ) from exc
-
-    # Only create admission tasks if admission actually happened
-    if result.get("admitted"):
-        now = datetime.now(timezone.utc)
-
-        def create_task(
-            task_type,
-            alert_reason,
-            due_hours,
-            discipline,
-            regulatory_basis
-        ):
-            return Task(
-                id=uuid.uuid4(),
-                tenant_id=tenant_id,
-                patient_id=patient.id,
-                task_type=task_type,
-                alert_reason=alert_reason,
-                status=TaskStatus.PENDING,
-                origin=TaskOrigin.SYSTEM,
-                discipline=discipline,
-                regulatory_basis=regulatory_basis,
-                created_at=now,
-                due_at=now + timedelta(hours=due_hours),
-                created_by=user_id,
-            )
-
-        tasks = [
-            create_task(
-                TaskType.CERTIFICATION,
-                "Physician Hospice Certification",
-                48,
-                TaskDiscipline.MD,
-                TaskRegulatoryBasis.CERTIFICATION
-            ),
-            create_task(
-                TaskType.POC_REVIEW_REQUIRED,
-                "Establish Plan of Care",
-                24,
-                TaskDiscipline.RN,
-                TaskRegulatoryBasis.POC_UPDATE
-            ),
-            create_task(
-                TaskType.CLINICAL_REVIEW_REQUIRED,
-                "Admission Clinical Review",
-                24,
-                TaskDiscipline.RN,
-                TaskRegulatoryBasis.CONDITION_TRIGGER
-            ),
-        ]
-
-        for t in tasks:
-            db.add(t)
-
-        try:
-            db.commit()
-        except Exception:
-            db.rollback()
-            raise
-
-    return result
+# Retired. Admission is owned by app/api/admissions.py, which enforces the
+# RN primary-diagnosis and diagnosis-discrepancy gates before admitting.
 
 # =========================================================
 # NON ADMIT
