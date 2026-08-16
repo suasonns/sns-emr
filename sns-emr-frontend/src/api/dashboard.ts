@@ -166,7 +166,8 @@ export type PatientComplianceDetailResponse = {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const token = getAccessToken();
-  const res = await fetch(url, {
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const res = await fetch(`${base}${url}`, {
     credentials: "include",
     headers: token
       ? {

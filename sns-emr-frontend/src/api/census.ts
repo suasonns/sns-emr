@@ -24,7 +24,8 @@ export type CensusWorkspaceResponse = {
 };
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url, { credentials: "include" });
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const res = await fetch(`${base}${url}`, { credentials: "include" });
   if (!res.ok) {
     throw new Error(`Request failed: ${url}`);
   }

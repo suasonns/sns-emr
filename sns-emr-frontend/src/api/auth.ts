@@ -3,7 +3,8 @@ import { clearAccessToken, clearCurrentUser, setAccessToken, setCurrentUser, typ
 export type AuthenticatedUser = SessionUser;
 
 export async function login(email: string, password: string) {
-  const response = await fetch("/auth/login", {
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const response = await fetch(`${base}/auth/login`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
