@@ -1638,42 +1638,8 @@ def run_eligibility_with_retry(patient, eligibility_client):
 # =========================================================
 # NON ADMIT
 # =========================================================
-
-@router.post("/{patient_id}/non-admit")
-def non_admit_patient(
-    patient_id: uuid.UUID,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    tenant_id = _tenant_id_uuid(user)
-
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(404, "Patient not found")
-
-    admission = _get_latest_admission(
-        db,
-        tenant_id=tenant_id,
-        patient_id=patient.id,
-    )
-
-    if not admission:
-        raise HTTPException(500, "Admission record missing")
-
-    now = datetime.now(timezone.utc)
-
-    admission.status = "NON_ADMIT"
-    admission.updated_at = now.replace(tzinfo=None)
-    admission.updated_by = getattr(user, "user_id", None) or getattr(user, "id", None) or getattr(user, "sub", None)
-
-    patient.not_admitted_at = now
-
-    db.commit()
-    return {"status": "NON_ADMIT"}
+# Retired. Non-admit is owned by app/api/admission.py, which requires a
+# reason and records the transition through AdmissionWorkflowService.
 
 @router.post("/tasks/{task_id}/complete")
 def complete_task(
