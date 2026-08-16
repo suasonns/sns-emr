@@ -89,6 +89,7 @@ export type ClinicalAlertsResponse = {
 
 export type TenantDashboardResponse = {
   tenant_id: string;
+  tenant_name?: string;
   ai_enabled: boolean;
   billing_enabled: boolean;
   dashboard: ClinicalComplianceDashboardResponse;
