@@ -12,7 +12,11 @@ Responsibilities:
 """
 
 from typing import Any, Dict
+from uuid import UUID
 
+from sqlalchemy.orm import Session
+
+from app.models.admission import Admission
 from app.services.admission.admission_readiness_gate import (
     AdmissionReadinessGate,
 )
@@ -26,6 +30,24 @@ from app.services.admission.transfer_validation_service import (
 
 
 class AdmissionService:
+
+    @classmethod
+    def get_latest_admission(
+        cls,
+        *,
+        db: Session,
+        patient_id: UUID,
+        tenant_id: UUID | None = None,
+    ) -> Admission | None:
+        """
+        Most recent admission for a patient. Callers treat None as missing.
+        """
+        query = db.query(Admission).filter(Admission.patient_id == patient_id)
+
+        if tenant_id is not None:
+            query = query.filter(Admission.tenant_id == tenant_id)
+
+        return query.order_by(Admission.created_at.desc()).first()
 
     @classmethod
     def validate_status_change(

@@ -3,19 +3,44 @@
 import os
 import uuid
 from dataclasses import dataclass
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.core.database import SessionLocal
 from app.core.security import create_access_token
 from app.db.base import Base
 from app.main import fastapi_app
+from app.models.admission import Admission
+from app.models.patient import Patient
 from app.models.tenant import Tenant
 from app.models.user import User
 
 TEST_USER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+
+# ---------------------------------------------------------------------
+# Audit defaults for fixtures
+#
+# patients.created_by and admissions.admission_date are NOT NULL because a
+# record needs an author and an admission needs a date. Fixtures across the
+# suite predate both, so they are filled here rather than weakening the model.
+# ---------------------------------------------------------------------
+
+@event.listens_for(Patient, "before_insert")
+def _default_patient_created_by(mapper, connection, target) -> None:
+    if getattr(target, "created_by", None) is None:
+        target.created_by = TEST_USER_ID
+
+
+@event.listens_for(Admission, "before_insert")
+def _default_admission_date(mapper, connection, target) -> None:
+    if getattr(target, "admission_date", None) is None:
+        target.admission_date = datetime.now(timezone.utc).replace(tzinfo=None)
+    if getattr(target, "created_by", None) is None:
+        target.created_by = TEST_USER_ID
 
 
 # ---------------------------------------------------------------------
