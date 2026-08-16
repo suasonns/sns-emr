@@ -135,6 +135,19 @@ def run_migrations_on_start() -> None:
     STARTUP_STATUS["migrations_applied_on_start"] = True
 
 
+def bootstrap_admin_on_start() -> None:
+    from app.core.database import SessionLocal
+    from app.services.admin_bootstrap_service import bootstrap_production_admin
+
+    db = SessionLocal()
+    try:
+        if bootstrap_production_admin(db):
+            logger.info("Production administrator account bootstrapped")
+            STARTUP_STATUS["admin_bootstrapped_on_start"] = True
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------
 # ALEMBIC CHECK (HARD STOP)
 # ---------------------------------------------------------------------
@@ -460,6 +473,7 @@ async def lifespan(app: FastAPI):
         # HARD STARTUP CHECKS
         # -------------------------------------------------------------
         run_migrations_on_start()
+        bootstrap_admin_on_start()
         assert_alembic_in_sync()
         assert_db_probe()
         check_model_schema_alignment()
