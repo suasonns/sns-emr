@@ -11,7 +11,9 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.audit_log import AuditLog
-from app.services.admission_guardrails_service import AdmissionGuardrailsService
+from app.services.admission.guardrail_assessment_service import (
+    AdmissionGuardrailAssessmentService,
+)
 
 
 router = APIRouter(prefix="/api/patients", tags=["Admissions"])
@@ -198,7 +200,7 @@ def admit_patient(
                 )
             
             # ✅ GUARDRAILS CHECK (MUST RUN BEFORE ACTIVATION)
-            guardrail_result = AdmissionGuardrailsService.assess_admission(
+            guardrail_result = AdmissionGuardrailAssessmentService.assess_admission(
                 db=db,
                 admission={"id": admission_ctx["id"], "patient_id": patient_id},
                 user_id=user_id,

@@ -15,7 +15,9 @@ from app.tenancy.registry import assert_known_tenant
 
 # ✅ CRITICAL SERVICES
 from app.services.admission_authorization_service import authorize_admission
-from app.services.admission_guardrails_service import AdmissionGuardrailsService
+from app.services.admission.guardrail_assessment_service import (
+    AdmissionGuardrailAssessmentService,
+)
 
 router = APIRouter(prefix="/soc-orders", tags=["soc-orders"])
 
@@ -87,7 +89,7 @@ def finalize_rn_admission_order(
     # ✅ GUARDRAILS (ENTERPRISE ENFORCEMENT)
     # -----------------------------------------------------
 
-    guardrail_result = AdmissionGuardrailsService.assess_admission(
+    guardrail_result = AdmissionGuardrailAssessmentService.assess_admission(
         db=db,
         admission={"id": None},
         tenant_id=tenant_id,

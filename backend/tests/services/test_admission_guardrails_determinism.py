@@ -40,7 +40,9 @@ sys.modules["app.services.tenant_settings_service"] = tenant_settings_mod
 # ------------------------------------------------------
 
 
-from app.services.admission_guardrails_service import AdmissionGuardrailsService
+from app.services.admission.guardrail_assessment_service import (
+    AdmissionGuardrailAssessmentService,
+)
 
 
 class FakeDBSession:
@@ -90,8 +92,8 @@ def test_guardrails_are_deterministic():
         "flush": False,  # IMPORTANT: do not flush in unit tests
     }
 
-    r1 = AdmissionGuardrailsService.assess_admission(**common_kwargs)
-    r2 = AdmissionGuardrailsService.assess_admission(**common_kwargs)
+    r1 = AdmissionGuardrailAssessmentService.assess_admission(**common_kwargs)
+    r2 = AdmissionGuardrailAssessmentService.assess_admission(**common_kwargs)
 
     # service_version can be ignored if you ever change it; everything else must match
     def scrub(r):
@@ -121,8 +123,8 @@ def test_guardrails_deterministic_when_borderline():
         "flush": False,
     }
 
-    r1 = AdmissionGuardrailsService.assess_admission(**kwargs)
-    r2 = AdmissionGuardrailsService.assess_admission(**kwargs)
+    r1 = AdmissionGuardrailAssessmentService.assess_admission(**kwargs)
+    r2 = AdmissionGuardrailAssessmentService.assess_admission(**kwargs)
 
     assert r1["severity"] == r2["severity"]
     assert r1["flags"] == r2["flags"]

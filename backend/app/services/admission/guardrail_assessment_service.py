@@ -1,4 +1,4 @@
-# services/admission_guardrails_service.py
+# services/admission/guardrail_assessment_service.py
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ class GuardrailOutcome:
     ui: Dict[str, Any]
 
 
-class AdmissionGuardrailsService:
+class AdmissionGuardrailAssessmentService:
     """
     Enterprise Hospice Admission Guardrails (Policy-Driven)
 
@@ -99,7 +99,7 @@ class AdmissionGuardrailsService:
         now = datetime.now(timezone.utc)
         correlation_id = str(uuid.uuid4())
 
-        mode = AdmissionGuardrailsService._get_guardrail_mode(db, tenant_id)
+        mode = AdmissionGuardrailAssessmentService._get_guardrail_mode(db, tenant_id)
 
         narrative = (narrative_text or "").strip()
         flags: List[str] = []
@@ -134,32 +134,32 @@ class AdmissionGuardrailsService:
         # =================================================
         if not narrative:
             flags.append("MISSING_ELIGIBILITY_NARRATIVE")
-            severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
+            severity = AdmissionGuardrailAssessmentService._escalate(severity, "HIGH")
         elif len(narrative) < int(min_narrative_length):
             flags.append("WEAK_ELIGIBILITY_NARRATIVE")
-            severity = AdmissionGuardrailsService._escalate(severity, "WARNING")
+            severity = AdmissionGuardrailAssessmentService._escalate(severity, "WARNING")
 
         # =================================================
         # Decline validation
         # =================================================
         if require_decline and not has_measurable_decline:
             flags.append("NO_MEASURABLE_EVIDENCE_OF_DECLINE")
-            severity = AdmissionGuardrailsService._escalate(severity, "HIGH")
+            severity = AdmissionGuardrailAssessmentService._escalate(severity, "HIGH")
 
         # =================================================
         # LCD / documentation consistency check
         # =================================================
         if lcd_status:
             lcd_code = str(lcd_status).strip().upper()
-            if lcd_code in AdmissionGuardrailsService.LCD_BAD:
+            if lcd_code in AdmissionGuardrailAssessmentService.LCD_BAD:
                 flags.append(f"LCD_STATUS_{lcd_code}")
-                severity = AdmissionGuardrailsService._escalate(severity, "CRITICAL")
+                severity = AdmissionGuardrailAssessmentService._escalate(severity, "CRITICAL")
 
         if severity == "CRITICAL":
             requires_md_review = True
 
         hard_stop = (mode == "STRICT" and severity in {"HIGH", "CRITICAL"})
-        status = AdmissionGuardrailsService._map_status(severity)
+        status = AdmissionGuardrailAssessmentService._map_status(severity)
 
         result = {
             "status": status,
@@ -169,7 +169,7 @@ class AdmissionGuardrailsService:
             "hard_stop": hard_stop,
             "rn_explanation": RN_DOCUMENTATION_GUIDANCE,
             "guardrail_mode": mode,
-            "service_version": AdmissionGuardrailsService.SERVICE_VERSION,
+            "service_version": AdmissionGuardrailAssessmentService.SERVICE_VERSION,
         }
 
         # =================================================
@@ -177,7 +177,7 @@ class AdmissionGuardrailsService:
         # =================================================
         if mode != "OFF" and flush:
             try:
-                AdmissionGuardrailsService._audit(
+                AdmissionGuardrailAssessmentService._audit(
                     db=db,
                     action="ADMISSION_RISK_ASSESSMENT",
                     entity_type="ADMISSION",
@@ -213,7 +213,7 @@ class AdmissionGuardrailsService:
             mode = TenantSettingsService.get_guardrail_mode(db, tenant_id)
             if isinstance(mode, str):
                 normalized = mode.strip().upper()
-                if normalized in AdmissionGuardrailsService.MODES:
+                if normalized in AdmissionGuardrailAssessmentService.MODES:
                     return normalized
         except Exception:
             pass
@@ -222,7 +222,7 @@ class AdmissionGuardrailsService:
 
     @staticmethod
     def _escalate(current: str, new: str) -> str:
-        order = AdmissionGuardrailsService.SEVERITY_ORDER
+        order = AdmissionGuardrailAssessmentService.SEVERITY_ORDER
         return order[max(order.index(current), order.index(new))]
 
     @staticmethod
