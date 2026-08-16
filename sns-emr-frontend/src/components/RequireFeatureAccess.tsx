@@ -7,18 +7,11 @@ import { getAccessToken } from "../api/session";
 import { getCurrentUser, setCurrentUser, type SessionUser } from "../api/session";
 
 type FeatureKey = "billing";
-const LOVE_AND_FAITH_TENANT_ID = "01271980-0000-0000-0000-000005101977";
-const PRIMARY_LOGIN_EMAIL = "romel.suason@suasonns.org";
-
-function isPrimaryLogin(user: SessionUser) {
-  return user.tenant_id === LOVE_AND_FAITH_TENANT_ID || user.email?.toLowerCase() === PRIMARY_LOGIN_EMAIL;
-}
 
 function hasFeatureAccess(user: SessionUser | null, feature: FeatureKey): boolean {
   if (!user) return false;
   if (user.role === "OWNER") return true;
   if (feature === "billing") {
-    if (isPrimaryLogin(user)) return user.billing_enabled !== false;
     return Boolean(user.billing_enabled);
   }
   return false;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import PatientModuleShell from "../components/PatientModuleShell";
 import { fetchBereavement, type BereavementResponse } from "../api/patientCharts";
 
+import { getActivePatientId } from "../utils/activePatient";
 const sections = [
   { key: "overview", label: "Care Overview" },
   { key: "visit-calendar", label: "Visit Calendar" },
@@ -20,8 +21,7 @@ const sections = [
   { key: "care-team", label: "Care Team" },
 ];
 
-const patientId = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
-
+const patientId = getActivePatientId() ?? "";
 export default function BereavementDataPage() {
   const [data, setData] = useState<BereavementResponse | null>(null);
   const [loading, setLoading] = useState(true);

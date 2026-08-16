@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchPatientSummary } from "../api/patientCharts";
+import { getActivePatientId } from "../utils/activePatient";
 import {
   saveMswIcaAssessment,
   getMswIcaAssessment,
@@ -9,7 +10,7 @@ import {
 } from "../api/icaAssessments";
 
 const API_BASE = "/visits/msw-ica";
-const DEFAULT_PATIENT_ID = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
+const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
 const STORAGE_PREFIX = "sns-emr-msw-ica";
 
 const INITIAL_FORM = {

@@ -28,6 +28,7 @@ import {
 } from "../api/icaAssessments";
 import PatientContextSidebar from "./PatientContextSidebar";
 
+import { getActivePatientId } from "../utils/activePatient";
 // ════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & CONFIGURATION
 // ════════════════════════════════════════════════════════════════
@@ -2511,8 +2512,7 @@ const SECTION_CONFIGS = {
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-const DEFAULT_PATIENT_ID = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
-
+const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
 export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: existingAssessmentId = undefined }) {
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");

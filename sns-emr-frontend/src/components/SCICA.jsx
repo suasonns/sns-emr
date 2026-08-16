@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchPatientSummary } from "../api/patientCharts";
 
-const DEFAULT_PATIENT_ID = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
+import { getActivePatientId } from "../utils/activePatient";
+const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
 const STORAGE_PREFIX = "sns-emr-sc-ica";
 
 const INITIAL_FORM = {

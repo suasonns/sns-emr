@@ -15,8 +15,8 @@ import {
 import { getCurrentUser } from "../api/session";
 import PortalShell from "../components/PortalShell";
 import { portalTypography } from "../styles/portalTypography";
-const PATIENT_ID = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
-
+import { getActivePatientId } from "../utils/activePatient";
+const PATIENT_ID = getActivePatientId() ?? "";
 const QUICK_LINKS = [
   { label: "Care Overview", route: "/care-overview" },
   { label: "Secure Inbox", route: "/secure-inbox" },

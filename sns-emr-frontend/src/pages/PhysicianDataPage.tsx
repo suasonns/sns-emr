@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import PatientModuleShell from "../components/PatientModuleShell";
 import { fetchPhysicianSummary, type PhysicianSummaryResponse } from "../api/patientCharts";
 
+import { getActivePatientId } from "../utils/activePatient";
 const sections = [
   { key: "overview", label: "Care Overview" },
   { key: "physician", label: "Physician" },
@@ -22,8 +23,7 @@ const sections = [
   { key: "care-team", label: "Care Team" },
 ];
 
-const patientId = "5d31a53f-eebd-468f-bcb6-1b43771fe113";
-
+const patientId = getActivePatientId() ?? "";
 export default function PhysicianDataPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<PhysicianSummaryResponse | null>(null);
