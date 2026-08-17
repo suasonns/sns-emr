@@ -197,7 +197,7 @@ const StaffCard = ({ member, colors, onReplace, roster }) => {
                 fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap',
               }}
             >
-              {member.assigned ? 'Replace' : 'Assign'}
+              {member.assigned ? 'Reassign' : 'Assign'}
             </button>
           )}
         </div>
@@ -206,7 +206,7 @@ const StaffCard = ({ member, colors, onReplace, roster }) => {
       {pickerOpen && (
         <div style={{ padding: '10px 16px 14px', borderTop: `1px solid ${colors.border}` }}>
           <div style={{ color: colors.label, fontSize: 11, textTransform: 'uppercase', marginBottom: 8 }}>
-            Select replacement staff
+            Select reassignment
           </div>
           {alternates.length === 0 && (
             <div style={{ color: colors.label, fontSize: 12 }}>No other staff available for this discipline.</div>
@@ -242,7 +242,51 @@ const StaffCard = ({ member, colors, onReplace, roster }) => {
   );
 };
 
-const DisciplineSection = ({ discipline, colors, expanded, onToggle, onReplaceStaff }) => (
+const AddStaffControl = ({ disciplineKey, colors, onAddStaff, existingNames }) => {
+  const [open, setOpen] = useState(false);
+  const candidates = (staffRoster[disciplineKey] || []).filter((c) => !existingNames.includes(c.name));
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          padding: '8px 16px', backgroundColor: 'transparent', color: colors.teal,
+          border: `1px dashed ${colors.teal}`, borderRadius: 6, fontSize: 12.5,
+          fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", width: '100%',
+        }}
+      >
+        + Assign Another Staff
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, backgroundColor: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
+          {candidates.length === 0 && (
+            <div style={{ color: colors.label, fontSize: 12 }}>No additional staff available for this discipline.</div>
+          )}
+          {candidates.map((candidate) => (
+            <div
+              key={candidate.name}
+              onClick={() => { onAddStaff(candidate); setOpen(false); }}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '8px 12px', borderRadius: 6, cursor: 'pointer', marginBottom: 4,
+                backgroundColor: colors.card,
+              }}
+            >
+              <div>
+                <span style={{ color: colors.white, fontSize: 13, fontWeight: 600 }}>{candidate.name}</span>
+                <span style={{ color: colors.label, fontSize: 12, marginLeft: 8 }}>Caseload: {candidate.caseload}</span>
+              </div>
+              <span style={{ color: colors.teal, fontSize: 12, fontWeight: 600 }}>Add</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const DisciplineSection = ({ discipline, colors, expanded, onToggle, onReplaceStaff, onAddStaff }) => (
   <div style={{ marginBottom: 16, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
     <div
       onClick={onToggle}
@@ -270,6 +314,12 @@ const DisciplineSection = ({ discipline, colors, expanded, onToggle, onReplaceSt
             onReplace={(candidate) => onReplaceStaff(discipline.key, i, candidate)}
           />
         ))}
+        <AddStaffControl
+          disciplineKey={discipline.key}
+          colors={colors}
+          onAddStaff={(candidate) => onAddStaff(discipline.key, candidate)}
+          existingNames={discipline.staff.filter((s) => s.assigned).map((s) => s.name)}
+        />
       </div>
     )}
   </div>
@@ -298,6 +348,19 @@ const StaffAssignment = ({ patient = defaultPatient }) => {
       staff[staffIndex] = candidate
         ? { ...candidate, primary: current.primary, assigned: true }
         : { name: 'Unassigned', role: current.role, primary: false, assigned: false, caseload: null, phone: null, email: null };
+      return { ...d, staff };
+    }));
+  };
+
+  const handleAddStaff = (disciplineKey, candidate) => {
+    setDisciplineState((prev) => prev.map((d) => {
+      if (d.key !== disciplineKey) return d;
+      const hasAssignedAlready = d.staff.some((s) => s.assigned);
+      const newMember = { ...candidate, primary: !hasAssignedAlready, assigned: true };
+      const staff = d.staff.some((s) => !s.assigned)
+        // fill the first empty "Unassigned" slot if one exists
+        ? d.staff.map((s) => (!s.assigned ? newMember : s))
+        : [...d.staff, newMember];
       return { ...d, staff };
     }));
   };
@@ -348,6 +411,7 @@ const StaffAssignment = ({ patient = defaultPatient }) => {
             expanded={expandedKeys.has(d.key)}
             onToggle={() => toggleExpanded(d.key)}
             onReplaceStaff={handleReplaceStaff}
+            onAddStaff={handleAddStaff}
           />
         ))}
       </div>
