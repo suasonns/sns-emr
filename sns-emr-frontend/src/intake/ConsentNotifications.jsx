@@ -178,16 +178,37 @@ const ConsentNotifications = ({ patient = defaultPatient }) => {
                   </div>
                   <span style={{ color: colors.text, fontSize: 13 }}>{doc.label}</span>
                 </label>
-                {doc.key === 'non_covered' && (
-                  <span
-                    onClick={() => setShowNonCovered(true)}
-                    style={{ color: colors.teal, fontSize: 11.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                  >
-                    View Notification →
-                  </span>
-                )}
               </div>
             ))}
+          </div>
+
+          {/* Prominent call-out for the Non-Covered Items Notification screen */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 16, marginTop: 20, padding: '16px 20px',
+            backgroundColor: colors.amberBg, border: `2px solid ${colors.amber}`, borderRadius: 8,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <span style={{ fontSize: 26 }}>⚠️</span>
+              <div>
+                <div style={{ color: colors.white, fontSize: 15, fontWeight: 700 }}>
+                  Patient Notification of Non-Covered Items
+                </div>
+                <div style={{ color: colors.text, fontSize: 12.5 }}>
+                  Required if the patient has requested non-covered items, medications, or services.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowNonCovered(true)}
+              style={{
+                padding: '12px 24px', backgroundColor: colors.amber, color: colors.white,
+                border: 'none', borderRadius: 6, fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap',
+              }}
+            >
+              Open Notification →
+            </button>
           </div>
         </div>
 
