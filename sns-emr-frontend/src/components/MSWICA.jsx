@@ -14,42 +14,76 @@ const API_BASE = "/visits/msw-ica";
 const STORAGE_PREFIX = "sns-hospice-solutions-msw-ica";
 
 const INITIAL_FORM = {
-  social: {
-    support_level: "",
-    support_person: "",
-    relationship: "",
-    concerns: [],
-    coping_mechanisms: "",
+  pain: {
+    uncomfortable: "",
+    painLevel: "",
+    mentalStatus: "",
+    historian: "",
     notes: "",
   },
-  caregiver: {
-    burden_level: "",
-    caregiver_name: "",
-    caregiver_concerns: [],
-    transportation_barrier: "",
-    respite_needs: "",
+  psychosocial: {
+    maritalStatus: "",
+    childrenUnder21: "",
+    familyPcgName: "",
+    familyPcgRelation: "",
+    patientLives: "",
+    livingArrangement: "",
+    familyCommunication: "",
+    familyRelation: "",
+    familyResponseToIllness: "",
+    socialInteraction: "",
+    supportSystem: "",
+    supportPersons: [{ name: "", phone: "" }, { name: "", phone: "" }],
     notes: "",
   },
-  risk: {
-    financial_stress: "",
-    housing_insecurity: "",
-    social_isolation: "",
-    anger_or_conflict: "",
-    safety_concerns: "",
-    mental_health_crisis: "",
-    transportation_barrier: "",
-    patient_psychosocial_concerns: [],
-    family_psychosocial_concerns: [],
-    financial_legal_needs: [],
-    financial_legal_notes: "",
+  patientDistress: {
+    patientResponse: [],
+    patientConcerns: [],
+    iadl: {
+      phoneAccess: "",
+      shopping: "",
+      mealPrep: "",
+      housework: "",
+      finances: "",
+    },
+    anxietyRating: "",
+    distressRating: "",
     notes: "",
   },
-  interventions: {
-    referral_needed: false,
-    referral_type: "",
-    priority_level: "",
-    intervention_plan: "",
-    follow_up_date: "",
+  familyDistress: {
+    familyResponse: [],
+    abilityToProvideCare: "",
+    willingnessToProvideCare: "",
+    familyCrisis: [],
+    pcgAnxietyRating: "",
+    notes: "",
+  },
+  financialLegal: {
+    allNeedsMet: "",
+    isVeteran: "",
+    patientLacks: [],
+    needsAssistance: [],
+    livingWill: "",
+    livingWillCopy: "",
+    healthPOA: "",
+    healthPOACopy: "",
+    healthProxy: "",
+    healthProxyCopy: "",
+    burialPlans: "",
+    mortuaryName: "",
+    mortuaryPhone: "",
+    mortuaryAddress: "",
+    notes: "",
+  },
+  referrals: {
+    communityProgram: "",
+    communityAccepted: "",
+    therapy: [],
+    volunteerServices: [],
+    notes: "",
+  },
+  narrative: {
+    careProvided: [],
     notes: "",
   },
   finalization: {
@@ -147,10 +181,17 @@ function readStoredForm(patientId) {
     return {
       ...INITIAL_FORM,
       ...parsed,
-      social: { ...INITIAL_FORM.social, ...(parsed.social || {}) },
-      caregiver: { ...INITIAL_FORM.caregiver, ...(parsed.caregiver || {}) },
-      risk: { ...INITIAL_FORM.risk, ...(parsed.risk || {}) },
-      interventions: { ...INITIAL_FORM.interventions, ...(parsed.interventions || {}) },
+      pain: { ...INITIAL_FORM.pain, ...(parsed.pain || {}) },
+      psychosocial: { ...INITIAL_FORM.psychosocial, ...(parsed.psychosocial || {}) },
+      patientDistress: {
+        ...INITIAL_FORM.patientDistress,
+        ...(parsed.patientDistress || {}),
+        iadl: { ...INITIAL_FORM.patientDistress.iadl, ...((parsed.patientDistress || {}).iadl || {}) },
+      },
+      familyDistress: { ...INITIAL_FORM.familyDistress, ...(parsed.familyDistress || {}) },
+      financialLegal: { ...INITIAL_FORM.financialLegal, ...(parsed.financialLegal || {}) },
+      referrals: { ...INITIAL_FORM.referrals, ...(parsed.referrals || {}) },
+      narrative: { ...INITIAL_FORM.narrative, ...(parsed.narrative || {}) },
       finalization: { ...INITIAL_FORM.finalization, ...(parsed.finalization || {}) },
     };
   } catch {
@@ -329,12 +370,13 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
   }, [assessmentId]);
 
   const sections = [
-    { key: "psychosocial", label: "1. Psychosocial Circumstances" },
-    { key: "caregiver", label: "2. Caregiver Burden / Resources" },
+    { key: "pain", label: "1. Pain" },
+    { key: "psychosocial", label: "2. Psychosocial Circumstances" },
     { key: "distress", label: "3. Patient Distress / Concerns" },
-    { key: "financial", label: "4. Financial / Legal Needs" },
-    { key: "referrals", label: "5. Referrals" },
-    { key: "narrative", label: "6. Narrative" },
+    { key: "familyDistress", label: "4. Family Distress / Concerns" },
+    { key: "financial", label: "5. Financial / Legal Needs" },
+    { key: "referrals", label: "6. Referrals" },
+    { key: "narrative", label: "7. Narrative" },
     { key: "signature", label: "Signature" },
   ];
 
@@ -343,11 +385,11 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
   const progressTone = locked ? "#2563eb" : "#f59e0b";
 
   const summaryCount = [
-    formData.social.support_level,
-    formData.social.support_person,
-    formData.caregiver.burden_level,
-    formData.risk.financial_stress,
-    formData.interventions.referral_type,
+    formData.pain.uncomfortable,
+    formData.psychosocial.maritalStatus,
+    formData.psychosocial.patientLives,
+    formData.financialLegal.allNeedsMet,
+    formData.referrals.communityProgram,
     formData.finalization.staff_title,
   ].filter(Boolean).length;
 
@@ -385,7 +427,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
     document.getElementById(section)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const selectedConcerns = formData.risk.patient_psychosocial_concerns.length + formData.social.concerns.length;
+  const selectedConcerns = formData.patientDistress.patientConcerns.length + formData.patientDistress.patientResponse.length;
   const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert" : "Save Assessment";
   const assessmentChildren = [
     { label: "Nursing", target: "psychosocial" },
@@ -472,7 +514,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
           <main style={styles.main}>
             <div style={styles.header}>
               <div>
-                <div style={styles.headerTitle}>Comprehensive Psychosocial Assessment</div>
+                <div style={styles.headerTitle}>{isOngoing ? "Comprehensive Psychosocial Assessment" : "MSW Initial Comprehensive Assessment"}</div>
                 <div style={styles.headerSub}>Psychosocial support, caregiver burden, resource barriers, and intervention planning</div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -499,211 +541,502 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
             <div style={styles.content}>
               <div style={styles.columns}>
                 <div>
-                  <Card title="1. Pain" subtitle="Patient response to illness" id="psychosocial">
+                  <Card title="1. Pain" subtitle="Patient response to illness" id="pain">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Are you uncomfortable because of pain?">
+                        <select value={formData.pain.uncomfortable} onChange={(e) => updateField("pain", "uncomfortable", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="No">No</option>
+                          <option value="Yes">Yes</option>
+                        </select>
+                      </Field>
+                      <Field label="If yes, pain level (0-10)">
+                        <input type="number" min="0" max="10" value={formData.pain.painLevel} onChange={(e) => updateField("pain", "painLevel", e.target.value)} style={styles.input} />
+                      </Field>
+                    </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <Field label="Observed patient mental status">
-                        <select value={formData.social.support_level} onChange={(e) => updateField("social", "support_level", e.target.value)} style={styles.input}>
+                        <select value={formData.pain.mentalStatus} onChange={(e) => updateField("pain", "mentalStatus", e.target.value)} style={styles.input}>
                           <option value="">Select</option>
-                          <option value="Aware">Aware</option>
+                          <option value="Awake">Awake</option>
                           <option value="Confused">Confused</option>
                           <option value="Withdrawn">Withdrawn</option>
                           <option value="Overwhelmed">Overwhelmed</option>
+                          <option value="Lethargic">Lethargic</option>
+                          <option value="Comatose">Comatose</option>
                         </select>
                       </Field>
                       <Field label="Historian / primary support">
-                        <input value={formData.social.support_person} onChange={(e) => updateField("social", "support_person", e.target.value)} style={styles.input} />
+                        <select value={formData.pain.historian} onChange={(e) => updateField("pain", "historian", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="PCG">PCG</option>
+                          <option value="Patient">Patient</option>
+                          <option value="Family">Family</option>
+                          <option value="Other">Other</option>
+                        </select>
                       </Field>
                     </div>
-                    <Field label="Family communication">
-                      <select value={formData.social.relationship} onChange={(e) => updateField("social", "relationship", e.target.value)} style={styles.input}>
-                        <option value="">Select</option>
-                        <option value="Good">Good</option>
-                        <option value="Poor">Poor</option>
-                        <option value="Fair">Fair</option>
-                        <option value="Limited">Limited</option>
-                      </select>
-                    </Field>
                     <Field label="Narrative">
                       <textarea
-                        value={formData.social.notes}
-                        onChange={(e) => updateField("social", "notes", e.target.value)}
+                        value={formData.pain.notes}
+                        onChange={(e) => updateField("pain", "notes", e.target.value)}
                         style={styles.textarea}
                         placeholder="Social worker narrative and support context."
                       />
                     </Field>
                   </Card>
 
-                  <Card title="2. Psychosocial Circumstances" subtitle="Caregiver stress and support" id="caregiver">
+                  <Card title="2. Psychosocial Circumstances" subtitle="Family, living arrangement, and support systems" id="psychosocial">
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Caregiver burden level">
-                        <select value={formData.caregiver.burden_level} onChange={(e) => updateField("caregiver", "burden_level", e.target.value)} style={styles.input}>
+                      <Field label="Marital status">
+                        <select value={formData.psychosocial.maritalStatus} onChange={(e) => updateField("psychosocial", "maritalStatus", e.target.value)} style={styles.input}>
                           <option value="">Select</option>
-                          <option value="Low">Low</option>
-                          <option value="Moderate">Moderate</option>
-                          <option value="High">High</option>
+                          <option value="Single">Single</option>
+                          <option value="Married">Married</option>
+                          <option value="Widowed">Widowed</option>
+                          <option value="Divorced">Divorced</option>
+                          <option value="Separated">Separated</option>
                         </select>
                       </Field>
-                      <Field label="Caregiver name">
-                        <input value={formData.caregiver.caregiver_name} onChange={(e) => updateField("caregiver", "caregiver_name", e.target.value)} style={styles.input} />
+                      <Field label="# Children under 21">
+                        <input value={formData.psychosocial.childrenUnder21} onChange={(e) => updateField("psychosocial", "childrenUnder21", e.target.value)} style={styles.input} />
                       </Field>
                     </div>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Transportation barrier">
-                        <select value={formData.caregiver.transportation_barrier} onChange={(e) => updateField("caregiver", "transportation_barrier", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="Yes">Yes</option>
-                          <option value="No">No</option>
-                        </select>
+                      <Field label="Family / PCG name">
+                        <input value={formData.psychosocial.familyPcgName} onChange={(e) => updateField("psychosocial", "familyPcgName", e.target.value)} style={styles.input} />
                       </Field>
-                      <Field label="Respite needs">
-                        <input value={formData.caregiver.respite_needs} onChange={(e) => updateField("caregiver", "respite_needs", e.target.value)} style={styles.input} />
+                      <Field label="Relation">
+                        <input value={formData.psychosocial.familyPcgRelation} onChange={(e) => updateField("psychosocial", "familyPcgRelation", e.target.value)} style={styles.input} />
                       </Field>
                     </div>
-                    <Field label="Caregiver concerns">
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
-                        {["Burnout", "Isolation", "Anxiety", "Financial strain", "Transportation", "Respite"].map((option) => (
-                          <label key={option} style={styles.checkboxLabel}>
-                            <input
-                              type="checkbox"
-                              checked={formData.caregiver.caregiver_concerns.includes(option)}
-                              onChange={() =>
-                                updateField("caregiver", "caregiver_concerns", toggleValue(formData.caregiver.caregiver_concerns, option))
-                              }
-                            />
-                            {option}
-                          </label>
-                        ))}
-                      </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Patient lives">
+                        <select value={formData.psychosocial.patientLives} onChange={(e) => updateField("psychosocial", "patientLives", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Alone">Alone</option>
+                          <option value="With Family">With Family</option>
+                          <option value="in ALF">in ALF</option>
+                          <option value="in SNF">in SNF</option>
+                          <option value="Group Home">Group Home</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </Field>
+                      <Field label="Living arrangement">
+                        <select value={formData.psychosocial.livingArrangement} onChange={(e) => updateField("psychosocial", "livingArrangement", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Satisfactory">Satisfactory</option>
+                          <option value="Unsatisfactory">Unsatisfactory</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Family communication">
+                        <select value={formData.psychosocial.familyCommunication} onChange={(e) => updateField("psychosocial", "familyCommunication", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Good">Good</option>
+                          <option value="Fair">Fair</option>
+                          <option value="Poor">Poor</option>
+                          <option value="Limited">Limited</option>
+                        </select>
+                      </Field>
+                      <Field label="Family relation">
+                        <select value={formData.psychosocial.familyRelation} onChange={(e) => updateField("psychosocial", "familyRelation", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Good">Good</option>
+                          <option value="Fair">Fair</option>
+                          <option value="Poor">Poor</option>
+                          <option value="Strained">Strained</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Family response to illness">
+                        <select value={formData.psychosocial.familyResponseToIllness} onChange={(e) => updateField("psychosocial", "familyResponseToIllness", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Supportive">Supportive</option>
+                          <option value="Accepting">Accepting</option>
+                          <option value="Denial">Denial</option>
+                          <option value="Overwhelmed">Overwhelmed</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </Field>
+                      <Field label="Social interaction">
+                        <select value={formData.psychosocial.socialInteraction} onChange={(e) => updateField("psychosocial", "socialInteraction", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Satisfactory">Satisfactory</option>
+                          <option value="Limited">Limited</option>
+                          <option value="Isolated">Isolated</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <Field label="Support system">
+                      <select value={formData.psychosocial.supportSystem} onChange={(e) => updateField("psychosocial", "supportSystem", e.target.value)} style={styles.input}>
+                        <option value="">Select</option>
+                        <option value="Family">Family</option>
+                        <option value="Friends">Friends</option>
+                        <option value="Community">Community</option>
+                        <option value="Church">Church</option>
+                        <option value="None">None</option>
+                        <option value="Other">Other</option>
+                      </select>
                     </Field>
-                    <Field label="Caregiver notes">
-                      <textarea value={formData.caregiver.notes} onChange={(e) => updateField("caregiver", "notes", e.target.value)} style={styles.textarea} />
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Other support persons</div>
+                    {formData.psychosocial.supportPersons.map((sp, i) => (
+                      <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 6 }}>
+                        <input
+                          placeholder="Name"
+                          value={sp.name}
+                          onChange={(e) => {
+                            const arr = [...formData.psychosocial.supportPersons];
+                            arr[i] = { ...arr[i], name: e.target.value };
+                            updateField("psychosocial", "supportPersons", arr);
+                          }}
+                          style={styles.input}
+                        />
+                        <input
+                          placeholder="Phone"
+                          value={sp.phone}
+                          onChange={(e) => {
+                            const arr = [...formData.psychosocial.supportPersons];
+                            arr[i] = { ...arr[i], phone: e.target.value };
+                            updateField("psychosocial", "supportPersons", arr);
+                          }}
+                          style={styles.input}
+                        />
+                      </div>
+                    ))}
+                    <Field label="Narrative">
+                      <textarea value={formData.psychosocial.notes} onChange={(e) => updateField("psychosocial", "notes", e.target.value)} style={styles.textarea} placeholder="Living arrangement, caregiver context, and support notes..." />
                     </Field>
                   </Card>
 
                   <Card title="3. Patient — Psychosocial Distress/Concerns" subtitle="Select all that apply" id="distress">
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
-                      {["Cannot respond", "Overwhelmed", "Fearful", "Unaware of condition", "Accepting", "Depressed", "Sad", "Guilt", "Denial", "Angry", "Loss of worth"].map((option) => (
-                        <label key={option} style={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={formData.risk.patient_psychosocial_concerns.includes(option)}
-                            onChange={() =>
-                              updateField("risk", "patient_psychosocial_concerns", toggleValue(formData.risk.patient_psychosocial_concerns, option))
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Patient response to illness</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                        {["Cannot respond", "Overwhelmed", "Fearful", "Unaware of condition", "Accepting", "Depressed", "Sad", "Guilt", "Denial", "Angry", "Loss of worth", "Other"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.patientDistress.patientResponse.includes(option)}
+                              onChange={() => updateField("patientDistress", "patientResponse", toggleValue(formData.patientDistress.patientResponse, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Patient concerns</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                        {["Responsibility for others", "Finances", "Lacks cognitive ability", "Suicide risks", "Inadequate food/supplies", "Abuse/neglect", "Substance/alcohol abuse", "Transfer to another setting", "Other"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.patientDistress.patientConcerns.includes(option)}
+                              onChange={() => updateField("patientDistress", "patientConcerns", toggleValue(formData.patientDistress.patientConcerns, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Instrumental Activities of Daily Living (IADL)</div>
+                      {[
+                        { q: "Phone access & able to make calls?", key: "phoneAccess" },
+                        { q: "Goes out for shopping?", key: "shopping" },
+                        { q: "Prepares own meals?", key: "mealPrep" },
+                        { q: "Does housework?", key: "housework" },
+                        { q: "Manages own finances?", key: "finances" },
+                      ].map((item) => (
+                        <div key={item.key} style={{ display: "grid", gridTemplateColumns: "1fr 110px", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 12 }}>{item.q}</span>
+                          <select
+                            value={formData.patientDistress.iadl[item.key]}
+                            onChange={(e) =>
+                              updateField("patientDistress", "iadl", { ...formData.patientDistress.iadl, [item.key]: e.target.value })
                             }
-                          />
-                          {option}
-                        </label>
+                            style={{ ...styles.input, padding: "4px 8px", fontSize: 12 }}
+                          >
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                          </select>
+                        </div>
                       ))}
                     </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Patient anxiety rating">
+                        <select value={formData.patientDistress.anxietyRating} onChange={(e) => updateField("patientDistress", "anxietyRating", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="None">None</option>
+                          <option value="Mild">Mild</option>
+                          <option value="Moderate">Moderate</option>
+                          <option value="Severe">Severe</option>
+                        </select>
+                      </Field>
+                      <Field label="Distress rating">
+                        <select value={formData.patientDistress.distressRating} onChange={(e) => updateField("patientDistress", "distressRating", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="None">None</option>
+                          <option value="Mild">Mild</option>
+                          <option value="Moderate">Moderate</option>
+                          <option value="Severe">Severe</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <Field label="Narrative">
+                      <textarea value={formData.patientDistress.notes} onChange={(e) => updateField("patientDistress", "notes", e.target.value)} style={styles.textarea} placeholder="Patient distress observations..." />
+                    </Field>
                   </Card>
                 </div>
 
                 <div>
-                  <Card title="4. Financial/Legal Needs" subtitle="Financial strain, housing, and safety" id="financial">
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Financial stress">
-                        <select value={formData.risk.financial_stress} onChange={(e) => updateField("risk", "financial_stress", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="No">No</option>
-                          <option value="Yes">Yes</option>
-                        </select>
-                      </Field>
-                      <Field label="Housing insecurity">
-                        <select value={formData.risk.housing_insecurity} onChange={(e) => updateField("risk", "housing_insecurity", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="No">No</option>
-                          <option value="Yes">Yes</option>
-                        </select>
-                      </Field>
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Social isolation">
-                        <select value={formData.risk.social_isolation} onChange={(e) => updateField("risk", "social_isolation", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="No">No</option>
-                          <option value="Yes">Yes</option>
-                        </select>
-                      </Field>
-                      <Field label="Safety concerns">
-                        <select value={formData.risk.safety_concerns} onChange={(e) => updateField("risk", "safety_concerns", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="No">No</option>
-                          <option value="Yes">Yes</option>
-                        </select>
-                      </Field>
-                    </div>
-                    <Field label="Financial / legal concerns">
+                  <Card title="4. Family — Psychosocial Distress/Concerns" subtitle="Family response, crisis, and anxiety" id="familyDistress">
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Family response to illness</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
-                        {["None", "Utilities", "Rent", "Legal", "Insurance", "Benefits"].map((option) => (
+                        {["Accepting", "Depressed", "Sad", "Guilt", "Denial", "Angry", "Fearful", "Despair", "Overwhelmed", "Anticipatory grieving", "Other"].map((option) => (
                           <label key={option} style={styles.checkboxLabel}>
                             <input
                               type="checkbox"
-                              checked={formData.risk.financial_legal_needs.includes(option)}
-                              onChange={() => updateField("risk", "financial_legal_needs", toggleValue(formData.risk.financial_legal_needs, option))}
+                              checked={formData.familyDistress.familyResponse.includes(option)}
+                              onChange={() => updateField("familyDistress", "familyResponse", toggleValue(formData.familyDistress.familyResponse, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Ability to provide care">
+                        <select value={formData.familyDistress.abilityToProvideCare} onChange={(e) => updateField("familyDistress", "abilityToProvideCare", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Good">Good</option>
+                          <option value="Fair">Fair</option>
+                          <option value="Poor">Poor</option>
+                          <option value="Unable">Unable</option>
+                        </select>
+                      </Field>
+                      <Field label="Willingness to provide care">
+                        <select value={formData.familyDistress.willingnessToProvideCare} onChange={(e) => updateField("familyDistress", "willingnessToProvideCare", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Good">Good</option>
+                          <option value="Fair">Fair</option>
+                          <option value="Poor">Poor</option>
+                          <option value="Unwilling">Unwilling</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Family crisis</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                        {["None", "Suicide risks", "Inadequate food/supplies", "Financial/legal crisis", "Significant losses in recent past", "Substance/alcohol abuse", "Other"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.familyDistress.familyCrisis.includes(option)}
+                              onChange={() => updateField("familyDistress", "familyCrisis", toggleValue(formData.familyDistress.familyCrisis, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    <Field label="PCG / family anxiety rating">
+                      <select value={formData.familyDistress.pcgAnxietyRating} onChange={(e) => updateField("familyDistress", "pcgAnxietyRating", e.target.value)} style={styles.input}>
+                        <option value="">Select</option>
+                        <option value="None">None</option>
+                        <option value="Mild">Mild</option>
+                        <option value="Moderate">Moderate</option>
+                        <option value="Severe">Severe</option>
+                      </select>
+                    </Field>
+                    <Field label="Narrative">
+                      <textarea value={formData.familyDistress.notes} onChange={(e) => updateField("familyDistress", "notes", e.target.value)} style={styles.textarea} placeholder="Family's response to patient's decline..." />
+                    </Field>
+                  </Card>
+
+                  <Card title="5. Financial / Legal Needs" subtitle="Financial strain, advance directives, and mortuary" id="financial">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="All needs met by patient/family?">
+                        <select value={formData.financialLegal.allNeedsMet} onChange={(e) => updateField("financialLegal", "allNeedsMet", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      </Field>
+                      <Field label="Is patient/spouse a veteran?">
+                        <select value={formData.financialLegal.isVeteran} onChange={(e) => updateField("financialLegal", "isVeteran", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="No">No</option>
+                          <option value="Yes">Yes</option>
+                        </select>
+                      </Field>
+                    </div>
+                    {formData.financialLegal.allNeedsMet === "No" && (
+                      <>
+                        <Field label="Patient lacks">
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                            {["Food", "Utility", "Clothing", "Furniture", "Med/supplies unrelated to illness"].map((option) => (
+                              <label key={option} style={styles.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={formData.financialLegal.patientLacks.includes(option)}
+                                  onChange={() => updateField("financialLegal", "patientLacks", toggleValue(formData.financialLegal.patientLacks, option))}
+                                />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        </Field>
+                        <Field label="Needs assistance with">
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 6 }}>
+                            {["Meals on wheels", "Food stamps", "Other"].map((option) => (
+                              <label key={option} style={styles.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={formData.financialLegal.needsAssistance.includes(option)}
+                                  onChange={() => updateField("financialLegal", "needsAssistance", toggleValue(formData.financialLegal.needsAssistance, option))}
+                                />
+                                {option}
+                              </label>
+                            ))}
+                          </div>
+                        </Field>
+                      </>
+                    )}
+                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Planning / Advance Directives</div>
+                      {[
+                        { label: "Living Will", key: "livingWill", copyKey: "livingWillCopy" },
+                        { label: "Health POA", key: "healthPOA", copyKey: "healthPOACopy" },
+                        { label: "Health Proxy", key: "healthProxy", copyKey: "healthProxyCopy" },
+                      ].map((item) => (
+                        <div key={item.key} style={{ display: "grid", gridTemplateColumns: "1fr 90px 110px", gap: 8, marginBottom: 6, alignItems: "center" }}>
+                          <span style={{ fontSize: 12 }}>{item.label}</span>
+                          <select value={formData.financialLegal[item.key]} onChange={(e) => updateField("financialLegal", item.key, e.target.value)} style={{ ...styles.input, padding: "4px 6px", fontSize: 11 }}>
+                            <option value="">—</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="N/A">N/A</option>
+                          </select>
+                          <select value={formData.financialLegal[item.copyKey]} onChange={(e) => updateField("financialLegal", item.copyKey, e.target.value)} style={{ ...styles.input, padding: "4px 6px", fontSize: 10 }}>
+                            <option value="">Copy: —</option>
+                            <option value="Yes">Copy: Yes</option>
+                            <option value="No">Copy: No</option>
+                            <option value="N/A">Copy: N/A</option>
+                          </select>
+                        </div>
+                      ))}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 8, alignItems: "center" }}>
+                        <span style={{ fontSize: 12 }}>Burial plans</span>
+                        <select value={formData.financialLegal.burialPlans} onChange={(e) => updateField("financialLegal", "burialPlans", e.target.value)} style={{ ...styles.input, padding: "4px 6px", fontSize: 11 }}>
+                          <option value="">—</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                          <option value="N/A">N/A</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Mortuary information</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <Field label="Mortuary name">
+                          <input value={formData.financialLegal.mortuaryName} onChange={(e) => updateField("financialLegal", "mortuaryName", e.target.value)} style={styles.input} />
+                        </Field>
+                        <Field label="Phone">
+                          <input value={formData.financialLegal.mortuaryPhone} onChange={(e) => updateField("financialLegal", "mortuaryPhone", e.target.value)} style={styles.input} />
+                        </Field>
+                      </div>
+                      <Field label="Address">
+                        <input value={formData.financialLegal.mortuaryAddress} onChange={(e) => updateField("financialLegal", "mortuaryAddress", e.target.value)} style={styles.input} />
+                      </Field>
+                    </div>
+                    <Field label="Narrative">
+                      <textarea value={formData.financialLegal.notes} onChange={(e) => updateField("financialLegal", "notes", e.target.value)} style={styles.textarea} placeholder="Financial/legal planning notes..." />
+                    </Field>
+                  </Card>
+
+                  <Card title="6. Referrals" subtitle="Community programs and support services" id="referrals">
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      <Field label="Need for community program referral?">
+                        <select value={formData.referrals.communityProgram} onChange={(e) => updateField("referrals", "communityProgram", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="N/A">N/A</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      </Field>
+                      <Field label="Community referral accepted?">
+                        <select value={formData.referrals.communityAccepted} onChange={(e) => updateField("referrals", "communityAccepted", e.target.value)} style={styles.input}>
+                          <option value="">Select</option>
+                          <option value="N/A">N/A</option>
+                          <option value="Yes">Yes</option>
+                          <option value="No">No</option>
+                        </select>
+                      </Field>
+                    </div>
+                    <Field label="Therapy">
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 6 }}>
+                        {["Music", "Art", "Pet", "Massage"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.referrals.therapy.includes(option)}
+                              onChange={() => updateField("referrals", "therapy", toggleValue(formData.referrals.therapy, option))}
                             />
                             {option}
                           </label>
                         ))}
                       </div>
                     </Field>
-                    <Field label="Financial / legal notes">
-                      <textarea
-                        value={formData.risk.financial_legal_notes}
-                        onChange={(e) => updateField("risk", "financial_legal_notes", e.target.value)}
-                        style={styles.textarea}
-                      />
+                    <Field label="Volunteer services">
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                        {["Companionship", "Errands", "Respite", "Light housekeeping/meals"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.referrals.volunteerServices.includes(option)}
+                              onChange={() => updateField("referrals", "volunteerServices", toggleValue(formData.referrals.volunteerServices, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
                     </Field>
                   </Card>
 
-                  <Card title="5. Referrals" subtitle="Support services and follow-up" id="referrals">
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Referral needed">
-                        <select value={formData.interventions.referral_needed ? "Yes" : "No"} onChange={(e) => updateField("interventions", "referral_needed", e.target.value === "Yes")} style={styles.input}>
-                          <option value="No">No</option>
-                          <option value="Yes">Yes</option>
-                        </select>
-                      </Field>
-                      <Field label="Referral type">
-                        <input value={formData.interventions.referral_type} onChange={(e) => updateField("interventions", "referral_type", e.target.value)} style={styles.input} />
-                      </Field>
-                    </div>
-                    <Field label="Intervention plan">
-                      <textarea value={formData.interventions.intervention_plan} onChange={(e) => updateField("interventions", "intervention_plan", e.target.value)} style={styles.textarea} />
+                  <Card title="7. Narrative (Include care provided items)" subtitle="Visit summary and interventions" id="narrative">
+                    <Field label="Care provided">
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
+                        {["Listening/Emotional support", "Knowledge related needs", "Funeral planning", "Motivational interviewing", "Cognitive behavioral therapy", "Positive reinforcement", "Other"].map((option) => (
+                          <label key={option} style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={formData.narrative.careProvided.includes(option)}
+                              onChange={() => updateField("narrative", "careProvided", toggleValue(formData.narrative.careProvided, option))}
+                            />
+                            {option}
+                          </label>
+                        ))}
+                      </div>
                     </Field>
-                  </Card>
-
-                  <Card title="6. Narrative (Include care provided items)" subtitle="Visit summary and interventions" id="narrative">
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      <Field label="Support level">
-                        <select value={formData.social.support_level} onChange={(e) => updateField("social", "support_level", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="Strong">Strong</option>
-                          <option value="Adequate">Adequate</option>
-                          <option value="Limited">Limited</option>
-                          <option value="None">None</option>
-                        </select>
-                      </Field>
-                      <Field label="Priority level">
-                        <select value={formData.interventions.priority_level} onChange={(e) => updateField("interventions", "priority_level", e.target.value)} style={styles.input}>
-                          <option value="">Select</option>
-                          <option value="Low">Low</option>
-                          <option value="Moderate">Moderate</option>
-                          <option value="High">High</option>
-                        </select>
-                      </Field>
-                    </div>
                     <Field label="Narrative">
                       <textarea
-                        value={formData.interventions.notes || formData.risk.notes || ""}
-                        onChange={(e) => updateField("risk", "notes", e.target.value)}
-                        style={styles.textarea}
-                        placeholder="Document psychosocial narrative and care provided."
+                        value={formData.narrative.notes}
+                        onChange={(e) => updateField("narrative", "notes", e.target.value)}
+                        style={{ ...styles.textarea, minHeight: 140 }}
+                        placeholder="Visit summary and interventions..."
                       />
                     </Field>
-                    <div style={{ marginTop: 6, fontSize: 11, color: "#64748b" }}>{selectedConcerns} concern(s) selected</div>
                   </Card>
 
-                  <Card title="7. Signature" subtitle="Complete and sign" id="signature">
+                  <Card title="8. Signature" subtitle="Complete and sign" id="signature">
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                       <Field label="Staff title">
                         <input value={formData.finalization.staff_title} onChange={(e) => updateField("finalization", "staff_title", e.target.value)} style={styles.input} />
@@ -715,6 +1048,44 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                     <Field label="Signature date">
                       <input type="date" value={formData.finalization.signature_date} onChange={(e) => updateField("finalization", "signature_date", e.target.value)} style={styles.input} />
                     </Field>
+                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, margin: "10px 0" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>PCG / Patient acknowledgement</div>
+                      <label style={styles.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={formData.finalization.patient_acknowledgement}
+                          onChange={(e) => updateField("finalization", "patient_acknowledgement", e.target.checked)}
+                        />
+                        Signature of patient / PCG to acknowledge visit
+                      </label>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 8 }}>
+                        <Field label="Name">
+                          <input value={formData.finalization.patient_signature_name} onChange={(e) => updateField("finalization", "patient_signature_name", e.target.value)} style={styles.input} />
+                        </Field>
+                        <Field label="Relationship">
+                          <input value={formData.finalization.patient_signature_relationship} onChange={(e) => updateField("finalization", "patient_signature_relationship", e.target.value)} style={styles.input} />
+                        </Field>
+                      </div>
+                    </div>
+                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>QA review</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                        <Field label="Reviewed by">
+                          <input value={formData.finalization.countersign_staff_name} onChange={(e) => updateField("finalization", "countersign_staff_name", e.target.value)} style={styles.input} placeholder="MSW Supervisor" />
+                        </Field>
+                        <Field label="Review date">
+                          <input type="date" value={formData.finalization.countersign_signature_date} onChange={(e) => updateField("finalization", "countersign_signature_date", e.target.value)} style={styles.input} />
+                        </Field>
+                      </div>
+                      <label style={{ ...styles.checkboxLabel, marginTop: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={formData.finalization.countersign_required}
+                          onChange={(e) => updateField("finalization", "countersign_required", e.target.checked)}
+                        />
+                        QA review approved
+                      </label>
+                    </div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 6 }}>
                       <label style={styles.checkboxLabel}>
                         <input
