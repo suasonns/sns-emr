@@ -9,6 +9,8 @@ import {
   getMswIcaIntelligence,
 } from "../api/icaAssessments";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
+import { useThemeMode } from "../theme/theme";
+import { getChartColors } from "../theme/chartColors";
 
 const API_BASE = "/visits/msw-ica";
 const STORAGE_PREFIX = "sns-hospice-solutions-msw-ica";
@@ -125,53 +127,57 @@ const sidebarItems = [
   "Monthly Schedule",
 ];
 
-const CLINICAL_BRAND = {
-  navy: "#1E3A5F",
-  teal: "#0D9488",
-  tealDark: "#0F766E",
-  tealLight: "#CCFBF1",
-  bg: "#F8FAFC",
-  canvas: "#EEF3F8",
-  panel: "#FFFFFF",
-  line: "#D8E3E8",
-  text: "#0F172A",
-  muted: "#64748B",
-  slate: "#334155",
-};
+function getBrand(colors) {
+  return {
+    navy: "#1E3A5F",
+    teal: colors.teal,
+    tealDark: colors.teal,
+    tealLight: colors.tealBg,
+    bg: colors.bg,
+    canvas: colors.bg,
+    panel: colors.card,
+    line: colors.border,
+    text: colors.text,
+    muted: colors.label,
+    slate: colors.text,
+  };
+}
 
-const styles = {
-  page: { minHeight: "100vh", background: CLINICAL_BRAND.canvas },
-  frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
-  shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
-  sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
-  patientCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
-  patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 700 },
-  navCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
-  navHeader: { background: "#EDF7F7", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "6px 10px", fontWeight: 700 },
-  navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
-  main: { background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
-  header: { borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
-  headerTitle: { fontSize: 18, fontWeight: 700 },
-  headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
-  progress: { fontSize: 11, fontWeight: 700 },
-  uploadBar: { padding: 10, background: CLINICAL_BRAND.tealLight, borderBottom: `1px solid ${CLINICAL_BRAND.line}`, fontSize: 11 },
-  alert: { margin: 10, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
-  content: { padding: 24 },
-  columns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  sectionCard: { border: `1px solid ${CLINICAL_BRAND.line}`, marginBottom: 12, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
-  sectionHeader: { background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: CLINICAL_BRAND.text },
-  sectionHint: { fontSize: 10, color: CLINICAL_BRAND.muted },
-  addIssue: { fontSize: 10, color: CLINICAL_BRAND.tealDark, fontWeight: 700 },
-  sectionBody: { padding: 12 },
-  fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: CLINICAL_BRAND.slate },
-  input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, background: "#fff", fontSize: 13 },
-  textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, fontSize: 13, lineHeight: 1.3, resize: "vertical" },
-  checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#111827" },
-  button: { border: `1px solid ${CLINICAL_BRAND.teal}`, background: "#fff", color: CLINICAL_BRAND.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
-  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
-  statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase" },
-};
+function getStyles(brand) {
+  return {
+    page: { minHeight: "100vh", background: brand.canvas },
+    frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
+    shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
+    sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
+    patientCard: { border: `1px solid ${brand.line}`, background: brand.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
+    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 700 },
+    navCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
+    navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 700, color: brand.text },
+    navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
+    main: { background: brand.bg, border: `1px solid ${brand.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+    header: { borderBottom: `1px solid ${brand.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
+    headerTitle: { fontSize: 18, fontWeight: 700 },
+    headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
+    progress: { fontSize: 11, fontWeight: 700 },
+    uploadBar: { padding: 10, background: brand.tealLight, borderBottom: `1px solid ${brand.line}`, fontSize: 11, color: brand.text },
+    alert: { margin: 10, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
+    content: { padding: 24 },
+    columns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
+    sectionCard: { border: `1px solid ${brand.line}`, marginBottom: 12, background: brand.panel, borderRadius: 12, overflow: "hidden" },
+    sectionHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" },
+    sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: brand.text },
+    sectionHint: { fontSize: 10, color: brand.muted },
+    addIssue: { fontSize: 10, color: brand.tealDark, fontWeight: 700 },
+    sectionBody: { padding: 12 },
+    fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: brand.slate },
+    input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13 },
+    textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13, lineHeight: 1.3, resize: "vertical" },
+    checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: brand.text },
+    button: { border: `1px solid ${brand.teal}`, background: brand.panel, color: brand.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
+    footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
+    statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase" },
+  };
+}
 
 function readStoredForm(patientId) {
   const raw = localStorage.getItem(`${STORAGE_PREFIX}:${patientId}`);
@@ -239,6 +245,10 @@ const api = {
 };
 
 export default function MSWICA({ patientId = getActivePatientId() ?? "", assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
+  const { mode: themeMode } = useThemeMode();
+  const colors = useMemo(() => getChartColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(colors), [colors]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND), [CLINICAL_BRAND]);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(() => readStoredForm(patientId));
@@ -440,13 +450,13 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
       <div style={styles.frame}>
         <div style={styles.shell}>
           <aside style={styles.sidebar}>
-            <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 700, marginBottom: 8, paddingLeft: 2 }}>Love & Faith Hospice Services, Inc.</div>
+            <div style={{ fontSize: 13, color: CLINICAL_BRAND.text, fontWeight: 700, marginBottom: 8, paddingLeft: 2 }}>Love & Faith Hospice Services, Inc.</div>
             <div style={styles.patientCard}>
               <div style={styles.patientCardHeader}>Patient</div>
-              <div style={{ padding: 8 }}>
+              <div style={{ padding: 8, color: CLINICAL_BRAND.text }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{patientName}</div>
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{patientSummary?.patient?.mrn || "MRN not loaded"}</div>
-                <div style={{ fontSize: 11, color: "#475569", marginTop: 6 }}>DOB: 11/15/1941 (84F)</div>
+                <div style={{ fontSize: 11, color: CLINICAL_BRAND.muted, marginTop: 4 }}>{patientSummary?.patient?.mrn || "MRN not loaded"}</div>
+                <div style={{ fontSize: 11, color: CLINICAL_BRAND.muted, marginTop: 6 }}>DOB: 11/15/1941 (84F)</div>
               </div>
             </div>
             <div style={styles.navCard}>
@@ -459,7 +469,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                   if (item === "Assessment") {
                     return (
                       <div key={item} style={{ marginBottom: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", letterSpacing: ".08em", textTransform: "uppercase", padding: "6px 4px 4px" }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: CLINICAL_BRAND.muted, letterSpacing: ".08em", textTransform: "uppercase", padding: "6px 4px 4px" }}>
                           Assessment
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 4, paddingLeft: 10 }}>
@@ -473,7 +483,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                                 textAlign: "left",
                                 border: "none",
                                 background: "transparent",
-                                color: "#0f172a",
+                                color: CLINICAL_BRAND.text,
                                 fontSize: 12,
                                 padding: "3px 4px",
                                 cursor: "pointer",
@@ -497,7 +507,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         textAlign: "left",
                         border: "none",
                         background: "transparent",
-                        color: "#0f172a",
+                        color: CLINICAL_BRAND.text,
                         fontSize: 12,
                         padding: "3px 4px",
                         cursor: "pointer",
@@ -524,7 +534,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
             </div>
 
             {isOngoing && (
-              <div style={{ padding: "12px 24px", background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}` }}>
+              <div style={{ padding: "12px 24px", background: CLINICAL_BRAND.canvas, borderBottom: `1px solid ${CLINICAL_BRAND.line}`, color: CLINICAL_BRAND.text }}>
                 <AssessmentTypeToggle value={assessmentType} onChange={setAssessmentType} />
               </div>
             )}
@@ -683,7 +693,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         <option value="Other">Other</option>
                       </select>
                     </Field>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Other support persons</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.muted, marginBottom: 6 }}>Other support persons</div>
                     {formData.psychosocial.supportPersons.map((sp, i) => (
                       <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 6 }}>
                         <input
@@ -715,7 +725,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
 
                   <Card title="3. Patient — Psychosocial Distress/Concerns" subtitle="Select all that apply" id="distress">
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Patient response to illness</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.muted, marginBottom: 6 }}>Patient response to illness</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                         {["Cannot respond", "Overwhelmed", "Fearful", "Unaware of condition", "Accepting", "Depressed", "Sad", "Guilt", "Denial", "Angry", "Loss of worth", "Other"].map((option) => (
                           <label key={option} style={styles.checkboxLabel}>
@@ -730,7 +740,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                       </div>
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Patient concerns</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.muted, marginBottom: 6 }}>Patient concerns</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                         {["Responsibility for others", "Finances", "Lacks cognitive ability", "Suicide risks", "Inadequate food/supplies", "Abuse/neglect", "Substance/alcohol abuse", "Transfer to another setting", "Other"].map((option) => (
                           <label key={option} style={styles.checkboxLabel}>
@@ -744,7 +754,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         ))}
                       </div>
                     </div>
-                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                    <div style={{ background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, padding: 10, marginBottom: 12, color: CLINICAL_BRAND.text }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Instrumental Activities of Daily Living (IADL)</div>
                       {[
                         { q: "Phone access & able to make calls?", key: "phoneAccess" },
@@ -798,7 +808,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                 <div>
                   <Card title="4. Family — Psychosocial Distress/Concerns" subtitle="Family response, crisis, and anxiety" id="familyDistress">
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Family response to illness</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.muted, marginBottom: 6 }}>Family response to illness</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                         {["Accepting", "Depressed", "Sad", "Guilt", "Denial", "Angry", "Fearful", "Despair", "Overwhelmed", "Anticipatory grieving", "Other"].map((option) => (
                           <label key={option} style={styles.checkboxLabel}>
@@ -833,7 +843,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                       </Field>
                     </div>
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b", marginBottom: 6 }}>Family crisis</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.muted, marginBottom: 6 }}>Family crisis</div>
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 6 }}>
                         {["None", "Suicide risks", "Inadequate food/supplies", "Financial/legal crisis", "Significant losses in recent past", "Substance/alcohol abuse", "Other"].map((option) => (
                           <label key={option} style={styles.checkboxLabel}>
@@ -910,7 +920,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         </Field>
                       </>
                     )}
-                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                    <div style={{ background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, padding: 10, marginBottom: 12, color: CLINICAL_BRAND.text }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Planning / Advance Directives</div>
                       {[
                         { label: "Living Will", key: "livingWill", copyKey: "livingWillCopy" },
@@ -943,7 +953,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         </select>
                       </div>
                     </div>
-                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                    <div style={{ background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, padding: 10, marginBottom: 12, color: CLINICAL_BRAND.text }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>Mortuary information</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <Field label="Mortuary name">
@@ -1048,7 +1058,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                     <Field label="Signature date">
                       <input type="date" value={formData.finalization.signature_date} onChange={(e) => updateField("finalization", "signature_date", e.target.value)} style={styles.input} />
                     </Field>
-                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, margin: "10px 0" }}>
+                    <div style={{ background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, padding: 10, margin: "10px 0", color: CLINICAL_BRAND.text }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>PCG / Patient acknowledgement</div>
                       <label style={styles.checkboxLabel}>
                         <input
@@ -1067,7 +1077,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         </Field>
                       </div>
                     </div>
-                    <div style={{ background: "#f8fafc", border: "1px solid #dbe5ee", borderRadius: 10, padding: 10, marginBottom: 8 }}>
+                    <div style={{ background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, padding: 10, marginBottom: 8, color: CLINICAL_BRAND.text }}>
                       <div style={{ fontSize: 11, fontWeight: 700, color: CLINICAL_BRAND.tealDark, textTransform: "uppercase", marginBottom: 8 }}>QA review</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                         <Field label="Reviewed by">
@@ -1102,7 +1112,7 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                   </Card>
 
                   <Card title="MSW ICA Intelligence" subtitle="Evaluating social-risk signals">
-                    {intelligenceLoading && <div style={{ fontSize: 12, color: "#64748b" }}>Evaluating social-risk signals...</div>}
+                    {intelligenceLoading && <div style={{ fontSize: 12, color: CLINICAL_BRAND.muted }}>Evaluating social-risk signals...</div>}
                     {intelligenceError && <div style={{ ...styles.alert, margin: 0 }}>{intelligenceError}</div>}
                     {!intelligenceLoading && intelligence && (
                       <div style={{ fontSize: 12, lineHeight: 1.6 }}>
@@ -1116,11 +1126,11 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
                         </ul>
                       </div>
                     )}
-                    {!intelligenceLoading && !intelligence && <div style={{ fontSize: 12, color: "#64748b" }}>No intelligence available yet.</div>}
+                    {!intelligenceLoading && !intelligence && <div style={{ fontSize: 12, color: CLINICAL_BRAND.muted }}>No intelligence available yet.</div>}
                   </Card>
 
                   <div style={styles.footer}>
-                    <div style={{ fontSize: 11, color: "#475569", fontWeight: 700 }}>
+                    <div style={{ fontSize: 11, color: CLINICAL_BRAND.muted, fontWeight: 700 }}>
                       {locked ? "LOCKED" : "IN PROGRESS"} · {summaryCount} completed field(s)
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
