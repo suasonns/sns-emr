@@ -31,6 +31,8 @@ import PatientContextSidebar from "./PatientContextSidebar";
 import NumericPainScale from "../assessments/pain/NumericPainScale";
 import PAINADScale from "../assessments/pain/PAINADScale";
 import FLACCScale from "../assessments/pain/FLACCScale";
+import { useThemeMode } from "../theme/theme";
+import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { getSfvStatus } from "../intake/hopeReportMapper";
 
@@ -41,21 +43,78 @@ import { getActivePatientId, setActivePatientId } from "../utils/activePatient";
 
 const API_BASE = "/visits/rnica";
 
-const COLORS = {
-  navy: "#1E3A5F",
-  hope: "#059669",
-  sfv: "#DC2626",
-  cms: "#2563EB",
-  teal: "#0D9488",
-  dark: "#0F172A",
-  gray: "#64748B",
-  border: "#D8E3E8",
-  bg: "#F8FAFC",
-  white: "#FFFFFF",
-  warning: "#F59E0B",
-  error: "#EF4444",
-  success: "#10B981",
-};
+function getRnicaColors(mode) {
+  if (mode === "light") {
+    return {
+      navy: "#1E3A5F",
+      hope: "#059669",
+      sfv: "#DC2626",
+      cms: "#2563EB",
+      teal: "#0D9488",
+      dark: "#0F172A",
+      gray: "#64748B",
+      border: "#D8E3E8",
+      bg: "#F8FAFC",
+      white: "#FFFFFF",
+      warning: "#F59E0B",
+      error: "#EF4444",
+      success: "#10B981",
+      pageBg: "#EEF3F8",
+      sidebarBg: "#F8FBFD",
+      sidebarItemColor: "#334155",
+      sidebarActiveColor: "#0F766E",
+      panelBg: "rgba(255,255,255,0.96)",
+      inputBg: "#FFFFFF",
+      hopeTagBg: "#ECFDF5",
+      sfvTagBg: "#FEF2F2",
+      cmsTagBg: "#EFF6FF",
+      infoBoxBg: "linear-gradient(135deg, #eef6ff, #eefaf8)",
+      warningBoxBg: "linear-gradient(135deg, #fffbeb, #fff7ed)",
+      successBoxBg: "linear-gradient(135deg, #ecfdf5, #f0fdf4)",
+      mapControlBg: "#F8FAFC",
+      mapControlBorder: "#E2E8F0",
+      mapChipBg: "#FFFFFF",
+      mapChipText: "#0F172A",
+      mapMuted: "#475569",
+      tealBg: "#CCFBF1",
+      amberTagBg: "#FFFBEB",
+    };
+  }
+  return {
+    navy: "#1E3A5F",
+    hope: "#34d399",
+    sfv: "#f87171",
+    cms: "#60a5fa",
+    teal: "#10b7a2",
+    dark: "#e2e8f0",
+    gray: "#94a3b8",
+    border: "#334155",
+    bg: "#0f172a",
+    white: "#1e293b",
+    warning: "#f59e0b",
+    error: "#f87171",
+    success: "#34d399",
+    pageBg: "#0f172a",
+    sidebarBg: "#0b1220",
+    sidebarItemColor: "#cbd5e1",
+    sidebarActiveColor: "#5eead4",
+    panelBg: "rgba(30, 41, 59, 0.9)",
+    inputBg: "#1e293b",
+    hopeTagBg: "rgba(52, 211, 153, 0.16)",
+    sfvTagBg: "rgba(248, 113, 113, 0.16)",
+    cmsTagBg: "rgba(96, 165, 250, 0.16)",
+    infoBoxBg: "linear-gradient(135deg, rgba(30,58,95,0.35), rgba(13,148,136,0.15))",
+    warningBoxBg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(249,115,22,0.12))",
+    successBoxBg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(52,211,153,0.12))",
+    mapControlBg: "#1e293b",
+    mapControlBorder: "#334155",
+    mapChipBg: "#0f172a",
+    mapChipText: "#e2e8f0",
+    mapMuted: "#94a3b8",
+    tealBg: "rgba(16, 183, 162, 0.18)",
+    amberTagBg: "rgba(245, 158, 11, 0.16)",
+  };
+}
 
 const AssessmentModeContext = React.createContext("ica");
 
@@ -759,158 +818,178 @@ function validateRNICA(formData, mode = "ica") {
 // ════════════════════════════════════════════════════════════════
 
 // ── Shared Styles ──
-const styles = {
-  page: {
-    display: "flex",
-    flexDirection: "column",
-    minHeight: "100vh",
-    height: "auto",
-    fontFamily: "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-    color: COLORS.dark,
-    background: "#EEF3F8",
-  },
-  banner: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "14px 24px",
-    background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)",
-    color: COLORS.white,
-    fontSize: 13,
-    boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
-    borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
-  },
-  bannerName: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" },
-  bannerMeta: { fontSize: 12, opacity: 0.82, letterSpacing: "0.01em" },
-  workspace: { display: "flex", flex: 1, minHeight: 0, overflow: "visible" },
-  sidebar: {
-    width: 250,
-    background: "#F8FBFD",
-    borderRight: `1px solid ${COLORS.border}`,
-    overflowY: "auto",
-    padding: "18px 10px",
-    flexShrink: 0,
-    minHeight: 0,
-  },
-  sidebarItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    padding: "10px 12px",
-    margin: "4px 0",
-    fontSize: 13,
-    cursor: "pointer",
-    borderRadius: 10,
-    borderLeft: "3px solid transparent",
-    transition: "all 0.2s ease",
-    color: "#334155",
-  },
-  sidebarActive: {
-    background: "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.03))",
-    borderLeftColor: COLORS.teal,
-    color: "#0F766E",
-    fontWeight: 700,
-    boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
-  },
-  mainArea: { flex: 1, display: "flex", minHeight: 0, overflow: "visible" },
-  content: { flex: 1, overflowY: "auto", minHeight: 0, padding: "24px 28px 32px" },
-  rightPanel: {
-    width: 290,
-    background: "rgba(255,255,255,0.96)",
-    borderLeft: `1px solid ${COLORS.border}`,
-    overflowY: "auto",
-    padding: 18,
-    flexShrink: 0,
-    backdropFilter: "blur(10px)",
-    minHeight: 0,
-  },
-  card: {
-    background: COLORS.white,
-    borderRadius: 12,
-    border: `1px solid ${COLORS.border}`,
-    padding: 18,
-    marginBottom: 18,
-    boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: 800,
-    marginBottom: 14,
-    color: COLORS.dark,
-    letterSpacing: "-0.01em",
-  },
-  sectionTitle: { fontSize: 22, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.02em", color: COLORS.dark },
-  sectionSubtitle: { fontSize: 12.5, color: COLORS.gray, marginBottom: 22, lineHeight: 1.5 },
-  formGroup: { marginBottom: 16 },
-  label: { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.dark, lineHeight: 1.4 },
-  input: {
-    width: "100%",
-    padding: "10px 12px",
-    border: `1px solid ${COLORS.border}`,
-    borderRadius: 10,
-    fontSize: 14,
-    boxSizing: "border-box",
-    background: "#ffffff",
-    transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-    boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-  },
-  textarea: {
-    width: "100%",
-    padding: "10px 12px",
-    border: `1px solid ${COLORS.border}`,
-    borderRadius: 10,
-    fontSize: 14,
-    minHeight: 80,
-    resize: "vertical",
-    boxSizing: "border-box",
-    background: "#ffffff",
-    boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-  },
-  select: {
-    width: "100%",
-    padding: "10px 12px",
-    border: `1px solid ${COLORS.border}`,
-    borderRadius: 10,
-    fontSize: 14,
-    background: COLORS.white,
-    boxSizing: "border-box",
-    boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-  },
-  radioGroup: { display: "flex", gap: 16, flexWrap: "wrap" },
-  radioLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", color: COLORS.dark },
-  checkboxGroup: { display: "flex", flexDirection: "column", gap: 8 },
-  checkboxLabel: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: COLORS.dark },
-  hopeTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "#ECFDF5", color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
-  sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "#FEF2F2", color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
-  cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "#EFF6FF", color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
-  statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
-  btnPrimary: { padding: "11px 18px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: COLORS.white, border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
-  btnSecondary: { padding: "11px 18px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
-  btnDanger: { padding: "11px 18px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: COLORS.white, border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
-  footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", background: "rgba(255,255,255,0.96)", borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
-  table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-  th: { padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
-  td: { padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}` },
-  infoBox: { padding: 16, background: "linear-gradient(135deg, #eef6ff, #eefaf8)", borderRadius: 12, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
-  warningBox: { padding: 16, background: "linear-gradient(135deg, #fffbeb, #fff7ed)", borderRadius: 12, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
-  successBox: { padding: 16, background: "linear-gradient(135deg, #ecfdf5, #f0fdf4)", borderRadius: 12, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
-};
+function getRnicaStyles(COLORS) {
+  return {
+    page: {
+      display: "flex",
+      flexDirection: "column",
+      minHeight: "100vh",
+      height: "auto",
+      fontFamily: "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+      color: COLORS.dark,
+      background: COLORS.pageBg,
+    },
+    banner: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "14px 24px",
+      background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)",
+      color: "#FFFFFF",
+      fontSize: 13,
+      boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
+      borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
+    },
+    bannerName: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" },
+    bannerMeta: { fontSize: 12, opacity: 0.82, letterSpacing: "0.01em" },
+    workspace: { display: "flex", flex: 1, minHeight: 0, overflow: "visible" },
+    sidebar: {
+      width: 250,
+      background: COLORS.sidebarBg,
+      borderRight: `1px solid ${COLORS.border}`,
+      overflowY: "auto",
+      padding: "18px 10px",
+      flexShrink: 0,
+      minHeight: 0,
+    },
+    sidebarItem: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10,
+      padding: "10px 12px",
+      margin: "4px 0",
+      fontSize: 13,
+      cursor: "pointer",
+      borderRadius: 10,
+      borderLeft: "3px solid transparent",
+      transition: "all 0.2s ease",
+      color: COLORS.sidebarItemColor,
+    },
+    sidebarActive: {
+      background: "linear-gradient(90deg, rgba(13,148,136,0.18), rgba(13,148,136,0.05))",
+      borderLeftColor: COLORS.teal,
+      color: COLORS.sidebarActiveColor,
+      fontWeight: 700,
+      boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
+    },
+    mainArea: { flex: 1, display: "flex", minHeight: 0, overflow: "visible" },
+    content: { flex: 1, overflowY: "auto", minHeight: 0, padding: "24px 28px 32px" },
+    rightPanel: {
+      width: 290,
+      background: COLORS.panelBg,
+      borderLeft: `1px solid ${COLORS.border}`,
+      overflowY: "auto",
+      padding: 18,
+      flexShrink: 0,
+      backdropFilter: "blur(10px)",
+      minHeight: 0,
+    },
+    card: {
+      background: COLORS.white,
+      borderRadius: 12,
+      border: `1px solid ${COLORS.border}`,
+      padding: 18,
+      marginBottom: 18,
+      boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
+    },
+    cardTitle: {
+      fontSize: 15,
+      fontWeight: 800,
+      marginBottom: 14,
+      color: COLORS.dark,
+      letterSpacing: "-0.01em",
+    },
+    sectionTitle: { fontSize: 22, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.02em", color: COLORS.dark },
+    sectionSubtitle: { fontSize: 12.5, color: COLORS.gray, marginBottom: 22, lineHeight: 1.5 },
+    formGroup: { marginBottom: 16 },
+    label: { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.dark, lineHeight: 1.4 },
+    input: {
+      width: "100%",
+      padding: "10px 12px",
+      border: `1px solid ${COLORS.border}`,
+      borderRadius: 10,
+      fontSize: 14,
+      boxSizing: "border-box",
+      background: COLORS.inputBg,
+      color: COLORS.dark,
+      transition: "border-color 0.2s ease, box-shadow 0.2s ease",
+      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
+    },
+    textarea: {
+      width: "100%",
+      padding: "10px 12px",
+      border: `1px solid ${COLORS.border}`,
+      borderRadius: 10,
+      fontSize: 14,
+      minHeight: 80,
+      resize: "vertical",
+      boxSizing: "border-box",
+      background: COLORS.inputBg,
+      color: COLORS.dark,
+      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
+    },
+    select: {
+      width: "100%",
+      padding: "10px 12px",
+      border: `1px solid ${COLORS.border}`,
+      borderRadius: 10,
+      fontSize: 14,
+      background: COLORS.inputBg,
+      color: COLORS.dark,
+      boxSizing: "border-box",
+      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
+    },
+    radioGroup: { display: "flex", gap: 16, flexWrap: "wrap" },
+    radioLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", color: COLORS.dark },
+    checkboxGroup: { display: "flex", flexDirection: "column", gap: 8 },
+    checkboxLabel: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: COLORS.dark },
+    hopeTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
+    sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
+    cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
+    statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
+    btnPrimary: { padding: "11px 18px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
+    btnSecondary: { padding: "11px 18px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
+    btnDanger: { padding: "11px 18px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
+    footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
+    table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
+    th: { padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
+    td: { padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}` },
+    infoBox: { padding: 16, background: COLORS.infoBoxBg, borderRadius: 12, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
+    warningBox: { padding: 16, background: COLORS.warningBoxBg, borderRadius: 12, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
+    successBox: { padding: 16, background: COLORS.successBoxBg, borderRadius: 12, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
+  };
+}
+
 
 // Tag components
 function HopeTag({ code }) {
   const mode = useContext(AssessmentModeContext);
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   if (mode === "ongoing") return null;
   return <span style={styles.hopeTag}>HOPE {code}</span>;
 }
 function SfvTag() {
   const mode = useContext(AssessmentModeContext);
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   if (mode === "ongoing") return null;
   return <span style={styles.sfvTag}>SFV Trigger</span>;
 }
-function CmsTag({ label }) { return <span style={styles.cmsTag}>CMS {label || "Required"}</span>; }
+function CmsTag({ label }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  return <span style={styles.cmsTag}>CMS {label || "Required"}</span>;
+}
 
 // Form field components
 function FormInput({ label, value, onChange, type = "text", placeholder, required, hopeCode, ...rest }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>
@@ -927,6 +1006,9 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
 }
 
 function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>{label}</label>
@@ -939,6 +1021,9 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
 }
 
 function FormSelect({ label, value, onChange, options, required, hopeCode }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>
@@ -958,6 +1043,9 @@ function FormSelect({ label, value, onChange, options, required, hopeCode }) {
 }
 
 function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>
@@ -982,6 +1070,9 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
 }
 
 function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const toggle = (val) => {
     const next = values.includes(val) ? values.filter((v) => v !== val) : [...values, val];
     onChange(next);
@@ -1009,6 +1100,9 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
 }
 
 function FormCheckbox({ label, checked, onChange }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <label style={{ ...styles.checkboxLabel, ...styles.formGroup }}>
       <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)} />
@@ -1079,6 +1173,8 @@ function WoundMarker({ x, y, label, woundName, stage, onClick, isSelected }) {
 
 function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientTypeChange, onToggle, onClearAll }) {
   const [view, setView] = useState("both");
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const selectedRegions = Array.isArray(value) ? value : [];
 
   const bodyTypeButtons = [
@@ -1104,9 +1200,9 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
               onClick={() => onPatientTypeChange(option.value)}
               style={{
                 borderRadius: 999,
-                border: patientType === option.value ? "1px solid #0D9488" : "1px solid #E2E8F0",
-                background: patientType === option.value ? (tone === "skin" ? "#FEF3C7" : "#E0F2FE") : "#FFFFFF",
-                color: "#0F172A",
+                border: patientType === option.value ? `1px solid ${COLORS.teal}` : `1px solid ${COLORS.border}`,
+                background: patientType === option.value ? (tone === "skin" ? COLORS.warningBoxBg : COLORS.tealBg) : COLORS.white,
+                color: COLORS.dark,
                 fontSize: 11,
                 fontWeight: 700,
                 padding: "5px 10px",
@@ -1127,8 +1223,8 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
           gap: 12,
           flexWrap: "wrap",
           padding: "8px 10px",
-          background: "#F8FAFC",
-          border: "1px solid #E2E8F0",
+          background: COLORS.mapControlBg,
+          border: `1px solid ${COLORS.mapControlBorder}`,
           borderRadius: 12,
           boxShadow: "inset 0 1px 2px rgba(15, 23, 42, 0.04)",
         }}>
@@ -1137,7 +1233,7 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
             fontWeight: 800,
             letterSpacing: "0.08em",
             textTransform: "uppercase",
-            color: "#475569",
+            color: COLORS.mapMuted,
           }}>
             Body view
           </div>
@@ -1145,9 +1241,9 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
           <div style={{
             fontSize: 12,
             fontWeight: 800,
-            color: "#0F172A",
-            background: "#FFFFFF",
-            border: "1px solid #CBD5E1",
+            color: COLORS.mapChipText,
+            background: COLORS.mapChipBg,
+            border: `1px solid ${COLORS.mapControlBorder}`,
             borderRadius: 8,
             padding: "6px 10px",
             minWidth: 190,
@@ -1173,9 +1269,9 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
                 onClick={() => setView(option.value)}
                 style={{
                   borderRadius: 8,
-                  border: view === option.value ? "1px solid #0D9488" : "1px solid transparent",
-                  background: view === option.value ? "#CCFBF1" : "transparent",
-                  color: view === option.value ? "#0F172A" : "#475569",
+                  border: view === option.value ? `1px solid ${COLORS.teal}` : "1px solid transparent",
+                  background: view === option.value ? COLORS.tealBg : "transparent",
+                  color: view === option.value ? COLORS.mapChipText : COLORS.mapMuted,
                   fontSize: 11,
                   fontWeight: 700,
                   padding: "7px 12px",
@@ -1310,13 +1406,16 @@ const POSTERIOR_REGIONS = [
 
 function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = "both" }) {
   const [hovered, setHovered] = useState(null);
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const isDark = themeMode !== "light";
 
   const renderView = (imgSrc, regions, label, viewKey) => (
     <div style={{ flex: 1, textAlign: "center" }}>
       <div style={{
         fontSize: 12,
         fontWeight: 800,
-        color: "#0F172A",
+        color: COLORS.mapChipText,
         marginBottom: 8,
         letterSpacing: "0.04em",
         textTransform: "uppercase",
@@ -1411,16 +1510,16 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
             marginBottom: 8,
             flexWrap: "wrap",
           }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.mapMuted }}>
               Selected Regions ({selectedRegions.length})
             </div>
             <button
               type="button"
               onClick={() => onClearAll?.()}
               style={{
-                border: "1px solid #FECACA",
-                background: "#FFF1F2",
-                color: "#BE123C",
+                border: isDark ? "1px solid rgba(248,113,113,0.4)" : "1px solid #FECACA",
+                background: isDark ? "rgba(248,113,113,0.14)" : "#FFF1F2",
+                color: isDark ? "#f87171" : "#BE123C",
                 borderRadius: 999,
                 padding: "5px 10px",
                 fontSize: 11,
@@ -1438,8 +1537,9 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
                 <span key={id} onClick={() => onToggleRegion?.(id)}
                   style={{
                     padding: "4px 10px", borderRadius: 14, fontSize: 11, fontWeight: 500,
-                    background: "#FEE2E2", color: "#DC2626", cursor: "pointer",
-                    border: "1px solid #FECACA",
+                    background: isDark ? "rgba(248,113,113,0.18)" : "#FEE2E2",
+                    color: isDark ? "#fca5a5" : "#DC2626", cursor: "pointer",
+                    border: isDark ? "1px solid rgba(248,113,113,0.4)" : "1px solid #FECACA",
                   }}>
                   {r?.label || id} ×
                 </span>
@@ -1452,6 +1552,9 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
   );
 }
 function Card({ title, children, hopeCode, sfv, cms, id }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <div style={styles.card} id={id}>
       <div style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
@@ -1469,7 +1572,7 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
 
-function renderDemographics(data, update) {
+function renderDemographics(data, update, COLORS, styles) {
   const u = (path, val) => update("demographics", path, val);
   return (
     <>
@@ -1637,7 +1740,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics) {
+function renderGenericSection(sectionKey, data, update, config, demographics, COLORS, styles) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
@@ -1754,13 +1857,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics) {
               <div style={{
                 padding: "14px 16px",
                 borderRadius: 12,
-                background: "#F8FAFC",
-                border: "1px solid #E2E8F0",
-                color: "#475569",
+                background: COLORS.mapControlBg,
+                border: `1px solid ${COLORS.mapControlBorder}`,
+                color: COLORS.mapMuted,
                 fontSize: 12.5,
                 lineHeight: 1.5,
               }}>
-                <strong style={{ color: "#0F172A" }}>Body Map unavailable — </strong>
+                <strong style={{ color: COLORS.mapChipText }}>Body Map unavailable — </strong>
                 the patient is unable to reliably verbalize or point to a pain location
                 (per HOPE J0900 above{isPediatricAge ? " / pediatric patient" : ""}).
                 Pain location should be documented via clinician/caregiver observation
@@ -2689,6 +2792,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const routes = useMemo(() => (isOngoing ? ROUTES.filter((route) => route.key !== "sfv") : ROUTES), [isOngoing]);
   const sidebarConfigItems = useMemo(() => {
     const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
@@ -2934,12 +3040,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // Render current section
   const renderSection = () => {
     if (activeSection === "demographics") {
-      return renderDemographics(formData.demographics, updateField);
+      return renderDemographics(formData.demographics, updateField, COLORS, styles);
     }
 
     const config = SECTION_CONFIGS[currentRoute?.formSection];
     if (config && currentSectionData) {
-      return renderGenericSection(currentRoute.formSection, currentSectionData, updateField, config, formData.demographics);
+      return renderGenericSection(currentRoute.formSection, currentSectionData, updateField, config, formData.demographics, COLORS, styles);
     }
 
     return (
@@ -3058,7 +3164,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         <div style={styles.mainArea}>
           <div style={styles.content}>
             {!isOngoing && sfvStatus.required && (activeSection === "symptomImpact" || activeSection === "sfv") && (
-              <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: "linear-gradient(135deg, #fff7ed, #fffbeb)" }}>
+              <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>SFV Required</div>
                 <div>
                   Moderate or Severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
@@ -3110,7 +3216,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   Errors ({Object.keys(validation.errors).length})
                 </div>
                 {Object.entries(validation.errors).map(([key, msg]) => (
-                  <div key={key} style={{ fontSize: 11, color: COLORS.error, marginBottom: 4, padding: 4, background: "#FEF2F2", borderRadius: 4 }}>
+                  <div key={key} style={{ fontSize: 11, color: COLORS.error, marginBottom: 4, padding: 4, background: COLORS.sfvTagBg, borderRadius: 4 }}>
                     {msg}
                   </div>
                 ))}
@@ -3124,7 +3230,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   Warnings ({Object.keys(validation.warnings).length})
                 </div>
                 {Object.entries(validation.warnings).slice(0, 5).map(([key, msg]) => (
-                  <div key={key} style={{ fontSize: 11, color: COLORS.warning, marginBottom: 4, padding: 4, background: "#FFFBEB", borderRadius: 4 }}>
+                  <div key={key} style={{ fontSize: 11, color: COLORS.warning, marginBottom: 4, padding: 4, background: COLORS.amberTagBg, borderRadius: 4 }}>
                     {msg}
                   </div>
                 ))}
@@ -3169,7 +3275,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   </div>
 
                   {(intelligence.findings || []).slice(0, 3).map((finding, idx) => (
-                    <div key={`${finding.category}-${idx}`} style={{ marginBottom: 8, padding: 8, borderRadius: 8, background: finding.severity === "high" ? "#FEF2F2" : finding.severity === "moderate" ? "#FFFBEB" : "#F8FAFC", border: `1px solid ${finding.severity === "high" ? "#FECACA" : finding.severity === "moderate" ? "#FDE68A" : COLORS.border}` }}>
+                    <div key={`${finding.category}-${idx}`} style={{ marginBottom: 8, padding: 8, borderRadius: 8, background: finding.severity === "high" ? COLORS.sfvTagBg : finding.severity === "moderate" ? COLORS.amberTagBg : COLORS.bg, border: `1px solid ${finding.severity === "high" ? COLORS.error : finding.severity === "moderate" ? COLORS.warning : COLORS.border}` }}>
                       <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 4 }}>{finding.title}</div>
                       <div style={{ fontSize: 10, lineHeight: 1.4, color: COLORS.dark }}>{finding.details}</div>
                     </div>
