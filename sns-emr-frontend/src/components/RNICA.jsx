@@ -233,8 +233,9 @@ const INITIAL_FORM = {
       livingArrangement: "", availabilityOfAssistance: "",
     },
     advancedCarePlanning: {
-      codeStatus: "", lifeSustainingTreatmentPreference: "",
-      hospitalizationPreference: "", decisionMaker: "",
+      codeStatus: "", codeStatusDate: "", lifeSustainingTreatmentPreference: "",
+      lifeSustainingTreatmentPreferenceDate: "", hospitalizationPreference: "",
+      hospitalizationPreferenceDate: "", decisionMaker: "",
       poaName: "", poaPhone: "",
       advanceDirectiveOnFile: false, polstOnFile: false,
     },
@@ -258,6 +259,9 @@ const INITIAL_FORM = {
   pain: {
     verbalizesPain: "", uncomfortableBecauseOfPain: "",
     neuropathicPain: false,
+    screeningDate: "",
+    comprehensiveAssessmentCompleted: false,
+    comprehensiveAssessmentDate: "",
     assessmentTool: "",
     painIntensity: { current: "", worst: "", best: "", acceptable: "" },
     painLocation: [], painCharacter: [], painRadiation: "",
@@ -336,6 +340,8 @@ const INITIAL_FORM = {
   // ─── 9. RESPIRATORY ───────────────────────────────
   respiratory: {
     sobSeverity: "", exertionLevel: "",
+    shortnessOfBreathScreened: false, screeningDate: "",
+    treatmentInitiated: false, treatmentDate: "",
     lungSounds: [], respirations: [],
     coughType: "", sputumCharacter: "",
     oxygenTherapy: {
@@ -449,8 +455,12 @@ const INITIAL_FORM = {
     symptomImpactScreeningCompleted: false,
     symptomImpactScreeningDate: "",
     inPersonSfvCompleted: false,
-    sfvDate: "", findings: "",
+    sfvDate: "", reasonNotCompleted: "", findings: "",
     triggeredSymptoms: [],
+    symptomImpactAtSfv: {
+      pain: "", shortnessOfBreath: "", anxiety: "", nausea: "",
+      vomiting: "", diarrhea: "", constipation: "", agitation: "",
+    },
     interventions: [],
     notes: "",
   },
@@ -490,6 +500,8 @@ const INITIAL_FORM = {
     caregiverFaith: "",
     spiritualConcerns: [],
     spiritualDistressRating: "",
+    concernsDiscussed: false,
+    concernsDiscussedDate: "",
     chaplainNeeded: false,
     notes: "",
   },
@@ -552,7 +564,9 @@ const INITIAL_FORM = {
 
   // ─── 26. ORDERS HUB (medications) ─────────────────
   medications: {
-    scheduledOpioid: false, prnOpioid: false, bowelRegimen: false,
+    scheduledOpioid: false, scheduledOpioidDate: "",
+    prnOpioid: false, prnOpioidDate: "",
+    bowelRegimen: false, bowelRegimenDate: "",
     currentMedications: [],
     orders: [],
     medReconciliation: { completed: false, completedDate: "", completedBy: "" },
@@ -589,6 +603,8 @@ const INITIAL_FORM = {
     signatureCertification: false,
     clinicianSignature: "",
     signatureDate: "",
+    hopeSubmissionNumber: "",
+    hopeAlreadySubmitted: false,
     supervisorReview: { required: false, reviewedBy: "", reviewDate: "" },
     assessmentLocked: false,
     lockedTimestamp: "",
@@ -1578,12 +1594,18 @@ function renderDemographics(data, update) {
       <Card title="Advanced Care Planning" cms="F2000/F2100/F2200" id="advancedCarePlanning">
         <FormRadioGroup label="Code Status" value={data.advancedCarePlanning?.codeStatus} onChange={(v) => u("advancedCarePlanning.codeStatus", v)}
           hopeCode="F2000" options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
+        <FormInput label="Code Status Discussion Date" value={data.advancedCarePlanning?.codeStatusDate}
+          onChange={(v) => u("advancedCarePlanning.codeStatusDate", v)} type="date" />
         <FormRadioGroup label="Life-Sustaining Treatment Preference" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreference}
           onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreference", v)} hopeCode="F2100"
           options={["Yes — wants life-sustaining treatment", "No — does not want", "Undecided"]} />
+        <FormInput label="Life-Sustaining Treatment Discussion Date" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreferenceDate}
+          onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreferenceDate", v)} type="date" />
         <FormRadioGroup label="Hospitalization Preference" value={data.advancedCarePlanning?.hospitalizationPreference}
           onChange={(v) => u("advancedCarePlanning.hospitalizationPreference", v)} hopeCode="F2200"
           options={["Yes — wants hospitalization", "No — does not want", "Undecided"]} />
+        <FormInput label="Hospitalization Discussion Date" value={data.advancedCarePlanning?.hospitalizationPreferenceDate}
+          onChange={(v) => u("advancedCarePlanning.hospitalizationPreferenceDate", v)} type="date" />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
           <FormInput label="Decision Maker" value={data.advancedCarePlanning?.decisionMaker} onChange={(v) => u("advancedCarePlanning.decisionMaker", v)} />
           <FormInput label="POA Name" value={data.advancedCarePlanning?.poaName} onChange={(v) => u("advancedCarePlanning.poaName", v)} />
@@ -1802,6 +1824,7 @@ const SECTION_CONFIGS = {
             { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
           { type: "checkbox", label: "Neuropathic pain present", path: "neuropathicPain" },
+          { type: "input", label: "Pain screening date", path: "screeningDate", inputType: "date" },
         ],
       },
       {
@@ -1811,6 +1834,8 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Worst in 24 hours", path: "painIntensity.worst", inputType: "number" },
           { type: "input", label: "Best in 24 hours", path: "painIntensity.best", inputType: "number" },
           { type: "input", label: "Acceptable level", path: "painIntensity.acceptable", inputType: "number" },
+          { type: "checkbox", label: "Comprehensive pain assessment completed", path: "comprehensiveAssessmentCompleted" },
+          { type: "input", label: "Comprehensive pain assessment date", path: "comprehensiveAssessmentDate", inputType: "date" },
         ],
       },
       {
@@ -2031,6 +2056,10 @@ const SECTION_CONFIGS = {
       { title: "Respiratory Assessment", fields: [
         { type: "radio", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
         { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion"] },
+        { type: "checkbox", label: "Screened for shortness of breath", path: "shortnessOfBreathScreened" },
+        { type: "input", label: "SOB screening date", path: "screeningDate", inputType: "date" },
+        { type: "checkbox", label: "Treatment for shortness of breath initiated", path: "treatmentInitiated" },
+        { type: "input", label: "SOB treatment date", path: "treatmentDate", inputType: "date" },
         { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub"] },
         { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal"] },
         { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis"] },
@@ -2246,6 +2275,17 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Screening Date", path: "symptomImpactScreeningDate", inputType: "date" },
         { type: "checkbox", label: "In-Person SFV Completed", path: "inPersonSfvCompleted" },
         { type: "input", label: "SFV Date", path: "sfvDate", inputType: "date" },
+        { type: "input", label: "Reason SFV not completed", path: "reasonNotCompleted" },
+      ]},
+      { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
+        { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "B. Shortness of Breath", path: "symptomImpactAtSfv.shortnessOfBreath", hopeCode: "J2053B", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "C. Anxiety", path: "symptomImpactAtSfv.anxiety", hopeCode: "J2053C", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "D. Nausea", path: "symptomImpactAtSfv.nausea", hopeCode: "J2053D", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "E. Vomiting", path: "symptomImpactAtSfv.vomiting", hopeCode: "J2053E", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "F. Diarrhea", path: "symptomImpactAtSfv.diarrhea", hopeCode: "J2053F", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "G. Constipation", path: "symptomImpactAtSfv.constipation", hopeCode: "J2053G", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "H. Agitation", path: "symptomImpactAtSfv.agitation", hopeCode: "J2053H", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
       ]},
       { title: "SFV Findings", fields: [
         { type: "checkboxGroup", label: "Triggered Symptoms", path: "triggeredSymptoms", options: ["Pain", "SOB", "Anxiety", "Nausea", "Vomiting", "Diarrhea", "Constipation", "Agitation"] },
@@ -2337,6 +2377,8 @@ const SECTION_CONFIGS = {
           "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress"
         ]},
         { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
+        { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
+        { type: "input", label: "Spiritual concerns discussion date", path: "concernsDiscussedDate", inputType: "date" },
         { type: "checkbox", label: "Chaplain Referral Needed", path: "chaplainNeeded" },
         { type: "textarea", label: "Spiritual Notes", path: "notes" },
       ]},
@@ -2465,8 +2507,11 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Opioid / Bowel Assessment", fields: [
         { type: "checkbox", label: "Scheduled Opioid", path: "scheduledOpioid" },
+        { type: "input", label: "Scheduled Opioid Start / Continue Date", path: "scheduledOpioidDate", inputType: "date" },
         { type: "checkbox", label: "PRN Opioid", path: "prnOpioid" },
+        { type: "input", label: "PRN Opioid Start / Continue Date", path: "prnOpioidDate", inputType: "date" },
         { type: "checkbox", label: "Bowel Regimen in Place", path: "bowelRegimen" },
+        { type: "input", label: "Bowel Regimen Start / Continue Date", path: "bowelRegimenDate", inputType: "date" },
       ]},
       { title: "Medication Reconciliation", fields: [
         { type: "checkbox", label: "Med Reconciliation Completed", path: "medReconciliation.completed" },
@@ -2516,6 +2561,8 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
         { type: "input", label: "Clinician Signature", path: "clinicianSignature", required: true },
         { type: "input", label: "Signature Date", path: "signatureDate", inputType: "date", required: true },
+        { type: "input", label: "HOPE Submission / Confirmation Number", path: "hopeSubmissionNumber" },
+        { type: "checkbox", label: "HOPE report already submitted — tracking not required", path: "hopeAlreadySubmitted" },
       ]},
       { title: "Supervisor Review", fields: [
         { type: "checkbox", label: "Supervisor Review Required", path: "supervisorReview.required" },
@@ -2530,7 +2577,7 @@ const SECTION_CONFIGS = {
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined }) {
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
   const [patientSummary, setPatientSummary] = useState(null);
@@ -2696,6 +2743,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   useEffect(() => {
     setValidation(validateRNICA(formData, mode));
   }, [formData, mode]);
+
+  useEffect(() => {
+    onFormDataChange?.(formData);
+  }, [formData, onFormDataChange]);
 
   // Deep update helper
   const updateField = useCallback((section, path, value) => {

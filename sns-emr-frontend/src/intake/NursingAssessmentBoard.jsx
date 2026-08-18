@@ -1,5 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import RNICA from "../components/RNICA";
+import { fetchPatientSummary } from "../api/patientCharts";
+import { getCurrentUser } from "../api/session";
+import { defaultPatient } from "./ConsentNotifications";
+import HopeReport from "./HopeReport";
 
 const styles = {
   shell: { background: "#0F172A", paddingBottom: 16 },
@@ -21,6 +25,7 @@ const styles = {
   eyebrow: { fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", color: "#5EEAD4", textTransform: "uppercase", marginBottom: 6 },
   title: { margin: 0, fontSize: 20, fontWeight: 700, color: "#F8FAFC" },
   description: { marginTop: 6, fontSize: 13, lineHeight: 1.5, color: "#94A3B8", maxWidth: 760 },
+  buttonRow: { display: "flex", gap: 10, flexWrap: "wrap" },
   primaryButton: {
     padding: "11px 18px",
     borderRadius: 10,
@@ -31,6 +36,16 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
     boxShadow: "0 10px 22px rgba(13, 148, 136, 0.28)",
+  },
+  secondaryButton: {
+    padding: "11px 18px",
+    borderRadius: 10,
+    border: "1px solid #10B7A2",
+    background: "transparent",
+    color: "#5EEAD4",
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: "pointer",
   },
   resetRow: { display: "flex", justifyContent: "flex-end", padding: "0 16px" },
   resetButton: {
@@ -44,17 +59,77 @@ const styles = {
   },
 };
 
+function mapSummaryToPatient(summary) {
+  if (!summary?.patient) return defaultPatient;
+  const patient = summary.patient;
+  const fullName = String(patient.full_name || patient.name || "").trim();
+  const parts = fullName.split(/\s+/).filter(Boolean);
+  const lastName = parts.length > 1 ? parts[parts.length - 1] : (parts[0] || defaultPatient.lastName);
+  const firstName = parts.length > 1 ? parts.slice(0, -1).join(" ") : defaultPatient.firstName;
+  return {
+    ...defaultPatient,
+    firstName,
+    lastName,
+    mrn: patient.mrn || defaultPatient.mrn,
+    dob: patient.dob || defaultPatient.dob,
+    age: patient.age || defaultPatient.age,
+    sex: patient.sex || defaultPatient.sex,
+    payer: patient.payer || defaultPatient.payer,
+    status: patient.status || defaultPatient.status,
+    socDate: patient.soc_date || patient.hospice_election_date || defaultPatient.socDate,
+    benefitPeriod: patient.benefit_period || defaultPatient.benefitPeriod,
+  };
+}
+
 export default function NursingAssessmentBoard({ patientId = "" }) {
   const storageKey = useMemo(() => "sns-emr:ica-complete:rn:" + (patientId || "unknown-patient"), [patientId]);
   const [initialComplete, setInitialComplete] = useState(() => localStorage.getItem(storageKey) === "true");
+  const [view, setView] = useState("assessment");
+  const [reportFormData, setReportFormData] = useState(null);
+  const [patientSummary, setPatientSummary] = useState(null);
 
   useEffect(() => {
     setInitialComplete(localStorage.getItem(storageKey) === "true");
   }, [storageKey]);
 
+  useEffect(() => {
+    if (initialComplete && view === "report") {
+      setView("assessment");
+    }
+  }, [initialComplete, view]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (!patientId) {
+      setPatientSummary(null);
+      return () => {
+        mounted = false;
+      };
+    }
+    fetchPatientSummary(patientId)
+      .then((summary) => {
+        if (mounted) setPatientSummary(summary);
+      })
+      .catch(() => {
+        if (mounted) setPatientSummary(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [patientId]);
+
+  const patient = useMemo(() => mapSummaryToPatient(patientSummary), [patientSummary]);
+  const agency = useMemo(() => ({
+    name: getCurrentUser()?.tenant_name || "Hospice Agency",
+    address: "Agency Address",
+    phone: "(000) 000-0000",
+    fax: "(000) 000-0001",
+  }), []);
+
   const markInitialComplete = () => {
     localStorage.setItem(storageKey, "true");
     setInitialComplete(true);
+    setView("assessment");
   };
 
   const resetToInitial = () => {
@@ -71,17 +146,28 @@ export default function NursingAssessmentBoard({ patientId = "" }) {
           <div style={styles.description}>
             {initialComplete
               ? "Use the toggle inside the assessment to document either an Update Assessment or a Recertification Assessment."
-              : "Complete the full initial comprehensive assessment first. When ready, mark it complete to switch this patient to the ongoing comprehensive assessment workflow."}
+              : "Complete the full initial comprehensive assessment first. Use View HOPE Report to review the read-only CMS harvest from the RN ICA before printing or submission."}
           </div>
         </div>
-        {!initialComplete && (
-          <button type="button" style={styles.primaryButton} onClick={markInitialComplete}>
-            Mark Initial Comprehensive Assessment Complete
-          </button>
-        )}
+        <div style={styles.buttonRow}>
+          {!initialComplete && (
+            <button type="button" style={styles.secondaryButton} onClick={() => setView((current) => current === "report" ? "assessment" : "report")}>
+              {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
+            </button>
+          )}
+          {!initialComplete && (
+            <button type="button" style={styles.primaryButton} onClick={markInitialComplete}>
+              Mark Initial Comprehensive Assessment Complete
+            </button>
+          )}
+        </div>
       </div>
 
-      <RNICA patientId={patientId} mode={initialComplete ? "ongoing" : "ica"} />
+      {!initialComplete && view === "report" ? (
+        <HopeReport formData={reportFormData || {}} patient={patient} agency={agency} onBack={() => setView("assessment")} />
+      ) : (
+        <RNICA patientId={patientId} mode={initialComplete ? "ongoing" : "ica"} onFormDataChange={setReportFormData} />
+      )}
 
       {initialComplete && (
         <div style={styles.resetRow}>
