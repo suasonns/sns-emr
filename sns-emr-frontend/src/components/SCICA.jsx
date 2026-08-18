@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { fetchPatientSummary } from "../api/patientCharts";
 
 import { getActivePatientId } from "../utils/activePatient";
-const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
-const STORAGE_PREFIX = "sns-emr-sc-ica";
+import AssessmentTypeToggle from "./AssessmentTypeToggle";
+const STORAGE_PREFIX = "sns-hospice-solutions-sc-ica";
 
 const INITIAL_FORM = {
   patientActiveInFaithTradition: false,
@@ -31,6 +31,19 @@ const INITIAL_FORM = {
     chaplainTitle: "",
     signatureDate: "",
   },
+};
+
+const CLINICAL_BRAND = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  bg: "#F8FAFC",
+  canvas: "#EEF3F8",
+  panel: "#FFFFFF",
+  line: "#D8E3E8",
+  text: "#0F172A",
+  muted: "#64748B",
 };
 
 const concernOptions = [
@@ -79,13 +92,13 @@ function Field({ label, children, compact = false }) {
 
 function Card({ title, children, subtitle, id }) {
   return (
-    <section id={id} style={{ border: "1px solid #dbe5ee", marginBottom: 12, background: "#fff", borderRadius: 12, overflow: "hidden" }}>
-      <div style={{ background: "#f8fafc", borderBottom: "1px solid #dbe5ee", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <section id={id} style={{ border: `1px solid ${CLINICAL_BRAND.line}`, marginBottom: 12, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 700, fontStyle: "italic" }}>{title}</div>
-          {subtitle ? <div style={{ fontSize: 10, color: "#64748b" }}>{subtitle}</div> : null}
+          <div style={{ fontSize: 14, fontWeight: 700, fontStyle: "italic", color: CLINICAL_BRAND.text }}>{title}</div>
+          {subtitle ? <div style={{ fontSize: 10, color: CLINICAL_BRAND.muted }}>{subtitle}</div> : null}
         </div>
-        <div style={{ fontSize: 10, color: "#0f766e", fontWeight: 700 }}>Add Issue</div>
+        <div style={{ fontSize: 10, color: CLINICAL_BRAND.tealDark, fontWeight: 700 }}>Add Issue</div>
       </div>
       <div style={{ padding: 12 }}>{children}</div>
     </section>
@@ -132,13 +145,15 @@ function SectionLink({ active, label, onClick }) {
   );
 }
 
-export default function SCICA({ patientId = DEFAULT_PATIENT_ID }) {
+export default function SCICA({ patientId = getActivePatientId() ?? "", mode = "ica" }) {
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [form, setForm] = useState(() => readStoredForm(patientId));
   const [activeSection, setActiveSection] = useState("faith");
   const [completed, setCompleted] = useState(false);
   const [completionError, setCompletionError] = useState("");
+  const isOngoing = mode === "ongoing";
+  const [assessmentType, setAssessmentType] = useState("update");
 
   useEffect(() => {
     let mounted = true;
@@ -250,13 +265,13 @@ export default function SCICA({ patientId = DEFAULT_PATIENT_ID }) {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: "#eef3f8" }}>
+    <div style={{ minHeight: "100vh", background: CLINICAL_BRAND.canvas }}>
       <div style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 0" }}>
         <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 }}>
           <aside style={{ width: 260, minWidth: 260, paddingTop: 3 }}>
-            <div style={{ fontSize: 13, color: "#0f172a", fontWeight: 700, marginBottom: 8, paddingLeft: 2 }}>Love & Faith Hospice Services, Inc.</div>
-            <div style={{ border: "1px solid #dbe5ee", background: "#fff", fontSize: 11, borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ background: "linear-gradient(90deg, #1f4a78 0%, #10b7a2 100%)", color: "#fff", borderBottom: "1px solid #1f4a78", padding: "6px 10px", fontWeight: 700 }}>Patient</div>
+            <div style={{ fontSize: 13, color: CLINICAL_BRAND.text, fontWeight: 700, marginBottom: 8, paddingLeft: 2 }}>Love & Faith Hospice Services, Inc.</div>
+            <div style={{ border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, fontSize: 11, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 700 }}>Patient</div>
               <div style={{ padding: 8 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{patientName}</div>
                 <div style={{ fontSize: 11, color: "#475569", marginTop: 4 }}>{patientSummary?.patient?.mrn || "MRN not loaded"}</div>
@@ -264,8 +279,8 @@ export default function SCICA({ patientId = DEFAULT_PATIENT_ID }) {
               </div>
             </div>
 
-            <div style={{ marginTop: 8, border: "1px solid #dbe5ee", background: "#fff", borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ background: "#eef6fb", borderBottom: "1px solid #dbe5ee", padding: "6px 10px", fontWeight: 700 }}>Navigation</div>
+            <div style={{ marginTop: 8, border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" }}>
+              <div style={{ background: "#EDF7F7", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "6px 10px", fontWeight: 700 }}>Navigation</div>
               <div style={{ padding: 8, maxHeight: 640, overflow: "auto" }}>
                 {sidebarItems.map((item) => {
                   if (item === "Psychosocial") {
@@ -318,8 +333,8 @@ export default function SCICA({ patientId = DEFAULT_PATIENT_ID }) {
             </div>
           </aside>
 
-          <main style={{ background: "#f4f7f9", border: "1px solid #dbe5ee", boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1f4a78 0%, #10b7a2 100%)", color: "#fff" }}>
+          <main style={{ background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" }}>
+            <div style={{ padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>Comprehensive Spiritual Assessment</div>
                 <div style={{ fontSize: 11, color: "rgba(255,255,255,0.88)" }}>Chaplain support needs, spiritual distress, and referral planning</div>
@@ -329,6 +344,12 @@ export default function SCICA({ patientId = DEFAULT_PATIENT_ID }) {
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.8)" }}>Close</div>
               </div>
             </div>
+
+            {isOngoing && (
+              <div style={{ padding: "12px 24px", background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}` }}>
+                <AssessmentTypeToggle value={assessmentType} onChange={setAssessmentType} />
+              </div>
+            )}
 
             <div style={{ padding: 10, background: "#effaf8", borderBottom: "1px solid #dbe5ee", fontSize: 11 }}>
               Upload Documents (0)

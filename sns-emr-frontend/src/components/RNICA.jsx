@@ -15,10 +15,11 @@
  * Accent: Teal (#0D9488)
  */
 
-import React, { useState, useCallback, useMemo, useEffect } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useContext } from "react";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
 import { fetchPatientSummary } from "../api/patientCharts";
+import { fetchCensusWorkspace } from "../api/census";
 import {
   saveRnicaAssessment,
   getRnicaAssessment,
@@ -27,8 +28,9 @@ import {
   getRnicaIntelligence,
 } from "../api/icaAssessments";
 import PatientContextSidebar from "./PatientContextSidebar";
+import AssessmentTypeToggle from "./AssessmentTypeToggle";
 
-import { getActivePatientId } from "../utils/activePatient";
+import { getActivePatientId, setActivePatientId } from "../utils/activePatient";
 // ════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & CONFIGURATION
 // ════════════════════════════════════════════════════════════════
@@ -36,19 +38,22 @@ import { getActivePatientId } from "../utils/activePatient";
 const API_BASE = "/visits/rnica";
 
 const COLORS = {
-  hope: "#059669",    // GREEN — HOPE items
-  sfv: "#DC2626",     // RED — SFV items
-  cms: "#2563EB",     // BLUE — CMS required
-  teal: "#0D9488",    // Teal accent
-  dark: "#0F172A",    // Dark text
-  gray: "#64748B",    // Secondary text
-  border: "#E2E8F0",  // Border
-  bg: "#F8FAFC",      // Background
+  navy: "#1E3A5F",
+  hope: "#059669",
+  sfv: "#DC2626",
+  cms: "#2563EB",
+  teal: "#0D9488",
+  dark: "#0F172A",
+  gray: "#64748B",
+  border: "#D8E3E8",
+  bg: "#F8FAFC",
   white: "#FFFFFF",
   warning: "#F59E0B",
   error: "#EF4444",
   success: "#10B981",
 };
+
+const AssessmentModeContext = React.createContext("ica");
 
 const NAV_SECTIONS = [
   "Patient Demographics", "Vitals", "Pain Assessment", "Symptom Impact",
@@ -611,41 +616,44 @@ const api = {
 // 4. VALIDATION
 // ════════════════════════════════════════════════════════════════
 
-function validateRNICA(formData) {
+function validateRNICA(formData, mode = "ica") {
   const errors = {};
   const warnings = {};
+  const includeHopeRequirements = mode !== "ongoing";
 
-  // Demographics — required fields
+  // Demographics ? required fields
   if (!formData.demographics.firstName) errors["demographics.firstName"] = "First name is required";
   if (!formData.demographics.lastName) errors["demographics.lastName"] = "Last name is required";
   if (!formData.demographics.dob) errors["demographics.dob"] = "Date of birth is required";
   if (!formData.demographics.gender) errors["demographics.gender"] = "Gender is required";
 
-  // HOPE items — A1110 Language
-  if (!formData.demographics.preferredLanguage) {
-    warnings["demographics.preferredLanguage"] = "HOPE A1110: Preferred language required";
-  }
-  // A1005 Ethnicity
-  if (formData.demographics.ethnicity.length === 0) {
-    warnings["demographics.ethnicity"] = "HOPE A1005: Ethnicity required";
-  }
-  // A1010 Race
-  if (formData.demographics.race.length === 0) {
-    warnings["demographics.race"] = "HOPE A1010: Race required";
+  if (includeHopeRequirements) {
+    // HOPE items ? A1110 Language
+    if (!formData.demographics.preferredLanguage) {
+      warnings["demographics.preferredLanguage"] = "HOPE A1110: Preferred language required";
+    }
+    // A1005 Ethnicity
+    if (formData.demographics.ethnicity.length === 0) {
+      warnings["demographics.ethnicity"] = "HOPE A1005: Ethnicity required";
+    }
+    // A1010 Race
+    if (formData.demographics.race.length === 0) {
+      warnings["demographics.race"] = "HOPE A1010: Race required";
+    }
+
+    // Advanced Care Planning ? HOPE required
+    if (!formData.demographics.advancedCarePlanning.codeStatus) {
+      errors["demographics.advancedCarePlanning.codeStatus"] = "F2000: Code status is required";
+    }
+    if (!formData.demographics.advancedCarePlanning.lifeSustainingTreatmentPreference) {
+      errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "F2100: Life-sustaining treatment preference required";
+    }
+    if (!formData.demographics.advancedCarePlanning.hospitalizationPreference) {
+      errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "F2200: Hospitalization preference required";
+    }
   }
 
-  // Advanced Care Planning — CMS required
-  if (!formData.demographics.advancedCarePlanning.codeStatus) {
-    errors["demographics.advancedCarePlanning.codeStatus"] = "F2000: Code status is required";
-  }
-  if (!formData.demographics.advancedCarePlanning.lifeSustainingTreatmentPreference) {
-    errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "F2100: Life-sustaining treatment preference required";
-  }
-  if (!formData.demographics.advancedCarePlanning.hospitalizationPreference) {
-    errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "F2200: Hospitalization preference required";
-  }
-
-  // CDPH Gap #2 — Caregiver willingness and capability evaluation
+  // CDPH Gap #2 ? Caregiver willingness and capability evaluation
   if (!formData.demographics.pcg.willingToProvideCare) {
     warnings["demographics.pcg.willingToProvideCare"] = "CDPH: Caregiver willingness to provide care required";
   }
@@ -659,63 +667,65 @@ function validateRNICA(formData) {
     warnings["demographics.pcg.caregiverEvaluation.capabilityScore"] = "CDPH: Caregiver capability score required";
   }
 
-  // CDPH Gap #4 — POC entries from assessment
+  // CDPH Gap #4 ? POC entries from assessment
   if (!formData.finalization.pocGenerationCompleted) {
     warnings["finalization.pocGenerationCompleted"] = "CDPH: POC generation from assessment problems required before lock";
   }
 
-  // Pain — HOPE J0900, J0915
-  if (!formData.pain.verbalizesPain) {
-    warnings["pain.verbalizesPain"] = "HOPE J0900: Pain verbalization required";
-  }
-  if (!formData.pain.uncomfortableBecauseOfPain) {
-    warnings["pain.uncomfortableBecauseOfPain"] = "HOPE J0915: Uncomfortable because of pain required";
-  }
-
-  // Symptom Impact — J2051 A-H (all 8 required)
-  const siFields = ["pain","shortnessOfBreath","anxiety","nausea","vomiting","diarrhea","constipation","agitation"];
-  siFields.forEach((f, i) => {
-    if (!formData.symptomImpact[f]) {
-      warnings[`symptomImpact.${f}`] = `HOPE J2051${String.fromCharCode(65 + i)}: ${f} score required`;
+  if (includeHopeRequirements) {
+    // Pain ? HOPE J0900, J0915
+    if (!formData.pain.verbalizesPain) {
+      warnings["pain.verbalizesPain"] = "HOPE J0900: Pain verbalization required";
     }
-  });
+    if (!formData.pain.uncomfortableBecauseOfPain) {
+      warnings["pain.uncomfortableBecauseOfPain"] = "HOPE J0915: Uncomfortable because of pain required";
+    }
 
-  // Diagnoses — I0010
-  if (!formData.diagnoses.primaryDiagnosis.icd10) {
-    errors["diagnoses.primaryDiagnosis"] = "HOPE I0010: Primary diagnosis ICD-10 required";
+    // Symptom Impact ? J2051 A-H (all 8 required)
+    const siFields = ["pain","shortnessOfBreath","anxiety","nausea","vomiting","diarrhea","constipation","agitation"];
+    siFields.forEach((f, i) => {
+      if (!formData.symptomImpact[f]) {
+        warnings[`symptomImpact.${f}`] = `HOPE J2051${String.fromCharCode(65 + i)}: ${f} score required`;
+      }
+    });
+
+    // Diagnoses ? I0010
+    if (!formData.diagnoses.primaryDiagnosis.icd10) {
+      errors["diagnoses.primaryDiagnosis"] = "HOPE I0010: Primary diagnosis ICD-10 required";
+    }
+
+    // Performance Status ? M1190
+    if (!formData.performanceStatus.pps && !formData.performanceStatus.kps) {
+      warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
+    }
+
+    // Neurological ? BIMS N0500-N0520
+    if (!formData.neurological.hopeItems.n0500) {
+      warnings["neurological.hopeItems.n0500"] = "HOPE N0500: BIMS repetition required";
+    }
+
+    // Imminent Death ? J0050
+    if (!formData.imminentDeath.appearsThreeDaysOrLess) {
+      warnings["imminentDeath.appearsThreeDaysOrLess"] = "HOPE J0050: Prognosis assessment required";
+    }
   }
 
-  // Performance Status — M1190
-  if (!formData.performanceStatus.pps && !formData.performanceStatus.kps) {
-    warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
-  }
-
-  // Neurological — BIMS N0500-N0520
-  if (!formData.neurological.hopeItems.n0500) {
-    warnings["neurological.hopeItems.n0500"] = "HOPE N0500: BIMS repetition required";
-  }
-
-  // Imminent Death — J0050
-  if (!formData.imminentDeath.appearsThreeDaysOrLess) {
-    warnings["imminentDeath.appearsThreeDaysOrLess"] = "HOPE J0050: Prognosis assessment required";
-  }
-
-  // Skin — Braden
+  // Skin ? Braden
   if (!formData.skin.braden.total) {
     warnings["skin.braden.total"] = "Braden Scale total required";
   }
 
-  // Admissions Order — Level of Care required
+  // Admissions Order ? Level of Care required
   if (!formData.admissionsOrder.levelOfCare.level) {
     errors["admissionsOrder.levelOfCare"] = "Level of Care is required for admission";
   }
 
-  // Admissions Order — T.O. Verification
+  // Admissions Order ? T.O. Verification
   if (!formData.admissionsOrder.toVerification.verbalOrderReadBack) {
     errors["admissionsOrder.toVerification"] = "Verbal order read-back verification required";
   }
 
-  // Finalization — signature
+  // Finalization ? signature
   if (!formData.finalization.clinicianSignature) {
     errors["finalization.clinicianSignature"] = "Clinician signature required";
   }
@@ -737,14 +747,14 @@ const styles = {
     height: "auto",
     fontFamily: "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
     color: COLORS.dark,
-    background: "#eef3f8",
+    background: "#EEF3F8",
   },
   banner: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     padding: "14px 24px",
-    background: "linear-gradient(90deg, #1f4a78 0%, #10b7a2 100%)",
+    background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)",
     color: COLORS.white,
     fontSize: 13,
     boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
@@ -755,7 +765,7 @@ const styles = {
   workspace: { display: "flex", flex: 1, minHeight: 0, overflow: "visible" },
   sidebar: {
     width: 250,
-    background: "#f8fbfd",
+    background: "#F8FBFD",
     borderRight: `1px solid ${COLORS.border}`,
     overflowY: "auto",
     padding: "18px 10px",
@@ -776,11 +786,11 @@ const styles = {
     color: "#334155",
   },
   sidebarActive: {
-    background: "linear-gradient(90deg, rgba(16,183,162,0.12), rgba(16,183,162,0.03))",
-    borderLeftColor: "#10b7a2",
-    color: "#0f766e",
+    background: "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.03))",
+    borderLeftColor: COLORS.teal,
+    color: "#0F766E",
     fontWeight: 700,
-    boxShadow: "inset 0 0 0 1px rgba(16,183,162,0.08)",
+    boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
   },
   mainArea: { flex: 1, display: "flex", minHeight: 0, overflow: "visible" },
   content: { flex: 1, overflowY: "auto", minHeight: 0, padding: "24px 28px 32px" },
@@ -854,21 +864,29 @@ const styles = {
   sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "#FEF2F2", color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
   cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: "#EFF6FF", color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
   statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
-  btnPrimary: { padding: "11px 18px",   background: "linear-gradient(135deg, #10b7a2 0%, #0f766e 100%)", color: COLORS.white, border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
+  btnPrimary: { padding: "11px 18px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: COLORS.white, border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
   btnSecondary: { padding: "11px 18px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
   btnDanger: { padding: "11px 18px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: COLORS.white, border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
   footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", background: "rgba(255,255,255,0.96)", borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
   table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
   th: { padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
   td: { padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}` },
-  infoBox: { padding: 16, background: "linear-gradient(135deg, #eff6ff, #eefaf8)", borderRadius: 12, border: `1px solid rgba(31,74,120,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
+  infoBox: { padding: 16, background: "linear-gradient(135deg, #eef6ff, #eefaf8)", borderRadius: 12, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
   warningBox: { padding: 16, background: "linear-gradient(135deg, #fffbeb, #fff7ed)", borderRadius: 12, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
   successBox: { padding: 16, background: "linear-gradient(135deg, #ecfdf5, #f0fdf4)", borderRadius: 12, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16 },
 };
 
 // Tag components
-function HopeTag({ code }) { return <span style={styles.hopeTag}>HOPE {code}</span>; }
-function SfvTag() { return <span style={styles.sfvTag}>SFV Trigger</span>; }
+function HopeTag({ code }) {
+  const mode = useContext(AssessmentModeContext);
+  if (mode === "ongoing") return null;
+  return <span style={styles.hopeTag}>HOPE {code}</span>;
+}
+function SfvTag() {
+  const mode = useContext(AssessmentModeContext);
+  if (mode === "ongoing") return null;
+  return <span style={styles.sfvTag}>SFV Trigger</span>;
+}
 function CmsTag({ label }) { return <span style={styles.cmsTag}>CMS {label || "Required"}</span>; }
 
 // Form field components
@@ -2348,7 +2366,7 @@ const SECTION_CONFIGS = {
     title: "Personal Care & Support Needs",
     subtitle: "Home aide tasks, volunteer services, community resources, equipment needs",
     cards: [
-      { title: "Home Health Aide Tasks", fields: [
+      { title: "Home Visit Aide Tasks", fields: [
         { type: "checkboxGroup", label: "Aide Tasks Needed", path: "aideTasks", options: [
           "Bathing/showering", "Hair care/grooming", "Oral hygiene", "Skin care",
           "Dressing", "Toileting assistance", "Transfers/mobility", "Light meal preparation",
@@ -2512,8 +2530,9 @@ const SECTION_CONFIGS = {
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
-export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: existingAssessmentId = undefined }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
+  const initialPatientId = patientId ?? getActivePatientId() ?? "";
+  const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
@@ -2527,11 +2546,52 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
   const [locked, setLocked] = useState(false);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const isOngoing = mode === "ongoing";
+  const [assessmentType, setAssessmentType] = useState("update");
+  const routes = useMemo(() => (isOngoing ? ROUTES.filter((route) => route.key !== "sfv") : ROUTES), [isOngoing]);
+  const sidebarConfigItems = useMemo(() => {
+    const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
+    return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
+  }, [isOngoing]);
 
   useEffect(() => {
+    const nextId = patientId || getActivePatientId();
+    if (nextId) {
+      setResolvedPatientId(nextId);
+      setActivePatientId(nextId);
+      return;
+    }
+
+    let mounted = true;
+    fetchCensusWorkspace()
+      .then(({ patients }) => {
+        if (!mounted) return;
+        const firstPatient = patients?.[0];
+        if (firstPatient?.patient_id) {
+          setActivePatientId(firstPatient.patient_id);
+          setResolvedPatientId(firstPatient.patient_id);
+        }
+      })
+      .catch((error) => {
+        console.warn("Unable to auto-select patient for RN ICA:", error);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [patientId]);
+
+  useEffect(() => {
+    const activeId = resolvedPatientId || patientId;
+    if (!activeId) {
+      setPatientSummary(null);
+      setPatientSummaryError("");
+      return;
+    }
+
     let mounted = true;
     setPatientSummaryError("");
-    fetchPatientSummary(patientId)
+    fetchPatientSummary(activeId)
       .then((summary) => {
         if (mounted) {
           setPatientSummary(summary);
@@ -2548,7 +2608,40 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
     return () => {
       mounted = false;
     };
-  }, [patientId]);
+  }, [resolvedPatientId, patientId]);
+
+  useEffect(() => {
+    if (!patientSummary?.patient || assessmentId) {
+      return;
+    }
+
+    setFormData((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      const patient = patientSummary.patient;
+      const fullName = (patient.full_name || "").trim();
+      const nameParts = fullName ? fullName.split(/\s+/) : [];
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
+      if (!next.demographics.firstName && firstName) {
+        next.demographics.firstName = firstName;
+      }
+      if (!next.demographics.lastName && lastName) {
+        next.demographics.lastName = lastName;
+      }
+      if (!next.diagnoses.primaryDiagnosis.description && patient.primary_diagnosis) {
+        next.diagnoses.primaryDiagnosis.description = patient.primary_diagnosis;
+      }
+      if (!next.admissionsOrder.levelOfCare.level) {
+        next.admissionsOrder.levelOfCare.level = patient.acuity_state === "ROUTINE" ? "Routine Care" : patient.acuity_state || "Routine Care";
+      }
+      if (!next.admissionsOrder.levelOfCare.effectiveDate) {
+        next.admissionsOrder.levelOfCare.effectiveDate = patient.hospice_election_date || patient.soc_date || new Date().toISOString().slice(0, 10);
+      }
+
+      return next;
+    });
+  }, [patientSummary, assessmentId]);
 
   const refreshIntelligence = useCallback(async (currentAssessmentId = assessmentId) => {
     if (!currentAssessmentId) {
@@ -2601,8 +2694,8 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
 
   // Auto-validate on change
   useEffect(() => {
-    setValidation(validateRNICA(formData));
-  }, [formData]);
+    setValidation(validateRNICA(formData, mode));
+  }, [formData, mode]);
 
   // Deep update helper
   const updateField = useCallback((section, path, value) => {
@@ -2613,6 +2706,8 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
     });
     setSaveStatus(null);
   }, []);
+
+  const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert Assessment" : "Initial Comprehensive RN Assessment";
 
   // Save / Update
   const handleSave = useCallback(async () => {
@@ -2641,7 +2736,7 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
   // Lock
   const handleLock = useCallback(async () => {
     if (!assessmentId) return;
-    const v = validateRNICA(formData);
+    const v = validateRNICA(formData, mode);
     if (!v.isValid) {
       alert("Cannot lock: there are validation errors. Please complete all required fields.");
       return;
@@ -2659,7 +2754,7 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
   // Section completion tracker
   const completedSections = useMemo(() => {
     const completed = [];
-    ROUTES.forEach((route) => {
+    routes.forEach((route) => {
       const sectionData = formData[route.formSection];
       if (sectionData) {
         const hasContent = JSON.stringify(sectionData) !== JSON.stringify(INITIAL_FORM[route.formSection]);
@@ -2667,21 +2762,27 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
       }
     });
     return completed;
-  }, [formData]);
+  }, [formData, routes]);
+
+  useEffect(() => {
+    if (!routes.some((route) => route.key === activeSection)) {
+      setActiveSection(routes[0]?.key || "demographics");
+    }
+  }, [activeSection, routes]);
 
   // Current route
-  const currentRoute = ROUTES.find((r) => r.key === activeSection);
+  const currentRoute = routes.find((r) => r.key === activeSection);
   const currentSectionData = formData[currentRoute?.formSection];
-  const sidebarConfig = SIDEBAR_CONFIG.find((s) => s.key === activeSection);
+  const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
 
   // Navigate
   const goNext = () => {
-    const idx = ROUTES.findIndex((r) => r.key === activeSection);
-    if (idx < ROUTES.length - 1) setActiveSection(ROUTES[idx + 1].key);
+    const idx = routes.findIndex((r) => r.key === activeSection);
+    if (idx < routes.length - 1) setActiveSection(routes[idx + 1].key);
   };
   const goPrev = () => {
-    const idx = ROUTES.findIndex((r) => r.key === activeSection);
-    if (idx > 0) setActiveSection(ROUTES[idx - 1].key);
+    const idx = routes.findIndex((r) => r.key === activeSection);
+    if (idx > 0) setActiveSection(routes[idx - 1].key);
   };
 
   // Render current section
@@ -2703,11 +2804,12 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
   };
 
   return (
-    <div style={styles.page}>
+    <AssessmentModeContext.Provider value={mode}>
+      <div style={styles.page}>
       {/* ── Patient Banner ── */}
       <div style={styles.banner}>
         <div>
-          <div style={styles.bannerName}>{patientSummary?.patient?.full_name || "Margaret Sullivan"}</div>
+          <div style={styles.bannerName}>{patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected")}</div>
           <div style={styles.bannerMeta}>
             {patientSummary
               ? `MRN: ${patientSummary.patient.mrn} | ${patientSummary.patient.primary_diagnosis}`
@@ -2735,10 +2837,16 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
       )}
 
       {/* ── Workspace ── */}
+      {isOngoing && (
+        <div style={{ padding: "0 24px 16px" }}>
+          <AssessmentTypeToggle value={assessmentType} onChange={setAssessmentType} />
+        </div>
+      )}
+
       <div style={styles.workspace}>
         <PatientContextSidebar
-          patientId={patientId}
-          patientName={patientSummary?.patient?.full_name || "Margaret Sullivan"}
+          patientId={patientSummary?.patient?.mrn || patientId || resolvedPatientId || "No MRN on file"}
+          patientName={patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected")}
           disciplineLabel="RN ICA"
           activeSection={activeSection}
           patientOverview={
@@ -2778,13 +2886,13 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
                   careTeam: ["RN", "MSW", "SC", "MD", "Chaplain", "Admin"],
                 }
           }
-          sections={SIDEBAR_CONFIG.map((item) => ({
+          sections={sidebarConfigItems.map((item) => ({
             key: item.key,
             label: item.label,
-            meta: item.cdphRequired ? "CDPH" : item.hope?.length ? "HOPE" : undefined,
+            meta: item.cdphRequired ? "CDPH" : !isOngoing && item.hope?.length ? "HOPE" : undefined,
           }))}
           onSelect={(key) => {
-            const match = SIDEBAR_CONFIG.find((item) => item.key === key);
+            const match = sidebarConfigItems.find((item) => item.key === key);
             if (!match) return;
 
             if (match.parent) {
@@ -2814,21 +2922,21 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 4 }}>Completion</div>
               <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.teal }}>
-                {completedSections.length} / {ROUTES.length}
+                {completedSections.length} / {routes.length}
               </div>
               <div style={{
                 height: 6, borderRadius: 3, background: COLORS.border, marginTop: 8,
               }}>
                 <div style={{
                   height: "100%", borderRadius: 3, background: COLORS.teal,
-                  width: `${(completedSections.length / ROUTES.length) * 100}%`,
+                  width: `${(completedSections.length / routes.length) * 100}%`,
                   transition: "width 0.3s",
                 }} />
               </div>
             </div>
 
             {/* HOPE Items for current section */}
-            {sidebarConfig?.hope?.length > 0 && (
+            {!isOngoing && sidebarConfig?.hope?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 8 }}>HOPE Items</div>
                 {sidebarConfig.hope.map((code) => (
@@ -2928,10 +3036,10 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
       {/* ── Footer ── */}
       <div style={styles.footer}>
         <div style={{ display: "flex", gap: 8 }}>
-          <button style={styles.btnSecondary} onClick={goPrev} disabled={activeSection === ROUTES[0].key}>
+          <button style={styles.btnSecondary} onClick={goPrev} disabled={activeSection === routes[0]?.key}>
             &larr; Previous
           </button>
-          <button style={styles.btnSecondary} onClick={goNext} disabled={activeSection === ROUTES[ROUTES.length - 1].key}>
+          <button style={styles.btnSecondary} onClick={goNext} disabled={activeSection === routes[routes.length - 1]?.key}>
             Next &rarr;
           </button>
         </div>
@@ -2940,7 +3048,7 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
             <span style={{ fontSize: 12, color: COLORS.gray }}>ID: {assessmentId}</span>
           )}
           <button style={styles.btnPrimary} onClick={handleSave} disabled={saving || locked}>
-            {saving ? "Saving..." : assessmentId ? "Update Assessment" : "Save Assessment"}
+            {saving ? "Saving..." : saveButtonLabel}
           </button>
           {assessmentId && !locked && (
             <button style={styles.btnDanger} onClick={handleLock}>
@@ -2949,6 +3057,7 @@ export default function RNICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: ex
           )}
         </div>
       </div>
-    </div>
+      </div>
+    </AssessmentModeContext.Provider>
   );
 }

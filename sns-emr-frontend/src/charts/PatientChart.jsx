@@ -5,6 +5,9 @@ import PatientFacesheet from './PatientFacesheet';
 import ConsentNotifications from '../intake/ConsentNotifications';
 import StaffAssignment from '../intake/StaffAssignment';
 import ChartCompletionChecklist from '../intake/ChartCompletionChecklist';
+import NursingAssessmentBoard from '../intake/NursingAssessmentBoard';
+import PsychosocialAssessmentBoard from '../intake/PsychosocialAssessmentBoard';
+import SpiritualAssessmentBoard from '../intake/SpiritualAssessmentBoard';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
@@ -490,10 +493,13 @@ const PatientChart = () => {
       case 'intake':
       case 'demographics':
         return <IntakeBoard />;
-      case 'assessments':
       case 'nursing-assessment':
-      case 'spiritual-assessment':
+        return <NursingAssessmentBoard patientId={resolvedPatientId} />;
       case 'psychosocial-assessment':
+        return <PsychosocialAssessmentBoard patientId={resolvedPatientId} />;
+      case 'spiritual-assessment':
+        return <SpiritualAssessmentBoard patientId={resolvedPatientId} />;
+      case 'assessments':
       case 'assessment-history':
         return <AssessmentBoard />;
       case 'visit-notes':

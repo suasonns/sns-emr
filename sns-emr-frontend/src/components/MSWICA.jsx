@@ -8,10 +8,10 @@ import {
   lockMswIcaAssessment,
   getMswIcaIntelligence,
 } from "../api/icaAssessments";
+import AssessmentTypeToggle from "./AssessmentTypeToggle";
 
 const API_BASE = "/visits/msw-ica";
-const DEFAULT_PATIENT_ID = getActivePatientId() ?? "";
-const STORAGE_PREFIX = "sns-emr-msw-ica";
+const STORAGE_PREFIX = "sns-hospice-solutions-msw-ica";
 
 const INITIAL_FORM = {
   social: {
@@ -91,36 +91,50 @@ const sidebarItems = [
   "Monthly Schedule",
 ];
 
+const CLINICAL_BRAND = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  bg: "#F8FAFC",
+  canvas: "#EEF3F8",
+  panel: "#FFFFFF",
+  line: "#D8E3E8",
+  text: "#0F172A",
+  muted: "#64748B",
+  slate: "#334155",
+};
+
 const styles = {
-  page: { minHeight: "100vh", background: "#eef3f8" },
+  page: { minHeight: "100vh", background: CLINICAL_BRAND.canvas },
   frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
   shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
   sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
-  patientCard: { border: "1px solid #dbe5ee", background: "#fff", fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
-  patientCardHeader: { background: "linear-gradient(90deg, #1f4a78 0%, #10b7a2 100%)", color: "#fff", borderBottom: "1px solid #1f4a78", padding: "6px 10px", fontWeight: 700 },
-  navCard: { border: "1px solid #dbe5ee", background: "#fff", borderRadius: 12, overflow: "hidden" },
-  navHeader: { background: "#eef6fb", borderBottom: "1px solid #dbe5ee", padding: "6px 10px", fontWeight: 700 },
+  patientCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
+  patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 700 },
+  navCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
+  navHeader: { background: "#EDF7F7", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "6px 10px", fontWeight: 700 },
   navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
-  main: { background: "#f4f7f9", border: "1px solid #dbe5ee", boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
-  header: { borderBottom: "1px solid #dbe5ee", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1f4a78 0%, #10b7a2 100%)", color: "#fff" },
+  main: { background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+  header: { borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
   headerTitle: { fontSize: 18, fontWeight: 700 },
   headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
   progress: { fontSize: 11, fontWeight: 700 },
-  uploadBar: { padding: 10, background: "#effaf8", borderBottom: "1px solid #dbe5ee", fontSize: 11 },
+  uploadBar: { padding: 10, background: CLINICAL_BRAND.tealLight, borderBottom: `1px solid ${CLINICAL_BRAND.line}`, fontSize: 11 },
   alert: { margin: 10, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
   content: { padding: 24 },
   columns: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  sectionCard: { border: "1px solid #dbe5ee", marginBottom: 12, background: "#fff", borderRadius: 12, overflow: "hidden" },
-  sectionHeader: { background: "#f8fafc", borderBottom: "1px solid #dbe5ee", padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic" },
-  sectionHint: { fontSize: 10, color: "#64748b" },
-  addIssue: { fontSize: 10, color: "#0f766e", fontWeight: 700 },
+  sectionCard: { border: `1px solid ${CLINICAL_BRAND.line}`, marginBottom: 12, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
+  sectionHeader: { background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" },
+  sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: CLINICAL_BRAND.text },
+  sectionHint: { fontSize: 10, color: CLINICAL_BRAND.muted },
+  addIssue: { fontSize: 10, color: CLINICAL_BRAND.tealDark, fontWeight: 700 },
   sectionBody: { padding: 12 },
-  fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: "#334155" },
+  fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: CLINICAL_BRAND.slate },
   input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, background: "#fff", fontSize: 13 },
   textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, fontSize: 13, lineHeight: 1.3, resize: "vertical" },
   checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: "#111827" },
-  button: { border: "1px solid #10b7a2", background: "#fff", color: "#0f766e", borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
+  button: { border: `1px solid ${CLINICAL_BRAND.teal}`, background: "#fff", color: CLINICAL_BRAND.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
   footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
   statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase" },
 };
@@ -183,7 +197,7 @@ const api = {
   getMSWICAIntelligence: (assessmentId) => getMswIcaIntelligence(assessmentId),
 };
 
-export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: existingAssessmentId = undefined }) {
+export default function MSWICA({ patientId = getActivePatientId() ?? "", assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(() => readStoredForm(patientId));
@@ -196,6 +210,8 @@ export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: e
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const [activeSection, setActiveSection] = useState("psychosocial");
+  const isOngoing = mode === "ongoing";
+  const [assessmentType, setAssessmentType] = useState("update");
 
   useEffect(() => {
     let mounted = true;
@@ -370,6 +386,7 @@ export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: e
   };
 
   const selectedConcerns = formData.risk.patient_psychosocial_concerns.length + formData.social.concerns.length;
+  const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert" : "Save Assessment";
   const assessmentChildren = [
     { label: "Nursing", target: "psychosocial" },
     { label: "Spiritual", target: "narrative" },
@@ -463,6 +480,12 @@ export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: e
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.8)" }}>Close</div>
               </div>
             </div>
+
+            {isOngoing && (
+              <div style={{ padding: "12px 24px", background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}` }}>
+                <AssessmentTypeToggle value={assessmentType} onChange={setAssessmentType} />
+              </div>
+            )}
 
             <div style={styles.uploadBar}>Upload Documents (0)</div>
 
@@ -731,7 +754,7 @@ export default function MSWICA({ patientId = DEFAULT_PATIENT_ID, assessmentId: e
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
                       <button type="button" style={styles.button} onClick={handleSave} disabled={saving || locked}>
-                        {saving ? "Saving..." : assessmentId ? "Update Assessment" : "Save Assessment"}
+                        {saving ? "Saving..." : saveButtonLabel}
                       </button>
                       {assessmentId && !locked ? (
                         <button type="button" style={{ ...styles.button, background: "#fee2e2" }} onClick={handleLock}>
