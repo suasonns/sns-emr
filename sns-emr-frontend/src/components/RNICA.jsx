@@ -1683,10 +1683,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics) {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
+        const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
+          return null;
+        }
+        if (sectionKey === "pain" && card.title === "Pain Characteristics" && !shouldRenderPainCharacteristicsCard) {
           return null;
         }
         if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && !shouldRenderPainadCard) {
