@@ -1,6 +1,11 @@
 import React, { useCallback, useState } from "react";
 import AssessmentTypeToggle from "../components/AssessmentTypeToggle";
+import { useThemeMode } from "../theme/theme";
+import { getChartColors } from "../theme/chartColors";
 
+// Default (dark) palette — module-level helpers below use this as a
+// fallback shape; the main component recomputes theme-aware colors
+// from useThemeMode()/getChartColors() and shadows these per render.
 const COLORS = {
   bg: '#0f172a',
   card: '#1e293b',
@@ -33,6 +38,8 @@ const cardStyle = {
 };
 
 const Badge = ({ children, variant = 'teal' }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
   const map = {
     green: { bg: COLORS.greenBg, color: COLORS.green },
     red: { bg: COLORS.redBg, color: COLORS.red },
@@ -43,60 +50,80 @@ const Badge = ({ children, variant = 'teal' }) => {
   return <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 4, fontSize: 11, fontWeight: 600, backgroundColor: v.bg, color: v.color }}>{children}</span>;
 };
 
-const Field = ({ label, children, style: extra }) => (
-  <div style={{ marginBottom: 12, ...extra }}>
-    <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: COLORS.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{label}</label>
-    {children}
-  </div>
-);
-
-const SectionCard = ({ number, title, subtitle, onAddIssue, children }) => (
-  <div style={cardStyle}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
-      <div>
-        <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>{number}. {title}</div>
-        {subtitle && <div style={{ color: COLORS.label, fontSize: 12, marginTop: 2 }}>{subtitle}</div>}
-      </div>
-      <button onClick={onAddIssue} style={{ background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.teal, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>+ Add Issue</button>
+const Field = ({ label, children, style: extra }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
+  return (
+    <div style={{ marginBottom: 12, ...extra }}>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: COLORS.label, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>{label}</label>
+      {children}
     </div>
-    {children}
-  </div>
-);
+  );
+};
 
-const CheckboxGroup = ({ options, selected, onChange, columns = 2 }) => (
-  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '6px 16px' }}>
-    {options.map((opt) => (
-      <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: COLORS.text }}>
-        <div style={{
-          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-          border: selected.includes(opt) ? 'none' : `2px solid ${COLORS.border}`,
-          backgroundColor: selected.includes(opt) ? COLORS.teal : 'transparent',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {selected.includes(opt) && <span style={{ color: COLORS.white, fontSize: 10, fontWeight: 700 }}>✓</span>}
+const SectionCard = ({ number, title, subtitle, onAddIssue, children }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
+  const cardStyle = {
+    backgroundColor: COLORS.card, borderRadius: 8, padding: 24,
+    borderLeft: `4px solid ${COLORS.teal}`, marginBottom: 20,
+  };
+  return (
+    <div style={cardStyle}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+        <div>
+          <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>{number}. {title}</div>
+          {subtitle && <div style={{ color: COLORS.label, fontSize: 12, marginTop: 2 }}>{subtitle}</div>}
         </div>
-        {opt}
-      </label>
-    ))}
-  </div>
-);
+        <button onClick={onAddIssue} style={{ background: 'none', border: `1px solid ${COLORS.border}`, borderRadius: 6, color: COLORS.teal, padding: '4px 12px', cursor: 'pointer', fontSize: 11, fontWeight: 600 }}>+ Add Issue</button>
+      </div>
+      {children}
+    </div>
+  );
+};
 
-const RadioGroup = ({ options, value, onChange, inline = true }) => (
-  <div style={{ display: 'flex', flexDirection: inline ? 'row' : 'column', gap: inline ? 16 : 6, flexWrap: 'wrap' }}>
-    {options.map((opt) => (
-      <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: COLORS.text }}>
-        <div style={{
-          width: 16, height: 16, borderRadius: 8, flexShrink: 0,
-          border: `2px solid ${value === opt ? COLORS.teal : COLORS.border}`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {value === opt && <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.teal }} />}
-        </div>
-        {opt}
-      </label>
-    ))}
-  </div>
-);
+const CheckboxGroup = ({ options, selected, onChange, columns = 2 }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${columns}, 1fr)`, gap: '6px 16px' }}>
+      {options.map((opt) => (
+        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 12, color: COLORS.text }}>
+          <div style={{
+            width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+            border: selected.includes(opt) ? 'none' : `2px solid ${COLORS.border}`,
+            backgroundColor: selected.includes(opt) ? COLORS.teal : 'transparent',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {selected.includes(opt) && <span style={{ color: COLORS.white, fontSize: 10, fontWeight: 700 }}>✓</span>}
+          </div>
+          {opt}
+        </label>
+      ))}
+    </div>
+  );
+};
+
+const RadioGroup = ({ options, value, onChange, inline = true }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
+  return (
+    <div style={{ display: 'flex', flexDirection: inline ? 'row' : 'column', gap: inline ? 16 : 6, flexWrap: 'wrap' }}>
+      {options.map((opt) => (
+        <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, color: COLORS.text }}>
+          <div style={{
+            width: 16, height: 16, borderRadius: 8, flexShrink: 0,
+            border: `2px solid ${value === opt ? COLORS.teal : COLORS.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {value === opt && <div style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.teal }} />}
+          </div>
+          {opt}
+        </label>
+      ))}
+    </div>
+  );
+};
 
 // All fields start blank/unanswered — this is a live clinical form, not sample data.
 const INITIAL_FORM = {
@@ -162,6 +189,20 @@ const INITIAL_FORM = {
 };
 
 const MSWComprehensiveAssessment = ({ patientId = "", patient }) => {
+  const { mode } = useThemeMode();
+  const COLORS = getChartColors(mode);
+  const inputStyle = {
+    backgroundColor: COLORS.bg, border: `1px solid ${COLORS.border}`,
+    borderRadius: 6, padding: '8px 12px', color: COLORS.white,
+    fontSize: 13, fontFamily: "'Inter', sans-serif", outline: 'none', width: '100%',
+    boxSizing: 'border-box',
+  };
+  const selectStyle = { ...inputStyle, cursor: 'pointer', appearance: 'none' };
+  const textareaStyle = { ...inputStyle, resize: 'vertical', minHeight: 80, lineHeight: '1.5' };
+  const cardStyle = {
+    backgroundColor: COLORS.card, borderRadius: 8, padding: 24,
+    borderLeft: `4px solid ${COLORS.teal}`, marginBottom: 20,
+  };
   const [form, setForm] = useState(INITIAL_FORM);
   const [assessmentType, setAssessmentType] = useState('update');
   const [saving, setSaving] = useState(false);
