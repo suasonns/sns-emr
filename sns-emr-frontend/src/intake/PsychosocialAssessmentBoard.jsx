@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import MSWICA from "../components/MSWICA";
+import ComprehensivePsychosocialAssessment from "../components/ComprehensivePsychosocialAssessment";
 
 const styles = {
   shell: { background: "#0F172A", paddingBottom: 16 },
@@ -81,7 +82,7 @@ export default function PsychosocialAssessmentBoard({ patientId = "" }) {
         )}
       </div>
 
-      <MSWICA patientId={patientId} mode={initialComplete ? "ongoing" : "ica"} />
+      {initialComplete ? <ComprehensivePsychosocialAssessment patientId={patientId} /> : <MSWICA patientId={patientId} mode="ica" />}
 
       {initialComplete && (
         <div style={styles.resetRow}>
