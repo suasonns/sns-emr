@@ -69,7 +69,7 @@ const sections = [
   {
     key: 'orders', label: 'Physician Orders', items: [
       { label: 'Certification of Terminal Illness (CTI)', status: 'complete', by: 'Romel Suason, RN (reviewed) · signed by Dr. Reyes, MD', date: '01/15/2026' },
-      { label: 'Face-to-Face Encounter (F2F)', status: 'complete', by: 'Samuel Okafor, RN, AGPCNP (PCP/covering NP)', date: '01/14/2026' },
+      { label: 'Face-to-Face Encounter (F2F)', status: 'complete', by: 'Samuel Okafor, NP (PCP/covering NP)', date: '01/14/2026' },
       { label: 'Plan of Care (485)', status: 'complete', by: 'Romel Suason, RN', date: '01/16/2026' },
       { label: 'Medication Orders', status: 'complete', by: 'Angela Suason, LVN', date: '01/16/2026' },
       { label: 'DME Orders', status: 'pending', by: null, date: null },
