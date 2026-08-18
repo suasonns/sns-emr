@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { getNumericInterpretation } from './painScoring';
+import PainScoreBadge from './PainScoreBadge';
 
 const COLORS = {
   bg: '#0f172a', card: '#1e293b', border: '#334155', teal: '#10b7a2',
@@ -16,20 +18,29 @@ const SCALE_COLORS = [
 const SCALE_LABELS = ['No Pain', '', '', 'Mild', '', '', 'Moderate', '', '', 'Severe', 'Worst'];
 
 const getInterpretation = (score) => {
-  if (score === 0) return { label: 'No Pain', color: COLORS.green, bg: COLORS.greenBg };
-  if (score <= 3) return { label: 'Mild Pain', color: '#84cc16', bg: '#84cc1615' };
-  if (score <= 6) return { label: 'Moderate Pain', color: COLORS.amber, bg: COLORS.amberBg };
-  return { label: 'Severe Pain', color: COLORS.red, bg: COLORS.redBg };
+  const interp = getNumericInterpretation(score);
+  if (!interp) return null;
+  return { ...interp, bg: `${interp.color}15` };
 };
 
-const NumericPainScale = () => {
-  const [selectedScore, setSelectedScore] = useState(null);
+const NumericPainScale = ({ value, onChange }) => {
+  const isControlled = typeof onChange === 'function';
+  const [internalScore, setInternalScore] = useState(null);
+  const selectedScore = isControlled ? (value ?? null) : internalScore;
+  const setSelectedScore = (v) => {
+    if (isControlled) onChange(v);
+    else setInternalScore(v);
+  };
 
   const interp = selectedScore !== null ? getInterpretation(selectedScore) : null;
 
+
   return (
     <div style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
-      <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700, marginBottom: 4 }}>Numeric Pain Rating Scale (0–10)</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>Numeric Pain Rating Scale (0–10)</div>
+        <PainScoreBadge tool="numeric" score={selectedScore} />
+      </div>
       <div style={{ color: COLORS.label, fontSize: 12, marginBottom: 20 }}>Patient self-report scale — select the number that best describes pain intensity.</div>
 
       {/* Scale Circles */}

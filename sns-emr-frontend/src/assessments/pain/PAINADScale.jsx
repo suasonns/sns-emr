@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { getPainadInterpretation } from './painScoring';
+import PainScoreBadge from './PainScoreBadge';
 
 const COLORS = {
   bg: '#0f172a', card: '#1e293b', border: '#334155', teal: '#10b7a2',
@@ -48,22 +50,24 @@ const CATEGORIES = [
 ];
 
 const getInterpretation = (total) => {
-  if (total === 0) return { label: 'No Pain', color: COLORS.green, bg: COLORS.greenBg };
-  if (total <= 3) return { label: 'Mild Pain', color: '#84cc16', bg: '#84cc1615' };
-  if (total <= 6) return { label: 'Moderate Pain', color: COLORS.amber, bg: COLORS.amberBg };
-  return { label: 'Severe Pain', color: COLORS.red, bg: COLORS.redBg };
+  const interp = getPainadInterpretation(total);
+  if (!interp) return null;
+  return { ...interp, bg: `${interp.color}15` };
 };
 
-const PAINADScale = () => {
-  const [scores, setScores] = useState([0, 0, 0, 0, 0]);
+const PAINADScale = ({ value, onChange }) => {
+  const isControlled = Array.isArray(value) && typeof onChange === 'function';
+  const [internalScores, setInternalScores] = useState([0, 0, 0, 0, 0]);
+  const scores = isControlled ? value : internalScores;
 
-  const total = scores.reduce((sum, s) => sum + s, 0);
+  const total = scores.reduce((sum, s) => sum + (Number(s) || 0), 0);
   const interp = getInterpretation(total);
 
-  const handleScore = (catIndex, value) => {
+  const handleScore = (catIndex, val) => {
     const updated = [...scores];
-    updated[catIndex] = value;
-    setScores(updated);
+    updated[catIndex] = val;
+    if (isControlled) onChange(updated);
+    else setInternalScores(updated);
   };
 
   const headerCell = { padding: '10px 8px', fontSize: 11, fontWeight: 700, color: COLORS.teal, textAlign: 'center', borderBottom: `1px solid ${COLORS.border}` };
@@ -71,7 +75,10 @@ const PAINADScale = () => {
 
   return (
     <div style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
-      <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700, marginBottom: 4 }}>PAINAD — Pain Assessment in Advanced Dementia</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>PAINAD — Pain Assessment in Advanced Dementia</div>
+        <PainScoreBadge tool="painad" score={total} />
+      </div>
       <div style={{ color: COLORS.label, fontSize: 12, marginBottom: 12 }}>For patients unable to self-report pain (advanced dementia, non-verbal).</div>
 
       {/* Instructions */}

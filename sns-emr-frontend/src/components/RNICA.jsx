@@ -28,6 +28,9 @@ import {
   getRnicaIntelligence,
 } from "../api/icaAssessments";
 import PatientContextSidebar from "./PatientContextSidebar";
+import NumericPainScale from "../assessments/pain/NumericPainScale";
+import PAINADScale from "../assessments/pain/PAINADScale";
+import FLACCScale from "../assessments/pain/FLACCScale";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { getSfvStatus } from "../intake/hopeReportMapper";
 
@@ -1702,6 +1705,37 @@ function renderGenericSection(sectionKey, data, update, config, demographics) {
 
         return (
           <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
+              <NumericPainScale
+                value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}
+                onChange={(score) => u("painIntensity.current", score)}
+              />
+            )}
+            {sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && (
+              <FLACCScale
+                value={["face", "legs", "activity", "cry", "consolability"].map((k) => Number(data.flacc?.[k]) || 0)}
+                onChange={(arr) => {
+                  u("flacc.face", String(arr[0]));
+                  u("flacc.legs", String(arr[1]));
+                  u("flacc.activity", String(arr[2]));
+                  u("flacc.cry", String(arr[3]));
+                  u("flacc.consolability", String(arr[4]));
+                }}
+              />
+            )}
+            {sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && (
+              <PAINADScale
+                value={["breathing", "vocalization", "facialExpression", "bodyLanguage", "consolability"].map((k) => Number(data.painad?.[k]) || 0)}
+                onChange={(arr) => {
+                  u("painad.breathing", String(arr[0]));
+                  u("painad.vocalization", String(arr[1]));
+                  u("painad.facialExpression", String(arr[2]));
+                  u("painad.bodyLanguage", String(arr[3]));
+                  u("painad.consolability", String(arr[4]));
+                }}
+              />
+            )}
+
             {shouldRenderPainMap && painAssessmentMode === "verbal" && (
               <BodyMap
                 value={data.painBodySites || []}
@@ -1749,6 +1783,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics) {
             )}
 
             {card.fields.map((field, fi) => {
+              if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
+                return null;
+              }
+              if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && field.path === "assessmentTool") {
+                return null;
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
