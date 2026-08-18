@@ -8,6 +8,7 @@ import ChartCompletionChecklist from '../intake/ChartCompletionChecklist';
 import NursingAssessmentBoard from '../intake/NursingAssessmentBoard';
 import PsychosocialAssessmentBoard from '../intake/PsychosocialAssessmentBoard';
 import SpiritualAssessmentBoard from '../intake/SpiritualAssessmentBoard';
+import PainScreening from '../assessments/pain/PainScreening';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
@@ -499,6 +500,8 @@ const PatientChart = () => {
         return <PsychosocialAssessmentBoard patientId={resolvedPatientId} />;
       case 'spiritual-assessment':
         return <SpiritualAssessmentBoard patientId={resolvedPatientId} />;
+      case 'pain-assessment':
+        return <PainScreening patientType="adult" />;
       case 'assessments':
       case 'assessment-history':
         return <AssessmentBoard />;
