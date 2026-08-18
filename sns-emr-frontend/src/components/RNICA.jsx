@@ -1621,7 +1621,20 @@ function renderDemographics(data, update) {
 
 
 // ── Generic Section Renderer ──
-function renderGenericSection(sectionKey, data, update, config) {
+function calculateAgeFromDob(dobStr) {
+  if (!dobStr) return null;
+  const dob = new Date(dobStr);
+  if (Number.isNaN(dob.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const monthDiff = today.getMonth() - dob.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age;
+}
+
+function renderGenericSection(sectionKey, data, update, config, demographics) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
@@ -1631,8 +1644,22 @@ function renderGenericSection(sectionKey, data, update, config) {
     return type;
   };
 
+  const patientAge = sectionKey === "pain" ? calculateAgeFromDob(demographics?.dob) : null;
+  const isPediatricAge = typeof patientAge === "number" && patientAge < 18;
+
+  // Auto-derive the pain scale from HOPE J0900 (can the patient verbalize
+  // pain?) and the patient's age — only one scale (Numeric / PAINAD / FLACC)
+  // is ever shown. A nurse can still override via the BodyMap patient-type
+  // toggle, which updates painMapMode directly.
+  const deriveModeFromScreening = (verbalizesPain) => {
+    if (isPediatricAge) return "pediatric";
+    if (verbalizesPain === "1" || verbalizesPain === "2") return "verbal";
+    if (verbalizesPain === "0" || verbalizesPain === "3") return "non-verbal";
+    return "verbal";
+  };
+
   const getPainAssessmentMode = () => {
-    const patientType = normalizePainPatientType(data.painMapMode || "verbal");
+    const patientType = normalizePainPatientType(data.painMapMode || deriveModeFromScreening(data.verbalizesPain));
     const selectedTool = String(data.assessmentTool || "");
     if (patientType === "verbal") return "verbal";
     if (patientType === "non-verbal") return selectedTool === "FLACC" ? "flacc" : "painad";
@@ -1656,37 +1683,25 @@ function renderGenericSection(sectionKey, data, update, config) {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
-        const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal patients)" && painAssessmentMode === "painad";
-        const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric patients)" && painAssessmentMode === "flacc";
+        const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
+        const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal patients)" && !shouldRenderPainadCard) {
+        if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && !shouldRenderPainadCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric patients)" && !shouldRenderFlaccCard) {
+        if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
           return null;
         }
 
         return (
           <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-            {shouldRenderPainMap && (
+            {shouldRenderPainMap && painAssessmentMode === "verbal" && (
               <BodyMap
                 value={data.painBodySites || []}
                 tone="pain"
-                patientType={normalizePainPatientType(data.painMapMode || "verbal")}
-                onPatientTypeChange={(mode) => {
-                  const normalizedMode = normalizePainPatientType(mode);
-                  u("painMapMode", normalizedMode);
-                  if (normalizedMode === "verbal") {
-                    u("assessmentTool", "Numeric (0-10)");
-                  } else if (normalizedMode === "non-verbal") {
-                    u("assessmentTool", "PAINAD");
-                  } else if (normalizedMode === "pediatric") {
-                    u("assessmentTool", "FLACC");
-                  }
-                }}
                 onToggle={(regionId) => {
                   const current = data.painBodySites || [];
                   const next = current.includes(regionId)
@@ -1696,6 +1711,23 @@ function renderGenericSection(sectionKey, data, update, config) {
                 }}
                 onClearAll={() => u("painBodySites", [])}
               />
+            )}
+            {shouldRenderPainMap && painAssessmentMode !== "verbal" && (
+              <div style={{
+                padding: "14px 16px",
+                borderRadius: 12,
+                background: "#F8FAFC",
+                border: "1px solid #E2E8F0",
+                color: "#475569",
+                fontSize: 12.5,
+                lineHeight: 1.5,
+              }}>
+                <strong style={{ color: "#0F172A" }}>Body Map unavailable — </strong>
+                the patient is unable to reliably verbalize or point to a pain location
+                (per HOPE J0900 above{isPediatricAge ? " / pediatric patient" : ""}).
+                Pain location should be documented via clinician/caregiver observation
+                using the {painAssessmentMode === "flacc" ? "FLACC" : "PAINAD"} scale below instead.
+              </div>
             )}
 
             {shouldRenderSkinMap && (
@@ -1717,7 +1749,24 @@ function renderGenericSection(sectionKey, data, update, config) {
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
               const value = getNestedValue(data, fieldForRender.path);
-              const onChange = (v) => u(fieldForRender.path, v);
+              const onChange = (v) => {
+                u(fieldForRender.path, v);
+                if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
+                  // Auto-select the correct pain scale from the HOPE J0900
+                  // answer + patient age so only one tool is ever shown:
+                  // verbal (reliable/sometimes) -> Numeric, non-verbal adult
+                  // -> PAINAD, pediatric -> FLACC.
+                  const mode = deriveModeFromScreening(v);
+                  u("painMapMode", mode);
+                  if (mode === "verbal") {
+                    u("assessmentTool", "Numeric (0-10)");
+                  } else if (mode === "non-verbal") {
+                    u("assessmentTool", "PAINAD");
+                  } else if (mode === "pediatric") {
+                    u("assessmentTool", "FLACC");
+                  }
+                }
+              };
 
               switch (fieldForRender.type) {
                 case "input":
@@ -2846,7 +2895,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
     const config = SECTION_CONFIGS[currentRoute?.formSection];
     if (config && currentSectionData) {
-      return renderGenericSection(currentRoute.formSection, currentSectionData, updateField, config);
+      return renderGenericSection(currentRoute.formSection, currentSectionData, updateField, config, formData.demographics);
     }
 
     return (
