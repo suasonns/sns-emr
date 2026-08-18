@@ -28,6 +28,14 @@ const formatDate = (value) => {
   return String(value);
 };
 
+const addDays = (value, days) => {
+  if (!value) return "";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
 const boolCode = (value, yesCode = "1", yesDescription = "Yes", noCode = "0", noDescription = "No") => ({
   code: value ? yesCode : noCode,
   description: value ? yesDescription : noDescription,
@@ -38,10 +46,8 @@ const SEX_MAP = {
   M: ["1", "Male"],
   Female: ["2", "Female"],
   F: ["2", "Female"],
-  "Non-binary": ["3", "Non-binary"],
-  Other: ["4", "Other"],
-  Declined: ["9", "Declined"],
 };
+
 const SITE_OF_SERVICE_MAP = {
   Home: ["1", "Private home / residence"],
   SNF: ["2", "Skilled nursing facility"],
@@ -50,6 +56,7 @@ const SITE_OF_SERVICE_MAP = {
   Homeless: ["5", "Homeless / shelter"],
   Other: ["9", "Other"],
 };
+
 const ADMITTED_FROM_MAP = {
   Home: ["1", "Private home / residence"],
   Hospital: ["2", "Acute care hospital"],
@@ -58,6 +65,7 @@ const ADMITTED_FROM_MAP = {
   Rehab: ["5", "Rehabilitation facility"],
   Other: ["9", "Other"],
 };
+
 const LIVING_ARRANGEMENT_MAP = {
   Alone: ["1", "Lives alone"],
   "With spouse": ["2", "Lives with spouse / partner"],
@@ -65,6 +73,7 @@ const LIVING_ARRANGEMENT_MAP = {
   "With non-relative": ["4", "Lives with non-relative"],
   Facility: ["5", "Facility resident"],
 };
+
 const ASSISTANCE_MAP = {
   "24/7 available": ["1", "Assistance available around the clock"],
   "Daytime only": ["2", "Assistance available daytime only"],
@@ -72,23 +81,27 @@ const ASSISTANCE_MAP = {
   Limited: ["4", "Limited assistance available"],
   None: ["5", "No assistance available"],
 };
+
 const CODE_STATUS_MAP = {
   "Full Code": ["1", "Attempt resuscitation / full code"],
   DNR: ["2", "Do not resuscitate"],
   "DNR-CC": ["3", "Do not resuscitate - comfort care"],
   "Comfort Measures Only": ["4", "Comfort measures only"],
 };
+
 const PAIN_SCREEN_MAP = {
   "0": ["0", "No"],
   "1": ["1", "Yes, reliably"],
   "2": ["2", "Sometimes"],
   "3": ["3", "Unable to determine"],
 };
+
 const YES_NO_UNABLE_MAP = {
   "0": ["0", "No"],
   "1": ["1", "Yes"],
   "9": ["9", "Unable to determine"],
 };
+
 const IMPACT_MAP = {
   "0": ["0", "Not at all"],
   "1": ["1", "Slight"],
@@ -97,11 +110,22 @@ const IMPACT_MAP = {
   "9": ["9", "Not applicable"],
 };
 
+const IMPACT_KEYS = [
+  ["pain", "Pain"],
+  ["shortnessOfBreath", "Shortness of Breath"],
+  ["anxiety", "Anxiety"],
+  ["nausea", "Nausea"],
+  ["vomiting", "Vomiting"],
+  ["diarrhea", "Diarrhea"],
+  ["constipation", "Constipation"],
+  ["agitation", "Agitation"],
+];
+
 function preferenceLookup(value) {
   const text = String(value || "");
   if (!text) return { code: PLACEHOLDER, description: PLACEHOLDER };
-  if (text.startsWith("Yes")) return { code: "1", description: "Yes" };
-  if (text.startsWith("No")) return { code: "0", description: "No" };
+  if (text.startsWith("Yes")) return { code: "1", description: text };
+  if (text.startsWith("No")) return { code: "0", description: text };
   if (text === "Undecided") return { code: "9", description: "Undecided" };
   return { code: PLACEHOLDER, description: text };
 }
@@ -137,34 +161,80 @@ function deriveSkinTreatments(skin = {}) {
   return treatments.length ? treatments.join(" | ") : PLACEHOLDER;
 }
 
-function diagnosisList(diagnoses = {}) {
+function diagnosisEntries(diagnoses = {}) {
   const entries = [];
-  (diagnoses.secondaryDiagnoses || []).forEach((item) => {
-    if (typeof item === "string" && item) entries.push(item);
-    else if (item && (item.icd10 || item.description)) entries.push(`${valueText(item.icd10)} ${valueText(item.description)}`.trim());
-  });
-  (diagnoses.comorbidities || []).forEach((item) => {
-    if (typeof item === "string" && item) entries.push(item);
-    else if (item && (item.icd10 || item.description || item.name)) entries.push(`${valueText(item.icd10 || item.code)} ${valueText(item.description || item.name)}`.trim());
-  });
+  const collect = (item) => {
+    if (!item) return;
+    if (typeof item === "string" && item) {
+      entries.push(item);
+      return;
+    }
+    const code = valueText(item.icd10 || item.code);
+    const description = valueText(item.description || item.name);
+    if (code !== PLACEHOLDER || description !== PLACEHOLDER) {
+      entries.push(`${code} ${description}`.trim());
+    }
+  };
+  collect(diagnoses.primaryDiagnosis);
+  (diagnoses.secondaryDiagnoses || []).forEach(collect);
+  (diagnoses.comorbidities || []).forEach(collect);
+  return entries;
+}
+
+function diagnosisList(diagnoses = {}) {
+  const entries = diagnosisEntries(diagnoses);
   return entries.length ? entries.join(", ") : PLACEHOLDER;
 }
 
 function symptomEntries(source = {}) {
-  const entry = (label, value) => {
-    const mapped = lookup(IMPACT_MAP, value);
-    return { label, value: `${mapped.code} - ${mapped.description}` };
+  return IMPACT_KEYS.map(([key, label], index) => {
+    const mapped = lookup(IMPACT_MAP, source[key]);
+    return {
+      label: `${String.fromCharCode(65 + index)}. ${label}`,
+      value: `${mapped.code} - ${mapped.description}`,
+    };
+  });
+}
+
+function isModerateOrSevere(value) {
+  if (value === 2 || value === 3) return true;
+  const text = String(value || "").trim().toLowerCase();
+  return text === "2" || text === "3" || text.includes("moderate") || text.includes("severe");
+}
+
+export function getSfvStatus(formData = {}) {
+  const symptomImpact = formData.symptomImpact || {};
+  const sfv = formData.sfv || {};
+  const screeningDate = sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate || "";
+  const triggeredSymptoms = IMPACT_KEYS
+    .filter(([key]) => isModerateOrSevere(symptomImpact[key]))
+    .map(([, label]) => label);
+  const required = triggeredSymptoms.length > 0;
+  const dueDate = required ? addDays(screeningDate, 2) : "";
+  const completed = Boolean(sfv.inPersonSfvCompleted);
+  const statusLabel = !required
+    ? "No SFV trigger identified"
+    : completed
+      ? "SFV completed"
+      : "SFV required";
+  const note = !required
+    ? "No J2051 item is currently Moderate or Severe."
+    : completed
+      ? "J2052A is complete; J2053 follow-up symptom impact may be documented by an RN or LPN/LVN."
+      : `Any Moderate or Severe J2051 symptom requires an in-person SFV within 2 calendar days${screeningDate ? ` of ${formatDate(screeningDate)}` : ""}.`;
+  return {
+    required,
+    completed,
+    screeningDate,
+    dueDate,
+    triggeredSymptoms,
+    statusLabel,
+    note,
   };
-  return [
-    entry("A. Pain", source.pain),
-    entry("B. Shortness of Breath", source.shortnessOfBreath),
-    entry("C. Anxiety", source.anxiety),
-    entry("D. Nausea", source.nausea),
-    entry("E. Vomiting", source.vomiting),
-    entry("F. Diarrhea", source.diarrhea),
-    entry("G. Constipation", source.constipation),
-    entry("H. Agitation", source.agitation),
-  ];
+}
+
+function activeDiagnosisFlag(diagnoses = {}, matcher) {
+  return diagnosisEntries(diagnoses).some((entry) => matcher.test(entry.toLowerCase()));
 }
 
 export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}) {
@@ -205,10 +275,17 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
   const f3000Asked = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
+  const sfvStatus = getSfvStatus(formData);
+  const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
+  const bowelRegimenCode = medications.bowelRegimen ? ["2", "Initiated / continued"] : opioidPresent ? ["0", "Not initiated / continued"] : ["1", "Not applicable - no opioid trigger"];
+  const hasHeartFailure = activeDiagnosisFlag(diagnoses, /\b(chf|congestive heart failure|heart failure)\b/);
+  const hasCopd = activeDiagnosisFlag(diagnoses, /\b(copd|chronic obstructive pulmonary disease)\b/);
+  const hasOtherMedicalCondition = diagnosisEntries(diagnoses).length > (diagnoses.primaryDiagnosis?.description || diagnoses.primaryDiagnosis?.icd10 ? 1 : 0);
 
   return {
     agency: agencyInfo,
     patientName: name.display,
+    sfvStatus,
     sections: [
       {
         title: "Section A - Administrative Information",
@@ -220,7 +297,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "A0250", label: "Reason for Record", entries: [{ label: "Code + description", value: "1 - Admission (ADM)" }] },
           { code: "A0500", label: "Legal Name of Patient", entries: [{ label: "A. First", value: name.first }, { label: "B. MI", value: name.middleInitial }, { label: "C. Last", value: name.last }] },
           { code: "A0550", label: "Patient Zip Code", entries: [{ label: "ZIP", value: valueText(demographics.address?.zip) }] },
-          { code: "A0600", label: "Social Security and Medicare Numbers", entries: [{ label: "A. SSN", value: valueText(patient.ssn) }, { label: "B. Medicare number", value: valueText(patient.medicareNumber) }] },
+          { code: "A0600", label: "Social Security and Medicare Numbers", entries: [{ label: "A. SSN", value: valueText(patient.ssn) }, { label: "B. Medicare / MBI", value: valueText(patient.medicareNumber) }] },
           { code: "A0700", label: "Medicaid Number", entries: [{ label: "Number", value: valueText(patient.medicaidNumber) }] },
           { code: "A0810", label: "Sex", entries: [{ label: "Code + description", value: `${sex.code} - ${sex.description}` }] },
           { code: "A0900", label: "Birth Date", entries: [{ label: "Date", value: formatDate(demographics.dob || patient.dob) }] },
@@ -246,6 +323,9 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         title: "Section I - Active Diagnoses",
         items: [
           { code: "I0010", label: "Principal Diagnosis", entries: [{ label: "Code + description", value: principalDiagnosis }] },
+          { code: "I0600", label: "Heart Failure", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasHeartFailure).description }] },
+          { code: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasCopd).description }] },
+          { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasOtherMedicalCondition).description }] },
           { code: "I0000", label: "Comorbidities and Co-existing Conditions", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
         ],
       },
@@ -278,7 +358,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         items: [
           { code: "N0500", label: "Scheduled Opioid", entries: [{ label: "A. Initiated / continued?", value: boolCode(Boolean(medications.scheduledOpioid)).description }, { label: "B. Date", value: formatDate(medications.scheduledOpioidDate) }] },
           { code: "N0510", label: "PRN Opioid", entries: [{ label: "A. Initiated / continued?", value: boolCode(Boolean(medications.prnOpioid)).description }, { label: "B. Date", value: formatDate(medications.prnOpioidDate) }] },
-          { code: "N0520", label: "Bowel Regimen", entries: [{ label: "A. Initiated / continued?", value: boolCode(Boolean(medications.bowelRegimen)).description }, { label: "B. Date", value: formatDate(medications.bowelRegimenDate) }] },
+          { code: "N0520", label: "Bowel Regimen", entries: [{ label: "A. Status", value: `${bowelRegimenCode[0]} - ${bowelRegimenCode[1]}` }, { label: "B. Date", value: bowelRegimenCode[0] === "2" ? formatDate(medications.bowelRegimenDate) : PLACEHOLDER }] },
         ],
       },
       {

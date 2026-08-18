@@ -24,6 +24,15 @@ const styles = {
   entryValue: { fontSize: 13, color: "#0f172a", lineHeight: 1.45 },
   headerRow: { display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap", marginBottom: 18 },
   patientLine: { fontSize: 14, fontWeight: 600 },
+  sfvBanner: (required) => ({
+    marginBottom: 18,
+    padding: 14,
+    borderRadius: 8,
+    border: `1px solid ${required ? "#fdba74" : "#cbd5e1"}`,
+    backgroundColor: required ? "#fff7ed" : "#f8fafc",
+  }),
+  sfvTitle: (required) => ({ fontSize: 13, fontWeight: 800, color: required ? "#c2410c" : "#334155", marginBottom: 6 }),
+  sfvText: { fontSize: 13, color: "#334155", lineHeight: 1.5 },
 };
 
 export default function HopeReport({ formData = {}, patient = defaultPatient, agency, onBack }) {
@@ -53,6 +62,24 @@ export default function HopeReport({ formData = {}, patient = defaultPatient, ag
 
           <div style={{ ...styles.title, fontSize: 22, marginBottom: 16 }}>HOPE REPORT - Admission</div>
           <div style={{ ...styles.patientLine, marginBottom: 8 }}>Patient Name: {report.patientName}</div>
+
+          <div style={styles.sfvBanner(report.sfvStatus.required)}>
+            <div style={styles.sfvTitle(report.sfvStatus.required)}>
+              {report.sfvStatus.required ? "SFV Required" : "SFV Status"}
+            </div>
+            <div style={styles.sfvText}>
+              {report.sfvStatus.required
+                ? `${report.sfvStatus.statusLabel} - Triggered by: ${report.sfvStatus.triggeredSymptoms.join(", ")}.${report.sfvStatus.dueDate ? ` Due within 2 calendar days of screening (${report.sfvStatus.dueDate.replace(/^(\\d{4})-(\\d{2})-(\\d{2})$/, "$2/$3/$1")}).` : ""}`
+                : report.sfvStatus.note}
+            </div>
+            {report.sfvStatus.required && (
+              <div style={{ ...styles.sfvText, marginTop: 6 }}>
+                {report.sfvStatus.completed
+                  ? "J2052 is completed. J2053 follow-up symptom impact may be documented by an RN or LPN/LVN."
+                  : "Complete J2052 after the in-person SFV. J2053 should only be completed once J2052A = 1."}
+              </div>
+            )}
+          </div>
 
           {report.sections.map((section) => (
             <section key={section.title} style={styles.section}>

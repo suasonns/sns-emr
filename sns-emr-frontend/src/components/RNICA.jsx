@@ -29,6 +29,7 @@ import {
 } from "../api/icaAssessments";
 import PatientContextSidebar from "./PatientContextSidebar";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
+import { getSfvStatus } from "../intake/hopeReportMapper";
 
 import { getActivePatientId, setActivePatientId } from "../utils/activePatient";
 // ════════════════════════════════════════════════════════════════
@@ -2825,6 +2826,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const currentRoute = routes.find((r) => r.key === activeSection);
   const currentSectionData = formData[currentRoute?.formSection];
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
+  const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
 
   // Navigate
   const goNext = () => {
@@ -2962,6 +2964,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         {/* ── Main Content ── */}
         <div style={styles.mainArea}>
           <div style={styles.content}>
+            {!isOngoing && sfvStatus.required && (activeSection === "symptomImpact" || activeSection === "sfv") && (
+              <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: "linear-gradient(135deg, #fff7ed, #fffbeb)" }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>SFV Required</div>
+                <div>
+                  Moderate or Severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
+                  {sfvStatus.dueDate ? ` In-person SFV is due within 2 calendar days of screening by ${sfvStatus.dueDate.slice(5, 7)}/${sfvStatus.dueDate.slice(8, 10)}/${sfvStatus.dueDate.slice(0, 4)}.` : " In-person SFV is due within 2 calendar days of screening."}
+                </div>
+                <div style={{ marginTop: 6 }}>
+                  Complete J2052 after the follow-up visit. J2053 may then be documented by an RN or LPN/LVN.
+                </div>
+              </div>
+            )}
             {renderSection()}
           </div>
 
