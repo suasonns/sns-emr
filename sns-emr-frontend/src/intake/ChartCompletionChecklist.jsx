@@ -68,9 +68,9 @@ const sections = [
   },
   {
     key: 'orders', label: 'Physician Orders', items: [
-      { label: 'Certification of Terminal Illness', status: 'complete', by: 'Dr. Reyes', date: '01/15/2026' },
-      { label: 'Plan of Care (485)', status: 'complete', by: 'Dr. Reyes', date: '01/16/2026' },
-      { label: 'Medication Orders', status: 'complete', by: 'Dr. Reyes', date: '01/16/2026' },
+      { label: 'Certification of Terminal Illness', status: 'complete', by: 'Romel Suason, RN', date: '01/15/2026' },
+      { label: 'Plan of Care (485)', status: 'complete', by: 'Romel Suason, RN', date: '01/16/2026' },
+      { label: 'Medication Orders', status: 'complete', by: 'Angela Suason, LVN', date: '01/16/2026' },
       { label: 'DME Orders', status: 'pending', by: null, date: null },
     ]
   },
