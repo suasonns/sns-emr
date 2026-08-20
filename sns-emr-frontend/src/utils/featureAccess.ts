@@ -1,10 +1,8 @@
 import { getCurrentUser } from "../api/session";
+import { hasFeatureAccess } from "./authorization";
 
 export function canAccessBilling(): boolean {
-  const user = getCurrentUser();
-  if (!user) return false;
-
-  return Boolean(user.billing_enabled);
+  return hasFeatureAccess(getCurrentUser(), "billing");
 }
 
 export function canAccessAi(): boolean {

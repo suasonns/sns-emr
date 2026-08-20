@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.security import verify_password_hash
+from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.admin_bootstrap_service import provision_development_logins
 
@@ -59,6 +60,11 @@ def test_provisioning_authentication_authorization_and_password_flows(
         assert me_payload["tenant_id"] == str(expected_tenant)
         assert me_payload["ai_enabled"] is True
         assert me_payload["billing_enabled"] is (role != "OWNER")
+        assert me_payload["access_scope"] == {
+            "OWNER": "platform",
+            "BILLING": "billing",
+            "DPCS_ADMINISTRATOR": "tenant",
+        }[role]
 
     for env_name in (
         "DEV_DPCS_ADMIN_PASSWORD",
@@ -75,6 +81,26 @@ def test_provisioning_authentication_authorization_and_password_flows(
     assert client.get("/api/owner/tenants", headers=owner_headers).status_code == 200
     assert client.get("/patients/", headers=owner_headers).status_code == 403
     assert client.get("/api/dashboard/tenant", headers=owner_headers).status_code == 403
+    assert client.get("/api/dashboard/billing", headers=owner_headers).status_code == 403
+    assert client.get("/api/dashboard/claim-lifecycle", headers=owner_headers).status_code == 403
+
+    billing_headers = {"Authorization": f"Bearer {tokens['BILLING']}"}
+    assert client.get("/api/dashboard/tenant", headers=billing_headers).status_code == 403
+    assert client.get("/api/owner/tenants", headers=billing_headers).status_code == 403
+    assert client.get("/api/dashboard/claim-lifecycle", headers=billing_headers).status_code == 200
+    assert client.get(
+        f"/patient-charts/{uuid.uuid4()}/summary",
+        headers=billing_headers,
+    ).status_code == 403
+
+    tenant_headers = {"Authorization": f"Bearer {tokens['DPCS_ADMINISTRATOR']}"}
+    assert client.get("/api/owner/tenants", headers=tenant_headers).status_code == 403
+
+    tenant = db_session.get(Tenant, tenant_id)
+    tenant.billing_enabled = False
+    db_session.commit()
+    assert client.get("/api/dashboard/billing", headers=tenant_headers).status_code == 403
+    assert client.get("/api/dashboard/claim-lifecycle", headers=tenant_headers).status_code == 403
 
     dpcs_email, dpcs_password = credentials["DPCS_ADMINISTRATOR"]
     reset_response = client.post(

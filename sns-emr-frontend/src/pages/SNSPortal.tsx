@@ -40,7 +40,6 @@ const QUICK_LINKS = [
   { label: "Patient LCD", route: "/patient-lcd" },
   { label: "Analytics", route: "/analytics" },
   { label: "Tenant Dashboard", route: "/tenant" },
-  { label: "Owner Dashboard", route: "/owner" },
 ];
 
 type LiveData = {

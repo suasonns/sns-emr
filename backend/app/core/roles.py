@@ -18,7 +18,7 @@ sub-roles, Platform sub-roles) are new, additive role values layered on top.
 
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Literal
 
 # Every spelling that resolves to the same effective role.
 _ALIASES = {
@@ -154,6 +154,21 @@ def normalize_role(role: str | None) -> str:
 def is_platform_role(role: str | None) -> bool:
     """True for SNS platform/vendor staff — never grants tenant/PHI access."""
     return normalize_role(role) in PLATFORM_ROLES
+
+
+def is_owner_role(role: str | None) -> bool:
+    """True only for the platform OWNER role."""
+    return normalize_role(role) == "OWNER"
+
+
+def access_scope_for_role(role: str | None) -> Literal["platform", "billing", "tenant"]:
+    """Return the frontend navigation scope for a canonical backend role."""
+    normalized = normalize_role(role)
+    if normalized in PLATFORM_ROLES:
+        return "platform"
+    if normalized in FINANCIAL_ADMIN_ROLES:
+        return "billing"
+    return "tenant"
 
 
 def role_matches(

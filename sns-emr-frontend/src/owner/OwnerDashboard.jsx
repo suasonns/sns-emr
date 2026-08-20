@@ -12,7 +12,8 @@ import {
 } from './pages';
 import { logout } from '../api/auth';
 import { fetchOwnerDashboard } from '../api/dashboard';
-import { getCurrentUser, hasOwnerRole } from '../api/session';
+import { getCurrentUser } from '../api/session';
+import { hasRouteAccess } from '../utils/authorization';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
 
@@ -46,7 +47,7 @@ export default function OwnerDashboard() {
 
   const currentUser = getCurrentUser();
   const { mode, toggleMode } = useThemeMode();
-  const isAuthorized = !!currentUser && hasOwnerRole(currentUser);
+  const isAuthorized = hasRouteAccess(currentUser, 'owner');
   const userDisplayName = currentUser?.full_name || currentUser?.email || 'Platform Administrator';
   const userRole = currentUser?.role || 'SUPER ADMIN';
 

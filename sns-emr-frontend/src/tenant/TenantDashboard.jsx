@@ -11,7 +11,8 @@ import {
 } from './pages';
 import { fetchTenantDashboard } from '../api/dashboard';
 import { fetchCensusWorkspace } from '../api/census';
-import { getCurrentUser, hasOwnerRole } from '../api/session';
+import { getCurrentUser } from '../api/session';
+import { hasRouteAccess } from '../utils/authorization';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
 
@@ -55,9 +56,7 @@ export default function TenantDashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const currentUser = getCurrentUser();
-  const isPlatformOwner = hasOwnerRole(currentUser);
-  const isBillingOnly = normalizeRole(currentUser?.role) === 'BILLING' || normalizeRole(currentUser?.role) === 'BILLER';
-  const isRestricted = isPlatformOwner || isBillingOnly;
+  const isRestricted = !hasRouteAccess(currentUser, 'tenant');
   const navItems = getTenantNav(currentUser);
   const pages = getTenantPages(currentUser);
   const ActivePage = pages[activeTab] || pages[0];
@@ -91,28 +90,13 @@ export default function TenantDashboard() {
     };
   }, [isRestricted]);
 
-  if (isPlatformOwner) {
+  if (isRestricted) {
     return (
       <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: COLORS.bg, fontFamily: 'Inter, sans-serif' }}>
         <div style={{ maxWidth: 480, textAlign: 'center', color: COLORS.white, padding: 24 }}>
           <h2>Tenant workspace not available</h2>
           <p>
-            The platform owner account does not have access to per-tenant patient
-            data. Use the Owner Dashboard for cross-tenant administration.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (isBillingOnly) {
-    return (
-      <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', background: COLORS.bg, fontFamily: 'Inter, sans-serif' }}>
-        <div style={{ maxWidth: 480, textAlign: 'center', color: COLORS.white, padding: 24 }}>
-          <h2>Tenant workspace not available</h2>
-          <p>
-            The billing role does not have access to patient census or clinical
-            data. Use the Analytics Hub for billing.
+            Your current role does not have access to patient census or clinical data.
           </p>
         </div>
       </div>

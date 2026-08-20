@@ -4,20 +4,29 @@ import { useNavigate } from "react-router-dom";
 
 import { getCurrentUser } from "../api/session";
 import { portalTypography } from "../styles/portalTypography";
+import { hasFeatureAccess, hasRouteAccess } from "../utils/authorization";
+import type { FeatureKey, RouteAccess } from "../utils/authorization";
 
 type PortalShellProps = {
   activeTab: string;
   children: ReactNode;
 };
 
-const NAV_ITEMS = [
-  { label: "Dashboard", route: "/portal" },
-  { label: "Census", route: "/tenant" },
-  { label: "Secure Inbox", route: "/secure-inbox" },
-  { label: "Clinical Alerts", route: "/clinical-alerts" },
-  { label: "Analytics", route: "/analytics" },
-  { label: "Settings", route: "/owner" },
-  { label: "My Profile", route: "/my-profile" },
+type NavItem = {
+  label: string;
+  route: string;
+  access?: RouteAccess;
+  feature?: FeatureKey;
+};
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Dashboard", route: "/portal", access: "tenant" },
+  { label: "Census", route: "/tenant", access: "tenant" },
+  { label: "Secure Inbox", route: "/secure-inbox", access: "tenant" },
+  { label: "Clinical Alerts", route: "/clinical-alerts", access: "tenant" },
+  { label: "Analytics", route: "/analytics", access: "analytics" },
+  { label: "Billing", route: "/billing", feature: "billing" },
+  { label: "My Profile", route: "/my-profile", access: "tenant" },
 ];
 
 const C = {
@@ -59,6 +68,11 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
   const displayName = user?.full_name ?? "Signed-in User";
   const displayRole = formatRole(user?.role) || "Clinical Staff";
   const initials = getInitials(displayName) || "US";
+  const navItems = NAV_ITEMS.filter((item) => (
+    item.feature
+      ? hasFeatureAccess(user, item.feature)
+      : item.access ? hasRouteAccess(user, item.access) : false
+  ));
 
   return (
     <Box sx={{ minHeight: "100vh", bgcolor: C.gray50, color: C.white, display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif" }}>
@@ -90,7 +104,7 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
               sx={{ width: 180, height: "auto", display: "block" }}
             />
             <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-              {NAV_ITEMS.map((tab) => {
+              {navItems.map((tab) => {
                 const active = tab.label === activeTab;
                 return (
                   <Button

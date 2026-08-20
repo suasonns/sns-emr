@@ -10,6 +10,7 @@ export type SessionUser = {
   tenant_name?: string;
   ai_enabled?: boolean;
   billing_enabled?: boolean;
+  access_scope: "platform" | "billing" | "tenant";
 };
 
 export function getAccessToken(): string | null {
@@ -33,10 +34,6 @@ export function getCurrentUser(): SessionUser | null {
   } catch {
     return null;
   }
-}
-
-export function hasOwnerRole(user: SessionUser | null): boolean {
-  return String(user?.role ?? "").trim().toUpperCase() === "OWNER";
 }
 
 export function setCurrentUser(user: SessionUser): void {

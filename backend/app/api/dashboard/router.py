@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.patient_access import get_authorized_patient
 from app.core.role_guards import require_owner
+from app.core.roles import access_scope_for_role
 from app.core.security import get_current_user
 from app.core.database import get_db
 from app.db_request_dependency import get_db_tenant_with_request_state
@@ -25,18 +26,30 @@ from app.billing.store import count_lifecycle
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
-# Tenant clinical/operational dashboards must never be reachable by the
-# platform/vendor OWNER account or by a billing-only account — this is
-# tenant PHI (patient census, compliance status, clinical alerts).
-_TENANT_DASHBOARD_DENIED_ROLES = {"OWNER", "BILLING", "BILLER"}
-
-
 def _require_tenant_dashboard_access(user) -> None:
-    role = (getattr(user, "role", "") or "").upper()
-    if role in _TENANT_DASHBOARD_DENIED_ROLES:
+    if access_scope_for_role(getattr(user, "role", None)) != "tenant":
         raise HTTPException(
             status_code=403,
-            detail="This dashboard is not available for the platform owner or billing-only accounts",
+            detail="This dashboard is not available for platform or billing accounts",
+        )
+
+
+def _require_billing_feature_access(db: Session, user) -> None:
+    if access_scope_for_role(getattr(user, "role", None)) == "platform":
+        raise HTTPException(
+            status_code=403,
+            detail="Billing is not available to platform accounts",
+        )
+    if not getattr(user, "tenant_id", None):
+        raise HTTPException(
+            status_code=400,
+            detail="Tenant context required for billing dashboard",
+        )
+    tenant = db.get(Tenant, user.tenant_id)
+    if not getattr(tenant, "billing_enabled", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Billing features are not enabled for this tenant",
         )
 
 
@@ -45,33 +58,17 @@ def billing_dashboard(
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
-    # Platform Owner must never be combined with billing/financial access —
-    # explicit deny here, independent of any role-fallback logic.
-    if (getattr(user, "role", "") or "").upper() == "OWNER":
-        raise HTTPException(
-            status_code=403,
-            detail="Billing is not available to the platform owner role",
-        )
-
-    if not getattr(user, "tenant_id", None):
-        raise HTTPException(
-            status_code=400,
-            detail="Tenant context required for billing dashboard",
-        )
-
-    tenant = db.get(Tenant, user.tenant_id)
-    if not getattr(tenant, "billing_enabled", False):
-        raise HTTPException(
-            status_code=403,
-            detail="Billing features are not enabled for this tenant",
-        )
-
+    _require_billing_feature_access(db, user)
     return get_billing_dashboard(db=db, tenant_id=user.tenant_id)
 
 
 @router.get("/claim-lifecycle")
-def claim_lifecycle():
-    return count_lifecycle()
+def claim_lifecycle(
+    db: Session = Depends(get_db_tenant_with_request_state),
+    user=Depends(get_current_user),
+):
+    _require_billing_feature_access(db, user)
+    return count_lifecycle(str(user.tenant_id))
 
 
 @router.get("/tenant")

@@ -18,6 +18,8 @@ import { useMemo, useState } from "react";
 
 import { useDashboardAlerts, severityForCount } from "../../hooks/useDashboardAlerts";
 import { logout } from "../../api/auth";
+import { getCurrentUser } from "../../api/session";
+import { hasFeatureAccess, hasRouteAccess } from "../../utils/authorization";
 
 type SidebarUser = {
   name: string;
@@ -34,6 +36,7 @@ export default function Sidebar({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const sessionUser = getCurrentUser();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const { counts, total, loading } = useDashboardAlerts(role, 30000);
@@ -43,15 +46,20 @@ export default function Sidebar({
 
   // ✅ NAV ITEMS
   const navItems = useMemo(() => {
-    if (role === "OWNER") {
+    if (hasRouteAccess(sessionUser, "owner")) {
       // Platform/vendor super-user: platform operations only (tenants,
       // licensing, platform health). Never combined with billing/financial
       // access, and never any tenant, patient, or clinical PHI.
       return [{ label: "Owner Dashboard", path: "/owner", badge: total }];
     }
 
-    if (role === "BILLER" || role === "BILLING") {
-      return [{ label: "Analytics Hub", path: "/billing", badge: counts.tasks }];
+    if (sessionUser?.access_scope === "billing") {
+      return [
+        ...(hasFeatureAccess(sessionUser, "billing")
+          ? [{ label: "Billing Hub", path: "/billing", badge: counts.tasks }]
+          : []),
+        { label: "Analytics", path: "/analytics", badge: 0 },
+      ];
     }
 
     return [
@@ -59,7 +67,7 @@ export default function Sidebar({
       { label: "IDG Meeting Workspace", path: "/idg-workspace", badge: counts.blockers },
       { label: "Portal Preview", path: "/portal", badge: 0 },
     ];
-  }, [role, counts, total]);
+  }, [sessionUser, counts, total]);
 
   // ✅ CLICK HANDLERS (SMART NAVIGATION)
 
