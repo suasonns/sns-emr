@@ -71,7 +71,7 @@ def find_claim(patient_id: str, billing_cycle_id: str) -> Optional[Dict]:
     return None
 
 
-def count_lifecycle() -> Dict[str, int]:
+def count_lifecycle(tenant_id: str) -> Dict[str, int]:
     counts = {
         "ready": 0,
         "sent": 0,
@@ -81,6 +81,8 @@ def count_lifecycle() -> Dict[str, int]:
     }
 
     for claim in CLAIMS:
+        if str(claim.get("tenant_id")) != tenant_id:
+            continue
         status = str(claim.get("status", "")).upper()
         if status == "READY":
             counts["ready"] += 1

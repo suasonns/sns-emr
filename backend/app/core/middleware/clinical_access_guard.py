@@ -4,33 +4,25 @@ import logging
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from app.core.roles import BILLING_DEPARTMENT_ROLES, is_platform_role, normalize_role
+from app.core.roles import access_scope_for_role, normalize_role
 from app.core.security import decode_access_token
 
 logger = logging.getLogger("sns_emr.access_control")
-
-CLINICAL_PREFIXES = (
-    "/patients",
-    "/visits",
-    "/notes",
-    "/clinical",
-    "/api/patients",
-    "/api/clinical",
-    "/api/dashboard/tenant",
-    "/api/dashboard/clinical",
-    "/api/census",
-    "/api/idg",
-    "/api/admission",
-    "/api/med",
-    "/api/safety",
-    "/api/communications",
-)
 
 PLATFORM_ALLOWED_PREFIXES = (
     "/auth",
     "/api/owner",
     "/api/dashboard/owner",
     "/api/support",
+    "/health",
+    "/ready",
+)
+
+BILLING_ALLOWED_PREFIXES = (
+    "/auth",
+    "/billing",
+    "/api/dashboard/billing",
+    "/api/dashboard/claim-lifecycle",
     "/health",
     "/ready",
 )
@@ -53,16 +45,19 @@ async def clinical_access_guard(request: Request, call_next):
         return await call_next(request)
 
     role = normalize_role(payload.get("role"))
+    access_scope = access_scope_for_role(role)
     platform_route_allowed = any(
         _matches_prefix(path, prefix) for prefix in PLATFORM_ALLOWED_PREFIXES
     )
-    clinical_route = any(_matches_prefix(path, prefix) for prefix in CLINICAL_PREFIXES)
+    billing_route_allowed = any(
+        _matches_prefix(path, prefix) for prefix in BILLING_ALLOWED_PREFIXES
+    )
 
-    if is_platform_role(role) and platform_route_allowed:
+    if access_scope == "tenant":
         return await call_next(request)
-    if not is_platform_role(role) and (
-        role not in BILLING_DEPARTMENT_ROLES or not clinical_route
-    ):
+    if access_scope == "platform" and platform_route_allowed:
+        return await call_next(request)
+    if access_scope == "billing" and billing_route_allowed:
         return await call_next(request)
 
     logger.warning(

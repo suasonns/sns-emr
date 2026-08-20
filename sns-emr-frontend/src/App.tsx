@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import type { ReactNode } from "react";
 
 import SNSAnalytics from "./pages/SNSAnalytics";
 import LoginPage from "./pages/LoginPage";
@@ -22,7 +23,12 @@ import OwnerDashboard from "./owner/OwnerDashboard";
 import TenantDashboard from "./tenant/TenantDashboard";
 import BillingDashboard from "./pages/BillingDashboard";
 import PatientChart from "./charts/PatientChart";
-import RequireAuth from "./components/RequireAuth";
+import RequireFeatureAccess from "./components/RequireFeatureAccess";
+import RequireRoleAccess from "./components/RequireRoleAccess";
+
+const tenantRoute = (element: ReactNode) => (
+  <RequireRoleAccess access="tenant">{element}</RequireRoleAccess>
+);
 
 // ✅ ENTERPRISE ROUTER (FIXED JSX)
 export default function App() {
@@ -35,41 +41,41 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
 
         {/* Pages */}
-        <Route path="/billing" element={<RequireAuth><BillingDashboard /></RequireAuth>} />
-        <Route path="/analytics" element={<RequireAuth><SNSAnalytics /></RequireAuth>} />
-        <Route path="/tenant" element={<RequireAuth><TenantDashboard /></RequireAuth>} />
-        <Route path="/owner" element={<RequireAuth><OwnerDashboard /></RequireAuth>} />
-        <Route path="/owner/:section" element={<RequireAuth><OwnerDashboard /></RequireAuth>} />
-        <Route path="/rnica" element={<RequireAuth><RNICAPage /></RequireAuth>} />
-        <Route path="/nursing-assessment" element={<RequireAuth><RNICAPage /></RequireAuth>} />
-        <Route path="/admission" element={<RequireAuth><RNICAPage /></RequireAuth>} />
-        <Route path="/assessment" element={<RequireAuth><RNICAPage /></RequireAuth>} />
-        <Route path="/msw-ica" element={<RequireAuth><MSWICAPage /></RequireAuth>} />
-        <Route path="/psychosocial" element={<RequireAuth><MSWICAPage /></RequireAuth>} />
-        <Route path="/psychosocial-assessment" element={<RequireAuth><MSWICAPage /></RequireAuth>} />
-        <Route path="/sc-ica" element={<RequireAuth><SCICAPage /></RequireAuth>} />
-        <Route path="/spiritual" element={<RequireAuth><SCICAPage /></RequireAuth>} />
-        <Route path="/spiritual-assessment" element={<RequireAuth><SCICAPage /></RequireAuth>} />
-        <Route path="/patient-lcd" element={<RequireAuth><PatientLCDPage /></RequireAuth>} />
-        <Route path="/care-overview" element={<RequireAuth><CareOverviewPage /></RequireAuth>} />
-        <Route path="/plan-of-care" element={<RequireAuth><PlanOfCarePage /></RequireAuth>} />
-        <Route path="/bereavement" element={<RequireAuth><BereavementDataPage /></RequireAuth>} />
-        <Route path="/incident-occurrence" element={<RequireAuth><IncidentOccurrenceDataPage /></RequireAuth>} />
-        <Route path="/clinical-alerts" element={<RequireAuth><ClinicalAlertsDataPage /></RequireAuth>} />
-        <Route path="/physician" element={<RequireAuth><PhysicianDataPage /></RequireAuth>} />
-        <Route path="/communication-log" element={<RequireAuth><CommunicationLogDataPage /></RequireAuth>} />
-        <Route path="/secure-inbox" element={<RequireAuth><SecureInboxDataPage /></RequireAuth>} />
-        <Route path="/messaging" element={<RequireAuth><SecureInboxDataPage /></RequireAuth>} />
-        <Route path="/messenger" element={<RequireAuth><SecureInboxDataPage /></RequireAuth>} />
-        <Route path="/compliance" element={<RequireAuth><ComplianceDataPage /></RequireAuth>} />
-        <Route path="/volunteer-scheduling" element={<RequireAuth><VolunteerSchedulingDataPage /></RequireAuth>} />
-        <Route path="/idg-workspace" element={<RequireAuth><IDGWorkspacePage /></RequireAuth>} />
-        <Route path="/my-profile" element={<RequireAuth><MyProfilePage /></RequireAuth>} />
-        <Route path="/portal" element={<RequireAuth><TenantDashboard /></RequireAuth>} />
-        <Route path="/chart/:patientId" element={<RequireAuth><PatientChart /></RequireAuth>} />
+        <Route path="/billing" element={<RequireFeatureAccess feature="billing"><BillingDashboard /></RequireFeatureAccess>} />
+        <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />
+        <Route path="/tenant" element={tenantRoute(<TenantDashboard />)} />
+        <Route path="/owner" element={<RequireRoleAccess access="owner"><OwnerDashboard /></RequireRoleAccess>} />
+        <Route path="/owner/:section" element={<RequireRoleAccess access="owner"><OwnerDashboard /></RequireRoleAccess>} />
+        <Route path="/rnica" element={tenantRoute(<RNICAPage />)} />
+        <Route path="/nursing-assessment" element={tenantRoute(<RNICAPage />)} />
+        <Route path="/admission" element={tenantRoute(<RNICAPage />)} />
+        <Route path="/assessment" element={tenantRoute(<RNICAPage />)} />
+        <Route path="/msw-ica" element={tenantRoute(<MSWICAPage />)} />
+        <Route path="/psychosocial" element={tenantRoute(<MSWICAPage />)} />
+        <Route path="/psychosocial-assessment" element={tenantRoute(<MSWICAPage />)} />
+        <Route path="/sc-ica" element={tenantRoute(<SCICAPage />)} />
+        <Route path="/spiritual" element={tenantRoute(<SCICAPage />)} />
+        <Route path="/spiritual-assessment" element={tenantRoute(<SCICAPage />)} />
+        <Route path="/patient-lcd" element={tenantRoute(<PatientLCDPage />)} />
+        <Route path="/care-overview" element={tenantRoute(<CareOverviewPage />)} />
+        <Route path="/plan-of-care" element={tenantRoute(<PlanOfCarePage />)} />
+        <Route path="/bereavement" element={tenantRoute(<BereavementDataPage />)} />
+        <Route path="/incident-occurrence" element={tenantRoute(<IncidentOccurrenceDataPage />)} />
+        <Route path="/clinical-alerts" element={tenantRoute(<ClinicalAlertsDataPage />)} />
+        <Route path="/physician" element={tenantRoute(<PhysicianDataPage />)} />
+        <Route path="/communication-log" element={tenantRoute(<CommunicationLogDataPage />)} />
+        <Route path="/secure-inbox" element={tenantRoute(<SecureInboxDataPage />)} />
+        <Route path="/messaging" element={tenantRoute(<SecureInboxDataPage />)} />
+        <Route path="/messenger" element={tenantRoute(<SecureInboxDataPage />)} />
+        <Route path="/compliance" element={tenantRoute(<ComplianceDataPage />)} />
+        <Route path="/volunteer-scheduling" element={tenantRoute(<VolunteerSchedulingDataPage />)} />
+        <Route path="/idg-workspace" element={tenantRoute(<IDGWorkspacePage />)} />
+        <Route path="/my-profile" element={tenantRoute(<MyProfilePage />)} />
+        <Route path="/portal" element={tenantRoute(<TenantDashboard />)} />
+        <Route path="/chart/:patientId" element={tenantRoute(<PatientChart />)} />
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/portal" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>
     </BrowserRouter>

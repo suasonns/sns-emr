@@ -3,6 +3,7 @@ import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mu
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { login } from "../api/auth";
+import { canAccessPath, getDefaultRoute } from "../utils/authorization";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -20,8 +21,8 @@ export default function LoginPage() {
     setError(null);
 
     try {
-      await login(email.trim(), password);
-      navigate(from, { replace: true });
+      const result = await login(email.trim(), password);
+      navigate(canAccessPath(result.user, from) ? from : getDefaultRoute(result.user), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login");
     } finally {

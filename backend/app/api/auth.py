@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import CurrentUser, get_current_user
 from app.core.database import get_db
 from app.core.names import format_person_name
+from app.core.roles import access_scope_for_role
 from app.core.security import create_access_token, hash_password, verify_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -37,6 +38,7 @@ def _user_payload(user: User, tenant: Tenant | None = None) -> dict[str, object]
         "tenant_name": getattr(tenant, "display_name", None) or getattr(tenant, "legal_name", None),
         "ai_enabled": bool(getattr(tenant, "ai_enabled", False)),
         "billing_enabled": bool(getattr(tenant, "billing_enabled", False)),
+        "access_scope": access_scope_for_role(user.role),
     }
 
 
@@ -74,8 +76,8 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me")
 def me(current_user: CurrentUser = Depends(get_current_user), db: Session = Depends(get_db)):
     user = db.get(User, current_user.id)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user is None or not getattr(user, "active", True):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is not active")
     tenant = db.get(Tenant, user.tenant_id)
     return _user_payload(user, tenant)
 
