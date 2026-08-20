@@ -2,20 +2,15 @@ import { useState, type FormEvent } from "react";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { login, resetPassword } from "../api/auth";
+import { login } from "../api/auth";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showReset, setShowReset] = useState(false);
-  const [resetEmail, setResetEmail] = useState("");
-  const [resetPasswordValue, setResetPasswordValue] = useState("");
-  const [confirmResetPassword, setConfirmResetPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/portal";
 
@@ -23,40 +18,12 @@ export default function LoginPage() {
     event.preventDefault();
     setLoading(true);
     setError(null);
-    setSuccess(null);
 
     try {
       await login(email.trim(), password);
       navigate(from, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleResetSubmit(event: FormEvent) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setSuccess(null);
-
-    try {
-      if (resetPasswordValue.length < 8) {
-        throw new Error("New password must be at least 8 characters");
-      }
-      if (resetPasswordValue !== confirmResetPassword) {
-        throw new Error("Passwords do not match");
-      }
-
-      await resetPassword(resetEmail.trim(), resetPasswordValue);
-      setSuccess("Password reset complete. You can sign in with the new password.");
-      setShowReset(false);
-      setResetEmail("");
-      setResetPasswordValue("");
-      setConfirmResetPassword("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reset password");
     } finally {
       setLoading(false);
     }
@@ -128,13 +95,6 @@ export default function LoginPage() {
                {error}
              </Alert>
            ) : null}
-           {success ? (
-             <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
-               {success}
-             </Alert>
-           ) : null}
-
-           {!showReset ? (
              <Box component="form" onSubmit={handleSubmit} sx={{ display: "grid", gap: 2 }}>
                <TextField
                  label="Email"
@@ -199,98 +159,16 @@ export default function LoginPage() {
                >
                  {loading ? "Signing in..." : "Sign in"}
                </Button>
-               <Button type="button" variant="text" color="primary" onClick={() => setShowReset(true)} sx={{ justifySelf: "start", fontWeight: 600 }}>
+               <Button
+                 type="button"
+                 variant="text"
+                 color="primary"
+                 onClick={() => setError("Self-service password reset is unavailable. Contact an administrator.")}
+                 sx={{ justifySelf: "start", fontWeight: 600 }}
+               >
                  Forgot password?
                </Button>
              </Box>
-           ) : (
-             <Box component="form" onSubmit={handleResetSubmit} sx={{ display: "grid", gap: 2 }}>
-               <TextField
-                 label="Email"
-                 value={resetEmail}
-                 onChange={(event) => setResetEmail(event.target.value)}
-                 autoComplete="email"
-                 fullWidth
-                 sx={{
-                   "& .MuiInputLabel-root": {
-                     color: "#1f2f3d",
-                     fontWeight: 700,
-                   },
-                   "& .MuiOutlinedInput-root": {
-                     borderRadius: 2,
-                     backgroundColor: "rgba(255,255,255,0.8)",
-                   },
-                   "& .MuiOutlinedInput-input": {
-                     color: "#0f172a",
-                   },
-                 }}
-               />
-               <TextField
-                 label="New password"
-                 type="password"
-                 value={resetPasswordValue}
-                 onChange={(event) => setResetPasswordValue(event.target.value)}
-                 fullWidth
-                 sx={{
-                   "& .MuiInputLabel-root": {
-                     color: "#1f2f3d",
-                     fontWeight: 700,
-                   },
-                   "& .MuiOutlinedInput-root": {
-                     borderRadius: 2,
-                     backgroundColor: "rgba(255,255,255,0.8)",
-                   },
-                   "& .MuiOutlinedInput-input": {
-                     color: "#0f172a",
-                   },
-                 }}
-               />
-               <TextField
-                 label="Confirm new password"
-                 type="password"
-                 value={confirmResetPassword}
-                 onChange={(event) => setConfirmResetPassword(event.target.value)}
-                 fullWidth
-                 sx={{
-                   "& .MuiInputLabel-root": {
-                     color: "#1f2f3d",
-                     fontWeight: 700,
-                   },
-                   "& .MuiOutlinedInput-root": {
-                     borderRadius: 2,
-                     backgroundColor: "rgba(255,255,255,0.8)",
-                   },
-                   "& .MuiOutlinedInput-input": {
-                     color: "#0f172a",
-                   },
-                 }}
-               />
-               <Button
-                 type="submit"
-                 variant="contained"
-                 disabled={loading || !resetPasswordValue || !resetEmail}
-                 sx={{
-                   height: 46,
-                   borderRadius: 2,
-                   background: "#0d3b5a",
-                   color: "#ffffff",
-                   boxShadow: "0 14px 24px rgba(13, 59, 90, 0.25)",
-                   fontWeight: 900,
-                   textTransform: "none",
-                   border: "1px solid rgba(13, 59, 90, 0.5)",
-                   textShadow: "0 1px 0 rgba(0,0,0,0.2)",
-                   "&:hover": {
-                     background: "#0b2f4d",
-                   },
-                 }}
-               >
-                 {loading ? "Resetting..." : "Reset password"}
-               </Button>
-               <Button type="button" variant="text" onClick={() => setShowReset(false)} sx={{ justifySelf: "start", fontWeight: 600 }}>
-                 Back to sign in
-               </Button>
-             </Box>
-           )}
          </Paper>
        </Box>
      </Container>

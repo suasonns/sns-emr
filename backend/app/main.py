@@ -135,14 +135,14 @@ def run_migrations_on_start() -> None:
     STARTUP_STATUS["migrations_applied_on_start"] = True
 
 
-def bootstrap_admin_on_start() -> None:
+def bootstrap_development_logins_on_start() -> None:
     from app.core.database import SessionLocal
-    from app.services.admin_bootstrap_service import bootstrap_production_admin
+    from app.services.admin_bootstrap_service import provision_development_logins
 
     db = SessionLocal()
     try:
-        if bootstrap_production_admin(db):
-            logger.info("Production administrator account bootstrapped")
+        if provision_development_logins(db):
+            logger.info("Configured development login identities provisioned")
             STARTUP_STATUS["admin_bootstrapped_on_start"] = True
     finally:
         db.close()
@@ -473,7 +473,7 @@ async def lifespan(app: FastAPI):
         # HARD STARTUP CHECKS
         # -------------------------------------------------------------
         run_migrations_on_start()
-        bootstrap_admin_on_start()
+        bootstrap_development_logins_on_start()
         assert_alembic_in_sync()
         assert_db_probe()
         check_model_schema_alignment()
@@ -598,6 +598,10 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
+from app.core.middleware.clinical_access_guard import clinical_access_guard
+
+fastapi_app.middleware("http")(clinical_access_guard)
+
 
 # ✅ TENANT ROUTING (ENABLE IF REQUIRED)
 # from app.core.tenant_routing_middleware import TenantRoutingMiddleware
@@ -652,4 +656,3 @@ def readiness_check():
         "db": STARTUP_STATUS.get("db_probe_ok", False),
         "scheduler": STARTUP_STATUS.get("scheduler_started", False),
     }
-

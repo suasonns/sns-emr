@@ -11,7 +11,7 @@ import {
 } from './pages';
 import { fetchTenantDashboard } from '../api/dashboard';
 import { fetchCensusWorkspace } from '../api/census';
-import { getCurrentUser, isPlatformSuperUser } from '../api/session';
+import { getCurrentUser, hasOwnerRole } from '../api/session';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
 
@@ -55,7 +55,7 @@ export default function TenantDashboard() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const currentUser = getCurrentUser();
-  const isPlatformOwner = isPlatformSuperUser(currentUser) || currentUser?.role === 'OWNER';
+  const isPlatformOwner = hasOwnerRole(currentUser);
   const isBillingOnly = normalizeRole(currentUser?.role) === 'BILLING' || normalizeRole(currentUser?.role) === 'BILLER';
   const isRestricted = isPlatformOwner || isBillingOnly;
   const navItems = getTenantNav(currentUser);

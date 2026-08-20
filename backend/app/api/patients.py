@@ -84,7 +84,13 @@ def get_db_with_request_state(
 # =========================================================
 
 def require_tenant_user(user=Depends(get_current_user)):
-    if getattr(user, "is_superuser", False) or getattr(user, "is_management", False):
+    from app.core.roles import is_platform_role
+
+    if (
+        is_platform_role(getattr(user, "role", None))
+        or getattr(user, "is_superuser", False)
+        or getattr(user, "is_management", False)
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Tenant-scoped endpoint not allowed for system accounts",
