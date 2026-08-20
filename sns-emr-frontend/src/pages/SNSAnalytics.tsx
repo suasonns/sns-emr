@@ -37,9 +37,13 @@ const C = {
 const SECTION_TO_DOMAIN: Record<string, string> = {
   dashboard: "Command Center",
   census: "Clinical",
-  "secure-inbox": "Reports Directory",
-  "clinical-alerts": "QAPI",
-  scheduling: "Administrative",
+  "secure-inbox": "Analytics Directory",
+  "clinical-alerts": "Analytics Directory",
+  scheduling: "Analytics Directory",
+  billing: "Analytics Directory",
+  staff: "Analytics Directory",
+  qapi: "Analytics Directory",
+  compliance: "Analytics Directory",
   settings: "Administrative",
   "my-profile": "Administrative",
   rnica: "Clinical",
@@ -47,11 +51,10 @@ const SECTION_TO_DOMAIN: Record<string, string> = {
   "sc-ica": "Clinical",
   "patient-lcd": "Clinical",
   "care-overview": "Clinical",
-  bereavement: "QAPI",
-  "incident-occurrence": "QAPI",
-  compliance: "QAPI",
+  bereavement: "Analytics Directory",
+  "incident-occurrence": "Analytics Directory",
   physician: "Administrative",
-  "communication-log": "Reports Directory",
+  "communication-log": "Analytics Directory",
 };
 
 function resolveDomainFromSection(section: string | null | undefined, fallback: string) {
@@ -88,14 +91,6 @@ function kpiCard(label: string, value: string, sub: string, borderColor: string)
       <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>{value}</div>
       <div style={{ fontSize: 12, color: borderColor, fontWeight: 600, marginTop: 4 }}>{sub}</div>
     </div>
-  );
-}
-
-function ShieldIcon({ size = 28, color = C.teal }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
   );
 }
 
@@ -145,14 +140,17 @@ export function Navbar() {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, backgroundColor: C.navy, padding: "12px 24px", minHeight: 80, boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <ShieldIcon />
-          <div>
-            <div style={{ lineHeight: 1.1 }}>
-              <span style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.white }}>SNS </span>
-              <span style={{ fontSize: 20, fontWeight: 300, fontFamily: "'Inter', sans-serif", color: C.white }}>HOSPICE</span>
-            </div>
-            <div style={{ fontSize: 9, fontWeight: 600, letterSpacing: 1.5, color: C.gray400, marginTop: 1 }}>SECURE CLINICAL SYSTEM</div>
-          </div>
+          <img
+            src="/brand/sns-logo-light.svg"
+            alt="SNS logo"
+            onError={(event) => {
+              const target = event.currentTarget as HTMLImageElement;
+              if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
+                target.src = "/brand/sns-logo-icon.svg";
+              }
+            }}
+            style={{ width: 170, height: "auto", display: "block" }}
+          />
         </div>
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
           {mainTabs.map((tab) => (
@@ -258,7 +256,7 @@ export function Footer() {
       </div>
       <div style={{ backgroundColor: C.gray900, padding: "20px 24px", textAlign: "center" }}>
         <div style={{ fontSize: 13, fontWeight: 400, fontFamily: "'Inter', sans-serif", color: C.gray400, marginBottom: 8 }}>
-          SNS Hospice Solutions Secure Portal | © 2024-2025 | All Rights Reserved | SNS Tech Solutions
+          Secure Portal | © 2024-2025 | All Rights Reserved
         </div>
         <div style={{ fontSize: 11, fontWeight: 400, fontFamily: "'Inter', sans-serif", color: C.gray500 }}>
           Unauthorized access to this EMR dashboard is strictly prohibited. Activity is logged and monitored in compliance with federal healthcare data safety laws (HIPAA/HITECH).
@@ -279,9 +277,12 @@ function ReportsDirectory({
   const [selectedReport, setSelectedReport] = useState<{ title: string; column: string } | null>(null);
   const sectionForColumn: Record<string, string> = {
     "Clinical Operations": "Clinical",
-    "Quality & Compliance": "QAPI",
-    "Operations & Workforce": "Administrative",
-    "Financial & Billing": "Financial",
+    "Quality & Compliance": "Analytics Directory",
+    "Operations & Workforce": "Analytics Directory",
+    "Scheduling & Staff": "Analytics Directory",
+    "Billing & Revenue": "Analytics Directory",
+    "QAPI & Compliance": "Analytics Directory",
+    "Financial & Billing": "Analytics Directory",
   };
 
   const columns = [
@@ -300,14 +301,23 @@ function ReportsDirectory({
       ],
     },
     {
-      title: "Quality & Compliance",
-      subtitle: "QUALITY MEASURES, HOPE/HIS/HQRP, AND CLINICAL TRACKING",
+      title: "Scheduling & Staff",
+      subtitle: "VISIT SCHEDULING, COVERAGE, AND STAFFING OPERATIONS",
+      color: C.amber,
+      groups: [
+        { name: "SCHEDULING", items: ["Visit Schedule", "Coverage Matrix", "Holiday Coverage", "Scheduling Summary", "Caseload Assignment"] },
+        { name: "WORKFORCE", items: ["Staff Utilization/Productivity", "Employee Contact List", "Human Resource", "Staff Productivity Dashboard"] },
+      ],
+    },
+    {
+      title: "QAPI & Compliance",
+      subtitle: "QUALITY, INCIDENT, COMPLIANCE, AND PERFORMANCE IMPROVEMENT",
       color: C.blue,
       groups: [
         { name: "QUALITY MEASURES", items: ["Comfortable Dying Measure", "Unwanted Hospitalization", "Infection Control", "Census Integrity Report", "Incident Rate"] },
         { name: "HOPE / HIS / HQRP", items: ["HOPE/HIS Submissions", "HQRP Quality Reporting", "Export CAHPS"] },
+        { name: "COMPLIANCE TRACKING", items: ["Compliance Review", "Late Submission Tracking", "QA Management Dashboard", "Notes To Review", "Incident Review"] },
         { name: "CLINICAL TRACKING", items: ["Wound Tracking Report", "Antibiotics w/o Care Plan", "eMAR Report", "Patient Acuity Report"] },
-        { name: "STAFF & RESOURCES", items: ["Staff Utilization/Productivity", "Volunteer Savings Report", "Non-Converted Notifications"] },
       ],
     },
     {
@@ -320,6 +330,16 @@ function ReportsDirectory({
         { name: "ORDERS & PRESCRIPTIONS", items: ["Medication/DME Orders", "Signed Physician Orders", "Outbound Fax"] },
         { name: "GEOGRAPHIC & CONTACT", items: ["Patients by Zip/City/County", "Census Heatmap", "Patient Birthday Report", "NPI Lookup", "Employee Contact List"] },
         { name: "HR & VENDOR", items: ["Human Resource", "Vendor Management", "Payer Source Report", "Agency Announcements Hx", "HospiceMD Announcements Hx", "Outbound Fax", "Standard Pack"] },
+      ],
+    },
+    {
+      title: "Billing & Revenue",
+      subtitle: "BILLING, CLAIMS, REVENUE, AND WORKSHEETS",
+      color: C.green,
+      groups: [
+        { name: "BILLING & CLAIMS", items: ["Claims Dashboard", "RA Reconciliation", "NOE/NOTR Management", "Monthly Billing Summary", "Billing Summary Report"] },
+        { name: "REVENUE & AGING", items: ["Revenue Report", "Aging Report", "Unbilled Revenue", "Submission & Collection", "Patient Billing Lookup"] },
+        { name: "COLLECTIONS & FOLLOW-UP", items: ["Agency Follow-Up", "Uncollected/Unbilled Claims", "Credit Balance Report", "Collection Dashboard"] },
       ],
     },
     {
@@ -360,7 +380,7 @@ function ReportsDirectory({
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search or filter reports directory..."
+          placeholder="Search or filter analytics directory..."
           style={{ width: "100%", padding: "10px 14px 10px 40px", borderRadius: 8, border: `1px solid ${C.gray200}`, fontSize: 13, fontFamily: "'Inter', sans-serif", color: C.gray800, outline: "none", boxSizing: "border-box" }}
         />
       </div>
@@ -961,7 +981,7 @@ function FinancialTab() {
   return <BillingDashboard />;
 }
 
-export default function SNSAnalytics({ defaultDomain = "Reports Directory" }: { defaultDomain?: string }) {
+export default function SNSAnalytics({ defaultDomain = "Analytics Directory" }: { defaultDomain?: string }) {
   const [searchParams] = useSearchParams();
   const section = searchParams.get("section");
   const [activeDomain, setActiveDomain] = useState(() => resolveDomainFromSection(section, defaultDomain));
@@ -996,13 +1016,13 @@ export default function SNSAnalytics({ defaultDomain = "Reports Directory" }: { 
   return (
     <PortalShell activeTab="Analytics">
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <WelcomeBanner title={activeDomain === "Reports Directory" ? "Reports Directory" : activeDomain === "Command Center" ? "Analytics Command Center" : `${activeDomain} Analytics`} />
-        {activeDomain !== "Reports Directory" ? (
+        <WelcomeBanner title={activeDomain === "Reports Directory" || activeDomain === "Analytics Directory" ? "Analytics Directory" : activeDomain === "Command Center" ? "Analytics Command Center" : `${activeDomain} Analytics`} />
+        {activeDomain !== "Reports Directory" && activeDomain !== "Analytics Directory" ? (
           <div style={{ width: "100%", boxSizing: "border-box" }}>
             <button
               onClick={() => {
                 setActiveReport(null);
-                setActiveDomain("Reports Directory");
+                setActiveDomain("Analytics Directory");
               }}
               style={{
                 padding: "8px 12px",
@@ -1015,7 +1035,7 @@ export default function SNSAnalytics({ defaultDomain = "Reports Directory" }: { 
                 cursor: "pointer",
               }}
             >
-              Back to Reports Directory
+              Back to Analytics Directory
             </button>
             <div style={{ marginTop: 12, fontSize: 13, color: C.slate500 }}>
               Active Agency Workspace: <strong style={{ color: C.gray800 }}>{workspaceName}</strong>

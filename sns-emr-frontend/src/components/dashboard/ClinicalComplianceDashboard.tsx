@@ -219,6 +219,52 @@ export default function ClinicalComplianceDashboard() {
           </div>
         </SectionCard>
       </div>
+
+      <SectionCard title="Physician Orders — Signature Status">
+        <div className="overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-slate-500">
+                <th className="py-2 pr-4">Patient</th>
+                <th className="py-2 pr-4">Order</th>
+                <th className="py-2 pr-4">Ordered By</th>
+                <th className="py-2 pr-4">Entered By</th>
+                <th className="py-2 pr-4">Source</th>
+                <th className="py-2 pr-4">Status</th>
+                <th className="py-2 pr-4">Ordered</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.unsigned_orders.map((order) => (
+                <tr key={order.order_id} className="border-b last:border-0">
+                  <td className="py-2 pr-4 font-medium text-slate-900">{order.patient_name}</td>
+                  <td className="py-2 pr-4 text-slate-700">
+                    {order.order_category} — {order.order_text}
+                  </td>
+                  <td className="py-2 pr-4 text-slate-700">
+                    {order.ordered_by_provider_name} ({order.ordered_by_provider_role})
+                  </td>
+                  <td className="py-2 pr-4 text-slate-700">{order.entered_by_name ?? "—"}</td>
+                  <td className="py-2 pr-4 text-slate-700">{order.source_type}</td>
+                  <td className="py-2 pr-4">
+                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                      {order.status === "DRAFT" ? "Not Submitted" : "Awaiting MD Signature"}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-slate-700">{order.ordered_at ?? "—"}</td>
+                </tr>
+              ))}
+              {data.unsigned_orders.length === 0 && (
+                <tr>
+                  <td className="py-3 text-slate-500" colSpan={7}>
+                    No unsigned orders — every order on file has been signed by the MD.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SectionCard>
     </div>
   );
 }

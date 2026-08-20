@@ -1,0 +1,3762 @@
+{
+  "_generated_by": "scripts/export-rnica-schema.mjs",
+  "_generated_at": "2026-08-19T23:34:20.548Z",
+  "_source_file": "src/components/RNICA.jsx (SECTION_CONFIGS)",
+  "_notes": [
+    "This schema covers every field rendered through renderGenericSection() (i.e. every SECTION_CONFIGS entry). The 'demographics' section is rendered via bespoke JSX (PCG, living situation, advance care planning, etc.) rather than a SECTION_CONFIGS entry and is not yet included here — a follow-up task if/when AI extraction needs to reach those fields too.",
+    "Cards with a customRenderer (decline tracker, HOPE comorbidities, weight-loss auto-calc, constipation auto-assess, medication orders, orders hub) are intentionally excluded: those are computed/derived views, not raw fields for a transcript-extraction layer to write into directly.",
+    "Intended use: the future transcript-extraction service loads this file to build its structured-output schema (e.g. an Azure OpenAI function-calling schema), so the AI's job stays scoped to 'here is the exact list of fields you may fill, with their exact allowed values' rather than freeform guessing."
+  ],
+  "field_count": 325,
+  "skipped_custom_render_cards": 8,
+  "sections": {
+    "vitals": {
+      "title": "Vitals & Measurements",
+      "subtitle": "Temperature, pulse, respirations, blood pressure, anthropometrics, IV assessment",
+      "fields": [
+        {
+          "path": "vitals.temperature",
+          "label": "Temperature",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.temperatureUnit",
+          "label": "Unit",
+          "type": "radio",
+          "options": [
+            "F",
+            "C"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "vitals.pulse",
+          "label": "Pulse",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.pulseQuality",
+          "label": "Pulse Quality",
+          "type": "select",
+          "options": [
+            "Strong",
+            "Weak",
+            "Thready",
+            "Bounding",
+            "Irregular"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "vitals.respirations",
+          "label": "Respirations",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.bloodPressure.systolic",
+          "label": "BP Systolic",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.bloodPressure.diastolic",
+          "label": "BP Diastolic",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.oxygenSaturation",
+          "label": "O2 Saturation %",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.oxygenSaturationOnRA",
+          "label": "On Room Air",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "vitals.height",
+          "label": "Height",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.weight",
+          "label": "Weight",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.bmi",
+          "label": "BMI",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.mac",
+          "label": "MAC (Mid-Arm Circumference)",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.hasIV",
+          "label": "Patient has IV access",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.type",
+          "label": "IV Type",
+          "type": "select",
+          "options": [
+            "Peripheral",
+            "Central",
+            "PICC",
+            "Port"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.size",
+          "label": "Size (gauge)",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.site",
+          "label": "Site/Location",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.dressingType",
+          "label": "Dressing Type",
+          "type": "select",
+          "options": [
+            "Tegaderm",
+            "Gauze",
+            "Other"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.insertionDate",
+          "label": "Insertion Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.lastChangeDate",
+          "label": "Last Change Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.condition",
+          "label": "Condition",
+          "type": "select",
+          "options": [
+            "Patent",
+            "Infiltrated",
+            "Phlebitis",
+            "Occluded"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "vitals.ivAssessment.notes",
+          "label": "IV Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "pain": {
+      "title": "Pain Assessment",
+      "subtitle": "Use the patient communication status to select the correct pain scale: verbal patients use numerical pain scoring, non-verbal patients use PAINAD or FLACC based on nurse selection, and pediatric patients use FLACC.",
+      "fields": [
+        {
+          "path": "pain.verbalizesPain",
+          "label": "Can the patient verbalize pain?",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "No"
+            },
+            {
+              "value": "1",
+              "label": "Yes, reliably"
+            },
+            {
+              "value": "2",
+              "label": "Sometimes"
+            },
+            {
+              "value": "3",
+              "label": "Unable to determine"
+            }
+          ],
+          "hopeCode": "J0900",
+          "sfv": false
+        },
+        {
+          "path": "pain.uncomfortableBecauseOfPain",
+          "label": "Is the patient uncomfortable because of pain?",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "No"
+            },
+            {
+              "value": "1",
+              "label": "Yes"
+            },
+            {
+              "value": "9",
+              "label": "Unable to determine"
+            }
+          ],
+          "hopeCode": "J0915",
+          "sfv": false
+        },
+        {
+          "path": "pain.neuropathicPain",
+          "label": "Neuropathic pain present",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "pain.screeningDate",
+          "label": "Pain screening date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.assessmentTool",
+          "label": "Pain scale selected",
+          "type": "select",
+          "options": [
+            "Numeric (0-10)"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painIntensity.current",
+          "label": "Current intensity",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.painIntensity.worst",
+          "label": "Worst in 24 hours",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.painIntensity.best",
+          "label": "Best in 24 hours",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.painIntensity.acceptable",
+          "label": "Acceptable level",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.comprehensiveAssessmentCompleted",
+          "label": "Comprehensive pain assessment completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "pain.comprehensiveAssessmentDate",
+          "label": "Comprehensive pain assessment date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "pain.painLocation",
+          "label": "Pain location",
+          "type": "checkboxGroup",
+          "options": [
+            "Head",
+            "Neck",
+            "Chest",
+            "Abdomen",
+            "Back",
+            "Upper extremities",
+            "Lower extremities",
+            "Generalized"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painCharacter",
+          "label": "Pain character",
+          "type": "checkboxGroup",
+          "options": [
+            "Sharp",
+            "Dull",
+            "Aching",
+            "Burning",
+            "Stabbing",
+            "Throbbing",
+            "Cramping",
+            "Shooting",
+            "Pressure"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.aggravatingFactors",
+          "label": "Aggravating factors",
+          "type": "checkboxGroup",
+          "options": [
+            "Movement",
+            "Coughing",
+            "Eating",
+            "Position change",
+            "Touch",
+            "Stress",
+            "Weather"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.relievingFactors",
+          "label": "Relieving factors",
+          "type": "checkboxGroup",
+          "options": [
+            "Medication",
+            "Rest",
+            "Heat",
+            "Cold",
+            "Position change",
+            "Distraction",
+            "Massage"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.flacc.face",
+          "label": "Face",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — No particular expression"
+            },
+            {
+              "value": "1",
+              "label": "1 — Occasional grimace or frown"
+            },
+            {
+              "value": "2",
+              "label": "2 — Frequent to constant frown, clenched jaw"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.flacc.legs",
+          "label": "Legs",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Normal position or relaxed"
+            },
+            {
+              "value": "1",
+              "label": "1 — Uneasy, restless, tense"
+            },
+            {
+              "value": "2",
+              "label": "2 — Kicking or legs drawn up"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.flacc.activity",
+          "label": "Activity",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Lying quietly, normal movement"
+            },
+            {
+              "value": "1",
+              "label": "1 — Squirming, shifting, tense"
+            },
+            {
+              "value": "2",
+              "label": "2 — Arched, rigid, or jerking"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.flacc.cry",
+          "label": "Cry",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — No cry or moan"
+            },
+            {
+              "value": "1",
+              "label": "1 — Moans or occasional complaint"
+            },
+            {
+              "value": "2",
+              "label": "2 — Cries steadily, screams, or sobs"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.flacc.consolability",
+          "label": "Consolability",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Content or relaxed"
+            },
+            {
+              "value": "1",
+              "label": "1 — Reassured by touch or voice"
+            },
+            {
+              "value": "2",
+              "label": "2 — Difficult to comfort or console"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painad.breathing",
+          "label": "Breathing",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Normal"
+            },
+            {
+              "value": "1",
+              "label": "1 — Occasional labored"
+            },
+            {
+              "value": "2",
+              "label": "2 — Noisy labored"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painad.vocalization",
+          "label": "Vocalization",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Occasional moan"
+            },
+            {
+              "value": "2",
+              "label": "2 — Repeated calling out"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painad.facialExpression",
+          "label": "Facial expression",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Smiling/inexpressive"
+            },
+            {
+              "value": "1",
+              "label": "1 — Sad/frightened"
+            },
+            {
+              "value": "2",
+              "label": "2 — Grimacing"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painad.bodyLanguage",
+          "label": "Body language",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Relaxed"
+            },
+            {
+              "value": "1",
+              "label": "1 — Tense/fidgeting"
+            },
+            {
+              "value": "2",
+              "label": "2 — Rigid/striking"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painad.consolability",
+          "label": "Consolability",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — No need"
+            },
+            {
+              "value": "1",
+              "label": "1 — Distracted/reassured"
+            },
+            {
+              "value": "2",
+              "label": "2 — Unable to console"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.nonPharmInterventions",
+          "label": "Non-Pharmacological Interventions",
+          "type": "checkboxGroup",
+          "options": [
+            "Repositioning",
+            "Heat therapy",
+            "Cold therapy",
+            "Massage",
+            "Music therapy",
+            "Guided imagery",
+            "Relaxation techniques",
+            "TENS unit",
+            "Distraction"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "pain.painManagementPlan",
+          "label": "Pain Management Plan",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "symptomImpact": {
+      "title": "Symptom Impact (J2051 A-H)",
+      "subtitle": "HOPE J2051 — Rate each symptom 0-3 based on impact on daily life",
+      "fields": [
+        {
+          "path": "symptomImpact.pain",
+          "label": "A. Pain",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051A",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.shortnessOfBreath",
+          "label": "B. Shortness of Breath",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051B",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.anxiety",
+          "label": "C. Anxiety",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051C",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.nausea",
+          "label": "D. Nausea",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051D",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.vomiting",
+          "label": "E. Vomiting",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051E",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.diarrhea",
+          "label": "F. Diarrhea",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051F",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.constipation",
+          "label": "G. Constipation",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051G",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.agitation",
+          "label": "H. Agitation",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2051H",
+          "sfv": true
+        },
+        {
+          "path": "symptomImpact.assessmentDate",
+          "label": "Assessment Date",
+          "type": "input",
+          "sfv": false
+        }
+      ]
+    },
+    "diagnoses": {
+      "title": "Diagnoses",
+      "subtitle": "Primary/Secondary Dx, comorbidities, LCD eligibility, disease trajectory narrative",
+      "fields": [
+        {
+          "path": "diagnoses.primaryDiagnosis.icd10",
+          "label": "ICD-10 Code",
+          "type": "input",
+          "hopeCode": "I0010",
+          "sfv": false
+        },
+        {
+          "path": "diagnoses.primaryDiagnosis.description",
+          "label": "Description",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "diagnoses.primaryDiagnosis.onsetDate",
+          "label": "Onset Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "diagnoses.terminalPrognosis",
+          "label": "Terminal Prognosis",
+          "type": "select",
+          "options": [
+            "6 months or less",
+            "More than 6 months",
+            "Undetermined"
+          ],
+          "hopeCode": "J0050",
+          "sfv": false
+        },
+        {
+          "path": "diagnoses.diseaseTrajectory",
+          "label": "Disease Trajectory",
+          "type": "radio",
+          "options": [
+            "Decline",
+            "Plateau",
+            "Fluctuating"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "diagnoses.lcdEligibilityNarrative",
+          "label": "LCD Eligibility Narrative",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "performanceStatus": {
+      "title": "Performance Status",
+      "subtitle": "PPS, KPS, ECOG, FAST, NYHA scales with justifications",
+      "fields": [
+        {
+          "path": "performanceStatus.pps",
+          "label": "PPS Score",
+          "type": "select",
+          "options": [
+            "100%",
+            "90%",
+            "80%",
+            "70%",
+            "60%",
+            "50%",
+            "40%",
+            "30%",
+            "20%",
+            "10%",
+            "0%"
+          ],
+          "hopeCode": "M1190",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.ppsJustification",
+          "label": "PPS Justification",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.kps",
+          "label": "KPS Score",
+          "type": "select",
+          "options": [
+            "100",
+            "90",
+            "80",
+            "70",
+            "60",
+            "50",
+            "40",
+            "30",
+            "20",
+            "10",
+            "0"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.kpsJustification",
+          "label": "KPS Justification",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.ecog",
+          "label": "ECOG Score",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Fully active"
+            },
+            {
+              "value": "1",
+              "label": "1 — Restricted but ambulatory"
+            },
+            {
+              "value": "2",
+              "label": "2 — Ambulatory, >50% waking hours"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited self-care, >50% in bed"
+            },
+            {
+              "value": "4",
+              "label": "4 — Completely disabled"
+            },
+            {
+              "value": "5",
+              "label": "5 — Dead"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.ecogJustification",
+          "label": "ECOG Justification",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.fast",
+          "label": "FAST Stage",
+          "type": "select",
+          "options": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6a",
+            "6b",
+            "6c",
+            "6d",
+            "6e",
+            "7a",
+            "7b",
+            "7c",
+            "7d",
+            "7e",
+            "7f"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.fastStage",
+          "label": "FAST Stage Description",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.nyha",
+          "label": "NYHA Class",
+          "type": "select",
+          "options": [
+            {
+              "value": "I",
+              "label": "I — No limitation"
+            },
+            {
+              "value": "II",
+              "label": "II — Slight limitation"
+            },
+            {
+              "value": "III",
+              "label": "III — Marked limitation"
+            },
+            {
+              "value": "IV",
+              "label": "IV — Severe limitation"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.nyhaJustification",
+          "label": "NYHA Justification",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "performanceStatus.functionalDeclineNotes",
+          "label": "Functional Decline Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "neurological": {
+      "title": "Neurological / Mental / Sensory",
+      "subtitle": "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
+      "fields": [
+        {
+          "path": "neurological.consciousness",
+          "label": "Level of Consciousness",
+          "type": "radio",
+          "options": [
+            "Alert",
+            "Lethargic",
+            "Obtunded",
+            "Stuporous",
+            "Comatose"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.orientation.time",
+          "label": "Oriented to Time",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.orientation.place",
+          "label": "Oriented to Place",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.orientation.person",
+          "label": "Oriented to Person",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.orientation.situation",
+          "label": "Oriented to Situation",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.hopeItems.n0500",
+          "label": "N0500 — Repetition",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — One word"
+            },
+            {
+              "value": "2",
+              "label": "2 — Two words"
+            },
+            {
+              "value": "3",
+              "label": "3 — Three words"
+            }
+          ],
+          "hopeCode": "N0500",
+          "sfv": false
+        },
+        {
+          "path": "neurological.hopeItems.n0510",
+          "label": "N0510 — Recall",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — One"
+            },
+            {
+              "value": "2",
+              "label": "2 — Two"
+            },
+            {
+              "value": "3",
+              "label": "3 — Three"
+            }
+          ],
+          "hopeCode": "N0510",
+          "sfv": false
+        },
+        {
+          "path": "neurological.hopeItems.n0520",
+          "label": "N0520 — Temporal Orientation",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None correct"
+            },
+            {
+              "value": "1",
+              "label": "1 — Year correct"
+            },
+            {
+              "value": "2",
+              "label": "2 — Month correct"
+            },
+            {
+              "value": "3",
+              "label": "3 — Day of week correct"
+            }
+          ],
+          "hopeCode": "N0520",
+          "sfv": false
+        },
+        {
+          "path": "neurological.communication",
+          "label": "Communication",
+          "type": "radio",
+          "options": [
+            "Clear",
+            "Impaired",
+            "Unable"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.hearing",
+          "label": "Hearing",
+          "type": "radio",
+          "options": [
+            "Adequate",
+            "Impaired",
+            "Deaf",
+            "Hearing aid"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.vision",
+          "label": "Vision",
+          "type": "radio",
+          "options": [
+            "Adequate",
+            "Impaired",
+            "Blind",
+            "Corrective lenses"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.balance",
+          "label": "Balance",
+          "type": "radio",
+          "options": [
+            "Steady",
+            "Unsteady",
+            "Unable to stand"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.sensoryDeficits",
+          "label": "Sensory Deficits",
+          "type": "checkboxGroup",
+          "options": [
+            "Numbness",
+            "Tingling",
+            "Decreased sensation",
+            "Phantom pain"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.cognition",
+          "label": "Cognition Assessment",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "neurological.delirium",
+          "label": "Delirium",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.seizureHistory",
+          "label": "Seizure History",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "neurological.psychiatricHistory",
+          "label": "Psychiatric History",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "neurological.sleepRest.sleepPattern",
+          "label": "Sleep Pattern",
+          "type": "radio",
+          "options": [
+            "Normal",
+            "Insomnia",
+            "Hypersomnia",
+            "Fragmented"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.sleepRest.averageSleepHours",
+          "label": "Average Sleep Hours",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "neurological.sleepRest.sleepAids",
+          "label": "Sleep Aids",
+          "type": "checkboxGroup",
+          "options": [
+            "Medication",
+            "Positioning",
+            "White noise",
+            "Warm milk/tea",
+            "Other"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.sleepRest.restfulness",
+          "label": "Restfulness",
+          "type": "radio",
+          "options": [
+            "Adequate",
+            "Inadequate"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "neurological.sleepRest.notes",
+          "label": "Sleep Notes",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "neurological.notes",
+          "label": "Neurological Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "cardiovascular": {
+      "title": "Cardiovascular",
+      "subtitle": "Blood pressure, pulse, edema, chest pain, circulation",
+      "fields": [
+        {
+          "path": "cardiovascular.bpSymptoms",
+          "label": "BP Symptoms",
+          "type": "checkboxGroup",
+          "options": [
+            "Orthostatic",
+            "Hypertensive",
+            "Hypotensive",
+            "Normal"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.pulseQuality",
+          "label": "Pulse Quality",
+          "type": "radio",
+          "options": [
+            "Strong",
+            "Weak",
+            "Thready",
+            "Bounding",
+            "Irregular"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.edema.present",
+          "label": "Edema Present",
+          "type": "triState",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.edema.location",
+          "label": "Edema Location",
+          "type": "checkboxGroup",
+          "options": [
+            "Bilateral lower extremities",
+            "Unilateral LE",
+            "Sacral",
+            "Periorbital",
+            "Upper extremities",
+            "Generalized"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.edema.severity",
+          "label": "Edema Severity",
+          "type": "radio",
+          "options": [
+            "Trace",
+            "1+",
+            "2+",
+            "3+",
+            "4+"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.chestPain.present",
+          "label": "Chest Pain Present",
+          "type": "triState",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.chestPain.type",
+          "label": "Chest Pain Type",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.peripheralCirculation",
+          "label": "Peripheral Circulation",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.heartSounds",
+          "label": "Heart Sounds",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.jvd",
+          "label": "JVD (Jugular Venous Distention)",
+          "type": "triState",
+          "sfv": false
+        },
+        {
+          "path": "cardiovascular.notes",
+          "label": "Cardiovascular Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "respiratory": {
+      "title": "Respiratory",
+      "subtitle": "SOB (J2051B), lung sounds, oxygen therapy, cough assessment",
+      "fields": [
+        {
+          "path": "respiratory.sobSeverity",
+          "label": "SOB Severity",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe",
+            "At rest"
+          ],
+          "sfv": true
+        },
+        {
+          "path": "respiratory.exertionLevel",
+          "label": "Exertion Level",
+          "type": "radio",
+          "options": [
+            "At rest",
+            "Minimal exertion",
+            "Moderate exertion",
+            "Severe exertion"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "respiratory.shortnessOfBreathScreened",
+          "label": "Screened for shortness of breath",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.screeningDate",
+          "label": "SOB screening date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.treatmentInitiated",
+          "label": "Treatment for shortness of breath initiated",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.treatmentDate",
+          "label": "SOB treatment date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.lungSounds",
+          "label": "Lung Sounds",
+          "type": "checkboxGroup",
+          "options": [
+            "Clear",
+            "Crackles",
+            "Wheezes",
+            "Rhonchi",
+            "Diminished",
+            "Absent",
+            "Stridor",
+            "Pleural rub"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "respiratory.respirations",
+          "label": "Respiration Pattern",
+          "type": "checkboxGroup",
+          "options": [
+            "Regular",
+            "Irregular",
+            "Labored",
+            "Cheyne-Stokes",
+            "Apneic episodes",
+            "Kussmaul",
+            "Agonal"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "respiratory.coughType",
+          "label": "Cough Type",
+          "type": "select",
+          "options": [
+            "None",
+            "Productive",
+            "Non-productive",
+            "Hemoptysis"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "respiratory.sputumCharacter",
+          "label": "Sputum Character",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.oxygenTherapy.inUse",
+          "label": "Oxygen in Use",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.oxygenTherapy.type",
+          "label": "Delivery Type",
+          "type": "select",
+          "options": [
+            "Nasal cannula",
+            "Simple mask",
+            "Non-rebreather",
+            "Venturi mask",
+            "High flow"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "respiratory.oxygenTherapy.litersPerMinute",
+          "label": "Liters/Minute",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.oxygenTherapy.hoursPerDay",
+          "label": "Hours/Day",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.oxygenTherapy.satOnO2",
+          "label": "SpO2 on O2",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "respiratory.notes",
+          "label": "Respiratory Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "infection": {
+      "title": "Immunological / Infection",
+      "subtitle": "Allergies, current infections, precautions",
+      "fields": [
+        {
+          "path": "infection.immunosuppressed",
+          "label": "Immunosuppressed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "infection.precautions",
+          "label": "Precautions",
+          "type": "checkboxGroup",
+          "options": [
+            "Standard",
+            "Contact",
+            "Droplet",
+            "Airborne"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "infection.notes",
+          "label": "Current Infections",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "gastrointestinal": {
+      "title": "Gastrointestinal",
+      "subtitle": "J2051D-G (Nausea, Vomiting, Diarrhea, Constipation), bowel, feeding devices",
+      "fields": [
+        {
+          "path": "gastrointestinal.nausea",
+          "label": "Nausea",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": true
+        },
+        {
+          "path": "gastrointestinal.vomiting",
+          "label": "Vomiting",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": true
+        },
+        {
+          "path": "gastrointestinal.diarrhea",
+          "label": "Diarrhea",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": true
+        },
+        {
+          "path": "gastrointestinal.constipation",
+          "label": "Constipation",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": true
+        },
+        {
+          "path": "gastrointestinal.bowelSounds",
+          "label": "Bowel Sounds",
+          "type": "radio",
+          "options": [
+            "Normal",
+            "Hyperactive",
+            "Hypoactive",
+            "Absent"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.abdomen",
+          "label": "Abdomen",
+          "type": "radio",
+          "options": [
+            "Soft",
+            "Firm",
+            "Distended",
+            "Tender",
+            "Rigid"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.bowelStatus",
+          "label": "Bowel Status",
+          "type": "radio",
+          "options": [
+            "Regular",
+            "Irregular",
+            "Incontinent"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.lastBM",
+          "label": "Last BM Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.feedingTube.present",
+          "label": "Feeding Tube Present",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.feedingTube.type",
+          "label": "Tube Type",
+          "type": "select",
+          "options": [
+            "NG",
+            "PEG",
+            "PEJ",
+            "G-tube",
+            "J-tube"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.ostomy.present",
+          "label": "Ostomy Present",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.ostomy.type",
+          "label": "Ostomy Type",
+          "type": "select",
+          "options": [
+            "Colostomy",
+            "Ileostomy",
+            "Urostomy"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "gastrointestinal.notes",
+          "label": "GI Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "nutrition": {
+      "title": "Nutrition",
+      "subtitle": "Weight loss, appetite, swallowing, hydration, diet",
+      "fields": [
+        {
+          "path": "nutrition.weightLossPastSixMonths",
+          "label": "Weight Loss (past 6 months)",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.appetite",
+          "label": "Appetite",
+          "type": "radio",
+          "options": [
+            "Good",
+            "Fair",
+            "Poor",
+            "Anorexic"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "nutrition.dietType",
+          "label": "Diet Type",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.fluidIntake",
+          "label": "Fluid Intake",
+          "type": "radio",
+          "options": [
+            "Adequate",
+            "Decreased",
+            "Minimal"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "nutrition.swallowingIssues",
+          "label": "Swallowing Issues",
+          "type": "checkboxGroup",
+          "options": [
+            "Dysphagia",
+            "Aspiration risk",
+            "Pocketing",
+            "Coughing with swallowing",
+            "None"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "nutrition.oralMucosa",
+          "label": "Oral Mucosa",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.dentures.upper",
+          "label": "Upper Dentures",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.dentures.lower",
+          "label": "Lower Dentures",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.nutritionalSupplements",
+          "label": "Nutritional Supplements",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "nutrition.notes",
+          "label": "Nutrition Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "endocrine": {
+      "title": "Endocrine",
+      "subtitle": "Thyroid, diabetes management, endocrine symptoms",
+      "fields": [
+        {
+          "path": "endocrine.thyroid.assessment",
+          "label": "Thyroid",
+          "type": "radio",
+          "options": [
+            "Normal",
+            "Enlarged",
+            "Tender",
+            "Nodular",
+            "Not assessed"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "endocrine.thyroid.notes",
+          "label": "Thyroid Notes",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.type",
+          "label": "Diabetes Type",
+          "type": "radio",
+          "options": [
+            "Type 1",
+            "Type 2",
+            "Not diabetic",
+            "Unknown"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.glucoseMonitoring",
+          "label": "Glucose Monitoring Frequency",
+          "type": "select",
+          "options": [
+            "None",
+            "Daily",
+            "BID",
+            "TID",
+            "QID",
+            "Weekly"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.lastHbA1c",
+          "label": "Last HbA1c Value",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.lastHbA1cDate",
+          "label": "Last HbA1c Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.insulinType",
+          "label": "Insulin Type",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "endocrine.diabetes.insulinDose",
+          "label": "Insulin Dose",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "endocrine.endocrineSymptoms",
+          "label": "Symptoms Present",
+          "type": "checkboxGroup",
+          "options": [
+            "Fatigue",
+            "Weight changes",
+            "Temperature intolerance",
+            "Hair/skin changes",
+            "Polydipsia",
+            "Polyuria",
+            "Tremors"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "endocrine.notes",
+          "label": "Endocrine Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "genitourinary": {
+      "title": "Genitourinary / Reproductive",
+      "subtitle": "Urinary status, catheter, urine output, reproductive concerns",
+      "fields": [
+        {
+          "path": "genitourinary.urinaryStatus",
+          "label": "Continence",
+          "type": "radio",
+          "options": [
+            "Continent",
+            "Stress incontinence",
+            "Urge incontinence",
+            "Functional incontinence",
+            "Total incontinence",
+            "Catheterized"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.frequency",
+          "label": "Frequency",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.present",
+          "label": "Catheter Present",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.type",
+          "label": "Type",
+          "type": "select",
+          "options": [
+            "Foley",
+            "Suprapubic",
+            "Condom",
+            "Intermittent"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.size",
+          "label": "Size",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.insertionDate",
+          "label": "Insertion Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.lastChangeDate",
+          "label": "Last Change Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.condition",
+          "label": "Condition",
+          "type": "radio",
+          "options": [
+            "Patent",
+            "Blocked",
+            "Leaking"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.catheter.urineCharacteristics",
+          "label": "Urine Characteristics",
+          "type": "checkboxGroup",
+          "options": [
+            "Clear",
+            "Cloudy",
+            "Amber",
+            "Dark",
+            "Hematuria",
+            "Sediment",
+            "Foul odor"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.urineOutput",
+          "label": "Output",
+          "type": "radio",
+          "options": [
+            "Adequate",
+            "Decreased",
+            "Anuria",
+            "Polyuria"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.twentyFourHourVolume",
+          "label": "24-Hour Volume (if measured)",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.reproductive.concerns",
+          "label": "Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Vaginal bleeding",
+            "Vaginal discharge",
+            "Penile discharge",
+            "Scrotal edema",
+            "Testicular mass"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.reproductive.notes",
+          "label": "Reproductive Notes",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.bladderManagement",
+          "label": "Interventions",
+          "type": "checkboxGroup",
+          "options": [
+            "Bladder training",
+            "Scheduled toileting",
+            "Pelvic floor exercises",
+            "External collection device"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "genitourinary.notes",
+          "label": "GU Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "musculoskeletal": {
+      "title": "Musculoskeletal",
+      "subtitle": "Weakness, ROM, gait, mobility status, ADL assessment",
+      "fields": [
+        {
+          "path": "musculoskeletal.weakness",
+          "label": "Weakness",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe",
+            "Paralysis"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.rigidity",
+          "label": "Rigidity",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.contractures",
+          "label": "Contractures",
+          "type": "radio",
+          "options": [
+            "None",
+            "Mild",
+            "Moderate",
+            "Severe"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.contracturesLocation",
+          "label": "Contracture Location",
+          "type": "checkboxGroup",
+          "options": [
+            "Bilateral lower extremities",
+            "Unilateral LE",
+            "Upper extremities",
+            "Hands/fingers",
+            "Neck/spine",
+            "Generalized"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.gait",
+          "label": "Gait",
+          "type": "radio",
+          "options": [
+            "Normal",
+            "Unsteady",
+            "Shuffling",
+            "Unable"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.assistiveDevices",
+          "label": "Assistive Devices",
+          "type": "checkboxGroup",
+          "options": [
+            "Walker",
+            "Wheelchair",
+            "Cane",
+            "Crutches",
+            "Hospital bed",
+            "Hoyer lift",
+            "None"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.mobility.ambulatoryStatus",
+          "label": "Ambulatory Status",
+          "type": "radio",
+          "options": [
+            "Independent",
+            "Supervised",
+            "Assisted",
+            "Dependent",
+            "Bedbound"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.mobility.endurance",
+          "label": "Endurance",
+          "type": "radio",
+          "options": [
+            "Good",
+            "Fair",
+            "Poor"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.mobility.transferAbility",
+          "label": "Transfer Ability",
+          "type": "radio",
+          "options": [
+            "Independent",
+            "Standby assist",
+            "1-person assist",
+            "2-person assist",
+            "Hoyer lift"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.bathing",
+          "label": "Bathing",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup help only"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited assistance"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive assistance"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total dependence"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.dressing",
+          "label": "Dressing",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.toileting",
+          "label": "Toileting",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.transferring",
+          "label": "Transferring",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.eating",
+          "label": "Eating",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.adl.grooming",
+          "label": "Grooming",
+          "type": "select",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — Independent"
+            },
+            {
+              "value": "1",
+              "label": "1 — Setup"
+            },
+            {
+              "value": "2",
+              "label": "2 — Supervision"
+            },
+            {
+              "value": "3",
+              "label": "3 — Limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — Extensive"
+            },
+            {
+              "value": "5",
+              "label": "5 — Total"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.fallHistory.fallsLast90Days",
+          "label": "Falls in Last 90 Days",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.fallHistory.fallInjuries",
+          "label": "Fall Injuries",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "musculoskeletal.notes",
+          "label": "Musculoskeletal Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "skin": {
+      "title": "Skin / Wounds",
+      "subtitle": "Integumentary assessment, Braden Scale, wound documentation (M1190)",
+      "fields": [
+        {
+          "path": "skin.skinConditionsPresent",
+          "label": "Skin Conditions Present",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "skin.skinStatus",
+          "label": "Skin Status",
+          "type": "checkboxGroup",
+          "options": [
+            "Intact",
+            "Dry",
+            "Fragile",
+            "Edematous",
+            "Bruising",
+            "Rash",
+            "Jaundice",
+            "Cyanotic",
+            "Mottled"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.skinTurgor",
+          "label": "Skin Turgor",
+          "type": "radio",
+          "options": [
+            "Good",
+            "Fair",
+            "Poor",
+            "Tenting"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.sensoryPerception",
+          "label": "Sensory Perception",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Completely limited"
+            },
+            {
+              "value": "2",
+              "label": "2 — Very limited"
+            },
+            {
+              "value": "3",
+              "label": "3 — Slightly limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — No impairment"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.moisture",
+          "label": "Moisture",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Constantly moist"
+            },
+            {
+              "value": "2",
+              "label": "2 — Very moist"
+            },
+            {
+              "value": "3",
+              "label": "3 — Occasionally moist"
+            },
+            {
+              "value": "4",
+              "label": "4 — Rarely moist"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.activity",
+          "label": "Activity",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Bedfast"
+            },
+            {
+              "value": "2",
+              "label": "2 — Chairfast"
+            },
+            {
+              "value": "3",
+              "label": "3 — Walks occasionally"
+            },
+            {
+              "value": "4",
+              "label": "4 — Walks frequently"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.mobility",
+          "label": "Mobility",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Completely immobile"
+            },
+            {
+              "value": "2",
+              "label": "2 — Very limited"
+            },
+            {
+              "value": "3",
+              "label": "3 — Slightly limited"
+            },
+            {
+              "value": "4",
+              "label": "4 — No limitation"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.nutrition",
+          "label": "Nutrition",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Very poor"
+            },
+            {
+              "value": "2",
+              "label": "2 — Inadequate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Adequate"
+            },
+            {
+              "value": "4",
+              "label": "4 — Excellent"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.braden.frictionShear",
+          "label": "Friction & Shear",
+          "type": "select",
+          "options": [
+            {
+              "value": "1",
+              "label": "1 — Problem"
+            },
+            {
+              "value": "2",
+              "label": "2 — Potential problem"
+            },
+            {
+              "value": "3",
+              "label": "3 — No apparent problem"
+            }
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.pressureInjuryRisk",
+          "label": "Pressure Injury Risk",
+          "type": "radio",
+          "options": [
+            "Low (19-23)",
+            "Moderate (15-18)",
+            "High (≤14)"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "skin.woundImpairment",
+          "label": "Wound Impairment",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "skin.notes",
+          "label": "Skin Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "imminentDeath": {
+      "title": "Imminent Death Assessment",
+      "subtitle": "HOPE J0050 — Does patient appear to be within 3 days or less of death?",
+      "fields": [
+        {
+          "path": "imminentDeath.appearsThreeDaysOrLess",
+          "label": "Appears within 3 days or less of death?",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — No"
+            },
+            {
+              "value": "1",
+              "label": "1 — Yes"
+            },
+            {
+              "value": "9",
+              "label": "9 — Unable to determine"
+            }
+          ],
+          "hopeCode": "J0050",
+          "sfv": false
+        },
+        {
+          "path": "imminentDeath.indicators",
+          "label": "Indicators of Imminent Death",
+          "type": "checkboxGroup",
+          "options": [
+            "Mottling of extremities",
+            "Mandibular breathing",
+            "Apneic periods",
+            "Cyanosis",
+            "No urine output",
+            "Unresponsive",
+            "Death rattle",
+            "Cheyne-Stokes breathing",
+            "Cool/cold extremities",
+            "Decreased level of consciousness",
+            "Inability to swallow"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "imminentDeath.comfortMeasuresInPlace",
+          "label": "Comfort Measures in Place",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "imminentDeath.familyNotified",
+          "label": "Family Notified",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "imminentDeath.notes",
+          "label": "Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "sfv": {
+      "title": "Symptom Follow-up Visit (SFV)",
+      "subtitle": "HOPE J2050/J2052/J2053 — SFV evaluation and follow-up",
+      "fields": [
+        {
+          "path": "sfv.symptomImpactScreeningCompleted",
+          "label": "Symptom Impact Screening Completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactScreeningDate",
+          "label": "Screening Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "sfv.inPersonSfvCompleted",
+          "label": "In-Person SFV Completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "sfv.sfvDate",
+          "label": "SFV Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "sfv.reasonNotCompleted",
+          "label": "Reason SFV not completed",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.pain",
+          "label": "A. Pain",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053A",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.shortnessOfBreath",
+          "label": "B. Shortness of Breath",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053B",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.anxiety",
+          "label": "C. Anxiety",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053C",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.nausea",
+          "label": "D. Nausea",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053D",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.vomiting",
+          "label": "E. Vomiting",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053E",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.diarrhea",
+          "label": "F. Diarrhea",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053F",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.constipation",
+          "label": "G. Constipation",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053G",
+          "sfv": false
+        },
+        {
+          "path": "sfv.symptomImpactAtSfv.agitation",
+          "label": "H. Agitation",
+          "type": "radio",
+          "options": [
+            {
+              "value": "0",
+              "label": "0 — None"
+            },
+            {
+              "value": "1",
+              "label": "1 — Mild"
+            },
+            {
+              "value": "2",
+              "label": "2 — Moderate"
+            },
+            {
+              "value": "3",
+              "label": "3 — Severe"
+            }
+          ],
+          "hopeCode": "J2053H",
+          "sfv": false
+        },
+        {
+          "path": "sfv.triggeredSymptoms",
+          "label": "Triggered Symptoms",
+          "type": "checkboxGroup",
+          "options": [
+            "Pain",
+            "SOB",
+            "Anxiety",
+            "Nausea",
+            "Vomiting",
+            "Diarrhea",
+            "Constipation",
+            "Agitation"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "sfv.findings",
+          "label": "Findings",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "sfv.notes",
+          "label": "Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "safety": {
+      "title": "Environmental / Safety",
+      "subtitle": "Home safety, fall risk, disaster triage level",
+      "fields": [
+        {
+          "path": "safety.safetyAssessmentCompleted",
+          "label": "Safety Assessment Completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "safety.homeEnvironment",
+          "label": "Home Environment Hazards",
+          "type": "checkboxGroup",
+          "options": [
+            "Adequate lighting",
+            "Handrails present",
+            "Throw rugs",
+            "Clutter/obstacles",
+            "Stairs without railing",
+            "Pets",
+            "Weapons/firearms",
+            "Pest infestation",
+            "Inadequate heating/cooling",
+            "Smoke detectors present"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "safety.fallRiskAssessmentCompleted",
+          "label": "Fall Risk Assessment Completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "safety.fallRiskLevel",
+          "label": "Fall Risk Level",
+          "type": "radio",
+          "options": [
+            "Low",
+            "Moderate",
+            "High"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "safety.firearmInHome",
+          "label": "Firearm in Home",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "safety.oxygenInUse",
+          "label": "Oxygen in Use",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "safety.oxygenSafetyReviewed",
+          "label": "Oxygen Safety Reviewed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "safety.disasterLevel",
+          "label": "Disaster Level",
+          "type": "radio",
+          "options": [
+            "Level 1 — Priority",
+            "Level 2 — Urgent",
+            "Level 3 — Non-urgent"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "safety.disasterLevelOneConditions",
+          "label": "Level 1 Conditions",
+          "type": "checkboxGroup",
+          "options": [
+            "Ventilator dependent",
+            "IV medications",
+            "Oxygen dependent",
+            "Suction dependent",
+            "Tube feeding dependent",
+            "Wound vac",
+            "No caregiver"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "safety.notes",
+          "label": "Safety Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "psychosocial": {
+      "title": "Psychosocial Screening",
+      "subtitle": "Family/social support, patient/caregiver concerns, distress, coping",
+      "fields": [
+        {
+          "path": "psychosocial.familySocialSupport",
+          "label": "Family/Social Support Level",
+          "type": "radio",
+          "options": [
+            "Strong support",
+            "Adequate support",
+            "Limited support",
+            "No support",
+            "Declined to answer"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.primarySupportPerson",
+          "label": "Primary Support Person",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.supportRelationship",
+          "label": "Relationship",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.patientConcerns",
+          "label": "Patient Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Anxiety about illness",
+            "Depression",
+            "Grief/loss",
+            "Financial concerns",
+            "Family conflict",
+            "Caregiver burden",
+            "Social isolation",
+            "Role changes",
+            "Unfinished business",
+            "Fear of dying",
+            "Loss of independence",
+            "Body image concerns"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.caregiverFamilyConcerns",
+          "label": "Caregiver Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Anticipatory grief",
+            "Caregiver fatigue",
+            "Financial stress",
+            "Work-life balance",
+            "Children/family coping",
+            "Funeral planning",
+            "Estate/legal matters"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.distressRating",
+          "label": "Distress Thermometer (0-10)",
+          "type": "select",
+          "options": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.psychosocialHistory",
+          "label": "Psychosocial History",
+          "type": "checkboxGroup",
+          "options": [
+            "History of depression",
+            "History of anxiety",
+            "History of substance abuse",
+            "Current mental health treatment",
+            "Psychiatric medications",
+            "Previous counseling/therapy"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.copingAssessment",
+          "label": "Coping Assessment",
+          "type": "radio",
+          "options": [
+            "Effective coping",
+            "Developing coping strategies",
+            "Ineffective coping",
+            "Crisis"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.copingNotes",
+          "label": "Coping Notes",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.interventionPlan",
+          "label": "Interventions",
+          "type": "checkboxGroup",
+          "options": [
+            "Counseling referral",
+            "Support group",
+            "Community resources",
+            "Crisis intervention",
+            "Psychiatric evaluation"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "psychosocial.notes",
+          "label": "Psychosocial Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "spiritual": {
+      "title": "Spiritual Screening",
+      "subtitle": "Patient/caregiver faith, spiritual concerns, chaplain needs",
+      "fields": [
+        {
+          "path": "spiritual.patientActiveInFaithTradition",
+          "label": "Patient Active in Faith Tradition",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.patientFaith",
+          "label": "Patient Faith Tradition",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.caregiverActiveInFaithTradition",
+          "label": "Caregiver Active in Faith Tradition",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.caregiverFaith",
+          "label": "Caregiver Faith Tradition",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.spiritualConcerns",
+          "label": "Spiritual Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Meaning of illness",
+            "Forgiveness",
+            "Hope",
+            "Legacy",
+            "Prayer requests",
+            "Religious rituals",
+            "Afterlife concerns",
+            "Anger at God",
+            "Spiritual distress"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "spiritual.spiritualDistressRating",
+          "label": "Spiritual Distress Rating (0-10)",
+          "type": "select",
+          "options": [
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "spiritual.concernsDiscussed",
+          "label": "Spiritual / existential concerns asked",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.concernsDiscussedDate",
+          "label": "Spiritual concerns discussion date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.chaplainNeeded",
+          "label": "Chaplain Referral Needed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "spiritual.notes",
+          "label": "Spiritual Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "bereavement": {
+      "title": "Bereavement Screening",
+      "subtitle": "Patient/caregiver bereavement concerns, risk assessment",
+      "fields": [
+        {
+          "path": "bereavement.patientConcerns",
+          "label": "Patient Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Fear of death",
+            "Unresolved grief",
+            "Existential distress",
+            "Legacy concerns",
+            "Family preparedness"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "bereavement.caregiverConcerns",
+          "label": "Caregiver Concerns",
+          "type": "checkboxGroup",
+          "options": [
+            "Anticipatory grief",
+            "Previous losses",
+            "Complicated grief history",
+            "Mental health concerns",
+            "Substance abuse history",
+            "Social isolation",
+            "Concurrent stressors"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "bereavement.bereavementRisk",
+          "label": "Bereavement Risk Level",
+          "type": "radio",
+          "options": [
+            "Low",
+            "Moderate",
+            "High"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "bereavement.bereavementVisitNeeded",
+          "label": "Bereavement Visit Needed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "bereavement.notes",
+          "label": "Bereavement Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "personalCare": {
+      "title": "Personal Care & Support Needs",
+      "subtitle": "Home aide tasks, volunteer services, community resources, equipment needs",
+      "fields": [
+        {
+          "path": "personalCare.aideTasks",
+          "label": "Aide Tasks Needed",
+          "type": "checkboxGroup",
+          "options": [
+            "Bathing/showering",
+            "Hair care/grooming",
+            "Oral hygiene",
+            "Skin care",
+            "Dressing",
+            "Toileting assistance",
+            "Transfers/mobility",
+            "Light meal preparation",
+            "Light housekeeping",
+            "Laundry",
+            "Vital signs",
+            "Range of motion exercises",
+            "Respite for caregiver"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.aideVisitPreferences.frequency",
+          "label": "Frequency",
+          "type": "select",
+          "options": [
+            "Daily",
+            "3x/week",
+            "2x/week",
+            "Weekly",
+            "PRN"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.aideVisitPreferences.preferredTime",
+          "label": "Preferred Time",
+          "type": "radio",
+          "options": [
+            "Morning",
+            "Afternoon",
+            "Evening",
+            "Flexible"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.aideVisitPreferences.duration",
+          "label": "Duration",
+          "type": "select",
+          "options": [
+            "1 hour",
+            "2 hours",
+            "3 hours",
+            "4 hours"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.volunteerServices",
+          "label": "Services Needed",
+          "type": "checkboxGroup",
+          "options": [
+            "Companionship/visits",
+            "Respite care",
+            "Errand assistance",
+            "Transportation",
+            "Vigil/11th hour",
+            "Pet care",
+            "Legacy project",
+            "Music/art therapy",
+            "Reading/letter writing"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.communityResources",
+          "label": "Resources Needed",
+          "type": "checkboxGroup",
+          "options": [
+            "Meals on Wheels",
+            "Adult day care",
+            "Transportation services",
+            "Legal aid",
+            "Financial assistance programs",
+            "Faith community support",
+            "Veteran services",
+            "Disease-specific organizations"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.equipmentSupplyNeeds",
+          "label": "Equipment Needed",
+          "type": "checkboxGroup",
+          "options": [
+            "Hospital bed",
+            "Wheelchair",
+            "Walker",
+            "Commode",
+            "Shower chair",
+            "Hoyer lift",
+            "Egg crate mattress",
+            "Incontinence supplies",
+            "Wound care supplies",
+            "Air mattress",
+            "Bedpan",
+            "Overbed table",
+            "Cane",
+            "Geri-chair/recliner",
+            "Urinal",
+            "Nebulizer",
+            "Suction machine",
+            "O2 concentrator",
+            "E-tank"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "personalCare.notes",
+          "label": "Personal Care Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "teachingNeeds": {
+      "title": "Teaching Needs",
+      "subtitle": "Patient/family education assessment, topics, methods, response",
+      "fields": [
+        {
+          "path": "teachingNeeds.primaryLearner",
+          "label": "Primary Learner",
+          "type": "radio",
+          "options": [
+            "Patient",
+            "Caregiver",
+            "Both"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.learningStylePreference",
+          "label": "Learning Style Preference",
+          "type": "radio",
+          "options": [
+            "Visual",
+            "Auditory",
+            "Hands-on",
+            "Written materials"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.barriersToLearning",
+          "label": "Barriers to Learning",
+          "type": "checkboxGroup",
+          "options": [
+            "Language",
+            "Literacy",
+            "Cognitive impairment",
+            "Hearing deficit",
+            "Vision deficit",
+            "Emotional readiness",
+            "Cultural considerations",
+            "Denial of diagnosis"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.teachingMethods",
+          "label": "Methods",
+          "type": "checkboxGroup",
+          "options": [
+            "Verbal instruction",
+            "Written materials provided",
+            "Demonstration",
+            "Return demonstration",
+            "Video/multimedia",
+            "Interpreter used"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.patientFamilyResponse",
+          "label": "Response",
+          "type": "radio",
+          "options": [
+            "Verbalized understanding",
+            "Demonstrated competency",
+            "Needs reinforcement",
+            "Unable to learn at this time",
+            "Refused teaching"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.followUpPlan",
+          "label": "Follow-up Plan",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "teachingNeeds.notes",
+          "label": "Teaching Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "admissionsOrder": {
+      "title": "Admissions Order",
+      "subtitle": "Physician's initial order — LOC, visit frequency, HA assignment, POC/IDG, non-covered items",
+      "fields": [
+        {
+          "path": "admissionsOrder.admissionStatement",
+          "label": "Admission Order Statement",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.levelOfCare.level",
+          "label": "Level of Care",
+          "type": "radio",
+          "options": [
+            "Routine Care",
+            "General Inpatient",
+            "Continuous Care",
+            "Respite Care"
+          ],
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.levelOfCare.effectiveDate",
+          "label": "Effective Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.levelOfCare.justification",
+          "label": "LOC Justification",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.haAssignment.assignedAide",
+          "label": "Assigned Home Aide",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.haAssignment.notApplicable",
+          "label": "HA Assignment N/A",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.initialPocIdg.created",
+          "label": "Initial POC Created",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.initialPocIdg.createdDate",
+          "label": "Created Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.initialPocIdg.notes",
+          "label": "POC/IDG Notes",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.toVerification.verbalOrderReadBack",
+          "label": "Verbal Order Read Back and Verified",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.toVerification.verifiedBy",
+          "label": "Verified By",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.toVerification.prescriberContacted",
+          "label": "Prescriber on Call Contacted",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "admissionsOrder.toVerification.verificationTimestamp",
+          "label": "Verification Timestamp",
+          "type": "input",
+          "sfv": false
+        }
+      ]
+    },
+    "medications": {
+      "title": "Hospice Orders Hub",
+      "subtitle": "Unified orders — Meds, DME, Supplies, Lab, Treatment, Diet, Other",
+      "fields": [
+        {
+          "path": "medications.scheduledOpioid",
+          "label": "Scheduled Opioid",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "medications.scheduledOpioidDate",
+          "label": "Scheduled Opioid Start / Continue Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "medications.prnOpioid",
+          "label": "PRN Opioid",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "medications.prnOpioidDate",
+          "label": "PRN Opioid Start / Continue Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "medications.bowelRegimen",
+          "label": "Bowel Regimen in Place",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "medications.bowelRegimenDate",
+          "label": "Bowel Regimen Start / Continue Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "medications.medReconciliation.completed",
+          "label": "Med Reconciliation Completed",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "medications.medReconciliation.completedDate",
+          "label": "Completed Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "medications.medReconciliation.completedBy",
+          "label": "Completed By",
+          "type": "input",
+          "sfv": false
+        }
+      ]
+    },
+    "referrals": {
+      "title": "Referrals",
+      "subtitle": "Social work, spiritual care, volunteer, therapy, dietitian, pharmacist",
+      "fields": [
+        {
+          "path": "referrals.socialWork.referred",
+          "label": "Social Work Referral",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "referrals.socialWork.reason",
+          "label": "SW Reason",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "referrals.spiritualCare.referred",
+          "label": "Spiritual Care Referral",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "referrals.spiritualCare.reason",
+          "label": "SC Reason",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "referrals.volunteer.referred",
+          "label": "Volunteer Referral",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "referrals.volunteer.type",
+          "label": "Volunteer Type",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "referrals.dietitian.referred",
+          "label": "Dietitian Referral",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "referrals.dietitian.reason",
+          "label": "Dietitian Reason",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "referrals.pharmacist.referred",
+          "label": "Pharmacist Referral",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "referrals.pharmacist.reason",
+          "label": "Pharmacist Reason",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "referrals.notes",
+          "label": "Referral Notes",
+          "type": "textarea",
+          "sfv": false
+        }
+      ]
+    },
+    "finalization": {
+      "title": "Finalization & Signature",
+      "subtitle": "Response to interventions, POC generation, completion, certification, clinician signature",
+      "fields": [
+        {
+          "path": "finalization.responseToInterventions.initialResponseSummary",
+          "label": "Initial Response Summary",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "finalization.responseToInterventions.baselineEstablished",
+          "label": "Baseline Response Established",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.responseToInterventions.baselineDate",
+          "label": "Baseline Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "finalization.responseToInterventions.progressNotes",
+          "label": "Progress Notes / Assessment-to-Assessment Context",
+          "type": "textarea",
+          "sfv": false
+        },
+        {
+          "path": "finalization.pocGenerationCompleted",
+          "label": "All assessment problems have been reviewed and POC entries generated",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.pocReviewedWithIdg",
+          "label": "POC reviewed with IDG team",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.signatureCertification",
+          "label": "Signature Certification — I certify this assessment is complete and accurate",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.clinicianSignature",
+          "label": "Clinician Signature",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "finalization.signatureDate",
+          "label": "Signature Date",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "finalization.hopeSubmissionNumber",
+          "label": "HOPE Submission / Confirmation Number",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "finalization.hopeAlreadySubmitted",
+          "label": "HOPE report already submitted — tracking not required",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.supervisorReview.required",
+          "label": "Supervisor Review Required",
+          "type": "checkbox",
+          "sfv": false
+        },
+        {
+          "path": "finalization.supervisorReview.reviewedBy",
+          "label": "Reviewed By",
+          "type": "input",
+          "sfv": false
+        },
+        {
+          "path": "finalization.supervisorReview.reviewDate",
+          "label": "Review Date",
+          "type": "input",
+          "sfv": false
+        }
+      ]
+    }
+  }
+}

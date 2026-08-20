@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 import PatientModuleShell from "../components/PatientModuleShell";
-import { fetchVolunteerScheduling, type VolunteerSchedulingResponse } from "../api/patientCharts";
+import { fetchPatientSummary, fetchVolunteerScheduling, type VolunteerSchedulingResponse } from "../api/patientCharts";
 
 import { getActivePatientId } from "../utils/activePatient";
 const sections = [
@@ -21,17 +22,29 @@ const sections = [
   { key: "care-team", label: "Care Team" },
 ];
 
-const patientId = getActivePatientId() ?? "";
 export default function VolunteerSchedulingDataPage() {
+  const location = useLocation();
+  const patientId = new URLSearchParams(location.search).get("patientId") || getActivePatientId() || "";
   const [data, setData] = useState<VolunteerSchedulingResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [patientName, setPatientName] = useState("Loading patient...");
 
   useEffect(() => {
+    if (!patientId) {
+      setPatientName("No patient selected");
+      setLoading(false);
+      return;
+    }
+
     fetchVolunteerScheduling(patientId).then((result) => {
       setData(result);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+
+    fetchPatientSummary(patientId)
+      .then((result) => setPatientName(result.patient.full_name || "Patient"))
+      .catch(() => setPatientName("Patient"));
+  }, [patientId]);
 
   const metrics = data ? [
     { label: "Assignments", value: String(data.assignments.length) },
@@ -43,7 +56,7 @@ export default function VolunteerSchedulingDataPage() {
   return (
     <PatientModuleShell
       patientId={patientId}
-      patientName={data ? "Carr, V" : "Loading..."}
+      patientName={patientName}
       disciplineLabel="Volunteer Scheduling"
       title="Volunteer Assignment Scheduling"
       subtitle="Plot visits in the calendar and assign or self-schedule volunteers"

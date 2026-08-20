@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.role_guards import require_owner
 from app.core.security import get_current_user
 from app.core.database import get_db
@@ -24,11 +25,34 @@ from app.billing.store import count_lifecycle
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 
+# Tenant clinical/operational dashboards must never be reachable by the
+# platform/vendor OWNER account or by a billing-only account — this is
+# tenant PHI (patient census, compliance status, clinical alerts).
+_TENANT_DASHBOARD_DENIED_ROLES = {"OWNER", "BILLING", "BILLER"}
+
+
+def _require_tenant_dashboard_access(user) -> None:
+    role = (getattr(user, "role", "") or "").upper()
+    if role in _TENANT_DASHBOARD_DENIED_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="This dashboard is not available for the platform owner or billing-only accounts",
+        )
+
+
 @router.get("/billing")
 def billing_dashboard(
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
+    # Platform Owner must never be combined with billing/financial access —
+    # explicit deny here, independent of any role-fallback logic.
+    if (getattr(user, "role", "") or "").upper() == "OWNER":
+        raise HTTPException(
+            status_code=403,
+            detail="Billing is not available to the platform owner role",
+        )
+
     if not getattr(user, "tenant_id", None):
         raise HTTPException(
             status_code=400,
@@ -36,7 +60,7 @@ def billing_dashboard(
         )
 
     tenant = db.get(Tenant, user.tenant_id)
-    if getattr(user, "role", "").upper() != "OWNER" and not getattr(tenant, "billing_enabled", False):
+    if not getattr(tenant, "billing_enabled", False):
         raise HTTPException(
             status_code=403,
             detail="Billing features are not enabled for this tenant",
@@ -55,6 +79,7 @@ def tenant_dashboard(
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
+    _require_tenant_dashboard_access(user)
     tenant = db.get(Tenant, user.tenant_id)
     return {
         "tenant_id": str(user.tenant_id),
@@ -72,6 +97,8 @@ def patient_compliance_detail(
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
+    _require_tenant_dashboard_access(user)
+    get_authorized_patient(db, patient_id, user)
     return get_patient_compliance_detail(db=db, tenant_id=user.tenant_id, patient_id=patient_id)
 
 
@@ -80,6 +107,7 @@ def clinical_alerts_dashboard(
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
+    _require_tenant_dashboard_access(user)
     return get_clinical_alerts_dashboard(db=db, tenant_id=user.tenant_id)
 
 

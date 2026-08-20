@@ -1,4 +1,4 @@
-import { getAccessToken } from "./session";
+import { clearAccessToken, clearCurrentUser, getAccessToken } from "./session";
 
 // src/api/dashboard.ts
 
@@ -50,6 +50,22 @@ export type DashboardPatientBlocker = {
   blockers: string[];
 };
 
+export type DashboardOrderItem = {
+  order_id: string;
+  patient_id: string;
+  patient_name: string;
+  order_category: string;
+  order_text: string;
+  status: string;
+  source_type: string;
+  ordered_by_provider_name: string;
+  ordered_by_provider_role: string;
+  entered_by_name: string | null;
+  ordered_at: string | null;
+  signed_by_name: string | null;
+  signed_at: string | null;
+};
+
 // =========================================================
 // DASHBOARD RESPONSES
 // =========================================================
@@ -62,6 +78,8 @@ export type ClinicalComplianceDashboardResponse = {
   pending_incidents: DashboardIncidentItem[];
   flagged_notes: DashboardNoteFlagItem[];
   blocked_patients: DashboardPatientBlocker[];
+  unsigned_orders: DashboardOrderItem[];
+  all_orders: DashboardOrderItem[];
 };
 
 export type ClinicalAlertMetric = {
@@ -113,7 +131,6 @@ export type OwnerDashboardResponse = {
   tenant_summary?: OwnerTenantSummary[];
 };
 
-// ✅ UPDATED FOR 835
 export type BillingDashboardResponse = {
   metrics: DashboardMetric[];
   payments_received: number;
@@ -123,7 +140,6 @@ export type BillingDashboardResponse = {
   billing_holds: Array<Record<string, unknown>>;
 };
 
-// ✅ STEP 13 — CLAIM LIFECYCLE
 export type ClaimLifecycleResponse = {
   metrics: DashboardMetric[];
   ready: number;
@@ -168,20 +184,44 @@ export type PatientComplianceDetailResponse = {
 async function fetchJson<T>(url: string): Promise<T> {
   const token = getAccessToken();
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const res = await fetch(`${base}${url}`, {
-    credentials: "include",
-    headers: token
-      ? {
-          Authorization: `Bearer ${token}`,
-        }
-      : undefined,
-  });
+  const candidates = [
+    `${base}${url}`,
+    ...(base ? [`http://localhost:8000${url}`] : []),
+  ];
 
-  if (!res.ok) {
-    throw new Error(`Request failed: ${url}`);
+  let lastError: Error | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        credentials: "include",
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : undefined,
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        clearAccessToken();
+        clearCurrentUser();
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      if (!res.ok) {
+        throw new Error(`Request failed: ${url}`);
+      }
+
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
+      if (candidate === candidates[candidates.length - 1]) {
+        break;
+      }
+    }
   }
 
-  return res.json();
+  throw lastError ?? new Error(`Request failed: ${url}`);
 }
 
 // =========================================================
@@ -208,7 +248,6 @@ export function fetchBillingDashboard(): Promise<BillingDashboardResponse> {
   return fetchJson<BillingDashboardResponse>("/api/dashboard/billing");
 }
 
-// ✅ STEP 13 — CLAIM LIFECYCLE API
 export function fetchClaimLifecycle(): Promise<ClaimLifecycleResponse> {
   return fetchJson<ClaimLifecycleResponse>("/api/dashboard/claim-lifecycle");
 }
@@ -250,7 +289,13 @@ export async function fetchSidebarAlertCounts(
     };
   }
 
-  if (normalized === "TENANT_ADMIN" || normalized === "CLINICIAN") {
+  if (
+    normalized === "TENANT_ADMIN" ||
+    normalized === "CLINICIAN" ||
+    normalized === "DPCS" ||
+    normalized === "ADMINISTRATOR" ||
+    normalized === "DPCS_ADMINISTRATOR"
+  ) {
     const data = await fetchTenantDashboard();
 
     return {
@@ -263,7 +308,7 @@ export async function fetchSidebarAlertCounts(
     };
   }
 
-  if (normalized === "BILLER") {
+  if (normalized === "BILLER" || normalized === "BILLING") {
     const data = await fetchBillingDashboard();
 
     return {

@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import PatientModuleShell from "../components/PatientModuleShell";
-import { fetchCommunicationLog, type CommunicationLogResponse } from "../api/patientCharts";
+import { fetchCommunicationLog, fetchPatientSummary, type CommunicationLogResponse } from "../api/patientCharts";
 
 import { getActivePatientId } from "../utils/activePatient";
+
+const C = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  white: "#FFFFFF",
+  bg: "#EEF3F8",
+  panel: "#F8FBFD",
+  border: "#DDE9F2",
+  text: "#1F2937",
+  muted: "#64748B",
+  subtle: "#475569",
+};
+
 const sections = [
   { key: "overview", label: "Care Overview" },
   { key: "visit-calendar", label: "Visit Calendar" },
@@ -27,27 +42,52 @@ export default function CommunicationLogDataPage() {
   const navigate = useNavigate();
   const [data, setData] = useState<CommunicationLogResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [patientName, setPatientName] = useState("Loading patient...");
 
   useEffect(() => {
+    if (!patientId) {
+      setPatientName("No patient selected");
+      setLoading(false);
+      return;
+    }
+
     fetchCommunicationLog(patientId).then((result) => {
       setData(result);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+
+    fetchPatientSummary(patientId)
+      .then((result) => setPatientName(result.patient.full_name || "Patient"))
+      .catch(() => setPatientName("Patient"));
+  }, [patientId]);
 
   const handleSelect = (section: string) => {
     const routes: Record<string, string> = {
       overview: "/care-overview",
+      admission: "/rnica",
+      assessment: "/rnica",
+      "nursing-assessment": "/rnica",
+      psychosocial: "/msw-ica",
+      "psychosocial-assessment": "/msw-ica",
+      spiritual: "/sc-ica",
+      "spiritual-assessment": "/sc-ica",
       physician: "/physician",
-      "visit-calendar": "/volunteer-scheduling",
+      "visit-calendar": "/care-overview",
+      "tx-meds-dme-supplies": "/care-overview",
+      idg: "/care-overview",
+      "plan-of-care": "/plan-of-care",
       bereavement: "/bereavement",
       compliance: "/compliance",
       "lcd-eligibility": "/patient-lcd",
       "incident-occurrence": "/incident-occurrence",
+      documents: "/communication-log",
       "communication-log": "/communication-log",
+      "care-team": "/care-overview",
     };
 
-    if (routes[section]) navigate(routes[section]);
+    const target = routes[section];
+    if (!target) return;
+    navigate(`${target}${patientId ? `?patientId=${encodeURIComponent(patientId)}` : ""}`);
   };
 
   const metrics = data ? [
@@ -60,7 +100,7 @@ export default function CommunicationLogDataPage() {
   return (
     <PatientModuleShell
       patientId={patientId}
-      patientName={data ? "Carr, V" : "Loading..."}
+      patientName={patientName}
       disciplineLabel="Communication Log"
       title="Communication Log"
       subtitle="Capture every call, update, and note so IDG can review the patient story"
@@ -81,27 +121,27 @@ export default function CommunicationLogDataPage() {
       {loading ? <div>Loading communication log...</div> : null}
       {data ? (
         <div style={{ display: "grid", gridTemplateColumns: "0.8fr 1.2fr", gap: 20 }}>
-          <section style={{ border: "1px solid #dfe8ee", borderRadius: 12, background: "#f8fafc", overflow: "hidden" }}>
-            <div style={{ padding: "12px 16px", fontWeight: 800, background: "#f1f5f9", borderBottom: "1px solid #dfe8ee" }}>Event types</div>
+          <section style={{ border: `1px solid ${C.border}`, borderRadius: 12, background: C.panel, overflow: "hidden", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
+            <div style={{ padding: "12px 16px", fontWeight: 800, background: "#F1F5F9", borderBottom: `1px solid ${C.border}` }}>Event types</div>
             <div style={{ padding: 16, display: "flex", flexWrap: "wrap", gap: 8 }}>
               {Object.entries(data.counts_by_type).map(([type, count]) => (
-                <span key={type} style={{ borderRadius: 999, padding: "6px 10px", background: "#e2e8f0", fontSize: 11, fontWeight: 800 }}>
+                <span key={type} style={{ borderRadius: 999, padding: "6px 10px", background: "#E2E8F0", fontSize: 11, fontWeight: 800, color: C.text }}>
                   {type} ({count})
                 </span>
               ))}
             </div>
           </section>
-          <section style={{ border: "1px solid #dfe8ee", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
-            <div style={{ padding: "12px 16px", fontWeight: 800, background: "#eef7ff", borderBottom: "1px solid #dfe8ee" }}>Log entries</div>
+          <section style={{ border: `1px solid ${C.border}`, borderRadius: 12, background: C.white, overflow: "hidden", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
+            <div style={{ padding: "12px 16px", fontWeight: 800, background: "#EEF7FF", borderBottom: `1px solid ${C.border}` }}>Log entries</div>
             <div style={{ padding: 16 }}>
               {data.entries.map((entry) => (
-                <div key={entry.id} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #edf2f7" }}>
+                <div key={entry.id} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${C.border}` }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontSize: 13, fontWeight: 800 }}>{entry.event_type}</div>
-                    <div style={{ fontSize: 10, fontWeight: 800, color: "#0f766e" }}>{entry.status}</div>
+                    <div style={{ fontSize: 13, fontWeight: 800, color: C.text }}>{entry.event_type}</div>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: C.tealDark }}>{entry.status}</div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", marginTop: 4 }}>{entry.event_time}</div>
-                  <div style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6 }}>{entry.summary}</div>
+                  <div style={{ fontSize: 12, color: C.subtle, marginTop: 4 }}>{entry.event_time}</div>
+                  <div style={{ fontSize: 12, marginTop: 6, lineHeight: 1.6, color: C.text }}>{entry.summary}</div>
                 </div>
               ))}
             </div>

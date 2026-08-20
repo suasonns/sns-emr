@@ -51,3 +51,12 @@ import app.models.form
 # OPTIONAL BUT SAFE
 import app.models.patient_payer
 import app.models.patient_insurance
+import app.models.physician
+import app.models.medication
+import app.models.drug_alias
+import app.models.patient_allergy
+import app.models.patient_order
+import app.models.order_template
+import app.models.fax_log
+import app.models.physician_order
+import app.models.scica_assessment

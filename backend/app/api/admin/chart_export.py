@@ -28,7 +28,10 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 def require_admin(user) -> None:
     role = getattr(user, "role", "").upper()
-    if role not in {"ADMIN", "OWNER", "SUPER_ADMIN", "DPCS_ADMIN"}:
+    # OWNER is the platform/vendor super-user and must never export patient
+    # charts. DPCS_ADMINISTRATOR covers an agency principal holding both the
+    # DPCS and Administrator titles.
+    if role not in {"ADMIN", "SUPER_ADMIN", "DPCS_ADMIN", "DPCS", "ADMINISTRATOR", "DPCS_ADMINISTRATOR"}:
         raise HTTPException(status_code=403, detail="Admin access required")
 
 

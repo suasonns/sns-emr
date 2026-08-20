@@ -1,0 +1,178 @@
+{
+  "_comment": "Curated drug-class reference for medication safety checks. Maps canonical (generic, lowercase) drug names to one or more class keys. Open/curated dataset — replaceable with a licensed source (First Databank / Medi-Span) via the same drug_safety_service interface without touching callers.",
+
+  "morphine": ["OPIOIDS"],
+  "oxycodone": ["OPIOIDS"],
+  "hydrocodone": ["OPIOIDS"],
+  "hydromorphone": ["OPIOIDS"],
+  "fentanyl": ["OPIOIDS"],
+  "methadone": ["OPIOIDS", "QT_PROLONGING"],
+  "codeine": ["OPIOIDS"],
+  "tramadol": ["OPIOIDS", "SEROTONERGIC"],
+  "oxymorphone": ["OPIOIDS"],
+
+  "lorazepam": ["BENZODIAZEPINES"],
+  "alprazolam": ["BENZODIAZEPINES"],
+  "diazepam": ["BENZODIAZEPINES"],
+  "clonazepam": ["BENZODIAZEPINES"],
+  "midazolam": ["BENZODIAZEPINES"],
+  "temazepam": ["BENZODIAZEPINES"],
+
+  "zolpidem": ["SEDATIVE_HYPNOTICS"],
+  "eszopiclone": ["SEDATIVE_HYPNOTICS"],
+
+  "gabapentin": ["GABAPENTINOIDS", "CNS_DEPRESSANTS"],
+  "pregabalin": ["GABAPENTINOIDS", "CNS_DEPRESSANTS"],
+
+  "haloperidol": ["ANTIPSYCHOTICS", "QT_PROLONGING"],
+  "olanzapine": ["ANTIPSYCHOTICS"],
+  "quetiapine": ["ANTIPSYCHOTICS", "QT_PROLONGING"],
+  "risperidone": ["ANTIPSYCHOTICS", "QT_PROLONGING"],
+  "chlorpromazine": ["ANTIPSYCHOTICS", "QT_PROLONGING", "ANTICHOLINERGICS"],
+
+  "diphenhydramine": ["ANTIHISTAMINES", "ANTICHOLINERGICS", "CNS_DEPRESSANTS"],
+  "hydroxyzine": ["ANTIHISTAMINES", "ANTICHOLINERGICS", "QT_PROLONGING"],
+  "meclizine": ["ANTIHISTAMINES", "ANTICHOLINERGICS"],
+
+  "oxybutynin": ["ANTICHOLINERGICS"],
+  "benztropine": ["ANTICHOLINERGICS"],
+  "scopolamine": ["ANTICHOLINERGICS"],
+  "glycopyrrolate": ["ANTICHOLINERGICS"],
+  "atropine": ["ANTICHOLINERGICS"],
+  "hyoscyamine": ["ANTICHOLINERGICS"],
+  "tolterodine": ["ANTICHOLINERGICS"],
+
+  "amitriptyline": ["TRICYCLIC_ANTIDEPRESSANTS", "ANTICHOLINERGICS", "QT_PROLONGING"],
+  "nortriptyline": ["TRICYCLIC_ANTIDEPRESSANTS", "ANTICHOLINERGICS"],
+  "doxepin": ["TRICYCLIC_ANTIDEPRESSANTS", "ANTICHOLINERGICS"],
+
+  "sertraline": ["SSRIS", "SEROTONERGIC"],
+  "fluoxetine": ["SSRIS", "SEROTONERGIC"],
+  "citalopram": ["SSRIS", "SEROTONERGIC", "QT_PROLONGING"],
+  "escitalopram": ["SSRIS", "SEROTONERGIC", "QT_PROLONGING"],
+  "paroxetine": ["SSRIS", "SEROTONERGIC"],
+  "venlafaxine": ["SNRIS", "SEROTONERGIC"],
+  "duloxetine": ["SNRIS", "SEROTONERGIC"],
+  "mirtazapine": ["SEROTONERGIC"],
+  "trazodone": ["SEROTONERGIC", "CNS_DEPRESSANTS"],
+
+  "phenelzine": ["MAOIS", "SEROTONERGIC"],
+  "tranylcypromine": ["MAOIS", "SEROTONERGIC"],
+  "selegiline": ["MAOIS", "SEROTONERGIC"],
+
+  "sumatriptan": ["TRIPTANS", "SEROTONERGIC"],
+  "rizatriptan": ["TRIPTANS", "SEROTONERGIC"],
+
+  "warfarin": ["ANTICOAGULANTS"],
+  "apixaban": ["ANTICOAGULANTS"],
+  "rivaroxaban": ["ANTICOAGULANTS"],
+  "dabigatran": ["ANTICOAGULANTS"],
+  "enoxaparin": ["ANTICOAGULANTS"],
+  "heparin": ["ANTICOAGULANTS"],
+
+  "aspirin": ["ANTIPLATELETS", "NSAIDS"],
+  "clopidogrel": ["ANTIPLATELETS"],
+
+  "ibuprofen": ["NSAIDS"],
+  "naproxen": ["NSAIDS"],
+  "meloxicam": ["NSAIDS"],
+  "diclofenac": ["NSAIDS"],
+  "ketorolac": ["NSAIDS"],
+  "celecoxib": ["NSAIDS"],
+  "indomethacin": ["NSAIDS"],
+
+  "lisinopril": ["ACE_INHIBITORS"],
+  "enalapril": ["ACE_INHIBITORS"],
+  "ramipril": ["ACE_INHIBITORS"],
+  "benazepril": ["ACE_INHIBITORS"],
+
+  "losartan": ["ARBS"],
+  "valsartan": ["ARBS"],
+
+  "spironolactone": ["POTASSIUM_SPARING_DIURETICS"],
+  "amiloride": ["POTASSIUM_SPARING_DIURETICS"],
+  "triamterene": ["POTASSIUM_SPARING_DIURETICS"],
+
+  "furosemide": ["LOOP_DIURETICS"],
+  "bumetanide": ["LOOP_DIURETICS"],
+  "torsemide": ["LOOP_DIURETICS"],
+
+  "hydrochlorothiazide": ["THIAZIDE_DIURETICS"],
+  "chlorthalidone": ["THIAZIDE_DIURETICS"],
+
+  "potassium chloride": ["POTASSIUM_SUPPLEMENTS"],
+
+  "digoxin": ["DIGOXIN"],
+
+  "metoprolol": ["BETA_BLOCKERS"],
+  "carvedilol": ["BETA_BLOCKERS"],
+  "atenolol": ["BETA_BLOCKERS"],
+  "propranolol": ["BETA_BLOCKERS"],
+
+  "diltiazem": ["NON_DHP_CALCIUM_CHANNEL_BLOCKERS"],
+  "verapamil": ["NON_DHP_CALCIUM_CHANNEL_BLOCKERS"],
+  "amlodipine": ["DHP_CALCIUM_CHANNEL_BLOCKERS"],
+
+  "amiodarone": ["ANTIARRHYTHMICS", "QT_PROLONGING"],
+  "sotalol": ["ANTIARRHYTHMICS", "QT_PROLONGING"],
+
+  "atorvastatin": ["STATINS"],
+  "simvastatin": ["STATINS"],
+  "rosuvastatin": ["STATINS"],
+  "lovastatin": ["STATINS"],
+
+  "metronidazole": ["METRONIDAZOLE"],
+  "ciprofloxacin": ["FLUOROQUINOLONES", "QT_PROLONGING"],
+  "levofloxacin": ["FLUOROQUINOLONES", "QT_PROLONGING"],
+  "azithromycin": ["MACROLIDES", "QT_PROLONGING"],
+  "clarithromycin": ["MACROLIDES", "QT_PROLONGING", "CYP3A4_INHIBITORS"],
+  "fluconazole": ["AZOLE_ANTIFUNGALS", "QT_PROLONGING", "CYP3A4_INHIBITORS"],
+  "trimethoprim sulfamethoxazole": ["SULFONAMIDES"],
+  "sulfamethoxazole": ["SULFONAMIDES"],
+
+  "amoxicillin": ["PENICILLINS"],
+  "amoxicillin clavulanate": ["PENICILLINS"],
+  "ampicillin": ["PENICILLINS"],
+  "penicillin": ["PENICILLINS"],
+  "piperacillin tazobactam": ["PENICILLINS"],
+
+  "cephalexin": ["CEPHALOSPORINS"],
+  "ceftriaxone": ["CEPHALOSPORINS"],
+
+  "metformin": ["BIGUANIDES"],
+  "insulin": ["INSULIN"],
+  "glipizide": ["SULFONYLUREAS"],
+  "glyburide": ["SULFONYLUREAS"],
+
+  "prednisone": ["CORTICOSTEROIDS"],
+  "dexamethasone": ["CORTICOSTEROIDS"],
+  "methylprednisolone": ["CORTICOSTEROIDS"],
+
+  "levothyroxine": ["THYROID_HORMONE"],
+
+  "phenytoin": ["ANTICONVULSANTS", "CYP_ENZYME_INDUCERS"],
+  "carbamazepine": ["ANTICONVULSANTS", "CYP_ENZYME_INDUCERS"],
+  "valproic acid": ["ANTICONVULSANTS"],
+  "levetiracetam": ["ANTICONVULSANTS"],
+  "phenobarbital": ["BARBITURATES", "CNS_DEPRESSANTS", "CYP_ENZYME_INDUCERS"],
+
+  "zoledronic acid": ["BISPHOSPHONATES"],
+  "alendronate": ["BISPHOSPHONATES"],
+
+  "clonidine": ["ANTIHYPERTENSIVES_CENTRAL"],
+  "hydralazine": ["VASODILATORS"],
+  "labetalol": ["BETA_BLOCKERS"],
+
+  "senna": ["LAXATIVES"],
+  "docusate": ["LAXATIVES"],
+  "polyethylene glycol": ["LAXATIVES"],
+  "bisacodyl": ["LAXATIVES"],
+
+  "ondansetron": ["QT_PROLONGING", "SEROTONERGIC"],
+  "metoclopramide": ["ANTIEMETICS", "QT_PROLONGING"],
+  "prochlorperazine": ["ANTIEMETICS", "ANTICHOLINERGICS", "QT_PROLONGING"],
+  "promethazine": ["ANTIHISTAMINES", "ANTICHOLINERGICS", "CNS_DEPRESSANTS"],
+
+  "lithium": ["LITHIUM"],
+  "digoxin immune fab": ["DIGOXIN_ANTIDOTE"]
+}

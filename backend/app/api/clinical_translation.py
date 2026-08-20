@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db  # adjust if needed
+from app.core.security import get_current_user
+from app.core.patient_access import get_authorized_patient
 from app.schemas.translation import (
     RNRecertDraftCreate,
     RNRecertDraftRead,
@@ -28,9 +32,18 @@ def clinical_translation_realtime(
 def create_rn_recert_draft(
     payload: RNRecertDraftCreate,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
+    try:
+        patient_uuid = uuid.UUID(str(payload.patient_id))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+
     obj = RNRecertAssessment(
         patient_id=payload.patient_id,
+        tenant_id=getattr(patient, "tenant_id", None),
         benefit_period_id=payload.benefit_period_id,
         created_by_user_id=payload.created_by_user_id,
         pps_score=payload.pps_score,
@@ -61,10 +74,19 @@ def finalize_rn_recert(
     assessment_id: str,
     payload: RNRecertFinalizeRequest,
     db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
-    obj = db.query(RNRecertAssessment).filter(RNRecertAssessment.id == assessment_id).first()
+    try:
+        assessment_uuid = uuid.UUID(str(assessment_id))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    obj = db.query(RNRecertAssessment).filter(RNRecertAssessment.id == assessment_uuid).first()
     if not obj:
         raise HTTPException(status_code=404, detail="RN recert assessment not found")
+
+    # Tenant/care-team scoping: only staff authorized for this patient may finalize.
+    get_authorized_patient(db, obj.patient_id, current_user)
 
     # deterministic finalize validation
     if not any([obj.pps_score, obj.kps_score, obj.fast_stage, obj.nyha_class]):
@@ -83,7 +105,10 @@ def finalize_rn_recert(
 
     from datetime import datetime
 
-    obj.translation_reviewed_by = payload.translation_reviewed_by
+    # Reviewer identity is taken from the authenticated session, not the
+    # client-supplied payload, to prevent callers from attributing the
+    # finalize action to an arbitrary user id.
+    obj.translation_reviewed_by = current_user.id
     obj.translation_reviewed_at = datetime.utcnow()
     obj.translation_accepted = True
     obj.status = "FINAL"

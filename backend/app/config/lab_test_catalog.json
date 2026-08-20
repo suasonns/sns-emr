@@ -1,0 +1,152 @@
+{
+  "_comment": "Lab test catalog for the Orders Hub 'Lab' order type test picker, adapted from an ExpressLab requisition form. Routine prenatal panel removed (not applicable to hospice care); HCG and LMP retained/added back as they have legitimate hospice relevance for cancer detection/staging (HCG as a germ-cell/trophoblastic tumor marker, LMP for gynecologic cancer context).",
+  "categories": [
+    {
+      "category": "Specialty Tests",
+      "tests": [
+        { "cpt": "82951", "name": "Glucose Tolerance" },
+        { "cpt": "36000", "name": "Insulin Resistance" }
+      ]
+    },
+    {
+      "category": "Panels",
+      "tests": [
+        { "cpt": "80048", "name": "Basic Metabolic Panel" },
+        { "cpt": "83516", "name": "Celiac Disease Diagnostic Panel" },
+        { "cpt": "80053", "name": "Comprehensive Metabolic Panel" },
+        { "cpt": "80051", "name": "Electrolyte Panel" },
+        { "cpt": "80076", "name": "Hepatic Panel" },
+        { "cpt": "80074", "name": "Hepatitis Panel (Acute)" },
+        { "cpt": "80061", "name": "Lipid Panel" },
+        { "cpt": "80069", "name": "Renal Panel" }
+      ]
+    },
+    {
+      "category": "Individual Tests",
+      "tests": [
+        { "cpt": "82040", "name": "Albumin" },
+        { "cpt": "84075", "name": "ALK Phos" },
+        { "cpt": "84460", "name": "ALT (SGPT)" },
+        { "cpt": "82150", "name": "Amylase" },
+        { "cpt": "89600", "name": "ABO/RH" },
+        { "cpt": "86850", "name": "Antibody Screen" },
+        { "cpt": "86038", "name": "ANA with Reflex (2)" },
+        { "cpt": "84450", "name": "AST (SGOT)" },
+        { "cpt": "82248", "name": "Bilirubin, Direct" },
+        { "cpt": "82247", "name": "Bilirubin, Total" },
+        { "cpt": "84520", "name": "BUN" },
+        { "cpt": "86304", "name": "CA-125" },
+        { "cpt": "82310", "name": "Calcium" },
+        { "cpt": "85025", "name": "CBC w/Auto Diff" },
+        { "cpt": "82465", "name": "Cholesterol, Total" },
+        { "cpt": "82533", "name": "Cortisol" },
+        { "cpt": "86141", "name": "CRP Ultra-Sensitive" },
+        { "cpt": "82565", "name": "Creatinine" },
+        { "cpt": "82575", "name": "Creatinine Clearance" },
+        { "cpt": "82627", "name": "DHEA-S" },
+        { "cpt": "83718", "name": "Direct HDL" },
+        { "cpt": "83721", "name": "Direct LDL" },
+        { "cpt": "85652", "name": "ESR - Sed Rate" },
+        { "cpt": "82670", "name": "Estradiol" },
+        { "cpt": "82728", "name": "Ferritin" },
+        { "cpt": "82746", "name": "Folate/Folic Acid" },
+        { "cpt": "83001", "name": "FSH" },
+        { "cpt": "82947", "name": "Glucose" },
+        { "cpt": "85014", "name": "Hematocrit" },
+        { "cpt": "85018", "name": "Hemoglobin" },
+        { "cpt": "83036", "name": "Hemoglobin A1c" },
+        { "cpt": "86708", "name": "Hep A Total AB" },
+        { "cpt": "86705", "name": "Hep B Core IgM AB" },
+        { "cpt": "86317", "name": "Hep B Surface AB" },
+        { "cpt": "87340", "name": "Hep B Surface AG" },
+        { "cpt": "86803", "name": "Hep C Antibody" },
+        { "cpt": "86703", "name": "HIV" },
+        { "cpt": "83090", "name": "Homocysteine" },
+        { "cpt": "86677", "name": "H Pylori BreathID Kit or Stool" },
+        { "cpt": "86695", "name": "HSV 1/2 IgG" },
+        { "cpt": "82784", "name": "IgA, Total" },
+        { "cpt": "83525", "name": "Insulin" },
+        { "cpt": "83540", "name": "Iron, Total" },
+        { "cpt": "83550", "name": "Iron Binding Capacity" },
+        { "cpt": "80178", "name": "Lithium" },
+        { "cpt": "83690", "name": "Lipase" },
+        { "cpt": "83002", "name": "LH" },
+        { "cpt": "83735", "name": "Magnesium" },
+        { "cpt": "82043", "name": "Malb/Crea Ratio, Urine" },
+        { "cpt": "83921", "name": "Methylmalonic Acid (MMA)" },
+        { "cpt": "84100", "name": "Phosphorus" },
+        { "cpt": "84132", "name": "Potassium" },
+        { "cpt": "80197", "name": "Prograf (Tacrolimus)" },
+        { "cpt": "84146", "name": "Prolactin" },
+        { "cpt": "84153", "name": "PSA" },
+        { "cpt": "83970", "name": "PTH" },
+        { "cpt": "85610", "name": "Protime/INR" },
+        { "cpt": "85730", "name": "PTT" },
+        { "cpt": "86480", "name": "Quantiferon-TB Plus" },
+        { "cpt": "86430", "name": "RF/Rheumatoid Factor" },
+        { "cpt": "86762", "name": "Rubella" },
+        { "cpt": "86592", "name": "Treponema (RPR)" },
+        { "cpt": "84402", "name": "Testosterone Free & Total w/SHBG" },
+        { "cpt": "84403", "name": "Testosterone, Total" },
+        { "cpt": "84432", "name": "Thyroglobulin" },
+        { "cpt": "86800", "name": "Thyroglobulin AB" },
+        { "cpt": "86376", "name": "Thyroid Peroxidase AB" },
+        { "cpt": "84478", "name": "Triglycerides" },
+        { "cpt": "84481", "name": "TTG, IgA" },
+        { "cpt": "84443", "name": "TSH" },
+        { "cpt": "84439", "name": "Free T3" },
+        { "cpt": "84436", "name": "Free T4" },
+        { "cpt": "84550", "name": "Total T4" },
+        { "cpt": "82340", "name": "Uric Acid" },
+        { "cpt": "83880", "name": "BNP (B-type Natriuretic Peptide)", "note": "Cardiac marker — CHF/heart failure workup and monitoring." },
+        { "cpt": "84702", "name": "HCG, Quantitative (tumor marker — gestational trophoblastic neoplasia/hydatidiform mole, choriocarcinoma, and germ cell malignancy monitoring)", "note": "Serial quantitative HCG is the primary marker for monitoring treatment response and recurrence in gestational trophoblastic disease (molar pregnancy/GTN)." },
+        { "cpt": "81003", "name": "Urine Calcium/Creat Ratio" },
+        { "cpt": "87086", "name": "Urine Culture by PCR" },
+        { "cpt": "81001", "name": "Urine Dip" },
+        { "cpt": "81000", "name": "Urine Microscopic" },
+        { "cpt": "87088", "name": "Urine Culture and Sensitivity (UA with C&S)", "note": "Urinalysis with reflex culture and sensitivity — ordered for suspected UTI." },
+        { "cpt": "87086", "name": "Urine Culture" },
+        { "cpt": "82306", "name": "Urine Total Protein/Creat Ratio" },
+        { "cpt": "80164", "name": "Valproic Acid" },
+        { "cpt": "82607", "name": "Vitamin B12" },
+        { "cpt": "82652", "name": "Vit D 1,25-Dihydroxy" },
+        { "cpt": "82306", "name": "Vitamin D25 Hydroxy" }
+      ]
+    },
+    {
+      "category": "Microbiology",
+      "tests": [
+        { "cpt": "87505", "name": "CT/NG/Trich Swab/UR" },
+        { "cpt": "87081", "name": "Group B Strep PCR Swab" },
+        { "cpt": "87502", "name": "Influenza Screen Swab" },
+        { "cpt": "87481", "name": "MRSA/MSSA Swab" },
+        { "cpt": "87651", "name": "Strep Screen Swab" },
+        { "cpt": "87505", "name": "Bacterial Panel, Stool" },
+        { "cpt": "87493", "name": "Clostridium Difficile, Stool" },
+        { "cpt": "87505", "name": "Parasite Panel, Stool" },
+        { "cpt": "87505", "name": "Viral Panel, Stool" },
+        { "cpt": "87040", "name": "Blood Culture" },
+        { "cpt": "87070", "name": "Wound Culture" }
+      ]
+    },
+    {
+      "category": "Cytology",
+      "tests": [
+        { "cpt": "88142", "name": "PAP Smear SurePath" },
+        { "cpt": "88175", "name": "HPV Reflex if ASCUS/AGC and Above" },
+        { "cpt": "87491", "name": "CTNG, Molecular" },
+        { "cpt": "88175", "name": "PAP and HPV Detection" }
+      ],
+      "fields": [
+        { "key": "history_of_abnormal_cytology", "label": "History of abnormal cytology" },
+        { "key": "lmp", "label": "LMP (Last Menstrual Period) — relevant to gynecologic cancer detection/staging, including hydatidiform mole / gestational trophoblastic neoplasia (GTN) follow-up", "type": "date" }
+      ]
+    }
+  ],
+  "clinical_notes": {
+    "gestational_trophoblastic_disease": "For patients with a hydatidiform mole / gestational trophoblastic neoplasia (GTN) diagnosis, order serial Quantitative HCG (84702) to trend treatment response and detect recurrence/malignant transformation (invasive mole, choriocarcinoma). Pair with LMP/diagnosis date for accurate trend interpretation."
+  },
+  "removed_pregnancy_items": [
+    "Prenatal Panel (120)* [80055] — routine prenatal-only panel, not applicable to hospice care"
+  ]
+}

@@ -7,14 +7,14 @@
  * instead of silently loading someone.
  */
 
-const ACTIVE_PATIENT_KEY = "sns-emr-active-patient";
+const ACTIVE_PATIENT_KEY = "sns-hospice-solutions-active-patient";
 
 export function getActivePatientId(): string | null {
   if (typeof window !== "undefined") {
     const fromUrl = new URLSearchParams(window.location.search).get("patientId");
     if (fromUrl) return fromUrl;
 
-    const stored = window.localStorage.getItem(ACTIVE_PATIENT_KEY);
+    const stored = window.sessionStorage.getItem(ACTIVE_PATIENT_KEY);
     if (stored) return stored;
   }
 
@@ -23,12 +23,12 @@ export function getActivePatientId(): string | null {
 
 export function setActivePatientId(patientId: string): void {
   if (typeof window !== "undefined") {
-    window.localStorage.setItem(ACTIVE_PATIENT_KEY, patientId);
+    window.sessionStorage.setItem(ACTIVE_PATIENT_KEY, patientId);
   }
 }
 
 export function clearActivePatientId(): void {
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem(ACTIVE_PATIENT_KEY);
+    window.sessionStorage.removeItem(ACTIVE_PATIENT_KEY);
   }
 }

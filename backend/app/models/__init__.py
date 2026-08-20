@@ -39,10 +39,13 @@ from app.models.patient_payer import PatientPayer
 from app.models.patient_insurance import PatientInsurance
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.patient_diagnosis import PatientDiagnosis
+from app.models.physician import Physician, PhysicianPecosCache
+from app.models.vendor import Vendor
 from app.models.visit import Visit
 from app.models.benefit_period import BenefitPeriod
 
 from app.models.medication import Medication
+from app.models.patient_allergy import PatientAllergy
 from app.models.admission import Admission
 
 # ---------------------------------------------------------
@@ -54,6 +57,7 @@ from app.models.notification import Notification
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.msw_ica_assessment import MswIcaAssessment
+from app.models.scica_assessment import ScicaAssessment
 from app.models.communications_log import CommunicationsLog
 
 # ---------------------------------------------------------
@@ -81,10 +85,13 @@ from app.models.incident_report import IncidentReport
 # ---------------------------------------------------------
 
 from app.models.idg_meeting import IDGMeeting
+from app.models.idg_group import IDGGroup
+from app.models.idg_group_schedule_rule import IDGGroupScheduleRule
 from app.models.idg_review import IDGReview
 from app.models.idg_note import IDGNote
 from app.models.idg_signature import IDGSignature
 from app.models.idg_md_attestation import IDGMDAttestation
+from app.models.idg_meeting_patient_review import IDGMeetingPatientReview
 from app.models.idg_attendee import IDGAttendee
 from app.models.idg_justification import IDGJustification
 from app.models.dx_primary_policy import DxPrimaryPolicy

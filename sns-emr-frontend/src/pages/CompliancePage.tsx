@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import PatientModuleShell from "../components/PatientModuleShell";
+import { fetchPatientSummary } from "../api/patientCharts";
+import { getActivePatientId } from "../utils/activePatient";
 
 const sections = [
   { key: "overview", label: "Care Overview" },
@@ -32,6 +35,19 @@ const patientOverview = {
   careTeam: ["Compliance", "RN", "Admin", "MD"],
 };
 
+const CLINICAL_BRAND = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  bg: "#F8FAFC",
+  canvas: "#EEF3F8",
+  panel: "#FFFFFF",
+  line: "#D8E3E8",
+  text: "#0F172A",
+  muted: "#64748B",
+};
+
 const metrics = [
   { label: "LCD status", value: "Eligible", tone: "good" as const },
   { label: "HOPE", value: "Ready", tone: "good" as const },
@@ -49,10 +65,24 @@ const complianceItems = [
 ];
 
 export default function CompliancePage() {
+  const patientId = getActivePatientId() ?? "";
+  const [patientName, setPatientName] = useState("Loading patient...");
+
+  useEffect(() => {
+    if (!patientId) {
+      setPatientName("No patient selected");
+      return;
+    }
+
+    fetchPatientSummary(patientId)
+      .then((result) => setPatientName(result.patient.full_name || "Patient"))
+      .catch(() => setPatientName("Patient"));
+  }, [patientId]);
+
   return (
     <PatientModuleShell
-      patientId="HOSP-001234"
-      patientName="Carr, V"
+      patientId={patientId}
+      patientName={patientName}
       disciplineLabel="Compliance"
       title="Compliance"
       subtitle="LCD, HOPE, QIES, discharge, and decline-of-status workflow"
@@ -63,25 +93,25 @@ export default function CompliancePage() {
       metrics={metrics}
     >
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <section style={{ border: "1px solid #dfe8ee", borderRadius: 12, background: "#f8fafc", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", fontSize: 15, fontWeight: 800, background: "#f1f5f9", borderBottom: "1px solid #dfe8ee" }}>
+        <section style={{ border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 12, background: CLINICAL_BRAND.bg, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", fontSize: 15, fontWeight: 800, background: "linear-gradient(90deg, rgba(30,58,95,0.12), rgba(13,148,136,0.08))", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, color: CLINICAL_BRAND.text }}>
             Compliance work queue
           </div>
           <div style={{ padding: 16 }}>
             {complianceItems.map((item) => (
-              <div key={item.label} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #edf2f7" }}>
-                <div style={{ fontSize: 13, fontWeight: 800 }}>{item.label}</div>
-                <div style={{ fontSize: 12, color: "#475569", marginTop: 6, lineHeight: 1.5 }}>{item.detail}</div>
+              <div key={item.label} style={{ marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${CLINICAL_BRAND.line}` }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: CLINICAL_BRAND.text }}>{item.label}</div>
+                <div style={{ fontSize: 12, color: CLINICAL_BRAND.muted, marginTop: 6, lineHeight: 1.5 }}>{item.detail}</div>
               </div>
             ))}
           </div>
         </section>
 
-        <section style={{ border: "1px solid #dfe8ee", borderRadius: 12, background: "#fff", overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", fontSize: 15, fontWeight: 800, background: "#eef7ff", borderBottom: "1px solid #dfe8ee" }}>
+        <section style={{ border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 12, background: CLINICAL_BRAND.panel, overflow: "hidden" }}>
+          <div style={{ padding: "12px 16px", fontSize: 15, fontWeight: 800, background: "linear-gradient(90deg, rgba(30,58,95,0.10), rgba(13,148,136,0.08))", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, color: CLINICAL_BRAND.text }}>
             Reporting notes
           </div>
-          <div style={{ padding: 16, fontSize: 13, color: "#0f172a", lineHeight: 1.7 }}>
+          <div style={{ padding: 16, fontSize: 13, color: CLINICAL_BRAND.text, lineHeight: 1.7 }}>
             This screen should keep the patient compliant with hospice reporting obligations, including HOPE transmission,
             LCD verification, QIES export readiness, and discharge/decline tracking for the quality team.
           </div>

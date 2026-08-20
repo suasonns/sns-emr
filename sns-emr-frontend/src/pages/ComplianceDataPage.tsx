@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PatientModuleShell from "../components/PatientModuleShell";
-import { fetchCompliance, type ComplianceResponse } from "../api/patientCharts";
+import { fetchCompliance, fetchPatientSummary, type ComplianceResponse } from "../api/patientCharts";
 
 import { getActivePatientId } from "../utils/activePatient";
 const sections = [
@@ -25,13 +25,24 @@ const patientId = getActivePatientId() ?? "";
 export default function ComplianceDataPage() {
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [patientName, setPatientName] = useState("Loading patient...");
 
   useEffect(() => {
+    if (!patientId) {
+      setPatientName("No patient selected");
+      setLoading(false);
+      return;
+    }
+
     fetchCompliance(patientId).then((result) => {
       setData(result);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, []);
+
+    fetchPatientSummary(patientId)
+      .then((result) => setPatientName(result.patient.full_name || "Patient"))
+      .catch(() => setPatientName("Patient"));
+  }, [patientId]);
 
   const metrics = data ? [
     { label: "LCD", value: data.eligibility["eligible"] ? "Eligible" : "Review" },
@@ -43,7 +54,7 @@ export default function ComplianceDataPage() {
   return (
     <PatientModuleShell
       patientId={patientId}
-      patientName={data ? "Carr, V" : "Loading..."}
+      patientName={patientName}
       disciplineLabel="Compliance"
       title="Compliance"
       subtitle="LCD, HOPE, QIES, discharge, and decline-of-status workflow"

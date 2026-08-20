@@ -1,26 +1,34 @@
 {
-  "test_case_id": "LCD-PULMONARY-TEMPLATE",
+  "test_case_id": "LCD-PULMONARY-RULESET",
   "disease": "PULMONARY_COPD_RESPIRATORY_FAILURE",
-  "lcd_reference": "LCD Hospice Eligibility Determination – Pulmonary Disease",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Pulmonary Disease",
   "evaluation_date": "",
   "eligibility_result": {
-  "status": "PENDING"
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for pulmonary disease.",
+    "confidence": null
   },
-
-  "group_combination_rule": "ALL_GROUPS_REQUIRED",
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "pulmonary-core",
+      "description": "Groups 1 and 2 should be met.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": null,
     "PPS": null,
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -29,86 +37,77 @@
       "criteria": [
         {
           "criterion_id": "1a",
-          "field": "pulmonary.dyspnea_at_rest_disabling",
+          "field": "criteria_answers.PULMONARY_COPD_RESPIRATORY_FAILURE.1a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Disabling dyspnea at rest (e.g., poorly responsive/unresponsive to bronchodilators OR FEV1 < 30% predicted)"
-        },
-        {
-          "criterion_id": "1a_i",
-          "field": "pulmonary.bronchodilators_poor_response",
-          "operator": "EQUALS",
-          "expected": true,
-          "description": "Poorly responsive or unresponsive to bronchodilators with decreased functional capacity"
-        },
-        {
-          "criterion_id": "1a_ii",
-          "field": "pulmonary.fev1_percent_predicted",
-          "operator": "LT",
-          "expected": 30,
-          "unit": "percent",
-          "description": "FEV1 after bronchodilator < 30% predicted (if available)"
+          "description": "Disabling dyspnea at rest is present (for example poor bronchodilator response with markedly decreased functional capacity or FEV1 less than 30 percent predicted, if available)"
         },
         {
           "criterion_id": "1b",
-          "field": "pulmonary.end_stage_progression",
+          "field": "criteria_answers.PULMONARY_COPD_RESPIRATORY_FAILURE.1b",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression of end-stage pulmonary disease (any of: ER visits, hospitalizations, respiratory failure, increased home visits, serial FEV1 decline > 40 ml/year)"
+          "description": "Progression of end-stage pulmonary disease is documented (for example increasing ER visits, pulmonary infection hospitalizations, respiratory failure, increasing physician home visits, or serial FEV1 decline greater than 40 ml/year)"
         }
       ]
     },
     {
       "group_id": "2",
-      "group_name": "Hypoxia / Gas Exchange Abnormality",
+      "group_name": "Hypoxia / Hypercapnia",
       "rule": "ANY_REQUIRED",
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "pulmonary.po2_room_air",
+          "field": "po2",
           "operator": "LTE",
           "expected": 55,
-          "unit": "mmHg",
-          "description": "Hypoxemia at rest on room air: pO2 ≤ 55 mmHg"
+          "description": "Hypoxemia at rest on room air with pO2 less than or equal to 55 mmHg"
         },
         {
           "criterion_id": "2b",
-          "field": "pulmonary.o2_saturation",
+          "field": "o2_sat_percent",
           "operator": "LTE",
           "expected": 88,
-          "unit": "percent",
-          "description": "O2 saturation ≤ 88% (ABG or pulse oximetry)"
+          "description": "O2 saturation is less than or equal to 88 percent"
         },
         {
           "criterion_id": "2c",
-          "field": "pulmonary.pco2",
+          "field": "pco2",
           "operator": "GTE",
           "expected": 50,
-          "unit": "mmHg",
-          "description": "Hypercapnia: pCO2 ≥ 50 mmHg (within 3 months if from hospital records)"
+          "description": "Hypercapnia with pCO2 greater than or equal to 50 mmHg"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "Supporting Factors",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "3",
+          "field": "criteria_answers.PULMONARY_COPD_RESPIRATORY_FAILURE.3",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Right heart failure secondary to pulmonary disease (cor pulmonale)"
+        },
+        {
+          "criterion_id": "4",
+          "field": "weight_loss_percent_6_months",
+          "operator": "GTE",
+          "expected": 10,
+          "description": "Unintentional progressive weight loss of at least 10 percent over the last six months"
+        },
+        {
+          "criterion_id": "5",
+          "field": "resting_tachycardia_gt_100",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Resting tachycardia greater than 100 per minute"
         }
       ]
     }
   ],
-
-  "supporting_factors": [
-    {
-      "factor_id": "3",
-      "field": "pulmonary.right_heart_failure_cor_pulmonale",
-      "description": "Right heart failure secondary to pulmonary disease (supporting)"
-    },
-    {
-      "factor_id": "4",
-      "field": "nutrition.unintentional_weight_loss_10_percent_6_months",
-      "description": "Unintentional progressive weight loss ≥ 10% over last 6 months (supporting)"
-    },
-    {
-      "factor_id": "5",
-      "field": "vitals.resting_tachycardia_gt_100",
-      "description": "Resting tachycardia > 100/min (supporting)"
-    }
-  ],
-
-  "clinical_notes": "Template derived from LCD Pulmonary Disease criteria (COPD/respiratory failure) form.",
+  "clinical_notes": "The source form contains nested any-of items inside the severe chronic lung disease block; those are represented as aggregate facts to keep engine changes minimal.",
   "source_document": "COPD, Respiratory failure with hypoxia, hypercapnia.pdf"
 }

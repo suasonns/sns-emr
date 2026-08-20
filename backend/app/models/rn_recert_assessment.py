@@ -30,6 +30,10 @@ class RNRecertAssessment(Base):
     benefit_period_id = Column(UUID(as_uuid=True), ForeignKey("benefit_periods.id"), nullable=False, index=True)
     created_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
 
+    # Defense-in-depth: lets any future query filter/scope by tenant directly
+    # instead of relying solely on patient_id being globally unique.
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+
     # form metadata (keeps it aligned with form-driven architecture)
     form_type = Column(String(50), nullable=False, default="RECERT")
     form_family = Column(String(50), nullable=False, default="CLINICAL")

@@ -28,14 +28,38 @@ export type CensusWorkspaceResponse = {
 async function fetchJson<T>(url: string): Promise<T> {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
   const token = getAccessToken();
-  const res = await fetch(`${base}${url}`, {
-    credentials: "include",
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-  });
-  if (!res.ok) {
-    throw new Error(`Request failed: ${url}`);
+  const candidates = [
+    `${base}${url}`,
+    ...(base ? [`http://localhost:8000${url}`] : []),
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      if (!res.ok) {
+        throw new Error(`Request failed: ${url}`);
+      }
+
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
+      if (candidate === candidates[candidates.length - 1]) {
+        break;
+      }
+    }
   }
-  return res.json();
+
+  throw lastError ?? new Error(`Request failed: ${url}`);
 }
 
 export function fetchCensusWorkspace(): Promise<CensusWorkspaceResponse> {

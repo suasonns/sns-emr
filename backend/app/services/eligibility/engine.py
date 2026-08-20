@@ -1,3 +1,5 @@
+import re
+
 from app.services.eligibility.lcd_loader import load_ca_hospice_lcds
 from app.config.lcd.loader import load_lcd_configs
 
@@ -27,7 +29,8 @@ _DISEASE_ALIASES = {
         "als", "motor neuron", "amyotrophic lateral sclerosis", "bulbar", "dysphagia"
     },
     "CANCER_METASTATIC": {
-        "cancer", "metastatic", "malignancy", "stage iv", "tumor", "mets", "carcinoma"
+        "cancer", "metastatic", "malignancy", "malignant", "neoplasm", "stage iv", "tumor", "mets",
+        "carcinoma", "sarcoma", "lymphoma", "leukemia", "adenocarcinoma", "oncology", "malignant neoplasm"
     },
     "DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION": {
         "dementia", "alzheimer", "senile degeneration", "alzheimers", "neurodegenerative disease"
@@ -89,13 +92,75 @@ def _flatten_patient_text(patient):
     return " ".join(text_parts)
 
 
+def _normalize_disease_key(value):
+    if value is None:
+        return None
+    return str(value).strip().upper().replace("-", "_").replace(" ", "_")
+
+
+# ICD-10 code prefixes mapped to disease-specific LCD configs. Checked before free-text
+# alias matching since ICD-10 codes are always present on a real diagnosis and are far
+# more reliable than substring-matching a human-written description.
+_ICD10_PREFIX_MAP = {
+    "CANCER_METASTATIC": (
+        "C", "D0", "D1", "D2", "D3", "D4",
+    ),
+    "HEART_FAILURE": (
+        "I50", "I11", "I13", "I42", "I25",
+    ),
+    "PULMONARY_COPD_RESPIRATORY_FAILURE": (
+        "J44", "J96", "J43", "J41", "J42",
+    ),
+    "ESRD_KIDNEY_DISEASE": (
+        "N18", "N19",
+    ),
+    "HIV_END_STAGE": (
+        "B20", "B21", "B22", "B23", "B24",
+    ),
+    "ALS_END_STAGE": (
+        "G12.2",
+    ),
+    "DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION": (
+        "G30", "F03", "G31",
+    ),
+    "LIVER_DISEASE_END_STAGE": (
+        "K70", "K71", "K72", "K73", "K74", "K76",
+    ),
+    "STROKE_COMA": (
+        "I63", "I64", "I69", "R40.2",
+    ),
+}
+# Neoplasm chapter (C00-D49) is broad; explicitly exclude the benign/uncertain-behavior
+# ranges (D10-D36 benign, D37-D48 uncertain/unspecified behavior) from cancer detection.
+_CANCER_EXCLUDE_PREFIXES = tuple(f"D{n}" for n in range(10, 49))
+
+
+def _icd10_disease_key(icd10_code):
+    if not icd10_code:
+        return None
+    code = str(icd10_code).strip().upper()
+    if not code:
+        return None
+    if any(code.startswith(prefix) for prefix in _CANCER_EXCLUDE_PREFIXES):
+        return None
+    for disease_key, prefixes in _ICD10_PREFIX_MAP.items():
+        if any(code.startswith(prefix) for prefix in prefixes):
+            return disease_key
+    return None
+
+
 def _select_lcd_config(patient, configs: dict):
     """Select the most relevant disease-specific LCD config based on patient diagnosis and clinical context."""
     category = _get_patient_value(patient, "terminal_diagnosis_category", "disease", "primary_diagnosis_description", "diagnosis")
     if category:
-        key = str(category).strip().upper().replace("-", "_")
+        key = _normalize_disease_key(category)
         if key in configs:
             return configs[key]
+
+    icd10_code = _get_patient_value(patient, "primary_diagnosis_code", "icd10")
+    icd10_disease_key = _icd10_disease_key(icd10_code)
+    if icd10_disease_key and icd10_disease_key in configs:
+        return configs[icd10_disease_key]
 
     text = _flatten_patient_text(patient)
     text_norm = _normalize_text(text)
@@ -105,6 +170,35 @@ def _select_lcd_config(patient, configs: dict):
                 return configs[disease_key]
 
     return configs["GENERAL_DECLINE_TERMINAL_STATUS"]
+
+
+_ICD10_LEADING_TOKEN_RE = re.compile(r"^([A-TV-Z][0-9][0-9AB](?:\.[0-9A-TV-Z]{1,4})?)\b")
+
+
+def detect_lcd_config(value, configs: dict | None = None):
+    configs = configs or load_lcd_configs()
+    if not isinstance(value, str):
+        return _select_lcd_config(value, configs)
+
+    text = value.strip()
+    match = _ICD10_LEADING_TOKEN_RE.match(text)
+    patient_like = {
+        "primary_diagnosis_description": text,
+        "primary_diagnosis_code": match.group(1) if match else None,
+    }
+    return _select_lcd_config(patient_like, configs)
+
+
+def get_lcd_config_for_disease(disease, configs: dict | None = None):
+    configs = configs or load_lcd_configs()
+    normalized = _normalize_disease_key(disease)
+    if normalized in configs:
+        return configs[normalized]
+
+    detected = detect_lcd_config(disease, configs)
+    if detected and _normalize_disease_key(detected.get("disease")) == normalized:
+        return detected
+    return None
 
 
 def _get_field_value(payload, field_name):
@@ -177,22 +271,7 @@ def evaluate_lcd_criteria(guideline, patient=None, facts=None):
     """Evaluate a disease-specific LCD config against patient facts."""
     payload = facts or {}
     if patient is not None and not payload:
-        patient_payload = {
-            "scores": {
-                "kps": _get_patient_value(patient, "kps"),
-                "pps": _get_patient_value(patient, "pps"),
-            },
-            "nutrition": {
-                "weight_loss_percent_6_months": _get_patient_value(patient, "weight_loss_percent_6_months"),
-            },
-            "functional": {
-                "kps_or_pps_declining": _get_patient_value(patient, "kps_or_pps_declining"),
-            },
-            "adl": {
-                "dependent_count": _get_patient_value(patient, "dependent_count"),
-            },
-        }
-        payload = patient_payload
+        payload = harvest_clinical_facts(patient)
 
     groups = guideline.get("criteria_groups", [])
     group_results = []
@@ -206,9 +285,7 @@ def evaluate_lcd_criteria(guideline, patient=None, facts=None):
             "criteria": details,
         })
 
-    overall = any(item["passed"] for item in group_results) if groups else True
-    if guideline.get("group_combination_rule") == "ANY_GROUP_REQUIRED":
-        overall = any(item["passed"] for item in group_results) if group_results else True
+    overall = _evaluate_overall_combination(guideline, group_results)
 
     return {
         "guideline": guideline.get("disease"),
@@ -217,6 +294,39 @@ def evaluate_lcd_criteria(guideline, patient=None, facts=None):
         "source_document": guideline.get("source_document"),
         "lcd_reference": guideline.get("lcd_reference"),
     }
+
+
+def _evaluate_overall_combination(guideline, group_results):
+    if not group_results:
+        return True
+
+    passed_by_group_id = {
+        str(item.get("group_id")): bool(item.get("passed"))
+        for item in group_results
+    }
+
+    rule = (guideline.get("group_combination_rule") or "ANY_GROUP_REQUIRED").upper()
+    if rule == "ALL_GROUPS_REQUIRED":
+        return all(item["passed"] for item in group_results)
+    if rule == "ANY_GROUP_REQUIRED":
+        return any(item["passed"] for item in group_results)
+    if rule == "ANY_PATH_REQUIRED":
+        paths = guideline.get("eligibility_paths") or []
+        if not paths:
+            return any(item["passed"] for item in group_results)
+        return any(_path_satisfied(path, passed_by_group_id) for path in paths)
+    return any(item["passed"] for item in group_results)
+
+
+def _path_satisfied(path, passed_by_group_id):
+    all_of_groups = [str(group_id) for group_id in (path.get("all_of_groups") or [])]
+    any_of_groups = [str(group_id) for group_id in (path.get("any_of_groups") or [])]
+
+    if all_of_groups and not all(passed_by_group_id.get(group_id, False) for group_id in all_of_groups):
+        return False
+    if any_of_groups and not any(passed_by_group_id.get(group_id, False) for group_id in any_of_groups):
+        return False
+    return True
 
 
 def evaluate_hospice_eligibility(patient, admission_date):
@@ -260,21 +370,15 @@ def evaluate_hospice_eligibility(patient, admission_date):
     configs = load_lcd_configs()
     guideline = _select_lcd_config(patient, configs)
 
-    facts = {
-        "scores": {
-            "kps": _get_patient_value(patient, "kps"),
-            "pps": _get_patient_value(patient, "pps"),
-        },
-        "nutrition": {
-            "weight_loss_percent_6_months": _get_patient_value(patient, "weight_loss_percent_6_months"),
-        },
-        "functional": {
-            "kps_or_pps_declining": _get_patient_value(patient, "kps_or_pps_declining"),
-        },
-        "adl": {
-            "dependent_count": _get_patient_value(patient, "dependent_count"),
-        },
-    }
+    facts = dict(ctx.facts or {})
+    explicit_facts = _get_patient_value(patient, "facts")
+    if isinstance(explicit_facts, dict):
+        facts.update(explicit_facts)
+
+    top_level_criteria_answers = _get_patient_value(patient, "criteria_answers")
+    if isinstance(top_level_criteria_answers, dict):
+        facts["criteria_answers"] = top_level_criteria_answers
+
     criteria_result = evaluate_lcd_criteria(guideline, patient=patient, facts=facts)
 
     return {

@@ -23,10 +23,13 @@ async def clinical_access_guard(request: Request, call_next):
     """
     ENTERPRISE COMPLIANCE CONTROL:
 
-    OWNER and BILLING roles MUST NEVER access clinical data.
+    BILLING role MUST NEVER access clinical data.
+    OWNER may access clinical data (many hospice agencies have the owner also
+    serving as DPCS/Administrator with clinical oversight duties) — see
+    app/core/roles.py CLINICAL_ADMIN_ROLES.
 
     Guarantees:
-    - Hard block (non-negotiable)
+    - Hard block (non-negotiable) for BILLING
     - Audit logging for violations
     - Safe dev bypass (local only)
     - Fail-safe handling
@@ -43,8 +46,8 @@ async def clinical_access_guard(request: Request, call_next):
     if user is None:
         return await call_next(request)
 
-    # ✅ HARD BLOCK for OWNER / BILLING roles
-    if user.role in {"OWNER", "BILLING"}:
+    # ✅ HARD BLOCK for BILLING role only
+    if user.role in {"BILLING"}:
         for prefix in CLINICAL_PREFIXES:
             if path.startswith(prefix):
 

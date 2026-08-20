@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Column, String, Date, ForeignKey, Boolean, Index
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Boolean, Index, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -61,6 +61,33 @@ class Medication(BaseModel):
     discontinued_at = Column(
         Date,
         nullable=True,
+    )
+
+    discontinued_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+
+    discontinue_reason = Column(
+        Text,
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
+    # SIGNATURE / APPROVAL TRACEABILITY
+    # ---------------------------------------------------------
+    # Links this "current meds list" row to the signed PhysicianOrder that
+    # authorized it (set when the medication came from Orders Hub or an
+    # Import Pack). NULL means this medication was entered through the
+    # legacy quick-add flow with no MD sign-off on file — surfaced in the
+    # UI as "No signed order on file" so staff/agency have full visibility
+    # into which medications are (or are not) backed by a signed order.
+    physician_order_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("physician_orders.id"),
+        nullable=True,
+        index=True,
     )
 
     # ---------------------------------------------------------

@@ -15,7 +15,8 @@
  * Accent: Teal (#0D9488)
  */
 
-import React, { useState, useCallback, useMemo, useEffect, useContext } from "react";
+import React, { useState, useCallback, useMemo, useEffect, useContext, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
 import { fetchPatientSummary } from "../api/patientCharts";
@@ -23,10 +24,40 @@ import { fetchCensusWorkspace } from "../api/census";
 import {
   saveRnicaAssessment,
   getRnicaAssessment,
+  getRnicaAssessmentByPatient,
   updateRnicaAssessment,
   lockRnicaAssessment,
   getRnicaIntelligence,
 } from "../api/icaAssessments";
+import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
+import {
+  checkMedicationSafety,
+  listMedications,
+  addMedication,
+  discontinueMedication,
+  listPatientAllergies,
+  addPatientAllergy,
+  removePatientAllergy,
+} from "../api/medications";
+import {
+  listOrderTemplates,
+  importOrderTemplate,
+  getLabCatalog,
+  sendFax,
+  getFaxHistory,
+} from "../api/ordersHub";
+import {
+  listPhysicianOrders,
+  createPhysicianOrder,
+  submitPhysicianOrder,
+  approvePhysicianOrder,
+  executePhysicianOrder,
+  cancelPhysicianOrder,
+} from "../api/physicianOrders";
+import { getCurrentUser } from "../api/session";
+import { fetchPerformanceHistory } from "../api/facesheet";
+import { listVendors } from "../api/vendors";
+import { COLORS as SNS_COLORS, S as SNS_S } from "../tenant/design";
 import PatientContextSidebar from "./PatientContextSidebar";
 import NumericPainScale from "../assessments/pain/NumericPainScale";
 import PAINADScale from "../assessments/pain/PAINADScale";
@@ -34,16 +65,19 @@ import FLACCScale from "../assessments/pain/FLACCScale";
 import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
+import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus } from "../intake/hopeReportMapper";
 
-import { getActivePatientId, setActivePatientId } from "../utils/activePatient";
+import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
+import MedicationNameInput from "./MedicationNameInput";
+import VisitRecorderCard from "./VisitRecorderCard";
 // ════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & CONFIGURATION
 // ════════════════════════════════════════════════════════════════
 
 const API_BASE = "/visits/rnica";
 
-function getRnicaColors(mode) {
+export function getRnicaColors(mode) {
   if (mode === "light") {
     return {
       navy: "#1E3A5F",
@@ -270,10 +304,14 @@ const INITIAL_FORM = {
   demographics: {
     firstName: "", lastName: "", dob: "", gender: "",
     race: [], ethnicity: [], preferredLanguage: "", needsInterpreter: false,
-    religion: "", maritalStatus: "", phone: "", alternatePhone: "",
+    religion: "", maritalStatus: "", militaryService: "", phone: "", alternatePhone: "",
     address: { street: "", city: "", state: "", zip: "", county: "" },
     emergencyContact: { name: "", relationship: "", phone: "" },
     pcg: {
+      // "assessed" distinguishes "RN confirmed Yes/No" from "not yet asked this visit" —
+      // without it, an untouched assessment silently rendered as if "Yes — has PCG" had
+      // been selected, per RNICA gap-review item #6.
+      assessed: false,
       name: "", relationship: "", phone: "",
       healthStatus: "", anxietyLevel: "",
       ableToAdministerMeds: "", willingToProvideCare: "",
@@ -359,8 +397,31 @@ const INITIAL_FORM = {
     diseaseTrajectory: "",
     lcdEligibilityNarrative: "",
     ndsEligibility: {
-      criteriaA: false, criteriaB: false, criteriaC: false,
-      diseaseSpecificLCD: "",
+      detectedDisease: "",
+      criteriaAnswers: {},
+      criteriaFacts: {},
+    },
+    // HOPE Section I0000 — Comorbidities and Co-existing Conditions.
+    // Manual overrides live here; auto-detection (from primary/secondary dx)
+    // happens in HopeComorbiditiesCard and explicitly excludes any category
+    // already represented by the Primary Diagnosis, so nothing is double-entered.
+    hopeComorbidities: {
+      cancer: false,
+      heartFailure: false,
+      pvdPad: false,
+      cardiovascularExclHF: false,
+      liverDisease: false,
+      renalDisease: false,
+      sepsis: false,
+      diabetesMellitus: false,
+      neuropathy: false,
+      stroke: false,
+      dementia: false,
+      neurologicalConditions: false,
+      seizureDisorder: false,
+      copd: false,
+      other: false,
+      additionalNote: "",
     },
   },
 
@@ -394,9 +455,9 @@ const INITIAL_FORM = {
   cardiovascular: {
     bpSymptoms: [],
     pulseQuality: "",
-    edema: { present: false, location: [], severity: "", pitting: "" },
-    chestPain: { present: false, type: "", frequency: "" },
-    peripheralCirculation: "", heartSounds: "", jvd: false,
+    edema: { present: "", location: [], severity: "", pitting: "" },
+    chestPain: { present: "", type: "", frequency: "" },
+    peripheralCirculation: "", heartSounds: "", jvd: "",
     notes: "",
   },
 
@@ -476,6 +537,10 @@ const INITIAL_FORM = {
   // ─── 15. MUSCULOSKELETAL ──────────────────────────
   musculoskeletal: {
     weakness: "", rigidity: "", contractures: "", paralysis: "",
+    // Structured location to match the depth of sibling body-system findings
+    // (e.g. cardiovascular.edema.location). `contractures` itself stays the
+    // existing None/Mild/Moderate/Severe severity radio.
+    contracturesLocation: [],
     romLimitations: [],
     gait: "", assistiveDevices: [],
     fallHistory: { fallsLast90Days: "", fallInjuries: "" },
@@ -661,6 +726,7 @@ const INITIAL_FORM = {
     },
     // Gap #4 — POC Auto-Generation (CDPH: every problem → Problem/Goal/Intervention/Discipline)
     pocEntries: [],
+    pocDraft: { problem: "", goal: "", intervention: "", discipline: "" },
     pocGenerationCompleted: false,
     pocReviewedWithIdg: false,
     signatureCertification: false,
@@ -683,6 +749,7 @@ const api = {
   saveRNICAAssessment: (patientId, formData) =>
     saveRnicaAssessment({ patientId, formData }),
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
+  getRNICAAssessmentByPatient: (patientId) => getRnicaAssessmentByPatient(patientId),
   updateRNICAAssessment: (assessmentId, formData) =>
     updateRnicaAssessment(assessmentId, formData),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
@@ -732,18 +799,24 @@ function validateRNICA(formData, mode = "ica") {
     }
   }
 
-  // CDPH Gap #2 ? Caregiver willingness and capability evaluation
-  if (!formData.demographics.pcg.willingToProvideCare) {
-    warnings["demographics.pcg.willingToProvideCare"] = "CDPH: Caregiver willingness to provide care required";
+  if (!pcgIsAssessed(formData.demographics.pcg)) {
+    warnings["demographics.pcg.assessed"] = "Primary Caregiver status not yet assessed this visit (Yes/No unanswered)";
   }
-  if (!formData.demographics.pcg.ableToAdministerMeds) {
-    warnings["demographics.pcg.ableToAdministerMeds"] = "CDPH: Caregiver ability to administer meds required";
-  }
-  if (!formData.demographics.pcg.caregiverEvaluation?.willingnessScore) {
-    warnings["demographics.pcg.caregiverEvaluation.willingnessScore"] = "CDPH: Caregiver willingness score required";
-  }
-  if (!formData.demographics.pcg.caregiverEvaluation?.capabilityScore) {
-    warnings["demographics.pcg.caregiverEvaluation.capabilityScore"] = "CDPH: Caregiver capability score required";
+
+  // CDPH Gap #2 ? Caregiver willingness and capability evaluation (skip entirely for No-PCG/facility patients)
+  if (!formData.demographics.pcg.noPcg) {
+    if (!formData.demographics.pcg.willingToProvideCare) {
+      warnings["demographics.pcg.willingToProvideCare"] = "CDPH: Caregiver willingness to provide care required";
+    }
+    if (!formData.demographics.pcg.ableToAdministerMeds) {
+      warnings["demographics.pcg.ableToAdministerMeds"] = "CDPH: Caregiver ability to administer meds required";
+    }
+    if (!formData.demographics.pcg.caregiverEvaluation?.willingnessScore) {
+      warnings["demographics.pcg.caregiverEvaluation.willingnessScore"] = "CDPH: Caregiver willingness score required";
+    }
+    if (!formData.demographics.pcg.caregiverEvaluation?.capabilityScore) {
+      warnings["demographics.pcg.caregiverEvaluation.capabilityScore"] = "CDPH: Caregiver capability score required";
+    }
   }
 
   // CDPH Gap #4 ? POC entries from assessment
@@ -818,7 +891,7 @@ function validateRNICA(formData, mode = "ica") {
 // ════════════════════════════════════════════════════════════════
 
 // ── Shared Styles ──
-function getRnicaStyles(COLORS) {
+export function getRnicaStyles(COLORS) {
   return {
     page: {
       display: "flex",
@@ -842,25 +915,25 @@ function getRnicaStyles(COLORS) {
     },
     bannerName: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" },
     bannerMeta: { fontSize: 12, opacity: 0.82, letterSpacing: "0.01em" },
-    workspace: { display: "flex", flex: 1, minHeight: 0, overflow: "visible" },
+    workspace: { display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "visible" },
     sidebar: {
-      width: 250,
+      width: 220,
       background: COLORS.sidebarBg,
       borderRight: `1px solid ${COLORS.border}`,
       overflowY: "auto",
-      padding: "18px 10px",
+      padding: "12px 8px",
       flexShrink: 0,
       minHeight: 0,
     },
     sidebarItem: {
       display: "flex",
       alignItems: "center",
-      gap: 10,
-      padding: "10px 12px",
-      margin: "4px 0",
-      fontSize: 13,
+      gap: 8,
+      padding: "6px 10px",
+      margin: "2px 0",
+      fontSize: 12.5,
       cursor: "pointer",
-      borderRadius: 10,
+      borderRadius: 8,
       borderLeft: "3px solid transparent",
       transition: "all 0.2s ease",
       color: COLORS.sidebarItemColor,
@@ -872,8 +945,8 @@ function getRnicaStyles(COLORS) {
       fontWeight: 700,
       boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
     },
-    mainArea: { flex: 1, display: "flex", minHeight: 0, overflow: "visible" },
-    content: { flex: 1, overflowY: "auto", minHeight: 0, padding: "24px 28px 32px" },
+    mainArea: { flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "visible" },
+    content: { flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, minWidth: 0, padding: "24px 28px 32px" },
     rightPanel: {
       width: 290,
       background: COLORS.panelBg,
@@ -886,29 +959,32 @@ function getRnicaStyles(COLORS) {
     },
     card: {
       background: COLORS.white,
-      borderRadius: 12,
+      borderRadius: 10,
       border: `1px solid ${COLORS.border}`,
-      padding: 18,
-      marginBottom: 18,
+      padding: 12,
+      marginBottom: 10,
       boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
     },
     cardTitle: {
-      fontSize: 15,
+      fontSize: 14,
       fontWeight: 800,
-      marginBottom: 14,
+      marginBottom: 8,
       color: COLORS.dark,
       letterSpacing: "-0.01em",
     },
-    sectionTitle: { fontSize: 22, fontWeight: 800, marginBottom: 6, letterSpacing: "-0.02em", color: COLORS.dark },
-    sectionSubtitle: { fontSize: 12.5, color: COLORS.gray, marginBottom: 22, lineHeight: 1.5 },
-    formGroup: { marginBottom: 16 },
-    label: { display: "block", fontSize: 13, fontWeight: 700, marginBottom: 6, color: COLORS.dark, lineHeight: 1.4 },
+    sectionTitle: { fontSize: 18, fontWeight: 800, marginBottom: 3, letterSpacing: "-0.02em", color: COLORS.dark },
+    sectionSubtitle: { fontSize: 12, color: COLORS.gray, marginBottom: 12, lineHeight: 1.4 },
+    formGroup: { marginBottom: 10 },
+    fieldsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0px 16px", alignItems: "start" },
+    fieldSpanFull: { gridColumn: "1 / -1" },
+    stackedFields: { display: "flex", flexDirection: "column", gap: 10 },
+    label: { display: "block", fontSize: 12.5, fontWeight: 700, marginBottom: 4, color: COLORS.dark, lineHeight: 1.3 },
     input: {
       width: "100%",
-      padding: "10px 12px",
+      padding: "7px 10px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 10,
-      fontSize: 14,
+      borderRadius: 8,
+      fontSize: 13.5,
       boxSizing: "border-box",
       background: COLORS.inputBg,
       color: COLORS.dark,
@@ -917,11 +993,11 @@ function getRnicaStyles(COLORS) {
     },
     textarea: {
       width: "100%",
-      padding: "10px 12px",
+      padding: "7px 10px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 10,
-      fontSize: 14,
-      minHeight: 80,
+      borderRadius: 8,
+      fontSize: 13.5,
+      minHeight: 60,
       resize: "vertical",
       boxSizing: "border-box",
       background: COLORS.inputBg,
@@ -930,19 +1006,19 @@ function getRnicaStyles(COLORS) {
     },
     select: {
       width: "100%",
-      padding: "10px 12px",
+      padding: "7px 10px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 10,
-      fontSize: 14,
+      borderRadius: 8,
+      fontSize: 13.5,
       background: COLORS.inputBg,
       color: COLORS.dark,
       boxSizing: "border-box",
       boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
     },
-    radioGroup: { display: "flex", gap: 16, flexWrap: "wrap" },
-    radioLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, cursor: "pointer", color: COLORS.dark },
-    checkboxGroup: { display: "flex", flexDirection: "column", gap: 8 },
-    checkboxLabel: { display: "flex", alignItems: "center", gap: 8, fontSize: 13, cursor: "pointer", color: COLORS.dark },
+    radioGroup: { display: "flex", gap: 12, flexWrap: "wrap" },
+    radioLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
+    checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "4px 14px" },
+    checkboxLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
     hopeTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
     sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
     cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
@@ -1069,6 +1145,59 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
   );
 }
 
+// Tri-state control for clinical "present/absent" findings that must not
+// collapse "never assessed" and "assessed as negative" into the same value
+// (a plain unchecked checkbox can't be told apart from a skipped field).
+// Backward-compatible with legacy boolean data: true -> "Yes", false/""/null -> "" (Not Assessed).
+function normalizeTriState(value) {
+  if (value === true) return "Yes";
+  if (value === "Yes" || value === "No") return value;
+  return "";
+}
+
+// Back-compat check for pre-existing PCG data saved before the explicit
+// "assessed" flag was introduced: if the record already has a meaningful
+// answer (facility-based no-PCG, or any populated PCG detail field), treat
+// it as already assessed so legacy/finalized charts aren't retroactively
+// flagged as incomplete — never rewrites the stored data itself.
+function pcgIsAssessed(pcg) {
+  if (!pcg) return false;
+  if (pcg.assessed === true) return true;
+  if (pcg.noPcg === true) return true;
+  return Boolean(pcg.name || pcg.relationship || pcg.phone || pcg.healthStatus || pcg.anxietyLevel || pcg.ableToAdministerMeds || pcg.willingToProvideCare);
+}
+
+function FormTriState({ label, value, onChange, hopeCode }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const normalized = normalizeTriState(value);
+  const options = [
+    { value: "", label: "Not Assessed" },
+    { value: "No", label: "No" },
+    { value: "Yes", label: "Yes" },
+  ];
+  return (
+    <div style={styles.formGroup}>
+      <label style={styles.label}>
+        {label}
+        {hopeCode && <> <HopeTag code={hopeCode} /></>}
+      </label>
+      <div style={styles.radioGroup}>
+        {options.map((opt) => (
+          <label key={opt.value || "unassessed"} style={{
+            ...styles.radioLabel,
+            ...(opt.value === "" && normalized === "" ? { color: COLORS.gray, fontStyle: "italic" } : {}),
+          }}>
+            <input type="radio" checked={normalized === opt.value} onChange={() => onChange(opt.value)} />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -1108,6 +1237,2119 @@ function FormCheckbox({ label, checked, onChange }) {
       <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)} />
       <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
     </label>
+  );
+}
+
+const LCD_AUTO_FACT_FIELDS = new Set([
+  "pps",
+  "kps",
+  "nyha_class",
+  "fast_stage_at_or_beyond_7a",
+  "fast_stage",
+  "adl_dependency_count",
+  "ambulation_assistance_required",
+  "dressing_assistance_required",
+  "bathing_assistance_required",
+  "incontinence_or_catheter_ostomy_dependency",
+  "is_bedbound",
+  "dysphagia",
+  "oral_intake_decline",
+  "weight_loss_percent_6_months",
+  "weight_loss_lbs",
+  "continued_weight_loss",
+  "o2_sat_percent",
+  "resting_tachycardia_gt_100",
+]);
+
+function normalizeLcdNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const match = String(value).replace(/,/g, "").match(/-?\d+(\.\d+)?/);
+  return match ? Number(match[0]) : null;
+}
+
+function normalizeFastStage(value) {
+  return value ? String(value).trim().toLowerCase() : "";
+}
+
+function fastStageAtOrBeyond7a(value) {
+  const order = {
+    "1": 10, "2": 20, "3": 30, "4": 40, "5": 50,
+    "6a": 61, "6b": 62, "6c": 63, "6d": 64, "6e": 65,
+    "7a": 71, "7b": 72, "7c": 73, "7d": 74, "7e": 75, "7f": 76,
+  };
+  const key = normalizeFastStage(value);
+  return key ? (order[key] || 0) >= order["7a"] : null;
+}
+
+function parseWeightLoss(value) {
+  if (!value) return { lbs: null, percent: null };
+  const num = normalizeLcdNumber(value);
+  if (num === null) return { lbs: null, percent: null };
+  if (String(value).includes("%")) return { lbs: null, percent: num };
+  return { lbs: num, percent: null };
+}
+
+function normalizeYesNoUnknown(value) {
+  if (value === true || value === false) return value;
+  if (value === null || value === undefined || value === "") return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "yes", "y", "1"].includes(normalized)) return true;
+  if (["false", "no", "n", "0"].includes(normalized)) return false;
+  return null;
+}
+
+function getValueByPath(obj, path) {
+  return path.split(".").reduce((curr, key) => curr?.[key], obj);
+}
+
+function formatLcdRule(rule) {
+  switch ((rule || "").toUpperCase()) {
+    case "ALL_REQUIRED": return "ALL must be met";
+    case "ANY_REQUIRED": return "ANY ONE may satisfy";
+    case "ANY_3_REQUIRED": return "ANY 3 must be met";
+    default: return rule || "Rule";
+  }
+}
+
+function formatActualValue(value) {
+  if (value === null || value === undefined || value === "") return "Unknown";
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return String(value);
+}
+
+function isCriteriaAnswerField(field) {
+  return String(field || "").startsWith("criteria_answers.");
+}
+
+function buildClientLcdFacts(formData) {
+  const weightLoss = parseWeightLoss(formData?.nutrition?.weightLossPastSixMonths);
+  const adlValues = [
+    formData?.musculoskeletal?.adl?.bathing,
+    formData?.musculoskeletal?.adl?.dressing,
+    formData?.musculoskeletal?.adl?.toileting,
+    formData?.musculoskeletal?.adl?.transferring,
+    formData?.musculoskeletal?.adl?.eating,
+    formData?.musculoskeletal?.adl?.grooming,
+  ]
+    .map((value) => normalizeLcdNumber(value))
+    .filter((value) => value !== null);
+  const adlDependencyCount = adlValues.length
+    ? adlValues.filter((value) => value >= 3).length
+    : null;
+  const swallowingIssues = formData?.nutrition?.swallowingIssues || [];
+  const urinaryStatus = (formData?.genitourinary?.urinaryStatus || "").toLowerCase();
+  const bowelStatus = (formData?.gastrointestinal?.bowelStatus || "").toLowerCase();
+  const mobilityStatus = (formData?.musculoskeletal?.mobility?.ambulatoryStatus || "").toLowerCase();
+  const pulse = normalizeLcdNumber(formData?.vitals?.pulse);
+  const pps = normalizeLcdNumber(formData?.performanceStatus?.pps);
+  const kps = normalizeLcdNumber(formData?.performanceStatus?.kps);
+  const dressingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.dressing);
+  const bathingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.bathing);
+  const hasContinenceEvidence = Boolean(urinaryStatus || bowelStatus || formData?.genitourinary?.catheter?.present || formData?.gastrointestinal?.ostomy?.present);
+  const hasWeightLossEvidence = weightLoss.lbs !== null || weightLoss.percent !== null;
+
+  return {
+    pps,
+    kps,
+    nyha_class: formData?.performanceStatus?.nyha || null,
+    fast_stage: normalizeFastStage(formData?.performanceStatus?.fast),
+    fast_stage_at_or_beyond_7a: fastStageAtOrBeyond7a(formData?.performanceStatus?.fast),
+    weight_loss_lbs: weightLoss.lbs,
+    weight_loss_percent_6_months: weightLoss.percent,
+    continued_weight_loss: hasWeightLossEvidence ? (weightLoss.lbs ?? weightLoss.percent) > 0 : null,
+    adl_dependency_count: adlDependencyCount,
+    ambulation_assistance_required: mobilityStatus ? ["assisted", "dependent", "bedbound"].includes(mobilityStatus) : null,
+    dressing_assistance_required: dressingScore !== null ? dressingScore >= 3 : null,
+    bathing_assistance_required: bathingScore !== null ? bathingScore >= 3 : null,
+    incontinence_or_catheter_ostomy_dependency: hasContinenceEvidence
+      ? (
+          ["stress incontinence", "urge incontinence", "functional incontinence", "total incontinence", "catheterized"].includes(urinaryStatus)
+          || bowelStatus === "incontinent"
+          || Boolean(formData?.genitourinary?.catheter?.present)
+          || Boolean(formData?.gastrointestinal?.ostomy?.present)
+        )
+      : null,
+    is_bedbound: mobilityStatus ? mobilityStatus === "bedbound" : null,
+    dysphagia: swallowingIssues.includes("Dysphagia"),
+    oral_intake_decline:
+      ["poor", "anorexic"].includes((formData?.nutrition?.appetite || "").toLowerCase())
+      || ["decreased", "minimal"].includes((formData?.nutrition?.fluidIntake || "").toLowerCase()),
+    o2_sat_percent: normalizeLcdNumber(formData?.vitals?.oxygenSaturation) ?? normalizeLcdNumber(formData?.respiratory?.oxygenTherapy?.satOnO2),
+    resting_tachycardia_gt_100: pulse !== null ? pulse > 100 : null,
+    serum_albumin: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.serum_albumin),
+    serum_creatinine: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.serum_creatinine),
+    creatinine_clearance: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.creatinine_clearance),
+    gfr: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.gfr),
+    po2: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.po2),
+    pco2: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.pco2),
+    ejection_fraction: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.ejection_fraction),
+    cd4_count: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.cd4_count),
+    viral_load: normalizeLcdNumber(formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[formData?.diagnoses?.ndsEligibility?.detectedDisease || ""]?.viral_load),
+  };
+}
+
+function buildLcdEvaluationPayload(formData, disease) {
+  const criteriaAnswers = formData?.diagnoses?.ndsEligibility?.criteriaAnswers?.[disease] || {};
+  const criteriaFacts = formData?.diagnoses?.ndsEligibility?.criteriaFacts?.[disease] || {};
+  const facts = {
+    ...buildClientLcdFacts(formData),
+    ...criteriaFacts,
+    criteria_answers: disease ? { [disease]: criteriaAnswers } : {},
+  };
+
+  return {
+    patient: {
+      ...formData,
+      assessment: formData,
+      disease,
+      primary_diagnosis_description: formData?.diagnoses?.primaryDiagnosis?.description || "",
+      primary_diagnosis_code: formData?.diagnoses?.primaryDiagnosis?.icd10 || "",
+    },
+    facts,
+  };
+}
+
+function LcdTernaryButtons({ value, onChange, COLORS }) {
+  const options = [
+    { key: true, label: "Yes" },
+    { key: false, label: "No" },
+    { key: null, label: "Unknown" },
+  ];
+  return (
+    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+      {options.map((option) => {
+        const active = value === option.key;
+        return (
+          <button
+            key={String(option.key)}
+            type="button"
+            onClick={() => onChange(option.key)}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: `1px solid ${active ? COLORS.teal : COLORS.border}`,
+              background: active ? COLORS.tealBg : COLORS.white,
+              color: COLORS.dark,
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, COLORS }) {
+  const diagnosisText = `${diagnosesData?.primaryDiagnosis?.icd10 || ""} ${diagnosesData?.primaryDiagnosis?.description || ""}`.trim();
+  const detectedDisease = diagnosesData?.ndsEligibility?.detectedDisease || "";
+  const criteriaAnswers = diagnosesData?.ndsEligibility?.criteriaAnswers?.[detectedDisease] || {};
+  const criteriaFacts = diagnosesData?.ndsEligibility?.criteriaFacts?.[detectedDisease] || {};
+  const [config, setConfig] = useState(null);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [configError, setConfigError] = useState("");
+  const [evaluation, setEvaluation] = useState(null);
+  const [evaluationLoading, setEvaluationLoading] = useState(false);
+  const [evaluationError, setEvaluationError] = useState("");
+
+  const updateDiagnoses = useCallback((path, value) => {
+    updateField(path, value);
+  }, [updateField]);
+
+  useEffect(() => {
+    if (!diagnosisText) {
+      if (detectedDisease) updateDiagnoses("ndsEligibility.detectedDisease", "");
+      setConfig(null);
+      setEvaluation(null);
+      setConfigError("");
+      return;
+    }
+
+    const handle = window.setTimeout(async () => {
+      try {
+        const detected = await detectLCD(diagnosisText);
+        if (detected?.disease && detected.disease !== detectedDisease) {
+          updateDiagnoses("ndsEligibility.detectedDisease", detected.disease);
+        }
+      } catch (error) {
+        console.error("LCD disease detection failed:", error);
+        setConfigError(error instanceof Error ? error.message : "Unable to detect LCD disease.");
+      }
+    }, 250);
+
+    return () => window.clearTimeout(handle);
+  }, [diagnosisText, detectedDisease, updateDiagnoses]);
+
+  useEffect(() => {
+    if (!detectedDisease) {
+      setConfig(null);
+      return;
+    }
+
+    let active = true;
+    setConfigLoading(true);
+    setConfigError("");
+    getLCDConfig(detectedDisease)
+      .then((data) => {
+        if (active) setConfig(data);
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error("LCD config load failed:", error);
+        setConfig(null);
+        setConfigError(error instanceof Error ? error.message : "Unable to load LCD config.");
+      })
+      .finally(() => {
+        if (active) setConfigLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [detectedDisease]);
+
+  const evaluationPayload = useMemo(
+    () => (detectedDisease ? buildLcdEvaluationPayload(fullFormData, detectedDisease) : null),
+    [fullFormData, detectedDisease],
+  );
+
+  useEffect(() => {
+    if (!detectedDisease || !config || !evaluationPayload) {
+      setEvaluation(null);
+      return;
+    }
+
+    let active = true;
+    const handle = window.setTimeout(async () => {
+      setEvaluationLoading(true);
+      setEvaluationError("");
+      try {
+        const result = await evaluateLCD(
+          evaluationPayload.patient,
+          evaluationPayload.facts,
+        );
+        if (active) setEvaluation(result);
+      } catch (error) {
+        if (!active) return;
+        console.error("LCD evaluation failed:", error);
+        setEvaluation(null);
+        setEvaluationError(error instanceof Error ? error.message : "Unable to evaluate LCD eligibility.");
+      } finally {
+        if (active) setEvaluationLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(handle);
+    };
+  }, [detectedDisease, config, evaluationPayload]);
+
+  const setCriteriaAnswer = useCallback((criterionId, value) => {
+    updateDiagnoses(`ndsEligibility.criteriaAnswers.${detectedDisease}.${criterionId}`, value);
+  }, [detectedDisease, updateDiagnoses]);
+
+  const setCriteriaFact = useCallback((field, value) => {
+    updateDiagnoses(`ndsEligibility.criteriaFacts.${detectedDisease}.${field}`, value);
+  }, [detectedDisease, updateDiagnoses]);
+
+  const groupResults = evaluation?.criteria_summary?.group_results || [];
+  const criterionDetails = useMemo(() => {
+    const map = new Map();
+    groupResults.forEach((group) => {
+      (group.criteria || []).forEach((criterion) => {
+        map.set(`${group.group_id}:${criterion.criterion_id}`, criterion);
+      });
+    });
+    return map;
+  }, [groupResults]);
+
+  const supplementalValueFor = (field) => criteriaFacts?.[field] ?? "";
+  const currentFacts = evaluationPayload?.facts || {};
+
+  const renderCriterionInput = (criterion) => {
+    if (isCriteriaAnswerField(criterion.field)) {
+      return (
+        <LcdTernaryButtons
+          value={normalizeYesNoUnknown(criteriaAnswers?.[criterion.criterion_id])}
+          onChange={(value) => setCriteriaAnswer(criterion.criterion_id, value)}
+          COLORS={COLORS}
+        />
+      );
+    }
+
+    if (LCD_AUTO_FACT_FIELDS.has(criterion.field)) {
+      const detail = criterionDetails.get(`${criterion.group_id}:${criterion.criterion_id}`);
+      return (
+        <div style={{ fontSize: 12, color: COLORS.gray, lineHeight: 1.45 }}>
+          <div><strong style={{ color: COLORS.dark }}>{detail?.matched ? "✓ Met" : "✗ Not met"}</strong> — current value: {formatActualValue(detail?.actual ?? currentFacts?.[criterion.field])}</div>
+          <div>Auto-filled from other RNICA sections.</div>
+        </div>
+      );
+    }
+
+    if (typeof criterion.expected === "number" && ["LT", "LTE", "GT", "GTE"].includes(String(criterion.operator || "").toUpperCase())) {
+      return (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <input
+            type="number"
+            value={supplementalValueFor(criterion.field)}
+            onChange={(event) => setCriteriaFact(criterion.field, event.target.value === "" ? "" : Number(event.target.value))}
+            style={{ ...styles.input, width: 120, padding: "5px 8px" }}
+          />
+          <button
+            type="button"
+            onClick={() => setCriteriaFact(criterion.field, "")}
+            style={{ ...styles.btnSecondary, padding: "5px 10px", fontSize: 12 }}
+          >
+            Unknown
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <LcdTernaryButtons
+        value={normalizeYesNoUnknown(criteriaFacts?.[criterion.field])}
+        onChange={(value) => setCriteriaFact(criterion.field, value)}
+        COLORS={COLORS}
+      />
+    );
+  };
+
+  return (
+    <div>
+      {!diagnosisText && (
+        <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+          Enter the primary diagnosis ICD-10 and/or description above to load the matching LCD disease-specific criteria.
+        </div>
+      )}
+
+      {diagnosisText && (
+        <div style={{ ...styles.infoBox, marginBottom: 10, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontWeight: 800, marginBottom: 2 }}>
+                {detectedDisease ? detectedDisease.replaceAll("_", " ") : "Detecting LCD disease..."}
+              </div>
+              {config?.lcd_reference && <div style={{ fontSize: 12, color: COLORS.gray }}>{config.lcd_reference}</div>}
+            </div>
+            <div style={{
+              ...styles.statusBadge,
+              background: evaluation?.eligible ? COLORS.successBoxBg : COLORS.warningBoxBg,
+              color: COLORS.dark,
+              border: `1px solid ${evaluation?.eligible ? "rgba(16,185,129,0.26)" : "rgba(245,158,11,0.3)"}`,
+            }}>
+              {evaluationLoading ? "Evaluating..." : evaluation?.eligible ? "Eligible" : "Not eligible"}
+            </div>
+          </div>
+          {config?.source_document && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Source: {config.source_document}</div>}
+        </div>
+      )}
+
+      {(configError || evaluationError) && (
+        <div style={{ ...styles.warningBox, marginBottom: 10, padding: 12 }}>
+          {configError || evaluationError}
+        </div>
+      )}
+
+      {configLoading && <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 8 }}>Loading LCD criteria…</div>}
+
+      {(config?.criteria_groups || []).map((group) => {
+        const groupResult = groupResults.find((item) => item.group_id === group.group_id);
+        return (
+          <div
+            key={group.group_id}
+            style={{
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 10,
+              padding: 10,
+              marginBottom: 10,
+              background: COLORS.bg,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.dark }}>{group.group_name}</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={styles.cmsTag}>{formatLcdRule(group.rule)}</span>
+                {groupResult && (
+                  <span style={{
+                    ...styles.statusBadge,
+                    padding: "3px 8px",
+                    background: groupResult.passed ? COLORS.successBoxBg : COLORS.warningBoxBg,
+                    color: COLORS.dark,
+                    border: `1px solid ${groupResult.passed ? "rgba(16,185,129,0.26)" : "rgba(245,158,11,0.3)"}`,
+                  }}>
+                    {groupResult.passed ? "Pass" : "Fail"}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {(group.criteria || []).map((criterion) => {
+                const detail = criterionDetails.get(`${group.group_id}:${criterion.criterion_id}`);
+                const criterionWithGroup = { ...criterion, group_id: group.group_id };
+                return (
+                  <div
+                    key={criterion.criterion_id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      gap: 10,
+                      alignItems: "center",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: `1px solid ${COLORS.border}`,
+                      background: COLORS.white,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.dark }}>{criterion.criterion_id}. {criterion.description}</div>
+                      {detail && (
+                        <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 3 }}>
+                          Current: {formatActualValue(detail.actual)} • Expected: {formatActualValue(detail.expected)}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ minWidth: 180 }}>
+                      {renderCriterionInput(criterionWithGroup)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// SECONDARY DIAGNOSES — add/edit/remove list (feeds HOPE comorbidity
+// auto-detection below and hopeReportMapper.js diagnosisEntries()).
+// ════════════════════════════════════════════════════════════════
+function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS }) {
+  const rows = diagnosesData?.secondaryDiagnoses || [];
+
+  const setRows = (next) => updateField("secondaryDiagnoses", next);
+
+  const addRow = () => setRows([...rows, { icd10: "", description: "", relatedToTerminal: true }]);
+
+  const updateRow = (idx, field, value) => {
+    setRows(rows.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
+  };
+
+  const removeRow = (idx) => setRows(rows.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: COLORS.gray, marginTop: -4, marginBottom: 10 }}>
+        All other active diagnoses contributing to the plan of care. Marking a diagnosis as
+        "related to terminal illness" is used for hospice benefit-period documentation and does
+        not by itself add it to the HOPE comorbidity checklist below.
+      </p>
+      {rows.length === 0 && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray, fontStyle: "italic", marginBottom: 10 }}>
+          No secondary diagnoses added yet.
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {rows.map((row, idx) => (
+          <div
+            key={idx}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px minmax(0, 1fr) auto auto",
+              gap: 10,
+              alignItems: "center",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: `1px solid ${COLORS.border}`,
+              background: COLORS.bg,
+            }}
+          >
+            <input
+              style={styles.input}
+              placeholder="ICD-10"
+              value={row.icd10 || ""}
+              onChange={(e) => updateRow(idx, "icd10", e.target.value)}
+            />
+            <input
+              style={styles.input}
+              placeholder="Description"
+              value={row.description || ""}
+              onChange={(e) => updateRow(idx, "description", e.target.value)}
+            />
+            <label style={{ ...styles.checkboxLabel, whiteSpace: "nowrap" }}>
+              <input
+                type="checkbox"
+                checked={row.relatedToTerminal !== false}
+                onChange={(e) => updateRow(idx, "relatedToTerminal", e.target.checked)}
+              />
+              Related
+            </label>
+            <button type="button" style={{ ...styles.btnDanger, padding: "6px 10px" }} onClick={() => removeRow(idx)}>
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
+        + Add Secondary Diagnosis
+      </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// HOPE SECTION I0000 — Comorbidities and Co-existing Conditions.
+//
+// Per CMS HOPE Guidance Manual v1.02, Section I (Item I0100-I8005):
+//   "Check all comorbid and/or coexisting diseases or medical conditions
+//    that are addressed in the plan of care or that have the potential
+//    to impact the plan of care. Do NOT include the principal diagnosis,
+//    except if the patient has a secondary cancer."
+//
+// This component auto-detects candidate categories from the ICD-10 codes
+// on the Primary/Secondary Diagnosis lists, but never silently checks a
+// box — the clinician must click "Apply detected" to confirm. Any
+// category matching the Primary Diagnosis is hard-disabled (excluded)
+// so it can never be double-documented as a comorbidity, with the sole
+// CMS carve-out for a second, distinct cancer diagnosis.
+// ════════════════════════════════════════════════════════════════
+const HOPE_COMORBIDITY_CATEGORIES = [
+  { key: "cancer", hopeCode: "I0100", label: "Cancer", group: "Cancer", regex: /^C\d/i },
+  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", group: "Heart/Circulation", regex: /^I50/i },
+  { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", group: "Heart/Circulation", regex: /^I7[03]/i },
+  { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
+  { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", group: "Gastrointestinal", regex: /^K7[0-4]/i },
+  { key: "renalDisease", hopeCode: "I1510", label: "Renal disease", group: "Genitourinary", regex: /^(N18|N19)/i },
+  { key: "sepsis", hopeCode: "I2102", label: "Sepsis", group: "Infections", regex: /^A41/i },
+  { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
+  { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
+  { key: "stroke", hopeCode: "I4501", label: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
+  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
+  { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
+  { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
+  { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", group: "Pulmonary", regex: /^J44/i },
+];
+
+function matchesCategory(icd10, regex) {
+  const code = (icd10 || "").trim().toUpperCase();
+  if (!code) return false;
+  return regex.test(code);
+}
+
+function categorizeIcd10(icd10) {
+  return HOPE_COMORBIDITY_CATEGORIES.find((cat) => matchesCategory(icd10, cat.regex)) || null;
+}
+
+function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS }) {
+  const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  const hope = diagnosesData?.hopeComorbidities || {};
+
+  const principalCategory = useMemo(() => categorizeIcd10(primaryIcd10), [primaryIcd10]);
+
+  const autoDetected = useMemo(() => {
+    const set = new Set();
+    secondaryDx.forEach((dx) => {
+      const cat = categorizeIcd10(dx?.icd10);
+      if (cat) set.add(cat.key);
+    });
+    return set;
+  }, [secondaryDx]);
+
+  const uncategorizedSecondary = useMemo(
+    () => secondaryDx.filter((dx) => dx?.icd10 && !categorizeIcd10(dx.icd10)),
+    [secondaryDx],
+  );
+
+  const setHope = (key, value) => updateField(`hopeComorbidities.${key}`, value);
+
+  const groups = useMemo(() => {
+    const order = ["Cancer", "Heart/Circulation", "Gastrointestinal", "Genitourinary", "Infections", "Metabolic", "Neurological", "Pulmonary"];
+    return order
+      .map((group) => ({ group, categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group) }))
+      .filter((g) => g.categories.length);
+  }, []);
+
+  return (
+    <div>
+      <div style={styles.infoBox}>
+        Per CMS HOPE guidance: check all comorbid/coexisting conditions addressed in the plan of
+        care. <strong>Do not check a category already coded as the Principal Diagnosis</strong>{" "}
+        — the exception is if the patient has a second, distinct cancer diagnosis.
+      </div>
+
+      {groups.map(({ group, categories }) => (
+        <div key={group} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+            {group}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {categories.map((cat) => {
+              const isPrincipal = principalCategory?.key === cat.key;
+              const detected = autoDetected.has(cat.key);
+              // CMS carve-out: cancer may be both the Principal Diagnosis and a
+              // checked comorbidity if the patient has a second, distinct cancer.
+              const cancerException = cat.key === "cancer" && isPrincipal && detected;
+              const excluded = isPrincipal && !cancerException;
+              const checked = excluded ? false : Boolean(hope[cat.key]);
+
+              return (
+                <div key={cat.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <label
+                    style={{
+                      ...styles.checkboxLabel,
+                      opacity: excluded ? 0.5 : 1,
+                      cursor: excluded ? "not-allowed" : "pointer",
+                    }}
+                    title={excluded ? "Already coded as Principal Diagnosis — not double-entered per HOPE guidance." : ""}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={excluded}
+                      onChange={(e) => setHope(cat.key, e.target.checked)}
+                    />
+                    <span>{cat.label}</span>
+                  </label>
+                  <HopeTag code={cat.hopeCode} />
+                  {excluded && (
+                    <span style={{ fontSize: 11, color: COLORS.gray, fontStyle: "italic" }}>
+                      Excluded — already Principal Diagnosis
+                    </span>
+                  )}
+                  {!excluded && detected && !checked && (
+                    <button
+                      type="button"
+                      style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}
+                      onClick={() => setHope(cat.key, true)}
+                    >
+                      Apply detected match
+                    </button>
+                  )}
+                  {!excluded && detected && checked && (
+                    <span style={{ fontSize: 11, color: COLORS.gray }}>✓ confirmed from diagnosis list</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+          Other
+        </div>
+        <label style={styles.checkboxLabel}>
+          <input type="checkbox" checked={Boolean(hope.other)} onChange={(e) => setHope("other", e.target.checked)} />
+          <span>Other Medical Condition</span>
+        </label>
+        <HopeTag code="I8005" />
+        {uncategorizedSecondary.length > 0 && (
+          <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
+            Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${dx.icd10} ${dx.description || ""}`.trim()).join("; ")}
+          </div>
+        )}
+      </div>
+
+      <FormTextarea
+        label="Additional Note (optional)"
+        value={hope.additionalNote}
+        onChange={(v) => setHope("additionalNote", v)}
+        placeholder="Clarify any comorbidity coding decisions..."
+        rows={2}
+      />
+    </div>
+  );
+}
+
+const PPS_ORDER = ["100%", "90%", "80%", "70%", "60%", "50%", "40%", "30%", "20%", "10%", "0%"];
+const FAST_ORDER = ["1", "2", "3", "4", "5", "6a", "6b", "6c", "6d", "6e", "7a", "7b", "7c", "7d", "7e", "7f"];
+
+function parsePercentOrNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const num = parseFloat(String(value).replace("%", ""));
+  return Number.isFinite(num) ? num : null;
+}
+
+function fastStageIndex(stage) {
+  if (!stage) return null;
+  const idx = FAST_ORDER.indexOf(String(stage).trim());
+  return idx === -1 ? null : idx;
+}
+
+function formatDate(value) {
+  if (!value) return "unknown date";
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? "unknown date" : d.toLocaleDateString();
+}
+
+// "Change Since Last Assessment" — pulls the patient's prior RNICA/RN-recert
+// PPS/KPS/FAST/weight and shows the trend so hospice recert documentation
+// doesn't rely purely on a single point-in-time snapshot (CMS/LCD reviewers
+// specifically look for documented functional decline over time).
+function DeclineTrackerCard({ patientId, assessmentId, performanceData, weight, styles, COLORS }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!patientId) return;
+    let active = true;
+    setLoading(true);
+    setError("");
+    fetchPerformanceHistory(patientId)
+      .then((res) => {
+        if (active) setHistory(res?.history || []);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to load performance history:", err);
+        setError("Unable to load prior assessment history.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [patientId]);
+
+  const priorEntry = useMemo(() => {
+    const priors = history.filter((h) => h.id !== assessmentId);
+    return priors.length ? priors[priors.length - 1] : null;
+  }, [history, assessmentId]);
+
+  const currentPps = parsePercentOrNumber(performanceData?.pps);
+  const currentKps = parsePercentOrNumber(performanceData?.kps);
+  const currentFastIdx = fastStageIndex(performanceData?.fast);
+  const currentWeight = parsePercentOrNumber(weight);
+
+  const rows = useMemo(() => {
+    if (!priorEntry) return [];
+    const result = [];
+
+    if (currentPps !== null && priorEntry.pps !== null && priorEntry.pps !== undefined) {
+      const delta = currentPps - priorEntry.pps;
+      result.push({
+        label: "PPS", from: `${priorEntry.pps}%`, to: `${currentPps}%`,
+        delta, trend: delta < 0 ? "decline" : delta > 0 ? "improvement" : "stable",
+      });
+    }
+    if (currentKps !== null && priorEntry.kps !== null && priorEntry.kps !== undefined) {
+      const delta = currentKps - priorEntry.kps;
+      result.push({
+        label: "KPS", from: `${priorEntry.kps}`, to: `${currentKps}`,
+        delta, trend: delta < 0 ? "decline" : delta > 0 ? "improvement" : "stable",
+      });
+    }
+    const priorFastIdx = fastStageIndex(priorEntry.fast_stage);
+    if (currentFastIdx !== null && priorFastIdx !== null) {
+      const delta = currentFastIdx - priorFastIdx;
+      result.push({
+        label: "FAST", from: priorEntry.fast_stage, to: performanceData?.fast,
+        delta, trend: delta > 0 ? "decline" : delta < 0 ? "improvement" : "stable",
+      });
+    }
+    if (currentWeight !== null && priorEntry.weight !== null && priorEntry.weight !== undefined) {
+      const delta = currentWeight - priorEntry.weight;
+      const pctChange = priorEntry.weight ? (delta / priorEntry.weight) * 100 : null;
+      result.push({
+        label: "Weight", from: `${priorEntry.weight} lbs`, to: `${currentWeight} lbs`,
+        delta, pctChange, trend: delta < 0 ? "decline" : delta > 0 ? "improvement" : "stable",
+      });
+    }
+    return result;
+  }, [priorEntry, currentPps, currentKps, currentFastIdx, currentWeight, performanceData?.fast]);
+
+  const trendColor = (trend) => {
+    if (trend === "decline") return COLORS.warning;
+    if (trend === "improvement") return COLORS.success;
+    return COLORS.gray;
+  };
+
+  const summaryText = useMemo(() => {
+    if (!priorEntry || !rows.length) return "";
+    const declines = rows.filter((r) => r.trend === "decline");
+    if (!declines.length) return "";
+    const parts = declines.map((r) => {
+      if (r.label === "Weight" && r.pctChange !== null) {
+        return `weight decreased from ${r.from} to ${r.to} (${Math.abs(r.pctChange).toFixed(1)}% loss)`;
+      }
+      return `${r.label} declined from ${r.from} to ${r.to}`;
+    });
+    return `Documented decline since prior assessment on ${formatDate(priorEntry.date)}: ${parts.join("; ")}.`;
+  }, [priorEntry, rows]);
+
+  const handleCopy = () => {
+    if (!summaryText) return;
+    navigator.clipboard?.writeText(summaryText).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (loading) {
+    return <p style={{ color: COLORS.gray, fontSize: 13 }}>Loading prior assessment history...</p>;
+  }
+  if (error) {
+    return <p style={{ color: COLORS.error, fontSize: 13 }}>{error}</p>;
+  }
+  if (!priorEntry) {
+    return (
+      <div style={styles.infoBox}>
+        No prior RNICA or RN recertification assessment on file yet — this is the patient's baseline.
+        Once a subsequent assessment is documented, this panel will show the change in PPS/KPS/FAST/weight
+        since this one.
+      </div>
+    );
+  }
+  if (!rows.length) {
+    return (
+      <div style={styles.infoBox}>
+        Prior assessment on {formatDate(priorEntry.date)} found, but not enough matching scores (PPS/KPS/FAST/weight)
+        are documented on both assessments to compute a trend yet.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 10 }}>
+        Compared to prior assessment ({priorEntry.source}) on <strong>{formatDate(priorEntry.date)}</strong>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {rows.map((r) => (
+          <div key={r.label} style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+            borderRadius: 8, border: `1px solid ${trendColor(r.trend)}55`, background: `${trendColor(r.trend)}11`,
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 13, width: 60 }}>{r.label}</div>
+            <div style={{ fontSize: 13 }}>{r.from} → {r.to}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: trendColor(r.trend), marginLeft: "auto", textTransform: "uppercase" }}>
+              {r.trend === "decline" ? "▼ Decline" : r.trend === "improvement" ? "▲ Improved" : "— Stable"}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {summaryText && (
+        <div style={{ marginTop: 12 }}>
+          <div style={styles.infoBox}>{summaryText}</div>
+          <button type="button" onClick={handleCopy} style={{
+            marginTop: 8, padding: "6px 12px", borderRadius: 6, border: `1px solid ${COLORS.teal}`,
+            background: copied ? COLORS.teal : "transparent", color: copied ? COLORS.white : COLORS.teal,
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+          }}>
+            {copied ? "Copied!" : "Copy decline summary for LCD Narrative"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Auto-computes the 6-month weight-loss % from actual serial weight entries
+// (RNICA/recert history) instead of relying on the RN to calculate it by
+// hand into a free-text field. Purely a suggestion -- the RN must click
+// "Insert" to accept it, so it never silently overwrites documented data.
+function WeightLossAutoCalcCard({ patientId, assessmentId, currentWeight, existingValue, updateField, styles, COLORS }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [inserted, setInserted] = useState(false);
+
+  useEffect(() => {
+    if (!patientId) return;
+    let active = true;
+    setLoading(true);
+    setError("");
+    fetchPerformanceHistory(patientId)
+      .then((res) => {
+        if (active) setHistory(res?.history || []);
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to load weight history:", err);
+        setError("Unable to load prior weight history.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [patientId]);
+
+  const suggestion = useMemo(() => {
+    const current = parsePercentOrNumber(currentWeight);
+    if (current === null) return null;
+
+    const candidates = history.filter((h) => h.id !== assessmentId && h.weight !== null && h.weight !== undefined);
+    if (!candidates.length) return null;
+
+    const now = Date.now();
+    const targetTime = now - 183 * 86400000; // ~6 months
+    let best = null;
+    let bestDiff = Infinity;
+    candidates.forEach((h) => {
+      const t = new Date(h.date).getTime();
+      if (Number.isNaN(t)) return;
+      const diff = Math.abs(t - targetTime);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = h;
+      }
+    });
+    if (!best || !best.weight) return null;
+
+    const lossLbs = best.weight - current;
+    const lossPercent = (lossLbs / best.weight) * 100;
+    return {
+      priorWeight: best.weight,
+      priorDate: best.date,
+      currentWeight: current,
+      lossLbs,
+      lossPercent,
+      text: lossLbs > 0
+        ? `${lossLbs.toFixed(1)} lbs (${lossPercent.toFixed(1)}%) over ~6 months (from ${best.weight} lbs on ${formatDate(best.date)} to ${current} lbs today)`
+        : lossLbs < 0
+          ? `Weight gain of ${Math.abs(lossLbs).toFixed(1)} lbs (${Math.abs(lossPercent).toFixed(1)}%) since ${formatDate(best.date)} — no loss to report`
+          : `No change since ${formatDate(best.date)}`,
+    };
+  }, [history, currentWeight, assessmentId]);
+
+  const handleInsert = () => {
+    if (!suggestion) return;
+    updateField("weightLossPastSixMonths", suggestion.text);
+    setInserted(true);
+    window.setTimeout(() => setInserted(false), 2000);
+  };
+
+  if (loading) {
+    return <p style={{ color: COLORS.gray, fontSize: 13 }}>Checking prior weight history...</p>;
+  }
+  if (error) {
+    return <p style={{ color: COLORS.error, fontSize: 13 }}>{error}</p>;
+  }
+  if (!currentWeight) {
+    return <div style={styles.infoBox}>Enter the patient's current weight under Vitals to auto-calculate 6-month weight loss.</div>;
+  }
+  if (!suggestion) {
+    return (
+      <div style={styles.infoBox}>
+        No prior weight on file within range to compute a trend yet. Document weight at each assessment to enable
+        automatic 6-month weight-loss calculation going forward.
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div style={styles.infoBox}>{suggestion.text}</div>
+      {existingValue && (
+        <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 6 }}>
+          Current documented value: "{existingValue}"
+        </div>
+      )}
+      <button type="button" onClick={handleInsert} style={{
+        marginTop: 8, padding: "6px 12px", borderRadius: 6, border: `1px solid ${COLORS.teal}`,
+        background: inserted ? COLORS.teal : "transparent", color: inserted ? COLORS.white : COLORS.teal,
+        fontSize: 12, fontWeight: 700, cursor: "pointer",
+      }}>
+        {inserted ? "Inserted!" : "Insert into Weight Loss field"}
+      </button>
+    </div>
+  );
+}
+
+// Design intent: don't ask the RN to make a subjective call ("is the patient
+// constipated?"). Ask for the objective fact instead — last bowel movement
+// date — and let the system derive a suggested severity from days elapsed,
+// the same way WeightLossAutoCalcCard turns raw weights into a % change.
+// The RN still confirms/overrides via the existing Constipation radio below;
+// this card only proposes a starting point so the RN isn't over-analyzing.
+const CONSTIPATION_THRESHOLDS = [
+  { maxDays: 2, severity: "None" },
+  { maxDays: 4, severity: "Mild" },
+  { maxDays: 6, severity: "Moderate" },
+  { maxDays: Infinity, severity: "Severe" },
+];
+
+function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateField, styles, COLORS }) {
+  const [inserted, setInserted] = useState(false);
+
+  const suggestion = useMemo(() => {
+    if (!lastBM) return null;
+    const lastDate = new Date(lastBM);
+    if (Number.isNaN(lastDate.getTime())) return null;
+
+    const daysSince = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+    if (daysSince < 0) return null; // future date entered — don't guess
+
+    const match = CONSTIPATION_THRESHOLDS.find((t) => daysSince <= t.maxDays);
+    return {
+      daysSince,
+      severity: match.severity,
+      text: `${daysSince} day${daysSince === 1 ? "" : "s"} since last BM (${formatDate(lastBM)}) → suggested: ${match.severity}`,
+    };
+  }, [lastBM]);
+
+  const diarrheaActive = diarrhea && diarrhea !== "None" && diarrhea !== "";
+
+  const handleInsert = () => {
+    if (!suggestion) return;
+    updateField("constipation", suggestion.severity);
+    setInserted(true);
+    window.setTimeout(() => setInserted(false), 2000);
+  };
+
+  if (!lastBM) {
+    return <div style={styles.infoBox}>Enter "Last BM Date" below (ask: when did the patient last have a bowel movement?) to auto-suggest constipation severity.</div>;
+  }
+  if (diarrheaActive) {
+    return (
+      <div style={styles.infoBox}>
+        Diarrhea reported ({diarrhea}) — constipation suggestion skipped since the two findings conflict. Document constipation manually if clinically applicable.
+      </div>
+    );
+  }
+  if (!suggestion) {
+    return <div style={styles.infoBox}>Last BM date could not be interpreted — re-check the entered date.</div>;
+  }
+
+  return (
+    <div>
+      <div style={styles.infoBox}>{suggestion.text}</div>
+      {existingValue && (
+        <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 6 }}>
+          Current documented value: "{existingValue}"
+        </div>
+      )}
+      <button type="button" onClick={handleInsert} style={{
+        marginTop: 8, padding: "6px 12px", borderRadius: 6, border: `1px solid ${COLORS.teal}`,
+        background: inserted ? COLORS.teal : "transparent", color: inserted ? COLORS.white : COLORS.teal,
+        fontSize: 12, fontWeight: 700, cursor: "pointer",
+      }}>
+        {inserted ? "Inserted!" : "Insert into Constipation field"}
+      </button>
+    </div>
+  );
+}
+
+const SEVERITY_COLORS = {
+  CONTRAINDICATED: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
+  MAJOR: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
+  MODERATE: { bg: "#451a03", border: "#f59e0b", text: "#fde68a" },
+  MINOR: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
+  UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
+};
+
+export function MedicationOrdersCard({ patientId, styles, COLORS }) {
+  const [meds, setMeds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const [form, setForm] = useState({
+    medication_name: "",
+    dosage: "",
+    route: "",
+    frequency: "",
+    start_date: new Date().toISOString().slice(0, 10),
+    ordering_provider_name: "",
+    ordering_provider_role: "",
+    source_type: "WRITTEN",
+    phone_readback_confirmed: false,
+  });
+  const [safety, setSafety] = useState(null);
+  const [safetyLoading, setSafetyLoading] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const [allergies, setAllergies] = useState([]);
+  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
+  const [allergyError, setAllergyError] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    setError("");
+    Promise.all([listMedications(patientId), listPatientAllergies(patientId)])
+      .then(([medList, allergyList]) => {
+        setMeds(medList || []);
+        setAllergies(allergyList || []);
+      })
+      .catch((err) => {
+        console.error("Failed to load medications/allergies:", err);
+        setError(err?.response?.data?.detail || "Unable to load medications.");
+      })
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  // Live allergy + interaction check as the clinician types the medication name (debounced)
+  useEffect(() => {
+    if (!patientId || !form.medication_name.trim()) {
+      setSafety(null);
+      return;
+    }
+    let active = true;
+    const handle = window.setTimeout(async () => {
+      setSafetyLoading(true);
+      try {
+        const result = await checkMedicationSafety(patientId, form.medication_name.trim());
+        if (active) setSafety(result);
+      } catch (err) {
+        console.error("Safety check failed:", err);
+        if (active) setSafety(null);
+      } finally {
+        if (active) setSafetyLoading(false);
+      }
+    }, 350);
+    return () => {
+      active = false;
+      window.clearTimeout(handle);
+    };
+  }, [patientId, form.medication_name]);
+
+  const hasAlerts = (safety?.allergy_alerts?.length || 0) + (safety?.interaction_alerts?.length || 0) > 0;
+
+  const handleAddMedication = async () => {
+    if (!form.medication_name.trim() || !form.dosage.trim() || !form.route.trim() || !form.frequency.trim()) {
+      setSubmitError("Medication name, dosage, route, and frequency are required.");
+      return;
+    }
+    if (!form.ordering_provider_name.trim() || !form.ordering_provider_role) {
+      setSubmitError("The prescribing physician/NP/PA's name and role are required (e.g. for telephone orders or orders given during IDG).");
+      return;
+    }
+    if (form.source_type === "VERBAL_PHONE" && !form.phone_readback_confirmed) {
+      setSubmitError("Telephone orders require a confirmed read-back before they can be submitted.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      await addMedication(patientId, form);
+      setForm({
+        medication_name: "",
+        dosage: "",
+        route: "",
+        frequency: "",
+        start_date: new Date().toISOString().slice(0, 10),
+        ordering_provider_name: "",
+        ordering_provider_role: "",
+        source_type: "WRITTEN",
+        phone_readback_confirmed: false,
+      });
+      setSafety(null);
+      reload();
+    } catch (err) {
+      console.error("Add medication failed:", err);
+      setSubmitError(err?.response?.data?.detail || "Unable to add medication.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDiscontinue = async (medicationId) => {
+    const reason = window.prompt("Reason for discontinuing (optional):", "");
+    if (reason === null) return; // cancelled
+    try {
+      await discontinueMedication(medicationId, new Date().toISOString().slice(0, 10), reason || undefined);
+      reload();
+    } catch (err) {
+      console.error("Discontinue failed:", err);
+      window.alert(err?.response?.data?.detail || "Unable to discontinue medication.");
+    }
+  };
+
+  const handleAddAllergy = async () => {
+    if (!allergyForm.allergen_text.trim()) {
+      setAllergyError("Allergen is required.");
+      return;
+    }
+    setAllergyError("");
+    try {
+      await addPatientAllergy(patientId, {
+        allergen_text: allergyForm.allergen_text.trim(),
+        allergen_type: "DRUG",
+        severity: allergyForm.severity || undefined,
+        reaction_description: allergyForm.reaction_description || undefined,
+      });
+      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
+      reload();
+    } catch (err) {
+      console.error("Add allergy failed:", err);
+      setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
+    }
+  };
+
+  const handleRemoveAllergy = async (allergyId) => {
+    try {
+      await removePatientAllergy(patientId, allergyId);
+      reload();
+    } catch (err) {
+      console.error("Remove allergy failed:", err);
+      window.alert("Unable to remove allergy.");
+    }
+  };
+
+  return (
+    <div>
+      {/* ── Allergy list ── */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
+        {allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
+        {allergies.map((a) => (
+          <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+            <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
+            {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
+            {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
+            <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
+              Remove
+            </button>
+          </div>
+        ))}
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          <input
+            style={{ ...styles.input, width: 160 }}
+            placeholder="Allergen (e.g. penicillin)"
+            value={allergyForm.allergen_text}
+            onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
+          />
+          <select
+            style={{ ...styles.select, width: 130 }}
+            value={allergyForm.severity}
+            onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+          >
+            <option value="">Severity</option>
+            <option value="MILD">Mild</option>
+            <option value="MODERATE">Moderate</option>
+            <option value="SEVERE">Severe</option>
+            <option value="ANAPHYLAXIS">Anaphylaxis</option>
+          </select>
+          <input
+            style={{ ...styles.input, width: 180 }}
+            placeholder="Reaction (optional)"
+            value={allergyForm.reaction_description}
+            onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
+          />
+          <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
+            + Add Allergy
+          </button>
+        </div>
+        {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+      </div>
+
+      {/* ── Add medication form ── */}
+      <div style={styles.fieldsGrid}>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Medication Name</label>
+          <MedicationNameInput
+            value={form.medication_name}
+            onChange={(val) => setForm((f) => ({ ...f, medication_name: val }))}
+            onSelectSuggestion={(s) => setForm((f) => ({
+              ...f,
+              dosage: s.strength || f.dosage,
+              route: s.route || f.route,
+            }))}
+            inputStyle={styles.input}
+            labelStyle={{ ...styles.label, fontSize: 11 }}
+          />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Dosage</label>
+          <input style={styles.input} value={form.dosage} onChange={(e) => setForm((f) => ({ ...f, dosage: e.target.value }))} placeholder="e.g. 20mg" />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Route</label>
+          <input style={styles.input} value={form.route} onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))} placeholder="e.g. Sublingual" />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Frequency</label>
+          <input style={styles.input} value={form.frequency} onChange={(e) => setForm((f) => ({ ...f, frequency: e.target.value }))} placeholder="e.g. Every 4 hours PRN" />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Start Date</label>
+          <input type="date" style={styles.input} value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+        </div>
+      </div>
+
+      {/* ── Prescribing provider (required — telephone orders / IDG orders) ── */}
+      <div style={{ ...styles.fieldsGrid, marginTop: 12 }}>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Prescribing Provider Name</label>
+          <input
+            style={styles.input}
+            value={form.ordering_provider_name}
+            onChange={(e) => setForm((f) => ({ ...f, ordering_provider_name: e.target.value }))}
+            placeholder="e.g. Dr. Stephen Pine"
+          />
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Provider Role</label>
+          <select
+            style={styles.select}
+            value={form.ordering_provider_role}
+            onChange={(e) => setForm((f) => ({ ...f, ordering_provider_role: e.target.value }))}
+          >
+            <option value="">Select role…</option>
+            <option value="MD">MD</option>
+            <option value="NP">NP</option>
+            <option value="PA">PA</option>
+          </select>
+        </div>
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Order Source</label>
+          <select
+            style={styles.select}
+            value={form.source_type}
+            onChange={(e) => setForm((f) => ({ ...f, source_type: e.target.value }))}
+          >
+            <option value="WRITTEN">Written</option>
+            <option value="VERBAL_PHONE">Telephone Order</option>
+            <option value="IDG">IDG</option>
+            <option value="ELECTRONIC">Electronic</option>
+          </select>
+        </div>
+        {form.source_type === "VERBAL_PHONE" && (
+          <div style={{ ...styles.formGroup, display: "flex", alignItems: "flex-end" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: COLORS.dark }}>
+              <input
+                type="checkbox"
+                checked={form.phone_readback_confirmed}
+                onChange={(e) => setForm((f) => ({ ...f, phone_readback_confirmed: e.target.checked }))}
+              />
+              Read-back confirmed
+            </label>
+          </div>
+        )}
+      </div>
+
+      {/* ── Live safety alerts ── */}
+      {safetyLoading && <div style={{ fontSize: 12, color: COLORS.gray, margin: "8px 0" }}>Checking allergies + interactions…</div>}
+      {hasAlerts && (
+        <div style={{ margin: "10px 0", display: "flex", flexDirection: "column", gap: 6 }}>
+          {(safety.allergy_alerts || []).map((a, i) => {
+            const c = SEVERITY_COLORS[a.severity] || SEVERITY_COLORS.UNKNOWN;
+            return (
+              <div key={`allergy-${i}`} style={{ padding: "8px 12px", borderRadius: 8, background: c.bg, border: `1px solid ${c.border}`, color: c.text, fontSize: 12.5 }}>
+                <strong>⚠ ALLERGY ALERT ({a.severity}):</strong> Documented allergy to "{a.allergen}" {a.reaction ? `(reaction: ${a.reaction})` : ""} — {a.matched_on}.
+              </div>
+            );
+          })}
+          {(safety.interaction_alerts || []).map((a, i) => {
+            const c = SEVERITY_COLORS[a.severity] || SEVERITY_COLORS.UNKNOWN;
+            return (
+              <div key={`interaction-${i}`} style={{ padding: "8px 12px", borderRadius: 8, background: c.bg, border: `1px solid ${c.border}`, color: c.text, fontSize: 12.5 }}>
+                <strong>⚠ INTERACTION ({a.severity}) with {a.with_medication}:</strong> {a.effect} <em>Management: {a.management}</em>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {submitError && <div style={{ color: "#ef4444", fontSize: 12.5, margin: "6px 0" }}>{submitError}</div>}
+
+      <button type="button" onClick={handleAddMedication} disabled={submitting} style={{ ...styles.btnPrimary, marginTop: 8 }}>
+        {submitting ? "Adding…" : "+ Add Medication"}
+      </button>
+
+      {/* ── Current / historical medication list ── */}
+      <div style={{ marginTop: 20 }}>
+        <div style={{ ...styles.label, marginBottom: 8 }}>Medication List</div>
+        {loading && <div style={{ fontSize: 12.5, color: COLORS.gray }}>Loading…</div>}
+        {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+        {!loading && meds.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray }}>No medications recorded yet.</div>}
+        {meds.length > 0 && (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Medication</th>
+                <th style={styles.th}>Dosage</th>
+                <th style={styles.th}>Route</th>
+                <th style={styles.th}>Frequency</th>
+                <th style={styles.th}>Start</th>
+                <th style={styles.th}>Status</th>
+                <th style={styles.th}>Signature Status</th>
+                <th style={styles.th}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {meds.map((m) => (
+                <tr key={m.medication_id} style={m.ui_hint?.row_color === "warning" ? { background: "rgba(245,158,11,0.08)" } : undefined}>
+                  <td style={styles.td}>{m.medication_name}</td>
+                  <td style={styles.td}>{m.dosage}</td>
+                  <td style={styles.td}>{m.route}</td>
+                  <td style={styles.td}>{m.frequency}</td>
+                  <td style={styles.td}>{m.start_date}</td>
+                  <td style={styles.td}>{m.status}{m.flags?.length ? ` (${m.flags.join(", ")})` : ""}</td>
+                  <td style={styles.td}>
+                    {m.order_status === "APPROVED" || m.order_status === "EXECUTED" ? (
+                      <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                        ✓ Signed{m.signed_by_name ? ` — ${m.signed_by_name}` : ""}
+                      </span>
+                    ) : m.order_status ? (
+                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>⏳ Awaiting MD Signature</span>
+                    ) : (
+                      <span style={{ color: COLORS.gray }}>No signed order on file</span>
+                    )}
+                    <div style={{ fontSize: 10.5, color: COLORS.gray, marginTop: 2 }}>
+                      Entered by {m.entered_by_name || "—"}
+                      {m.ordered_by_provider_name ? ` · Ordered by ${m.ordered_by_provider_name} (${m.ordered_by_provider_role})` : ""}
+                    </div>
+                  </td>
+                  <td style={styles.td}>
+                    {m.status === "active" && (
+                      <button type="button" onClick={() => handleDiscontinue(m.medication_id)} style={{ ...styles.btnSecondary, padding: "3px 8px", fontSize: 11 }}>
+                        Discontinue
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// Orders Hub — DME / Supplies / Lab / Treatment / Diet / Other + Templates + Fax
+// Styled exclusively with the shared SNS Hospice Solutions dark-theme tokens
+// (tenant/design.js COLORS + S) so it visually matches the rest of the app —
+// no ad-hoc white/blue styling.
+// ---------------------------------------------------------------------------------
+
+const SOURCE_TYPE_LABELS = {
+  WRITTEN: "Written Order",
+  VERBAL_PHONE: "Verbal / Phone Order",
+  ELECTRONIC: "Electronic Order",
+  IDG: "IDG Meeting Order",
+};
+function formatSourceType(sourceType) {
+  return SOURCE_TYPE_LABELS[sourceType] || (sourceType || "").replace(/_/g, " ");
+}
+
+const ORDER_TYPE_TABS = [
+  { key: "MEDICATION", label: "Medication" },
+  { key: "DME", label: "DME" },
+  { key: "SUPPLY", label: "Supplies" },
+  { key: "LAB", label: "Lab" },
+  { key: "TREATMENT", label: "Treatment" },
+  { key: "DIET", label: "Diet" },
+  { key: "OTHER", label: "Other" },
+];
+
+const ORDER_TYPE_TO_VENDOR_TYPE = {
+  MEDICATION: "Pharmacy",
+  DME: "DME",
+  SUPPLY: "DME",
+  LAB: "Laboratory",
+  TREATMENT: "Contracted Staff",
+  DIET: "Other",
+  OTHER: "Other",
+};
+
+const ohInput = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: `1px solid ${SNS_COLORS.border}`,
+  background: SNS_COLORS.bg,
+  color: SNS_COLORS.white,
+  fontSize: 13,
+  outline: "none",
+  boxSizing: "border-box",
+};
+const ohTextarea = { ...ohInput, minHeight: 60, resize: "vertical", fontFamily: "inherit" };
+const ohLabel = { fontSize: 11, fontWeight: 600, color: SNS_COLORS.dim, textTransform: "uppercase", marginBottom: 4, display: "block" };
+const ohFormGroup = { marginBottom: 10 };
+const ohBtnPrimary = { ...SNS_S.btn(SNS_COLORS.teal) };
+const ohBtnSecondary = { ...SNS_S.btnOutline, padding: "6px 12px", fontSize: 12 };
+const ohTabBtn = (active) => ({
+  padding: "8px 16px",
+  borderRadius: 8,
+  border: `1px solid ${active ? SNS_COLORS.teal : SNS_COLORS.border}`,
+  background: active ? "rgba(99, 231, 211, 0.14)" : "transparent",
+  color: active ? SNS_COLORS.teal : SNS_COLORS.muted,
+  fontSize: 12.5,
+  fontWeight: 700,
+  cursor: "pointer",
+});
+
+export function OrdersHubCard({ patientId }) {
+  const currentUser = getCurrentUser();
+  const isMD = currentUser?.role === "MD";
+
+  const [activeType, setActiveType] = useState("DME");
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [busyOrderId, setBusyOrderId] = useState(null);
+
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [importAttestation, setImportAttestation] = useState({
+    ordered_by_provider_name: "", ordered_by_provider_role: "MD",
+    source_type: "WRITTEN", prescriber_authenticated: false, phone_readback_confirmed: false,
+  });
+
+  const [form, setForm] = useState({
+    order_text: "", strength: "", dosage: "", route: "", frequency: "",
+    indication: "", quantity: "", payer: "", vendor: "", administered_by: "",
+    special_instruction: "",
+    source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
+    prescriber_authenticated: false, phone_readback_confirmed: false,
+  });
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+
+  const [labCatalog, setLabCatalog] = useState(null);
+  const [selectedLabTests, setSelectedLabTests] = useState([]);
+
+  const [vendorOptions, setVendorOptions] = useState([]);
+
+  const [faxOpen, setFaxOpen] = useState(false);
+  const [faxForm, setFaxForm] = useState({ recipient_name: "", recipient_fax_number: "" });
+  const [faxHistory, setFaxHistory] = useState([]);
+  const [faxSending, setFaxSending] = useState(false);
+  const [faxError, setFaxError] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    setError("");
+    listPhysicianOrders(patientId, undefined, activeType)
+      .then((list) => setOrders(list || []))
+      .catch((err) => {
+        console.error("Failed to load orders:", err);
+        setError(err?.response?.data?.detail || "Unable to load orders.");
+      })
+      .finally(() => setLoading(false));
+  }, [patientId, activeType]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    listOrderTemplates()
+      .then((list) => setTemplates(list || []))
+      .catch((err) => console.error("Failed to load order templates:", err));
+  }, []);
+
+  useEffect(() => {
+    if (activeType === "LAB" && !labCatalog) {
+      getLabCatalog()
+        .then(setLabCatalog)
+        .catch((err) => console.error("Failed to load lab catalog:", err));
+    }
+  }, [activeType, labCatalog]);
+
+  useEffect(() => {
+    const vendorType = ORDER_TYPE_TO_VENDOR_TYPE[activeType] || "Other";
+    listVendors({ status: "active", vendor_type: vendorType })
+      .then((list) => setVendorOptions(list || []))
+      .catch((err) => console.error("Failed to load vendors:", err));
+  }, [activeType]);
+
+  const handleImportPack = async () => {
+    if (!selectedTemplateId) return;
+    if (!importAttestation.ordered_by_provider_name.trim()) {
+      setImportMessage("Ordering provider name is required — every imported order must be attributable to a physician for signature, same as a manually-entered order.");
+      return;
+    }
+    if (!importAttestation.prescriber_authenticated) {
+      setImportMessage("Please confirm prescriber identity authentication before importing.");
+      return;
+    }
+    if (importAttestation.source_type === "VERBAL_PHONE" && !importAttestation.phone_readback_confirmed) {
+      setImportMessage("Phone read-back confirmation is required for telephone-ordered packs.");
+      return;
+    }
+    setImporting(true);
+    setImportMessage("");
+    try {
+      const result = await importOrderTemplate(selectedTemplateId, patientId, importAttestation);
+      const allergyHits = (result.medications_created || []).filter((m) => (m.allergy_alerts || []).length > 0);
+      const interactionHits = (result.medications_created || []).filter((m) => (m.interaction_alerts || []).length > 0);
+      let msg = `Imported "${result.template_name}" — ${result.total_imported} orders added, each pending MD signature (or immediate execution if a verbal/read-back-confirmed order).`;
+      if (allergyHits.length > 0) {
+        const detail = allergyHits
+          .map((m) => `${m.medication_name}: ${m.allergy_alerts.map((a) => `${a.allergen} (${a.severity})`).join(", ")}`)
+          .join(" | ");
+        msg += ` ⚠ ALLERGY ALERT — ${detail}`;
+      }
+      if (interactionHits.length > 0) {
+        const detail = interactionHits
+          .map((m) => `${m.medication_name}: ${m.interaction_alerts.map((a) => `${a.with_medication} (${a.severity})`).join(", ")}`)
+          .join(" | ");
+        msg += ` ⚠ INTERACTION ALERT — ${detail}`;
+      }
+      setImportMessage(msg);
+      reload();
+    } catch (err) {
+      console.error("Import pack failed:", err);
+      setImportMessage(err?.response?.data?.detail || "Unable to import pack.");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const toggleLabTest = (test) => {
+    setSelectedLabTests((prev) =>
+      prev.some((t) => t.cpt === test.cpt) ? prev.filter((t) => t.cpt !== test.cpt) : [...prev, test]
+    );
+  };
+
+  const handleAddOrder = async () => {
+    const orderText = activeType === "LAB"
+      ? selectedLabTests.map((t) => `${t.name} (CPT ${t.cpt})`).join("; ")
+      : [
+          form.order_text,
+          form.strength && `Strength: ${form.strength}`,
+          form.dosage && `Dosage/Qty: ${form.dosage}`,
+          form.route && `Route: ${form.route}`,
+          form.frequency && `Frequency: ${form.frequency}`,
+          form.indication && `Indication: ${form.indication}`,
+          form.payer && `Payer: ${form.payer}`,
+          form.vendor && `Vendor: ${form.vendor}`,
+          form.administered_by && `Administered by: ${form.administered_by}`,
+          form.special_instruction && `Instructions: ${form.special_instruction}`,
+        ].filter(Boolean).join(" — ");
+
+    if (!orderText.trim()) {
+      setSubmitError(activeType === "LAB" ? "Select at least one lab test." : "Order text is required.");
+      return;
+    }
+    if (!form.ordered_by_provider_name.trim()) {
+      setSubmitError("Ordering provider name is required — every order must be attributable to a physician for signature.");
+      return;
+    }
+    if (form.source_type === "VERBAL_PHONE" && !form.phone_readback_confirmed) {
+      setSubmitError("Phone read-back confirmation is required for telephone orders.");
+      return;
+    }
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const draft = await createPhysicianOrder(patientId, {
+        order_text: orderText.trim(),
+        order_category: activeType,
+        source_type: form.source_type,
+        ordered_by_provider_name: form.ordered_by_provider_name,
+        ordered_by_provider_role: form.ordered_by_provider_role,
+        prescriber_authenticated: form.prescriber_authenticated,
+        phone_readback_confirmed: form.phone_readback_confirmed,
+        ordered_at: new Date().toISOString(),
+      });
+      await submitPhysicianOrder(draft.id);
+      setForm({
+        order_text: "", strength: "", dosage: "", route: "", frequency: "", indication: "",
+        quantity: "", payer: "", vendor: "", administered_by: "", special_instruction: "",
+        source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
+        prescriber_authenticated: false, phone_readback_confirmed: false,
+      });
+      setSelectedLabTests([]);
+      reload();
+    } catch (err) {
+      console.error("Add order failed:", err);
+      setSubmitError(err?.response?.data?.detail || "Unable to add order.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const runOrderAction = async (orderId, fn) => {
+    setBusyOrderId(orderId);
+    setActionError("");
+    try {
+      await fn(orderId);
+      reload();
+    } catch (err) {
+      console.error("Order action failed:", err);
+      setActionError(err?.response?.data?.detail || "Action failed.");
+    } finally {
+      setBusyOrderId(null);
+    }
+  };
+
+  const openFax = () => {
+    setFaxOpen(true);
+    setFaxError("");
+    getFaxHistory(patientId).then(setFaxHistory).catch((err) => console.error("Fax history failed:", err));
+  };
+
+  const handleSendFax = async () => {
+    if (!faxForm.recipient_name.trim() || !faxForm.recipient_fax_number.trim()) {
+      setFaxError("Recipient name and fax number are required.");
+      return;
+    }
+    setFaxSending(true);
+    setFaxError("");
+    try {
+      const summary = orders
+        .filter((o) => o.status === "APPROVED" || o.status === "EXECUTED")
+        .map((o) => `${o.order_category}: ${o.order_text}`)
+        .join("\n") || `${activeType} orders for patient`;
+      await sendFax(patientId, {
+        subject_type: "ORDER_SET",
+        recipient_name: faxForm.recipient_name.trim(),
+        recipient_fax_number: faxForm.recipient_fax_number.trim(),
+        document_summary: summary,
+      });
+      setFaxForm({ recipient_name: "", recipient_fax_number: "" });
+      const history = await getFaxHistory(patientId);
+      setFaxHistory(history);
+    } catch (err) {
+      console.error("Send fax failed:", err);
+      setFaxError(err?.response?.data?.detail || "Unable to send fax.");
+    } finally {
+      setFaxSending(false);
+    }
+  };
+
+  return (
+    <div>
+      {/* ── Template picker / Import Pack ── */}
+      <div style={{ ...SNS_S.card, padding: 16, marginBottom: 16, background: SNS_COLORS.bg }}>
+        <div style={ohLabel}>Order-Set Templates</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select
+            style={{ ...SNS_S.select, minWidth: 240 }}
+            value={selectedTemplateId}
+            onChange={(e) => setSelectedTemplateId(e.target.value)}
+          >
+            <option value="">Select a pack…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} ({t.item_count} items){t.is_system ? " — System" : ""}
+              </option>
+            ))}
+          </select>
+          <button type="button" style={ohBtnPrimary} disabled={!selectedTemplateId || importing} onClick={handleImportPack}>
+            {importing ? "Importing…" : "Import Pack"}
+          </button>
+          <button type="button" style={ohBtnSecondary} onClick={openFax}>
+            📠 Fax Orders
+          </button>
+        </div>
+        {selectedTemplateId && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${SNS_COLORS.border}` }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: SNS_COLORS.orange, textTransform: "uppercase", marginBottom: 6 }}>
+              Ordering Provider (required — same attestation as a manual order)
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+              <input
+                style={ohInput}
+                value={importAttestation.ordered_by_provider_name}
+                onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_name: e.target.value }))}
+                placeholder="Dr. Jane Smith"
+              />
+              <select style={ohInput} value={importAttestation.ordered_by_provider_role} onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_role: e.target.value }))}>
+                <option value="MD">MD</option>
+                <option value="NP">NP</option>
+                <option value="PA">PA</option>
+              </select>
+              <select style={ohInput} value={importAttestation.source_type} onChange={(e) => setImportAttestation((f) => ({ ...f, source_type: e.target.value }))}>
+                <option value="WRITTEN">Written</option>
+                <option value="VERBAL_PHONE">Telephone Order</option>
+                <option value="ELECTRONIC">Electronic</option>
+                <option value="IDG">IDG (discussed &amp; ordered during IDG meeting)</option>
+              </select>
+            </div>
+            <div style={{ display: "flex", gap: 18, marginTop: 8 }}>
+              <label style={{ fontSize: 12, color: SNS_COLORS.muted, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={importAttestation.prescriber_authenticated} onChange={(e) => setImportAttestation((f) => ({ ...f, prescriber_authenticated: e.target.checked }))} />
+                Prescriber identity authenticated
+              </label>
+              {importAttestation.source_type === "VERBAL_PHONE" && (
+                <label style={{ fontSize: 12, color: SNS_COLORS.muted, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                  <input type="checkbox" checked={importAttestation.phone_readback_confirmed} onChange={(e) => setImportAttestation((f) => ({ ...f, phone_readback_confirmed: e.target.checked }))} />
+                  Telephone read-back confirmed
+                </label>
+              )}
+            </div>
+          </div>
+        )}
+        {importMessage && (
+          <div style={{ fontSize: 12.5, color: importMessage.includes("⚠") ? SNS_COLORS.red : SNS_COLORS.teal, marginTop: 8, fontWeight: importMessage.includes("⚠") ? 700 : 400 }}>
+            {importMessage}
+          </div>
+        )}
+      </div>
+
+      {/* ── Order type tabs ── */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        {ORDER_TYPE_TABS.map((t) => (
+          <button key={t.key} type="button" style={ohTabBtn(activeType === t.key)} onClick={() => setActiveType(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Add order form ── */}
+      <div style={{ ...SNS_S.card, padding: 16, marginBottom: 16, background: SNS_COLORS.bg }}>
+        {activeType === "LAB" ? (
+          <div>
+            <div style={ohLabel}>Lab Tests (select all that apply)</div>
+            {!labCatalog && <div style={{ fontSize: 12.5, color: SNS_COLORS.dim }}>Loading catalog…</div>}
+            {labCatalog?.categories?.map((cat) => (
+              <div key={cat.category} style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: SNS_COLORS.muted, marginBottom: 4 }}>{cat.category}</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                  {cat.tests.map((test) => (
+                    <label key={test.cpt + test.name} style={{ fontSize: 12, color: SNS_COLORS.white, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedLabTests.some((t) => t.cpt === test.cpt)}
+                        onChange={() => toggleLabTest(test)}
+                      />
+                      {test.name} <span style={{ color: SNS_COLORS.dim }}>(CPT {test.cpt})</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {labCatalog?.clinical_notes && Object.values(labCatalog.clinical_notes).map((note, i) => (
+              <div key={i} style={{ fontSize: 11.5, color: SNS_COLORS.orange, marginTop: 8, fontStyle: "italic" }}>{note}</div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>{activeType === "MEDICATION" ? "Medication Name" : "Order"}</label>
+              {activeType === "MEDICATION" ? (
+                <MedicationNameInput
+                  value={form.order_text}
+                  onChange={(val) => setForm((f) => ({ ...f, order_text: val }))}
+                  onSelectSuggestion={(s) => setForm((f) => ({
+                    ...f,
+                    strength: s.strength || f.strength,
+                    route: s.route || f.route,
+                  }))}
+                  inputStyle={ohInput}
+                  labelStyle={{ fontSize: 10.5, color: SNS_COLORS.dim }}
+                />
+              ) : (
+                <input style={ohInput} value={form.order_text} onChange={(e) => setForm((f) => ({ ...f, order_text: e.target.value }))} placeholder="e.g. Hospital Bed Full Electric" />
+              )}
+            </div>
+            {activeType !== "OTHER" && (
+              <>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Strength</label>
+                  <input style={ohInput} value={form.strength} onChange={(e) => setForm((f) => ({ ...f, strength: e.target.value }))} />
+                </div>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Dosage/Qty</label>
+                  <input style={ohInput} value={form.dosage} onChange={(e) => setForm((f) => ({ ...f, dosage: e.target.value }))} />
+                </div>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Route</label>
+                  <input style={ohInput} value={form.route} onChange={(e) => setForm((f) => ({ ...f, route: e.target.value }))} />
+                </div>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Frequency</label>
+                  <input style={ohInput} value={form.frequency} onChange={(e) => setForm((f) => ({ ...f, frequency: e.target.value }))} />
+                </div>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Indication</label>
+                  <input style={ohInput} value={form.indication} onChange={(e) => setForm((f) => ({ ...f, indication: e.target.value }))} />
+                </div>
+              </>
+            )}
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Payer</label>
+              <select style={ohInput} value={form.payer} onChange={(e) => setForm((f) => ({ ...f, payer: e.target.value }))}>
+                <option value="">—</option>
+                <option value="Hospice">Hospice covered</option>
+                <option value="Insurance">Insurance non-covered</option>
+                <option value="Patient">Patient non-covered</option>
+              </select>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Vendor</label>
+              <input
+                style={ohInput}
+                value={form.vendor}
+                onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+                list="oh-vendor-options"
+                placeholder={vendorOptions.length ? "Select or type a vendor…" : "No vendors on file — type a name"}
+              />
+              <datalist id="oh-vendor-options">
+                {vendorOptions.map((v) => (
+                  <option key={v.id} value={v.name} />
+                ))}
+              </datalist>
+              <div style={{ fontSize: 10.5, color: SNS_COLORS.dim, marginTop: 3 }}>
+                Add/edit vendors from Agency Settings → Vendors.
+              </div>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Administered By</label>
+              <input style={ohInput} value={form.administered_by} onChange={(e) => setForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Hospice Nurse Only" />
+            </div>
+          </div>
+        )}
+        <div style={ohFormGroup}>
+          <label style={ohLabel}>Special Instruction</label>
+          <textarea style={ohTextarea} value={form.special_instruction} onChange={(e) => setForm((f) => ({ ...f, special_instruction: e.target.value }))} />
+        </div>
+
+        <div style={{ borderTop: `1px solid ${SNS_COLORS.border}`, marginTop: 6, paddingTop: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: SNS_COLORS.orange, textTransform: "uppercase", marginBottom: 8 }}>
+            Physician Sign-Off (required for all orders)
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Ordering Provider Name</label>
+              <input style={ohInput} value={form.ordered_by_provider_name} onChange={(e) => setForm((f) => ({ ...f, ordered_by_provider_name: e.target.value }))} placeholder="Dr. Jane Smith" />
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Provider Role</label>
+              <select style={ohInput} value={form.ordered_by_provider_role} onChange={(e) => setForm((f) => ({ ...f, ordered_by_provider_role: e.target.value }))}>
+                <option value="MD">MD</option>
+                <option value="NP">NP</option>
+                <option value="PA">PA</option>
+              </select>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Order Source</label>
+              <select style={ohInput} value={form.source_type} onChange={(e) => setForm((f) => ({ ...f, source_type: e.target.value }))}>
+                <option value="WRITTEN">Written</option>
+                <option value="VERBAL_PHONE">Telephone Order</option>
+                <option value="ELECTRONIC">Electronic</option>
+                <option value="IDG">IDG (discussed &amp; ordered during IDG meeting)</option>
+              </select>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 18, marginTop: 8 }}>
+            <label style={{ fontSize: 12.5, color: SNS_COLORS.muted, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+              <input type="checkbox" checked={form.prescriber_authenticated} onChange={(e) => setForm((f) => ({ ...f, prescriber_authenticated: e.target.checked }))} />
+              Prescriber identity authenticated
+            </label>
+            {form.source_type === "VERBAL_PHONE" && (
+              <label style={{ fontSize: 12.5, color: SNS_COLORS.muted, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
+                <input type="checkbox" checked={form.phone_readback_confirmed} onChange={(e) => setForm((f) => ({ ...f, phone_readback_confirmed: e.target.checked }))} />
+                Telephone read-back confirmed
+              </label>
+            )}
+          </div>
+        </div>
+
+        {submitError && <div style={{ color: SNS_COLORS.red, fontSize: 12.5, marginTop: 10, marginBottom: 8 }}>{submitError}</div>}
+        <button type="button" style={{ ...ohBtnPrimary, marginTop: 10 }} disabled={submitting} onClick={handleAddOrder}>
+          {submitting ? "Submitting…" : `Submit ${ORDER_TYPE_TABS.find((t) => t.key === activeType)?.label || ""} Order for MD Signature`}
+        </button>
+      </div>
+
+      {/* ── Orders list ── */}
+      <div>
+        <div style={ohLabel}>{ORDER_TYPE_TABS.find((t) => t.key === activeType)?.label} Orders</div>
+        {loading && <div style={{ fontSize: 12.5, color: SNS_COLORS.dim }}>Loading…</div>}
+        {error && <div style={{ color: SNS_COLORS.red, fontSize: 12.5 }}>{error}</div>}
+        {actionError && <div style={{ color: SNS_COLORS.red, fontSize: 12.5, marginBottom: 8 }}>{actionError}</div>}
+        {!loading && orders.length === 0 && <div style={{ fontSize: 12.5, color: SNS_COLORS.dim }}>No {activeType.toLowerCase()} orders recorded yet.</div>}
+        {orders.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {orders.map((o) => (
+              <div key={o.id} style={{ border: `1px solid ${SNS_COLORS.border}`, borderRadius: 8, padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ fontSize: 13, color: SNS_COLORS.white, fontWeight: 600, maxWidth: "70%" }}>{o.order_text}</div>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 8px", textTransform: "uppercase",
+                    border: `1px solid ${o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange}`,
+                    color: o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange,
+                  }}>
+                    {o.status === "EXECUTED" && o.awaiting_countersignature ? "Administered — Awaiting MD Countersignature" : o.status.replace(/_/g, " ")}
+                  </span>
+                </div>
+                <div style={{ fontSize: 11, color: SNS_COLORS.dim }}>
+                  {o.ordered_by_provider_name} ({o.ordered_by_provider_role}) · {formatSourceType(o.source_type)} · {o.ordered_at ? new Date(o.ordered_at).toLocaleString() : "—"}
+                </div>
+                {o.signed_at && (
+                  <div style={{ fontSize: 11, color: SNS_COLORS.blue }}>Signed {new Date(o.signed_at).toLocaleString()} ({o.signature_method})</div>
+                )}
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed && (
+                    <button type="button" style={{ ...ohBtnSecondary, borderColor: SNS_COLORS.teal, color: SNS_COLORS.teal }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, executePhysicianOrder)}>
+                      Administer Now (Verbal Order)
+                    </button>
+                  )}
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                    <button type="button" style={ohBtnSecondary} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
+                      Approve &amp; Sign (MD)
+                    </button>
+                  )}
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
+                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Awaiting Medical Director signature</span>
+                  )}
+                  {o.status === "APPROVED" && (
+                    <button type="button" style={ohBtnSecondary} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, executePhysicianOrder)}>
+                      Mark Executed
+                    </button>
+                  )}
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && isMD && (
+                    <button type="button" style={{ ...ohBtnSecondary, borderColor: SNS_COLORS.blue, color: SNS_COLORS.blue }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
+                      Countersign (MD)
+                    </button>
+                  )}
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && !isMD && (
+                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                  )}
+                  {(o.status === "DRAFT" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
+                    <button type="button" style={{ ...ohBtnSecondary, color: SNS_COLORS.red, borderColor: SNS_COLORS.red }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, (id) => cancelPhysicianOrder(id, "Cancelled from Orders Hub"))}>
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Fax panel ── */}
+      {faxOpen && (
+        <div style={{ ...SNS_S.card, padding: 16, marginTop: 16, background: SNS_COLORS.bg, border: `1px solid ${SNS_COLORS.teal}` }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: SNS_COLORS.white }}>Fax Order / History</div>
+            <button type="button" style={ohBtnSecondary} onClick={() => setFaxOpen(false)}>Close</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+            <input style={{ ...ohInput, width: 220 }} placeholder="Recipient (e.g. pharmacy name)" value={faxForm.recipient_name} onChange={(e) => setFaxForm((f) => ({ ...f, recipient_name: e.target.value }))} />
+            <input style={{ ...ohInput, width: 180 }} placeholder="Fax number" value={faxForm.recipient_fax_number} onChange={(e) => setFaxForm((f) => ({ ...f, recipient_fax_number: e.target.value }))} />
+            <button type="button" style={ohBtnPrimary} disabled={faxSending} onClick={handleSendFax}>
+              {faxSending ? "Sending…" : "Send Fax"}
+            </button>
+          </div>
+          {faxError && <div style={{ color: SNS_COLORS.red, fontSize: 12, marginBottom: 8 }}>{faxError}</div>}
+          <div style={{ fontSize: 11, fontWeight: 600, color: SNS_COLORS.dim, textTransform: "uppercase", marginBottom: 4 }}>History</div>
+          {faxHistory.length === 0 && <div style={{ fontSize: 12, color: SNS_COLORS.dim }}>No faxes sent yet.</div>}
+          {faxHistory.map((f) => (
+            <div key={f.id} style={{ fontSize: 12, color: SNS_COLORS.muted, padding: "4px 0", borderBottom: `1px solid ${SNS_COLORS.border}` }}>
+              {f.recipient_name} ({f.recipient_fax_number}) — <span style={{ color: f.status === "FAILED" ? SNS_COLORS.red : SNS_COLORS.green }}>{f.status}</span> — {f.created_at ? new Date(f.created_at).toLocaleString() : ""}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1576,11 +3818,10 @@ function renderDemographics(data, update, COLORS, styles) {
   const u = (path, val) => update("demographics", path, val);
   return (
     <>
-      <h2 style={styles.sectionTitle}>Patient Demographics</h2>
       <p style={styles.sectionSubtitle}>Patient identification, caregiver, living situation, and advanced care planning</p>
 
       <Card title="Patient Information" hopeCode="A1110">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormInput label="First Name" value={data.firstName} onChange={(v) => u("firstName", v)} required />
           <FormInput label="Last Name" value={data.lastName} onChange={(v) => u("lastName", v)} required />
           <FormInput label="Date of Birth" value={data.dob} onChange={(v) => u("dob", v)} type="date" required />
@@ -1593,18 +3834,20 @@ function renderDemographics(data, update, COLORS, styles) {
           options={["White", "Black/African American", "Asian", "American Indian/Alaska Native", "Native Hawaiian/Pacific Islander", "Other"]} />
         <FormCheckboxGroup label="Ethnicity" values={data.ethnicity} onChange={(v) => u("ethnicity", v)} hopeCode="A1005"
           options={["Hispanic/Latino", "Not Hispanic/Latino", "Unknown"]} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormSelect label="Preferred Language" value={data.preferredLanguage} onChange={(v) => u("preferredLanguage", v)}
             options={["English", "Spanish", "Chinese", "Vietnamese", "Tagalog", "Korean", "Other"]} />
           <FormCheckbox label="Needs Interpreter" checked={data.needsInterpreter} onChange={(v) => u("needsInterpreter", v)} />
           <FormInput label="Religion" value={data.religion} onChange={(v) => u("religion", v)} />
           <FormSelect label="Marital Status" value={data.maritalStatus} onChange={(v) => u("maritalStatus", v)}
             options={["Single", "Married", "Divorced", "Widowed", "Separated", "Domestic Partner"]} />
+          <FormSelect label="Military Service (Patient/Spouse)" value={data.militaryService} onChange={(v) => u("militaryService", v)}
+            options={["Yes", "No", "Unknown"]} />
         </div>
       </Card>
 
       <Card title="Address">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <div style={{ gridColumn: "1 / -1" }}>
             <FormInput label="Street" value={data.address?.street} onChange={(v) => u("address.street", v)} />
           </div>
@@ -1616,7 +3859,7 @@ function renderDemographics(data, update, COLORS, styles) {
       </Card>
 
       <Card title="Emergency Contact">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
           <FormInput label="Name" value={data.emergencyContact?.name} onChange={(v) => u("emergencyContact.name", v)} />
           <FormInput label="Relationship" value={data.emergencyContact?.relationship} onChange={(v) => u("emergencyContact.relationship", v)} />
           <FormInput label="Phone" value={data.emergencyContact?.phone} onChange={(v) => u("emergencyContact.phone", v)} type="tel" />
@@ -1624,23 +3867,52 @@ function renderDemographics(data, update, COLORS, styles) {
       </Card>
 
       <Card title="Primary Caregiver (PCG)" id="pcg">
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-          <FormInput label="PCG Name" value={data.pcg?.name} onChange={(v) => u("pcg.name", v)} />
-          <FormInput label="Relationship" value={data.pcg?.relationship} onChange={(v) => u("pcg.relationship", v)} />
-          <FormInput label="Phone" value={data.pcg?.phone} onChange={(v) => u("pcg.phone", v)} type="tel" />
-        </div>
-        <FormRadioGroup label="PCG Health Status" value={data.pcg?.healthStatus} onChange={(v) => u("pcg.healthStatus", v)}
-          options={["Good", "Fair", "Poor"]} />
-        <FormRadioGroup label="PCG Anxiety Level" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
-          options={["None", "Mild", "Moderate", "Severe"]} />
-        <FormRadioGroup label="Able to Administer Medications" value={data.pcg?.ableToAdministerMeds} onChange={(v) => u("pcg.ableToAdministerMeds", v)}
-          options={["Yes", "No", "With training"]} />
-        <FormRadioGroup label="Willing to Provide Care" value={data.pcg?.willingToProvideCare} onChange={(v) => u("pcg.willingToProvideCare", v)}
-          options={["Yes", "No", "Ambivalent"]} />
-        <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} />
+        <FormRadioGroup label="Does this patient have a Primary Caregiver?"
+          value={!pcgIsAssessed(data.pcg) ? "" : (data.pcg?.noPcg ? "no" : "yes")}
+          onChange={(v) => { u("pcg.assessed", true); u("pcg.noPcg", v === "no"); }}
+          options={[{ value: "yes", label: "Yes — has a PCG" }, { value: "no", label: "No PCG — facility-based care" }]} />
+        {!pcgIsAssessed(data.pcg) && (
+          <div style={{ fontSize: 12, color: COLORS.warning || "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 4, padding: "6px 8px", marginBottom: 8 }}>
+            Not yet assessed this visit — select Yes or No above before finalizing.
+          </div>
+        )}
+        {data.pcg?.noPcg ? (
+          <FormSelect label="Facility / Care Setting" value={data.pcg?.noPcgReason}
+            onChange={(v) => {
+              u("pcg.noPcgReason", v);
+              // Keep Living Situation in sync so the facility type is only entered once.
+              const siteOfService = { "Memory Care": "Memory Care", "Board & Care": "Board & Care", "Skilled Nursing Facility": "SNF", "Assisted Living Facility": "ALF", "Other facility-based care": "Other" }[v];
+              if (siteOfService) {
+                u("livingSituation.siteOfService", siteOfService);
+                u("livingSituation.livingArrangement", "Facility");
+              }
+            }}
+            options={["Memory Care", "Board & Care", "Skilled Nursing Facility", "Assisted Living Facility", "Other facility-based care"]} />
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+              <FormInput label="PCG Name" value={data.pcg?.name} onChange={(v) => u("pcg.name", v)} />
+              <FormInput label="Relationship" value={data.pcg?.relationship} onChange={(v) => u("pcg.relationship", v)} />
+              <FormInput label="Phone" value={data.pcg?.phone} onChange={(v) => u("pcg.phone", v)} type="tel" />
+            </div>
+            <FormRadioGroup label="PCG Health Status" value={data.pcg?.healthStatus} onChange={(v) => u("pcg.healthStatus", v)}
+              options={["Good", "Fair", "Poor"]} />
+            <FormRadioGroup label="PCG Anxiety Level" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
+              options={["None", "Mild", "Moderate", "Severe"]} />
+            <FormRadioGroup label="Able to Administer Medications" value={data.pcg?.ableToAdministerMeds} onChange={(v) => u("pcg.ableToAdministerMeds", v)}
+              options={["Yes", "No", "With training"]} />
+            <FormRadioGroup label="Willing to Provide Care" value={data.pcg?.willingToProvideCare} onChange={(v) => u("pcg.willingToProvideCare", v)}
+              options={["Yes", "No", "Ambivalent"]} />
+            <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} />
+          </>
+        )}
       </Card>
 
-      {/* CDPH Gap #2 — Caregiver Willingness & Capability Evaluation */}
+      {/* CDPH Gap #2 — Caregiver Willingness & Capability Evaluation.
+          Only applies when the patient has an informal/family PCG; facility
+          -based patients (memory care, board & care, SNF, ALF) are cared for
+          by licensed facility staff, so this evaluation is N/A for them. */}
+      {!data.pcg?.noPcg && (
       <Card title="Caregiver Willingness & Capability Evaluation" cms="CDPH Required">
         <div style={styles.infoBox}>
           <strong>CDPH Requirement:</strong> The comprehensive assessment must include an evaluation of caregiver
@@ -1663,7 +3935,7 @@ function renderDemographics(data, update, COLORS, styles) {
           options={["Medication administration", "Wound care", "Symptom management", "Emergency procedures",
             "Body mechanics/transfers", "Nutrition/feeding", "Skin care/positioning", "Equipment use",
             "Infection control", "Pain assessment", "When to call hospice"]} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
           <FormSelect label="Willingness Score (1-5)" value={data.pcg?.caregiverEvaluation?.willingnessScore}
             onChange={(v) => u("pcg.caregiverEvaluation.willingnessScore", v)}
             options={[
@@ -1686,10 +3958,11 @@ function renderDemographics(data, update, COLORS, styles) {
           onChange={(v) => u("pcg.caregiverEvaluation.evaluationNotes", v)}
           placeholder="Document caregiver evaluation findings, concerns, and recommended interventions..." rows={4} />
       </Card>
+      )}
 
       <Card title="Living Situation" hopeCode="A1905">
         <FormSelect label="Site of Service" value={data.livingSituation?.siteOfService} onChange={(v) => u("livingSituation.siteOfService", v)}
-          options={["Home", "SNF", "ALF", "Hospital", "Homeless", "Other"]} />
+          options={["Home", "SNF", "ALF", "Board & Care", "Memory Care", "Hospital", "Homeless", "Other"]} />
         <FormSelect label="Admitted From" value={data.livingSituation?.admittedFrom} onChange={(v) => u("livingSituation.admittedFrom", v)}
           options={["Home", "Hospital", "SNF", "ALF", "Rehab", "Other"]} />
         <FormRadioGroup label="Living Arrangement" value={data.livingSituation?.livingArrangement} onChange={(v) => u("livingSituation.livingArrangement", v)}
@@ -1713,7 +3986,7 @@ function renderDemographics(data, update, COLORS, styles) {
           options={["Yes — wants hospitalization", "No — does not want", "Undecided"]} />
         <FormInput label="Hospitalization Discussion Date" value={data.advancedCarePlanning?.hospitalizationPreferenceDate}
           onChange={(v) => u("advancedCarePlanning.hospitalizationPreferenceDate", v)} type="date" />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormInput label="Decision Maker" value={data.advancedCarePlanning?.decisionMaker} onChange={(v) => u("advancedCarePlanning.decisionMaker", v)} />
           <FormInput label="POA Name" value={data.advancedCarePlanning?.poaName} onChange={(v) => u("advancedCarePlanning.poaName", v)} />
           <FormInput label="POA Phone" value={data.advancedCarePlanning?.poaPhone} onChange={(v) => u("advancedCarePlanning.poaPhone", v)} type="tel" />
@@ -1740,7 +4013,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, COLORS, styles) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
@@ -1783,7 +4056,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, CO
 
   return (
     <>
-      <h2 style={styles.sectionTitle}>{title}</h2>
       {subtitle && <p style={styles.sectionSubtitle}>{subtitle}</p>}
       {cards.map((card, ci) => {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
@@ -1792,6 +4064,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, CO
         const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
+        const shouldRenderPocIssueEditor = sectionKey === "finalization" && card.title === "Plan of Care — Problem Generation (CDPH Gap #4)";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
@@ -1804,6 +4077,99 @@ function renderGenericSection(sectionKey, data, update, config, demographics, CO
         }
         if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
           return null;
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "lcdEligibility") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <LcdEligibilityCard
+                diagnosesData={data}
+                fullFormData={fullFormData}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "secondaryDiagnoses") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <SecondaryDiagnosesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "hopeComorbidities") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <HopeComorbiditiesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "performanceStatus" && card.customRenderer === "declineTracker") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <DeclineTrackerCard
+                patientId={patientId}
+                assessmentId={assessmentId}
+                performanceData={data}
+                weight={fullFormData?.vitals?.weight}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "nutrition" && card.customRenderer === "weightLossAutoCalc") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <WeightLossAutoCalcCard
+                patientId={patientId}
+                assessmentId={assessmentId}
+                currentWeight={fullFormData?.vitals?.weight}
+                existingValue={data?.weightLossPastSixMonths}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ConstipationAutoAssessCard
+                lastBM={data?.lastBM}
+                diarrhea={data?.diarrhea}
+                existingValue={data?.constipation}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "medications" && card.customRenderer === "medicationOrders") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <MedicationOrdersCard patientId={patientId} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "medications" && card.customRenderer === "ordersHub") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <OrdersHubCard patientId={patientId} />
+            </Card>
+          );
         }
 
         return (
@@ -1885,6 +4251,58 @@ function renderGenericSection(sectionKey, data, update, config, demographics, CO
               />
             )}
 
+            {shouldRenderPocIssueEditor && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+                  Add every problem identified during this assessment to the Plan of Care below (Problem / Goal /
+                  Intervention / Discipline), then open the current POC to confirm it was generated correctly.
+                </div>
+                {(data.pocEntries || []).length > 0 && (
+                  <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                    {data.pocEntries.map((entry, ei) => (
+                      <div key={entry.id || ei} style={{
+                        display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, alignItems: "center",
+                        padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, fontSize: 12.5,
+                      }}>
+                        <div><strong>Problem:</strong> {entry.problem || "—"}</div>
+                        <div><strong>Goal:</strong> {entry.goal || "—"}</div>
+                        <div><strong>Intervention:</strong> {entry.intervention || "—"}</div>
+                        <div style={{ fontWeight: 700, color: COLORS.teal }}>{entry.discipline || "—"}</div>
+                        <button type="button" onClick={() => u("pocEntries", data.pocEntries.filter((_, i) => i !== ei))}
+                          style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
+                          title="Remove this POC entry">×</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, alignItems: "end" }}>
+                  <FormInput label="Problem" value={data.pocDraft?.problem} onChange={(v) => u("pocDraft.problem", v)} placeholder="e.g., Pain related to bone mets" />
+                  <FormInput label="Goal" value={data.pocDraft?.goal} onChange={(v) => u("pocDraft.goal", v)} placeholder="e.g., Pain ≤3/10 within 72 hrs" />
+                  <FormInput label="Intervention / Frequency" value={data.pocDraft?.intervention} onChange={(v) => u("pocDraft.intervention", v)} placeholder="e.g., RN visits 2x/wk, titrate opioid per protocol" />
+                  <FormSelect label="Discipline" value={data.pocDraft?.discipline} onChange={(v) => u("pocDraft.discipline", v)}
+                    options={["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]} />
+                  <button type="button"
+                    disabled={!data.pocDraft?.problem}
+                    onClick={() => {
+                      const draft = data.pocDraft || {};
+                      if (!draft.problem) return;
+                      const entries = [...(data.pocEntries || []), { id: `poc-${Date.now()}`, ...draft }];
+                      u("pocEntries", entries);
+                      u("pocDraft", { problem: "", goal: "", intervention: "", discipline: "" });
+                    }}
+                    style={{
+                      fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 6, border: "none",
+                      background: data.pocDraft?.problem ? COLORS.teal : COLORS.border,
+                      color: COLORS.white, cursor: data.pocDraft?.problem ? "pointer" : "not-allowed", height: 38,
+                    }}
+                  >
+                    + Add to POC
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div style={styles.fieldsGrid}>
             {card.fields.map((field, fi) => {
               if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
                 return null;
@@ -1915,33 +4333,86 @@ function renderGenericSection(sectionKey, data, update, config, demographics, CO
                 }
               };
 
+              // Size each field to the columns it actually needs instead of
+              // defaulting long-form types to the full card width. CSS grid
+              // auto-placement then packs short neighbors onto the same row
+              // (e.g. a 3-option radio group and a select can share a row),
+              // so nothing sits alone with empty space beside it.
+              const fieldSpan = getFieldSpan(fieldForRender);
+
+              let rendered;
               switch (fieldForRender.type) {
                 case "input":
-                  return <FormInput key={fi} label={fieldForRender.label} value={value} onChange={onChange}
+                  rendered = <FormInput label={fieldForRender.label} value={value} onChange={onChange}
                     type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                  break;
                 case "textarea":
-                  return <FormTextarea key={fi} label={fieldForRender.label} value={value} onChange={onChange}
+                  rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
                     placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
+                  break;
                 case "select":
-                  return <FormSelect key={fi} label={fieldForRender.label} value={value} onChange={onChange}
+                  rendered = <FormSelect label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                  break;
                 case "radio":
-                  return <FormRadioGroup key={fi} label={fieldForRender.label} value={value} onChange={onChange}
+                  rendered = <FormRadioGroup label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} />;
+                  break;
                 case "checkboxGroup":
-                  return <FormCheckboxGroup key={fi} label={fieldForRender.label} values={value || []} onChange={onChange}
+                  rendered = <FormCheckboxGroup label={fieldForRender.label} values={value || []} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
+                  break;
+                case "triState":
+                  rendered = <FormTriState label={fieldForRender.label} value={value} onChange={onChange} hopeCode={fieldForRender.hopeCode} />;
+                  break;
                 case "checkbox":
-                  return <FormCheckbox key={fi} label={fieldForRender.label} checked={value} onChange={onChange} />;
+                  rendered = <FormCheckbox label={fieldForRender.label} checked={value} onChange={onChange} />;
+                  break;
                 default:
-                  return null;
+                  rendered = null;
               }
+              if (!rendered) return null;
+              return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
+            </div>
           </Card>
         );
       })}
     </>
   );
+}
+
+// Decide how many grid columns (of the ~150px fieldsGrid track) a field
+// should occupy. Only true long-form content (large narrative textareas,
+// very large option sets) claims the full card width; everything else gets
+// just enough columns to fit its own content so grid auto-placement can pack
+// several short controls onto the same row instead of stacking them one per
+// row with wasted space to the right.
+function getFieldSpan(field) {
+  const options = field.options || [];
+  const maxLabelLen = options.reduce((m, o) => Math.max(m, String(typeof o === "string" ? o : o.label).length), 0);
+
+  if (field.type === "textarea") {
+    // Big narrative fields (explicit rows >= 4) still want real typing room;
+    // short single-line-ish notes fields can share a row with a neighbor.
+    return (field.rows || 3) >= 4 ? "full" : 3;
+  }
+  if (field.type === "radio") {
+    if (options.length <= 2) return 1;
+    if (options.length <= 4 && maxLabelLen <= 20) return 2;
+    if (options.length <= 6) return 3;
+    return "full";
+  }
+  if (field.type === "checkboxGroup") {
+    // Now rendered as a horizontal wrapping row of pills, so it behaves
+    // like a radio group: give it enough columns for its options to flow
+    // across 1-2 lines instead of one cramped narrow column.
+    if (options.length <= 2) return 1;
+    if (options.length <= 4 && maxLabelLen <= 20) return 2;
+    if (options.length <= 6) return 3;
+    return "full";
+  }
+  return 1;
 }
 
 // Utility to get/set nested values
@@ -2108,12 +4579,17 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "LCD Eligibility", fields: [
-          { type: "checkbox", label: "Criteria A: PPS ≤ 70%", path: "ndsEligibility.criteriaA" },
-          { type: "checkbox", label: "Criteria B: Dependence in 3+ ADLs", path: "ndsEligibility.criteriaB" },
-          { type: "checkbox", label: "Criteria C: Comorbid conditions", path: "ndsEligibility.criteriaC" },
-          { type: "input", label: "Disease-Specific LCD", path: "ndsEligibility.diseaseSpecificLCD" },
-        ],
+        title: "Secondary Diagnoses",
+        customRenderer: "secondaryDiagnoses",
+      },
+      {
+        title: "LCD Eligibility",
+        customRenderer: "lcdEligibility",
+      },
+      {
+        title: "Comorbidities and Co-existing Conditions",
+        hopeCode: "I0100-I8005",
+        customRenderer: "hopeComorbidities",
       },
       {
         title: "Narrative & Disease Trajectory", fields: [
@@ -2127,6 +4603,10 @@ const SECTION_CONFIGS = {
     title: "Performance Status",
     subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications",
     cards: [
+      {
+        title: "Change Since Last Assessment",
+        customRenderer: "declineTracker",
+      },
       {
         title: "Palliative Performance Scale (PPS)", hopeCode: "M1190", fields: [
           { type: "select", label: "PPS Score", path: "pps", hopeCode: "M1190", options: ["100%","90%","80%","70%","60%","50%","40%","30%","20%","10%","0%"] },
@@ -2233,14 +4713,14 @@ const SECTION_CONFIGS = {
       { title: "Cardiovascular Assessment", fields: [
         { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
         { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Strong", "Weak", "Thready", "Bounding", "Irregular"] },
-        { type: "checkbox", label: "Edema Present", path: "edema.present" },
+        { type: "triState", label: "Edema Present", path: "edema.present" },
         { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
         { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
-        { type: "checkbox", label: "Chest Pain Present", path: "chestPain.present" },
+        { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
         { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
-        { type: "checkbox", label: "JVD (Jugular Venous Distention)", path: "jvd" },
+        { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
       ]},
     ],
@@ -2291,6 +4771,7 @@ const SECTION_CONFIGS = {
     title: "Gastrointestinal",
     subtitle: "J2051D-G (Nausea, Vomiting, Diarrhea, Constipation), bowel, feeding devices",
     cards: [
+      { title: "Constipation — Auto-Suggested from Last BM Date", customRenderer: "constipationAutoAssess" },
       { title: "GI Symptoms", fields: [
         { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
@@ -2317,6 +4798,10 @@ const SECTION_CONFIGS = {
     title: "Nutrition",
     subtitle: "Weight loss, appetite, swallowing, hydration, diet",
     cards: [
+      {
+        title: "Weight Loss Auto-Calculation",
+        customRenderer: "weightLossAutoCalc",
+      },
       { title: "Nutritional Assessment", fields: [
         { type: "input", label: "Weight Loss (past 6 months)", path: "weightLossPastSixMonths", placeholder: "lbs or %" },
         { type: "radio", label: "Appetite", path: "appetite", options: ["Good", "Fair", "Poor", "Anorexic"] },
@@ -2394,6 +4879,7 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Contractures", path: "contractures", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "checkboxGroup", label: "Contracture Location", path: "contracturesLocation", options: ["Bilateral lower extremities", "Unilateral LE", "Upper extremities", "Hands/fingers", "Neck/spine", "Generalized"] },
         { type: "radio", label: "Gait", path: "gait", options: ["Normal", "Unsteady", "Shuffling", "Unable"] },
         { type: "checkboxGroup", label: "Assistive Devices", path: "assistiveDevices", options: ["Walker", "Wheelchair", "Cane", "Crutches", "Hospital bed", "Hoyer lift", "None"] },
       ]},
@@ -2632,7 +5118,9 @@ const SECTION_CONFIGS = {
       { title: "Equipment/Supply Needs", fields: [
         { type: "checkboxGroup", label: "Equipment Needed", path: "equipmentSupplyNeeds", options: [
           "Hospital bed", "Wheelchair", "Walker", "Commode", "Shower chair",
-          "Hoyer lift", "Egg crate mattress", "Incontinence supplies", "Wound care supplies"
+          "Hoyer lift", "Egg crate mattress", "Incontinence supplies", "Wound care supplies",
+          "Air mattress", "Bedpan", "Overbed table", "Cane", "Geri-chair/recliner",
+          "Urinal", "Nebulizer", "Suction machine", "O2 concentrator", "E-tank"
         ]},
         { type: "textarea", label: "Personal Care Notes", path: "notes" },
       ]},
@@ -2715,6 +5203,8 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Completed Date", path: "medReconciliation.completedDate", inputType: "date" },
         { type: "input", label: "Completed By", path: "medReconciliation.completedBy" },
       ]},
+      { title: "Medications — Allergies, Orders & Interaction Safety Check", customRenderer: "medicationOrders" },
+      { title: "Orders Hub — DME, Supplies, Lab, Treatment, Diet & Other", customRenderer: "ordersHub" },
     ],
   },
 
@@ -2775,12 +5265,40 @@ const SECTION_CONFIGS = {
 // ════════════════════════════════════════════════════════════════
 
 export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined }) {
+  const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
   const [activeSection, setActiveSection] = useState("demographics");
+  // Sections collapse independently of "activeSection" (which still drives
+  // the validation panel / SFV banner scoping). Nothing is unmounted when
+  // collapsed or off-screen — CSS `content-visibility` (below) skips the
+  // browser's layout/paint work for content that isn't visible, so keeping
+  // all 28 sections mounted in one scrollable page stays cheap.
+  const [collapsedSections, setCollapsedSections] = useState(() => new Set());
+  const sectionRefs = useRef({});
+  const isSectionOpen = (key) => !collapsedSections.has(key);
+  const toggleSection = (key) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+  const jumpToSection = (key) => {
+    setActiveSection(key);
+    setCollapsedSections((prev) => {
+      if (!prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const [assessmentId, setAssessmentId] = useState(existingAssessmentId || null);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null);
@@ -2792,6 +5310,19 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
+  const autosavePatientId = resolvedPatientId || patientId || "";
+
+  const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
+    formData,
+    assessmentId,
+    setAssessmentId,
+    locked,
+    saving,
+    saveFn: api.saveRNICAAssessment,
+    updateFn: api.updateRNICAAssessment,
+    patientId: autosavePatientId,
+    intervalMs: 30000,
+  });
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -2800,6 +5331,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing]);
+
+  useEffect(() => {
+    resetAutosaveTracking({ markCurrentAsPersisted: true });
+  }, [existingAssessmentId, patientId, resetAutosaveTracking, resolvedPatientId]);
 
   useEffect(() => {
     const nextId = patientId || getActivePatientId();
@@ -2890,7 +5425,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     });
   }, [patientSummary, assessmentId]);
 
-  const refreshIntelligence = useCallback(async (currentAssessmentId = assessmentId) => {
+  const refreshIntelligence = useCallback(async (currentAssessmentId) => {
     if (!currentAssessmentId) {
       setIntelligence(null);
       setIntelligenceError("");
@@ -2908,30 +5443,52 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setIntelligenceLoading(false);
     }
-  }, [assessmentId]);
+  }, []);
 
   // Load existing assessment
   useEffect(() => {
-    if (existingAssessmentId) {
-      api.getRNICAAssessment(existingAssessmentId)
-        .then((data) => {
-          if (data.formData) setFormData(data.formData);
-          if (data.locked) setLocked(true);
-          return data;
-        })
-        .then((data) => {
-          if (data?.assessmentId) {
-            setAssessmentId(data.assessmentId);
-            return refreshIntelligence(data.assessmentId);
-          }
-          return refreshIntelligence(existingAssessmentId);
-        })
-        .catch((err) => {
-          console.error("Failed to load assessment:", err);
-          setPageError(err instanceof Error ? err.message : "Unable to load RN ICA assessment.");
-        });
+    const activePatientId = resolvedPatientId || patientId;
+    if (!existingAssessmentId && !activePatientId) {
+      return undefined;
     }
-  }, [existingAssessmentId, refreshIntelligence]);
+
+    let mounted = true;
+    const loadAssessment = existingAssessmentId
+      ? api.getRNICAAssessment(existingAssessmentId)
+      : api.getRNICAAssessmentByPatient(activePatientId);
+
+    loadAssessment
+      .then((data) => {
+        if (!mounted) return null;
+        if (!data?.assessmentId) {
+          setAssessmentId(null);
+          setLocked(false);
+          setIntelligence(null);
+          setIntelligenceError("");
+          return null;
+        }
+        if (data.formData) {
+          setFormData(data.formData);
+          markPersisted(data.formData, data.assessmentId || existingAssessmentId);
+        }
+        setLocked(!!data.locked);
+        return data;
+      })
+      .then((data) => {
+        if (!mounted || !data?.assessmentId) return null;
+        setAssessmentId(data.assessmentId);
+        return refreshIntelligence(data.assessmentId);
+      })
+      .catch((err) => {
+        if (!mounted) return;
+        console.error("Failed to load assessment:", err);
+        setPageError(err instanceof Error ? err.message : "Unable to load RN ICA assessment.");
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [existingAssessmentId, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
 
   useEffect(() => {
     if (assessmentId) {
@@ -2974,6 +5531,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setAssessmentId(activeAssessmentId);
       }
       await refreshIntelligence(activeAssessmentId);
+      markPersisted(formData, activeAssessmentId);
       setSaveStatus("saved");
     } catch (err) {
       console.error("Save error:", err);
@@ -2982,7 +5540,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setSaving(false);
     }
-  }, [assessmentId, formData, patientId, refreshIntelligence]);
+  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence]);
 
   // Lock
   const handleLock = useCallback(async () => {
@@ -3027,33 +5585,70 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
   const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
 
-  // Navigate
+  // Navigate — move focus + scroll to the next/previous section (all
+  // sections stay mounted; this no longer swaps content).
   const goNext = () => {
     const idx = routes.findIndex((r) => r.key === activeSection);
-    if (idx < routes.length - 1) setActiveSection(routes[idx + 1].key);
+    if (idx < routes.length - 1) jumpToSection(routes[idx + 1].key);
   };
   const goPrev = () => {
     const idx = routes.findIndex((r) => r.key === activeSection);
-    if (idx > 0) setActiveSection(routes[idx - 1].key);
+    if (idx > 0) jumpToSection(routes[idx - 1].key);
   };
 
-  // Render current section
-  const renderSection = () => {
-    if (activeSection === "demographics") {
-      return renderDemographics(formData.demographics, updateField, COLORS, styles);
-    }
-
-    const config = SECTION_CONFIGS[currentRoute?.formSection];
-    if (config && currentSectionData) {
-      return renderGenericSection(currentRoute.formSection, currentSectionData, updateField, config, formData.demographics, COLORS, styles);
-    }
+  // Render ALL sections as one continuous, collapsible page (replaces the
+  // old one-section-at-a-time swap). Completed sections default to a
+  // one-line summary; incomplete/flagged ones stay open. `content-visibility`
+  // lets the browser skip layout/paint for whatever isn't on screen, so
+  // keeping every section mounted stays cheap even with 28 of them.
+  const renderAllSections = () => routes.map((route) => {
+    const isDemo = route.key === "demographics";
+    const config = SECTION_CONFIGS[route.formSection];
+    const sectionData = formData[route.formSection];
+    const open = isSectionOpen(route.key);
+    const isComplete = completedSections.includes(route.key);
+    const cfg = sidebarConfigItems.find((s) => s.key === route.key);
 
     return (
-      <div style={styles.card}>
-        <p style={{ color: COLORS.gray }}>Section "{activeSection}" — content loading...</p>
+      <div
+        key={route.key}
+        id={route.key}
+        ref={(el) => { sectionRefs.current[route.key] = el; }}
+        style={{ marginBottom: 14, border: `1px solid ${COLORS.border}`, borderRadius: 10, overflow: "hidden" }}
+      >
+        <div
+          onClick={() => toggleSection(route.key)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "10px 16px", cursor: "pointer", userSelect: "none",
+            background: activeSection === route.key ? COLORS.tealTint || COLORS.bg : COLORS.bg,
+            borderBottom: open ? `1px solid ${COLORS.border}` : "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12, color: COLORS.gray, width: 14, display: "inline-block" }}>{open ? "▾" : "▸"}</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{cfg?.label || route.key}</span>
+            {cfg?.cdphRequired && <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.teal }}>CDPH</span>}
+            {isComplete && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.success }}>&#10003; Complete</span>}
+          </div>
+          {!open && (
+            <span style={{ fontSize: 11, color: COLORS.gray }}>
+              {isComplete ? "Documented — tap to review" : "Not started — tap to document"}
+            </span>
+          )}
+        </div>
+        {open && (
+          <div style={{ padding: 16, contentVisibility: "auto", containIntrinsicSize: "600px" }}>
+            {isDemo
+              ? renderDemographics(formData.demographics, updateField, COLORS, styles)
+              : config && sectionData
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId)
+                : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
+          </div>
+        )}
       </div>
     );
-  };
+  });
 
   return (
     <AssessmentModeContext.Provider value={mode}>
@@ -3071,12 +5666,42 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>RN ICA</div>
           <div style={styles.bannerMeta}>Dr. James Olsen | Sarah Mitchell, RN, BSN</div>
-          <div style={{
-            ...styles.statusBadge,
-            background: locked ? COLORS.success : COLORS.warning,
-            color: COLORS.white, marginTop: 4,
-          }}>
-            {locked ? "LOCKED" : "IN PROGRESS"}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
+            <button
+              type="button"
+              onClick={() => {
+                clearActivePatientId();
+                navigate("/portal");
+              }}
+              title="Return to the patient dashboard"
+              style={{
+                fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6,
+                border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.dark, cursor: "pointer",
+              }}
+            >
+              ← Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const pid = resolvedPatientId || patientId;
+                if (pid) window.open(`/plan-of-care?patientId=${pid}`, "_blank", "noopener");
+              }}
+              title="Opens the patient's current Plan of Care in a new tab — does not lose your assessment progress"
+              style={{
+                fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6,
+                border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.dark, cursor: "pointer",
+              }}
+            >
+              View Plan of Care ↗
+            </button>
+            <div style={{
+              ...styles.statusBadge,
+              background: locked ? COLORS.success : COLORS.warning,
+              color: COLORS.white,
+            }}>
+              {locked ? "LOCKED" : "IN PROGRESS"}
+            </div>
           </div>
         </div>
       </div>
@@ -3148,7 +5773,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             if (!match) return;
 
             if (match.parent) {
-              setActiveSection(match.parent);
+              jumpToSection(match.parent);
               setTimeout(() => {
                 const el = document.getElementById(match.scrollTarget);
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -3156,14 +5781,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               return;
             }
 
-            setActiveSection(key);
+            jumpToSection(key);
           }}
         />
 
         {/* ── Main Content ── */}
         <div style={styles.mainArea}>
           <div style={styles.content}>
-            {!isOngoing && sfvStatus.required && (activeSection === "symptomImpact" || activeSection === "sfv") && (
+            <VisitRecorderCard
+              patientId={patientId}
+              assessmentId={assessmentId}
+              assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
+              COLORS={COLORS}
+              styles={styles}
+            />
+            {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>SFV Required</div>
                 <div>
@@ -3175,7 +5807,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
               </div>
             )}
-            {renderSection()}
+            {renderAllSections()}
           </div>
 
           {/* ── Right Validation Panel ── */}

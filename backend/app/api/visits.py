@@ -19,6 +19,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user, CurrentUser
 from app.core.visit_type_normalizer import normalize_visit_type
 
@@ -32,14 +33,17 @@ from app.models.enums import (
 )
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
+from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
+from app.models.user import User
 from app.models.visit import Visit
 from app.models.med_reconciliation import MedReconciliationItem
 from app.models.sfv_requirement import SFVRequirement
 from app.models.admission import Admission
 from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.rnica_assessment import RnicaAssessment
-from app.models.msw_ica_assessment import MswIcaAssessment
+from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_data
+from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
@@ -73,8 +77,366 @@ from app.services.reasoning_result_to_recommendation_service import (
 from app.services.clinical_note_validation_engine import (
     validate_and_trigger_incident,
 )
+from app.services.task_service import (
+    create_abuse_neglect_exploitation_task,
+    create_spiritual_care_suicide_risk_escalation_task,
+    create_suicide_risk_escalation_task,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _flatten_rnica_primary_diagnosis(form_data: dict) -> str | None:
+    primary = ((form_data or {}).get("diagnoses") or {}).get("primaryDiagnosis") or {}
+    icd10 = str(primary.get("icd10") or "").strip()
+    description = str(primary.get("description") or "").strip()
+    if description and icd10:
+        return f"{description} ({icd10})"
+    return description or icd10 or None
+
+
+def _flatten_rnica_list_items(items: list | None) -> list[str]:
+    flattened: list[str] = []
+    for item in items or []:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                flattened.append(text)
+            continue
+
+        if not isinstance(item, dict):
+            continue
+
+        icd10 = str(item.get("icd10") or item.get("code") or "").strip()
+        description = str(item.get("description") or item.get("name") or item.get("label") or "").strip()
+        reaction = str(item.get("reaction") or "").strip()
+
+        text = ""
+        if description and icd10:
+            text = f"{description} ({icd10})"
+        else:
+            text = description or icd10
+
+        if reaction and text:
+            text = f"{text} — {reaction}"
+        elif reaction:
+            text = reaction
+
+        if text:
+            flattened.append(text)
+
+    return flattened
+
+
+def _build_rnica_secondary_summary(form_data: dict) -> str | None:
+    diagnoses = (form_data or {}).get("diagnoses") or {}
+    secondary = _flatten_rnica_list_items(diagnoses.get("secondaryDiagnoses"))
+    comorbidities = _flatten_rnica_list_items(diagnoses.get("comorbidities"))
+
+    sections: list[str] = []
+    if secondary:
+        sections.append(
+            "Secondary Diagnoses:\n" + "\n".join(f"- {item}" for item in secondary)
+        )
+    if comorbidities:
+        sections.append(
+            "Comorbidities:\n" + "\n".join(f"- {item}" for item in comorbidities)
+        )
+
+    return "\n\n".join(sections) if sections else None
+
+
+def _build_rnica_allergy_summary(form_data: dict) -> tuple[bool | None, str | None]:
+    allergies = _flatten_rnica_list_items(
+        ((form_data or {}).get("infection") or {}).get("allergies")
+    )
+    if not allergies:
+        return False, None
+    return True, "\n".join(f"- {item}" for item in allergies)
+
+
+def _sync_facesheet_from_rnica(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID | None,
+    patient_id: uuid.UUID,
+    form_data: dict,
+) -> None:
+    if tenant_id is None:
+        logger.warning(
+            "RNICA facesheet sync skipped: missing tenant_id for patient %s",
+            patient_id,
+        )
+        return
+
+    try:
+        facesheet = (
+            db.query(PatientFaceSheet)
+            .filter(
+                PatientFaceSheet.tenant_id == tenant_id,
+                PatientFaceSheet.patient_id == patient_id,
+            )
+            .first()
+        )
+
+        if not facesheet:
+            logger.warning(
+                "RNICA facesheet sync skipped: facesheet missing for patient %s",
+                patient_id,
+            )
+            return
+
+        has_allergies, allergies_text = _build_rnica_allergy_summary(form_data)
+        facesheet.primary_diagnosis = _flatten_rnica_primary_diagnosis(form_data)
+        facesheet.secondary_diagnoses = _build_rnica_secondary_summary(form_data)
+        facesheet.has_allergies = has_allergies
+        facesheet.allergies = allergies_text
+        facesheet.updated_at = datetime.now(timezone.utc)
+        facesheet.updated_by = facesheet.updated_by or facesheet.created_by
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "RNICA facesheet sync failed for patient %s",
+            patient_id,
+            exc_info=True,
+        )
+
+
+def _resolve_current_user_display_name(db: Session, current_user: CurrentUser) -> str:
+    user = db.query(User).filter(User.id == current_user.id).first()
+    if user:
+        return str(user.display_name or user.full_name or current_user.email or current_user.id).strip()
+    return str(current_user.email or current_user.id).strip()
+
+
+def _today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _is_msw_suicide_risk_indicated(form_data: dict[str, Any] | None) -> bool:
+    payload = merge_msw_ica_form_data(form_data)
+    patient_concerns = set(((payload.get("patientDistress") or {}).get("patientConcerns") or []))
+    family_crisis = set(((payload.get("familyDistress") or {}).get("familyCrisis") or []))
+    return "Suicide risks" in patient_concerns or "Suicide risks" in family_crisis
+
+
+def _msw_suicide_notifications_complete(form_data: dict[str, Any] | None) -> bool:
+    payload = merge_msw_ica_form_data(form_data)
+    suicide = ((payload.get("patientDistress") or {}).get("suicideRisk") or {})
+    return bool(
+        suicide.get("notifiedCaseManagerSupervisor")
+        and suicide.get("notifiedAttendingPhysician")
+    )
+
+
+def _msw_abuse_categories(form_data: dict[str, Any] | None) -> list[str]:
+    payload = merge_msw_ica_form_data(form_data)
+    abuse = ((payload.get("patientDistress") or {}).get("abuseNeglectExploitation") or {})
+    return list(abuse.get("categories") or [])
+
+
+def _prepare_msw_ica_form_data(
+    db: Session,
+    current_user: CurrentUser,
+    form_data: dict[str, Any] | None,
+    *,
+    bind_signatures: bool = False,
+) -> dict[str, Any]:
+    payload = merge_msw_ica_form_data(form_data)
+    current_user_name = _resolve_current_user_display_name(db, current_user)
+
+    abuse = payload["patientDistress"]["abuseNeglectExploitation"]
+    if abuse.get("categories") or abuse.get("reportedTo") or abuse.get("reportDate") or abuse.get("reportReferenceCaseNumber"):
+        abuse["reportedBy"] = current_user_name
+        abuse["reportedByUserId"] = str(current_user.id)
+
+    if bind_signatures:
+        finalization = payload["finalization"]
+        finalization["assessment_complete"] = True
+        finalization["clinician_name"] = current_user_name
+        finalization["clinician_user_id"] = str(current_user.id)
+        if not finalization.get("signature_date"):
+            finalization["signature_date"] = _today_iso()
+
+        if finalization.get("countersign_required"):
+            finalization["countersign_staff_name"] = current_user_name
+            finalization["countersign_staff_user_id"] = str(current_user.id)
+            if not finalization.get("countersign_signature_date"):
+                finalization["countersign_signature_date"] = _today_iso()
+
+    return payload
+
+
+def _build_suicide_risk_summary(form_data: dict[str, Any]) -> str:
+    suicide = ((form_data.get("patientDistress") or {}).get("suicideRisk") or {})
+    selected: list[str] = []
+    if suicide.get("ageSexRiskFactorsPresent"):
+        selected.append("age/sex statistical risk factors")
+    if suicide.get("earlyChildhoodLoss"):
+        selected.append("early childhood loss")
+    if suicide.get("currentAlcoholDrugAbuse"):
+        selected.append("current alcohol/drug abuse")
+    if suicide.get("recentIrreversibleLoss"):
+        selected.append("recent irreversible loss")
+    if suicide.get("specificSuicidePlanIdentified"):
+        selected.append("specific suicide plan identified")
+    if suicide.get("lethalityOfMethod"):
+        selected.append(f"lethality {suicide.get('lethalityOfMethod')}")
+    if suicide.get("meansAvailability"):
+        selected.append(f"means availability {suicide.get('meansAvailability')}")
+    if suicide.get("notes"):
+        selected.append(f"notes: {str(suicide.get('notes')).strip()[:160]}")
+    return ", ".join(selected) if selected else "Suicide risk selected in MSW ICA assessment"
+
+
+def _sync_msw_ica_escalations(
+    db: Session,
+    *,
+    assessment: MswIcaAssessment,
+    patient: Patient,
+    current_user: CurrentUser,
+    previous_form_data: dict[str, Any] | None,
+    next_form_data: dict[str, Any],
+) -> None:
+    tenant_id = getattr(patient, "tenant_id", None)
+    if tenant_id is None:
+        logger.warning("MSW ICA escalation skipped: patient %s missing tenant_id", patient.id)
+        return
+
+    if _is_msw_suicide_risk_indicated(next_form_data) and (
+        not _is_msw_suicide_risk_indicated(previous_form_data)
+        or not _msw_suicide_notifications_complete(next_form_data)
+    ):
+        create_suicide_risk_escalation_task(
+            db=db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            assessment_id=assessment.id,
+            created_by=current_user.id,
+            risk_summary=_build_suicide_risk_summary(next_form_data),
+        )
+
+    abuse_categories = _msw_abuse_categories(next_form_data)
+    if abuse_categories:
+        create_abuse_neglect_exploitation_task(
+            db=db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            assessment_id=assessment.id,
+            created_by=current_user.id,
+            categories=abuse_categories,
+        )
+
+
+def _is_scica_suicide_risk_indicated(form_data: dict[str, Any] | None) -> bool:
+    payload = merge_scica_form_data(form_data)
+    patient_sources = set(((payload.get("patientDistress") or {}).get("sources") or []))
+    caregiver_sources = set(((payload.get("caregiverDistress") or {}).get("sources") or []))
+    return "Suicidal thoughts" in patient_sources or "Suicidal thoughts" in caregiver_sources
+
+
+def _scica_suicide_notifications_complete(form_data: dict[str, Any] | None) -> bool:
+    payload = merge_scica_form_data(form_data)
+    patient = payload.get("patientDistress") or {}
+    caregiver = payload.get("caregiverDistress") or {}
+
+    def section_complete(section: dict[str, Any]) -> bool:
+        suicide = section.get("suicideRisk") or {}
+        return bool(
+            suicide.get("notifiedCaseManagerSupervisor")
+            and suicide.get("notifiedAttendingPhysician")
+        )
+
+    patient_selected = "Suicidal thoughts" in set(patient.get("sources") or [])
+    caregiver_selected = "Suicidal thoughts" in set(caregiver.get("sources") or [])
+    return (not patient_selected or section_complete(patient)) and (not caregiver_selected or section_complete(caregiver))
+
+
+def _prepare_scica_form_data(
+    db: Session,
+    current_user: CurrentUser,
+    form_data: dict[str, Any] | None,
+    *,
+    bind_signatures: bool = False,
+) -> dict[str, Any]:
+    payload = merge_scica_form_data(form_data)
+    current_user_name = _resolve_current_user_display_name(db, current_user)
+    signature = payload["signature"]
+
+    if bind_signatures:
+        signature["signedByName"] = current_user_name
+        signature["signedByUserId"] = str(current_user.id)
+        signature["signedDate"] = _today_iso()
+    elif signature.get("acknowledgement"):
+        signature["signedByName"] = current_user_name
+        signature["signedByUserId"] = str(current_user.id)
+        if not signature.get("signedDate"):
+            signature["signedDate"] = _today_iso()
+
+    return payload
+
+
+def _build_scica_suicide_risk_summary(form_data: dict[str, Any]) -> str:
+    payload = merge_scica_form_data(form_data)
+    summaries: list[str] = []
+
+    def describe(section_key: str, label: str) -> None:
+        section = payload.get(section_key) or {}
+        if "Suicidal thoughts" not in set(section.get("sources") or []):
+            return
+        suicide = section.get("suicideRisk") or {}
+        selected: list[str] = []
+        if suicide.get("ageSexRiskFactorsPresent"):
+            selected.append("age/sex statistical risk factors")
+        if suicide.get("earlyChildhoodLoss"):
+            selected.append("early childhood loss")
+        if suicide.get("currentAlcoholDrugAbuse"):
+            selected.append("current alcohol/drug abuse")
+        if suicide.get("recentIrreversibleLoss"):
+            selected.append("recent irreversible loss")
+        if suicide.get("specificSuicidePlanIdentified"):
+            selected.append("specific suicide plan identified")
+        if suicide.get("lethalityOfMethod"):
+            selected.append(f"lethality {suicide.get('lethalityOfMethod')}")
+        if suicide.get("meansAvailability"):
+            selected.append(f"means availability {suicide.get('meansAvailability')}")
+        if suicide.get("notes"):
+            selected.append(f"notes: {str(suicide.get('notes')).strip()[:160]}")
+        summary = ", ".join(selected) if selected else "Suicidal thoughts selected"
+        summaries.append(f"{label}: {summary}")
+
+    describe("patientDistress", "Patient")
+    describe("caregiverDistress", "Caregiver")
+    return " | ".join(summaries) if summaries else "Suicide risk selected in SCICA assessment"
+
+
+def _sync_scica_escalations(
+    db: Session,
+    *,
+    assessment: ScicaAssessment,
+    patient: Patient,
+    current_user: CurrentUser,
+    previous_form_data: dict[str, Any] | None,
+    next_form_data: dict[str, Any],
+) -> None:
+    tenant_id = getattr(patient, "tenant_id", None)
+    if tenant_id is None:
+        logger.warning("SCICA escalation skipped: patient %s missing tenant_id", patient.id)
+        return
+
+    if _is_scica_suicide_risk_indicated(next_form_data) and (
+        not _is_scica_suicide_risk_indicated(previous_form_data)
+        or not _scica_suicide_notifications_complete(next_form_data)
+    ):
+        create_spiritual_care_suicide_risk_escalation_task(
+            db=db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            assessment_id=assessment.id,
+            created_by=current_user.id,
+            risk_summary=_build_scica_suicide_risk_summary(next_form_data),
+        )
 
 
 # =========================================================
@@ -167,7 +529,11 @@ def get_db(request: Request) -> Generator[Session, None, None]:
 
 
 @router.post("/rnica/save")
-def save_rnica_assessment(payload: dict, db: Session = Depends(get_db)):
+def save_rnica_assessment(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     patient_id_raw = (payload or {}).get("patientId")
     form_data = (payload or {}).get("formData") or {}
 
@@ -179,15 +545,11 @@ def save_rnica_assessment(payload: dict, db: Session = Depends(get_db)):
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
 
-    patient_exists = db.execute(
-        text("SELECT 1 FROM patients WHERE id = :patient_id LIMIT 1"),
-        {"patient_id": patient_uuid},
-    ).first()
-    if patient_exists is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    patient = get_authorized_patient(db, patient_uuid, current_user)
 
     assessment = RnicaAssessment(
         patient_id=patient_uuid,
+        tenant_id=getattr(patient, "tenant_id", None),
         form_data=form_data,
         assessment_type="RNICA",
         status="DRAFT",
@@ -196,12 +558,22 @@ def save_rnica_assessment(payload: dict, db: Session = Depends(get_db)):
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
+    _sync_facesheet_from_rnica(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None),
+        patient_id=patient_uuid,
+        form_data=form_data,
+    )
 
     return {"assessmentId": str(assessment.id), "status": "saved"}
 
 
 @router.get("/rnica/{assessment_id}")
-def get_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+def get_rnica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -210,6 +582,41 @@ def get_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
     record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": record.form_data or {},
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.get("/rnica/by-patient/{patient_id}")
+def get_rnica_assessment_by_patient(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    get_authorized_patient(db, patient_uuid, current_user)
+
+    records = (
+        db.query(RnicaAssessment)
+        .filter(RnicaAssessment.patient_id == patient_uuid)
+        .order_by(RnicaAssessment.created_at.desc())
+        .all()
+    )
+    record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
+    if not record:
+        return {"assessmentId": None}
 
     return {
         "assessmentId": str(record.id),
@@ -222,7 +629,12 @@ def get_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/rnica/{assessment_id}")
-def update_rnica_assessment(assessment_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_rnica_assessment(
+    assessment_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -232,10 +644,23 @@ def update_rnica_assessment(assessment_id: str, payload: dict, db: Session = Dep
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
+    get_authorized_patient(db, record.patient_id, current_user)
+
     form_data = (payload or {}).get("formData") or record.form_data or {}
     record.form_data = form_data
     record.status = "DRAFT"
     db.commit()
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == record.patient_id)
+        .first()
+    )
+    _sync_facesheet_from_rnica(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None) if patient else None,
+        patient_id=record.patient_id,
+        form_data=form_data,
+    )
 
     return {
         "assessmentId": str(record.id),
@@ -245,7 +670,11 @@ def update_rnica_assessment(assessment_id: str, payload: dict, db: Session = Dep
 
 
 @router.post("/rnica/{assessment_id}/lock")
-def lock_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+def lock_rnica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -254,6 +683,8 @@ def lock_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
     record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
 
     record.locked = True
     record.status = "LOCKED"
@@ -263,7 +694,11 @@ def lock_rnica_assessment(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/rnica/{assessment_id}/intelligence")
-def get_rnica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
+def get_rnica_intelligence(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -272,6 +707,8 @@ def get_rnica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
     record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
 
     patient_id = str(record.patient_id) if record.patient_id else None
     patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
@@ -285,9 +722,13 @@ def get_rnica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/msw-ica/save")
-def save_msw_ica_assessment(payload: dict, db: Session = Depends(get_db)):
+def save_msw_ica_assessment(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     patient_id_raw = (payload or {}).get("patientId")
-    form_data = (payload or {}).get("formData") or {}
+    incoming_form_data = (payload or {}).get("formData") or {}
 
     if not patient_id_raw:
         raise HTTPException(status_code=422, detail="patientId is required")
@@ -297,12 +738,8 @@ def save_msw_ica_assessment(payload: dict, db: Session = Depends(get_db)):
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
 
-    patient_exists = db.execute(
-        text("SELECT 1 FROM patients WHERE id = :patient_id LIMIT 1"),
-        {"patient_id": patient_uuid},
-    ).first()
-    if patient_exists is None:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    form_data = _prepare_msw_ica_form_data(db, current_user, incoming_form_data)
 
     assessment = MswIcaAssessment(
         patient_id=patient_uuid,
@@ -312,13 +749,28 @@ def save_msw_ica_assessment(payload: dict, db: Session = Depends(get_db)):
         locked=False,
     )
     db.add(assessment)
+    db.flush()
+
+    _sync_msw_ica_escalations(
+        db,
+        assessment=assessment,
+        patient=patient,
+        current_user=current_user,
+        previous_form_data=None,
+        next_form_data=form_data,
+    )
+
     db.commit()
     db.refresh(assessment)
     return {"assessmentId": str(assessment.id), "status": "saved"}
 
 
 @router.get("/msw-ica/{assessment_id}")
-def get_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+def get_msw_ica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -328,10 +780,45 @@ def get_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
+    get_authorized_patient(db, record.patient_id, current_user)
+
     return {
         "assessmentId": str(record.id),
         "patientId": str(record.patient_id),
-        "formData": record.form_data or {},
+        "formData": merge_msw_ica_form_data(record.form_data or {}),
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.get("/msw-ica/by-patient/{patient_id}")
+def get_msw_ica_assessment_by_patient(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    get_authorized_patient(db, patient_uuid, current_user)
+
+    records = (
+        db.query(MswIcaAssessment)
+        .filter(MswIcaAssessment.patient_id == patient_uuid)
+        .order_by(MswIcaAssessment.created_at.desc())
+        .all()
+    )
+    record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
+    if not record:
+        return {"assessmentId": None}
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": merge_msw_ica_form_data(record.form_data or {}),
         "locked": record.locked,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
@@ -339,7 +826,12 @@ def get_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.put("/msw-ica/{assessment_id}")
-def update_msw_ica_assessment(assessment_id: str, payload: dict, db: Session = Depends(get_db)):
+def update_msw_ica_assessment(
+    assessment_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -349,9 +841,23 @@ def update_msw_ica_assessment(assessment_id: str, payload: dict, db: Session = D
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    form_data = (payload or {}).get("formData") or record.form_data or {}
+    patient = get_authorized_patient(db, record.patient_id, current_user)
+
+    previous_form_data = merge_msw_ica_form_data(record.form_data or {})
+    incoming_form_data = (payload or {}).get("formData") or record.form_data or {}
+    form_data = _prepare_msw_ica_form_data(db, current_user, incoming_form_data)
     record.form_data = form_data
     record.status = "DRAFT"
+
+    _sync_msw_ica_escalations(
+        db,
+        assessment=record,
+        patient=patient,
+        current_user=current_user,
+        previous_form_data=previous_form_data,
+        next_form_data=form_data,
+    )
+
     db.commit()
     return {
         "assessmentId": str(record.id),
@@ -361,7 +867,11 @@ def update_msw_ica_assessment(assessment_id: str, payload: dict, db: Session = D
 
 
 @router.post("/msw-ica/{assessment_id}/lock")
-def lock_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
+def lock_msw_ica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -371,6 +881,193 @@ def lock_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
+    get_authorized_patient(db, record.patient_id, current_user)
+
+    merged_form_data = merge_msw_ica_form_data(record.form_data or {})
+    if _is_msw_suicide_risk_indicated(merged_form_data) and not _msw_suicide_notifications_complete(merged_form_data):
+        raise HTTPException(
+            status_code=422,
+            detail="Suicide risk notifications to the Case Manager/Supervisor and Attending Physician must be documented before locking the MSW ICA assessment.",
+        )
+
+    record.form_data = _prepare_msw_ica_form_data(db, current_user, merged_form_data, bind_signatures=True)
+    record.locked = True
+    record.status = "LOCKED"
+    record.locked_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"assessmentId": str(record.id), "status": "locked", "locked": True}
+
+
+@router.post("/scica/save")
+def save_scica_assessment(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    patient_id_raw = (payload or {}).get("patientId")
+    incoming_form_data = (payload or {}).get("formData") or {}
+
+    if not patient_id_raw:
+        raise HTTPException(status_code=422, detail="patientId is required")
+
+    try:
+        patient_uuid = uuid.UUID(str(patient_id_raw))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    form_data = _prepare_scica_form_data(db, current_user, incoming_form_data)
+
+    assessment = ScicaAssessment(
+        patient_id=patient_uuid,
+        form_data=form_data,
+        assessment_type="SCICA",
+        status="DRAFT",
+        locked=False,
+    )
+    db.add(assessment)
+    db.flush()
+
+    _sync_scica_escalations(
+        db,
+        assessment=assessment,
+        patient=patient,
+        current_user=current_user,
+        previous_form_data=None,
+        next_form_data=form_data,
+    )
+
+    db.commit()
+    db.refresh(assessment)
+    return {"assessmentId": str(assessment.id), "status": "saved"}
+
+
+@router.get("/scica/{assessment_id}")
+def get_scica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(ScicaAssessment).filter(ScicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": merge_scica_form_data(record.form_data or {}),
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.get("/scica/by-patient/{patient_id}")
+def get_scica_assessment_by_patient(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    get_authorized_patient(db, patient_uuid, current_user)
+
+    records = (
+        db.query(ScicaAssessment)
+        .filter(ScicaAssessment.patient_id == patient_uuid)
+        .order_by(ScicaAssessment.created_at.desc())
+        .all()
+    )
+    record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
+    if not record:
+        return {"assessmentId": None}
+
+    return {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "formData": merge_scica_form_data(record.form_data or {}),
+        "locked": record.locked,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+    }
+
+
+@router.put("/scica/{assessment_id}")
+def update_scica_assessment(
+    assessment_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(ScicaAssessment).filter(ScicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    patient = get_authorized_patient(db, record.patient_id, current_user)
+
+    previous_form_data = merge_scica_form_data(record.form_data or {})
+    incoming_form_data = (payload or {}).get("formData") or record.form_data or {}
+    form_data = _prepare_scica_form_data(db, current_user, incoming_form_data)
+    record.form_data = form_data
+    record.status = "DRAFT"
+
+    _sync_scica_escalations(
+        db,
+        assessment=record,
+        patient=patient,
+        current_user=current_user,
+        previous_form_data=previous_form_data,
+        next_form_data=form_data,
+    )
+
+    db.commit()
+    return {
+        "assessmentId": str(record.id),
+        "status": "updated",
+        "locked": record.locked,
+    }
+
+
+@router.post("/scica/{assessment_id}/lock")
+def lock_scica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(ScicaAssessment).filter(ScicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
+
+    merged_form_data = merge_scica_form_data(record.form_data or {})
+    if _is_scica_suicide_risk_indicated(merged_form_data) and not _scica_suicide_notifications_complete(merged_form_data):
+        raise HTTPException(
+            status_code=422,
+            detail="Suicide risk notifications to the Case Manager/Supervisor and Attending Physician must be documented before locking the SCICA assessment.",
+        )
+
+    record.form_data = _prepare_scica_form_data(db, current_user, merged_form_data, bind_signatures=True)
     record.locked = True
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
@@ -379,7 +1076,11 @@ def lock_msw_ica_assessment(assessment_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/msw-ica/{assessment_id}/intelligence")
-def get_msw_ica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
+def get_msw_ica_intelligence(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -389,11 +1090,13 @@ def get_msw_ica_intelligence(assessment_id: str, db: Session = Depends(get_db)):
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
+    get_authorized_patient(db, record.patient_id, current_user)
+
     patient_id = str(record.patient_id) if record.patient_id else None
     patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
 
     return build_msw_ica_intelligence(
-        record.form_data or {},
+        merge_msw_ica_form_data(record.form_data or {}),
         patient_id=patient_id,
         patient_evidence=patient_evidence,
     )
@@ -2196,11 +2899,13 @@ def update_visit_status(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
 ):
     request_id = _get_request_id(request, response)
     user_id = _resolve_actor_user_id(db, request)
 
     visit = _load_visit_for_update(db, visit_id)
+    get_authorized_patient(db, visit.patient_id, current_user)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
 
     new_status = (payload.status or "").strip().upper()
@@ -2321,6 +3026,7 @@ def create_visit(
     # LOAD PATIENT + CONTEXT
     # =========================================================
     patient = _load_patient_for_update(db, payload.patient_id)
+    get_authorized_patient(db, patient.id, current_user)
     _set_db_context(db, patient.tenant_id, user_id, request_id)
 
     # =========================================================
@@ -2677,6 +3383,7 @@ def reopen_visit(
     # LOAD VISIT
     # =========================================================
     visit = _load_visit_for_update(db, visit_id)
+    get_authorized_patient(db, visit.patient_id, current_user)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
 
     # =========================================================
@@ -2828,6 +3535,7 @@ def upsert_chha_visit_outcome(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
 ):
     # =========================================================
     # CONTEXT RESOLUTION
@@ -2839,6 +3547,7 @@ def upsert_chha_visit_outcome(
     # LOAD VISIT
     # =========================================================
     visit = _load_visit_for_update(db, visit_id)
+    get_authorized_patient(db, visit.patient_id, current_user)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
 
     # =========================================================
@@ -2955,6 +3664,7 @@ def refuse_service(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
 ):
     # =========================================================
     # CONTEXT RESOLUTION
@@ -2966,6 +3676,7 @@ def refuse_service(
     # LOAD PATIENT
     # =========================================================
     patient = _load_patient_for_update(db, patient_id)
+    get_authorized_patient(db, patient.id, current_user)
     _set_db_context(db, patient.tenant_id, user_id, request_id)
 
     # =========================================================
@@ -3346,6 +4057,7 @@ def finalize_visit(
     )
     
     visit = _load_visit_for_update(db, visit_id)
+    get_authorized_patient(db, visit.patient_id, current_user)
     _set_db_context(db, visit.tenant_id, user_id, request_id)
 
     if not getattr(visit, "admission_id", None):

@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.models.patient import Patient
@@ -71,14 +72,7 @@ def finalize_rn_admission_order(
     # LOAD PATIENT
     # -----------------------------------------------------
 
-    patient = (
-        db.query(Patient)
-        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
-        .first()
-    )
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
+    patient = get_authorized_patient(db, patient_id, user)
 
     if not payload.order_rn:
         raise HTTPException(status_code=400, detail="RN admission order is required")

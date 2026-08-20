@@ -25,8 +25,8 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 )
 
-JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-emr")
-JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-emr-users")
+JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-hospice-solutions")
+JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-hospice-solutions-users")
 
 AUTH_MODE = os.getenv("AUTH_MODE", "TOKEN").upper()
 SYSTEM_ACCESS_KEY = os.getenv("SYSTEM_ACCESS_KEY", "")

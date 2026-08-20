@@ -1,78 +1,167 @@
 {
-  "test_case_id": "LCD-DEMENTIA-001",
+  "test_case_id": "LCD-DEMENTIA-RULESET",
   "disease": "DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION",
-  "lcd_reference": "CMS Hospice LCD – Dementia",
-  "evaluation_date": "2022-01-09",
-
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Dementia due to Alzheimer's / Senile Degeneration",
+  "evaluation_date": "",
   "eligibility_result": {
-    "status": "ELIGIBLE",
-    "reason": "Meets dementia LCD criteria based on FAST stage and supporting complications",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for dementia.",
     "confidence": null
   },
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "dementia-core",
+      "description": "Group 1 must be met and Group 2 must contribute at least one documented progression factor.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": true,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": {
-      "value": 40,
-      "meets_criteria": true
+      "required": true,
+      "operator": "LTE",
+      "threshold": 70
     },
     "PPS": {
-      "value": 40,
-      "meets_criteria": true
+      "required": true,
+      "operator": "LTE",
+      "threshold": 70
     },
     "FAST": {
-      "value": "7C",
-      "meets_criteria": true
+      "required": true,
+      "operator": "GTE",
+      "threshold": "7a"
     },
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
-      "group_name": "ADL and Functional Decline",
+      "group_name": "ADL / Functional Status",
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
           "criterion_id": "1a",
-          "description": "KPS ≤ 70",
-          "result": true
+          "field": "kps",
+          "operator": "LTE",
+          "expected": 70,
+          "description": "Karnofsky Performance Status is less than or equal to 70"
         },
         {
           "criterion_id": "1b",
-          "description": "PPS ≤ 70",
-          "result": true
+          "field": "pps",
+          "operator": "LTE",
+          "expected": 70,
+          "description": "Palliative Performance Status is less than or equal to 70"
         },
         {
           "criterion_id": "1c",
-          "description": "FAST ≥ 7A",
-          "result": true
+          "field": "fast_stage_at_or_beyond_7a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "FAST stage is 7A or beyond"
+        },
+        {
+          "criterion_id": "1d",
+          "field": "ambulation_assistance_required",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Unable to ambulate without assistance / dependent to get to and from specific locations"
+        },
+        {
+          "criterion_id": "1e",
+          "field": "dressing_assistance_required",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Unable to dress without assistance"
+        },
+        {
+          "criterion_id": "1f",
+          "field": "bathing_assistance_required",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Unable to bathe without assistance"
+        },
+        {
+          "criterion_id": "1g",
+          "field": "incontinence_or_catheter_ostomy_dependency",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Urinary and fecal incontinence is intermittent or constant, or the patient is dependent on catheter or ostomy care"
+        },
+        {
+          "criterion_id": "1h",
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.1h",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Unable to consistently have meaningful verbal communication; utters stereotypical phrases only; or speaks six or fewer intelligible words"
         }
       ]
     },
     {
       "group_id": "2",
-      "group_name": "Disease Progression / Complications",
+      "group_name": "Documented History / Progression",
       "rule": "ANY_REQUIRED",
       "criteria": [
         {
           "criterion_id": "2a",
-          "description": "Aspiration pneumonia",
-          "result": true
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.2a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Aspiration pneumonia in the past 12 months"
         },
         {
           "criterion_id": "2b",
-          "description": "Septicemia",
-          "result": false
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.2b",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Pyelonephritis in the past 12 months"
+        },
+        {
+          "criterion_id": "2c",
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.2c",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Septicemia in the past 12 months"
+        },
+        {
+          "criterion_id": "2d",
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.2d",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Stage 3 or 4 decubitus ulcer in the past 12 months"
+        },
+        {
+          "criterion_id": "2e",
+          "field": "criteria_answers.DEMENTIA_ALZHEIMERS_SENILE_DEGENERATION.2e",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Recurrent fever after antibiotics in the past 12 months"
+        },
+        {
+          "criterion_id": "2f",
+          "field": "weight_loss_percent_6_months",
+          "operator": "GTE",
+          "expected": 10,
+          "description": "Inability to maintain sufficient fluid and calorie intake with at least 10 percent weight loss during the previous six months"
+        },
+        {
+          "criterion_id": "2g",
+          "field": "serum_albumin",
+          "operator": "LT",
+          "expected": 2.5,
+          "description": "Serum albumin is less than 2.5 gm/dl"
         }
       ]
     }
   ],
-
-  "clinical_notes": "Patient meets dementia LCD via FAST ≥7A with documented complications.",
+  "clinical_notes": "Question labels are generalized from the extracted Alzheimer's / senile degeneration source form.",
   "source_document": "Alzheimer's Disease end stage.pdf"
 }

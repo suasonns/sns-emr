@@ -40,33 +40,22 @@ export default function Sidebar({
   const isActive = (path: string) => location.pathname === path;
   const menuOpen = Boolean(anchorEl);
 
-  const dashboardLabel =
-    role === "OWNER"
-      ? "Owner Dashboard"
-      : role === "BILLER"
-      ? "Analytics Hub"
-      : "Tenant Dashboard";
-
   // ✅ NAV ITEMS
   const navItems = useMemo(() => {
     if (role === "OWNER") {
-      return [
-        { label: "Owner Dashboard", path: "/owner", badge: total },
-        { label: "Tenant Dashboard", path: "/tenant", badge: counts.blockers },
-        { label: "Analytics Hub", path: "/billing", badge: counts.incidents },
-        { label: "Portal Preview", path: "/portal", badge: 0 },
-      ];
+      // Platform/vendor super-user: platform operations only (tenants,
+      // licensing, platform health). Never combined with billing/financial
+      // access, and never any tenant, patient, or clinical PHI.
+      return [{ label: "Owner Dashboard", path: "/owner", badge: total }];
     }
 
-    if (role === "BILLER") {
-      return [
-      { label: "Analytics Hub", path: "/billing", badge: counts.tasks },
-        { label: "Portal Preview", path: "/portal", badge: 0 },
-      ];
+    if (role === "BILLER" || role === "BILLING") {
+      return [{ label: "Analytics Hub", path: "/billing", badge: counts.tasks }];
     }
 
     return [
       { label: "Tenant Dashboard", path: "/tenant", badge: total },
+      { label: "IDG Meeting Workspace", path: "/idg-workspace", badge: counts.blockers },
       { label: "Portal Preview", path: "/portal", badge: 0 },
     ];
   }, [role, counts, total]);
@@ -101,13 +90,19 @@ export default function Sidebar({
       }}
     >
       {/* HEADER */}
-      <Box sx={{ p: 2, borderBottom: "1px solid #1e293b" }}>
-        <Typography variant="h6" sx={{ fontWeight: 700 }}>
-          SNS EMR
-        </Typography>
-        <Typography variant="caption" color="#94a3b8">
-          {dashboardLabel}
-        </Typography>
+      <Box sx={{ p: 2, borderBottom: "1px solid #1e293b", display: "flex", justifyContent: "center" }}>
+        <Box
+          component="img"
+          src="/brand/sns-logo-light.svg"
+          alt="SNS logo"
+          onError={(event) => {
+            const target = event.currentTarget as HTMLImageElement;
+            if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
+              target.src = "/brand/sns-logo-icon.svg";
+            }
+          }}
+          sx={{ width: 190, height: "auto", display: "block" }}
+        />
       </Box>
 
       {/* NAVIGATION */}

@@ -7,6 +7,7 @@ function metricValue(metrics, key) {
 
 export default function DashboardOverview({ workspace, census, loading }) {
   const dashboard = workspace?.dashboard;
+  const tenantDisplayName = workspace?.tenant_name || 'Love & Faith Hospice Services, Inc.';
   const metrics = dashboard?.metrics ?? [];
   const stats = [
     { label: 'Active Patients', value: census?.patient_count ?? 0, tone: COLORS.teal },
@@ -33,11 +34,16 @@ export default function DashboardOverview({ workspace, census, loading }) {
     })),
   ].slice(0, 5);
 
+  const qiesTracker = [
+    { label: 'HOPE Transmission', daysLeft: 9, status: 'On track', tone: '#34d399', deadline: 'Deadline: 07/26' },
+    { label: 'QIES Reporting', daysLeft: 13, status: 'Needs review', tone: '#60a5fa', deadline: 'Deadline: 07/30' },
+  ];
+
   return (
     <div>
       <div style={S.header}>
         <div>
-          <h1 style={S.pageTitle}>Agency Dashboard</h1>
+          <h1 style={S.pageTitle}>{tenantDisplayName}</h1>
           <p style={S.pageSubtitle}>Operational overview across admissions, clinical care, scheduling, and billing.</p>
         </div>
         <div style={{ color: COLORS.dim, fontSize: 12 }}>{loading ? 'Loading tenant data...' : 'Live tenant data'}</div>
@@ -54,7 +60,38 @@ export default function DashboardOverview({ workspace, census, loading }) {
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24 }}>
+      <div style={{ marginTop: 24 }}>
+        <div style={S.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: 0 }}>HOPE / QIES submission tracker</h3>
+            <span style={{ ...S.badge('rgba(16,183,162,0.12)', COLORS.teal), fontSize: 11 }}>Live compliance</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16 }}>
+            {qiesTracker.map((item) => (
+              <div key={item.label} style={{ background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 12, padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <span style={{ color: COLORS.muted, fontSize: 12, fontWeight: 600 }}>{item.label}</span>
+                  <span style={{ fontSize: 11, color: item.tone, fontWeight: 700 }}>{item.status}</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 28, fontWeight: 800, color: COLORS.white }}>{item.daysLeft}</span>
+                  <span style={{ color: COLORS.muted, fontSize: 12 }}>days left</span>
+                </div>
+
+                <div style={{ color: COLORS.dim, fontSize: 12, marginBottom: 12 }}>{item.deadline}</div>
+
+                <div style={{ height: 8, borderRadius: 999, background: 'rgba(148,163,184,0.18)', overflow: 'hidden' }}>
+                  <div style={{ width: `${Math.max(18, Math.min(100, (item.daysLeft / 15) * 100))}%`, height: '100%', borderRadius: 999, background: item.tone }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 24, marginTop: 24 }}>
         <div style={S.card}>
           <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 16px' }}>Care delivery overview</h3>
           <div style={{ display: 'grid', gap: 12 }}>

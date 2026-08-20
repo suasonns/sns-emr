@@ -17,16 +17,26 @@ import PortalShell from "../components/PortalShell";
 import { portalTypography } from "../styles/portalTypography";
 import { getActivePatientId } from "../utils/activePatient";
 const PATIENT_ID = getActivePatientId() ?? "";
+const CLINICAL_BRAND = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  bg: "#F8FAFC",
+  canvas: "#EEF3F8",
+  panel: "#FFFFFF",
+  line: "#D8E3E8",
+  text: "#0F172A",
+  muted: "#64748B",
+  slate: "#334155",
+  strong: "#0F2033",
+};
 const QUICK_LINKS = [
   { label: "Care Overview", route: "/care-overview" },
   { label: "Secure Inbox", route: "/secure-inbox" },
   { label: "Incident / Occurrence", route: "/clinical-alerts" },
   { label: "Compliance / LCD / HOPE / QIES", route: "/compliance" },
   { label: "Bereavement", route: "/bereavement" },
-  { label: "Volunteer Scheduling", route: "/volunteer-scheduling" },
-  { label: "RNICA", route: "/rnica" },
-  { label: "MSW ICA", route: "/msw-ica" },
-  { label: "SC ICA", route: "/sc-ica" },
   { label: "Patient LCD", route: "/patient-lcd" },
   { label: "Analytics", route: "/analytics" },
   { label: "Tenant Dashboard", route: "/tenant" },
@@ -418,13 +428,13 @@ export default function SNSPortal() {
 
 export const pageStyle: React.CSSProperties = {
   minHeight: "100vh",
-  background: "#eef3f8",
+  background: CLINICAL_BRAND.canvas,
   fontFamily: "'Inter', 'Segoe UI', sans-serif",
 };
 
 export const topBarStyle: React.CSSProperties = {
   height: 80,
-  background: "#1f4a78",
+  background: CLINICAL_BRAND.navy,
   color: "#fff",
   display: "flex",
   alignItems: "center",
@@ -444,7 +454,7 @@ export const logoDot: React.CSSProperties = {
   width: 36,
   height: 36,
   borderRadius: 999,
-  background: "#10b7a2",
+  background: CLINICAL_BRAND.teal,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -505,29 +515,30 @@ const heroStyle: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
-  background: "#fff",
-  border: "1px solid #dbe5ea",
+  background: CLINICAL_BRAND.panel,
+  border: `1px solid ${CLINICAL_BRAND.line}`,
   borderRadius: 12,
   padding: "16px 20px",
   marginBottom: 16,
+  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.04)",
 };
 
 const heroTitleStyle: React.CSSProperties = {
   fontSize: 16,
   lineHeight: 1.15,
   fontWeight: 800,
-  color: "#1f2937",
+  color: CLINICAL_BRAND.text,
 };
 
 const heroSubStyle: React.CSSProperties = {
   marginTop: 6,
   fontSize: 12,
-  color: "#64748b",
+  color: CLINICAL_BRAND.muted,
 };
 
 const syncedStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#64748b",
+  color: CLINICAL_BRAND.muted,
   whiteSpace: "nowrap",
   marginTop: 4,
 };
@@ -535,8 +546,8 @@ const syncedStyle: React.CSSProperties = {
 const badgeStyle: React.CSSProperties = {
   display: "inline-block",
   marginLeft: 4,
-  background: "#ccfbf1",
-  color: "#0f766e",
+  background: CLINICAL_BRAND.tealLight,
+  color: CLINICAL_BRAND.tealDark,
   padding: "3px 10px",
   borderRadius: 999,
   fontSize: 10,
@@ -544,8 +555,8 @@ const badgeStyle: React.CSSProperties = {
 };
 
 const panelStyle: React.CSSProperties = {
-  background: "#fff",
-  border: "1px solid #dbe5ea",
+  background: CLINICAL_BRAND.panel,
+  border: `1px solid ${CLINICAL_BRAND.line}`,
   borderRadius: 12,
   padding: 12,
   boxShadow: "0 12px 28px rgba(15, 23, 42, 0.05)",
@@ -557,7 +568,7 @@ const sectionHeaderStyle: React.CSSProperties = {
   textTransform: "uppercase",
   letterSpacing: "0.1em",
   marginBottom: 10,
-  color: "#0f2033",
+  color: CLINICAL_BRAND.strong,
 };
 
 const grid3Style: React.CSSProperties = {
@@ -579,18 +590,18 @@ const listRowStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 10,
   padding: "10px 0",
-  borderBottom: "1px solid #edf2f7",
+  borderBottom: `1px solid ${CLINICAL_BRAND.line}`,
 };
 
 const rowTitleStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
-  color: "#0f172a",
+  color: CLINICAL_BRAND.text,
 };
 
 const subtleTextStyle: React.CSSProperties = {
   fontSize: portalTypography.small,
-  color: "#64748b",
+  color: CLINICAL_BRAND.muted,
   marginTop: 2,
 };
 
@@ -622,20 +633,20 @@ const checkRowStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 12,
   padding: "10px 0",
-  borderBottom: "1px solid #edf2f7",
+  borderBottom: `1px solid ${CLINICAL_BRAND.line}`,
 };
 
 const countBubbleStyle: React.CSSProperties = {
   minWidth: 22,
   height: 22,
   borderRadius: 999,
-  background: "#e2e8f0",
+  background: "#E2E8F0",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   fontSize: 10,
   fontWeight: 800,
-  color: "#334155",
+  color: CLINICAL_BRAND.slate,
 };
 
 function statusPillStyle(bg: string): React.CSSProperties {
@@ -650,12 +661,12 @@ function statusPillStyle(bg: string): React.CSSProperties {
 }
 
 const calloutStyle: React.CSSProperties = {
-  border: "1px solid #0d9488",
-  background: "#ecfeff",
+  border: `1px solid ${CLINICAL_BRAND.teal}`,
+  background: CLINICAL_BRAND.tealLight,
   borderRadius: 12,
   padding: 12,
   fontSize: 11,
-  color: "#0f766e",
+  color: CLINICAL_BRAND.tealDark,
   marginBottom: 12,
 };
 
@@ -665,13 +676,13 @@ const noteStyle: React.CSSProperties = {
   gap: 10,
   justifyContent: "space-between",
   padding: "10px 0",
-  borderBottom: "1px solid #edf2f7",
+  borderBottom: `1px solid ${CLINICAL_BRAND.line}`,
 };
 
 const miniButtonStyle: React.CSSProperties = {
-  border: "1px solid #0d9488",
+  border: `1px solid ${CLINICAL_BRAND.teal}`,
   background: "#fff",
-  color: "#0d9488",
+  color: CLINICAL_BRAND.teal,
   borderRadius: 8,
   padding: "6px 10px",
   fontSize: 10,
@@ -688,22 +699,22 @@ const quickLinksStyle: React.CSSProperties = {
 };
 
 const quickChipStyle: React.CSSProperties = {
-  border: "1px solid #dbe5ea",
+  border: `1px solid ${CLINICAL_BRAND.line}`,
   background: "#fff",
   borderRadius: 999,
   padding: "7px 12px",
   fontSize: 11,
   fontWeight: 700,
-  color: "#475569",
+  color: CLINICAL_BRAND.slate,
   cursor: "pointer",
 };
 
 const messageStyle: React.CSSProperties = {
-  border: "1px solid #dbe5ea",
+  border: `1px solid ${CLINICAL_BRAND.line}`,
   borderRadius: 12,
   padding: 10,
   marginBottom: 10,
-  background: "#f8fafc",
+  background: CLINICAL_BRAND.bg,
 };
 
 const signatureStyle: React.CSSProperties = {
@@ -712,7 +723,7 @@ const signatureStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 12,
   padding: "8px 0",
-  borderBottom: "1px solid #edf2f7",
+  borderBottom: `1px solid ${CLINICAL_BRAND.line}`,
 };
 
 const visitStyle: React.CSSProperties = {
@@ -720,13 +731,13 @@ const visitStyle: React.CSSProperties = {
   alignItems: "center",
   gap: 14,
   padding: "8px 0",
-  borderBottom: "1px solid #edf2f7",
+  borderBottom: `1px solid ${CLINICAL_BRAND.line}`,
 };
 
 const visitTimeStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
-  color: "#0f172a",
+  color: CLINICAL_BRAND.text,
 };
 
 const issueStyle = (severity: string): React.CSSProperties => ({
@@ -739,11 +750,11 @@ const issueStyle = (severity: string): React.CSSProperties => ({
 
 const emptyStyle: React.CSSProperties = {
   fontSize: 11,
-  color: "#64748b",
+  color: CLINICAL_BRAND.muted,
 };
 
 export const footerBarStyle: React.CSSProperties = {
-  background: "#1f3d66",
+  background: CLINICAL_BRAND.navy,
   color: "#fff",
   display: "flex",
   justifyContent: "space-between",

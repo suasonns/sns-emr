@@ -136,6 +136,19 @@ class Patient(Base):
     crisis_ended_at = Column(DateTime(timezone=True), nullable=True)
 
     # ---------------------------------------------------------
+    # IDG group assignment (entity #2/#3 scheduling cohort — see
+    # IDG_DOMAIN_MODEL.md). A patient belongs to at most one active
+    # IDGGroup at a time; the group's IDGGroupScheduleRule(s) determine
+    # when this patient's next automatic IDGMeeting will be generated.
+    # ---------------------------------------------------------
+    idg_group_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("idg_groups.id"),
+        nullable=True,
+        index=True,
+    )
+
+    # ---------------------------------------------------------
     # Audit
     # ---------------------------------------------------------
     created_by = Column(
@@ -242,6 +255,24 @@ class Patient(Base):
 
     external_substances = relationship(
         "ExternalSubstance",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    allergies = relationship(
+        "PatientAllergy",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    patient_orders = relationship(
+        "PatientOrder",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    physician_orders = relationship(
+        "PhysicianOrder",
         back_populates="patient",
         cascade="all, delete-orphan",
     )

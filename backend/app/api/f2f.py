@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.security import CurrentUser
 from app.core.database import get_db
 from app.core.permissions import require_roles
@@ -215,6 +216,8 @@ def create_f2f_endpoint(
         require_roles(["RN", "NP", "MD", "Administrator", "DPCS"])
     ),
 ):
+    get_authorized_patient(db, request.patient_id, user)
+
     # Validate benefit period ownership + encounter date
     bp = (
         db.query(BenefitPeriod)
@@ -302,6 +305,8 @@ def finalize_f2f_endpoint(
 
     if not f2f:
         raise HTTPException(status_code=404, detail="F2F encounter not found.")
+
+    get_authorized_patient(db, f2f.patient_id, user)
 
     if not f2f.summary:
         f2f.summary = _generate_f2f_summary(f2f)

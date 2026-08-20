@@ -37,6 +37,7 @@ type TenantOption = {
 
 type BillingView =
   | "uncollected-unbilled"
+  | "835-remittance"
   | "noe-notr"
   | "ra-reconciliation"
   | "monthly-summary"
@@ -52,6 +53,7 @@ type BillingView =
 
 const BILLING_TABS: Array<{ key: BillingView; label: string }> = [
   { key: "uncollected-unbilled", label: "Uncollected/Unbilled Claims" },
+  { key: "835-remittance", label: "835 Remittance" },
   { key: "noe-notr", label: "NOE/NOTR" },
   { key: "ra-reconciliation", label: "RA Reconciliation" },
   { key: "monthly-summary", label: "Monthly Billing Summary" },
@@ -288,6 +290,58 @@ export default function BillingDashboard() {
 
   const billingPeriod = "Jan 1 - Jan 31, 2026";
   const payerFilter = "All Payers";
+
+  const render835Remittance = () => (
+    <Box sx={{ display: "grid", gap: 2 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(4, minmax(0, 1fr))" }, gap: 1.5 }}>
+        <MetricCard label="835 Files Processed" value="27" note="This period" color={C.teal} />
+        <MetricCard label="Total Remitted" value="$1.08M" note="Across payers" color={C.green} />
+        <MetricCard label="Rejected Amount" value="$28,400" note="2.6% of remits" color={C.red} />
+        <MetricCard label="Posting Variance" value="0.8%" note="Within tolerance" color={C.blue} />
+      </Box>
+
+      <SectionCard title="835 Remittance Detail">
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr style={{ textAlign: "left", color: C.slate500, fontSize: 11, textTransform: "uppercase" }}>
+              {['Date', 'Payer', 'Batch', 'Claims', 'Paid', 'Adjustments', 'Denied', 'Status'].map((h) => (
+                <th key={h} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.gray200}` }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[
+              ["2026-01-15", "Medicare Part A", "835-2026-015", "42", "$319,100", "$7,420", "$2,900", "Posted"],
+              ["2026-01-10", "Medi-Cal SF", "835-2026-014", "31", "$188,400", "$4,200", "$1,350", "Posted"],
+              ["2026-01-08", "Anthem Blue Cross", "835-2026-013", "18", "$96,720", "$1,980", "$1,250", "Review"],
+              ["2026-01-05", "Aetna HMO", "835-2026-012", "12", "$74,900", "$2,620", "$810", "Posted"],
+            ].map((row) => (
+              <tr key={row[0]} style={{ borderBottom: `1px solid ${C.gray100}` }}>
+                {row.map((cell, idx) => (
+                  <td key={`${row[0]}-${idx}`} style={{ padding: "10px 8px", fontSize: 12, color: idx === 7 ? (cell === "Posted" ? C.green : C.amber) : C.gray600, fontWeight: idx === 0 || idx === 7 ? 700 : 500 }}>
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </SectionCard>
+
+      <SectionCard title="835 Reconciliation Notes">
+        <Box sx={{ display: "grid", gap: 1.25 }}>
+          <Typography sx={{ fontSize: 13, color: C.gray600 }}>
+            Medicare and commercial remittance files are posted to the payment ledger and reconciled against the billing cycle. Variance flags are reviewed before final reconciliation closes.
+          </Typography>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            <Chip label="Medicare 835 posted" size="small" sx={{ bgcolor: C.tealLight, color: C.tealDark, fontWeight: 700 }} />
+            <Chip label="Medi-Cal variance review" size="small" sx={{ bgcolor: C.amberLight, color: C.amber, fontWeight: 700 }} />
+            <Chip label="ERA exceptions cleared" size="small" sx={{ bgcolor: C.greenLight, color: C.green, fontWeight: 700 }} />
+          </Box>
+        </Box>
+      </SectionCard>
+    </Box>
+  );
 
   const renderUncollected = () => (
     <Box sx={{ display: "grid", gap: 2 }}>
@@ -670,6 +724,8 @@ export default function BillingDashboard() {
         return renderClaimsBreakdown();
       case "uncollected-unbilled":
         return renderUncollected();
+      case "835-remittance":
+        return render835Remittance();
       case "noe-notr":
         return renderGeneric("NOE / NOTR Live Tracking");
       case "ra-reconciliation":

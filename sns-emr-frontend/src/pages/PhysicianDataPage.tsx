@@ -45,16 +45,30 @@ export default function PhysicianDataPage() {
   const handleSelect = (section: string) => {
     const routes: Record<string, string> = {
       overview: "/care-overview",
+      admission: "/rnica",
+      assessment: "/rnica",
+      "nursing-assessment": "/rnica",
+      psychosocial: "/msw-ica",
+      "psychosocial-assessment": "/msw-ica",
+      spiritual: "/sc-ica",
+      "spiritual-assessment": "/sc-ica",
       physician: "/physician",
-      "visit-calendar": "/volunteer-scheduling",
+      "visit-calendar": "/care-overview",
+      "tx-meds-dme-supplies": "/care-overview",
+      idg: "/care-overview",
+      "plan-of-care": "/plan-of-care",
       bereavement: "/bereavement",
       compliance: "/compliance",
       "lcd-eligibility": "/patient-lcd",
       "incident-occurrence": "/incident-occurrence",
+      documents: "/communication-log",
       "communication-log": "/communication-log",
+      "care-team": "/care-overview",
     };
 
-    if (routes[section]) navigate(routes[section]);
+    const target = routes[section];
+    if (!target) return;
+    navigate(`${target}${patientId ? `?patientId=${encodeURIComponent(patientId)}` : ""}`);
   };
 
   return (

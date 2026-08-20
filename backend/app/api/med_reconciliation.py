@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
+from app.core.security import CurrentUser, get_current_user
 from app.db.session import get_db
 from app.models.med_reconciliation import (
     MedReconciliationImport,
@@ -301,6 +303,7 @@ def med_reconciliation_health():
 def create_med_reconciliation_import(
     payload: MedReconciliationImportCreate,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     if payload.source_type not in VALID_SOURCE_TYPES:
         raise HTTPException(status_code=400, detail="Invalid source_type")
@@ -310,6 +313,9 @@ def create_med_reconciliation_import(
 
     tenant_uuid = _parse_uuid(payload.tenant_id, "tenant_id")
     patient_uuid = _parse_uuid(payload.patient_id, "patient_id")
+    get_authorized_patient(db, patient_uuid, user)
+    if tenant_uuid != user.tenant_id:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
     uploaded_by_uuid = (
         _parse_uuid(payload.uploaded_by, "uploaded_by") if payload.uploaded_by else None
@@ -360,17 +366,23 @@ def list_med_reconciliation_imports(
     status: Optional[str] = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
-    query = db.query(MedReconciliationImport)
+    query = db.query(MedReconciliationImport).filter(
+        MedReconciliationImport.tenant_id == user.tenant_id
+    )
 
     if patient_id:
+        patient_uuid = _parse_uuid(patient_id, "patient_id")
+        get_authorized_patient(db, patient_uuid, user)
         query = query.filter(
-            MedReconciliationImport.patient_id == _parse_uuid(patient_id, "patient_id")
+            MedReconciliationImport.patient_id == patient_uuid
         )
 
     if tenant_id:
+        tenant_uuid = _parse_uuid(tenant_id, "tenant_id")
         query = query.filter(
-            MedReconciliationImport.tenant_id == _parse_uuid(tenant_id, "tenant_id")
+            MedReconciliationImport.tenant_id == tenant_uuid
         )
 
     if status:
@@ -397,6 +409,7 @@ def list_med_reconciliation_imports(
 def create_med_reconciliation_import_auto(
     payload: MedReconciliationAutoImportRequest,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     """
     Production-grade Med Reconciliation import.
@@ -434,6 +447,9 @@ def create_med_reconciliation_import_auto(
 
     tenant_uuid = _parse_uuid(payload.tenant_id, "tenant_id")
     patient_uuid = _parse_uuid(payload.patient_id, "patient_id")
+    get_authorized_patient(db, patient_uuid, user)
+    if tenant_uuid != user.tenant_id:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
     uploaded_by_uuid = (
         _parse_uuid(payload.uploaded_by, "uploaded_by")
@@ -523,6 +539,7 @@ def create_med_reconciliation_import_auto(
 def create_med_reconciliation_item(
     payload: MedReconciliationItemCreate,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     if payload.list_type not in VALID_LIST_TYPES:
         raise HTTPException(status_code=400, detail="Invalid list_type")
@@ -533,6 +550,9 @@ def create_med_reconciliation_item(
     import_uuid = _parse_uuid(payload.import_id, "import_id")
     tenant_uuid = _parse_uuid(payload.tenant_id, "tenant_id")
     patient_uuid = _parse_uuid(payload.patient_id, "patient_id")
+    get_authorized_patient(db, patient_uuid, user)
+    if tenant_uuid != user.tenant_id:
+        raise HTTPException(status_code=404, detail="Patient not found")
 
     parent_import = (
         db.query(MedReconciliationImport)
@@ -697,6 +717,7 @@ def create_med_reconciliation_item(
 def complete_reconciliation_review(
     item_id: str,
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
 ):
     item_uuid = _parse_uuid(item_id, "item_id")
 
@@ -708,6 +729,8 @@ def complete_reconciliation_review(
 
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
+
+    get_authorized_patient(db, item.patient_id, user)
 
     try:
         item.review_status = "REVIEWED"

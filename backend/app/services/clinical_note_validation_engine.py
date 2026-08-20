@@ -1752,6 +1752,48 @@ def _content(note: ClinicalNote) -> dict[str, Any]:
     return note.content if isinstance(getattr(note, "content", None), dict) else {}
 
 
+# =========================================================
+# PUBLIC ACCESSOR
+# =========================================================
+# Validation results (red_flags, needs_clarification, incident_required, etc.)
+# are NOT stored as top-level ClinicalNote columns. They are persisted by
+# _persist_validation_result_to_note() into note.content["_validation"] at
+# note-submission time. Any code that needs to re-read a note's validation
+# outcome later (IDG readiness checks, dashboards, alerts) MUST go through
+# this accessor rather than attempting direct attribute access on the note
+# (e.g. `note.red_flags`), which will raise AttributeError since no such
+# column exists.
+_EMPTY_VALIDATION_FLAGS: dict[str, Any] = {
+    "warnings": [],
+    "red_flags": [],
+    "audit_flags": [],
+    "needs_clarification": False,
+    "clarification_items": [],
+    "incident_required": False,
+    "incident_status": None,
+    "incident_id": None,
+    "finalization_allowed": True,
+    "compliance_blocking_items": [],
+    "compliance_summary": {},
+}
+
+
+def get_note_validation_flags(note: ClinicalNote) -> dict[str, Any]:
+    """Return the persisted validation payload for a clinical note.
+
+    Falls back to safe empty defaults if the note was never validated
+    (e.g. legacy notes created before this engine existed) or its content
+    isn't a dict.
+    """
+    content = _content(note)
+    validation = content.get("_validation") if isinstance(content, dict) else None
+    if not isinstance(validation, dict):
+        return dict(_EMPTY_VALIDATION_FLAGS)
+    merged = dict(_EMPTY_VALIDATION_FLAGS)
+    merged.update(validation)
+    return merged
+
+
 def _extract_json_block(
     note: ClinicalNote,
     content: dict[str, Any],

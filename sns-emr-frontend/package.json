@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "start": "serve -s dist -l 8080"
+    "start": "serve -s dist -l 8080",
+    "export:rnica-schema": "node scripts/export-rnica-schema.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

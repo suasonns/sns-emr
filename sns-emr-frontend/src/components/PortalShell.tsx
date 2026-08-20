@@ -11,26 +11,25 @@ type PortalShellProps = {
 };
 
 const NAV_ITEMS = [
-  { label: "Dashboard", route: "/analytics?section=dashboard" },
-  { label: "Census", route: "/analytics?section=census" },
-  { label: "Secure Inbox", route: "/analytics?section=secure-inbox" },
-  { label: "Clinical Alerts", route: "/analytics?section=clinical-alerts" },
-  { label: "Scheduling", route: "/analytics?section=scheduling" },
+  { label: "Dashboard", route: "/portal" },
+  { label: "Census", route: "/tenant" },
+  { label: "Secure Inbox", route: "/secure-inbox" },
+  { label: "Clinical Alerts", route: "/clinical-alerts" },
   { label: "Analytics", route: "/analytics" },
-  { label: "Settings", route: "/analytics?section=settings" },
-  { label: "My Profile", route: "/analytics?section=my-profile" },
+  { label: "Settings", route: "/owner" },
+  { label: "My Profile", route: "/my-profile" },
 ];
 
 const C = {
-  navy: "#1E3A5F",
-  teal: "#0D9488",
-  tealDark: "#0f766e",
-  tealLight: "#ccfbf1",
-  white: "#ffffff",
-  slate200: "#E2E8F0",
-  slate500: "#64748b",
-  gray50: "#F8FAFC",
-  gray900: "#111827",
+  navy: "var(--sns-bgAlt)",
+  teal: "var(--sns-teal)",
+  tealDark: "var(--sns-teal)",
+  tealLight: "var(--sns-cardSoft)",
+  white: "var(--sns-white)",
+  slate200: "var(--sns-border)",
+  slate500: "var(--sns-muted)",
+  gray50: "var(--sns-bg)",
+  gray900: "var(--sns-card)",
 };
 
 function formatRole(role?: string) {
@@ -62,8 +61,8 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
   const initials = getInitials(displayName) || "US";
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: C.gray50, display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif" }}>
-      <Box sx={{ bgcolor: C.navy, color: C.white }}>
+    <Box sx={{ minHeight: "100vh", bgcolor: C.gray50, color: C.white, display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif" }}>
+      <Box sx={{ bgcolor: "var(--sns-card)", color: C.white }}>
         <Box
           sx={{
             width: "100%",
@@ -78,14 +77,18 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap" }}>
-            <Box sx={{ lineHeight: 1.1 }}>
-              <Typography component="span" sx={{ fontSize: 20, fontWeight: 800, color: C.white, letterSpacing: 0.5 }}>
-                SNS{" "}
-              </Typography>
-              <Typography component="span" sx={{ fontSize: 20, fontWeight: 800, color: C.teal, letterSpacing: 0.5 }}>
-                Hospice
-              </Typography>
-            </Box>
+            <Box
+              component="img"
+              src="/brand/sns-logo-light.svg"
+              alt="SNS logo"
+              onError={(event) => {
+                const target = event.currentTarget as HTMLImageElement;
+                if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
+                  target.src = "/brand/sns-logo-icon.svg";
+                }
+              }}
+              sx={{ width: 180, height: "auto", display: "block" }}
+            />
             <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
               {NAV_ITEMS.map((tab) => {
                 const active = tab.label === activeTab;
@@ -99,13 +102,13 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
                       py: 1,
                       borderRadius: 1,
                       border: "none",
-                      backgroundColor: active ? C.teal : "transparent",
-                      color: active ? C.white : "#c9d6e3",
+                      backgroundColor: active ? "var(--sns-teal)" : "transparent",
+                      color: active ? "var(--sns-white)" : "var(--sns-muted)",
                       fontSize: portalTypography.body,
                       fontWeight: 600,
                       textTransform: "none",
                       fontFamily: "'Inter', sans-serif",
-                      "&:hover": { backgroundColor: active ? C.teal : "rgba(255,255,255,0.08)" },
+                      "&:hover": { backgroundColor: active ? "var(--sns-teal)" : "rgba(255,255,255,0.08)" },
                     }}
                   >
                     {tab.label}
@@ -131,7 +134,7 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
         <Box sx={{ width: "100%", px: 4, py: 3.5, boxSizing: "border-box" }}>{children}</Box>
       </Box>
 
-      <Box sx={{ bgcolor: C.navy, color: C.white }}>
+      <Box sx={{ bgcolor: "var(--sns-card)", color: C.white }}>
         <Box
           sx={{
             width: "100%",
@@ -157,7 +160,7 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
       </Box>
 
       <Box sx={{ bgcolor: C.gray900, color: "#9ca3af", textAlign: "center", py: 2.5, px: 3 }}>
-        <Typography sx={{ fontSize: 11, fontWeight: 500 }}>SNS Hospice Solutions Secure Portal | &copy; 2024-2025 | All Rights Reserved | SNS Tech Solutions</Typography>
+        <Typography sx={{ fontSize: 11, fontWeight: 500 }}>Secure Portal | &copy; 2024-2025 | All Rights Reserved</Typography>
         <Typography sx={{ fontSize: 10, color: "#6b7280", mt: 0.5 }}>
           This system contains Protected Health Information (PHI). Access is restricted to authorized personnel and subject to HIPAA regulations. Unauthorized access or disclosure is strictly prohibited and may result in civil and criminal penalties.
         </Typography>

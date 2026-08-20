@@ -13,7 +13,18 @@ from app.db.base import Base
 
 class IDGReview(Base):
     """
-    Patient-level IDG review record.
+    Patient-level IDG review record — Domain model entity #1 of 3
+    ("IDG" is overloaded — do not conflate these):
+        1. PatientIDGReview -> this class (patient-chart clinical
+           documentation: Admission/Initial/Routine/Recert/Significant-
+           Change IDG review notes — nursing, physician, MSW, chaplain
+           discussion, POC review). Belongs to ONE patient. NOT a meeting.
+        2. IDGMeeting -> idg_meeting.py (the recurring ~14-day scheduled
+           team meeting itself: date/time, attendees, agenda, minutes).
+        3. IDGMeetingPatientReview -> idg_meeting_patient_review.py (the
+           temporary in-meeting review workspace: POC/med-list/med-rec/
+           orders review + physician Reviewed/Deferred + batch-sign
+           eligibility for ONE patient within ONE IDGMeeting).
 
     This table is the patient review container for IDG.
     It should connect the patient, benefit period, IDG meeting,

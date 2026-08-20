@@ -1,22 +1,28 @@
 {
-  "test_case_id": "LCD-HIV-TEMPLATE",
+  "test_case_id": "LCD-HIV-RULESET",
   "disease": "HIV_END_STAGE",
-  "lcd_reference": "LCD Hospice Eligibility Determination – HIV Disease",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 HIV Disease",
   "evaluation_date": "",
-
   "eligibility_result": {
-    "status": "PENDING",
-    "reason": "",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for HIV disease.",
     "confidence": null
   },
-
-  "group_combination_rule": "ALL_GROUPS_REQUIRED",
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "hiv-core",
+      "description": "Functional impairment plus at least one documented burden-of-illness factor.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": {
       "required": true,
@@ -31,7 +37,6 @@
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -40,53 +45,105 @@
       "criteria": [
         {
           "criterion_id": "1a",
-          "field": "scores.kps",
+          "field": "kps",
           "operator": "LT",
           "expected": 50,
-          "description": "KPS less than 50"
+          "description": "Karnofsky Performance Status is less than 50"
         },
         {
           "criterion_id": "1b",
-          "field": "scores.pps",
+          "field": "pps",
           "operator": "LT",
           "expected": 50,
-          "description": "PPS less than 50"
+          "description": "Palliative Performance Status is less than 50"
         }
       ]
     },
     {
       "group_id": "2",
-      "group_name": "Burden of Illness (Documented)",
-      "rule": "ALL_REQUIRED",
+      "group_name": "Burden of Illness \u2013 Documented",
+      "rule": "ANY_REQUIRED",
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "labs.cd4_count",
+          "field": "cd4_count",
           "operator": "LT",
           "expected": 25,
-          "unit": "cells/mcl",
-          "description": "CD4 count less than 25 cells per mcl"
+          "description": "CD4 count is less than 25 cells/mcl"
         },
         {
           "criterion_id": "2b",
-          "field": "labs.hiv_viral_load_persistent",
+          "field": "viral_load",
           "operator": "GT",
           "expected": 100000,
-          "unit": "copies/ml",
-          "description": "Persistent viral load greater than 100000 copies per ml"
+          "description": "Persistent viral load is greater than 100,000 copies/ml"
         },
         {
-          "criterion_id": "2c",
-          "field": "hiv.severe_condition_present",
+          "criterion_id": "2c_i",
+          "field": "criteria_answers.HIV_END_STAGE.2c_i",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Presence of severe HIV-associated condition"
+          "description": "Central nervous system lymphoma"
+        },
+        {
+          "criterion_id": "2c_ii",
+          "field": "criteria_answers.HIV_END_STAGE.2c_ii",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Untreated, refractory, or refused treatment for wasting (loss of at least 10 percent lean body mass)"
+        },
+        {
+          "criterion_id": "2c_iii",
+          "field": "criteria_answers.HIV_END_STAGE.2c_iii",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Mycobacterium avium complex bacteremia that is untreated, unresponsive to treatment, or treatment is refused"
+        },
+        {
+          "criterion_id": "2c_iv",
+          "field": "criteria_answers.HIV_END_STAGE.2c_iv",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Progressive multifocal leukoencephalopathy"
+        },
+        {
+          "criterion_id": "2c_v",
+          "field": "criteria_answers.HIV_END_STAGE.2c_v",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Systemic lymphoma with advanced HIV disease and only partial response to chemotherapy"
+        },
+        {
+          "criterion_id": "2c_vi",
+          "field": "criteria_answers.HIV_END_STAGE.2c_vi",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Visceral Kaposi's sarcoma unresponsive to therapy"
+        },
+        {
+          "criterion_id": "2c_vii",
+          "field": "criteria_answers.HIV_END_STAGE.2c_vii",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Renal failure in the absence of dialysis"
+        },
+        {
+          "criterion_id": "2c_viii",
+          "field": "criteria_answers.HIV_END_STAGE.2c_viii",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Cryptosporidium infection"
+        },
+        {
+          "criterion_id": "2c_ix",
+          "field": "criteria_answers.HIV_END_STAGE.2c_ix",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Toxoplasmosis unresponsive to therapy"
         }
       ]
     }
   ],
-
-  "supporting_factors": [],
-  "clinical_notes": "Template derived from HIV Disease LCD form.",
+  "clinical_notes": "The extracted form lists the burden-of-illness findings as documented alternatives; the engine treats any one documented factor as satisfying Group 2.",
   "source_document": "HIV.pdf"
 }

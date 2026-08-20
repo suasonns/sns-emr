@@ -4,7 +4,7 @@ import Sidebar from "../components/layout/Sidebar";
 import Header from "../components/layout/Header";
 
 import SNSAnalytics from "./SNSAnalytics";
-import TenantDashboard from "./TenantDashboard";
+import TenantDashboard from "../tenant/TenantDashboard";
 import OwnerDashboard from "./OwnerDashboard";
 import { getCurrentUser } from "../api/session";
 

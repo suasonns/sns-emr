@@ -237,6 +237,33 @@ function activeDiagnosisFlag(diagnoses = {}, matcher) {
   return diagnosisEntries(diagnoses).some((entry) => matcher.test(entry.toLowerCase()));
 }
 
+// HOPE Section I0100-I8005: Comorbidities and Co-existing Conditions.
+// Mirrors the category list used in RNICA.jsx's HopeComorbiditiesCard so the
+// generated HOPE report reflects the same structured checklist the clinician
+// confirmed on the assessment, instead of re-deriving it from free text.
+const HOPE_COMORBIDITY_ITEMS = [
+  { key: "cancer", code: "I0100", label: "Cancer" },
+  { key: "heartFailure", code: "I0600", label: "Heart Failure" },
+  { key: "pvdPad", code: "I0900", label: "Peripheral Vascular Disease (PVD) / Peripheral Arterial Disease (PAD)" },
+  { key: "cardiovascularExclHF", code: "I0950", label: "Cardiovascular (excluding heart failure)" },
+  { key: "liverDisease", code: "I1101", label: "Liver disease" },
+  { key: "renalDisease", code: "I1510", label: "Renal disease" },
+  { key: "sepsis", code: "I2102", label: "Sepsis" },
+  { key: "diabetesMellitus", code: "I2900", label: "Diabetes Mellitus (DM)" },
+  { key: "neuropathy", code: "I2910", label: "Neuropathy" },
+  { key: "stroke", code: "I4501", label: "Stroke" },
+  { key: "dementia", code: "I4801", label: "Dementia (including Alzheimer's disease)" },
+  { key: "neurologicalConditions", code: "I5150", label: "Neurological Conditions (e.g., Parkinson's, MS, ALS)" },
+  { key: "seizureDisorder", code: "I5401", label: "Seizure Disorder" },
+  { key: "copd", code: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)" },
+];
+
+function hasStructuredHopeComorbidities(diagnoses = {}) {
+  const hope = diagnoses.hopeComorbidities;
+  if (!hope) return false;
+  return HOPE_COMORBIDITY_ITEMS.some((item) => Boolean(hope[item.key])) || Boolean(hope.other);
+}
+
 export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}) {
   const demographics = formData.demographics || {};
   const livingSituation = demographics.livingSituation || {};
@@ -281,6 +308,21 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const hasHeartFailure = activeDiagnosisFlag(diagnoses, /\b(chf|congestive heart failure|heart failure)\b/);
   const hasCopd = activeDiagnosisFlag(diagnoses, /\b(copd|chronic obstructive pulmonary disease)\b/);
   const hasOtherMedicalCondition = diagnosisEntries(diagnoses).length > (diagnoses.primaryDiagnosis?.description || diagnoses.primaryDiagnosis?.icd10 ? 1 : 0);
+  const useStructuredComorbidities = hasStructuredHopeComorbidities(diagnoses);
+  const structuredHope = diagnoses.hopeComorbidities || {};
+  const comorbidityItems = useStructuredComorbidities
+    ? HOPE_COMORBIDITY_ITEMS.map((item) => ({
+        code: item.code,
+        label: item.label,
+        entries: [{ label: "Active diagnosis indicator", value: boolCode(Boolean(structuredHope[item.key])).description }],
+      })).concat([
+        { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(Boolean(structuredHope.other)).description }] },
+      ])
+    : [
+        { code: "I0600", label: "Heart Failure", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasHeartFailure).description }] },
+        { code: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasCopd).description }] },
+        { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasOtherMedicalCondition).description }] },
+      ];
 
   return {
     agency: agencyInfo,
@@ -321,11 +363,12 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       },
       {
         title: "Section I - Active Diagnoses",
+        dataSourceNote: useStructuredComorbidities
+          ? "Comorbidities harvested from structured RNICA findings (H&P/labs/MD records scan + RN assessment)."
+          : "⚠ This assessment predates structured HOPE harvesting from the RNICA — Heart Failure/COPD/Other Medical Condition below were inferred from the free-text diagnosis list only. Verify against the chart (H&P, labs, MD notes) before submission.",
         items: [
           { code: "I0010", label: "Principal Diagnosis", entries: [{ label: "Code + description", value: principalDiagnosis }] },
-          { code: "I0600", label: "Heart Failure", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasHeartFailure).description }] },
-          { code: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasCopd).description }] },
-          { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasOtherMedicalCondition).description }] },
+          ...comorbidityItems,
           { code: "I0000", label: "Comorbidities and Co-existing Conditions", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
         ],
       },

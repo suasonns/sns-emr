@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import hashlib
 import os
 import sys
 from logging.config import fileConfig
@@ -8,7 +10,8 @@ from pathlib import Path
 import sqlalchemy as sa
 from alembic import context
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import CheckConstraint, create_engine
+from sqlalchemy.sql.elements import conv
 
 # ✅ Alembic script access (for validation guard)
 from alembic.script import ScriptDirectory
@@ -75,6 +78,23 @@ if FAILED_IMPORTS:
     )
 
 
+def normalize_postgresql_check_names() -> None:
+    """Match metadata names to PostgreSQL's deterministic 63-byte identifiers."""
+    max_identifier_length = 63
+    for table in Base.metadata.tables.values():
+        for constraint in table.constraints:
+            if not isinstance(constraint, CheckConstraint):
+                continue
+            name = str(constraint.name)
+            if len(name) <= max_identifier_length:
+                continue
+            digest = hashlib.md5(name.encode(), usedforsecurity=False).hexdigest()[-4:]
+            constraint.name = conv(f"{name[:max_identifier_length - 8]}_{digest}")
+
+
+normalize_postgresql_check_names()
+
+
 # ---------------------------------------------------------
 # ✅ TARGET METADATA
 # ---------------------------------------------------------
@@ -111,27 +131,31 @@ def validate_migration_safety():
     migration_path = Path(rev.module.__file__)
     content = migration_path.read_text()
 
-    # ✅ Extract ONLY upgrade() block
-    import re
-
-    upgrade_match = re.search(
-        r"def upgrade\(.*?\):(.*?)(def downgrade|$)",
-        content,
-        re.S,
+    module = ast.parse(content, filename=str(migration_path))
+    upgrade_function = next(
+        (
+            node
+            for node in module.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "upgrade"
+        ),
+        None,
     )
-
-    if not upgrade_match:
+    if upgrade_function is None:
         return
 
-    upgrade_content = upgrade_match.group(1)
-
-    dangerous_ops = [
-        "op.drop_table",
-        "op.drop_column",
-        "op.drop_index",
-    ]
-
-    violations = [op for op in dangerous_ops if op in upgrade_content]
+    dangerous_ops = {"drop_table", "drop_column", "drop_index"}
+    violations = sorted(
+        {
+            f"op.{node.func.attr}"
+            for node in ast.walk(upgrade_function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op"
+            and node.func.attr in dangerous_ops
+        }
+    )
 
     if violations:
         raise RuntimeError(

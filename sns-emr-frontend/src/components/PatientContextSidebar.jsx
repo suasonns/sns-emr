@@ -1,19 +1,20 @@
 import React from "react";
 
 const palette = {
-  bg: "#0f172a",
-  panel: "#f8fafc",
-  card: "#f3f8f5",
-  line: "#d8e3e8",
-  accent: "#0d9488",
-  accentSoft: "#dff7f3",
-  text: "#0f172a",
-  muted: "#64748b",
-  success: "#10b981",
+  bg: "var(--sns-card)",
+  panel: "var(--sns-bg)",
+  card: "var(--sns-cardSoft)",
+  line: "var(--sns-border)",
+  accent: "var(--sns-teal)",
+  accentSoft: "var(--sns-cardSoft)",
+  text: "var(--sns-white)",
+  muted: "var(--sns-muted)",
+  success: "var(--sns-green)",
 };
 
 export default function PatientContextSidebar({
   patientId,
+  mrn,
   patientName = "Patient",
   disciplineLabel = "Care Team",
   sections = [],
@@ -22,14 +23,15 @@ export default function PatientContextSidebar({
   showContext = true,
   patientOverview = null,
 }) {
+  const looksLikeUuid = (value) => typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
   const defaultSections = [
     { key: "overview", label: "Care Overview" },
     { key: "visit-calendar", label: "Visit Calendar" },
-    { key: "admission", label: "Admission" },
     { key: "assessment", label: "Assessment" },
-    { key: "nursing-assessment", label: "Nursing Assessment" },
-    { key: "spiritual-assessment", label: "Spiritual Assessment" },
-    { key: "psychosocial-assessment", label: "Psychosocial Assessment" },
+    { key: "nursing-assessment", label: "RN Assessment", parent: "assessment" },
+    { key: "spiritual-assessment", label: "Spiritual", parent: "assessment" },
+    { key: "psychosocial-assessment", label: "Psychosocial", parent: "assessment" },
     { key: "tx-meds-dme-supplies", label: "Tx / Meds / DME / Supplies" },
     { key: "idg", label: "IDG" },
     { key: "plan-of-care", label: "Plan of Care (POC)" },
@@ -43,9 +45,10 @@ export default function PatientContextSidebar({
     { key: "care-team", label: "Care Team" },
   ];
 
-  const nav = sections.length ? sections : defaultSections;
+  const nav = (sections.length ? sections : defaultSections).filter((item) => item.key !== "admission");
   const assessmentChildren = nav.filter((item) => item.parent === "assessment" || ["nursing-assessment", "spiritual-assessment", "psychosocial-assessment"].includes(item.key));
   const topLevelNav = nav.filter((item) => item.key !== "assessment" && item.parent !== "assessment" && !["nursing-assessment", "spiritual-assessment", "psychosocial-assessment"].includes(item.key));
+  const displayMrn = (mrn && !looksLikeUuid(mrn)) ? mrn : (patientId && !looksLikeUuid(patientId) ? patientId : "No MRN on file");
   const resolvedOverview = patientOverview || {
     diagnosis: "Lung cancer (C34.90), CHF, COPD",
     painSummary: "Pain controlled with symptom review; caregiver support needs ongoing",
@@ -70,7 +73,7 @@ export default function PatientContextSidebar({
       style={{
         width: 290,
         minWidth: 290,
-        background: "linear-gradient(180deg, #f9fbfc 0%, #eff6f7 100%)",
+        background: "linear-gradient(180deg, var(--sns-bg) 0%, var(--sns-card) 100%)",
         borderRight: `1px solid ${palette.line}`,
         borderTop: `1px solid ${palette.line}`,
         padding: "16px 14px",
@@ -79,10 +82,10 @@ export default function PatientContextSidebar({
     >
       <div
         style={{
-          background: `linear-gradient(135deg, ${palette.bg} 0%, #0d3b4b 50%, #0f766e 100%)`,
+          background: "linear-gradient(135deg, var(--sns-card) 0%, var(--sns-bgAlt) 50%, var(--sns-teal) 100%)",
           borderRadius: 12,
           padding: 14,
-          color: "#fff",
+          color: "var(--sns-white)",
           boxShadow: "0 10px 20px rgba(15, 23, 42, 0.12)",
         }}
       >
@@ -90,7 +93,7 @@ export default function PatientContextSidebar({
         <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.12, marginTop: 8, letterSpacing: "-0.04em" }}>
           {patientName}
         </div>
-        <div style={{ fontSize: 12, opacity: 0.82, marginTop: 6, wordBreak: "break-word" }}>{patientId}</div>
+        <div style={{ fontSize: 12, opacity: 0.82, marginTop: 6, wordBreak: "break-word" }}>MRN: {displayMrn}</div>
         <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".08em" }}>{disciplineLabel}</span>
           <span
@@ -110,7 +113,7 @@ export default function PatientContextSidebar({
         </div>
       </div>
 
-      <div style={{ marginTop: 14, border: `1px solid ${palette.line}`, borderRadius: 10, background: "#fff", padding: 10 }}>
+      <div style={{ marginTop: 14, border: `1px solid ${palette.line}`, borderRadius: 10, background: "var(--sns-card)", padding: 10 }}>
         <div style={{ fontSize: 10, letterSpacing: ".1em", textTransform: "uppercase", color: palette.muted, fontWeight: 800 }}>
           Patient record overview
         </div>
@@ -144,8 +147,8 @@ export default function PatientContextSidebar({
                     justifyContent: "space-between",
                     width: "100%",
                     borderRadius: 10,
-                    border: assessmentActive ? `1px solid ${palette.accent}` : "1px solid #dfe7ee",
-                    background: assessmentActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "#fff",
+                    border: assessmentActive ? `1px solid ${palette.accent}` : `1px solid ${palette.line}`,
+                    background: assessmentActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "var(--sns-card)",
                     color: palette.text,
                     fontWeight: 700,
                     fontSize: 12,
@@ -177,8 +180,8 @@ export default function PatientContextSidebar({
                               width: "100%",
                               textAlign: "left",
                               borderRadius: 10,
-                              border: childActive ? `1px solid ${palette.accent}` : "1px solid #dfe7ee",
-                              background: childActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "#fff",
+                              border: childActive ? `1px solid ${palette.accent}` : `1px solid ${palette.line}`,
+                              background: childActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "var(--sns-card)",
                               color: palette.text,
                               fontWeight: 700,
                               fontSize: 12,
@@ -211,8 +214,8 @@ export default function PatientContextSidebar({
                   width: "100%",
                   textAlign: "left",
                   borderRadius: 10,
-                  border: isActive ? `1px solid ${palette.accent}` : "1px solid #dfe7ee",
-                  background: isActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "#fff",
+                  border: isActive ? `1px solid ${palette.accent}` : `1px solid ${palette.line}`,
+                  background: isActive ? "linear-gradient(90deg, rgba(13,148,136,0.12), rgba(13,148,136,0.02))" : "var(--sns-card)",
                   color: palette.text,
                   fontWeight: 700,
                   fontSize: 12,
@@ -235,7 +238,7 @@ export default function PatientContextSidebar({
             Patient record workspace
           </div>
 
-          <div style={{ marginTop: 10, border: `1px solid ${palette.line}`, background: "#fff", borderRadius: 12, overflow: "hidden" }}>
+          <div style={{ marginTop: 10, border: `1px solid ${palette.line}`, background: "var(--sns-card)", borderRadius: 12, overflow: "hidden" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: 10, background: palette.card }}>
               <div style={{ fontSize: 11, color: palette.muted }}>HNP</div>
               <div style={{ fontSize: 11, fontWeight: 700, textAlign: "right" }}>{resolvedOverview.hnpStatus}</div>

@@ -1,30 +1,45 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
+const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
+const apiTarget =
+  process.env.VITE_API_BASE_URL ??
+  process.env.VITE_API_TARGET ??
+  "http://localhost:8000";
+
 export default defineConfig({
+  root: frontendRoot,
   plugins: [react()],
+  resolve: {
+    preserveSymlinks: true,
+  },
   server: {
     port: 5173,
     host: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/auth": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/dashboard": {
-        target: "http://localhost:8000",
+        target: apiTarget,
+        changeOrigin: true,
+      },
+      "/audit-dashboard": {
+        target: apiTarget,
         changeOrigin: true,
       },
       "/visits": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/patient-charts": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
     },
@@ -35,24 +50,59 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/auth": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/dashboard": {
-        target: "http://localhost:8000",
+        target: apiTarget,
+        changeOrigin: true,
+      },
+      "/audit-dashboard": {
+        target: apiTarget,
         changeOrigin: true,
       },
       "/visits": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
       },
       "/patient-charts": {
-        target: "http://localhost:8000",
+        target: apiTarget,
         changeOrigin: true,
+      },
+    },
+  },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (
+            id.includes("react") ||
+            id.includes("react-dom") ||
+            id.includes("scheduler") ||
+            id.includes("react-router")
+          ) {
+            return "react-vendor";
+          }
+
+          if (id.includes("@mui") || id.includes("@emotion")) {
+            return "mui-vendor";
+          }
+
+          if (id.includes("axios")) {
+            return "axios-vendor";
+          }
+
+          return "vendor";
+        },
       },
     },
   },

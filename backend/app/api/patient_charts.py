@@ -9,7 +9,10 @@ from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.patient_access import get_authorized_patient
+from app.core.security import CurrentUser, get_current_user
 from app.models.patient import Patient
+from app.models.patient_facesheet import PatientFaceSheet
 from app.models.certification import Certification
 from app.models.f2f_encounter import F2FEncounter
 from app.models.task import Task
@@ -31,11 +34,8 @@ router = APIRouter(prefix="/patient-charts", tags=["patient-charts"])
 bereavement_engine = BereavementAggregationEngine()
 
 
-def _load_patient(db: Session, patient_id: UUID) -> Patient:
-    patient = db.query(Patient).filter(Patient.id == patient_id).first()
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    return patient
+def _load_patient(db: Session, patient_id: UUID, user: CurrentUser) -> Patient:
+    return get_authorized_patient(db, patient_id, user)
 
 
 def _patient_namespace(patient: Patient) -> SimpleNamespace:
@@ -60,17 +60,36 @@ def _enum_value(value):
     return value.value if hasattr(value, "value") else value
 
 
-def _base_patient(patient: Patient) -> dict:
+def _patient_full_name(db: Session, patient: Patient) -> str:
+    face_sheet = (
+        db.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .order_by(PatientFaceSheet.created_at.desc(), PatientFaceSheet.id.desc())
+        .first()
+    )
+    if face_sheet:
+        parts = [
+            getattr(face_sheet, "first_name", None),
+            getattr(face_sheet, "middle_name", None),
+            getattr(face_sheet, "last_name", None),
+        ]
+        name = " ".join(part for part in parts if part and str(part).strip())
+        if name:
+            return name
+    return patient.mrn or "Unknown patient"
+
+
+def _base_patient(db: Session, patient: Patient) -> dict:
     return {
         "id": str(patient.id),
         "mrn": patient.mrn,
-        "full_name": patient.full_name,
+        "full_name": _patient_full_name(db, patient),
         "primary_diagnosis": patient.primary_diagnosis,
         "status": patient.status,
         "acuity_state": patient.acuity_state,
         "admission_status": patient.admission_status,
         "hospice_election_date": _serialize_date(patient.hospice_election_date),
-        "soc_date": _serialize_datetime(patient.soc_date),
+        "soc_date": _serialize_datetime(getattr(patient, "soc_date", None)),
     }
 
 
@@ -109,8 +128,12 @@ def _load_visit_rows(db: Session, patient_id: UUID, *, limit: int | None = None,
 
 
 @router.get("/{patient_id}/summary")
-def get_patient_chart_summary(patient_id: UUID, db: Session = Depends(get_db)):
-    patient = _load_patient(db, patient_id)
+def get_patient_chart_summary(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    patient = _load_patient(db, patient_id, user)
 
     communication_rows = (
         db.query(CommunicationsLog)
@@ -140,7 +163,7 @@ def get_patient_chart_summary(patient_id: UUID, db: Session = Depends(get_db)):
     )
 
     return {
-        "patient": _base_patient(patient),
+        "patient": _base_patient(db, patient),
         "care_team": [
             {
                 "discipline": row.PatientAssignment.discipline.value if hasattr(row.PatientAssignment.discipline, "value") else str(row.PatientAssignment.discipline),
@@ -196,14 +219,18 @@ def get_patient_chart_summary(patient_id: UUID, db: Session = Depends(get_db)):
                 for row in incident_rows
             ],
         },
-        "compliance_summary": get_patient_compliance(patient_id, db),
-        "volunteer_summary": get_patient_volunteer_schedule(patient_id, db),
+        "compliance_summary": get_patient_compliance(patient_id, db, user),
+        "volunteer_summary": get_patient_volunteer_schedule(patient_id, db, user),
     }
 
 
 @router.get("/{patient_id}/physician")
-def get_patient_physician_summary(patient_id: UUID, db: Session = Depends(get_db)):
-    patient = _load_patient(db, patient_id)
+def get_patient_physician_summary(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    patient = _load_patient(db, patient_id, user)
 
     certifications = (
         db.query(Certification)
@@ -220,7 +247,7 @@ def get_patient_physician_summary(patient_id: UUID, db: Session = Depends(get_db
     )
 
     return {
-        "patient": _base_patient(patient),
+        "patient": _base_patient(db, patient),
         "metrics": [
             {"label": "CTI / Certifications", "value": len(certifications)},
             {"label": "F2F encounters", "value": len(f2f_encounters)},
@@ -256,8 +283,12 @@ def get_patient_physician_summary(patient_id: UUID, db: Session = Depends(get_db
 
 
 @router.get("/{patient_id}/communication-log")
-def get_patient_communication_log(patient_id: UUID, db: Session = Depends(get_db)):
-    _load_patient(db, patient_id)
+def get_patient_communication_log(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    _load_patient(db, patient_id, user)
 
     rows = (
         db.query(CommunicationsLog)
@@ -289,8 +320,12 @@ def get_patient_communication_log(patient_id: UUID, db: Session = Depends(get_db
 
 
 @router.get("/{patient_id}/incident-occurrence")
-def get_patient_incident_occurrences(patient_id: UUID, db: Session = Depends(get_db)):
-    _load_patient(db, patient_id)
+def get_patient_incident_occurrences(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    _load_patient(db, patient_id, user)
 
     rows = (
         db.query(IncidentReport)
@@ -332,8 +367,12 @@ def get_patient_incident_occurrences(patient_id: UUID, db: Session = Depends(get
 
 
 @router.get("/{patient_id}/bereavement")
-def get_patient_bereavement(patient_id: UUID, db: Session = Depends(get_db)):
-    patient = _load_patient(db, patient_id)
+def get_patient_bereavement(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    patient = _load_patient(db, patient_id, user)
 
     note_rows = (
         db.query(ClinicalNote)
@@ -376,7 +415,7 @@ def get_patient_bereavement(patient_id: UUID, db: Session = Depends(get_db)):
     ]
 
     return {
-        "patient": _base_patient(patient),
+        "patient": _base_patient(db, patient),
         "aggregation": {
             "rn_present": result.rn_present,
             "sw_present": result.sw_present,
@@ -400,8 +439,12 @@ def get_patient_bereavement(patient_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/compliance")
-def get_patient_compliance(patient_id: UUID, db: Session = Depends(get_db)):
-    patient = _load_patient(db, patient_id)
+def get_patient_compliance(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    patient = _load_patient(db, patient_id, user)
     patient_ctx = _patient_namespace(patient)
 
     eligibility = evaluate_hospice_eligibility(patient_ctx, date.today().isoformat())
@@ -438,7 +481,7 @@ def get_patient_compliance(patient_id: UUID, db: Session = Depends(get_db)):
         open_issues.append("F2F note not yet documented")
 
     return {
-        "patient": _base_patient(patient),
+        "patient": _base_patient(db, patient),
         "eligibility": eligibility,
         "task_counts": task_counts,
         "note_counts": {
@@ -465,8 +508,12 @@ def get_patient_compliance(patient_id: UUID, db: Session = Depends(get_db)):
 
 
 @router.get("/{patient_id}/volunteer-scheduling")
-def get_patient_volunteer_schedule(patient_id: UUID, db: Session = Depends(get_db)):
-    patient = _load_patient(db, patient_id)
+def get_patient_volunteer_schedule(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    patient = _load_patient(db, patient_id, user)
 
     visit_rows = _load_visit_rows(db, patient.id, ascending=True)
 
@@ -474,12 +521,6 @@ def get_patient_volunteer_schedule(patient_id: UUID, db: Session = Depends(get_d
         db.query(PatientAssignment, User.full_name.label("staff_name"))
         .join(User, User.id == PatientAssignment.user_id)
         .filter(PatientAssignment.patient_id == patient.id)
-        .filter(
-            PatientAssignment.discipline.in_([
-                Discipline.VOLUNTEER,
-                Discipline.VOLUNTEER_COORDINATOR,
-            ])
-        )
         .order_by(PatientAssignment.assigned_at.desc())
         .all()
     )
@@ -493,7 +534,7 @@ def get_patient_volunteer_schedule(patient_id: UUID, db: Session = Depends(get_d
     )
 
     return {
-        "patient": _base_patient(patient),
+        "patient": _base_patient(db, patient),
         "visits": [
             {
                 "id": str(visit["id"]),

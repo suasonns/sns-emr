@@ -42,7 +42,6 @@ const navSections = [
   ] },
   { label: 'Clinical Assessments', key: 'assessments', children: [
     { label: 'Nursing Assessment', key: 'nursing-assessment' },
-    { label: 'Pain Assessment', key: 'pain-assessment' },
     { label: 'Spiritual Assessment', key: 'spiritual-assessment' },
     { label: 'Psychosocial Assessment', key: 'psychosocial-assessment' },
     { label: 'Assessment History', key: 'assessment-history' },
