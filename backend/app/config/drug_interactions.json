@@ -1,0 +1,188 @@
+{
+  "_comment": "Curated clinically-significant drug interaction rules for hospice care. Rules match by drug CLASS pair (preferred, broad coverage) or by exact drug-name pair (specific, high-value pairs). Open/curated dataset intended to be swapped for a licensed feed (First Databank / Medi-Span) later without changing callers.",
+  "_hospice_note": "Opioid + benzodiazepine is intentionally NOT flagged as a class-pair interaction: this combination is a standard, physician-ordered comfort-kit pairing for end-of-life symptom management (dyspnea, terminal agitation) in hospice care, not an incidental/erroneous combination. Flagging it here would create false-positive alert fatigue for the most common hospice comfort regimen.",
+
+  "class_pairs": [
+    { "classes": ["OPIOIDS", "CNS_DEPRESSANTS"], "severity": "MODERATE",
+      "effect": "Additive sedation and respiratory depression",
+      "management": "Monitor sedation level and respiratory rate; avoid stacking additional sedating agents." },
+
+    { "classes": ["OPIOIDS", "SEDATIVE_HYPNOTICS"], "severity": "MAJOR",
+      "effect": "Additive CNS and respiratory depression",
+      "management": "Monitor sedation/respiratory rate closely; consider dose reduction." },
+
+    { "classes": ["OPIOIDS", "GABAPENTINOIDS"], "severity": "MODERATE",
+      "effect": "Additive CNS/respiratory depression, increased fall risk",
+      "management": "Monitor sedation, respiratory status, and fall risk; consider dose reduction." },
+
+    { "classes": ["BENZODIAZEPINES", "CNS_DEPRESSANTS"], "severity": "MODERATE",
+      "effect": "Additive sedation and fall/respiratory risk",
+      "management": "Monitor sedation level and fall risk." },
+
+    { "classes": ["SSRIS", "MAOIS"], "severity": "CONTRAINDICATED",
+      "effect": "Risk of serotonin syndrome (can be life-threatening)",
+      "management": "Avoid combination; requires washout period between agents per prescriber guidance." },
+
+    { "classes": ["SEROTONERGIC", "MAOIS"], "severity": "CONTRAINDICATED",
+      "effect": "Risk of serotonin syndrome",
+      "management": "Avoid combination; contact prescriber immediately." },
+
+    { "classes": ["SSRIS", "SNRIS"], "severity": "MODERATE",
+      "effect": "Increased serotonergic burden / serotonin syndrome risk",
+      "management": "Monitor for agitation, tremor, hyperthermia, diaphoresis." },
+
+    { "classes": ["SEROTONERGIC", "TRIPTANS"], "severity": "MODERATE",
+      "effect": "Increased serotonin syndrome risk",
+      "management": "Monitor for serotonin syndrome symptoms; use lowest effective doses." },
+
+    { "classes": ["ANTICOAGULANTS", "NSAIDS"], "severity": "MAJOR",
+      "effect": "Increased bleeding risk (GI and systemic)",
+      "management": "Avoid combination when possible; monitor for bleeding, consider GI protection." },
+
+    { "classes": ["ANTICOAGULANTS", "ANTIPLATELETS"], "severity": "MAJOR",
+      "effect": "Increased bleeding risk",
+      "management": "Combination sometimes clinically necessary (e.g., cardiac); monitor closely for bleeding." },
+
+    { "classes": ["ANTIPLATELETS", "NSAIDS"], "severity": "MODERATE",
+      "effect": "Increased bleeding risk",
+      "management": "Monitor for bleeding; consider GI protection." },
+
+    { "classes": ["ANTICOAGULANTS", "SSRIS"], "severity": "MODERATE",
+      "effect": "Increased bleeding risk (SSRIs impair platelet function)",
+      "management": "Monitor for bruising/bleeding." },
+
+    { "classes": ["ACE_INHIBITORS", "POTASSIUM_SPARING_DIURETICS"], "severity": "MAJOR",
+      "effect": "Risk of hyperkalemia",
+      "management": "Monitor potassium and renal function." },
+
+    { "classes": ["ACE_INHIBITORS", "POTASSIUM_SUPPLEMENTS"], "severity": "MAJOR",
+      "effect": "Risk of hyperkalemia",
+      "management": "Monitor serum potassium." },
+
+    { "classes": ["ARBS", "POTASSIUM_SPARING_DIURETICS"], "severity": "MAJOR",
+      "effect": "Risk of hyperkalemia",
+      "management": "Monitor potassium and renal function." },
+
+    { "classes": ["ACE_INHIBITORS", "ARBS"], "severity": "MODERATE",
+      "effect": "Increased risk of hyperkalemia, hypotension, renal impairment",
+      "management": "Dual RAAS blockade generally avoided; confirm with prescriber." },
+
+    { "classes": ["LOOP_DIURETICS", "DIGOXIN"], "severity": "MODERATE",
+      "effect": "Diuretic-induced hypokalemia increases digoxin toxicity risk",
+      "management": "Monitor potassium and digoxin levels; watch for toxicity signs (nausea, visual changes, arrhythmia)." },
+
+    { "classes": ["THIAZIDE_DIURETICS", "DIGOXIN"], "severity": "MODERATE",
+      "effect": "Diuretic-induced hypokalemia increases digoxin toxicity risk",
+      "management": "Monitor potassium and digoxin levels." },
+
+    { "classes": ["NON_DHP_CALCIUM_CHANNEL_BLOCKERS", "BETA_BLOCKERS"], "severity": "MODERATE",
+      "effect": "Additive bradycardia and AV nodal blockade",
+      "management": "Monitor heart rate and blood pressure." },
+
+    { "classes": ["NON_DHP_CALCIUM_CHANNEL_BLOCKERS", "DIGOXIN"], "severity": "MODERATE",
+      "effect": "Increased digoxin levels / bradycardia",
+      "management": "Monitor digoxin level and heart rate." },
+
+    { "classes": ["AMIODARONE", "DIGOXIN"], "severity": "MAJOR",
+      "effect": "Amiodarone increases digoxin levels significantly",
+      "management": "Digoxin dose typically reduced ~50%; monitor levels closely." },
+
+    { "classes": ["QT_PROLONGING", "QT_PROLONGING"], "severity": "MODERATE",
+      "effect": "Additive QT prolongation / torsades risk",
+      "management": "Consider ECG monitoring if clinically appropriate; avoid stacking multiple QT-prolonging agents." },
+
+    { "classes": ["ANTICHOLINERGICS", "ANTICHOLINERGICS"], "severity": "MODERATE",
+      "effect": "Additive anticholinergic burden (confusion, dry mouth, constipation, urinary retention, falls)",
+      "management": "Review necessity of each agent; consider deprescribing per anticholinergic burden guidance." },
+
+    { "classes": ["FLUOROQUINOLONES", "ANTICOAGULANTS"], "severity": "MODERATE",
+      "effect": "Increased anticoagulant effect / bleeding risk",
+      "management": "Monitor INR closely if on warfarin." },
+
+    { "classes": ["MACROLIDES", "STATINS"], "severity": "MODERATE",
+      "effect": "Increased statin levels / myopathy-rhabdomyolysis risk (CYP3A4 inhibition)",
+      "management": "Consider holding statin during macrolide course, or use azithromycin (less CYP3A4 effect)." },
+
+    { "classes": ["AZOLE_ANTIFUNGALS", "STATINS"], "severity": "MODERATE",
+      "effect": "Increased statin levels / myopathy risk (CYP3A4 inhibition)",
+      "management": "Consider dose reduction or temporary hold of statin." },
+
+    { "classes": ["CYP3A4_INHIBITORS", "BENZODIAZEPINES"], "severity": "MODERATE",
+      "effect": "Increased benzodiazepine levels / sedation",
+      "management": "Monitor sedation; consider dose adjustment." },
+
+    { "classes": ["CYP_ENZYME_INDUCERS", "ANTICOAGULANTS"], "severity": "MODERATE",
+      "effect": "Reduced anticoagulant effect (enzyme induction)",
+      "management": "Monitor INR closely with warfarin; dose adjustment often needed." },
+
+    { "classes": ["METRONIDAZOLE", "ANTICOAGULANTS"], "severity": "MAJOR",
+      "effect": "Significantly increased anticoagulant effect / bleeding risk",
+      "management": "Monitor INR closely; anticipate warfarin dose reduction." },
+
+    { "classes": ["BISPHOSPHONATES", "NSAIDS"], "severity": "MODERATE",
+      "effect": "Increased GI irritation/ulceration risk",
+      "management": "Monitor for GI symptoms; consider GI protection." },
+
+    { "classes": ["LITHIUM", "LOOP_DIURETICS"], "severity": "MAJOR",
+      "effect": "Reduced lithium clearance / toxicity risk",
+      "management": "Monitor lithium levels closely." },
+
+    { "classes": ["LITHIUM", "THIAZIDE_DIURETICS"], "severity": "MAJOR",
+      "effect": "Reduced lithium clearance / toxicity risk",
+      "management": "Monitor lithium levels closely." },
+
+    { "classes": ["LITHIUM", "NSAIDS"], "severity": "MODERATE",
+      "effect": "Reduced lithium clearance / toxicity risk",
+      "management": "Monitor lithium levels." },
+
+    { "classes": ["LITHIUM", "ACE_INHIBITORS"], "severity": "MODERATE",
+      "effect": "Reduced lithium clearance / toxicity risk",
+      "management": "Monitor lithium levels and renal function." },
+
+    { "classes": ["SULFONYLUREAS", "SULFONAMIDES"], "severity": "MODERATE",
+      "effect": "Increased hypoglycemia risk",
+      "management": "Monitor blood glucose closely." },
+
+    { "classes": ["INSULIN", "BETA_BLOCKERS"], "severity": "MODERATE",
+      "effect": "Beta-blockers can mask hypoglycemia symptoms (tachycardia)",
+      "management": "Monitor blood glucose more closely; educate on non-adrenergic hypoglycemia signs." },
+
+    { "classes": ["ANTIPSYCHOTICS", "ANTICHOLINERGICS"], "severity": "MODERATE",
+      "effect": "Additive anticholinergic burden and sedation",
+      "management": "Review necessity; monitor for confusion, constipation, urinary retention." },
+
+    { "classes": ["TRICYCLIC_ANTIDEPRESSANTS", "ANTICHOLINERGICS"], "severity": "MODERATE",
+      "effect": "Additive anticholinergic burden",
+      "management": "Review necessity of each agent; monitor for confusion, constipation, urinary retention." },
+
+    { "classes": ["TRICYCLIC_ANTIDEPRESSANTS", "QT_PROLONGING"], "severity": "MODERATE",
+      "effect": "Additive QT prolongation risk",
+      "management": "Consider ECG monitoring if clinically indicated." }
+  ],
+
+  "drug_pairs": [
+    { "drugs": ["methadone", "ciprofloxacin"], "severity": "MAJOR",
+      "effect": "Additive QT prolongation risk with methadone",
+      "management": "Avoid combination if possible; ECG monitoring recommended." },
+
+    { "drugs": ["warfarin", "trimethoprim sulfamethoxazole"], "severity": "MAJOR",
+      "effect": "Significantly increased INR / bleeding risk",
+      "management": "Monitor INR closely; anticipate warfarin dose reduction." },
+
+    { "drugs": ["warfarin", "amiodarone"], "severity": "MAJOR",
+      "effect": "Amiodarone increases warfarin effect substantially",
+      "management": "Monitor INR closely; warfarin dose typically reduced." },
+
+    { "drugs": ["digoxin", "furosemide"], "severity": "MODERATE",
+      "effect": "Diuretic-induced hypokalemia increases digoxin toxicity risk",
+      "management": "Monitor potassium and digoxin level." },
+
+    { "drugs": ["tramadol", "sertraline"], "severity": "MAJOR",
+      "effect": "Increased serotonin syndrome risk",
+      "management": "Monitor for agitation, tremor, hyperthermia; consider alternative analgesic." },
+
+    { "drugs": ["tramadol", "fluoxetine"], "severity": "MAJOR",
+      "effect": "Increased serotonin syndrome risk",
+      "management": "Monitor for serotonin syndrome; consider alternative analgesic." }
+  ]
+}

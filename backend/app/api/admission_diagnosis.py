@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.db.session import SessionLocal
 from app.core.security import get_current_user, CurrentUser
 from app.models.admission import Admission
@@ -202,20 +203,9 @@ def _get_patient_for_admission_or_404(
     *,
     db: Session,
     admission: Admission,
+    current_user: CurrentUser,
 ) -> Patient:
-    patient = (
-        db.query(Patient)
-        .filter(Patient.id == admission.patient_id)
-        .first()
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found for admission",
-        )
-
-    return patient
+    return get_authorized_patient(db, admission.patient_id, current_user)
 
 
 def _normalize_dataclass_result(value: Any) -> dict[str, Any]:
@@ -263,6 +253,7 @@ def clone_admission_context(
     patient = _get_patient_for_admission_or_404(
         db=db,
         admission=admission,
+        current_user=current_user,
     )
 
     _set_db_context(
@@ -355,6 +346,7 @@ def get_admission_dx_comparison(
     patient = _get_patient_for_admission_or_404(
         db=db,
         admission=admission,
+        current_user=current_user,
     )
 
     _set_db_context(
@@ -425,6 +417,7 @@ def decide_primary_diagnosis(
     patient = _get_patient_for_admission_or_404(
         db=db,
         admission=admission,
+        current_user=current_user,
     )
 
     _set_db_context(

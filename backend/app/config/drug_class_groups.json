@@ -1,0 +1,12 @@
+{
+  "_comment": "Umbrella groupings over individual drug classes (drug_classes.json), used for broad clinical questions like 'how many antibiotic courses' without needing to enumerate every antibiotic subclass at the call site.",
+
+  "ANTIBIOTICS": ["PENICILLINS", "CEPHALOSPORINS", "FLUOROQUINOLONES", "MACROLIDES", "SULFONAMIDES", "METRONIDAZOLE"],
+  "ANTIFUNGALS": ["AZOLE_ANTIFUNGALS"],
+  "OPIOIDS": ["OPIOIDS"],
+  "BENZODIAZEPINES": ["BENZODIAZEPINES"],
+  "ANTICOAGULANTS_AND_ANTIPLATELETS": ["ANTICOAGULANTS", "ANTIPLATELETS"],
+  "ANTIPSYCHOTICS": ["ANTIPSYCHOTICS"],
+  "ANTICHOLINERGICS": ["ANTICHOLINERGICS"],
+  "DIURETICS": ["LOOP_DIURETICS", "THIAZIDE_DIURETICS", "POTASSIUM_SPARING_DIURETICS"]
+}

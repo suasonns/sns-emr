@@ -6,6 +6,7 @@ alembic
 psycopg2-binary
 
 pydantic
+email-validator
 python-dotenv
 
 python-jose[cryptography]

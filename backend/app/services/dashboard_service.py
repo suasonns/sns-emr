@@ -12,10 +12,15 @@ from sqlalchemy.orm import Session
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
 from app.models.patient import Patient
+from app.models.patient_facesheet import PatientFaceSheet
+from app.models.physician_order import PhysicianOrder
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.task import Task
+from app.models.user import User
 from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
+from app.services.clinical_note_validation_engine import get_note_validation_flags
+from app.core.names import person_name_expression
 
 
 # =========================================================
@@ -85,6 +90,23 @@ class DashboardClinicalAlertItem:
 
 
 @dataclass
+class DashboardOrderItem:
+    order_id: str
+    patient_id: str
+    patient_name: str
+    order_category: str
+    order_text: str
+    status: str
+    source_type: str
+    ordered_by_provider_name: str
+    ordered_by_provider_role: str
+    entered_by_name: str | None
+    ordered_at: str | None
+    signed_by_name: str | None
+    signed_at: str | None
+
+
+@dataclass
 class DashboardResponse:
     metrics: list[dict[str, Any]]
     task_type_counts: dict[str, int]
@@ -93,6 +115,8 @@ class DashboardResponse:
     pending_incidents: list[dict[str, Any]]
     flagged_notes: list[dict[str, Any]]
     blocked_patients: list[dict[str, Any]]
+    unsigned_orders: list[dict[str, Any]]
+    all_orders: list[dict[str, Any]]
 
 
 # =========================================================
@@ -107,6 +131,8 @@ def get_clinical_compliance_dashboard(
     tasks = _load_tenant_tasks(db, tenant_id)
     notes = _load_tenant_notes(db, tenant_id)
     incidents = _load_tenant_incidents(db, tenant_id)
+    unsigned_orders = _load_unsigned_orders(db, tenant_id)
+    all_orders = _load_all_orders(db, tenant_id)
 
     open_tasks = [task for task in tasks if _task_is_open(task)]
     pending_incidents = [
@@ -154,6 +180,11 @@ def get_clinical_compliance_dashboard(
             label="IDG Blocked Patients",
             value=len(blocked_patients),
         ),
+        DashboardMetric(
+            key="unsigned_orders",
+            label="Orders Awaiting MD Signature",
+            value=len(unsigned_orders),
+        ),
     ]
 
     task_type_counts = Counter(
@@ -178,6 +209,8 @@ def get_clinical_compliance_dashboard(
         ],
         flagged_notes=[asdict(_map_note(note)) for note in flagged_notes],
         blocked_patients=[asdict(item) for item in blocked_patients],
+        unsigned_orders=[asdict(item) for item in unsigned_orders],
+        all_orders=[asdict(item) for item in all_orders],
     )
 
     return asdict(response)
@@ -228,9 +261,12 @@ def get_clinical_alerts_dashboard(
 ) -> dict[str, Any]:
     alert_rows: list[DashboardClinicalAlertItem] = []
 
+    patient_name_col = person_name_expression(PatientFaceSheet, Patient.mrn).label("patient_name")
+
     task_rows = (
-        db.query(Task, Patient.full_name.label("patient_name"))
+        db.query(Task, patient_name_col)
         .join(Patient, Patient.id == Task.patient_id)
+        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
         .filter(Task.tenant_id == tenant_id)
         .filter(Task.status.in_([TaskStatus.PENDING, TaskStatus.OVERDUE, TaskStatus.ESCALATED]))
         .order_by(Task.created_at.desc())
@@ -254,8 +290,9 @@ def get_clinical_alerts_dashboard(
         )
 
     incident_rows = (
-        db.query(IncidentReport, Patient.full_name.label("patient_name"))
+        db.query(IncidentReport, patient_name_col)
         .join(Patient, Patient.id == IncidentReport.patient_id)
+        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
         .filter(IncidentReport.tenant_id == tenant_id)
         .filter(IncidentReport.signed_at.is_(None))
         .order_by(IncidentReport.created_at.desc(), IncidentReport.incident_date.desc())
@@ -277,18 +314,23 @@ def get_clinical_alerts_dashboard(
             )
         )
 
-    note_rows = (
-        db.query(ClinicalNote, Patient.full_name.label("patient_name"))
+    # Validation flags (red_flags / needs_clarification / incident_required) are
+    # persisted inside ClinicalNote.content["_validation"], not as top-level
+    # columns, so filtering has to happen in Python via get_note_validation_flags
+    # after loading candidate notes (see get_note_validation_flags docstring).
+    candidate_notes = (
+        db.query(ClinicalNote, patient_name_col)
         .join(Patient, Patient.id == ClinicalNote.patient_id)
+        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
         .filter(ClinicalNote.tenant_id == tenant_id)
-        .filter(
-            ClinicalNote.incident_required.is_(True)
-            | (ClinicalNote.red_flags.isnot(None))
-            | (ClinicalNote.needs_clarification.isnot(None))
-        )
         .order_by(ClinicalNote.created_at.desc())
         .all()
     )
+    note_rows = [
+        (note, patient_name)
+        for note, patient_name in candidate_notes
+        if _has_flagged_content(note)
+    ]
 
     for note, patient_name in note_rows:
         alert_rows.append(
@@ -300,20 +342,22 @@ def get_clinical_alerts_dashboard(
                 patient_name=patient_name,
                 description=_note_alert_description(note),
                 generated=_iso(getattr(note, "created_at", None) or getattr(note, "encounter_date", None)),
-                status="Open" if _truthy(getattr(note, "incident_required", False)) else "Acknowledged",
+                status="Open" if get_note_validation_flags(note).get("incident_required") else "Acknowledged",
                 source_type="NOTE",
             )
         )
 
     if not alert_rows:
-        patient = (
-            db.query(Patient)
+        patient_row = (
+            db.query(Patient, patient_name_col)
+            .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
             .filter(Patient.tenant_id == tenant_id)
             .order_by(Patient.created_at.desc())
             .first()
         )
 
-        if patient is not None:
+        if patient_row is not None:
+            patient, full_name = patient_row
             assessment = (
                 db.query(RnicaAssessment)
                 .filter(RnicaAssessment.patient_id == patient.id)
@@ -322,7 +366,6 @@ def get_clinical_alerts_dashboard(
             )
 
             if assessment is not None:
-                full_name = getattr(patient, "full_name", "Unknown Patient")
                 election_signed = getattr(patient, "election_signed_at", None) is not None
                 admission_status = _enumish(getattr(patient, "admission_status", None)) or "Unknown"
                 locked = _truthy(getattr(assessment, "locked", False))
@@ -665,6 +708,74 @@ def _load_tenant_incidents(db: Session, tenant_id: UUID) -> list[IncidentReport]
     )
 
 
+def _load_unsigned_orders(db: Session, tenant_id: UUID) -> list[DashboardOrderItem]:
+    """Every physician order in this tenant that is NOT yet signed by an MD
+    (still DRAFT or PENDING_HOSPICE_MD_APPROVAL) — the agency's single view
+    of "which orders are signed vs. not signed" across every patient."""
+    return _load_tenant_orders(db, tenant_id, statuses=["DRAFT", "PENDING_HOSPICE_MD_APPROVAL"])
+
+
+def _load_all_orders(db: Session, tenant_id: UUID, limit: int = 300) -> list[DashboardOrderItem]:
+    """Every physician order in this tenant (any status), most recent first —
+    the full agency-wide audit trail of signed vs. unsigned orders, capped to
+    the most recent `limit` so this stays fast on large charts."""
+    return _load_tenant_orders(db, tenant_id, statuses=None, limit=limit, newest_first=True)
+
+
+def _load_tenant_orders(
+    db: Session,
+    tenant_id: UUID,
+    *,
+    statuses: list[str] | None,
+    limit: int | None = None,
+    newest_first: bool = False,
+) -> list[DashboardOrderItem]:
+    patient_name = person_name_expression(PatientFaceSheet, Patient.mrn).label("patient_name")
+
+    q = (
+        db.query(PhysicianOrder, patient_name)
+        .join(Patient, Patient.id == PhysicianOrder.patient_id)
+        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
+        .filter(PhysicianOrder.tenant_id == tenant_id)
+    )
+    if statuses:
+        q = q.filter(PhysicianOrder.status.in_(statuses))
+    q = q.order_by(PhysicianOrder.ordered_at.desc() if newest_first else PhysicianOrder.ordered_at.asc())
+    if limit:
+        q = q.limit(limit)
+    rows = q.all()
+
+    user_ids = set()
+    for order, _ in rows:
+        if order.created_by:
+            user_ids.add(order.created_by)
+        if order.signed_by_user_id:
+            user_ids.add(order.signed_by_user_id)
+    names_by_id: dict[Any, str] = {}
+    if user_ids:
+        for row in db.query(User.id, User.full_name, User.display_name).filter(User.id.in_(user_ids)).all():
+            names_by_id[row[0]] = row[2] or row[1] or "Unknown"
+
+    return [
+        DashboardOrderItem(
+            order_id=str(order.id),
+            patient_id=str(order.patient_id),
+            patient_name=patient_name_val or "Unknown",
+            order_category=_enumish(order.order_category),
+            order_text=order.order_text,
+            status=_enumish(order.status),
+            source_type=_enumish(order.source_type),
+            ordered_by_provider_name=order.ordered_by_provider_name,
+            ordered_by_provider_role=order.ordered_by_provider_role,
+            entered_by_name=names_by_id.get(order.created_by),
+            ordered_at=_iso(order.ordered_at),
+            signed_by_name=names_by_id.get(order.signed_by_user_id) if order.signed_by_user_id else None,
+            signed_at=_iso(order.signed_at),
+        )
+        for order, patient_name_val in rows
+    ]
+
+
 # =========================================================
 # MAPPERS
 # =========================================================
@@ -694,6 +805,7 @@ def _map_incident(incident: IncidentReport) -> DashboardIncidentItem:
 
 
 def _map_note(note: ClinicalNote) -> DashboardNoteFlagItem:
+    flags = get_note_validation_flags(note)
     return DashboardNoteFlagItem(
         note_id=str(getattr(note, "id")),
         patient_id=str(getattr(note, "patient_id")),
@@ -701,10 +813,10 @@ def _map_note(note: ClinicalNote) -> DashboardNoteFlagItem:
         discipline=_enumish(getattr(note, "discipline", None)),
         visit_type=_enumish(getattr(note, "visit_type", None)),
         note_category=_enumish(getattr(note, "note_category", None)),
-        incident_required=_truthy(getattr(note, "incident_required", False)),
-        incident_status=_enumish(getattr(note, "incident_status", None)),
-        red_flags=_listish(getattr(note, "red_flags", None)),
-        needs_clarification=_listish(getattr(note, "needs_clarification", None)),
+        incident_required=_truthy(flags.get("incident_required", False)),
+        incident_status=_enumish(flags.get("incident_status")),
+        red_flags=_listish(flags.get("red_flags")),
+        needs_clarification=_listish(flags.get("clarification_items")),
     )
 
 
@@ -721,6 +833,11 @@ def _safe_scalar(
         result = db.execute(statement, params or {})
         return result.scalar()
     except SQLAlchemyError:
+        # Postgres aborts the whole transaction on a failed statement; without
+        # rolling back here, every subsequent query on this session (e.g. the
+        # tenant_rows query right after this call in get_owner_dashboard)
+        # would also fail with "current transaction is aborted".
+        db.rollback()
         return 0
 
 
@@ -730,10 +847,11 @@ def _task_is_open(task: Task) -> bool:
 
 
 def _has_flagged_content(note: ClinicalNote) -> bool:
+    flags = get_note_validation_flags(note)
     return (
-        len(_listish(getattr(note, "red_flags", None))) > 0
-        or len(_listish(getattr(note, "needs_clarification", None))) > 0
-        or _truthy(getattr(note, "incident_required", False))
+        len(_listish(flags.get("red_flags"))) > 0
+        or len(_listish(flags.get("clarification_items"))) > 0
+        or _truthy(flags.get("incident_required", False))
     )
 
 
@@ -789,7 +907,7 @@ def _task_alert_priority(task: Task) -> str:
     task_type = _enumish(getattr(task, "task_type", None)).upper()
     if status in {"OVERDUE", "ESCALATED"}:
         return "Critical"
-    if task_type in {"CLINICAL_REVIEW_REQUIRED", "POC_REVIEW_REQUIRED", "F2F"}:
+    if task_type in {"CLINICAL_REVIEW_REQUIRED", "POC_REVIEW_REQUIRED", "F2F", "IDG_DEFERRED_MD_REVIEW"}:
         return "High"
     return "Medium"
 
@@ -804,9 +922,10 @@ def _incident_alert_priority(incident: IncidentReport) -> str:
 
 
 def _note_alert_priority(note: ClinicalNote) -> str:
-    if _truthy(getattr(note, "incident_required", False)):
+    flags = get_note_validation_flags(note)
+    if _truthy(flags.get("incident_required", False)):
         return "High"
-    if len(_listish(getattr(note, "red_flags", None))) > 0:
+    if len(_listish(flags.get("red_flags"))) > 0:
         return "Medium"
     return "Medium"
 
@@ -837,10 +956,11 @@ def _incident_alert_description(incident: IncidentReport) -> str:
 
 
 def _note_alert_description(note: ClinicalNote) -> str:
-    flags = _listish(getattr(note, "red_flags", None))
-    if flags:
-        return flags[0]
-    clarification = _listish(getattr(note, "needs_clarification", None))
+    flags = get_note_validation_flags(note)
+    red_flags = _listish(flags.get("red_flags"))
+    if red_flags:
+        return red_flags[0]
+    clarification = _listish(flags.get("clarification_items"))
     if clarification:
         return clarification[0]
     content = str(getattr(note, "content", "") or "").strip()

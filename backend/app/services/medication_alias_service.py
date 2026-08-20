@@ -39,7 +39,11 @@ def resolve_canonical_medication_name(
     if not normalized:
         return normalized
 
-    alias = session.get(DrugAlias, normalized)
+    alias = (
+        session.query(DrugAlias)
+        .filter(DrugAlias.alias_text == normalized)
+        .first()
+    )
     if alias:
         return alias.canonical_text
 

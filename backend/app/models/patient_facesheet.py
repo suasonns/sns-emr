@@ -171,11 +171,23 @@ class PatientFaceSheet(Base):
     # --------------------------------------------------
     attending_physician_name = Column(String)
 
+    attending_physician_address = Column(String)
+
+    attending_physician_phone = Column(String)
+
+    attending_physician_fax = Column(String)
+
     attending_physician_npi = Column(String)
 
     attending_physician_following = Column(Boolean)
 
     medical_director_name = Column(String)
+
+    medical_director_address = Column(String)
+
+    medical_director_phone = Column(String)
+
+    medical_director_fax = Column(String)
 
     medical_director_npi = Column(String)
 

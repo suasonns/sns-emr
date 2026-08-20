@@ -5,6 +5,7 @@ from app.api import auth, auth_whoami
 
 # OWNER / SUPPORT
 from app.api.support_reference import router as support_reference_router
+from app.api.owner_admin import router as owner_admin_router
 
 # ADMIN
 from app.api.admin.chart_export import router as admin_chart_export_router
@@ -30,6 +31,9 @@ from app.api import (
     admin_reminders,
     admission_authorization,
     med_reconciliation,
+    physicians,
+    vendors,
+    visit_recordings,
 )
 
 # DOMAIN / WORKFLOW
@@ -38,6 +42,7 @@ from app.api.rules.routes import router as rules_router
 from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
 from app.api.routes.plan_of_care import router as poc_router
+from app.api.patient_allergies import router as patient_allergies_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -63,6 +68,15 @@ from app.api.print import router as print_router
 from app.api.auth_reauth import router as auth_reauth_router
 from app.api.internal_superuser import router as internal_superuser_router
 from app.api.admission_diagnosis import router as admission_diagnosis_router
+
+# ORDERS HUB (order templates / generic patient orders / fax / lab catalog)
+from app.api.order_templates import router as order_templates_router
+from app.api.patient_orders import router as patient_orders_router
+from app.api.fax import router as fax_router
+from app.api.lab_catalog import router as lab_catalog_router
+
+# PHYSICIAN ORDERS (MD-approval-gated compliant order workflow)
+from app.api.physician_orders import router as physician_orders_router
 
 # EXTERNAL
 from app.api.coverage import router as coverage_router
@@ -100,6 +114,7 @@ def register_routers(app: FastAPI) -> None:
     # Owner / support
     # =====================================================
     app.include_router(support_reference_router)
+    app.include_router(owner_admin_router)
 
     # =====================================================
     # Admin
@@ -121,6 +136,7 @@ def register_routers(app: FastAPI) -> None:
     tenant_routes = [
         patients.router,
         visits.router,
+        visit_recordings.router,
         forms.router,
         notes.router,
         communications_log_router,
@@ -138,6 +154,7 @@ def register_routers(app: FastAPI) -> None:
 
         audit_dashboard_router,
         medications.router,
+        patient_allergies_router,
         chha_pocs.router,
         f2f.router,
         certifications.router,
@@ -148,6 +165,8 @@ def register_routers(app: FastAPI) -> None:
         admin_reminders.router,
         admission_authorization.router,
         med_reconciliation.router,
+        physicians.router,
+        vendors.router,
         soc_orders_router,
         admission_router,
         admissions_router,
@@ -173,6 +192,12 @@ def register_routers(app: FastAPI) -> None:
         claim_status_router,
         audit_router,
         billing_router,
+
+        order_templates_router,
+        patient_orders_router,
+        fax_router,
+        lab_catalog_router,
+        physician_orders_router,
     ]
 
     for router in tenant_routes:

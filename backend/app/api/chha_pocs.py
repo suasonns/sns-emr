@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.security import CurrentUser
 from app.core.database import get_db
 from app.core.permissions import require_roles
+from app.core.patient_access import get_authorized_patient
 from app.models.chha_poc import CHHAPOC
 from app.services.audit_logger import log_event
 
@@ -25,6 +26,7 @@ def create_chha_poc(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_roles(["RN", "NP", "MD"])),
 ):
+    get_authorized_patient(db, patient_id, user)
     poc = CHHAPOC(
         patient_id=patient_id,
         status="draft",
@@ -62,6 +64,7 @@ def list_chha_pocs_for_patient(
     db: Session = Depends(get_db),
     user: CurrentUser = Depends(require_roles(["RN", "NP", "MD", "CHHA"])),
 ):
+    get_authorized_patient(db, patient_id, user)
     pocs = (
         db.query(CHHAPOC)
         .filter(CHHAPOC.patient_id == patient_id)
@@ -96,6 +99,8 @@ def finalize_chha_poc(
     poc = db.query(CHHAPOC).filter(CHHAPOC.id == chha_poc_id).first()
     if not poc:
         raise HTTPException(status_code=404, detail="CHHA Plan of Care not found")
+
+    get_authorized_patient(db, poc.patient_id, user)
 
     if poc.status == "active":
         raise HTTPException(status_code=400, detail="CHHA Plan of Care is already active")
@@ -157,6 +162,8 @@ def supersede_chha_poc(
     poc = db.query(CHHAPOC).filter(CHHAPOC.id == chha_poc_id).first()
     if not poc:
         raise HTTPException(status_code=404, detail="CHHA Plan of Care not found")
+
+    get_authorized_patient(db, poc.patient_id, user)
 
     if poc.status != "active":
         raise HTTPException(status_code=400, detail="Only an active CHHA Plan of Care can be superseded")

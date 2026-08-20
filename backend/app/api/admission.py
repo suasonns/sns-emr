@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.core.security import CurrentUser
 from app.core.db_session import get_db
 from app.core.permissions import require_roles
+from app.core.patient_access import get_authorized_patient
 from app.models.patient import Patient
 from app.services.admission.admission_workflow_service import (
     AdmissionWorkflowService,
@@ -110,24 +111,8 @@ def get_patient_or_404(
     patient_id: UUID,
     user: CurrentUser,
 ) -> Patient:
-    tenant_id = _tenant_id_or_403(user)
-
-    patient = (
-        db.query(Patient)
-        .filter(
-            Patient.id == patient_id,
-            Patient.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
-
-    return patient
+    _tenant_id_or_403(user)
+    return get_authorized_patient(db, patient_id, user)
 
 
 # =========================================================

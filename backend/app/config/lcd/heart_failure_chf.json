@@ -1,36 +1,38 @@
 {
-  "test_case_id": "LCD-CHF-001",
+  "test_case_id": "LCD-HEART-FAILURE-RULESET",
   "disease": "HEART_FAILURE",
-  "lcd_reference": "CMS Hospice LCD – Heart Disease",
-  "evaluation_date": "2022-01-09",
-
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Heart Disease",
+  "evaluation_date": "",
   "eligibility_result": {
-    "status": "ELIGIBLE",
-    "reason": "Patient meets CHF LCD criteria with NYHA Class IV and refractory disease",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for heart disease.",
     "confidence": null
   },
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "heart-core",
+      "description": "Groups 1 and 2 must be met.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": true
   },
-
   "clinical_scores": {
-    "KPS": {
-      "value": 30,
-      "meets_criteria": true
-    },
-    "PPS": {
-      "value": 30,
-      "meets_criteria": true
-    },
+    "KPS": null,
+    "PPS": null,
     "FAST": null,
     "NYHA": {
-      "value": "IV",
-      "meets_criteria": true
+      "required": true,
+      "operator": "EQUALS",
+      "threshold": "IV"
     }
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -39,13 +41,31 @@
       "criteria": [
         {
           "criterion_id": "1a",
-          "description": "Declined surgery",
-          "result": true
+          "field": "criteria_answers.HEART_FAILURE.1a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Patient has been ruled out as a candidate for surgical procedures"
         },
         {
           "criterion_id": "1b",
-          "description": "Ruled out for surgery",
-          "result": false
+          "field": "criteria_answers.HEART_FAILURE.1b",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Patient has declined surgical procedures"
+        },
+        {
+          "criterion_id": "1c",
+          "field": "criteria_answers.HEART_FAILURE.1c",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Patient is optimally treated for heart disease with diuretics and vasodilators"
+        },
+        {
+          "criterion_id": "1d",
+          "field": "criteria_answers.HEART_FAILURE.1d",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Patient is unable to be on vasodilators because of another medical condition (for example hypotension or renal disease)"
         }
       ]
     },
@@ -56,13 +76,63 @@
       "criteria": [
         {
           "criterion_id": "2a",
-          "description": "NYHA Class IV",
-          "result": true
+          "field": "nyha_class",
+          "operator": "EQUALS",
+          "expected": "IV",
+          "description": "CHF or angina patient meets NYHA Class IV level"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "History / Progression (supporting factors)",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "2b",
+          "field": "ejection_fraction",
+          "operator": "LT",
+          "expected": 20,
+          "description": "Ejection fraction is less than 20 percent, if available"
+        },
+        {
+          "criterion_id": "3a",
+          "field": "criteria_answers.HEART_FAILURE.3a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "History of treatment-resistant symptomatic supraventricular or ventricular arrhythmias"
+        },
+        {
+          "criterion_id": "3b",
+          "field": "criteria_answers.HEART_FAILURE.3b",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "History of cardiac arrest or resuscitation"
+        },
+        {
+          "criterion_id": "3c",
+          "field": "criteria_answers.HEART_FAILURE.3c",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "History of unexplained syncope or fainting"
+        },
+        {
+          "criterion_id": "3d",
+          "field": "criteria_answers.HEART_FAILURE.3d",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Brain embolism of cardiac origin"
+        },
+        {
+          "criterion_id": "3e",
+          "field": "criteria_answers.HEART_FAILURE.3e",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Concomitant HIV disease"
         }
       ]
     }
   ],
-
-  "clinical_notes": "Patient meets CHF LCD with NYHA Class IV and refractory disease.",
+  "clinical_notes": "Structure derived from CAD, CHF source form; supporting factors are displayed but are not required for the core path.",
   "source_document": "CAD, CHF.pdf"
 }

@@ -1,29 +1,34 @@
 {
-  "test_case_id": "LCD-LIVER-TEMPLATE",
+  "test_case_id": "LCD-LIVER-RULESET",
   "disease": "LIVER_DISEASE_END_STAGE",
-  "lcd_reference": "LCD Hospice Eligibility Determination – Liver Disease",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Liver Disease",
   "evaluation_date": "",
-
   "eligibility_result": {
-    "status": "PENDING",
-    "reason": "",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for liver disease.",
     "confidence": null
   },
-
-  "group_combination_rule": "ALL_GROUPS_REQUIRED",
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "liver-core",
+      "description": "Groups 1 and 2 should be met.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": null,
     "PPS": null,
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -31,30 +36,20 @@
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
-          "criterion_id": "1a_i",
-          "field": "labs.prothrombin_time_seconds_over_control",
-          "operator": "GT",
-          "expected": 5,
-          "unit": "seconds",
-          "description": "Prothrombin time greater than 5 seconds over control"
-        },
-        {
-          "criterion_id": "1a_ii",
-          "field": "labs.inr",
-          "operator": "GT",
-          "expected": 1.5,
-          "description": "INR greater than 1.5"
+          "criterion_id": "1a",
+          "field": "coagulopathy_lab_criterion_met",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Either prothrombin time is prolonged more than 5 seconds over control or INR is greater than 1.5"
         },
         {
           "criterion_id": "1b",
-          "field": "labs.albumin",
+          "field": "serum_albumin",
           "operator": "LT",
           "expected": 2.5,
-          "unit": "gm/dl",
-          "description": "Serum albumin less than 2.5 gm/dl"
+          "description": "Serum albumin is less than 2.5 gm/dl"
         }
-      ],
-      "notes": "LCD indicates PT or INR may be sufficient; engine may evaluate group 1a_i OR 1a_ii with albumin as required."
+      ]
     },
     {
       "group_id": "2",
@@ -63,76 +58,91 @@
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "liver.ascites_refractory",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.2a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Ascites refractory to treatment or non-compliant"
+          "description": "Ascites refractory to treatment or patient is non-compliant"
         },
         {
           "criterion_id": "2b",
-          "field": "liver.spontaneous_bacterial_peritonitis",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.2b",
           "operator": "EQUALS",
           "expected": true,
           "description": "Spontaneous bacterial peritonitis"
         },
         {
           "criterion_id": "2c",
-          "field": "liver.hepatorenal_syndrome",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.2c",
           "operator": "EQUALS",
           "expected": true,
           "description": "Hepatorenal syndrome"
         },
         {
           "criterion_id": "2d",
-          "field": "liver.hepatic_encephalopathy_refractory",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.2d",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Hepatic encephalopathy refractory or uncontrolled"
+          "description": "Hepatic encephalopathy refractory to treatment or patient is non-compliant"
         },
         {
           "criterion_id": "2e",
-          "field": "liver.recurrent_variceal_bleeding_despite_therapy",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.2e",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Recurrent variceal bleeding despite therapy"
+          "description": "Recurrent variceal bleeding despite intensive therapy"
+        }
+      ]
+    },
+    {
+      "group_id": "3",
+      "group_name": "Supporting Factors",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "3a",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Progressive malnutrition"
+        },
+        {
+          "criterion_id": "3b",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3b",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Muscle wasting with reduced strength and endurance"
+        },
+        {
+          "criterion_id": "3c",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3c",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Continued active alcoholism greater than 80 grams ethanol per day"
+        },
+        {
+          "criterion_id": "3d",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3d",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Hepatocellular carcinoma"
+        },
+        {
+          "criterion_id": "3e",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3e",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "HBsAg positivity"
+        },
+        {
+          "criterion_id": "3f",
+          "field": "criteria_answers.LIVER_DISEASE_END_STAGE.3f",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Hepatitis C refractory to interferon treatment"
         }
       ]
     }
   ],
-
-  "supporting_factors": [
-    {
-      "factor_id": "3a",
-      "field": "nutrition.progressive_malnutrition",
-      "description": "Progressive malnutrition"
-    },
-    {
-      "factor_id": "3b",
-      "field": "nutrition.muscle_wasting",
-      "description": "Muscle wasting with reduced strength or endurance"
-    },
-    {
-      "factor_id": "3c",
-      "field": "substance.continued_active_alcoholism_gt_80g_day",
-      "description": "Continued active alcoholism greater than 80 grams ethanol per day"
-    },
-    {
-      "factor_id": "3d",
-      "field": "liver.hepatocellular_carcinoma",
-      "description": "Hepatocellular carcinoma"
-    },
-    {
-      "factor_id": "3e",
-      "field": "liver.hbsag_positive",
-      "description": "HBsAg positivity"
-    },
-    {
-      "factor_id": "3f",
-      "field": "liver.hepatitis_c_refractory_to_interferon",
-      "description": "Hepatitis C refractory to interferon therapy"
-    }
-  ],
-
-  "clinical_notes": "Template derived from Liver Disease LCD form.",
+  "clinical_notes": "The extracted liver form has an internal OR in the lab block; that is captured as a derived coagulopathy fact plus albumin requirement.",
   "source_document": "LIVER Disease.pdf"
 }

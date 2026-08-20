@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Index, CheckConstraint
+from sqlalchemy import Column, String, Date, DateTime, ForeignKey, Index, CheckConstraint, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -52,6 +52,9 @@ class PatientPOS(Base):
     )
 
     facility_name = Column(String(255), nullable=True)
+    pos_address = Column(String(255), nullable=True)
+    room_number = Column(String(64), nullable=True)
+    notes = Column(Text, nullable=True)
 
     status = Column(
         String(32),
@@ -73,6 +76,11 @@ class PatientPOS(Base):
     )
 
     created_by = Column(String(255), nullable=True)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    updated_by = Column(String(255), nullable=True)
 
     # ---------------------------------------------------------
     # RELATIONSHIPS

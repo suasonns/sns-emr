@@ -1,32 +1,38 @@
 {
-  "test_case_id": "LCD-ESRD-TEMPLATE",
+  "test_case_id": "LCD-ESRD-RULESET",
   "disease": "ESRD_KIDNEY_DISEASE",
-  "lcd_reference": "LCD Hospice Eligibility Determination – Kidney Disease (ESRD)",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Kidney Disease (ESRD)",
   "evaluation_date": "",
-
   "eligibility_result": {
-    "status": "PENDING",
-    "reason": "",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for ESRD.",
     "confidence": null
   },
-
-  "eligibility_logic": {
-    "all_of": ["1", "2"],
-    "any_of": ["3", "4"]
-  },
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "esrd-core",
+      "description": "Groups 1 and 2 must be met and either Group 3 or Group 4 must be met.",
+      "all_of_groups": [
+        "1",
+        "2"
+      ],
+      "any_of_groups": [
+        "3",
+        "4"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": null,
     "PPS": null,
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -35,17 +41,17 @@
       "criteria": [
         {
           "criterion_id": "1a",
-          "field": "renal.no_dialysis_not_transplant_candidate_and_not_seeking_dialysis",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.1a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "No dialysis and not a transplant candidate and not seeking dialysis"
+          "description": "No dialysis path: patient has been ruled out as a candidate for renal transplant and is either not seeking dialysis or is discontinuing dialysis"
         },
         {
           "criterion_id": "1b",
-          "field": "renal.on_dialysis_comfort_only_prognosis_unaltered",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.1b",
           "operator": "EQUALS",
           "expected": true,
-          "description": "On dialysis but comfort-focus only and prognosis unchanged"
+          "description": "Dialysis path: patient is currently on dialysis, dialysis is for comfort only, and prognosis remains unaltered even with dialysis"
         }
       ]
     },
@@ -56,19 +62,17 @@
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "renal.creatinine_clearance",
+          "field": "creatinine_clearance",
           "operator": "LT",
           "expected": 10,
-          "unit": "cc/min",
-          "description": "Creatinine clearance < 10 cc/min (< 15 for diabetics)"
+          "description": "Creatinine clearance is less than 10 cc/min (less than 15 cc/min for diabetics)"
         },
         {
           "criterion_id": "2b",
-          "field": "renal.creatinine_clearance_with_chf_comorbidity",
+          "field": "creatinine_clearance",
           "operator": "LT",
           "expected": 15,
-          "unit": "cc/min",
-          "description": "Creatinine clearance < 15 cc/min (< 20 for diabetics with CHF)"
+          "description": "Creatinine clearance is less than 15 cc/min (less than 20 cc/min for diabetics) when CHF comorbidity is present"
         }
       ]
     },
@@ -79,49 +83,84 @@
       "criteria": [
         {
           "criterion_id": "3a",
-          "field": "renal.serum_creatinine",
+          "field": "serum_creatinine",
           "operator": "GT",
           "expected": 8.0,
-          "unit": "mg/dl",
-          "description": "Serum creatinine > 8.0 mg/dl (> 6.0 for diabetics)"
+          "description": "Serum creatinine is greater than 8.0 mg/dl (greater than 6.0 mg/dl for diabetics)"
         }
       ]
     },
     {
       "group_id": "4",
-      "group_name": "Estimated GFR",
+      "group_name": "Estimated Glomerular Filtration Rate",
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
           "criterion_id": "4a",
-          "field": "renal.gfr",
+          "field": "gfr",
           "operator": "LT",
           "expected": 10,
-          "unit": "ml/min",
-          "description": "GFR < 10 ml/min"
+          "description": "Estimated glomerular filtration rate is less than 10 ml/min"
+        }
+      ]
+    },
+    {
+      "group_id": "5",
+      "group_name": "Co-morbid Condition (supporting factors)",
+      "rule": "ANY_REQUIRED",
+      "criteria": [
+        {
+          "criterion_id": "5a",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5a",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Mechanical ventilation"
+        },
+        {
+          "criterion_id": "5b",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5b",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Autoimmune disease"
+        },
+        {
+          "criterion_id": "5c",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5c",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Cancer"
+        },
+        {
+          "criterion_id": "5d",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5d",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Digestive disease"
+        },
+        {
+          "criterion_id": "5e",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5e",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Heart disease"
+        },
+        {
+          "criterion_id": "5f",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5f",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Liver disease"
+        },
+        {
+          "criterion_id": "5g",
+          "field": "criteria_answers.ESRD_KIDNEY_DISEASE.5g",
+          "operator": "EQUALS",
+          "expected": true,
+          "description": "Pulmonary disease"
         }
       ]
     }
   ],
-
-  "supporting_factors": [
-    {
-      "factor_id": "5",
-      "field": "comorbidity.mechanical_ventilation",
-      "description": "Mechanical ventilation (supporting)"
-    },
-    {
-      "factor_id": "5b",
-      "field": "comorbidity.heart_disease",
-      "description": "Heart disease comorbidity (supporting)"
-    },
-    {
-      "factor_id": "5c",
-      "field": "comorbidity.pulmonary_disease",
-      "description": "Pulmonary disease comorbidity (supporting)"
-    }
-  ],
-
-  "clinical_notes": "Template derived from ESRD/Kidney Disease LCD form.",
+  "clinical_notes": "The source form expresses the dialysis / transplant block as two alternative composite questions; those are preserved as criterion-level yes/no prompts.",
   "source_document": "ESRD.pdf"
 }

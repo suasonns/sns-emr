@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.db_tenant_dependency import get_db_tenant
 from app.core.security import get_current_user
 from app.services.audit_logger import log_event
@@ -70,24 +71,8 @@ def _get_patient_or_404(
     patient_id: uuid.UUID,
     user,
 ) -> Patient:
-    tenant_id = _resolve_tenant_id(user)
-
-    patient = (
-        db.query(Patient)
-        .filter(
-            Patient.id == patient_id,
-            Patient.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Patient not found",
-        )
-
-    return patient
+    _resolve_tenant_id(user)
+    return get_authorized_patient(db, patient_id, user)
 
 
 # =========================================================

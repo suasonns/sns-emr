@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.models.plan_of_care import PlanOfCare
@@ -20,6 +21,7 @@ from app.services.poc_service import (
     create_plan_of_care as create_plan_of_care_service,
     create_new_version as create_new_poc_version_service,
     get_active_plan_of_care_version,
+    get_current_plan_of_care_version_for_patient,
 )
 
 router = APIRouter(
@@ -308,6 +310,7 @@ def create_plan_of_care_v2(
     """
     tenant_id = _tenant_id_uuid(user)
     user_id = _user_id_uuid(user)
+    get_authorized_patient(db, payload.patient_id, user)
 
     poc = _create_poc_or_raise_http(
         db=db,
@@ -348,6 +351,20 @@ def create_plan_of_care_version_v2(
     """
     tenant_id = _tenant_id_uuid(user)
     user_id = _user_id_uuid(user)
+    poc = (
+        db.query(PlanOfCare)
+        .filter(
+            PlanOfCare.id == plan_of_care_id,
+            PlanOfCare.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not poc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan of Care not found in tenant",
+        )
+    get_authorized_patient(db, poc.patient_id, user)
 
     version = _create_poc_version_or_raise_http(
         db=db,
@@ -403,6 +420,87 @@ def get_current_plan_of_care_v2(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Plan of Care not found in tenant",
+        )
+
+    get_authorized_patient(db, poc.patient_id, user)
+
+    version = get_active_plan_of_care_version(
+        db,
+        tenant_id=tenant_id,
+        plan_of_care_id=poc.id,
+    )
+
+    if not version:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Current Plan of Care version not found",
+        )
+
+    snapshot = version.snapshot_json or {}
+    if not isinstance(snapshot, dict):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Current Plan of Care snapshot is invalid",
+        )
+
+    return CurrentPlanOfCareResponse(
+        plan_of_care_id=poc.id,
+        patient_id=poc.patient_id,
+        admission_id=poc.admission_id,
+        tenant_id=poc.tenant_id,
+        status=poc.status,
+        current_version_id=version.id,
+        current_version=CurrentPlanOfCareVersionResponse(
+            version_id=version.id,
+            version_number=version.version_number,
+            status=version.status,
+            source_kind=version.source_kind,
+            change_reason=version.change_reason,
+            generated_from=version.generated_from,
+            reviewed_in_idg=version.reviewed_in_idg,
+            idg_review_id=version.idg_review_id,
+            poc_content=POCContentIn.model_validate(snapshot),
+        ),
+    )
+
+
+
+# =========================================================
+# GET CURRENT POC BY PATIENT (convenience lookup — no plan_of_care_id needed)
+# =========================================================
+
+@router.get(
+    "/by-patient/{patient_id}/current/",
+    response_model=CurrentPlanOfCareResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_current_plan_of_care_by_patient_v2(
+    patient_id: UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+) -> CurrentPlanOfCareResponse:
+    """
+    Convenience lookup so the frontend can resolve a patient's active
+    Plan of Care and current version without already knowing the
+    plan_of_care_id (e.g. from RN ICA or the patient chart).
+    """
+    tenant_id = _tenant_id_uuid(user)
+    get_authorized_patient(db, patient_id, user)
+
+    poc = (
+        db.query(PlanOfCare)
+        .filter(
+            PlanOfCare.tenant_id == tenant_id,
+            PlanOfCare.patient_id == patient_id,
+        )
+        .order_by(PlanOfCare.created_at.desc())
+        .first()
+    )
+
+    if not poc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No Plan of Care found for this patient",
         )
 
     version = get_active_plan_of_care_version(
@@ -482,6 +580,8 @@ def get_plan_of_care_versions_v2(
             detail="Plan of Care not found in tenant",
         )
 
+    get_authorized_patient(db, poc.patient_id, user)
+
     # ✅ Fetch versions
     versions = (
         db.query(PlanOfCareVersion)
@@ -545,6 +645,21 @@ def get_plan_of_care_version_by_id_v2(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Plan of Care version not found",
         )
+
+    poc = (
+        db.query(PlanOfCare)
+        .filter(
+            PlanOfCare.id == plan_of_care_id,
+            PlanOfCare.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if not poc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Plan of Care not found in tenant",
+        )
+    get_authorized_patient(db, poc.patient_id, user)
 
     snapshot = version.snapshot_json or {}
     if not isinstance(snapshot, dict):

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.db import get_db
 from app.dependencies.auth import get_current_user
 from app.models.communications_log import CommunicationsLog
@@ -191,53 +192,7 @@ def _require_patient_visibility(
     tenant_id: UUID,
     user,
 ) -> None:
-    """
-    Enterprise-grade access control for communications log visibility.
-
-    Rules:
-    - ADMIN → full system access
-    - DPCS → full clinical access (all patients)
-    - has_admin_access = true → full clinical access (tenant-configurable,
-      e.g. Assistant DPCS / senior case manager if explicitly granted)
-    - Others → only assigned patients
-    """
-    user_id = _user_get(user, "id")
-    role = (_user_get(user, "role") or "").upper()
-
-    has_admin_access = _get_user_admin_flag(db, user_id=user_id)
-
-    # -------------------------------------------------
-    # 1. OFFICE ADMIN → FULL SYSTEM ACCESS
-    # -------------------------------------------------
-    if role == "ADMIN":
-        return
-
-    # -------------------------------------------------
-    # 2. DPCS → ALWAYS FULL CLINICAL ACCESS
-    # -------------------------------------------------
-    if role == "DPCS":
-        return
-
-    # -------------------------------------------------
-    # 3. TENANT-CONFIGURABLE CLINICAL ADMIN ACCESS
-    # -------------------------------------------------
-    if has_admin_access:
-        return
-
-    # -------------------------------------------------
-    # 4. DEFAULT → ASSIGNMENT-BASED ACCESS
-    # -------------------------------------------------
-    recipients = _resolve_user_ids_to_notify(
-        db,
-        patient_id=patient_id,
-        tenant_id=tenant_id,
-    )
-
-    if user_id not in recipients:
-        raise HTTPException(
-            status_code=403,
-            detail="Access denied for this patient communication log",
-        )
+    get_authorized_patient(db, patient_id, user)
 
 
 def _is_clinically_qualified_to_verify_or_resolve(
@@ -335,6 +290,7 @@ def create_communications_log(
 
     schema_name = _resolve_tenant_schema_name(db, request, user)
     _apply_tenant_search_path(db, schema_name)
+    get_authorized_patient(db, payload.patient_id, user)
 
     entry = CommunicationsLog(
         id=uuid.uuid4(),

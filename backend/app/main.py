@@ -560,16 +560,40 @@ import app.models  # noqa
 # ---------------------------------------------------------------------
 
 # ✅ SECURE CORS (ENV-BASED)
-if ENV == "production":
-    allowed_origins = [
-        "https://your-frontend-domain.com",
+def _allowed_origins() -> list[str]:
+    raw = (
+        os.getenv("CORS_ALLOWED_ORIGINS")
+        or os.getenv("ALLOWED_ORIGINS")
+        or os.getenv("FRONTEND_URL")
+        or os.getenv("APP_URL")
+        or ""
+    )
+
+    origins = [item.strip() for item in raw.split(",") if item.strip()]
+    if origins:
+        return origins
+
+    if ENV == "production":
+        return [
+            "http://localhost:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:4173",
+        ]
+
+    return [
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ]
-else:
-    allowed_origins = ["*"]
 
 fastapi_app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=_allowed_origins(),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -587,6 +611,11 @@ fastapi_app.add_middleware(
 from app.api.registry import register_routers
 
 register_routers(fastapi_app)
+
+# Backward-compatible ASGI alias for tooling that expects `app.main:app`.
+# Keep this after imports so the package name `app` is not clobbered by earlier
+# `import app.*` statements.
+app = fastapi_app
 
 
 # ---------------------------------------------------------------------

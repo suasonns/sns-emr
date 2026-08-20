@@ -18,20 +18,57 @@ security = HTTPBearer(auto_error=False)
 # =========================================================
 
 VALID_ROLES = {
+    # Clinical roles.
     "RN",
     "LVN",
     "LPN",
     "MD",
+    "DO",
     "NP",
+    "PA",
     "SW",
+    "CHHA",
     "CHAPLAIN",
     "MEDICAL_DIRECTOR",
     "ALTERNATE_MEDICAL_DIRECTOR",
     "MEDICAL_DIRECTOR_DESIGNEE",
+    "ATTENDING_PHYSICIAN",
+    "VOLUNTEER_COORDINATOR",
+    "CLINICAL_SUPERVISOR",
+    # Agency/tenant business roles.
     "ADMINISTRATOR",
     "DPCS",
+    # An agency principal who holds BOTH the DPCS and Administrator titles.
+    "DPCS_ADMINISTRATOR",
+    # Financial/billing roles.
+    "CFO",
+    "CEO",
+    "FINANCIAL_ADMIN",
+    "BILLING",
+    "BILLING_MANAGER",
+    "BILLING_SPECIALIST",
+    "COLLECTIONS",
+    "REVENUE_CYCLE",
+    # QA department.
+    "QA_MANAGER",
+    "QA_REVIEWER",
+    "COMPLIANCE_OFFICER",
+    # Intake department.
+    "INTAKE_MANAGER",
+    "INTAKE_COORDINATOR",
+    # Scheduling department.
+    "SCHEDULER",
+    "STAFFING_COORDINATOR",
     # Platform owner; required by require_owner and the owner dashboard.
+    # This is the SNS Hospice Solutions vendor super-user and must never be
+    # granted clinical/tenant PHI access (see CLINICAL_ADMIN_ROLES in roles.py).
     "OWNER",
+    # Additional SNS platform department roles — never granted PHI access.
+    "PLATFORM_SUPPORT",
+    "PLATFORM_BILLING",
+    "PLATFORM_OPERATIONS",
+    "PLATFORM_AI_MANAGEMENT",
+    "PLATFORM_COMPLIANCE",
 }
 
 

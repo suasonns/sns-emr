@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import uuid
 import re
+import logging
 from datetime import date, datetime, timezone
 from typing import Generator
 
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, text
 
 from app.core.security import get_current_user
+from app.core.patient_access import get_authorized_patient
 from app.core.roles import role_matches
 from app.db_tenant_dependency import get_db_tenant
 
@@ -26,6 +28,9 @@ from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
 from app.models.visit import Visit
 from app.models.patient_diagnosis import PatientDiagnosis
+from app.billing.models.patient_pos import PatientPOS
+from app.models.rnica_assessment import RnicaAssessment
+from app.models.rn_recert_assessment import RNRecertAssessment
 
 from app.models.enums import (
     DiagnosisType,
@@ -45,9 +50,12 @@ from app.services.icd10_resolver_service import (
 from app.services.diagnosis_sync_service import (
     sync_official_primary_diagnosis,
 )
+from app.services.hnp_parser_service import build_hnp_summary
 from enum import Enum
 
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 class PatientCategory(str, Enum):
     ACTIVE = "ACTIVE"
@@ -828,6 +836,360 @@ def create_patient(
         "facesheet_created": True,
     }
 # =========================================================
+# REFERRAL IMPORT / FACE SHEET AUTOFILL
+# =========================================================
+
+class ReferralFaceSheetCreate(BaseModel):
+    first_name: str
+    last_name: str
+    middle_name: str | None = None
+    date_of_birth: date
+    phone: str | None = None
+    address: str | None = None
+    city: str | None = None
+    state: str | None = None
+    zip: str | None = None
+    gender: str | None = None
+    language: str | None = None
+    religion: str | None = None
+    marital_status: str | None = None
+    primary_payer: str | None = None
+    primary_policy_number: str | None = None
+    authorization_status: str | None = None
+    current_level_of_care: str | None = None
+    primary_diagnosis: str | None = None
+    secondary_diagnoses: str | None = None
+    attending_physician_name: str | None = None
+    attending_physician_npi: str | None = None
+    responsible_party_name: str | None = None
+    responsible_party_relationship: str | None = None
+    responsible_party_phone: str | None = None
+    emergency_contact_name: str | None = None
+    emergency_contact_relationship: str | None = None
+    emergency_contact_phone: str | None = None
+    referral_source: str | None = None
+    referral_date: date | None = None
+    special_instructions: str | None = None
+
+
+@router.post("/from-referral")
+def create_patient_from_referral(
+    payload: ReferralFaceSheetCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+    user_id = getattr(user, "user_id", None)
+
+    if not user_id:
+        raise HTTPException(500, "Invalid user identity")
+
+    first_name, middle_name, last_name = _normalize_name_parts(
+        first_name=payload.first_name,
+        middle_name=payload.middle_name,
+        last_name=payload.last_name,
+    )
+
+    diagnosis_label = payload.primary_diagnosis.strip() if payload.primary_diagnosis else "Diagnosis pending"
+    if payload.primary_diagnosis and payload.primary_diagnosis.strip():
+        try:
+            primary_icd10_code, primary_diagnosis_description, primary_display_name = _parse_primary_diagnosis_input(
+                db,
+                payload.primary_diagnosis,
+            )
+        except HTTPException:
+            primary_icd10_code = "N/A"
+            primary_diagnosis_description = payload.primary_diagnosis.strip()
+            primary_display_name = payload.primary_diagnosis.strip()
+    else:
+        primary_icd10_code = "N/A"
+        primary_diagnosis_description = "Diagnosis pending"
+        primary_display_name = "Diagnosis pending"
+
+    mrn_value = _generate_mrn_for_tenant(db, tenant_id=tenant_id)
+    patient_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    patient = Patient(
+        id=patient_id,
+        tenant_id=tenant_id,
+        mrn=mrn_value,
+        date_of_birth=payload.date_of_birth,
+        primary_diagnosis=primary_display_name,
+        admission_status="REFERRAL",
+        status="PENDING",
+        acuity_state="ROUTINE",
+        created_by=user_id,
+        created_at=now,
+    )
+
+    facesheet = PatientFaceSheet(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        first_name=first_name,
+        middle_name=middle_name,
+        last_name=last_name,
+        dob=payload.date_of_birth,
+        phone=payload.phone,
+        address=payload.address,
+        city=payload.city,
+        state=payload.state,
+        zip=payload.zip,
+        gender=payload.gender,
+        language=payload.language,
+        religion=payload.religion,
+        marital_status=payload.marital_status,
+        primary_payer=payload.primary_payer,
+        primary_policy_number=payload.primary_policy_number,
+        authorization_status=payload.authorization_status,
+        current_level_of_care=payload.current_level_of_care,
+        primary_diagnosis=primary_display_name,
+        secondary_diagnoses=payload.secondary_diagnoses,
+        ref_date=payload.referral_date,
+        special_instructions=payload.special_instructions,
+        responsible_party_name=payload.responsible_party_name,
+        responsible_party_relationship=payload.responsible_party_relationship,
+        responsible_party_phone=payload.responsible_party_phone,
+        emergency_contact_name=payload.emergency_contact_name,
+        emergency_contact_relationship=payload.emergency_contact_relationship,
+        emergency_contact_phone=payload.emergency_contact_phone,
+        attending_physician_name=payload.attending_physician_name,
+        attending_physician_npi=payload.attending_physician_npi,
+        created_by=user_id,
+        updated_by=user_id,
+        updated_at=now,
+    )
+
+    diagnosis = PatientDiagnosis(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        diagnosis_type=DiagnosisType.PRIMARY,
+        status=DiagnosisStatus.ACTIVE,
+        source=DiagnosisSource.REFERRAL,
+        icd10_code=primary_icd10_code,
+        diagnosis_description=primary_diagnosis_description,
+        display_name=primary_display_name,
+        active=True,
+        is_terminal=True,
+        is_related_to_terminal=True,
+        effective_date=date.today(),
+        created_by=user_id,
+    )
+
+    admission = Admission(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        status="PENDING",
+        admission_date=now.replace(tzinfo=None),
+        created_at=now.replace(tzinfo=None),
+        created_by=user_id,
+    )
+
+    db.add(patient)
+    db.add(facesheet)
+    db.add(diagnosis)
+    db.add(admission)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(patient)
+    db.refresh(facesheet)
+
+    return {
+        "id": str(patient.id),
+        "mrn": patient.mrn,
+        "first_name": first_name,
+        "middle_name": middle_name,
+        "last_name": last_name,
+        "date_of_birth": patient.date_of_birth,
+        "primary_diagnosis": primary_display_name,
+        "status": patient.status,
+        "admission_status": patient.admission_status,
+        "facesheet_created": True,
+        "facesheet_id": str(facesheet.id),
+        "referral_source": payload.referral_source,
+        "referral_date": payload.referral_date,
+    }
+
+
+class HnpImportRequest(BaseModel):
+    raw_text: str
+    patient_id: str | None = None
+    source_name: str | None = None
+
+
+@router.post("/from-hnp")
+def create_patient_from_hnp(
+    payload: HnpImportRequest,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+    user_id = getattr(user, "user_id", None)
+
+    if not payload.raw_text or not payload.raw_text.strip():
+        raise HTTPException(400, "raw_text is required")
+
+    try:
+        summary = build_hnp_summary(payload.raw_text)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    if payload.patient_id:
+        patient = (
+            db.query(Patient)
+            .filter(Patient.id == uuid.UUID(str(payload.patient_id)), Patient.tenant_id == tenant_id)
+            .first()
+        )
+    else:
+        patient = (
+            db.query(Patient)
+            .filter(
+                Patient.tenant_id == tenant_id,
+                Patient.date_of_birth == date.fromisoformat(summary["date_of_birth"]),
+            )
+            .filter(
+                (Patient.mrn == summary["mrn"]) |
+                (
+                    Patient.id.in_(
+                        db.query(PatientFaceSheet.patient_id)
+                        .filter(
+                            PatientFaceSheet.tenant_id == tenant_id,
+                            PatientFaceSheet.first_name.ilike(summary["first_name"]),
+                            PatientFaceSheet.last_name.ilike(summary["last_name"]),
+                        )
+                    )
+                )
+            )
+            .first()
+        )
+
+    if patient is None:
+        patient_id = uuid.uuid4()
+        now = datetime.now(timezone.utc)
+        patient = Patient(
+            id=patient_id,
+            tenant_id=tenant_id,
+            mrn=summary["mrn"],
+            date_of_birth=date.fromisoformat(summary["date_of_birth"]),
+            primary_diagnosis=summary["primary_diagnosis"] or "Diagnosis pending",
+            admission_status="REFERRAL",
+            status="PENDING",
+            acuity_state="ROUTINE",
+            created_by=user_id,
+            created_at=now,
+        )
+        db.add(patient)
+
+        facesheet = PatientFaceSheet(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            first_name=summary["first_name"],
+            middle_name=None,
+            last_name=summary["last_name"],
+            dob=date.fromisoformat(summary["date_of_birth"]),
+            phone=summary.get("phone"),
+            address=summary.get("address"),
+            gender=summary.get("sex"),
+            primary_diagnosis=summary["primary_diagnosis"] or "Diagnosis pending",
+            created_by=user_id,
+            updated_by=user_id,
+            updated_at=now,
+        )
+        db.add(facesheet)
+
+        diagnosis = PatientDiagnosis(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            diagnosis_type=DiagnosisType.PRIMARY,
+            status=DiagnosisStatus.ACTIVE,
+            source=DiagnosisSource.REFERRAL,
+            icd10_code="N/A",
+            diagnosis_description=summary["primary_diagnosis"] or "Diagnosis pending",
+            display_name=summary["primary_diagnosis"] or "Diagnosis pending",
+            active=True,
+            is_terminal=True,
+            is_related_to_terminal=True,
+            effective_date=date.today(),
+            created_by=user_id,
+        )
+        db.add(diagnosis)
+
+        admission = Admission(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            status="PENDING",
+            admission_date=now.replace(tzinfo=None),
+            created_at=now.replace(tzinfo=None),
+            created_by=user_id,
+        )
+        db.add(admission)
+
+    else:
+        patient.primary_diagnosis = summary["primary_diagnosis"] or patient.primary_diagnosis
+        patient.date_of_birth = date.fromisoformat(summary["date_of_birth"])
+        if not patient.mrn:
+            patient.mrn = summary["mrn"]
+        patient.updated_at = datetime.now(timezone.utc)
+
+        facesheet = (
+            db.query(PatientFaceSheet)
+            .filter(
+                PatientFaceSheet.patient_id == patient.id,
+                PatientFaceSheet.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        if facesheet is None:
+            facesheet = PatientFaceSheet(
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                first_name=summary["first_name"],
+                last_name=summary["last_name"],
+                dob=date.fromisoformat(summary["date_of_birth"]),
+                phone=summary.get("phone"),
+                address=summary.get("address"),
+                gender=summary.get("sex"),
+                primary_diagnosis=summary["primary_diagnosis"] or patient.primary_diagnosis,
+                created_by=user_id,
+                updated_by=user_id,
+                updated_at=datetime.now(timezone.utc),
+            )
+            db.add(facesheet)
+        else:
+            facesheet.first_name = summary["first_name"] or facesheet.first_name
+            facesheet.last_name = summary["last_name"] or facesheet.last_name
+            facesheet.dob = date.fromisoformat(summary["date_of_birth"])
+            facesheet.phone = summary.get("phone") or facesheet.phone
+            facesheet.address = summary.get("address") or facesheet.address
+            facesheet.gender = summary.get("sex") or facesheet.gender
+            facesheet.primary_diagnosis = summary["primary_diagnosis"] or facesheet.primary_diagnosis
+            facesheet.updated_by = user_id
+            facesheet.updated_at = datetime.now(timezone.utc)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "id": str(patient.id),
+        "mrn": patient.mrn,
+        "first_name": summary["first_name"],
+        "last_name": summary["last_name"],
+        "date_of_birth": patient.date_of_birth,
+        "primary_diagnosis": patient.primary_diagnosis,
+        "source": payload.source_name or "HNP",
+        "updated_from_hnp": True,
+    }
+
+
+# =========================================================
 # FACE SHEET SCHEMA
 # =========================================================
 
@@ -995,6 +1357,12 @@ class FaceSheetCreate(BaseModel):
 
     attending_physician_name: str | None = None
 
+    attending_physician_address: str | None = None
+
+    attending_physician_phone: str | None = None
+
+    attending_physician_fax: str | None = None
+
     attending_physician_npi: str | None = None
 
     attending_physician_following: bool | None = None
@@ -1004,6 +1372,12 @@ class FaceSheetCreate(BaseModel):
     # ==================================================
 
     medical_director_name: str | None = None
+
+    medical_director_address: str | None = None
+
+    medical_director_phone: str | None = None
+
+    medical_director_fax: str | None = None
 
     medical_director_npi: str | None = None
 
@@ -1047,6 +1421,123 @@ class FaceSheetCreate(BaseModel):
 
     special_instructions: str | None = None
 
+
+class PosHistoryCreate(BaseModel):
+    pos_type: str
+    pos_name: str | None = None
+    pos_address: str | None = None
+    room_number: str | None = None
+    start_date: date
+    end_date: date | None = None
+    reason: str | None = None
+
+
+class PosHistoryUpdate(BaseModel):
+    pos_type: str | None = None
+    pos_name: str | None = None
+    pos_address: str | None = None
+    room_number: str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+    reason: str | None = None
+
+
+def _serialize_pos_history_entry(
+    entry: PatientPOS,
+    *,
+    today: date | None = None,
+) -> dict:
+    reference_day = today or date.today()
+    is_current = (
+        entry.effective_date is not None
+        and entry.effective_date <= reference_day
+        and (entry.end_date is None or entry.end_date >= reference_day)
+    )
+
+    return {
+        "id": str(entry.id),
+        "pos_type": entry.pos_type,
+        "pos_name": entry.facility_name,
+        "pos_address": entry.pos_address,
+        "room_number": entry.room_number,
+        "start_date": entry.effective_date,
+        "end_date": entry.end_date,
+        "reason": entry.notes,
+        "status": entry.status,
+        "is_current": is_current,
+        "created_at": entry.created_at,
+        "updated_at": entry.updated_at,
+    }
+
+
+def _get_current_pos_history_entry(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    today: date | None = None,
+) -> PatientPOS | None:
+    reference_day = today or date.today()
+    return (
+        db.query(PatientPOS)
+        .filter(
+            PatientPOS.tenant_id == tenant_id,
+            PatientPOS.patient_id == patient_id,
+            PatientPOS.effective_date <= reference_day,
+            (PatientPOS.end_date.is_(None)) | (PatientPOS.end_date >= reference_day),
+        )
+        .order_by(
+            PatientPOS.effective_date.desc(),
+            PatientPOS.created_at.desc(),
+        )
+        .first()
+    )
+
+
+def _sync_facesheet_current_pos_from_history(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> None:
+    facesheet = (
+        db.query(PatientFaceSheet)
+        .filter(
+            PatientFaceSheet.patient_id == patient_id,
+            PatientFaceSheet.tenant_id == tenant_id,
+        )
+        .first()
+    )
+
+    if not facesheet:
+        return
+
+    current_entry = _get_current_pos_history_entry(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+    )
+
+    if current_entry:
+        facesheet.current_pos_type = current_entry.pos_type
+        facesheet.current_pos_name = current_entry.facility_name
+        facesheet.current_pos_address = current_entry.pos_address
+        facesheet.room_number = current_entry.room_number
+        facesheet.pos_start_date = current_entry.effective_date
+        facesheet.pos_end_date = current_entry.end_date
+    else:
+        facesheet.current_pos_type = None
+        facesheet.current_pos_name = None
+        facesheet.current_pos_address = None
+        facesheet.room_number = None
+        facesheet.pos_start_date = None
+        facesheet.pos_end_date = None
+
+    facesheet.updated_at = datetime.now(timezone.utc)
+    if actor_id is not None:
+        facesheet.updated_by = actor_id
+
 # =========================================================
 # SAVE / UPDATE FACE SHEET
 # =========================================================
@@ -1060,13 +1551,7 @@ def save_facesheet(
 ):
     tenant_id = _tenant_id_uuid(user)
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(404, "Patient not found")
+    patient = get_authorized_patient(db, patient_id, user)
 
     user_id = getattr(user, "user_id", None)
 
@@ -1178,24 +1663,7 @@ def get_facesheet(
     # ✅ TENANT CONTEXT
     # --------------------------------------------------
     tenant_id = _tenant_id_uuid(user)
-
-    # --------------------------------------------------
-    # ✅ LOAD PATIENT (STRICT TENANT ISOLATION)
-    # --------------------------------------------------
-    patient = (
-        db.query(Patient)
-        .filter(
-            Patient.id == patient_id,
-            Patient.tenant_id == tenant_id,
-        )
-        .first()
-    )
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found",
-        )
+    patient = get_authorized_patient(db, patient_id, user)
 
     # --------------------------------------------------
     # ✅ LOAD FACE SHEET (STRICT TENANT ISOLATION)
@@ -1356,6 +1824,12 @@ def get_facesheet(
             "attending": {
                 "name":
                     facesheet.attending_physician_name,
+                "address":
+                    facesheet.attending_physician_address,
+                "phone":
+                    facesheet.attending_physician_phone,
+                "fax":
+                    facesheet.attending_physician_fax,
                 "npi":
                     facesheet.attending_physician_npi,
                 "following":
@@ -1364,6 +1838,12 @@ def get_facesheet(
             "medical_director": {
                 "name":
                     facesheet.medical_director_name,
+                "address":
+                    facesheet.medical_director_address,
+                "phone":
+                    facesheet.medical_director_phone,
+                "fax":
+                    facesheet.medical_director_fax,
                 "npi":
                     facesheet.medical_director_npi,
             },
@@ -1411,6 +1891,177 @@ def get_facesheet(
                 facesheet.special_instructions,
         },
     }
+
+
+@router.get("/{patient_id}/pos-history")
+def get_patient_pos_history(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entries = (
+        db.query(PatientPOS)
+        .filter(
+            PatientPOS.patient_id == patient.id,
+            PatientPOS.tenant_id == tenant_id,
+        )
+        .order_by(
+            PatientPOS.effective_date.desc(),
+            PatientPOS.created_at.desc(),
+        )
+        .all()
+    )
+
+    current_entry = _get_current_pos_history_entry(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    return {
+        "patient_id": str(patient.id),
+        "current_entry": (
+            _serialize_pos_history_entry(current_entry)
+            if current_entry
+            else None
+        ),
+        "entries": [
+            _serialize_pos_history_entry(entry)
+            for entry in entries
+        ],
+    }
+
+
+@router.post("/{patient_id}/pos-history")
+def create_patient_pos_history(
+    patient_id: uuid.UUID,
+    payload: PosHistoryCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+
+    patient = get_authorized_patient(db, patient_id, user)
+
+    if payload.end_date and payload.end_date < payload.start_date:
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after start_date",
+        )
+
+    actor_uuid = uuid.UUID(str(user.user_id)) if getattr(user, "user_id", None) else None
+    now = datetime.now(timezone.utc)
+    today = date.today()
+    computed_status = (
+        "DISCHARGED"
+        if payload.end_date and payload.end_date < today
+        else "ACTIVE"
+    )
+
+    entry = PatientPOS(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        pos_type=payload.pos_type,
+        facility_name=payload.pos_name,
+        pos_address=payload.pos_address,
+        room_number=payload.room_number,
+        effective_date=payload.start_date,
+        end_date=payload.end_date,
+        notes=payload.reason,
+        status=computed_status,
+        created_by=str(user.user_id),
+        updated_by=str(user.user_id),
+        updated_at=now,
+    )
+    db.add(entry)
+    db.flush()
+    _sync_facesheet_current_pos_from_history(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        actor_id=actor_uuid,
+    )
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_pos_history_entry(entry)
+
+
+@router.put("/{patient_id}/pos-history/{entry_id}")
+def update_patient_pos_history(
+    patient_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    payload: PosHistoryUpdate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entry = (
+        db.query(PatientPOS)
+        .filter(
+            PatientPOS.id == entry_id,
+            PatientPOS.patient_id == patient.id,
+            PatientPOS.tenant_id == tenant_id,
+        )
+        .first()
+    )
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="POS history entry not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    start_date_value = data.get("start_date", entry.effective_date)
+    end_date_value = data.get("end_date", entry.end_date)
+
+    if end_date_value and start_date_value and end_date_value < start_date_value:
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after start_date",
+        )
+
+    if "pos_type" in data:
+        entry.pos_type = data["pos_type"]
+    if "pos_name" in data:
+        entry.facility_name = data["pos_name"]
+    if "pos_address" in data:
+        entry.pos_address = data["pos_address"]
+    if "room_number" in data:
+        entry.room_number = data["room_number"]
+    if "start_date" in data:
+        entry.effective_date = data["start_date"]
+    if "end_date" in data:
+        entry.end_date = data["end_date"]
+    if "reason" in data:
+        entry.notes = data["reason"]
+
+    today = date.today()
+    entry.status = (
+        "DISCHARGED"
+        if entry.end_date and entry.end_date < today
+        else "ACTIVE"
+    )
+    entry.updated_at = datetime.now(timezone.utc)
+    entry.updated_by = str(user.user_id)
+
+    actor_uuid = uuid.UUID(str(user.user_id)) if getattr(user, "user_id", None) else None
+    _sync_facesheet_current_pos_from_history(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        actor_id=actor_uuid,
+    )
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_pos_history_entry(entry)
     
 # =========================================================
 # UPDATE PATIENT ✅ RESTORED
@@ -1425,16 +2076,7 @@ def update_patient(
 ):
     tenant_id = _tenant_id_uuid(user)
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(
-            status_code=404,
-            detail="Patient not found",
-        )
+    patient = get_authorized_patient(db, patient_id, user)
 
     data = payload.model_dump(exclude_unset=True)
 
@@ -1656,6 +2298,9 @@ def complete_task(
 
     if not task:
         raise HTTPException(404, "Task not found")
+
+    if task.patient_id:
+        get_authorized_patient(db, task.patient_id, user)
     
     # --------------------------------------------------
     # ✅ COMPLETION VALIDATION (CRITICAL)
@@ -1734,13 +2379,7 @@ def patient_chart_summary(
 ):
     tenant_id = _tenant_id_uuid(user)
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.tenant_id == tenant_id
-    ).first()
-
-    if not patient:
-        raise HTTPException(404, "Patient not found")
+    patient = get_authorized_patient(db, patient_id, user)
     
     facesheet = (
         db.query(PatientFaceSheet)
@@ -1929,3 +2568,85 @@ def patient_chart_summary(
 
         "visits": visits,
     }
+
+
+def _num(value):
+    """Best-effort numeric coercion; returns None for blank/non-numeric values."""
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/{patient_id}/performance-history")
+def get_patient_performance_history(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    """Chronological PPS/KPS/FAST/weight/ADL history across RNICA + RN recert
+    assessments, used to compute decline trends for hospice eligibility
+    documentation (e.g. the Performance Status card's "change since last
+    assessment" panel)."""
+    patient = get_authorized_patient(db, patient_id, user)
+
+    history = []
+
+    tenant_id = getattr(patient, "tenant_id", None)
+
+    rnica_rows = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient.id,
+            (RnicaAssessment.tenant_id == tenant_id) | (RnicaAssessment.tenant_id.is_(None)),
+        )
+        .order_by(RnicaAssessment.created_at.asc())
+        .all()
+    )
+    for row in rnica_rows:
+        fd = row.form_data or {}
+        perf = fd.get("performanceStatus") or {}
+        adl = ((fd.get("musculoskeletal") or {}).get("adl")) or {}
+        adl_scores = [_num(v) for v in adl.values()]
+        adl_scores = [v for v in adl_scores if v is not None]
+        adl_dependency_count = (
+            sum(1 for v in adl_scores if v >= 3) if adl_scores else None
+        )
+        history.append({
+            "id": str(row.id),
+            "source": row.assessment_type or "RNICA",
+            "status": row.status,
+            "date": row.locked_at or row.updated_at or row.created_at,
+            "pps": _num(perf.get("pps")),
+            "kps": _num(perf.get("kps")),
+            "fast_stage": perf.get("fast") or None,
+            "weight": _num((fd.get("vitals") or {}).get("weight")),
+            "adl_dependency_count": adl_dependency_count,
+        })
+
+    recert_rows = (
+        db.query(RNRecertAssessment)
+        .filter(
+            RNRecertAssessment.patient_id == patient.id,
+            (RNRecertAssessment.tenant_id == tenant_id) | (RNRecertAssessment.tenant_id.is_(None)),
+        )
+        .order_by(RNRecertAssessment.created_at.asc())
+        .all()
+    )
+    for row in recert_rows:
+        history.append({
+            "id": str(row.id),
+            "source": "RECERT",
+            "status": row.status,
+            "date": row.finalized_at or row.updated_at or row.created_at,
+            "pps": _num(row.pps_score),
+            "kps": _num(row.kps_score),
+            "fast_stage": row.fast_stage,
+            "weight": None,
+            "adl_dependency_count": row.adl_dependency_count,
+        })
+
+    history.sort(key=lambda h: h["date"] or datetime.min)
+    return {"history": history}

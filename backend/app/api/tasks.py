@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from app.services.task_overdue_engine import run_overdue_engine
 
+from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user
 from app.db_tenant_dependency import get_db_tenant
 from app.models.task import Task
@@ -71,6 +72,7 @@ def list_tasks(
     user=Depends(require_valid_tenant),
 ):
     tenant_id = str(user.tenant_id)
+    get_authorized_patient(db, patient_id, user)
 
     return (
         db.query(Task)

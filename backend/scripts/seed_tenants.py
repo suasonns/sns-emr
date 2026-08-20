@@ -42,8 +42,8 @@ TEMPORARY = "TEMPORARY"
 TENANTS = [
     {
         "env_var": "DEV_TENANT_REAL_ID",
-        "legal_name": "Love & Faith Hospice",
-        "display_name": "Love & Faith",
+        "legal_name": "Love & Faith Hospice Services, Inc.",
+        "display_name": "Love & Faith Hospice Services, Inc.",
         "npi": "1275143653",
         "ein": "851033525",
         "ptan": "B51771",

@@ -7,9 +7,9 @@ from fastapi import HTTPException, status
 from app.core.security import CurrentUser
 
 ALLOWED_DASHBOARD_ROLES = {
-    "OWNER",
     "ADMINISTRATOR",
     "DPCS",
+    "DPCS_ADMINISTRATOR",
     "RN",
 }
 

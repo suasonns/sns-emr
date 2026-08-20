@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.patient_access import get_authorized_patient
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models.document_record import DocumentRecord
@@ -52,6 +53,7 @@ def upload_document(
     tenant_id = current_user.tenant_id
     user_id = current_user.id
     role = (current_user.role or "").strip().upper()
+    get_authorized_patient(db, payload.patient_id, current_user)
 
     doc = DocumentRecord(
         tenant_id=tenant_id,
@@ -138,6 +140,8 @@ def resolve_document_for_idg(
 
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+
+    get_authorized_patient(db, doc.patient_id, current_user)
 
     now = datetime.now(timezone.utc)
 

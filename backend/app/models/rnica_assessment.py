@@ -15,6 +15,10 @@ class RnicaAssessment(Base):
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id", ondelete="SET NULL"), nullable=True, index=True)
 
+    # Defense-in-depth: lets any future query filter/scope by tenant directly
+    # instead of relying solely on patient_id being globally unique.
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+
     assessment_type = Column(String(32), nullable=False, default="RNICA")
     status = Column(String(32), nullable=False, default="DRAFT")
     locked = Column(Boolean, nullable=False, default=False)

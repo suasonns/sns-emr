@@ -3,18 +3,26 @@
   "disease": "GENERAL_DECLINE_TERMINAL_STATUS",
   "lcd_reference": "CMS Medicare Coverage Database - LCD L33393 Hospice - Determining Terminal Status (Part I & Part II)",
   "evaluation_date": "",
-
   "eligibility_result": {
     "status": "PENDING",
     "reason": "",
     "confidence": null
   },
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "general-decline",
+      "description": "Part I decline plus Part II baseline guidelines.",
+      "all_of_groups": [
+        "I",
+        "II"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": {
       "required": true,
@@ -29,7 +37,6 @@
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "I",
@@ -38,18 +45,17 @@
       "criteria": [
         {
           "criterion_id": "I-3",
-          "field": "nutrition.weight_loss_percent_6_months",
+          "field": "weight_loss_percent_6_months",
           "operator": "GTE",
           "expected": 10,
-          "unit": "percent",
-          "description": "Weight loss ≥ 10 percent in prior 6 months"
+          "description": "Weight loss is at least 10 percent in the prior 6 months"
         },
         {
           "criterion_id": "I-9",
-          "field": "functional.kps_or_pps_declining",
+          "field": "kps_or_pps_declining",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Decline in KPS or PPS due to progression of disease"
+          "description": "Documented decline in KPS or PPS due to progression of disease"
         }
       ]
     },
@@ -60,14 +66,14 @@
       "criteria": [
         {
           "criterion_id": "II-A",
-          "field": "scores.kps_or_pps_lt_70",
+          "field": "kps_or_pps_lt_70",
           "operator": "EQUALS",
           "expected": true,
-          "description": "KPS or PPS less than 70 percent"
+          "description": "KPS or PPS is less than 70 percent"
         },
         {
           "criterion_id": "II-B",
-          "field": "adl.dependent_count",
+          "field": "adl_dependency_count",
           "operator": "GTE",
           "expected": 2,
           "description": "Dependent in 2 or more ADLs"
@@ -75,7 +81,6 @@
       ]
     }
   ],
-
-  "clinical_notes": "",
+  "clinical_notes": "General decline fallback retained, but converted to the flat fact naming used by the evidence harvester.",
   "source_document": "https://www.cms.gov/medicare-coverage-database/view/lcd.aspx?LCDId=33393"
 }

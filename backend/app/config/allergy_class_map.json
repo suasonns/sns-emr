@@ -1,0 +1,60 @@
+{
+  "_comment": "Maps common patient-reported allergen phrases to canonical drug-class keys (matching drug_classes.json) and/or exact generic drug names. Used to flag new medications against a patient's structured allergy list. Curated/open dataset — swappable for a licensed allergen taxonomy later.",
+
+  "classes": {
+    "penicillin": { "drug_class": "PENICILLINS", "also_flag_drugs": [] },
+    "amoxicillin": { "drug_class": "PENICILLINS", "also_flag_drugs": [] },
+    "pcn": { "drug_class": "PENICILLINS", "also_flag_drugs": [] },
+
+    "sulfa": { "drug_class": "SULFONAMIDES", "also_flag_drugs": [] },
+    "sulfa drugs": { "drug_class": "SULFONAMIDES", "also_flag_drugs": [] },
+    "sulfonamide": { "drug_class": "SULFONAMIDES", "also_flag_drugs": [] },
+    "bactrim": { "drug_class": "SULFONAMIDES", "also_flag_drugs": ["trimethoprim sulfamethoxazole"] },
+
+    "cephalosporin": { "drug_class": "CEPHALOSPORINS", "also_flag_drugs": [] },
+    "keflex": { "drug_class": "CEPHALOSPORINS", "also_flag_drugs": ["cephalexin"] },
+
+    "nsaid": { "drug_class": "NSAIDS", "also_flag_drugs": [] },
+    "nsaids": { "drug_class": "NSAIDS", "also_flag_drugs": [] },
+    "ibuprofen": { "drug_class": "NSAIDS", "also_flag_drugs": ["ibuprofen"] },
+    "aspirin": { "drug_class": "NSAIDS", "also_flag_drugs": ["aspirin"] },
+    "asa": { "drug_class": "NSAIDS", "also_flag_drugs": ["aspirin"] },
+
+    "opioid": { "drug_class": "OPIOIDS", "also_flag_drugs": [] },
+    "opioids": { "drug_class": "OPIOIDS", "also_flag_drugs": [] },
+    "codeine": { "drug_class": "OPIOIDS", "also_flag_drugs": ["codeine"] },
+    "morphine": { "drug_class": "OPIOIDS", "also_flag_drugs": ["morphine"] },
+    "oxycodone": { "drug_class": "OPIOIDS", "also_flag_drugs": ["oxycodone"] },
+    "hydrocodone": { "drug_class": "OPIOIDS", "also_flag_drugs": ["hydrocodone"] },
+    "percocet": { "drug_class": "OPIOIDS", "also_flag_drugs": ["oxycodone"] },
+    "vicodin": { "drug_class": "OPIOIDS", "also_flag_drugs": ["hydrocodone"] },
+    "codeine and derivatives": { "drug_class": "OPIOIDS", "also_flag_drugs": [] },
+
+    "fluoroquinolone": { "drug_class": "FLUOROQUINOLONES", "also_flag_drugs": [] },
+    "cipro": { "drug_class": "FLUOROQUINOLONES", "also_flag_drugs": ["ciprofloxacin"] },
+    "ciprofloxacin": { "drug_class": "FLUOROQUINOLONES", "also_flag_drugs": ["ciprofloxacin"] },
+
+    "macrolide": { "drug_class": "MACROLIDES", "also_flag_drugs": [] },
+    "erythromycin": { "drug_class": "MACROLIDES", "also_flag_drugs": [] },
+    "azithromycin": { "drug_class": "MACROLIDES", "also_flag_drugs": ["azithromycin"] },
+    "z-pack": { "drug_class": "MACROLIDES", "also_flag_drugs": ["azithromycin"] },
+
+    "statin": { "drug_class": "STATINS", "also_flag_drugs": [] },
+    "statins": { "drug_class": "STATINS", "also_flag_drugs": [] },
+
+    "ace inhibitor": { "drug_class": "ACE_INHIBITORS", "also_flag_drugs": [] },
+    "lisinopril": { "drug_class": "ACE_INHIBITORS", "also_flag_drugs": ["lisinopril"] },
+
+    "iodine": { "drug_class": "IODINE_CONTRAST", "also_flag_drugs": [] },
+    "contrast dye": { "drug_class": "IODINE_CONTRAST", "also_flag_drugs": [] },
+    "shellfish": { "drug_class": "SHELLFISH_ALLERGY", "also_flag_drugs": [] },
+
+    "benzodiazepine": { "drug_class": "BENZODIAZEPINES", "also_flag_drugs": [] },
+    "morphine sulfate": { "drug_class": "OPIOIDS", "also_flag_drugs": ["morphine"] },
+
+    "adhesive tape": { "drug_class": null, "also_flag_drugs": [] },
+    "latex": { "drug_class": null, "also_flag_drugs": [] },
+    "peanut": { "drug_class": null, "also_flag_drugs": [] },
+    "eggs": { "drug_class": null, "also_flag_drugs": [] }
+  }
+}

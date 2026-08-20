@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import CurrentUser, get_current_user
 from app.core.database import get_db
+from app.core.names import format_person_name
 from app.core.security import create_access_token, hash_password, verify_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User
@@ -26,13 +27,18 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=8)
 
 
+class ResetPasswordRequest(BaseModel):
+    email: str = Field(min_length=3)
+    new_password: str = Field(min_length=8)
+
+
 def _user_payload(user: User, tenant: Tenant | None = None) -> dict[str, object]:
     return {
         "id": str(user.id),
         "tenant_id": str(user.tenant_id),
         "role": str(user.role),
         "email": user.email,
-        "full_name": user.full_name,
+        "full_name": format_person_name(user, user.email),
         "tenant_name": getattr(tenant, "display_name", None) or getattr(tenant, "legal_name", None),
         "ai_enabled": bool(getattr(tenant, "ai_enabled", False)),
         "billing_enabled": bool(getattr(tenant, "billing_enabled", False)),
@@ -77,6 +83,22 @@ def me(current_user: CurrentUser = Depends(get_current_user), db: Session = Depe
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     tenant = db.get(Tenant, user.tenant_id)
     return _user_payload(user, tenant)
+
+
+@router.post("/reset-password")
+def reset_password(payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    user = (
+        db.query(User)
+        .filter(func.lower(User.email) == payload.email.lower())
+        .first()
+    )
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    user.password_hash = hash_password(payload.new_password)
+    user.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "ok"}
 
 
 @router.post("/change-password")

@@ -9,9 +9,11 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.models.clinical_note import ClinicalNote
+from app.models.incident_report import IncidentReport
 from app.models.task import Task
 from app.models.enums import TaskStatus
 from app.models.idg_review import IDGReview
+from app.services.clinical_note_validation_engine import get_note_validation_flags
 
 
 # =========================================================
@@ -121,19 +123,19 @@ def enforce_idg_readiness(
     # -----------------------------------------------------
     # ✅ 3. RED FLAGS
     # -----------------------------------------------------
-    if any(_has_items(note.red_flags) for note in notes):
+    if any(_has_items(get_note_validation_flags(note).get("red_flags")) for note in notes):
         result.add_reason("Unresolved red flags in clinical notes")
 
     # -----------------------------------------------------
     # ✅ 4. NEEDS CLARIFICATION
     # -----------------------------------------------------
-    if any(_has_items(note.needs_clarification) for note in notes):
+    if any(get_note_validation_flags(note).get("needs_clarification") for note in notes):
         result.add_reason("Clinical documentation requires clarification")
 
     # -----------------------------------------------------
     # ✅ 5. INCIDENT BLOCKS
     # -----------------------------------------------------
-    if any(_is_incident_blocking(note) for note in notes):
+    if any(_is_incident_blocking(db, note) for note in notes):
         result.add_reason("Incident reports must be completed before IDG")
 
     return result
@@ -152,8 +154,21 @@ def _has_items(value) -> bool:
     return False
 
 
-def _is_incident_blocking(note) -> bool:
-    status = getattr(note, "incident_status", None)
+def _is_incident_blocking(db: Session, note: ClinicalNote) -> bool:
+    flags = get_note_validation_flags(note)
+    if not flags.get("incident_required"):
+        return False
+
+    # Prefer the live incident record: an incident stays blocking until
+    # a physician/clinician signs it off, regardless of the status
+    # snapshot recorded at note-submission time.
+    incident_id = flags.get("incident_id")
+    if incident_id:
+        incident = db.query(IncidentReport).filter(IncidentReport.id == incident_id).first()
+        if incident is not None:
+            return not getattr(incident, "signed_at", None)
+
+    status = flags.get("incident_status")
     if not status:
         return False
 

@@ -35,46 +35,92 @@ from app.models.user import User  # noqa: E402
 
 MIN_PASSWORD_LENGTH = 12
 
+SYSTEM_TENANT_ID = "SYSTEM_TENANT_ID"
+
 ACCOUNTS = [
     {
         "env_var": "ADMIN_PASSWORD",
+        "tenant_env_var": "DEV_TENANT_REAL_ID",
         "email": "rsuason@loveandfaithhospice.com",
         "full_name": "Romel Suason",
-        "role": "ADMINISTRATOR",
+        "role": "OWNER",
+        "access_level": "FULL_ACCESS",
+    },
+    {
+        "env_var": "BILLING_PASSWORD",
+        "tenant_env_var": "SYSTEM_TENANT_ID",
+        "email": "billing@sns.local",
+        "full_name": "Billing Team",
+        "role": "BILLING",
         "access_level": "FULL_ACCESS",
     },
 ]
 
 
-def main() -> int:
-    tenant_id_raw = os.getenv("TENANT_ID") or os.getenv("DEV_TENANT_REAL_ID")
+def _ensure_platform_tenant(db) -> uuid.UUID:
+    tenant_id_raw = os.getenv(SYSTEM_TENANT_ID) or os.getenv("OWNER_TENANT_ID")
     if not tenant_id_raw:
-        print("ERROR: set TENANT_ID to the tenant these accounts belong to.")
-        return 1
+        raise RuntimeError(
+            "SYSTEM_TENANT_ID is required for global owner/billing dashboard access. "
+            "This tenant is not an agency tenant."
+        )
 
     tenant_id = uuid.UUID(tenant_id_raw)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        tenant = Tenant(
+            id=tenant_id,
+            legal_name="SNS Platform",
+            display_name="SNS Platform",
+            npi="0000000000",
+            ein=None,
+            ptan=None,
+            tenant_type="PRODUCTION",
+            environment_tag="PERMANENT",
+            status="ACTIVE",
+            ai_enabled=True,
+            billing_enabled=False,
+        )
+        db.add(tenant)
+    else:
+        tenant.legal_name = tenant.legal_name or "SNS Platform"
+        tenant.display_name = tenant.display_name or "SNS Platform"
+        tenant.tenant_type = tenant.tenant_type or "PRODUCTION"
+        tenant.environment_tag = tenant.environment_tag or "PERMANENT"
+        tenant.status = tenant.status or "ACTIVE"
+        tenant.ai_enabled = True
+        tenant.billing_enabled = False
 
+    return tenant_id
+
+
+def main() -> int:
     db = SessionLocal()
     try:
-        if db.get(Tenant, tenant_id) is None:
-            print(f"ERROR: tenant {tenant_id} does not exist. Seed the tenant first.")
-            return 1
-
         created = 0
         updated = 0
         skipped = []
 
         for account in ACCOUNTS:
+            tenant_env_var = account.get("tenant_env_var") or SYSTEM_TENANT_ID
+            tenant_id_raw = os.getenv(tenant_env_var)
+            if not tenant_id_raw:
+                if tenant_env_var == SYSTEM_TENANT_ID:
+                    tenant_id = _ensure_platform_tenant(db)
+                else:
+                    skipped.append(f"{account['email']} (missing {tenant_env_var})")
+                    continue
+            else:
+                tenant_id = uuid.UUID(tenant_id_raw)
+
             password = os.getenv(account["env_var"])
             email = account["email"]
 
-            user = (
-                db.query(User)
-                .filter(User.tenant_id == tenant_id, User.email == email)
-                .one_or_none()
-            )
+            user = db.query(User).filter(User.email == email).one_or_none()
+            if user is None:
+                user = db.query(User).filter(User.email == email).first()
 
-            if password is None and user is None:
+            if user is None and password is None:
                 skipped.append(f"{email} (no {account['env_var']}, user does not exist)")
                 continue
 
@@ -98,6 +144,7 @@ def main() -> int:
                 db.add(user)
                 created += 1
             else:
+                user.tenant_id = tenant_id
                 user.full_name = account["full_name"]
                 user.role = account["role"]
                 user.access_level = account["access_level"]

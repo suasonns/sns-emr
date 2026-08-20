@@ -46,6 +46,8 @@ def _resolve_tenant_id(
         resolved = request.state.tenant_id
     elif "tenant_id" in db.info and db.info["tenant_id"]:
         resolved = db.info["tenant_id"]
+    elif user.tenant_id:
+        resolved = user.tenant_id
     else:
         raise HTTPException(400, "tenant_id is required")
 
@@ -178,8 +180,9 @@ def get_audit_dashboard_census(
         description="Maximum number of patient rows to return",
     ),
     db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(["ADMIN", "DPCS", "QA"])),
 ):
-    resolved_tenant_id = _resolve_tenant_id(request, db, tenant_id)
+    resolved_tenant_id = _resolve_tenant_id(request, db, tenant_id, user)
 
     rows = db.execute(
         text(
@@ -188,11 +191,23 @@ def get_audit_dashboard_census(
                 SELECT DISTINCT ON (v.patient_id)
                     v.patient_id,
                     v.visit_datetime AS last_visit_at,
-                    u.full_name AS attending_physician
+                    COALESCE(
+                        NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.middle_name, u.last_name)), ''),
+                        u.email,
+                        '—'
+                    ) AS attending_physician
                 FROM visits v
                 LEFT JOIN users u ON u.id = v.provider_id
                 WHERE v.tenant_id = :tenant_id
                 ORDER BY v.patient_id, v.visit_datetime DESC, v.updated_at DESC
+            ),
+            latest_admission AS (
+                SELECT DISTINCT ON (a.patient_id)
+                    a.patient_id,
+                    COALESCE(a.soc_date, a.admission_date) AS admission_at
+                FROM admissions a
+                WHERE a.tenant_id = :tenant_id
+                ORDER BY a.patient_id, a.created_at DESC
             ),
             primary_payer AS (
                 SELECT DISTINCT ON (pp.patient_id)
@@ -208,12 +223,15 @@ def get_audit_dashboard_census(
             SELECT
                 p.id::text AS patient_id,
                 p.mrn,
-                p.full_name,
+                COALESCE(
+                    NULLIF(TRIM(CONCAT_WS(' ', fs.first_name, fs.middle_name, fs.last_name)), ''),
+                    p.mrn
+                ) AS full_name,
                 p.date_of_birth,
                 p.primary_diagnosis,
                 p.status AS patient_status,
                 p.admission_status,
-                COALESCE(p.on_service_at, p.soc_date, p.hospice_election_date::timestamp) AS admission_at,
+                COALESCE(la.admission_at, p.hospice_election_date::timestamp) AS admission_at,
                 p.discharge_date,
                 p.discharge_reason,
                 COALESCE(lv.attending_physician, '—') AS attending_physician,
@@ -226,10 +244,12 @@ def get_audit_dashboard_census(
                     ELSE 'Active'
                 END AS census_bucket
             FROM patients p
+            LEFT JOIN patient_facesheet fs ON fs.patient_id = p.id AND fs.tenant_id = p.tenant_id
             LEFT JOIN latest_visit lv ON lv.patient_id = p.id
-            LEFT JOIN primary_payer pp ON pp.patient_id = p.id::text
+            LEFT JOIN latest_admission la ON la.patient_id = p.id
+            LEFT JOIN primary_payer pp ON pp.patient_id = p.id
             WHERE p.tenant_id = :tenant_id
-            ORDER BY p.full_name ASC
+            ORDER BY full_name ASC
             LIMIT :limit
             """
         ),

@@ -1,29 +1,47 @@
 {
-  "test_case_id": "LCD-CANCER-TEMPLATE",
+  "test_case_id": "LCD-CANCER-RULESET",
   "disease": "CANCER_METASTATIC",
-  "lcd_reference": "LCD Hospice Eligibility Determination – Cancer",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 Cancer",
   "evaluation_date": "",
-
   "eligibility_result": {
-    "status": "PENDING",
-    "reason": "",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for cancer.",
     "confidence": null
   },
-
-  "group_combination_rule": "ANY_GROUP_REQUIRED",
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "metastatic-at-presentation",
+      "description": "Group 1 should be met.",
+      "all_of_groups": [
+        "1"
+      ]
+    },
+    {
+      "path_id": "progression-to-metastatic",
+      "description": "Group 2 should be met.",
+      "all_of_groups": [
+        "2"
+      ]
+    },
+    {
+      "path_id": "poor-prognosis-cancers",
+      "description": "Group 3 should be met.",
+      "all_of_groups": [
+        "3"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": null,
     "PPS": null,
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
@@ -32,31 +50,31 @@
       "criteria": [
         {
           "criterion_id": "1a",
-          "field": "cancer.metastatic_untreatable_at_presentation",
+          "field": "criteria_answers.CANCER_METASTATIC.1a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Cancer has metastasized and is not treatable at presentation"
+          "description": "Cancer has metastasized and is untreatable at presentation"
         }
       ]
     },
     {
       "group_id": "2",
-      "group_name": "Progression to metastatic disease",
+      "group_name": "Progression of cancer from an earlier stage to metastatic disease",
       "rule": "ANY_REQUIRED",
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "cancer.metastatic_regardless_of_therapy",
+          "field": "criteria_answers.CANCER_METASTATIC.2a",
           "operator": "EQUALS",
           "expected": true,
           "description": "Cancer has metastasized regardless of therapy"
         },
         {
           "criterion_id": "2b",
-          "field": "cancer.declines_or_not_candidate_for_curative_therapy",
+          "field": "criteria_answers.CANCER_METASTATIC.2b",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Patient declines or is not a candidate for curative therapy"
+          "description": "Patient has been ruled out as a candidate for, or declines, further curative therapy"
         }
       ]
     },
@@ -67,30 +85,28 @@
       "criteria": [
         {
           "criterion_id": "3a",
-          "field": "cancer.suspicious_large_tumor_refuses_diagnosis",
+          "field": "criteria_answers.CANCER_METASTATIC.3a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Suspicious large tumor and patient refuses definitive diagnosis"
+          "description": "Patient has a suspicious large tumor and refuses definitive diagnosis"
         },
         {
           "criterion_id": "3b",
-          "field": "functional_status.decline",
+          "field": "criteria_answers.CANCER_METASTATIC.3b",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Decline in functional status"
+          "description": "Patient has declined in functional status"
         },
         {
           "criterion_id": "3c",
-          "field": "nutrition.unintentional_weight_loss_significant",
+          "field": "criteria_answers.CANCER_METASTATIC.3c",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Significant unintentional weight loss"
+          "description": "Patient has significant unintentional weight loss"
         }
       ]
     }
   ],
-
-  "supporting_factors": [],
-  "clinical_notes": "Template derived from LCD Hospice Eligibility Determination form for Cancer.",
+  "clinical_notes": "Source form presents three alternative qualifying pathways for cancer LCD support.",
   "source_document": "Cancer.pdf"
 }

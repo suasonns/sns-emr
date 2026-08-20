@@ -24,6 +24,13 @@ class IDGMeeting(Base):
     """
     Authoritative IDG meeting scheduling entity.
 
+    Domain model entity #2 of 3 ("IDG" is overloaded — do not conflate):
+        1. PatientIDGReview  -> idg_review.py / IDGReview (idg_reviews table)
+        2. IDGMeeting        -> this class (recurring ~14-day meeting: date/
+                                 time, attendees, agenda, minutes, status)
+        3. IDGMeetingPatientReview -> idg_meeting_patient_review.py
+                                 (in-meeting, per-patient review workspace)
+
     This table represents the scheduled IDG meeting instance.
     Patient-level IDG review content belongs in idg_reviews.
     Intelligence items belong in idg_intelligence_items.

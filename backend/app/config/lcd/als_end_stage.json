@@ -1,148 +1,151 @@
 {
-  "test_case_id": "LCD-ALS-TEMPLATE",
+  "test_case_id": "LCD-ALS-RULESET",
   "disease": "ALS_END_STAGE",
-  "lcd_reference": "LCD Hospice Eligibility Determination – ALS",
+  "lcd_reference": "LCD Hospice Eligibility Determination \u2013 ALS",
   "evaluation_date": "",
-
   "eligibility_result": {
-    "status": "PENDING",
-    "reason": "",
+    "status": "RULESET",
+    "reason": "Parameterized disease-specific LCD criteria for ALS.",
     "confidence": null
   },
-
-  "eligibility_logic": {
-    "all_of": ["1"],
-    "any_of": ["2", "3"]
-  },
-
+  "group_combination_rule": "ANY_PATH_REQUIRED",
+  "eligibility_paths": [
+    {
+      "path_id": "als-core",
+      "description": "Group 1 must be met and either Group 2 or Group 3 must be met.",
+      "all_of_groups": [
+        "1"
+      ],
+      "any_of_groups": [
+        "2",
+        "3"
+      ]
+    }
+  ],
   "activation_rules": {
     "FAST": false,
     "NYHA": false
   },
-
   "clinical_scores": {
     "KPS": null,
     "PPS": null,
     "FAST": null,
     "NYHA": null
   },
-
   "criteria_groups": [
     {
       "group_id": "1",
-      "group_name": "Rapid Disease Progression (within prior 12 months)",
+      "group_name": "Rapid Disease Progression (within the preceding 12 months)",
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
           "criterion_id": "1a",
-          "field": "als.progression_ambulatory_to_bedbound",
+          "field": "criteria_answers.ALS_END_STAGE.1a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from independent ambulation to wheelchair to bed-bound"
+          "description": "Progression from independent ambulation to wheelchair to bed-bound status"
         },
         {
           "criterion_id": "1b",
-          "field": "als.progression_speech_to_unintelligible",
+          "field": "criteria_answers.ALS_END_STAGE.1b",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from normal speech to barely intelligible or unintelligible"
+          "description": "Progression from normal speech to barely intelligible or unintelligible words"
         },
         {
           "criterion_id": "1c",
-          "field": "als.progression_diet_to_pureed",
+          "field": "criteria_answers.ALS_END_STAGE.1c",
           "operator": "EQUALS",
           "expected": true,
           "description": "Progression from normal diet to pureed diet"
         },
         {
           "criterion_id": "1d",
-          "field": "als.adl_decline_to_total_assist",
+          "field": "criteria_answers.ALS_END_STAGE.1d",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Progression from independence in ADLs to total assist"
+          "description": "Progression from independence in most or all ADLs to needing major caregiver assistance in all ADLs"
         }
       ]
     },
     {
       "group_id": "2",
-      "group_name": "Critical Nutritional Impairment (within prior 12 months)",
+      "group_name": "Critical Nutritional Impairment (within the preceding 12 months)",
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
           "criterion_id": "2a",
-          "field": "nutrition.oral_intake_insufficient_to_sustain_life",
+          "field": "oral_intake_decline",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Oral intake insufficient to sustain life"
+          "description": "Oral intake of nutrients and fluids is insufficient to sustain life"
         },
         {
           "criterion_id": "2b",
-          "field": "nutrition.continued_weight_loss",
+          "field": "continued_weight_loss",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Continuing weight loss"
+          "description": "Patient continues to lose weight"
         },
         {
           "criterion_id": "2c",
-          "field": "hydration.dehydration_or_hypovolemia",
+          "field": "criteria_answers.ALS_END_STAGE.2c",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Signs of dehydration or hypovolemia"
+          "description": "Signs of dehydration or hypovolemia are present"
         },
         {
           "criterion_id": "2d",
-          "field": "nutrition.no_artificial_feeding_or_not_relieve_hunger",
+          "field": "criteria_answers.ALS_END_STAGE.2d",
           "operator": "EQUALS",
           "expected": true,
-          "description": "No artificial feeding sufficient to sustain life or not relieving hunger"
+          "description": "Artificial feeding is absent or inadequate to sustain life / does not relieve hunger"
         }
       ]
     },
     {
       "group_id": "3",
-      "group_name": "Life-threatening Complications (within prior 12 months)",
+      "group_name": "Life-threatening Complications (within the preceding 12 months)",
       "rule": "ALL_REQUIRED",
       "criteria": [
         {
           "criterion_id": "3a",
-          "field": "infection.recurrent_aspiration_pneumonia",
+          "field": "criteria_answers.ALS_END_STAGE.3a",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Recurrent aspiration pneumonia"
+          "description": "Recurrent aspiration pneumonia, with or without tube feedings"
         },
         {
           "criterion_id": "3b",
-          "field": "infection.upper_urinary_tract_infection",
+          "field": "criteria_answers.ALS_END_STAGE.3b",
           "operator": "EQUALS",
           "expected": true,
           "description": "Upper urinary tract infection such as pyelonephritis"
         },
         {
           "criterion_id": "3c",
-          "field": "infection.sepsis_history_12_months",
+          "field": "criteria_answers.ALS_END_STAGE.3c",
           "operator": "EQUALS",
           "expected": true,
-          "description": "History of sepsis in last 12 months"
+          "description": "History of sepsis in the last 12 months"
         },
         {
           "criterion_id": "3d",
-          "field": "infection.recurrent_fever_after_antibiotics",
+          "field": "criteria_answers.ALS_END_STAGE.3d",
           "operator": "EQUALS",
           "expected": true,
           "description": "Recurrent fever after antibiotic therapy"
         },
         {
           "criterion_id": "3e",
-          "field": "skin.decubitus_ulcer_stage_3_or_4",
+          "field": "criteria_answers.ALS_END_STAGE.3e",
           "operator": "EQUALS",
           "expected": true,
-          "description": "Stage 3 or 4 pressure ulcers"
+          "description": "History or presence of stage 3 or 4 decubitus ulcers"
         }
       ]
     }
   ],
-
-  "supporting_factors": [],
-  "clinical_notes": "Template derived from ALS LCD form.",
+  "clinical_notes": "Source form requires the rapid progression block plus either nutritional impairment or life-threatening complications.",
   "source_document": "ALS End stage.pdf"
 }
