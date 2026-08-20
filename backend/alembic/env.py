@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import ast
+import hashlib
 import os
 import sys
-import hashlib
 from logging.config import fileConfig
 from pathlib import Path
 
@@ -130,27 +131,31 @@ def validate_migration_safety():
     migration_path = Path(rev.module.__file__)
     content = migration_path.read_text()
 
-    # ✅ Extract ONLY upgrade() block
-    import re
-
-    upgrade_match = re.search(
-        r"def upgrade\(.*?\):(.*?)(def downgrade|$)",
-        content,
-        re.S,
+    module = ast.parse(content, filename=str(migration_path))
+    upgrade_function = next(
+        (
+            node
+            for node in module.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name == "upgrade"
+        ),
+        None,
     )
-
-    if not upgrade_match:
+    if upgrade_function is None:
         return
 
-    upgrade_content = upgrade_match.group(1)
-
-    dangerous_ops = [
-        "op.drop_table",
-        "op.drop_column",
-        "op.drop_index",
-    ]
-
-    violations = [op for op in dangerous_ops if op in upgrade_content]
+    dangerous_ops = {"drop_table", "drop_column", "drop_index"}
+    violations = sorted(
+        {
+            f"op.{node.func.attr}"
+            for node in ast.walk(upgrade_function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op"
+            and node.func.attr in dangerous_ops
+        }
+    )
 
     if violations:
         raise RuntimeError(
