@@ -39,6 +39,7 @@ Thumbs.db
 .coverage
 .pytest_cache/
 htmlcov/
+_tmp_*.py
 
 # ======================
 # Logs
@@ -74,4 +75,3 @@ db_checkpoints/
 
 # Visit audio recordings (contain PHI, stored on disk not git)
 storage/visit_recordings/
-

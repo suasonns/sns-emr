@@ -15,7 +15,6 @@ from app.models.patient import Patient
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
 
-ADMIN_EMAIL = "rsuason@loveandfaithhospice.com"
 MIN_PASSWORD_LENGTH = 12
 
 TEST_PATIENTS = (
@@ -117,11 +116,14 @@ def _insert_test_records(db: Session, tenant_id: uuid.UUID, user_id: uuid.UUID) 
 
 
 def bootstrap_production_admin(db: Session) -> bool:
+    admin_email = os.getenv("ADMIN_EMAIL")
     password = os.getenv("ADMIN_PASSWORD")
     system_tenant_id_raw = os.getenv("SYSTEM_TENANT_ID") or os.getenv("OWNER_TENANT_ID")
 
     if not password:
         return False
+    if not admin_email:
+        raise RuntimeError("ADMIN_EMAIL is required when ADMIN_PASSWORD is configured")
     if not system_tenant_id_raw:
         raise RuntimeError(
             "SYSTEM_TENANT_ID is required for global owner/billing dashboard access. "
@@ -151,9 +153,9 @@ def bootstrap_production_admin(db: Session) -> bool:
     agency_tenant_id_raw = os.getenv("DEV_TENANT_REAL_ID")
     agency_tenant_id = uuid.UUID(agency_tenant_id_raw) if agency_tenant_id_raw else system_tenant_id
 
-    user = db.query(User).filter(User.email == ADMIN_EMAIL).one_or_none()
+    user = db.query(User).filter(User.email == admin_email).one_or_none()
     if user is None:
-        user = User(id=uuid.uuid4(), tenant_id=agency_tenant_id, email=ADMIN_EMAIL)
+        user = User(id=uuid.uuid4(), tenant_id=agency_tenant_id, email=admin_email)
         db.add(user)
 
     user.tenant_id = agency_tenant_id

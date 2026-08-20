@@ -8,6 +8,7 @@ place, and a password is only changed when its variable is provided.
 Usage (PowerShell):
 
     $env:TENANT_ID = "01271980-0000-0000-0000-000005101977"
+    $env:ADMIN_EMAIL = Read-Host "Admin email"
     $env:ADMIN_PASSWORD = Read-Host "Admin password"
     python scripts/seed_login_accounts.py
 """
@@ -40,8 +41,8 @@ SYSTEM_TENANT_ID = "SYSTEM_TENANT_ID"
 ACCOUNTS = [
     {
         "env_var": "ADMIN_PASSWORD",
+        "email_env_var": "ADMIN_EMAIL",
         "tenant_env_var": "DEV_TENANT_REAL_ID",
-        "email": "rsuason@loveandfaithhospice.com",
         "full_name": "Romel Suason",
         "role": "OWNER",
         "access_level": "FULL_ACCESS",
@@ -102,6 +103,12 @@ def main() -> int:
         skipped = []
 
         for account in ACCOUNTS:
+            email_env_var = account.get("email_env_var")
+            email = os.getenv(email_env_var) if email_env_var else account["email"]
+            if not email:
+                skipped.append(f"missing {email_env_var}")
+                continue
+
             tenant_env_var = account.get("tenant_env_var") or SYSTEM_TENANT_ID
             tenant_id_raw = os.getenv(tenant_env_var)
             if not tenant_id_raw:
@@ -114,8 +121,6 @@ def main() -> int:
                 tenant_id = uuid.UUID(tenant_id_raw)
 
             password = os.getenv(account["env_var"])
-            email = account["email"]
-
             user = db.query(User).filter(User.email == email).one_or_none()
             if user is None:
                 user = db.query(User).filter(User.email == email).first()
