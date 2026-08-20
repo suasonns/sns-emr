@@ -19,6 +19,10 @@ import React, { useState, useCallback, useMemo, useEffect, useContext, useRef } 
 import { useNavigate } from "react-router-dom";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
+import {
+  RNICA_ASSESSMENT_MODULES,
+  validateBodyMapRegions,
+} from "./rn-ica/rnIcaClinicalNavigation";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import {
@@ -164,7 +168,7 @@ const NAV_SECTIONS = [
   "Hospice Orders Hub", "Referrals", "Finalization",
 ];
 
-const ROUTES = [
+const LEGACY_ROUTES = [
   { key: "demographics",      nav: "Patient Demographics",  formSection: "demographics" },
   { key: "vitals",            nav: "Vitals",                formSection: "vitals" },
   { key: "pain",              nav: "Pain Assessment",       formSection: "pain" },
@@ -196,6 +200,11 @@ const ROUTES = [
   { key: "referrals",         nav: "Referrals",             formSection: "referrals" },
   { key: "finalization",      nav: "Finalization",          formSection: "finalization" },
 ];
+
+const PILOT_ROUTES = RNICA_ASSESSMENT_MODULES.map((module) => ({
+  ...module,
+  nav: module.label,
+}));
 
 const SIDEBAR_CONFIG = [
   { key: "demographics",      label: "Patient Demographics",  icon: "👤", hope: ["A1110","A1005","A1010"], color: "green" },
@@ -263,38 +272,6 @@ const DEFAULT_VISIT_DISCIPLINES = [
   { discipline: "SC", label: "Spiritual Counselor", frequency: "", duration: "", prnVisits: "" },
   { discipline: "RN-SUP", label: "RN Supervisory", frequency: "", duration: "every 14 days", prnVisits: "" },
 ];
-
-const BODY_MAP_REGIONS = {
-  front: [
-    { id: "head", label: "Head", x: 110, y: 32, r: 18 },
-    { id: "neck", label: "Neck", x: 110, y: 68, r: 12 },
-    { id: "shoulders", label: "Shoulders", x: 110, y: 102, r: 16 },
-    { id: "chest", label: "Chest", x: 110, y: 138, r: 18 },
-    { id: "abdomen", label: "Abdomen", x: 110, y: 188, r: 18 },
-    { id: "pelvis", label: "Pelvis", x: 110, y: 236, r: 16 },
-    { id: "right-arm", label: "R Arm", x: 52, y: 156, r: 16 },
-    { id: "left-arm", label: "L Arm", x: 168, y: 156, r: 16 },
-    { id: "right-leg", label: "R Leg", x: 88, y: 300, r: 18 },
-    { id: "left-leg", label: "L Leg", x: 132, y: 300, r: 18 },
-    { id: "right-foot", label: "R Foot", x: 88, y: 372, r: 14 },
-    { id: "left-foot", label: "L Foot", x: 132, y: 372, r: 14 },
-  ],
-  back: [
-    { id: "head", label: "Head", x: 110, y: 32, r: 18 },
-    { id: "neck", label: "Neck", x: 110, y: 68, r: 12 },
-    { id: "shoulders", label: "Shoulders", x: 110, y: 102, r: 16 },
-    { id: "upper-back", label: "Upper Back", x: 110, y: 138, r: 18 },
-    { id: "lower-back", label: "Lower Back", x: 110, y: 192, r: 18 },
-    { id: "buttocks", label: "Buttocks", x: 110, y: 238, r: 16 },
-    { id: "right-arm", label: "R Arm", x: 52, y: 156, r: 16 },
-    { id: "left-arm", label: "L Arm", x: 168, y: 156, r: 16 },
-    { id: "right-leg", label: "R Leg", x: 88, y: 300, r: 18 },
-    { id: "left-leg", label: "L Leg", x: 132, y: 300, r: 18 },
-    { id: "right-foot", label: "R Foot", x: 88, y: 372, r: 14 },
-    { id: "left-foot", label: "L Foot", x: 132, y: 372, r: 14 },
-  ],
-};
-
 
 // ════════════════════════════════════════════════════════════════
 // 2. INITIAL_FORM — Complete State Shape (28 sections)
@@ -717,6 +694,7 @@ const INITIAL_FORM = {
   finalization: {
     completedSections: [],
     incompleteCount: 0,
+    clinicalNarrative: "",
     // Gap #3 — Response to Interventions (CDPH: assessment-to-assessment change baseline)
     responseToInterventions: {
       initialResponseSummary: "",
@@ -740,6 +718,16 @@ const INITIAL_FORM = {
     lockedTimestamp: "",
   },
 };
+
+function normalizeLoadedRnicaFormData(loadedFormData) {
+  return {
+    ...loadedFormData,
+    finalization: {
+      ...INITIAL_FORM.finalization,
+      ...(loadedFormData?.finalization || {}),
+    },
+  };
+}
 
 // ════════════════════════════════════════════════════════════════
 // 3. API SERVICE — 4 Backend Endpoints
@@ -879,6 +867,9 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   // Finalization ? signature
+  if (!formData.finalization.clinicalNarrative) {
+    errors["finalization.clinicalNarrative"] = "Clinical narrative is required before attestation";
+  }
   if (!formData.finalization.clinicianSignature) {
     errors["finalization.clinicianSignature"] = "Clinician signature required";
   }
@@ -1814,6 +1805,15 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
           </div>
         );
       })}
+      <div className={workspacePilot ? "rnica-lcd-evidence" : undefined}>
+        <FormTextarea
+          label="LCD supporting evidence"
+          value={diagnosesData?.lcdEligibilityNarrative || ""}
+          onChange={(value) => updateDiagnoses("lcdEligibilityNarrative", value)}
+          placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
+          rows={4}
+        />
+      </div>
     </div>
   );
 }
@@ -3807,6 +3807,18 @@ const POSTERIOR_REGIONS = [
   { id: "right_sole",          label: "Right Sole",               x: 101, y: 300 },
 ];
 
+const BODY_MAP_AUDIT = validateBodyMapRegions({
+  anterior: ANTERIOR_REGIONS,
+  posterior: POSTERIOR_REGIONS,
+  assetWidth: 540,
+  assetHeight: 960,
+  viewBoxWidth: 180,
+  viewBoxHeight: 320,
+});
+if (import.meta.env.DEV && !BODY_MAP_AUDIT.valid) {
+  throw new Error(`Invalid RNICA body-map overlay: ${BODY_MAP_AUDIT.errors.join("; ")}`);
+}
+
 function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = "both" }) {
   const [hovered, setHovered] = useState(null);
   const { mode: themeMode } = useThemeMode();
@@ -3899,8 +3911,8 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
   return (
     <div>
       <div style={{ display: "flex", gap: 32, justifyContent: "center" }}>
-        {showFront && renderView("/body-front.png", ANTERIOR_REGIONS, "Anterior (Front)", "anterior")}
-        {showBack && renderView("/body-back.png", POSTERIOR_REGIONS, "Posterior (Back)", "posterior")}
+        {showFront && renderView(frontBody, ANTERIOR_REGIONS, "Anterior (Front)", "anterior")}
+        {showBack && renderView(backBody, POSTERIOR_REGIONS, "Posterior (Back)", "posterior")}
       </div>
 
       {selectedRegions.length > 0 && (
@@ -3975,12 +3987,22 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
 
-function renderDemographics(data, update, COLORS, styles) {
+function renderDemographics(data, update, COLORS, styles, moduleKey = "all") {
   const u = (path, val) => update("demographics", path, val);
+  const showPatient = moduleKey === "all" || moduleKey === "demographics";
+  const showCaregiver = moduleKey === "all" || moduleKey === "caregiverAssessment";
+  const showPlanning = moduleKey === "all" || moduleKey === "advancedCarePlanning";
   return (
     <>
-      <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>Patient identification, caregiver, living situation, and advanced care planning</p>
+      <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>
+        {showCaregiver && !showPatient
+          ? "Primary caregiver and willingness/capability assessment"
+          : showPlanning && !showPatient
+            ? "Code status, treatment preferences, decision maker, and directives"
+            : "Patient identification, contacts, and living situation"}
+      </p>
 
+      {showPatient && <>
       <Card title="Patient Information" hopeCode="A1110">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormInput label="First Name" value={data.firstName} onChange={(v) => u("firstName", v)} required />
@@ -4026,7 +4048,9 @@ function renderDemographics(data, update, COLORS, styles) {
           <FormInput label="Phone" value={data.emergencyContact?.phone} onChange={(v) => u("emergencyContact.phone", v)} type="tel" />
         </div>
       </Card>
+      </>}
 
+      {showCaregiver && <>
       <Card title="Primary Caregiver (PCG)" id="pcg">
         <FormRadioGroup label="Does this patient have a Primary Caregiver?"
           value={!pcgIsAssessed(data.pcg) ? "" : (data.pcg?.noPcg ? "no" : "yes")}
@@ -4120,7 +4144,9 @@ function renderDemographics(data, update, COLORS, styles) {
           placeholder="Document caregiver evaluation findings, concerns, and recommended interventions..." rows={4} />
       </Card>
       )}
+      </>}
 
+      {showPatient && (
       <Card title="Living Situation" hopeCode="A1905">
         <FormSelect label="Site of Service" value={data.livingSituation?.siteOfService} onChange={(v) => u("livingSituation.siteOfService", v)}
           options={["Home", "SNF", "ALF", "Board & Care", "Memory Care", "Hospital", "Homeless", "Other"]} />
@@ -4131,7 +4157,9 @@ function renderDemographics(data, update, COLORS, styles) {
         <FormRadioGroup label="Availability of Assistance" value={data.livingSituation?.availabilityOfAssistance} onChange={(v) => u("livingSituation.availabilityOfAssistance", v)}
           options={["24/7 available", "Daytime only", "Nighttime only", "Limited", "None"]} />
       </Card>
+      )}
 
+      {showPlanning && (
       <Card title="Advanced Care Planning" cms="F2000/F2100/F2200" id="advancedCarePlanning">
         <FormRadioGroup label="Code Status" value={data.advancedCarePlanning?.codeStatus} onChange={(v) => u("advancedCarePlanning.codeStatus", v)}
           hopeCode="F2000" options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
@@ -4155,6 +4183,7 @@ function renderDemographics(data, update, COLORS, styles) {
         <FormCheckbox label="Advance Directive on File" checked={data.advancedCarePlanning?.advanceDirectiveOnFile} onChange={(v) => u("advancedCarePlanning.advanceDirectiveOnFile", v)} />
         <FormCheckbox label="POLST on File" checked={data.advancedCarePlanning?.polstOnFile} onChange={(v) => u("advancedCarePlanning.polstOnFile", v)} />
       </Card>
+      )}
     </>
   );
 }
@@ -4243,7 +4272,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "diagnoses" && card.customRenderer === "lcdEligibility") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <LcdEligibilityCard
                 diagnosesData={data}
                 fullFormData={fullFormData}
@@ -4258,7 +4287,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "diagnoses" && card.customRenderer === "secondaryDiagnoses") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <SecondaryDiagnosesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
             </Card>
           );
@@ -4266,7 +4295,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "diagnoses" && card.customRenderer === "hopeComorbidities") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <HopeComorbiditiesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
             </Card>
           );
@@ -4336,7 +4365,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         return (
-          <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+          <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
                 value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}
@@ -4727,7 +4756,7 @@ const SECTION_CONFIGS = {
 
   diagnoses: {
     title: "Diagnoses",
-    subtitle: "Primary/Secondary Dx, comorbidities, LCD eligibility, disease trajectory narrative",
+    subtitle: "Primary/Secondary Dx, comorbidities, disease trajectory, and LCD eligibility",
     cards: [
       {
         title: "Primary Diagnosis", hopeCode: "I0010", fields: [
@@ -4754,11 +4783,6 @@ const SECTION_CONFIGS = {
         title: "Comorbidities and Co-existing Conditions",
         hopeCode: "I0100-I8005",
         customRenderer: "hopeComorbidities",
-      },
-      {
-        title: "Narrative & Disease Trajectory", fields: [
-          { type: "textarea", label: "LCD Eligibility Narrative", path: "lcdEligibilityNarrative", rows: 6, placeholder: "Document the patient's terminal illness, functional decline trajectory, and LCD eligibility criteria..." },
-        ],
       },
     ],
   },
@@ -5396,6 +5420,10 @@ const SECTION_CONFIGS = {
     title: "Finalization & Signature",
     subtitle: "Response to interventions, POC generation, completion, certification, clinician signature",
     cards: [
+      { id: "rnica-clinical-narrative", title: "Clinical Narrative", fields: [
+        { type: "textarea", label: "Clinical narrative", path: "clinicalNarrative", rows: 8, required: true,
+          placeholder: "Synthesize the completed whole-patient assessment findings, changes, interventions, response, risks, and plan. Review all source-linked draft content before attestation." },
+      ]},
       { title: "Response to Initial Interventions (CDPH Gap #3)", cms: "CDPH", fields: [
         { type: "textarea", label: "Initial Response Summary", path: "responseToInterventions.initialResponseSummary", rows: 4,
           placeholder: "Document patient's initial response to admission interventions — pain management, symptom control, comfort measures, family support. This establishes the baseline for subsequent reassessments." },
@@ -5490,7 +5518,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  const routes = useMemo(() => (isOngoing ? ROUTES.filter((route) => route.key !== "sfv") : ROUTES), [isOngoing]);
+  const routes = useMemo(() => {
+    const orderedRoutes = workspacePilot ? PILOT_ROUTES : LEGACY_ROUTES;
+    return isOngoing ? orderedRoutes.filter((route) => route.key !== "sfv") : orderedRoutes;
+  }, [isOngoing, workspacePilot]);
   const sidebarConfigItems = useMemo(() => {
     const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
@@ -5632,8 +5663,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return null;
         }
         if (data.formData) {
-          setFormData(data.formData);
-          markPersisted(data.formData, data.assessmentId || existingAssessmentId);
+          const normalizedFormData = normalizeLoadedRnicaFormData(data.formData);
+          setFormData(normalizedFormData);
+          markPersisted(normalizedFormData, data.assessmentId || existingAssessmentId);
         }
         setLocked(!!data.locked);
         return data;
@@ -5715,27 +5747,48 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       return;
     }
     setPageError("");
+    setSaving(true);
+    let persistedBeforeLock = false;
     try {
+      await api.updateRNICAAssessment(assessmentId, formData);
+      persistedBeforeLock = true;
+      markPersisted(formData, assessmentId);
+      setSaveStatus("saved");
       await api.lockRNICAAssessment(assessmentId);
       setLocked(true);
+      await refreshIntelligence(assessmentId);
     } catch (err) {
       console.error("Lock error:", err);
+      setSaveStatus(persistedBeforeLock ? "saved" : "error");
       setPageError(err instanceof Error ? err.message : "Unable to lock RN ICA assessment.");
+    } finally {
+      setSaving(false);
     }
-  }, [assessmentId, formData]);
+  }, [assessmentId, formData, markPersisted, mode, refreshIntelligence]);
 
   // Section completion tracker
   const completedSections = useMemo(() => {
     const completed = [];
     routes.forEach((route) => {
-      const sectionData = formData[route.formSection];
+      let sectionData = route.completionPath
+        ? getValueByPath(formData[route.formSection], route.completionPath)
+        : formData[route.formSection];
+      let initialSectionData = route.completionPath
+        ? getValueByPath(INITIAL_FORM[route.formSection], route.completionPath)
+        : INITIAL_FORM[route.formSection];
+      if (route.key === "demographics" && workspacePilot) {
+        const { pcg: _pcg, advancedCarePlanning: _planning, ...patientDemographics } = sectionData;
+        const { pcg: _initialPcg, advancedCarePlanning: _initialPlanning, ...initialPatientDemographics } = initialSectionData;
+        sectionData = patientDemographics;
+        initialSectionData = initialPatientDemographics;
+      }
       if (sectionData) {
-        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(INITIAL_FORM[route.formSection]);
+        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(initialSectionData);
         if (hasContent) completed.push(route.key);
       }
     });
     return completed;
-  }, [formData, routes]);
+  }, [formData, routes, workspacePilot]);
 
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
@@ -5817,8 +5870,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const renderWorkspaceSections = () => routes.map((route) => {
     const config = SECTION_CONFIGS[route.formSection];
     const sectionData = formData[route.formSection];
-    const content = route.key === "demographics"
-      ? renderDemographics(formData.demographics, updateField, COLORS, styles)
+    const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
+    const content = isDemographicsModule
+      ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key)
       : config && sectionData
         ? renderGenericSection(
             route.formSection,
@@ -5853,7 +5907,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       .join(", ");
     const commandRoutes = routes.map((route) => ({
       ...route,
-      label: sidebarConfigItems.find((item) => item.key === route.key)?.label || route.nav,
+      label: route.label || sidebarConfigItems.find((item) => item.key === route.key)?.label || route.nav,
+      regulator: isOngoing && route.regulator === "HOPE" ? undefined : route.regulator,
     }));
 
     return (
@@ -5870,6 +5925,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               : "Patient record summary loading",
           }}
           routes={commandRoutes}
+          formSections={Object.keys(formData)}
           activeSection={activeSection}
           completedSections={completedSections}
           validation={validation}

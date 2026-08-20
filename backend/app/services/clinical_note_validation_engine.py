@@ -383,11 +383,18 @@ RN_ICA_REQUIRED_FIELD_GROUPS = [
         ],
     },
     {
-        "label": "LCD Eligibility Narrative",
-        "section": "Eligibility Narrative",
+        "label": "LCD Supporting Evidence",
+        "section": "LCD Review",
         "paths": [
             "diagnoses.lcdEligibilityNarrative",
             "lcd_eligibility_narrative",
+        ],
+    },
+    {
+        "label": "Clinical Narrative",
+        "section": "Finalization",
+        "paths": [
+            "finalization.clinicalNarrative",
             "assessment_summary",
             "nursing_summary",
         ],

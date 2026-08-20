@@ -6,30 +6,14 @@ import {
   ClinicalCommandLayout,
   ClinicalCommandWorkspace,
 } from "../clinical-command/ClinicalCommandWorkspace";
+import {
+  validateRnIcaClinicalNavigation,
+} from "./rnIcaClinicalNavigation";
 import "./RNICACommandWorkspace.css";
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
 const LEGACY_DENSITY_KEY = "sns-rnica-workspace-density";
 const DENSITIES = ["compact", "comfortable", "large"];
-const HEAD_TO_TOE = [
-  ["General", "demographics"],
-  ["Vitals", "vitals"],
-  ["Pain", "pain"],
-  ["Neurological", "neurological"],
-  ["Cardiovascular", "cardiovascular"],
-  ["Respiratory", "respiratory"],
-  ["Infection", "infection"],
-  ["Gastrointestinal", "gastrointestinal"],
-  ["Nutrition", "nutrition"],
-  ["Endocrine", "endocrine"],
-  ["Genitourinary", "genitourinary"],
-  ["Musculoskeletal", "musculoskeletal"],
-  ["Skin / wounds", "skin"],
-  ["Safety", "safety"],
-  ["Personal care", "personalCare"],
-  ["Imminent decline", "imminentDeath"],
-];
-
 function storedDensity() {
   const value = window.localStorage.getItem(DENSITY_KEY) || window.localStorage.getItem(LEGACY_DENSITY_KEY);
   return DENSITIES.includes(value) ? value : "compact";
@@ -52,6 +36,9 @@ function ScrollRegion({ name, className, children }) {
 
 function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCount }) {
   const [draftState, setDraftState] = useState("not prepared");
+  const focusClinicalNarrative = () => {
+    document.querySelector("#rnica-clinical-narrative textarea")?.focus();
+  };
   return (
     <section className="clinical-command-card rnica-command-card rnica-command-narrative" aria-labelledby="narrative-final-review-title">
       <div className="rnica-command-card__heading">
@@ -60,7 +47,7 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
       </div>
       <p>
         Synthesize the completed assessment and source-linked encounter capture only after bedside documentation is complete.
-        Missing documentation is not interpreted as a negative finding.
+        Missing documentation is not interpreted as a negative finding. The authoritative Clinical narrative field is directly below this review.
       </p>
       <div className="rnica-command-review">
         <strong>Source set</strong>
@@ -79,6 +66,7 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
           </div>
         </div>
       )}
+      <button type="button" className="is-secondary" onClick={focusClinicalNarrative}>Review Clinical narrative field</button>
     </section>
   );
 }
@@ -86,6 +74,7 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 export default function RNICACommandWorkspace({
   patient,
   routes,
+  formSections,
   activeSection,
   completedSections,
   validation,
@@ -107,12 +96,24 @@ export default function RNICACommandWorkspace({
   const [query, setQuery] = useState("");
   const [density, setDensity] = useState(storedDensity);
   const [searchStartedAt, setSearchStartedAt] = useState(0);
+  const [showAllQuickAccess, setShowAllQuickAccess] = useState(false);
   const filteredRoutes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return normalized ? routes.filter((route) => route.label.toLowerCase().includes(normalized)) : routes;
   }, [query, routes]);
   const errorKeys = Object.keys(validation.errors);
   const warningKeys = Object.keys(validation.warnings);
+  const routeForRequirement = (key) => [...routes]
+    .sort((a, b) => (b.validationPrefix || b.formSection).length - (a.validationPrefix || a.formSection).length)
+    .find((route) => key === (route.validationPrefix || route.formSection)
+      || key.startsWith(`${route.validationPrefix || route.formSection}.`));
+  const navigationAudit = useMemo(
+    () => validateRnIcaClinicalNavigation(routes, formSections),
+    [formSections, routes],
+  );
+  if (import.meta.env.DEV && !navigationAudit.valid) {
+    throw new Error(`Invalid RNICA clinical navigation: ${navigationAudit.errors.join("; ")}`);
+  }
   const scrollDetailTop = () => {
     requestAnimationFrame(() => document.querySelector(".rnica-command-detail")?.scrollTo({ top: 0, behavior: "smooth" }));
   };
@@ -177,7 +178,7 @@ export default function RNICACommandWorkspace({
         <ScrollRegion name="navigator" className="rnica-command-nav">
           <label className="rnica-command-search">
             <span>Find section</span>
-            <input type="search" value={query} onChange={changeSearch} placeholder="Search 28 sections" />
+            <input type="search" value={query} onChange={changeSearch} placeholder={`Search ${routes.length} sections`} />
           </label>
           <div className="rnica-command-density" role="group" aria-label="Workspace density">
             {DENSITIES.map((item) => (
@@ -192,11 +193,14 @@ export default function RNICACommandWorkspace({
           <div className="rnica-command-matrix" aria-label="Assessment section status">
             {filteredRoutes.map((route) => {
               const complete = completedSections.includes(route.key);
-              const missing = errorKeys.filter((key) => key.startsWith(`${route.formSection}.`)).length;
+              const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
               const changed = complete && !locked;
               return (
                 <button type="button" key={route.key} className={activeSection === route.key ? "is-active" : ""} onClick={() => select(route.key)}>
-                  <span className="rnica-command-matrix__title">{route.label}</span>
+                  <span className="rnica-command-matrix__module">
+                    <span className="rnica-command-matrix__title">{route.label}</span>
+                    {route.regulator && <span className="rnica-command-matrix__regulator">{route.regulator}</span>}
+                  </span>
                   <span className="rnica-command-matrix__signals">
                     <span title="Completion">{complete ? "Done" : "Open"}</span>
                     <span title="Risk">{missing ? "Risk" : "—"}</span>
@@ -214,15 +218,22 @@ export default function RNICACommandWorkspace({
           {alerts}
           <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
             <div>
-              <span className="rnica-command-eyebrow">Bedside quick capture</span>
-              <h2 id="quick-capture-title">Head-to-toe ledger</h2>
-              <p>Capture concise +/- observed findings. Missing documentation is never treated as negative.</p>
+              <span className="rnica-command-eyebrow">Bedside quick access</span>
+              <h2 id="quick-capture-title">Assessment modules</h2>
+              <p>Use the same ordered RN workflow as the navigator. Missing documentation is never treated as a negative finding.</p>
             </div>
-            <div className="rnica-command-quick-grid">
-              {HEAD_TO_TOE.map(([label, key]) => (
-                <button type="button" key={key} onClick={() => select(key, "quick_capture")}>{label}</button>
+            <div className="rnica-command-quick-grid" aria-label="Ordered assessment module shortcuts">
+              {(showAllQuickAccess ? routes : routes.slice(0, 16)).map((route, index) => (
+                <button type="button" key={route.key} onClick={() => select(route.key, "quick_capture")}>
+                  <span>{index + 1}</span> {route.label}
+                </button>
               ))}
             </div>
+            {routes.length > 16 && (
+              <button type="button" className="rnica-command-quick-toggle" onClick={() => setShowAllQuickAccess((current) => !current)}>
+                {showAllQuickAccess ? "Show first 16 modules" : `Show all ${routes.length} modules`}
+              </button>
+            )}
             <div className="rnica-command-provenance" aria-label="Finding provenance">
               <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
             </div>
@@ -251,11 +262,17 @@ export default function RNICACommandWorkspace({
             <div className="rnica-command-card__heading"><h2>Requirements</h2><span>{errorKeys.length + warningKeys.length}</span></div>
             {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
             {errorKeys.slice(0, 5).map((key) => (
-              <button type="button" className="rnica-command-requirement" key={key} onClick={() => select(routes.find((route) => key.startsWith(`${route.formSection}.`))?.key || "finalization", "requirement")}>
+              <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
+                select(routeForRequirement(key)?.key || "finalization", "requirement");
+              }}>
                 <strong>Required</strong><span>{validation.errors[key]}</span>
               </button>
             ))}
-            {warningKeys.slice(0, 3).map((key) => <div className="rnica-command-requirement is-warning" key={key}><strong>Review</strong><span>{validation.warnings[key]}</span></div>)}
+            {warningKeys.slice(0, 3).map((key) => (
+              <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
+                <strong>Review</strong><span>{validation.warnings[key]}</span>
+              </button>
+            ))}
           </section>
           <section className="clinical-command-card rnica-command-card">
             <div className="rnica-command-card__heading"><h2>Clinical signals</h2><span>{intelligence?.summary?.finding_count || 0}</span></div>
