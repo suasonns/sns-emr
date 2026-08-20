@@ -71,6 +71,7 @@ import { getSfvStatus } from "../intake/hopeReportMapper";
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
 import VisitRecorderCard from "./VisitRecorderCard";
+import RNICACommandWorkspace from "./rn-ica/RNICACommandWorkspace";
 // ════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & CONFIGURATION
 // ════════════════════════════════════════════════════════════════
@@ -5264,7 +5265,7 @@ const SECTION_CONFIGS = {
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {} }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
@@ -5649,6 +5650,106 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       </div>
     );
   });
+
+  const renderWorkspaceSections = () => routes.map((route) => {
+    const config = SECTION_CONFIGS[route.formSection];
+    const sectionData = formData[route.formSection];
+    const content = route.key === "demographics"
+      ? renderDemographics(formData.demographics, updateField, COLORS, styles)
+      : config && sectionData
+        ? renderGenericSection(
+            route.formSection,
+            sectionData,
+            updateField,
+            config,
+            formData.demographics,
+            formData,
+            COLORS,
+            styles,
+            patientId,
+            assessmentId,
+          )
+        : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
+
+    return (
+      <div key={route.key} hidden={route.key !== activeSection} aria-hidden={route.key !== activeSection}>
+        {content}
+      </div>
+    );
+  });
+
+  if (workspacePilot) {
+    const secondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
+      .map((diagnosis) => `${diagnosis.description || diagnosis.icd10 || ""}`.trim())
+      .filter(Boolean)
+      .join(", ");
+    const verifiedComorbidities = Object.entries(formData.diagnoses.hopeComorbidities || {})
+      .filter(([, selected]) => selected === true)
+      .map(([key]) => key)
+      .join(", ");
+    const commandRoutes = routes.map((route) => ({
+      ...route,
+      label: sidebarConfigItems.find((item) => item.key === route.key)?.label || route.nav,
+    }));
+
+    return (
+      <AssessmentModeContext.Provider value={mode}>
+        <RNICACommandWorkspace
+          patient={{
+            name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
+            mrn: patientSummary?.patient?.mrn || "Not available",
+            primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
+            secondaryDiagnoses,
+            comorbidities: verifiedComorbidities,
+            priorIssues: patientSummary
+              ? `${patientSummary.incident_summary.total} incident(s), ${patientSummary.communication_summary.total} communication item(s)`
+              : "Patient record summary loading",
+          }}
+          routes={commandRoutes}
+          activeSection={activeSection}
+          completedSections={completedSections}
+          validation={validation}
+          locked={locked}
+          saving={saving}
+          saveStatus={saveStatus}
+          intelligence={intelligence}
+          renderWorkspaceSections={renderWorkspaceSections}
+          visitRecorder={(
+            <VisitRecorderCard
+              patientId={resolvedPatientId || patientId}
+              assessmentId={assessmentId}
+              assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
+              COLORS={COLORS}
+              styles={styles}
+            />
+          )}
+          alerts={(
+            <>
+              {(patientSummaryError || pageError) && (
+                <div style={styles.warningBox}>
+                  {patientSummaryError && <div>Patient summary: {patientSummaryError}</div>}
+                  {pageError && <div>RN ICA: {pageError}</div>}
+                </div>
+              )}
+              {!isOngoing && sfvStatus.required && (
+                <div style={styles.warningBox}>
+                  <strong>SFV required:</strong> Moderate or severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
+                  {sfvStatus.dueDate ? ` Due ${sfvStatus.dueDate}.` : " Due within 2 calendar days of screening."}
+                </div>
+              )}
+            </>
+          )}
+          onSelect={setActiveSection}
+          onSave={handleSave}
+          onLock={handleLock}
+          onPrevious={goPrev}
+          onNext={goNext}
+          onExitPilot={onExitWorkspacePilot}
+          canLock={Boolean(assessmentId)}
+        />
+      </AssessmentModeContext.Provider>
+    );
+  }
 
   return (
     <AssessmentModeContext.Provider value={mode}>
