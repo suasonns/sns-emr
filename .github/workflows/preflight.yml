@@ -79,5 +79,9 @@ jobs:
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
+          APP_ENV: development
+          ENV: local
+          AUTH_MODE: TOKEN
+          SECRET_KEY: ci-secret-key-that-is-at-least-32-characters-long
         run: |
           pytest -q
