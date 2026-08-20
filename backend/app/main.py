@@ -599,8 +599,10 @@ fastapi_app.add_middleware(
 )
 
 from app.core.middleware.clinical_access_guard import clinical_access_guard
+from app.core.recording_upload_limit import RecordingUploadLimitMiddleware
 
 fastapi_app.middleware("http")(clinical_access_guard)
+fastapi_app.add_middleware(RecordingUploadLimitMiddleware)
 
 
 # ✅ TENANT ROUTING (ENABLE IF REQUIRED)

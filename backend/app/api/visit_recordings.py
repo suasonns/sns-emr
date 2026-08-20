@@ -9,30 +9,38 @@ Speech-to-text itself (Azure Speech, per the chosen vendor) is a follow-up —
 `transcript_status` stays "not_transcribed" until that integration exists.
 """
 
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Generator, Optional
+from typing import Generator, Iterator, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from starlette.responses import FileResponse
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import StreamingResponse
 
 from app.core.database import SessionLocal
 from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user, CurrentUser
 from app.models.visit_recording import VisitRecording
 from app.services.recording_storage import (
-    build_recording_path,
-    save_recording_stream,
-    resolve_recording_path,
-    delete_recording_file,
+    RecordingObject,
+    RecordingObjectNotFound,
+    RecordingRangeNotSatisfiable,
+    RecordingStorageError,
+    RecordingStorageProvider,
+    RecordingUploadTooLarge,
+    build_recording_key,
+    get_recording_storage,
+    max_upload_bytes_from_env,
+    normalize_recording_mime_type,
 )
 from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/visit-recordings", tags=["visit-recordings"])
-
-MAX_UPLOAD_BYTES = 250 * 1024 * 1024  # 250MB safety cap per recording
+logger = logging.getLogger(__name__)
 
 
 def get_db(request: Request) -> Generator[Session, None, None]:
@@ -98,6 +106,7 @@ async def upload_recording(
     audio: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),
+    storage: RecordingStorageProvider = Depends(get_recording_storage),
 ):
     if not consent_confirmed:
         raise HTTPException(
@@ -108,22 +117,44 @@ async def upload_recording(
 
     patient = get_authorized_patient(db, patient_id, current_user)
 
+    try:
+        content_type = normalize_recording_mime_type(audio.content_type)
+        max_upload_bytes = max_upload_bytes_from_env()
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except RecordingStorageError as exc:
+        raise HTTPException(status_code=500, detail="Recording storage is misconfigured") from exc
+
     recording_id = uuid.uuid4()
     tenant_id = getattr(patient, "tenant_id", None)
-    absolute_path, relative_path = build_recording_path(
+    object_key = build_recording_key(
         tenant_id=tenant_id,
         patient_id=patient.id,
         recording_id=recording_id,
-        mime_type=audio.content_type,
-        file_name=audio.filename,
+        content_type=content_type,
     )
 
-    size_bytes = await save_recording_stream(absolute_path, audio)
-    if size_bytes > MAX_UPLOAD_BYTES:
-        delete_recording_file(relative_path)
-        raise HTTPException(status_code=413, detail="Recording exceeds maximum allowed size")
+    try:
+        await audio.seek(0)
+        size_bytes = await run_in_threadpool(
+            storage.put,
+            object_key,
+            audio.file,
+            content_type=content_type,
+            max_bytes=max_upload_bytes,
+        )
+    except RecordingUploadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
+    except RecordingStorageError as exc:
+        raise HTTPException(status_code=503, detail="Recording storage operation failed") from exc
     if size_bytes == 0:
-        delete_recording_file(relative_path)
+        try:
+            await run_in_threadpool(storage.delete, object_key)
+        except RecordingStorageError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Empty recording cleanup requires operator attention",
+            ) from exc
         raise HTTPException(status_code=422, detail="Uploaded recording was empty")
 
     rec = VisitRecording(
@@ -133,24 +164,48 @@ async def upload_recording(
         visit_id=visit_id,
         assessment_id=assessment_id,
         assessment_type=assessment_type,
-        recorded_by=current_user.id,
+        recorded_by=current_user.user_id,
         consent_confirmed=True,
         consent_confirmed_at=datetime.now(timezone.utc),
-        file_path=relative_path,
+        file_path=object_key,
         file_name=audio.filename,
-        mime_type=audio.content_type,
+        mime_type=content_type,
         duration_seconds=duration_seconds,
         size_bytes=size_bytes,
         recorded_at=datetime.now(timezone.utc),
     )
-    db.add(rec)
-    db.commit()
-    db.refresh(rec)
+    try:
+        db.add(rec)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        try:
+            await run_in_threadpool(storage.delete, object_key)
+        except RecordingStorageError:
+            logger.exception(
+                "Recording database write failed and object cleanup also failed",
+                extra={"recording_id": str(recording_id)},
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Recording database write failed; storage cleanup requires operator attention",
+            ) from exc
+        raise HTTPException(
+            status_code=500,
+            detail="Recording database write failed and uploaded object was removed",
+        ) from exc
+    try:
+        db.refresh(rec)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Recording was saved but could not be reloaded",
+        ) from exc
 
     log_event(
         db=db,
         tenant_id=str(tenant_id) if tenant_id else None,
-        user_id=str(current_user.id),
+        user_id=str(current_user.user_id),
         role=(current_user.role or "").upper(),
         action="VISIT_RECORDING_CREATED",
         entity_type="VISIT_RECORDING",
@@ -193,17 +248,54 @@ def _get_owned_recording(db: Session, recording_id: uuid.UUID, current_user: Cur
 @router.get("/{recording_id}/audio")
 def stream_recording_audio(
     recording_id: uuid.UUID,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),
+    storage: RecordingStorageProvider = Depends(get_recording_storage),
 ):
     rec = _get_owned_recording(db, recording_id, current_user)
     try:
-        path = resolve_recording_path(rec.file_path)
-    except ValueError:
-        raise HTTPException(status_code=500, detail="Recording path invalid")
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Recording file missing from storage")
-    return FileResponse(path, media_type=rec.mime_type or "application/octet-stream", filename=rec.file_name or f"{recording_id}.webm")
+        stored_object = storage.open(rec.file_path, request.headers.get("range"))
+    except RecordingObjectNotFound as exc:
+        raise HTTPException(status_code=404, detail="Recording object missing from storage") from exc
+    except RecordingRangeNotSatisfiable as exc:
+        raise HTTPException(
+            status_code=416,
+            detail="Requested recording range is not satisfiable",
+            headers={"Content-Range": f"bytes */{exc.total_length}"},
+        ) from exc
+    except RecordingStorageError as exc:
+        raise HTTPException(status_code=503, detail="Recording storage operation failed") from exc
+    headers = {
+        "Content-Disposition": (
+            "inline; filename*=UTF-8''"
+            + quote(rec.file_name or f"{recording_id}.webm", safe="")
+        ),
+        "Cache-Control": "private, no-store",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(stored_object.content_length),
+    }
+    response_status = 200
+    if request.headers.get("range"):
+        response_status = 206
+        headers["Content-Range"] = (
+            f"bytes {stored_object.range_start}-{stored_object.range_end}/"
+            f"{stored_object.total_length}"
+        )
+    return StreamingResponse(
+        _iter_recording(stored_object),
+        status_code=response_status,
+        media_type=rec.mime_type or "application/octet-stream",
+        headers=headers,
+    )
+
+
+def _iter_recording(stored_object: RecordingObject) -> Iterator[bytes]:
+    try:
+        while chunk := stored_object.body.read(1024 * 1024):
+            yield chunk
+    finally:
+        stored_object.body.close()
 
 
 class ReviewRequest(BaseModel):
@@ -218,7 +310,7 @@ def mark_recording_reviewed(
     current_user: CurrentUser = Security(get_current_user),
 ):
     rec = _get_owned_recording(db, recording_id, current_user)
-    rec.reviewed_by = current_user.id
+    rec.reviewed_by = current_user.user_id
     rec.reviewed_at = datetime.now(timezone.utc)
     rec.review_notes = payload.review_notes
     db.commit()
@@ -237,6 +329,6 @@ def soft_delete_recording(
     delete them, never a routine API call."""
     rec = _get_owned_recording(db, recording_id, current_user)
     rec.deleted_at = datetime.now(timezone.utc)
-    rec.deleted_by = current_user.id
+    rec.deleted_by = current_user.user_id
     db.commit()
     return {"status": "deleted", "id": str(rec.id)}
