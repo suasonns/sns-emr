@@ -1,72 +1,80 @@
 from __future__ import annotations
 
 import logging
-import os
-
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 
-# ✅ correct logger namespace
+from app.core.roles import BILLING_DEPARTMENT_ROLES, is_platform_role, normalize_role
+from app.core.security import decode_access_token
+
 logger = logging.getLogger("sns_emr.access_control")
 
-# ✅ CLINICAL ROUTE PREFIXES (LOCKED)
 CLINICAL_PREFIXES = (
     "/patients",
     "/visits",
     "/notes",
     "/clinical",
-    "/dashboard/tenant",
+    "/api/patients",
+    "/api/clinical",
+    "/api/dashboard/tenant",
+    "/api/dashboard/clinical",
+    "/api/census",
+    "/api/idg",
+    "/api/admission",
+    "/api/med",
+    "/api/safety",
+    "/api/communications",
+)
+
+PLATFORM_ALLOWED_PREFIXES = (
+    "/auth",
+    "/api/owner",
+    "/api/dashboard/owner",
+    "/api/support",
+    "/health",
+    "/ready",
 )
 
 
+def _matches_prefix(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
 async def clinical_access_guard(request: Request, call_next):
-    """
-    ENTERPRISE COMPLIANCE CONTROL:
-
-    BILLING role MUST NEVER access clinical data.
-    OWNER may access clinical data (many hospice agencies have the owner also
-    serving as DPCS/Administrator with clinical oversight duties) — see
-    app/core/roles.py CLINICAL_ADMIN_ROLES.
-
-    Guarantees:
-    - Hard block (non-negotiable) for BILLING
-    - Audit logging for violations
-    - Safe dev bypass (local only)
-    - Fail-safe handling
-    """
-
-    # ✅ DEV BYPASS (only for local development)
-    if os.getenv("ENV", "local").lower() == "local":
-        return await call_next(request)
-
     path = request.url.path
-    user = getattr(request.state, "user", None)
-
-    # ✅ FAIL-SAFE: no user → allow downstream auth to handle
-    if user is None:
+    authorization = request.headers.get("Authorization", "")
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
         return await call_next(request)
 
-    # ✅ HARD BLOCK for BILLING role only
-    if user.role in {"BILLING"}:
-        for prefix in CLINICAL_PREFIXES:
-            if path.startswith(prefix):
+    try:
+        payload = decode_access_token(token)
+    except HTTPException:
+        return await call_next(request)
 
-                # ✅ AUDIT LOG (CRITICAL)
-                logger.warning(
-                    "Clinical access blocked",
-                    extra={
-                        "event": "clinical_access_denied",
-                        "path": path,
-                        "role": user.role,
-                        "user_id": getattr(user, "id", None),
-                    },
-                )
+    role = normalize_role(payload.get("role"))
+    platform_route_allowed = any(
+        _matches_prefix(path, prefix) for prefix in PLATFORM_ALLOWED_PREFIXES
+    )
+    clinical_route = any(_matches_prefix(path, prefix) for prefix in CLINICAL_PREFIXES)
 
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": "Clinical access is not permitted for this role."
-                    },
-                )
+    if is_platform_role(role) and platform_route_allowed:
+        return await call_next(request)
+    if not is_platform_role(role) and (
+        role not in BILLING_DEPARTMENT_ROLES or not clinical_route
+    ):
+        return await call_next(request)
 
-    return await call_next(request)
+    logger.warning(
+        "Clinical access blocked",
+        extra={
+            "event": "clinical_access_denied",
+            "path": path,
+            "role": role,
+            "user_id": payload.get("sub"),
+        },
+    )
+    return JSONResponse(
+        status_code=403,
+        content={"detail": "Clinical access is not permitted for this role."},
+    )

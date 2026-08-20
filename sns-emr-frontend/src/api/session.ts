@@ -35,15 +35,8 @@ export function getCurrentUser(): SessionUser | null {
   }
 }
 
-const PLATFORM_SUPER_USER_EMAIL = "romel.suason@suasonns.org";
-
-export function isPlatformSuperUser(user: SessionUser | null): boolean {
-  if (!user) return false;
-  return String(user.email ?? "").trim().toLowerCase() === PLATFORM_SUPER_USER_EMAIL;
-}
-
 export function hasOwnerRole(user: SessionUser | null): boolean {
-  return isPlatformSuperUser(user);
+  return String(user?.role ?? "").trim().toUpperCase() === "OWNER";
 }
 
 export function setCurrentUser(user: SessionUser): void {

@@ -17,6 +17,7 @@ import {
 import { useMemo, useState } from "react";
 
 import { useDashboardAlerts, severityForCount } from "../../hooks/useDashboardAlerts";
+import { logout } from "../../api/auth";
 
 type SidebarUser = {
   name: string;
@@ -75,6 +76,7 @@ export default function Sidebar({
   };
 
   const handleLogout = () => {
+    logout();
     window.location.href = "/";
   };
 

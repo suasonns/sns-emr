@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { COLORS, S } from '../design';
-import { getCurrentUser, isPlatformSuperUser, setCurrentUser } from '../../api/session';
+import { getCurrentUser, hasOwnerRole, setCurrentUser } from '../../api/session';
 
 const TABS = ['General', 'Security', 'Notifications', 'Billing', 'AI Config', 'Integrations'];
 
@@ -14,7 +14,7 @@ const INTEGRATIONS = [
 
 export default function Settings() {
   const currentUser = getCurrentUser();
-  const canManageTenantPreference = isPlatformSuperUser(currentUser);
+  const canManageTenantPreference = hasOwnerRole(currentUser);
 
   const tenantOptions = useMemo(() => [
     { id: '01271980-0000-0000-0000-000005101977', name: 'Love & Faith Hospice Services, Inc.' },
