@@ -15,7 +15,7 @@
 
 .pain-tool__title { color: var(--sns-white) !important; font-size: var(--pain-section-size) !important; }
 .pain-tool__subtitle, .pain-tool__body { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
-.pain-tool__meta, .pain-score-badge { font-size: var(--pain-meta-size) !important; }
+.pain-tool__meta, .pain-score-badge { color: var(--sns-muted) !important; font-size: var(--pain-meta-size) !important; }
 .pain-score-badge {
   background: var(--sns-cardSoft) !important;
   color: var(--sns-white) !important;
@@ -59,7 +59,7 @@
 .pain-guide-box { padding: var(--ccw-pad, 0.625rem) !important; border: 1px solid var(--sns-border); }
 .pain-guide__title { color: var(--sns-teal) !important; font-size: var(--pain-label-size) !important; }
 .pain-guide__list, .pain-guide__body { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
-.pain-guide__references, .pain-guide__references span { color: var(--sns-dim) !important; font-size: var(--pain-meta-size) !important; }
+.pain-guide__references, .pain-guide__references span { color: var(--sns-muted) !important; font-size: var(--pain-meta-size) !important; }
 
 @container clinical-command-workspace (max-width: 520px) {
   .pain-tool__scale { grid-template-columns: repeat(6, minmax(0, 1fr)); }

@@ -1805,15 +1805,34 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
           </div>
         );
       })}
-      <div className={workspacePilot ? "rnica-lcd-evidence" : undefined}>
-        <FormTextarea
-          label="LCD supporting evidence"
-          value={diagnosesData?.lcdEligibilityNarrative || ""}
-          onChange={(value) => updateDiagnoses("lcdEligibilityNarrative", value)}
-          placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
-          rows={4}
-        />
-      </div>
+      {!workspacePilot && (
+        <div>
+          <FormTextarea
+            label="LCD supporting evidence"
+            value={diagnosesData?.lcdEligibilityNarrative || ""}
+            onChange={(value) => updateDiagnoses("lcdEligibilityNarrative", value)}
+            placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
+            rows={4}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// In the pilot workflow, structured checklists (LCD criteria, secondary
+// diagnoses, comorbidities) render first; this free-text LCD evidence card
+// renders last on the Diagnoses page so no narrative sits mid-page.
+function LcdSupportingEvidenceCard({ diagnosesData, updateField }) {
+  return (
+    <div className="rnica-lcd-evidence">
+      <FormTextarea
+        label="LCD supporting evidence"
+        value={diagnosesData?.lcdEligibilityNarrative || ""}
+        onChange={(value) => updateField("lcdEligibilityNarrative", value)}
+        placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
+        rows={4}
+      />
     </div>
   );
 }
@@ -4301,6 +4320,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "diagnoses" && card.customRenderer === "lcdSupportingEvidence") {
+          // Pilot-only: renders last on the Diagnoses page so free-text
+          // narrative never sits between structured checklists. Legacy mode
+          // keeps the evidence field inside the LCD Eligibility card above
+          // (unchanged) and this card renders nothing.
+          if (!workspacePilot) return null;
+          return (
+            <Card key={ci} id={card.id} title={card.title}>
+              <LcdSupportingEvidenceCard diagnosesData={data} updateField={u} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "performanceStatus" && card.customRenderer === "declineTracker") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -4783,6 +4815,10 @@ const SECTION_CONFIGS = {
         title: "Comorbidities and Co-existing Conditions",
         hopeCode: "I0100-I8005",
         customRenderer: "hopeComorbidities",
+      },
+      {
+        title: "LCD Supporting Evidence",
+        customRenderer: "lcdSupportingEvidence",
       },
     ],
   },

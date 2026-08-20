@@ -158,6 +158,7 @@
 .rnica-command-active .pain-score-badge,
 .rnica-command-active .pain-guide__references,
 .rnica-command-active .pain-guide__references span { font-size: var(--cw-meta-size) !important; }
+.rnica-command-active .pain-tool__score-value { font-size: var(--cw-section-size) !important; }
 .rnica-command-active .pain-tool__table td:has(.pain-tool__option) { padding: 0 !important; }
 .rnica-pilot-diagnoses-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cw-gap); }
 .rnica-pilot-diagnoses-grid > div { margin-bottom: 0 !important; padding: var(--cw-pad) !important; min-width: 0; }
@@ -304,7 +305,7 @@
 
 @container clinical-command-workspace (max-width: 520px) {
   .rnica-command-patientbar { align-items: flex-start; }
-  .rnica-command-nav { top: 56px; }
+  .rnica-command-nav { position: static; top: auto; }
   .rnica-command-patientbar__identity > span:last-child, .rnica-command-patientbar__status > span:not(.rnica-command-badge) { display: none; }
   .rnica-command-prep { display: flex; overflow-x: auto; }
   .rnica-command-prep > div { min-width: 12rem; }
