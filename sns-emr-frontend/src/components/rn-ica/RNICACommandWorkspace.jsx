@@ -1,8 +1,15 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { emitRnIcaTelemetry } from "../../features/rnIcaTelemetry";
+import {
+  ClinicalCommandContextBar,
+  ClinicalCommandHeader,
+  ClinicalCommandLayout,
+  ClinicalCommandWorkspace,
+} from "../clinical-command/ClinicalCommandWorkspace";
 import "./RNICACommandWorkspace.css";
 
-const DENSITY_KEY = "sns-rnica-workspace-density";
+const DENSITY_KEY = "sns-clinical-command-workspace-density";
+const LEGACY_DENSITY_KEY = "sns-rnica-workspace-density";
 const DENSITIES = ["compact", "comfortable", "large"];
 const HEAD_TO_TOE = [
   ["General", "demographics"],
@@ -24,7 +31,7 @@ const HEAD_TO_TOE = [
 ];
 
 function storedDensity() {
-  const value = window.localStorage.getItem(DENSITY_KEY);
+  const value = window.localStorage.getItem(DENSITY_KEY) || window.localStorage.getItem(LEGACY_DENSITY_KEY);
   return DENSITIES.includes(value) ? value : "compact";
 }
 
@@ -40,13 +47,13 @@ function ScrollRegion({ name, className, children }) {
       emitRnIcaTelemetry({ name: "workspace_scroll", region: name, depthBucket: bucket });
     }
   };
-  return <div className={className} onScroll={handleScroll}>{children}</div>;
+  return <div className={`clinical-command-region clinical-command-region--${name} ${className}`} onScroll={handleScroll}>{children}</div>;
 }
 
 function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCount }) {
   const [draftState, setDraftState] = useState("not prepared");
   return (
-    <section className="rnica-command-card rnica-command-narrative" aria-labelledby="narrative-final-review-title">
+    <section className="clinical-command-card rnica-command-card rnica-command-narrative" aria-labelledby="narrative-final-review-title">
       <div className="rnica-command-card__heading">
         <h2 id="narrative-final-review-title">Narrative &amp; final review</h2>
         <span className="rnica-command-state">{draftState}</span>
@@ -144,30 +151,29 @@ export default function RNICACommandWorkspace({
   };
 
   return (
-    <div className="rnica-command-container">
-    <main className={`rnica-command rnica-command--${density}`} aria-label="RN ICA Clinical Command Workspace">
-      <header className="rnica-command-patientbar">
+    <ClinicalCommandWorkspace density={density} ariaLabel="RN ICA Clinical Command Workspace" className="rnica-command">
+      <ClinicalCommandHeader className="rnica-command-patientbar">
         <div className="rnica-command-patientbar__identity">
           <span className="rnica-command-eyebrow">RN ICA · Clinical Command Workspace pilot</span>
           <strong>{patient.name}</strong>
           <span>MRN {patient.mrn} · {patient.primaryDiagnosis || "Primary diagnosis not documented"}</span>
         </div>
         <div className="rnica-command-patientbar__status">
-          <span className={`rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
+          <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{routes.length} sections</span>
           <button type="button" onClick={exitPilot}>Use classic view</button>
         </div>
-      </header>
+      </ClinicalCommandHeader>
 
-      <section className="rnica-command-prep" aria-label="Before visit patient context">
+      <ClinicalCommandContextBar className="rnica-command-prep" ariaLabel="Before visit patient context">
         <div><span>Primary</span><strong>{patient.primaryDiagnosis || "Not documented"}</strong></div>
         <div><span>Secondary</span><strong>{patient.secondaryDiagnoses || "None documented"}</strong></div>
         <div><span>Comorbidities</span><strong>{patient.comorbidities || "None verified"}</strong></div>
         <div><span>Prior issues</span><strong>{patient.priorIssues}</strong></div>
         <div><span>Expected symptoms</span><strong>Review disease-process prompts; document only observed findings</strong></div>
-      </section>
+      </ClinicalCommandContextBar>
 
-      <div className="rnica-command-layout">
+      <ClinicalCommandLayout className="rnica-command-layout">
         <ScrollRegion name="navigator" className="rnica-command-nav">
           <label className="rnica-command-search">
             <span>Find section</span>
@@ -206,7 +212,7 @@ export default function RNICACommandWorkspace({
         <ScrollRegion name="detail" className="rnica-command-detail">
           {visitRecorder}
           {alerts}
-          <section className="rnica-command-sticky-note" aria-labelledby="quick-capture-title">
+          <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
             <div>
               <span className="rnica-command-eyebrow">Bedside quick capture</span>
               <h2 id="quick-capture-title">Head-to-toe ledger</h2>
@@ -221,7 +227,7 @@ export default function RNICACommandWorkspace({
               <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
             </div>
           </section>
-          <section className="rnica-command-active" aria-live="polite">
+          <section className="clinical-command-card rnica-command-active" aria-live="polite">
             {activeSection === "finalization" && (
               <NarrativeFinalReviewPanel
                 completedSections={completedSections.length}
@@ -241,7 +247,7 @@ export default function RNICACommandWorkspace({
           <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--desktop" onClick={() => select("finalization")}>
             Narrative &amp; final review
           </button>
-          <section className="rnica-command-card">
+          <section className="clinical-command-card rnica-command-card">
             <div className="rnica-command-card__heading"><h2>Requirements</h2><span>{errorKeys.length + warningKeys.length}</span></div>
             {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
             {errorKeys.slice(0, 5).map((key) => (
@@ -251,19 +257,18 @@ export default function RNICACommandWorkspace({
             ))}
             {warningKeys.slice(0, 3).map((key) => <div className="rnica-command-requirement is-warning" key={key}><strong>Review</strong><span>{validation.warnings[key]}</span></div>)}
           </section>
-          <section className="rnica-command-card">
+          <section className="clinical-command-card rnica-command-card">
             <div className="rnica-command-card__heading"><h2>Clinical signals</h2><span>{intelligence?.summary?.finding_count || 0}</span></div>
             {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
             {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
           </section>
-          <section className="rnica-command-card rnica-command-save">
+          <section className="clinical-command-card rnica-command-card rnica-command-save">
             <div><strong>Save &amp; sync</strong><span>{saveStatus === "saved" ? "Saved" : saving ? "Saving…" : "Autosave active"}</span></div>
             <button type="button" disabled={saving || locked} onClick={onSave}>{saving ? "Saving…" : "Save assessment"}</button>
             {canLock && !locked && <button type="button" className="is-secondary" onClick={onLock}>Validate &amp; lock</button>}
           </section>
         </ScrollRegion>
-      </div>
-    </main>
-    </div>
+      </ClinicalCommandLayout>
+    </ClinicalCommandWorkspace>
   );
 }

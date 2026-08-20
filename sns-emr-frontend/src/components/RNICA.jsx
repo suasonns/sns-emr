@@ -3959,8 +3959,8 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.card} id={id}>
-      <div style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="rnica-form-card" style={styles.card} id={id}>
+      <div className="rnica-form-card__title" style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
         {title}
         {hopeCode && <HopeTag code={hopeCode} />}
         {sfv && <SfvTag />}
@@ -3979,7 +3979,7 @@ function renderDemographics(data, update, COLORS, styles) {
   const u = (path, val) => update("demographics", path, val);
   return (
     <>
-      <p style={styles.sectionSubtitle}>Patient identification, caregiver, living situation, and advanced care planning</p>
+      <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>Patient identification, caregiver, living situation, and advanced care planning</p>
 
       <Card title="Patient Information" hopeCode="A1110">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
@@ -4217,7 +4217,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
   return (
     <>
-      {subtitle && <p style={styles.sectionSubtitle}>{subtitle}</p>}
+      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
       <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
         {cards.map((card, ci) => {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
