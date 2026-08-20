@@ -10,7 +10,6 @@ type FeatureKey = "billing";
 
 function hasFeatureAccess(user: SessionUser | null, feature: FeatureKey): boolean {
   if (!user) return false;
-  if (user.role === "OWNER") return true;
   if (feature === "billing") {
     return Boolean(user.billing_enabled);
   }

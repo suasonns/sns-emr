@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { COLORS, S } from '../design';
+import { getCurrentUser, isPlatformSuperUser, setCurrentUser } from '../../api/session';
 
 const TABS = ['General', 'Security', 'Notifications', 'Billing', 'AI Config', 'Integrations'];
 
@@ -12,6 +13,42 @@ const INTEGRATIONS = [
 ];
 
 export default function Settings() {
+  const currentUser = getCurrentUser();
+  const canManageTenantPreference = isPlatformSuperUser(currentUser);
+
+  const tenantOptions = useMemo(() => [
+    { id: '01271980-0000-0000-0000-000005101977', name: 'Love & Faith Hospice Services, Inc.' },
+    { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Angela Hospice (Training)' },
+    { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Silva Hospice (Training)' },
+    { id: '5224ceb6-e29d-4841-858e-e77f1b67fe65', name: 'Dev Tenant A' },
+    { id: '85282f8b-fd5b-45e6-bb82-45394ef7a2f8', name: 'Dev Tenant B' },
+  ], []);
+
+  const [activeTenantId, setActiveTenantId] = useState(() => {
+    const stored = localStorage.getItem('sns-active-agency');
+    const fallback = currentUser?.tenant_id || tenantOptions[0].id;
+    const nextValue = stored && tenantOptions.some((tenant) => tenant.id === stored) ? stored : fallback;
+    localStorage.setItem('sns-active-agency', nextValue);
+    return nextValue;
+  });
+
+  const handleTenantPreferenceChange = (event) => {
+    const nextTenantId = event.target.value;
+    setActiveTenantId(nextTenantId);
+    localStorage.setItem('sns-active-agency', nextTenantId);
+
+    const nextTenant = tenantOptions.find((tenant) => tenant.id === nextTenantId) || tenantOptions[0];
+    const updatedUser = currentUser ? {
+      ...currentUser,
+      tenant_id: nextTenant.id,
+      tenant_name: nextTenant.name,
+    } : null;
+
+    if (updatedUser) {
+      setCurrentUser(updatedUser);
+    }
+  };
+
   return (
     <div>
       <div style={S.header}>
@@ -33,6 +70,30 @@ export default function Settings() {
           }}>{tab}</button>
         ))}
       </div>
+
+      {canManageTenantPreference ? (
+        <div style={{ ...S.card, marginBottom: 24 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, margin: '0 0 16px' }}>TENANT PREFERENCE</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'end' }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: COLORS.muted, margin: '0 0 8px' }}>ACTIVE AGENCY</p>
+              <select value={activeTenantId} onChange={handleTenantPreferenceChange} style={{ ...S.select, width: '100%' }}>
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>{tenant.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 600, color: COLORS.muted, margin: '0 0 8px' }}>TENANT CONTEXT</p>
+              <input
+                style={{ ...S.searchBar, paddingLeft: 12, width: '100%', boxSizing: 'border-box' }}
+                value={tenantOptions.find((tenant) => tenant.id === activeTenantId)?.name || 'Love & Faith Hospice Services, Inc.'}
+                readOnly
+              />
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         {/* Left Column */}

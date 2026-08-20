@@ -8,7 +8,8 @@ import ChartCompletionChecklist from '../intake/ChartCompletionChecklist';
 import NursingAssessmentBoard from '../intake/NursingAssessmentBoard';
 import PsychosocialAssessmentBoard from '../intake/PsychosocialAssessmentBoard';
 import SpiritualAssessmentBoard from '../intake/SpiritualAssessmentBoard';
-import PainScreening from '../assessments/pain/PainScreening';
+import { OrdersHubCard, MedicationOrdersCard, getRnicaColors, getRnicaStyles } from '../components/RNICA';
+import PhysicianOrdersBoard from './PhysicianOrdersBoard';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
@@ -482,7 +483,7 @@ const PatientChart = () => {
 
     switch (activeSection) {
       case 'facesheet':
-        return <PatientFacesheet />;
+        return <PatientFacesheet patientId={resolvedPatientId} />;
       case 'care-overview':
         return <CareOverviewBoard />;
       case 'consent':
@@ -501,7 +502,7 @@ const PatientChart = () => {
       case 'spiritual-assessment':
         return <SpiritualAssessmentBoard patientId={resolvedPatientId} />;
       case 'pain-assessment':
-        return <PainScreening patientType="adult" />;
+        return <NursingAssessmentBoard patientId={resolvedPatientId} />;
       case 'assessments':
       case 'assessment-history':
         return <AssessmentBoard />;
@@ -512,10 +513,22 @@ const PatientChart = () => {
         return <VisitNotesBoard />;
       case 'tx-meds':
       case 'add-order':
+      case 'dme-orders':
+        return <OrdersHubCard patientId={resolvedPatientId} />;
       case 'current-meds':
       case 'med-history':
-      case 'dme-orders':
-        return <TxMedsBoard />;
+        return (
+          <MedicationOrdersCard
+            patientId={resolvedPatientId}
+            styles={getRnicaStyles(getRnicaColors(mode))}
+            COLORS={getRnicaColors(mode)}
+          />
+        );
+      case 'physician-orders':
+      case 'add-md-order':
+        return <PhysicianOrdersBoard patientId={resolvedPatientId} initialView="add" />;
+      case 'order-history':
+        return <PhysicianOrdersBoard patientId={resolvedPatientId} initialView="history" />;
       case 'idg':
       case 'add-idg':
       case 'idg-history':

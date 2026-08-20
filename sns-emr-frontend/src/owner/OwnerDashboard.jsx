@@ -13,6 +13,7 @@ import {
 import { logout } from '../api/auth';
 import { fetchOwnerDashboard } from '../api/dashboard';
 import { getCurrentUser, hasOwnerRole } from '../api/session';
+import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
 
 export { COLORS, S };
@@ -44,6 +45,7 @@ export default function OwnerDashboard() {
   const [error, setError] = useState('');
 
   const currentUser = getCurrentUser();
+  const { mode, toggleMode } = useThemeMode();
   const isAuthorized = !!currentUser && hasOwnerRole(currentUser);
   const userDisplayName = currentUser?.full_name || currentUser?.email || 'Platform Administrator';
   const userRole = currentUser?.role || 'SUPER ADMIN';
@@ -180,8 +182,37 @@ export default function OwnerDashboard() {
     <div style={S.container}>
       <div style={S.sidebar}>
         <div style={S.logo}>
-          <p style={S.logoText}>SNS Hospice Solutions</p>
-          <p style={S.logoSub}>PLATFORM OWNER</p>
+          <img
+            src="/brand/sns-logo-light.svg"
+            alt="SNS logo"
+            onError={(event) => {
+              const target = event.currentTarget;
+              if (!target.src.endsWith('/brand/sns-logo-icon.svg')) {
+                target.src = '/brand/sns-logo-icon.svg';
+              }
+            }}
+            style={{ width: 150, height: 'auto', display: 'block', margin: '0 auto' }}
+          />
+        </div>
+
+        <div style={{ padding: '0 12px 10px' }}>
+          <button
+            type="button"
+            onClick={toggleMode}
+            style={{
+              width: '100%',
+              borderRadius: 8,
+              border: `1px solid ${COLORS.border}`,
+              background: COLORS.cardSoft,
+              color: COLORS.white,
+              cursor: 'pointer',
+              fontSize: 12,
+              fontWeight: 700,
+              padding: '10px 12px',
+            }}
+          >
+            {mode === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
         </div>
 
         <div style={S.nav} aria-label="Owner navigation">

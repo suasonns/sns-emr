@@ -2,15 +2,20 @@ import { useState, type FormEvent } from "react";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { login } from "../api/auth";
+import { login, resetPassword } from "../api/auth";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [confirmResetPassword, setConfirmResetPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/portal";
 
@@ -18,6 +23,7 @@ export default function LoginPage() {
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       await login(email.trim(), password);
@@ -29,45 +35,265 @@ export default function LoginPage() {
     }
   }
 
+  async function handleResetSubmit(event: FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      if (resetPasswordValue.length < 8) {
+        throw new Error("New password must be at least 8 characters");
+      }
+      if (resetPasswordValue !== confirmResetPassword) {
+        throw new Error("Passwords do not match");
+      }
+
+      await resetPassword(resetEmail.trim(), resetPasswordValue);
+      setSuccess("Password reset complete. You can sign in with the new password.");
+      setShowReset(false);
+      setResetEmail("");
+      setResetPasswordValue("");
+      setConfirmResetPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to reset password");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <Container maxWidth="sm" sx={{ minHeight: "100vh", display: "grid", placeItems: "center", py: 4 }}>
-      <Paper elevation={0} sx={{ width: "100%", p: 4, border: "1px solid #dbe5ee", borderRadius: 3, background: "#f8fbfd" }}>
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h4" sx={{ fontWeight: 800, color: "#1f3552", mb: 1 }}>
-            SNS EMR Login
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Sign in with the master account to access the portal.
-          </Typography>
-        </Box>
+   <Box
+     sx={{
+       minHeight: "100vh",
+       display: "grid",
+       placeItems: "center",
+       py: 4,
+       background: "linear-gradient(180deg, #f4f8f7 0%, #edf3f5 100%)",
+       position: "relative",
+       overflow: "hidden",
+       "&::before": {
+         content: '""',
+         position: "absolute",
+         inset: 0,
+         background: "radial-gradient(circle at top, rgba(13, 148, 136, 0.08), transparent 40%), radial-gradient(circle at bottom right, rgba(14, 116, 144, 0.08), transparent 30%)",
+         pointerEvents: "none",
+       },
+     }}
+   >
+     <Container maxWidth="sm" sx={{ position: "relative", zIndex: 1, maxWidth: 500 }}>
+       <Box sx={{ width: "100%", display: "grid", gap: 2, justifyItems: "center" }}>
+         <Box
+           component="img"
+           src="/brand/sns-logo-dark.svg"
+           alt="SNS Hospice Solutions"
+           onError={(event) => {
+             const target = event.currentTarget as HTMLImageElement;
+             if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
+               target.src = "/brand/sns-logo-icon.svg";
+             }
+           }}
+           sx={{
+             width: "100%",
+             maxWidth: 620,
+             height: "auto",
+             display: "block",
+             filter: "drop-shadow(0 18px 28px rgba(15, 82, 96, 0.12))",
+           }}
+         />
+         <Paper
+           elevation={0}
+           sx={{
+             width: "100%",
+             maxWidth: 430,
+             p: 3,
+             border: "1px solid rgba(15, 118, 110, 0.14)",
+             borderRadius: 3,
+             background: "rgba(255,255,255,0.9)",
+             boxShadow: "0 18px 40px rgba(15, 23, 42, 0.10)",
+             backdropFilter: "blur(12px)",
+           }}
+         >
+           <Box sx={{ mb: 2.5, textAlign: "center" }}>
+             <Typography variant="overline" sx={{ color: "#4b6470", letterSpacing: "0.12em", fontWeight: 700 }}>
+               Secure clinical access
+             </Typography>
+             <Typography variant="h5" sx={{ mt: 0.75, color: "#112131", fontWeight: 700, letterSpacing: "-0.03em" }}>
+               Welcome back
+             </Typography>
+           </Box>
 
-        {error ? (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        ) : null}
+           {error ? (
+             <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
+               {error}
+             </Alert>
+           ) : null}
+           {success ? (
+             <Alert severity="success" sx={{ mb: 2, borderRadius: 2 }}>
+               {success}
+             </Alert>
+           ) : null}
 
-        <Box component="form" onSubmit={handleSubmit} sx={{ display: "grid", gap: 2 }}>
-          <TextField
-            label="Email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
-            fullWidth
-          />
-          <TextField
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            autoComplete="current-password"
-            fullWidth
-          />
-          <Button type="submit" variant="contained" disabled={loading || !password} sx={{ height: 44 }}>
-            {loading ? "Signing in..." : "Sign in"}
-          </Button>
-        </Box>
-      </Paper>
-    </Container>
+           {!showReset ? (
+             <Box component="form" onSubmit={handleSubmit} sx={{ display: "grid", gap: 2 }}>
+               <TextField
+                 label="Email"
+                 value={email}
+                 onChange={(event) => setEmail(event.target.value)}
+                 autoComplete="email"
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": {
+                     color: "#1f2f3d",
+                     fontWeight: 700,
+                   },
+                   "& .MuiOutlinedInput-root": {
+                     borderRadius: 2,
+                     backgroundColor: "rgba(255,255,255,0.8)",
+                   },
+                   "& .MuiOutlinedInput-input": {
+                     color: "#0f172a",
+                   },
+                 }}
+               />
+               <TextField
+                 label="Password"
+                 type="password"
+                 value={password}
+                 onChange={(event) => setPassword(event.target.value)}
+                 autoComplete="current-password"
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": {
+                     color: "#1f2f3d",
+                     fontWeight: 700,
+                   },
+                   "& .MuiOutlinedInput-root": {
+                     borderRadius: 2,
+                     backgroundColor: "rgba(255,255,255,0.8)",
+                   },
+                   "& .MuiOutlinedInput-input": {
+                     color: "#0f172a",
+                   },
+                 }}
+               />
+               <Button
+                 type="submit"
+                 variant="contained"
+                 disabled={loading || !password}
+                 sx={{
+                   height: 46,
+                   borderRadius: 2,
+                   background: "#0d3b5a",
+                   color: "#ffffff",
+                   boxShadow: "0 14px 24px rgba(13, 59, 90, 0.25)",
+                   fontWeight: 900,
+                   textTransform: "none",
+                   letterSpacing: "0.02em",
+                   border: "1px solid rgba(13, 59, 90, 0.5)",
+                   textShadow: "0 1px 0 rgba(0,0,0,0.2)",
+                   "&:hover": {
+                     background: "#0b2f4d",
+                   },
+                 }}
+               >
+                 {loading ? "Signing in..." : "Sign in"}
+               </Button>
+               <Button type="button" variant="text" color="primary" onClick={() => setShowReset(true)} sx={{ justifySelf: "start", fontWeight: 600 }}>
+                 Forgot password?
+               </Button>
+             </Box>
+           ) : (
+             <Box component="form" onSubmit={handleResetSubmit} sx={{ display: "grid", gap: 2 }}>
+               <TextField
+                 label="Email"
+                 value={resetEmail}
+                 onChange={(event) => setResetEmail(event.target.value)}
+                 autoComplete="email"
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": {
+                     color: "#1f2f3d",
+                     fontWeight: 700,
+                   },
+                   "& .MuiOutlinedInput-root": {
+                     borderRadius: 2,
+                     backgroundColor: "rgba(255,255,255,0.8)",
+                   },
+                   "& .MuiOutlinedInput-input": {
+                     color: "#0f172a",
+                   },
+                 }}
+               />
+               <TextField
+                 label="New password"
+                 type="password"
+                 value={resetPasswordValue}
+                 onChange={(event) => setResetPasswordValue(event.target.value)}
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": {
+                     color: "#1f2f3d",
+                     fontWeight: 700,
+                   },
+                   "& .MuiOutlinedInput-root": {
+                     borderRadius: 2,
+                     backgroundColor: "rgba(255,255,255,0.8)",
+                   },
+                   "& .MuiOutlinedInput-input": {
+                     color: "#0f172a",
+                   },
+                 }}
+               />
+               <TextField
+                 label="Confirm new password"
+                 type="password"
+                 value={confirmResetPassword}
+                 onChange={(event) => setConfirmResetPassword(event.target.value)}
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": {
+                     color: "#1f2f3d",
+                     fontWeight: 700,
+                   },
+                   "& .MuiOutlinedInput-root": {
+                     borderRadius: 2,
+                     backgroundColor: "rgba(255,255,255,0.8)",
+                   },
+                   "& .MuiOutlinedInput-input": {
+                     color: "#0f172a",
+                   },
+                 }}
+               />
+               <Button
+                 type="submit"
+                 variant="contained"
+                 disabled={loading || !resetPasswordValue || !resetEmail}
+                 sx={{
+                   height: 46,
+                   borderRadius: 2,
+                   background: "#0d3b5a",
+                   color: "#ffffff",
+                   boxShadow: "0 14px 24px rgba(13, 59, 90, 0.25)",
+                   fontWeight: 900,
+                   textTransform: "none",
+                   border: "1px solid rgba(13, 59, 90, 0.5)",
+                   textShadow: "0 1px 0 rgba(0,0,0,0.2)",
+                   "&:hover": {
+                     background: "#0b2f4d",
+                   },
+                 }}
+               >
+                 {loading ? "Resetting..." : "Reset password"}
+               </Button>
+               <Button type="button" variant="text" onClick={() => setShowReset(false)} sx={{ justifySelf: "start", fontWeight: 600 }}>
+                 Back to sign in
+               </Button>
+             </Box>
+           )}
+         </Paper>
+       </Box>
+     </Container>
+   </Box>
   );
 }

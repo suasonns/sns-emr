@@ -54,6 +54,10 @@ export async function getRnicaAssessment(assessmentId: string) {
   return unwrap(api.get(`/visits/rnica/${assessmentId}`), "RN ICA load failed");
 }
 
+export async function getRnicaAssessmentByPatient(patientId: string) {
+  return unwrap(api.get(`/visits/rnica/by-patient/${patientId}`), "RN ICA lookup failed");
+}
+
 export async function updateRnicaAssessment(assessmentId: string, formData: Record<string, unknown>) {
   return unwrap(api.put(`/visits/rnica/${assessmentId}`, { formData }), "RN ICA update failed");
 }
@@ -74,6 +78,10 @@ export async function getMswIcaAssessment(assessmentId: string) {
   return unwrap(api.get(`/visits/msw-ica/${assessmentId}`), "MSW ICA load failed");
 }
 
+export async function getMswIcaAssessmentByPatient(patientId: string) {
+  return unwrap(api.get(`/visits/msw-ica/by-patient/${patientId}`), "MSW ICA lookup failed");
+}
+
 export async function updateMswIcaAssessment(assessmentId: string, formData: Record<string, unknown>) {
   return unwrap(api.put(`/visits/msw-ica/${assessmentId}`, { formData }), "MSW ICA update failed");
 }
@@ -84,4 +92,25 @@ export async function lockMswIcaAssessment(assessmentId: string) {
 
 export async function getMswIcaIntelligence(assessmentId: string) {
   return unwrap(api.get(`/visits/msw-ica/${assessmentId}/intelligence`), "MSW ICA intelligence failed");
+}
+
+
+export async function saveScicaAssessment(payload: AssessmentPayload) {
+  return unwrap(api.post("/visits/scica/save", payload), "SCICA save failed");
+}
+
+export async function getScicaAssessment(assessmentId: string) {
+  return unwrap(api.get(`/visits/scica/${assessmentId}`), "SCICA load failed");
+}
+
+export async function getScicaAssessmentByPatient(patientId: string) {
+  return unwrap(api.get(`/visits/scica/by-patient/${patientId}`), "SCICA lookup failed");
+}
+
+export async function updateScicaAssessment(assessmentId: string, formData: Record<string, unknown>) {
+  return unwrap(api.put(`/visits/scica/${assessmentId}`, { formData }), "SCICA update failed");
+}
+
+export async function lockScicaAssessment(assessmentId: string) {
+  return unwrap(api.post(`/visits/scica/${assessmentId}/lock`), "SCICA lock failed");
 }

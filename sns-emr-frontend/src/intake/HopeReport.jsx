@@ -84,6 +84,16 @@ export default function HopeReport({ formData = {}, patient = defaultPatient, ag
           {report.sections.map((section) => (
             <section key={section.title} style={styles.section}>
               <div style={styles.sectionTitle}>{section.title}</div>
+              {section.dataSourceNote && (
+                <div style={{
+                  fontSize: 11, fontStyle: "italic", padding: "6px 8px", marginBottom: 8, borderRadius: 4,
+                  background: section.dataSourceNote.startsWith("⚠") ? "#fffbeb" : "#f0fdf4",
+                  color: section.dataSourceNote.startsWith("⚠") ? "#92400e" : "#166534",
+                  border: `1px solid ${section.dataSourceNote.startsWith("⚠") ? "#fde68a" : "#bbf7d0"}`,
+                }}>
+                  {section.dataSourceNote}
+                </div>
+              )}
               {section.items.map((item) => (
                 <div key={`${item.code}-${item.label}`} style={styles.item}>
                   <div style={styles.codeLine}>{item.code}. {item.label}</div>

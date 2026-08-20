@@ -1,5 +1,5 @@
-const AUTH_TOKEN_KEY = "sns-emr-access-token";
-const AUTH_USER_KEY = "sns-emr-auth-user";
+const AUTH_TOKEN_KEY = "sns-hospice-solutions-access-token";
+const AUTH_USER_KEY = "sns-hospice-solutions-auth-user";
 
 export type SessionUser = {
   id: string;
@@ -35,11 +35,15 @@ export function getCurrentUser(): SessionUser | null {
   }
 }
 
-// Platform-owner surface only. Tenant admins must not qualify.
-const OWNER_ROLES = new Set(["OWNER"]);
+const PLATFORM_SUPER_USER_EMAIL = "romel.suason@suasonns.org";
+
+export function isPlatformSuperUser(user: SessionUser | null): boolean {
+  if (!user) return false;
+  return String(user.email ?? "").trim().toLowerCase() === PLATFORM_SUPER_USER_EMAIL;
+}
 
 export function hasOwnerRole(user: SessionUser | null): boolean {
-  return !!user && OWNER_ROLES.has(String(user.role ?? "").toUpperCase());
+  return isPlatformSuperUser(user);
 }
 
 export function setCurrentUser(user: SessionUser): void {

@@ -7,6 +7,20 @@ import NotificationsNoneOutlinedIcon from "@mui/icons-material/NotificationsNone
 import { getCurrentUser } from "../api/session";
 import PortalShell from "../components/PortalShell";
 
+const C = {
+  navy: "#1E3A5F",
+  teal: "#0D9488",
+  tealDark: "#0F766E",
+  tealLight: "#CCFBF1",
+  white: "#FFFFFF",
+  bg: "#EEF3F8",
+  panel: "#F8FBFD",
+  border: "#DDE9F2",
+  text: "#1F2937",
+  muted: "#64748B",
+  subtle: "#475569",
+};
+
 function SectionCard({
   title,
   icon,
@@ -22,17 +36,17 @@ function SectionCard({
     <Paper
       variant="outlined"
       sx={{
-        borderColor: "#dbe5ea",
+        borderColor: C.border,
         borderRadius: 1.5,
-        background: "#fff",
+        background: C.white,
         boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
         overflow: "hidden",
       }}
     >
-      <Box sx={{ px: 1.25, py: 1, borderBottom: "1px solid #e5edf3", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
+      <Box sx={{ px: 1.25, py: 1, borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.75, minWidth: 0 }}>
-          <Box sx={{ color: "#0f766e", display: "grid", placeItems: "center" }}>{icon}</Box>
-          <Typography sx={{ fontSize: 11, fontWeight: 800, color: "#1f3552" }}>{title}</Typography>
+          <Box sx={{ color: C.tealDark, display: "grid", placeItems: "center" }}>{icon}</Box>
+          <Typography sx={{ fontSize: 11, fontWeight: 800, color: C.navy }}>{title}</Typography>
         </Box>
         {right}
       </Box>
@@ -43,9 +57,9 @@ function SectionCard({
 
 function FieldRow({ label, value }: { label: string; value: string }) {
   return (
-    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 0.45, borderBottom: "1px solid #edf2f7" }}>
-      <Typography sx={{ fontSize: 10.5, color: "#64748b" }}>{label}</Typography>
-      <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: "#1f2937", textAlign: "right", overflowWrap: "anywhere" }}>{value}</Typography>
+    <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 0.45, borderBottom: `1px solid ${C.border}` }}>
+    <Typography sx={{ fontSize: 10.5, color: C.muted }}>{label}</Typography>
+    <Typography sx={{ fontSize: 10.5, fontWeight: 700, color: C.text, textAlign: "right", overflowWrap: "anywhere" }}>{value}</Typography>
     </Box>
   );
 }
@@ -109,8 +123,8 @@ function ToggleRow({
         checked={checked}
         onChange={(_, value) => onChange(value)}
         sx={{
-          "& .MuiSwitch-switchBase.Mui-checked": { color: "#10b7a2" },
-          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#10b7a2" },
+          "& .MuiSwitch-switchBase.Mui-checked": { color: C.teal },
+          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: C.teal },
         }}
       />
     </Box>

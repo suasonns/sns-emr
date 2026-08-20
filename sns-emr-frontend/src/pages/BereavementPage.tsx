@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import PatientModuleShell from "../components/PatientModuleShell";
+import { fetchPatientSummary } from "../api/patientCharts";
+import { getActivePatientId } from "../utils/activePatient";
 
 const sections = [
   { key: "overview", label: "Care Overview" },
@@ -46,10 +49,24 @@ const contacts = [
 ];
 
 export default function BereavementPage() {
+  const patientId = getActivePatientId() ?? "";
+  const [patientName, setPatientName] = useState("Loading patient...");
+
+  useEffect(() => {
+    if (!patientId) {
+      setPatientName("No patient selected");
+      return;
+    }
+
+    fetchPatientSummary(patientId)
+      .then((result) => setPatientName(result.patient.full_name || "Patient"))
+      .catch(() => setPatientName("Patient"));
+  }, [patientId]);
+
   return (
     <PatientModuleShell
-      patientId="HOSP-001234"
-      patientName="Carr, V"
+      patientId={patientId}
+      patientName={patientName}
       disciplineLabel="Bereavement"
       title="Bereavement"
       subtitle="Assessment, support plan, follow-up schedule, and grief-risk monitoring"
