@@ -10,7 +10,7 @@ from app.models.rnica_assessment import RnicaAssessment
 
 
 @pytest.mark.integration
-def test_rnica_assessment_save_get_update_and_lock(client, db_session):
+def test_rnica_assessment_save_get_update_and_lock(client, db_session, rn_headers):
     tenant_id = db_session.info.get("tenant_id")
     assert tenant_id is not None
 
@@ -50,11 +50,11 @@ def test_rnica_assessment_save_get_update_and_lock(client, db_session):
         },
     }
 
-    save_resp = client.post("/visits/rnica/save", json=payload)
+    save_resp = client.post("/visits/rnica/save", json=payload, headers=rn_headers)
     assert save_resp.status_code == 200, save_resp.text
     assessment_id = save_resp.json()["assessmentId"]
 
-    get_resp = client.get(f"/visits/rnica/{assessment_id}")
+    get_resp = client.get(f"/visits/rnica/{assessment_id}", headers=rn_headers)
     assert get_resp.status_code == 200, get_resp.text
     assert get_resp.json()["formData"]["demographics"]["firstName"] == "Jane"
 
@@ -67,11 +67,15 @@ def test_rnica_assessment_save_get_update_and_lock(client, db_session):
             },
         }
     }
-    update_resp = client.put(f"/visits/rnica/{assessment_id}", json=update_payload)
+    update_resp = client.put(
+        f"/visits/rnica/{assessment_id}",
+        json=update_payload,
+        headers=rn_headers,
+    )
     assert update_resp.status_code == 200, update_resp.text
     assert update_resp.json()["status"] == "updated"
 
-    lock_resp = client.post(f"/visits/rnica/{assessment_id}/lock")
+    lock_resp = client.post(f"/visits/rnica/{assessment_id}/lock", headers=rn_headers)
     assert lock_resp.status_code == 200, lock_resp.text
     assert lock_resp.json()["status"] == "locked"
 
