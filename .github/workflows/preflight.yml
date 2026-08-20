@@ -68,26 +68,8 @@ jobs:
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
         run: |
-          alembic current
+          alembic current --check-heads
           alembic heads
-          python - << 'EOF'
-          import subprocess
-
-          current = subprocess.check_output(["alembic", "current"]).decode().strip()
-          heads = subprocess.check_output(["alembic", "heads"]).decode().strip()
-
-          cur_rev = current.split()[0]
-          head_rev = heads.split()[0]
-
-          if cur_rev != head_rev:
-              raise SystemExit(
-                  f"❌ Alembic drift detected\\n"
-                  f"current={cur_rev}\\n"
-                  f"heads={head_rev}"
-              )
-
-          print("✅ Alembic current == heads")
-          EOF
 
       # ---------------------------------------------------------
       # 6) Run test suite
