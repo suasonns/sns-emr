@@ -43,40 +43,33 @@ function ScrollRegion({ name, className, children }) {
   return <div className={className} onScroll={handleScroll}>{children}</div>;
 }
 
-function VoiceDraftPanel() {
-  const [consented, setConsented] = useState(false);
-  const [recordingState, setRecordingState] = useState("idle");
-  const [bookmarks, setBookmarks] = useState(0);
-  const start = () => {
-    if (consented) setRecordingState("recording");
-  };
-
+function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCount }) {
+  const [draftState, setDraftState] = useState("not prepared");
   return (
-    <section className="rnica-command-card" aria-labelledby="voice-draft-title">
+    <section className="rnica-command-card rnica-command-narrative" aria-labelledby="narrative-final-review-title">
       <div className="rnica-command-card__heading">
-        <h2 id="voice-draft-title">Voice draft</h2>
-        <span className={`rnica-command-state rnica-command-state--${recordingState}`}>{recordingState}</span>
+        <h2 id="narrative-final-review-title">Narrative &amp; final review</h2>
+        <span className="rnica-command-state">{draftState}</span>
       </div>
-      <label className="rnica-command-check">
-        <input type="checkbox" checked={consented} onChange={(event) => setConsented(event.target.checked)} />
-        Patient consent confirmed
-      </label>
-      <div className="rnica-command-actions">
-        {recordingState === "idle" && <button type="button" disabled={!consented} onClick={start}>Start capture</button>}
-        {recordingState === "recording" && <button type="button" onClick={() => setRecordingState("paused")}>Pause</button>}
-        {recordingState === "paused" && <button type="button" onClick={() => setRecordingState("recording")}>Resume</button>}
-        {recordingState !== "idle" && (
-          <>
-            <button type="button" onClick={() => setBookmarks((count) => count + 1)}>Bookmark ({bookmarks})</button>
-            <button type="button" onClick={() => setRecordingState("review")}>Stop &amp; review</button>
-          </>
-        )}
+      <p>
+        Synthesize the completed assessment and source-linked encounter capture only after bedside documentation is complete.
+        Missing documentation is not interpreted as a negative finding.
+      </p>
+      <div className="rnica-command-review">
+        <strong>Source set</strong>
+        <span>{completedSections} of {totalSections} assessment sections documented · {missingCount} requirement(s) remain</span>
       </div>
-      <p className="rnica-command-help">Draft extraction requires accept, edit, or reject review. It never finalizes the assessment.</p>
-      {recordingState === "review" && (
+      {draftState === "not prepared" ? (
+        <button type="button" onClick={() => setDraftState("review required")}>Prepare structured draft</button>
+      ) : (
         <div className="rnica-command-review" role="status">
-          <strong>Extraction queue ready</strong>
-          <span>No findings are applied until reviewed. Uncertain statements remain in the missing queue with source links.</span>
+          <strong>Structured draft review required</strong>
+          <span>Review source links and uncertainty items, then accept, edit, or reject before attestation. This action never signs, locks, or finalizes the assessment.</span>
+          <div className="rnica-command-actions">
+            <button type="button" onClick={() => setDraftState("accepted")}>Accept draft</button>
+            <button type="button" onClick={() => setDraftState("editing")}>Edit draft</button>
+            <button type="button" onClick={() => setDraftState("rejected")}>Reject draft</button>
+          </div>
         </div>
       )}
     </section>
@@ -151,6 +144,7 @@ export default function RNICACommandWorkspace({
   };
 
   return (
+    <div className="rnica-command-container">
     <main className={`rnica-command rnica-command--${density}`} aria-label="RN ICA Clinical Command Workspace">
       <header className="rnica-command-patientbar">
         <div className="rnica-command-patientbar__identity">
@@ -186,6 +180,9 @@ export default function RNICACommandWorkspace({
               </button>
             ))}
           </div>
+          <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--mobile" onClick={() => select("finalization")}>
+            Narrative &amp; final review
+          </button>
           <div className="rnica-command-matrix" aria-label="Assessment section status">
             {filteredRoutes.map((route) => {
               const complete = completedSections.includes(route.key);
@@ -207,9 +204,6 @@ export default function RNICACommandWorkspace({
         </ScrollRegion>
 
         <ScrollRegion name="detail" className="rnica-command-detail">
-          <div className="rnica-command-mobile-tools">
-            <VoiceDraftPanel />
-          </div>
           {visitRecorder}
           {alerts}
           <section className="rnica-command-sticky-note" aria-labelledby="quick-capture-title">
@@ -228,6 +222,13 @@ export default function RNICACommandWorkspace({
             </div>
           </section>
           <section className="rnica-command-active" aria-live="polite">
+            {activeSection === "finalization" && (
+              <NarrativeFinalReviewPanel
+                completedSections={completedSections.length}
+                totalSections={routes.length}
+                missingCount={errorKeys.length + warningKeys.length}
+              />
+            )}
             {renderWorkspaceSections()}
           </section>
           <nav className="rnica-command-stepnav" aria-label="Section navigation">
@@ -237,7 +238,9 @@ export default function RNICACommandWorkspace({
         </ScrollRegion>
 
         <ScrollRegion name="rail" className="rnica-command-rail">
-          <div className="rnica-command-desktop-tools"><VoiceDraftPanel /></div>
+          <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--desktop" onClick={() => select("finalization")}>
+            Narrative &amp; final review
+          </button>
           <section className="rnica-command-card">
             <div className="rnica-command-card__heading"><h2>Requirements</h2><span>{errorKeys.length + warningKeys.length}</span></div>
             {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
@@ -261,5 +264,6 @@ export default function RNICACommandWorkspace({
         </ScrollRegion>
       </div>
     </main>
+    </div>
   );
 }

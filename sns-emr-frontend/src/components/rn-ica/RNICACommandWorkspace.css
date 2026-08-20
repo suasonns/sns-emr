@@ -1,9 +1,19 @@
+.rnica-command-container {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow-x: hidden;
+  container: rnica-workspace / inline-size;
+}
+
 .rnica-command {
   --cw-gap: 0.75rem;
   --cw-pad: 0.75rem;
   --cw-font: 0.875rem;
   min-height: 100vh;
   height: 100vh;
+  width: 100%;
+  max-width: none;
   overflow: hidden;
   background: var(--sns-bg);
   color: var(--sns-white);
@@ -94,6 +104,42 @@
 .rnica-command-provenance span::before { content: "•"; margin-right: 0.3rem; color: var(--sns-teal); }
 .rnica-command-active { padding: var(--cw-pad); overflow: hidden; }
 .rnica-command-stepnav { justify-content: space-between; margin-top: var(--cw-gap); }
+.rnica-pilot-diagnoses-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cw-gap); }
+.rnica-pilot-diagnoses-grid > div { margin-bottom: 0 !important; padding: var(--cw-pad) !important; min-width: 0; }
+.rnica-pilot-diagnoses-grid > div:nth-child(n + 3) { grid-column: 1 / -1; }
+
+.rnica-diagnosis-ledger__summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
+.rnica-diagnosis-ledger__summary p { margin: 0; color: var(--sns-muted); font-size: 0.82em; line-height: 1.35; }
+.rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
+.rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
+.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
+.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(7rem, 0.7fr) minmax(14rem, 2fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
+.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: 0.72em; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
+.rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
+.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 700; white-space: nowrap; }
+.rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
+.rnica-diagnosis-ledger__remove { min-height: 2.5rem !important; padding: 0.3rem 0.55rem !important; color: var(--sns-red) !important; }
+.rnica-diagnosis-ledger__actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
+.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
+.rnica-lcd-summary__counts { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem; }
+.rnica-lcd-summary__counts span { padding: 0.25rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 999px; background: var(--sns-card); color: var(--sns-muted); }
+.rnica-lcd-summary__counts strong { color: var(--sns-white); }
+.rnica-lcd-group { padding: 0 !important; overflow: hidden; }
+.rnica-lcd-group.needs-review { border-left: 0.25rem solid var(--sns-orange) !important; }
+.rnica-lcd-group.is-satisfied { border-left: 0.25rem solid var(--sns-green) !important; }
+.rnica-lcd-group__toggle { width: 100%; min-height: 2.75rem !important; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.4rem 0.65rem !important; border: 0 !important; border-radius: 0 !important; background: var(--sns-cardSoft) !important; text-align: left; }
+.rnica-lcd-group__toggle > span:first-child { font-weight: 800; }
+.rnica-lcd-group__count { color: var(--sns-muted); font-size: 0.78em; white-space: nowrap; }
+.rnica-lcd-criteria { gap: 0 !important; }
+.rnica-lcd-criterion { min-height: 2.75rem; padding: 0.4rem 0.6rem !important; border: 0 !important; border-top: 1px solid var(--sns-border) !important; border-radius: 0 !important; background: var(--sns-card) !important; }
+.rnica-lcd-criterion > div:first-child > div:last-child { color: var(--sns-muted) !important; font-size: 0.78em !important; }
+.rnica-lcd-criterion button { min-height: 2.35rem; }
+.rnica-comorbidity-guidance { padding: 0.65rem !important; margin-bottom: 0.65rem !important; }
+.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
+.rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-cardSoft); }
+.rnica-comorbidity-option { min-height: 2.5rem; padding: 0.25rem 0; border-top: 1px solid var(--sns-border); }
+.rnica-comorbidity-option:first-child { border-top: 0; }
 
 .rnica-command-card { padding: var(--cw-pad); margin-bottom: var(--cw-gap); }
 .rnica-command-card__heading { justify-content: space-between; margin-bottom: 0.45rem; }
@@ -104,6 +150,11 @@
 .rnica-command-state--paused { color: var(--sns-orange); }
 .rnica-command-review, .rnica-command-signal, .rnica-command-requirement { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
 .rnica-command-review span, .rnica-command-signal span, .rnica-command-requirement span { color: var(--sns-muted); font-size: 0.78em; line-height: 1.35; }
+.rnica-command-narrative { margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-teal); }
+.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
+.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 800; }
+.rnica-command-final-shortcut--desktop { position: sticky; top: 0; z-index: 2; }
+.rnica-command-final-shortcut--mobile { display: none; }
 .rnica-command-requirement { width: 100%; min-height: unset !important; text-align: left; }
 .rnica-command-requirement strong { color: var(--sns-red); }
 .rnica-command-requirement.is-warning strong { color: var(--sns-orange); }
@@ -112,7 +163,6 @@
 .rnica-command-save > div span { color: var(--sns-muted); }
 .rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 800; }
 .rnica-command-save > button.is-secondary { background: var(--sns-cardSoft); color: var(--sns-white); }
-.rnica-command-mobile-tools { display: none; }
 
 @media (max-width: 1100px) {
   .rnica-command-layout { grid-template-columns: minmax(14rem, 18rem) minmax(28rem, 1fr); }
@@ -133,12 +183,18 @@
   .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.6rem; overflow: visible; }
   .rnica-command-rail { position: static; width: auto; max-height: none; padding: 0.6rem; border-left: 0; box-shadow: none; }
-  .rnica-command-desktop-tools { display: none; }
-  .rnica-command-mobile-tools { display: block; }
+  .rnica-command-final-shortcut--mobile { display: block; margin: 0.4rem 0 0; }
+  .rnica-command-final-shortcut--desktop { display: none; }
   .rnica-command-sticky-note { display: block; }
   .rnica-command-quick-grid { grid-template-columns: repeat(2, 1fr); margin-top: 0.6rem; }
   .rnica-command-active { max-height: 62vh; overflow-y: auto; }
   .rnica-command-stepnav { position: sticky; bottom: 0.3rem; z-index: 10; padding: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.6rem; background: var(--sns-card); }
+  .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
+  .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
+  .rnica-diagnosis-ledger__header { display: none; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(10rem, 1.5fr); padding: 0.4rem; }
+  .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
+  .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
 }
 
 @media (min-width: 701px) and (max-height: 800px) {
@@ -149,4 +205,46 @@
 
 @media (prefers-reduced-motion: reduce) {
   .rnica-command * { scroll-behavior: auto !important; transition: none !important; }
+}
+
+@container rnica-workspace (max-width: 1000px) {
+  .rnica-command { height: auto; min-height: 100%; overflow: visible; }
+  .rnica-command-layout { grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr); height: auto; }
+  .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { overflow: visible; }
+  .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
+  .rnica-command-rail > * { margin-bottom: 0; }
+  .rnica-command-final-shortcut--desktop { grid-column: 1 / -1; position: static; }
+  .rnica-comorbidity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@container rnica-workspace (max-width: 820px) {
+  .rnica-command { height: auto; min-height: 100%; overflow: visible; }
+  .rnica-command-prep { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rnica-command-layout { display: block; height: auto; }
+  .rnica-command-nav { position: sticky; top: 0; z-index: 25; padding: 0.55rem; border-right: 0; border-bottom: 1px solid var(--sns-border); }
+  .rnica-command-density, .rnica-command-matrix { display: none; }
+  .rnica-command-nav:focus-within .rnica-command-matrix { display: flex; max-height: 45vh; margin-top: 0.4rem; overflow-y: auto; }
+  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
+  .rnica-command-detail { padding: 0.65rem; }
+  .rnica-command-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.65rem; }
+  .rnica-command-final-shortcut--mobile { display: block; margin-top: 0.4rem; }
+  .rnica-command-final-shortcut--desktop { display: none; }
+  .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
+  .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
+  .rnica-lcd-criterion { grid-template-columns: minmax(0, 1fr) !important; }
+  .rnica-lcd-criterion > div:last-child { min-width: 0 !important; }
+  .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+}
+
+@container rnica-workspace (max-width: 520px) {
+  .rnica-command-patientbar { align-items: flex-start; }
+  .rnica-command-patientbar__identity > span:last-child, .rnica-command-patientbar__status > span:not(.rnica-command-badge) { display: none; }
+  .rnica-command-prep { display: flex; overflow-x: auto; }
+  .rnica-command-prep > div { min-width: 12rem; }
+  .rnica-command-sticky-note { display: block; }
+  .rnica-command-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0.6rem; }
+  .rnica-command-rail { grid-template-columns: 1fr; }
+  .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
+  .rnica-diagnosis-ledger__header { display: none; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(0, 1.5fr); padding: 0.4rem; }
 }

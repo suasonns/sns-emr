@@ -1,3 +1,5 @@
+import { useCallback, useState } from "react";
+
 const PILOT_STORAGE_KEY = "sns-rnica-command-workspace";
 
 export function getRnIcaCommandWorkspaceEnabled(): boolean {
@@ -30,4 +32,14 @@ export function setRnIcaCommandWorkspaceEnabled(enabled: boolean): void {
   const url = new URL(window.location.href);
   url.searchParams.delete("workspace");
   window.history.replaceState(null, "", url);
+}
+
+export function useRnIcaCommandWorkspace() {
+  const [enabled, setEnabled] = useState(getRnIcaCommandWorkspaceEnabled);
+  const disable = useCallback(() => {
+    setRnIcaCommandWorkspaceEnabled(false);
+    setEnabled(false);
+  }, []);
+
+  return { enabled, disable };
 }

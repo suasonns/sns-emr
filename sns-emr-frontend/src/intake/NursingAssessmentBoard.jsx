@@ -4,6 +4,7 @@ import { fetchPatientSummary } from "../api/patientCharts";
 import { getCurrentUser } from "../api/session";
 import { defaultPatient } from "./ConsentNotifications";
 import HopeReport from "./HopeReport";
+import { useRnIcaCommandWorkspace } from "../features/rnIcaCommandWorkspace";
 
 const styles = {
   shell: { background: "#0F172A", paddingBottom: 16 },
@@ -82,6 +83,7 @@ function mapSummaryToPatient(summary) {
 }
 
 export default function NursingAssessmentBoard({ patientId = "" }) {
+  const { enabled: workspacePilot, disable: exitWorkspacePilot } = useRnIcaCommandWorkspace();
   const storageKey = useMemo(() => "sns-emr:ica-complete:rn:" + (patientId || "unknown-patient"), [patientId]);
   const [initialComplete, setInitialComplete] = useState(() => localStorage.getItem(storageKey) === "true");
   const [view, setView] = useState("assessment");
@@ -166,7 +168,15 @@ export default function NursingAssessmentBoard({ patientId = "" }) {
       {!initialComplete && view === "report" ? (
         <HopeReport formData={reportFormData || {}} patient={patient} agency={agency} onBack={() => setView("assessment")} />
       ) : (
-        <RNICA patientId={patientId} mode={initialComplete ? "ongoing" : "ica"} onFormDataChange={setReportFormData} />
+        <div style={{ width: "100%", minWidth: 0, overflowX: "hidden" }}>
+          <RNICA
+            patientId={patientId}
+            mode={initialComplete ? "ongoing" : "ica"}
+            onFormDataChange={setReportFormData}
+            workspacePilot={workspacePilot}
+            onExitWorkspacePilot={exitWorkspacePilot}
+          />
+        </div>
       )}
 
       {initialComplete && (
