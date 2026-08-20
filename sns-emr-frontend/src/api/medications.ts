@@ -72,6 +72,26 @@ export type PatientAllergyRecord = {
   severity: string | null;
 };
 
+type PatientAllergyListResponse =
+  | PatientAllergyRecord[]
+  | { allergies: PatientAllergyRecord[] }
+  | { items: PatientAllergyRecord[] };
+
+export function normalizePatientAllergyResponse(
+  payload: PatientAllergyListResponse,
+): PatientAllergyRecord[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+  if ("allergies" in payload && Array.isArray(payload.allergies)) {
+    return payload.allergies;
+  }
+  if ("items" in payload && Array.isArray(payload.items)) {
+    return payload.items;
+  }
+  throw new TypeError("Patient allergy response did not contain an allergy list");
+}
+
 export async function checkMedicationSafety(
   patientId: string,
   drugName: string,
@@ -132,8 +152,8 @@ export async function getMedicationHistory(
 }
 
 export async function listPatientAllergies(patientId: string): Promise<PatientAllergyRecord[]> {
-  const response = await api.get<PatientAllergyRecord[]>(`/patients/${patientId}/allergies`);
-  return response.data;
+  const response = await api.get<PatientAllergyListResponse>(`/patients/${patientId}/allergies`);
+  return normalizePatientAllergyResponse(response.data);
 }
 
 export async function addPatientAllergy(
@@ -205,4 +225,3 @@ export async function getDrugFamily(drugName: string): Promise<DrugFamilyRespons
   );
   return response.data;
 }
-
