@@ -1,4 +1,5 @@
 import api from "./client";
+import { normalizeListResponse } from "./normalizeListResponse";
 
 export type VendorType = "Pharmacy" | "DME" | "Laboratory" | "AL" | "Contracted Staff" | "Other";
 
@@ -63,8 +64,8 @@ export async function listVendors(params?: {
   address?: string;
   npi?: string;
 }): Promise<VendorRecord[]> {
-  const response = await api.get<VendorRecord[]>("/vendors", { params });
-  return response.data;
+  const response = await api.get<unknown>("/vendors", { params });
+  return normalizeListResponse<VendorRecord>(response.data, ["vendors", "items"], "Vendor");
 }
 
 export async function getVendor(vendorId: string): Promise<VendorRecord> {

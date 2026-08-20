@@ -1,4 +1,5 @@
 import api from "./client";
+import { normalizeListResponse } from "./normalizeListResponse";
 
 export type SafetyAlert = {
   severity: string;
@@ -72,24 +73,14 @@ export type PatientAllergyRecord = {
   severity: string | null;
 };
 
-type PatientAllergyListResponse =
-  | PatientAllergyRecord[]
-  | { allergies: PatientAllergyRecord[] }
-  | { items: PatientAllergyRecord[] };
-
 export function normalizePatientAllergyResponse(
-  payload: PatientAllergyListResponse,
+  payload: unknown,
 ): PatientAllergyRecord[] {
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if ("allergies" in payload && Array.isArray(payload.allergies)) {
-    return payload.allergies;
-  }
-  if ("items" in payload && Array.isArray(payload.items)) {
-    return payload.items;
-  }
-  throw new TypeError("Patient allergy response did not contain an allergy list");
+  return normalizeListResponse<PatientAllergyRecord>(
+    payload,
+    ["allergies", "items"],
+    "Patient allergy",
+  );
 }
 
 export async function checkMedicationSafety(
@@ -104,8 +95,8 @@ export async function checkMedicationSafety(
 }
 
 export async function listMedications(patientId: string): Promise<MedicationRecord[]> {
-  const response = await api.get<MedicationRecord[]>(`/medications/patients/${patientId}`);
-  return response.data;
+  const response = await api.get<unknown>(`/medications/patients/${patientId}`);
+  return normalizeListResponse<MedicationRecord>(response.data, ["medications", "items"], "Medication");
 }
 
 export async function addMedication(
@@ -152,7 +143,7 @@ export async function getMedicationHistory(
 }
 
 export async function listPatientAllergies(patientId: string): Promise<PatientAllergyRecord[]> {
-  const response = await api.get<PatientAllergyListResponse>(`/patients/${patientId}/allergies`);
+  const response = await api.get<unknown>(`/patients/${patientId}/allergies`);
   return normalizePatientAllergyResponse(response.data);
 }
 
