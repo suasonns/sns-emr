@@ -76,8 +76,6 @@ jobs:
       # 6) Run test suite
       # ---------------------------------------------------------
       - name: Run tests
-        # Match CI: inherited suite failures remain visible but are not yet gating.
-        continue-on-error: true
         working-directory: backend
         env:
           DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test

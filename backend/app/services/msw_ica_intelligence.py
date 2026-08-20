@@ -42,6 +42,10 @@ def build_msw_ica_intelligence(form_data: dict[str, Any] | None, *, patient_id: 
     referrals = payload.get("referrals") or {}
     suicide_risk = patient_distress.get("suicideRisk") or {}
     abuse_workflow = patient_distress.get("abuseNeglectExploitation") or {}
+    legacy_social = payload.get("social") or {}
+    legacy_caregiver = payload.get("caregiver") or {}
+    legacy_risk = payload.get("risk") or {}
+    legacy_interventions = payload.get("interventions") or {}
 
     findings: list[dict[str, Any]] = []
     recommendations: list[dict[str, Any]] = []
@@ -81,7 +85,12 @@ def build_msw_ica_intelligence(form_data: dict[str, Any] | None, *, patient_id: 
         if not _text(abuse_workflow.get("reportedTo")):
             missing.append("Abuse/Neglect/Exploitation: Reported to")
 
-    if financial_legal.get("allNeedsMet") == "No" or _has_any(financial_legal.get("patientLacks")):
+    legacy_financial_risk = _text(legacy_risk.get("financial_stress")).lower()
+    if (
+        financial_legal.get("allNeedsMet") == "No"
+        or _has_any(financial_legal.get("patientLacks"))
+        or legacy_financial_risk in {"moderate", "high"}
+    ):
         risk_flags.append("financial_barrier")
         findings.append({
             "category": "financial_barrier",
@@ -94,7 +103,12 @@ def build_msw_ica_intelligence(form_data: dict[str, Any] | None, *, patient_id: 
             "priority": "medium",
         })
 
-    if psychosocial.get("supportSystem") == "None" or psychosocial.get("socialInteraction") in {"Limited", "Isolated"}:
+    legacy_support_level = _text(legacy_social.get("support_level")).lower()
+    if (
+        psychosocial.get("supportSystem") == "None"
+        or psychosocial.get("socialInteraction") in {"Limited", "Isolated"}
+        or legacy_support_level in {"limited", "none", "unknown", "declined", "declined to answer"}
+    ):
         risk_flags.append("support_gap")
         findings.append({
             "category": "support_gap",
@@ -105,6 +119,62 @@ def build_msw_ica_intelligence(form_data: dict[str, Any] | None, *, patient_id: 
         recommendations.append({
             "title": "Reassess caregiver/community support availability and capability.",
             "priority": "medium",
+        })
+
+    legacy_caregiver_burden = _text(legacy_caregiver.get("burden_level")).lower()
+    legacy_caregiver_concerns = {
+        _text(value).lower()
+        for value in legacy_caregiver.get("caregiver_concerns") or []
+    }
+    if legacy_caregiver_burden in {"high", "severe"} or legacy_caregiver_concerns.intersection(
+        {"burnout", "fatigue", "work-life strain"}
+    ):
+        risk_flags.append("caregiver_burden")
+        findings.append({
+            "category": "caregiver_burden",
+            "title": "Caregiver burden elevated",
+            "details": "Caregiver strain is significant and requires respite, education, or support-resource follow-up.",
+            "severity": "high",
+        })
+        recommendations.append({
+            "title": "Review caregiver capacity and offer respite, role support, and caregiver education resources.",
+            "priority": "high",
+        })
+
+    legacy_notes = " ".join(
+        [
+            _text(legacy_social.get("notes")),
+            _text(legacy_caregiver.get("respite_needs")),
+            _text(legacy_risk.get("notes")),
+            _text(legacy_interventions.get("intervention_plan")),
+        ]
+    ).lower()
+    legacy_safety = _text(legacy_risk.get("safety_concerns")).lower()
+    if legacy_safety in {"yes", "moderate", "high"} or "safety" in legacy_notes or "abuse" in legacy_notes:
+        risk_flags.append("safety_concern")
+        findings.append({
+            "category": "safety_concern",
+            "title": "Safety or abuse concern",
+            "details": "Safety concerns or possible risk factors require interdisciplinary follow-up and escalation review.",
+            "severity": "high",
+        })
+        recommendations.append({
+            "title": "Escalate safety concerns through the clinical and social-work response pathway and document follow-up.",
+            "priority": "high",
+        })
+
+    legacy_crisis = _text(legacy_risk.get("mental_health_crisis")).lower()
+    if legacy_crisis in {"yes", "moderate", "high"} or "crisis" in legacy_notes:
+        risk_flags.append("mental_health_crisis")
+        findings.append({
+            "category": "mental_health_crisis",
+            "title": "Mental health or crisis risk",
+            "details": "Mental-health crisis indicators may require urgent interdisciplinary coordination.",
+            "severity": "high",
+        })
+        recommendations.append({
+            "title": "Assess immediate crisis-support needs and escalate to the appropriate care-management workflow.",
+            "priority": "high",
         })
 
     if psychosocial.get("mentalCompetency") in {"Impaired", "Unable to assess"}:
@@ -146,7 +216,7 @@ def build_msw_ica_intelligence(form_data: dict[str, Any] | None, *, patient_id: 
 
     if not findings:
         findings.append({
-            "category": "no_acute_social_risk",
+            "category": "no_urgent_social_risk",
             "title": "No acute psychosocial escalation identified",
             "details": "The current assessment does not indicate an unaddressed urgent MSW escalation based on the documented fields.",
             "severity": "low",
