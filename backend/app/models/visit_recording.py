@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -40,7 +40,7 @@ class VisitRecording(Base):
 
     # Explicit consent attestation — required before recording can start.
     # This is a staff attestation captured at record time, not itself PHI.
-    consent_confirmed = Column(Boolean, nullable=False, default=False)
+    consent_confirmed = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     consent_confirmed_at = Column(DateTime(timezone=True), nullable=True)
 
     # Storage location on disk (relative to the configured storage root —
@@ -53,7 +53,12 @@ class VisitRecording(Base):
 
     # Transcription — filled in later by whichever STT vendor is wired up
     # (Azure Speech, per current plan). Left blank/pending until then.
-    transcript_status = Column(String(24), nullable=False, default="not_transcribed")  # not_transcribed | pending | complete | failed
+    transcript_status = Column(
+        String(24),
+        nullable=False,
+        default="not_transcribed",
+        server_default=text("'not_transcribed'"),
+    )  # not_transcribed | pending | complete | failed
     transcript_provider = Column(String(32), nullable=True)
     transcript_text = Column(Text, nullable=True)
     transcribed_at = Column(DateTime(timezone=True), nullable=True)

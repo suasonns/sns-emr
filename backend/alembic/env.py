@@ -2,13 +2,15 @@ from __future__ import annotations
 
 import os
 import sys
+import hashlib
 from logging.config import fileConfig
 from pathlib import Path
 
 import sqlalchemy as sa
 from alembic import context
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import CheckConstraint, create_engine
+from sqlalchemy.sql.elements import conv
 
 # ✅ Alembic script access (for validation guard)
 from alembic.script import ScriptDirectory
@@ -73,6 +75,23 @@ if FAILED_IMPORTS:
     raise RuntimeError(
         f"Model import failures detected: {FAILED_IMPORTS}"
     )
+
+
+def normalize_postgresql_check_names() -> None:
+    """Match metadata names to PostgreSQL's deterministic 63-byte identifiers."""
+    max_identifier_length = 63
+    for table in Base.metadata.tables.values():
+        for constraint in table.constraints:
+            if not isinstance(constraint, CheckConstraint):
+                continue
+            name = str(constraint.name)
+            if len(name) <= max_identifier_length:
+                continue
+            digest = hashlib.md5(name.encode(), usedforsecurity=False).hexdigest()[-4:]
+            constraint.name = conv(f"{name[:max_identifier_length - 8]}_{digest}")
+
+
+normalize_postgresql_check_names()
 
 
 # ---------------------------------------------------------

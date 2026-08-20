@@ -65,6 +65,8 @@ jobs:
       # ---------------------------------------------------------
       - name: Alembic drift check
         working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
         run: |
           alembic current
           alembic heads

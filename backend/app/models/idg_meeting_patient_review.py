@@ -73,13 +73,11 @@ class IDGMeetingPatientReview(Base):
     tenant_id = Column(
         UUID(as_uuid=True),
         nullable=False,
-        index=True,
     )
 
     patient_id = Column(
         UUID(as_uuid=True),
         nullable=False,
-        index=True,
     )
 
     # The IDG meeting this in-meeting review is scoped to.
@@ -87,13 +85,11 @@ class IDGMeetingPatientReview(Base):
         UUID(as_uuid=True),
         ForeignKey("idg_meetings.id"),
         nullable=False,
-        index=True,
     )
 
     physician_user_id = Column(
         UUID(as_uuid=True),
         nullable=False,
-        index=True,
     )
 
     # Who actually clicked the review button. May differ from
@@ -103,7 +99,6 @@ class IDGMeetingPatientReview(Base):
     recorded_by_user_id = Column(
         UUID(as_uuid=True),
         nullable=True,
-        index=True,
     )
 
     # Set only when the physician personally authenticated and clicked
@@ -129,7 +124,6 @@ class IDGMeetingPatientReview(Base):
         String(20),
         nullable=False,
         server_default=text("'PENDING'"),
-        index=True,
     )
 
     # Reason dropdown shown only when review_status = DEFERRED.
