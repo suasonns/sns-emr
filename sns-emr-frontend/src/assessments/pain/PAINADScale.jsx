@@ -4,10 +4,8 @@ import { getPainadInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
 const COLORS = {
-  bg: '#0f172a', card: '#1e293b', border: '#334155', teal: '#10b7a2',
-  white: '#ffffff', label: '#94a3b8', text: '#e2e8f0',
-  green: '#059669', red: '#ef4444', amber: '#f59e0b',
-  greenBg: '#05966915', redBg: '#ef444415', amberBg: '#f59e0b15',
+  bg: 'var(--sns-cardSoft)', card: 'var(--sns-card)', border: 'var(--sns-border)', teal: 'var(--sns-teal)',
+  white: 'var(--sns-white)', label: 'var(--sns-dim)', text: 'var(--sns-muted)',
 };
 
 const CATEGORIES = [
@@ -74,22 +72,22 @@ const PAINADScale = ({ value, onChange }) => {
   const dataCell = { padding: '10px 8px', fontSize: 12, color: COLORS.text, borderBottom: `1px solid ${COLORS.border}`, verticalAlign: 'top', lineHeight: '1.4' };
 
   return (
-    <div style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
+    <div className="pain-tool" style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-        <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>PAINAD — Pain Assessment in Advanced Dementia</div>
+        <div className="pain-tool__title" style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>PAINAD — Pain Assessment in Advanced Dementia</div>
         <PainScoreBadge tool="painad" score={total} />
       </div>
-      <div style={{ color: COLORS.label, fontSize: 12, marginBottom: 12 }}>For patients unable to self-report pain (advanced dementia, non-verbal).</div>
+      <div className="pain-tool__subtitle" style={{ color: COLORS.label, fontSize: 12, marginBottom: 12 }}>For patients unable to self-report pain (advanced dementia, non-verbal).</div>
 
       {/* Instructions */}
       <GuideBox title="Instructions" icon="🛈">
-        <div style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
           Observe the patient for five minutes before scoring his or her behaviors. Score the behaviors according to the chart below. The patient can be observed under different conditions (e.g., at rest, during a pleasant activity, during caregiving, after the administration of pain medication).
         </div>
       </GuideBox>
 
       {/* Scoring Table */}
-      <div style={{ backgroundColor: COLORS.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+      <div className="pain-tool__surface pain-tool__table" style={{ backgroundColor: COLORS.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
           <colgroup>
             <col style={{ width: '22%' }} />
@@ -112,18 +110,16 @@ const PAINADScale = ({ value, onChange }) => {
               <tr key={i}>
                 <td style={{ ...dataCell, fontWeight: 600, color: COLORS.white, fontSize: 11 }}>{cat.name}</td>
                 {[0, 1, 2].map((val) => (
-                  <td
-                    key={val}
-                    onClick={() => handleScore(i, val)}
-                    style={{
-                      ...dataCell, cursor: 'pointer', fontSize: 11,
-                      backgroundColor: scores[i] === val ? `${COLORS.teal}15` : 'transparent',
-                      border: scores[i] === val ? `1px solid ${COLORS.teal}40` : `1px solid transparent`,
-                      borderBottom: `1px solid ${COLORS.border}`,
-                      borderRadius: 0,
-                    }}
-                  >
-                    {cat.scores[val]}
+                  <td key={val} style={{ ...dataCell, padding: 0 }}>
+                    <button
+                      type="button"
+                      className="pain-tool__option"
+                      aria-pressed={scores[i] === val}
+                      aria-label={`${cat.name}, score ${val}: ${cat.scores[val]}`}
+                      onClick={() => handleScore(i, val)}
+                    >
+                      {cat.scores[val]}
+                    </button>
                   </td>
                 ))}
                 <td style={{ ...dataCell, textAlign: 'center' }}>
@@ -141,7 +137,7 @@ const PAINADScale = ({ value, onChange }) => {
       </div>
 
       {/* Total Score */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 16 }}>
+      <div className="pain-tool__surface pain-tool__summary" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 16 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {scores.map((s, i) => (
             <React.Fragment key={i}>
@@ -160,7 +156,7 @@ const PAINADScale = ({ value, onChange }) => {
             width: 48, height: 48, borderRadius: 10, backgroundColor: interp.bg,
             border: `2px solid ${interp.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ color: interp.color, fontSize: 20, fontWeight: 800 }}>{total}</span>
+            <span className="pain-tool__score-value" style={{ color: interp.color, fontSize: 20, fontWeight: 800 }}>{total}</span>
           </div>
           <div>
             <div style={{ color: COLORS.white, fontSize: 13, fontWeight: 700 }}>/10</div>
@@ -170,7 +166,7 @@ const PAINADScale = ({ value, onChange }) => {
       </div>
 
       {/* Note */}
-      <div style={{ color: COLORS.label, fontSize: 10, marginBottom: 16 }}>
+      <div className="pain-tool__meta" style={{ color: COLORS.label, fontSize: 10, marginBottom: 16 }}>
         Score ranges (0 No Pain, 1-3 Mild, 4-6 Moderate, 7-10 Severe) are based on a standard 0-10 scale but have not been substantiated in the literature for this tool.
       </div>
 

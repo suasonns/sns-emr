@@ -178,8 +178,11 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
   const box = styles?.infoBox || { fontSize: 12, padding: 8, borderRadius: 6, background: COLORS?.bg };
 
   return (
-    <div style={{ marginBottom: 16, border: `1px solid ${COLORS?.border || "#ddd"}`, borderRadius: 10, overflow: "hidden" }}>
-      <div
+    <div className="visit-recorder-card" style={{ marginBottom: 16, border: `1px solid ${COLORS?.border || "#ddd"}`, borderRadius: 10, overflow: "hidden" }}>
+      <button
+        type="button"
+        className="visit-recorder-card__header"
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
         style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -188,18 +191,18 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12, color: COLORS?.gray, width: 14, display: "inline-block" }}>{expanded ? "▾" : "▸"}</span>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>🎙️ Visit Recording</span>
-          {recording && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS?.error || "#dc2626" }}>● Recording {formatDuration(elapsedSeconds)}</span>}
+          <span className="visit-recorder-card__disclosure" style={{ fontSize: 12, color: COLORS?.gray, width: 14, display: "inline-block" }}>{expanded ? "▾" : "▸"}</span>
+          <span className="visit-recorder-card__title" style={{ fontSize: 14, fontWeight: 700 }}>🎙️ Visit Recording</span>
+          {recording && <span className="visit-recorder-card__state" style={{ fontSize: 11, fontWeight: 700, color: COLORS?.error || "#dc2626" }}>● Recording {formatDuration(elapsedSeconds)}</span>}
         </div>
-        <span style={{ fontSize: 11, color: COLORS?.gray }}>
+        <span className="visit-recorder-card__meta" style={{ fontSize: 11, color: COLORS?.gray }}>
           Capture the conversation for later review — HOPE/SFV are harvested from the RNICA, not re-asked separately.
         </span>
-      </div>
+      </button>
       {expanded && (
-        <div style={{ padding: 16 }}>
+        <div className="visit-recorder-card__body" style={{ padding: 16 }}>
           {!recording && (
-            <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginBottom: 10 }}>
+            <label className="visit-recorder-card__consent" style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12, marginBottom: 10 }}>
               <input
                 type="checkbox"
                 checked={consentConfirmed}
@@ -210,10 +213,11 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
             </label>
           )}
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div className="visit-recorder-card__actions" style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {!recording ? (
               <button
                 type="button"
+                className="visit-recorder-card__start"
                 onClick={handleStart}
                 disabled={uploading}
                 style={{
@@ -227,6 +231,7 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
             ) : (
               <button
                 type="button"
+                className="visit-recorder-card__stop"
                 onClick={handleStop}
                 style={{
                   padding: "8px 16px", borderRadius: 6, border: "1px solid #dc2626",
@@ -238,24 +243,24 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
             )}
           </div>
 
-          {error && <div style={{ ...box, marginTop: 10, color: COLORS?.error || "#dc2626" }}>{error}</div>}
+          {error && <div className="visit-recorder-card__message" role="alert" aria-live="assertive" aria-atomic="true" style={{ ...box, marginTop: 10, color: COLORS?.error || "#dc2626" }}>{error}</div>}
 
-          <div style={{ marginTop: 16, fontSize: 12, fontWeight: 800, color: COLORS?.gray, textTransform: "uppercase", letterSpacing: "0.03em" }}>
+          <div className="visit-recorder-card__history-title" style={{ marginTop: 16, fontSize: 12, fontWeight: 800, color: COLORS?.gray, textTransform: "uppercase", letterSpacing: "0.03em" }}>
             Past Recordings
           </div>
-          {historyLoading && <p style={{ color: COLORS?.gray, fontSize: 13 }}>Loading…</p>}
+          {historyLoading && <p className="visit-recorder-card__message" style={{ color: COLORS?.gray, fontSize: 13 }}>Loading…</p>}
           {!historyLoading && history.length === 0 && (
-            <div style={box}>No recordings on file for this patient yet.</div>
+            <div className="visit-recorder-card__message" style={box}>No recordings on file for this patient yet.</div>
           )}
           {history.map((rec) => (
             <div key={rec.id} style={{ padding: "8px 0", borderBottom: `1px solid ${COLORS?.border || "#eee"}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
-                <div style={{ fontSize: 13 }}>
+                <div className="visit-recorder-card__message" style={{ fontSize: 13 }}>
                   {formatDateTime(rec.recorded_at)} — {formatDuration(rec.duration_seconds)}
                   {rec.assessment_type ? ` (${rec.assessment_type})` : ""}
                 </div>
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <span style={{
+                  <span className="visit-recorder-card__recording-status" style={{
                     fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
                     color: rec.transcript_status === "complete" ? "#166534" : COLORS?.gray,
                     background: rec.transcript_status === "complete" ? "#f0fdf4" : "transparent",
@@ -274,13 +279,13 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
                 </div>
               </div>
               {rec.reviewed_at && (
-                <div style={{ fontSize: 11, color: COLORS?.gray, marginTop: 2 }}>Reviewed {formatDateTime(rec.reviewed_at)}</div>
+                <div className="visit-recorder-card__reviewed" style={{ fontSize: 11, color: COLORS?.gray, marginTop: 2 }}>Reviewed {formatDateTime(rec.reviewed_at)}</div>
               )}
               {playingId === rec.id && (
                 <audio controls autoPlay src={playingUrl} style={{ width: "100%", marginTop: 8 }} />
               )}
               {rec.transcript_text && (
-                <div style={{ ...box, marginTop: 8, whiteSpace: "pre-wrap" }}>{rec.transcript_text}</div>
+                <div className="visit-recorder-card__message" style={{ ...box, marginTop: 8, whiteSpace: "pre-wrap" }}>{rec.transcript_text}</div>
               )}
             </div>
           ))}

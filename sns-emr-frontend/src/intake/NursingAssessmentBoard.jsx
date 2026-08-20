@@ -5,6 +5,7 @@ import { getCurrentUser } from "../api/session";
 import { defaultPatient } from "./ConsentNotifications";
 import HopeReport from "./HopeReport";
 import { useRnIcaCommandWorkspace } from "../features/rnIcaCommandWorkspace";
+import "./NursingAssessmentBoard.css";
 
 const styles = {
   shell: { background: "#0F172A", paddingBottom: 16 },
@@ -140,30 +141,57 @@ export default function NursingAssessmentBoard({ patientId = "" }) {
   };
 
   return (
-    <div style={styles.shell}>
-      <div style={styles.card}>
-        <div>
-          <div style={styles.eyebrow}>{initialComplete ? "Ongoing assessment" : "Initial admission assessment"}</div>
-          <h2 style={styles.title}>{initialComplete ? "Comprehensive Nursing Assessment" : "RN Initial Comprehensive Assessment"}</h2>
-          <div style={styles.description}>
-            {initialComplete
-              ? "Use the toggle inside the assessment to document either an Update Assessment or a Recertification Assessment."
-              : "Complete the full initial comprehensive assessment first. Use View HOPE Report to review the read-only CMS harvest from the RN ICA before printing or submission."}
+    <div
+      className={workspacePilot ? "clinical-command clinical-command--compact nursing-assessment-board--pilot" : undefined}
+      style={workspacePilot ? undefined : styles.shell}
+    >
+      {workspacePilot ? (
+        <div className="nursing-assessment-board__pilot-header">
+          <div className="nursing-assessment-board__pilot-copy">
+            <span>{initialComplete ? "Ongoing assessment" : "Initial admission assessment"}</span>
+            <h2>{initialComplete ? "Comprehensive Nursing Assessment" : "RN Initial Comprehensive Assessment"}</h2>
+            <p>
+              {initialComplete
+                ? "Document an update or recertification assessment using the shared clinical workspace."
+                : "Complete the initial assessment; the HOPE report remains a read-only harvest of RN documentation."}
+            </p>
+          </div>
+          <div className="nursing-assessment-board__pilot-actions">
+            {!initialComplete && (
+              <button type="button" onClick={() => setView((current) => current === "report" ? "assessment" : "report")}>
+                {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
+              </button>
+            )}
+            {!initialComplete && (
+              <button type="button" onClick={markInitialComplete}>Mark Initial Assessment Complete</button>
+            )}
           </div>
         </div>
-        <div style={styles.buttonRow}>
-          {!initialComplete && (
-            <button type="button" style={styles.secondaryButton} onClick={() => setView((current) => current === "report" ? "assessment" : "report")}>
-              {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
-            </button>
-          )}
-          {!initialComplete && (
-            <button type="button" style={styles.primaryButton} onClick={markInitialComplete}>
-              Mark Initial Comprehensive Assessment Complete
-            </button>
-          )}
+      ) : (
+        <div style={styles.card}>
+          <div>
+            <div style={styles.eyebrow}>{initialComplete ? "Ongoing assessment" : "Initial admission assessment"}</div>
+            <h2 style={styles.title}>{initialComplete ? "Comprehensive Nursing Assessment" : "RN Initial Comprehensive Assessment"}</h2>
+            <div style={styles.description}>
+              {initialComplete
+                ? "Use the toggle inside the assessment to document either an Update Assessment or a Recertification Assessment."
+                : "Complete the full initial comprehensive assessment first. Use View HOPE Report to review the read-only CMS harvest from the RN ICA before printing or submission."}
+            </div>
+          </div>
+          <div style={styles.buttonRow}>
+            {!initialComplete && (
+              <button type="button" style={styles.secondaryButton} onClick={() => setView((current) => current === "report" ? "assessment" : "report")}>
+                {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
+              </button>
+            )}
+            {!initialComplete && (
+              <button type="button" style={styles.primaryButton} onClick={markInitialComplete}>
+                Mark Initial Comprehensive Assessment Complete
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {!initialComplete && view === "report" ? (
         <HopeReport formData={reportFormData || {}} patient={patient} agency={agency} onBack={() => setView("assessment")} />

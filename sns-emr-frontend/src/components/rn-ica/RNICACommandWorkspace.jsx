@@ -259,7 +259,7 @@ export default function RNICACommandWorkspace({
             Narrative &amp; final review
           </button>
           <section className="clinical-command-card rnica-command-card">
-            <div className="rnica-command-card__heading"><h2>Requirements</h2><span>{errorKeys.length + warningKeys.length}</span></div>
+            <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
             {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
             {errorKeys.slice(0, 5).map((key) => (
               <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
@@ -275,7 +275,7 @@ export default function RNICACommandWorkspace({
             ))}
           </section>
           <section className="clinical-command-card rnica-command-card">
-            <div className="rnica-command-card__heading"><h2>Clinical signals</h2><span>{intelligence?.summary?.finding_count || 0}</span></div>
+            <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
             {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
             {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
           </section>
