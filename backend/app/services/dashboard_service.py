@@ -740,26 +740,42 @@ ADMISSION_PIPELINE_STATUSES = [
 #     same order queue.
 # ---------------------------------------------------------------
 
+# "Compliance" oversight roles (QA_ROLES from app.core.roles): read-only
+# agency-wide monitoring, per CMS/CDPH survey-readiness and documentation
+# accountability. They see the SAME agency-wide monitoring widgets as
+# ADMINISTRATOR/DPCS, but never signature authority (md_signatures_pending)
+# and never RN/LVN care-coordination duty (orders_requiring_clinical_action)
+# and never Intake's admissions pipeline — monitoring is a distinct
+# authority from signing, coordinating, or admitting.
+COMPLIANCE_OVERSIGHT_ROLES = {"COMPLIANCE_OFFICER", "QA_MANAGER", "QA_REVIEWER"}
+
+# Roles that hold agency-wide (not caseload-scoped) compliance-monitoring
+# authority: ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR plus the QA/Compliance
+# oversight roles above.
+_AGENCY_COMPLIANCE_ROLES = {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"} | COMPLIANCE_OVERSIGHT_ROLES
+
 WIDGET_VISIBILITY: dict[str, set[str]] = {
     "md_signatures_pending": {
         "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
         "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
     },
     "orders_requiring_clinical_action": {"RN", "LVN", "CLINICAL_SUPERVISOR"},
-    "cti_due_missing": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
-    "f2f_due_missing": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "RN"},
-    "hope_due": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"},
-    "qies_rejected": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"},
-    "rnica_incomplete": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN"},
-    "unsigned_visit_notes": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN", "LVN"},
-    "missing_care_plans": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN"},
-    "idg_blockers": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN", "SW", "CHAPLAIN"},
+    "cti_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    "f2f_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN"},
+    "hope_due": set(_AGENCY_COMPLIANCE_ROLES),
+    "qies_rejected": set(_AGENCY_COMPLIANCE_ROLES),
+    "rnica_incomplete": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN"},
+    "unsigned_visit_notes": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN", "LVN"},
+    "missing_care_plans": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN"},
+    "idg_blockers": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN", "SW", "CHAPLAIN"},
     "admissions_pipeline": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
     "referrals": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
 }
 
 # Field-clinician roles only ever see figures scoped to patients assigned to
 # them — never agency-wide totals — per the platform's role-visibility model.
+# Compliance/QA oversight roles are deliberately excluded: their authority is
+# agency-wide monitoring, not an individual caseload.
 FIELD_CLINICIAN_ROLES = {"RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA"}
 
 # Every canonical role the widget-visibility engine has deliberately
@@ -773,7 +789,7 @@ CANONICAL_DASHBOARD_ROLES = {
     "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
     "RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA",
     "INTAKE_MANAGER", "INTAKE_COORDINATOR",
-}
+} | COMPLIANCE_OVERSIGHT_ROLES
 
 
 def _assigned_patient_ids(db: Session, *, tenant_id: UUID, user_id: UUID) -> set[UUID]:

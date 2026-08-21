@@ -125,15 +125,6 @@ def test_msw_and_chaplain_never_see_signature_or_agency_widgets():
         assert "referrals" not in keys
 
 
-def test_intake_roles_see_pipeline_but_not_clinical_signature_widgets():
-    for role in ("INTAKE_MANAGER", "INTAKE_COORDINATOR"):
-        keys = _keys(_filter_widgets_for_role(_sample_queue(), role))
-        assert "admissions_pipeline" in keys
-        assert "referrals" in keys
-        assert "md_signatures_pending" not in keys
-        assert "hope_due" not in keys
-
-
 def test_every_canonical_role_has_been_deliberately_considered():
     """Every widget's visibility set must only reference roles that are
     part of the canonical role list — guards against typos silently
@@ -141,6 +132,38 @@ def test_every_canonical_role_has_been_deliberately_considered():
     for widget_key, roles in WIDGET_VISIBILITY.items():
         unknown = roles - CANONICAL_DASHBOARD_ROLES
         assert not unknown, f"{widget_key} references unmapped roles: {unknown}"
+
+
+def test_compliance_officer_sees_agency_wide_monitoring_but_not_signature_or_coordination():
+    """COMPLIANCE_OFFICER/QA_MANAGER/QA_REVIEWER hold agency-wide monitoring
+    authority (CMS/CDPH survey-readiness, documentation accountability) —
+    the same agency-wide widgets as ADMINISTRATOR/DPCS — but never
+    physician signature authority, never RN/LVN coordination duty, and
+    never Intake's admissions/referral pipeline (a distinct authority)."""
+    for role in ("COMPLIANCE_OFFICER", "QA_MANAGER", "QA_REVIEWER"):
+        keys = _keys(_filter_widgets_for_role(_sample_queue(), role))
+        assert "hope_due" in keys
+        assert "qies_rejected" in keys
+        assert "cti_due_missing" in keys
+        assert "rnica_incomplete" in keys
+        assert "idg_blockers" in keys
+        assert "md_signatures_pending" not in keys, (
+            f"{role} monitors compliance but must never hold signature authority."
+        )
+        assert "orders_requiring_clinical_action" not in keys, (
+            f"{role} must never hold RN/LVN care-coordination duty."
+        )
+        assert "admissions_pipeline" not in keys
+        assert "referrals" not in keys
+
+
+def test_intake_roles_see_pipeline_but_not_clinical_signature_widgets():
+    for role in ("INTAKE_MANAGER", "INTAKE_COORDINATOR"):
+        keys = _keys(_filter_widgets_for_role(_sample_queue(), role))
+        assert "admissions_pipeline" in keys
+        assert "referrals" in keys
+        assert "md_signatures_pending" not in keys
+        assert "hope_due" not in keys
 
 
 def test_same_api_shape_different_users_different_keys():
