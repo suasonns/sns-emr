@@ -49,7 +49,24 @@ from app.services.rnica_intelligence import build_rnica_intelligence
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 
 from app.services.chha_outcome_service import upsert_chha_outcome
-from app.services.diagnosis_sync_service import sync_official_primary_diagnosis
+from app.services.diagnosis_sync_service import (
+    sync_official_primary_diagnosis,
+    sync_secondary_and_comorbidity_diagnoses,
+)
+from app.api.patient_allergies import sync_allergies_from_source
+from app.services.code_status_sync_service import (
+    CODE_STATUS_DISPLAY_LABELS,
+    get_current_code_status,
+    set_current_code_status,
+)
+from app.services.contact_sync_service import (
+    CONTACT_ROLE_LABELS,
+    DECISION_MAKER,
+    DPOA,
+    PRIMARY_CAREGIVER,
+    get_patient_contacts,
+    set_patient_contact,
+)
 from app.services.audit_logger import log_event
 from app.services.bereavement_aggregation_engine import (
     BereavementAggregationEngine,
@@ -201,6 +218,209 @@ def _sync_facesheet_from_rnica(
             patient_id,
             exc_info=True,
         )
+
+
+def _extract_rnica_secondary_items(form_data: dict) -> list[dict]:
+    diagnoses = (form_data or {}).get("diagnoses") or {}
+    return [item for item in (diagnoses.get("secondaryDiagnoses") or []) if isinstance(item, dict)]
+
+
+def _extract_rnica_comorbidity_items(form_data: dict) -> list[dict]:
+    diagnoses = (form_data or {}).get("diagnoses") or {}
+    return [item for item in (diagnoses.get("comorbidities") or []) if isinstance(item, dict)]
+
+
+def _extract_rnica_allergy_items(form_data: dict) -> list:
+    allergies = ((form_data or {}).get("infection") or {}).get("allergies") or []
+    return [item for item in allergies if isinstance(item, (str, dict))]
+
+
+def _extract_rnica_code_status(form_data: dict) -> str | None:
+    acp = (form_data or {}).get("advancedCarePlanning") or {}
+    value = acp.get("codeStatus")
+    return str(value).strip() if value else None
+
+
+def _extract_rnica_pcg(form_data: dict) -> dict | None:
+    demographics = (form_data or {}).get("demographics") or {}
+    pcg = demographics.get("pcg") or {}
+    name = (pcg.get("name") or "").strip()
+    if not name:
+        return None
+    return {
+        "name": name,
+        "relationship_to_patient": (pcg.get("relationship") or "").strip() or None,
+        "phone": (pcg.get("phone") or "").strip() or None,
+    }
+
+
+def _extract_rnica_dpoa(form_data: dict) -> dict | None:
+    acp = (form_data or {}).get("advancedCarePlanning") or {}
+    name = (acp.get("poaName") or "").strip()
+    if not name:
+        return None
+    return {
+        "name": name,
+        "phone": (acp.get("poaPhone") or "").strip() or None,
+    }
+
+
+def _extract_rnica_decision_maker(form_data: dict) -> dict | None:
+    acp = (form_data or {}).get("advancedCarePlanning") or {}
+    name = (acp.get("decisionMaker") or "").strip()
+    if not name:
+        return None
+    return {"name": name}
+
+
+_RNICA_LOC_TO_FACESHEET_LABEL = {
+    "routine care": "Routine Care",
+    "general inpatient": "General Inpatient",
+    "continuous care": "Continuous Care",
+    "respite care": "Respite Care",
+}
+
+
+def _extract_rnica_level_of_care(form_data: dict) -> str | None:
+    admissions_order = (form_data or {}).get("admissionsOrder") or {}
+    level_of_care = admissions_order.get("levelOfCare") or {}
+    level = (level_of_care.get("level") or "").strip()
+    if not level:
+        return None
+    return _RNICA_LOC_TO_FACESHEET_LABEL.get(level.lower(), level)
+
+
+def _sync_shared_records_from_rnica(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID | None,
+    patient_id: uuid.UUID,
+    form_data: dict,
+    actor_id: uuid.UUID | None,
+) -> dict:
+    """
+    Push RNICA's diagnosis/allergy entries into the SAME authoritative
+    tables Facesheet reads (patient_diagnoses, patient_allergies) so a
+    diagnosis or allergy entered in RNICA is never facesheet-only text.
+
+    Runs independently of _sync_facesheet_from_rnica's legacy text-field
+    mirror and never raises - a resolution failure on one entry (e.g. an
+    unrecognized diagnosis description) is logged and skipped so it never
+    blocks saving the RNICA assessment itself.
+    """
+
+    result: dict = {"diagnosis": None, "allergy": None}
+
+    if tenant_id is None:
+        logger.warning(
+            "RNICA shared-record sync skipped: missing tenant_id for patient %s",
+            patient_id,
+        )
+        return result
+
+    primary_input = _flatten_rnica_primary_diagnosis(form_data)
+
+    try:
+        if primary_input:
+            result["diagnosis_primary"] = sync_official_primary_diagnosis(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                primary_diagnosis=primary_input,
+                source="RN_ICA",
+                updated_by=actor_id,
+            )
+
+        result["diagnosis"] = sync_secondary_and_comorbidity_diagnoses(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            secondary_items=_extract_rnica_secondary_items(form_data),
+            comorbidity_items=_extract_rnica_comorbidity_items(form_data),
+            source="RN_ICA",
+            updated_by=actor_id,
+        )
+
+        result["allergy"] = sync_allergies_from_source(
+            db,
+            patient_id=patient_id,
+            allergy_items=_extract_rnica_allergy_items(form_data),
+        )
+
+        code_status_input = _extract_rnica_code_status(form_data)
+        if code_status_input:
+            result["code_status"] = set_current_code_status(
+                db,
+                patient_id=patient_id,
+                tenant_id=tenant_id,
+                code_status=code_status_input,
+                source="RN_ICA",
+                updated_by=actor_id,
+            )
+
+        pcg_input = _extract_rnica_pcg(form_data)
+        if pcg_input:
+            result["primary_caregiver"] = set_patient_contact(
+                db,
+                patient_id=patient_id,
+                tenant_id=tenant_id,
+                role=PRIMARY_CAREGIVER,
+                source="RN_ICA",
+                updated_by=actor_id,
+                **pcg_input,
+            )
+
+        dpoa_input = _extract_rnica_dpoa(form_data)
+        if dpoa_input:
+            result["dpoa"] = set_patient_contact(
+                db,
+                patient_id=patient_id,
+                tenant_id=tenant_id,
+                role=DPOA,
+                source="RN_ICA",
+                updated_by=actor_id,
+                **dpoa_input,
+            )
+
+        decision_maker_input = _extract_rnica_decision_maker(form_data)
+        if decision_maker_input:
+            result["decision_maker"] = set_patient_contact(
+                db,
+                patient_id=patient_id,
+                tenant_id=tenant_id,
+                role=DECISION_MAKER,
+                source="RN_ICA",
+                updated_by=actor_id,
+                **decision_maker_input,
+            )
+
+        level_of_care_input = _extract_rnica_level_of_care(form_data)
+        if level_of_care_input:
+            facesheet_row = (
+                db.query(PatientFaceSheet)
+                .filter(
+                    PatientFaceSheet.patient_id == patient_id,
+                    PatientFaceSheet.tenant_id == tenant_id,
+                )
+                .first()
+            )
+            if facesheet_row is not None:
+                facesheet_row.current_level_of_care = level_of_care_input
+                facesheet_row.updated_at = datetime.now(timezone.utc)
+                if actor_id is not None:
+                    facesheet_row.updated_by = actor_id
+                result["level_of_care"] = level_of_care_input
+
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "RNICA shared-record sync failed for patient %s",
+            patient_id,
+            exc_info=True,
+        )
+
+    return result
 
 
 def _resolve_current_user_display_name(db: Session, current_user: CurrentUser) -> str:
@@ -564,8 +784,77 @@ def save_rnica_assessment(
         patient_id=patient_uuid,
         form_data=form_data,
     )
+    _sync_shared_records_from_rnica(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None),
+        patient_id=patient_uuid,
+        form_data=form_data,
+        actor_id=getattr(current_user, "id", None),
+    )
 
     return {"assessmentId": str(assessment.id), "status": "saved"}
+
+
+def _overlay_shared_code_status(
+    db: Session,
+    *,
+    patient_id: uuid.UUID,
+    tenant_id,
+    form_data: dict,
+) -> dict:
+    """
+    Return a shallow copy of form_data with advancedCarePlanning.codeStatus
+    overlaid from the shared, authoritative patient_code_statuses table,
+    and demographics.pcg / advancedCarePlanning DPOA+decisionMaker
+    overlaid from the shared patient_contacts table.
+
+    RNICA must display the CURRENT shared values - never independently
+    stored ones - so if Facesheet (or ACP/POLST/physician order/etc.)
+    changed a value after this assessment was charted, viewing the
+    assessment reflects that change. The assessment's own stored
+    form_data snapshot on disk is left untouched; this only affects what
+    is returned to callers.
+    """
+
+    result = dict(form_data or {})
+
+    current = get_current_code_status(db, patient_id=patient_id, tenant_id=tenant_id)
+    if current is not None:
+        acp = dict(result.get("advancedCarePlanning") or {})
+        acp["codeStatus"] = current.code_status
+        acp["codeStatusDisplayLabel"] = CODE_STATUS_DISPLAY_LABELS.get(
+            current.code_status, current.code_status
+        )
+        acp["codeStatusSource"] = current.source
+        acp["codeStatusEffectiveDate"] = (
+            current.effective_date.isoformat() if current.effective_date else None
+        )
+        result["advancedCarePlanning"] = acp
+
+    contacts = get_patient_contacts(db, patient_id=patient_id, tenant_id=tenant_id)
+
+    pcg_row = contacts.get(PRIMARY_CAREGIVER)
+    if pcg_row is not None:
+        demographics = dict(result.get("demographics") or {})
+        pcg = dict(demographics.get("pcg") or {})
+        pcg["name"] = pcg_row.name
+        pcg["relationship"] = pcg_row.relationship_to_patient
+        pcg["phone"] = pcg_row.phone
+        demographics["pcg"] = pcg
+        result["demographics"] = demographics
+
+    dpoa_row = contacts.get(DPOA)
+    decision_maker_row = contacts.get(DECISION_MAKER)
+    if dpoa_row is not None or decision_maker_row is not None:
+        acp = dict(result.get("advancedCarePlanning") or {})
+        if dpoa_row is not None:
+            acp["poaName"] = dpoa_row.name
+            acp["poaPhone"] = dpoa_row.phone
+        if decision_maker_row is not None:
+            acp["decisionMaker"] = decision_maker_row.name
+        result["advancedCarePlanning"] = acp
+
+    return result
 
 
 @router.get("/rnica/{assessment_id}")
@@ -583,12 +872,17 @@ def get_rnica_assessment(
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
 
-    get_authorized_patient(db, record.patient_id, current_user)
+    patient = get_authorized_patient(db, record.patient_id, current_user)
 
     return {
         "assessmentId": str(record.id),
         "patientId": str(record.patient_id),
-        "formData": record.form_data or {},
+        "formData": _overlay_shared_code_status(
+            db,
+            patient_id=record.patient_id,
+            tenant_id=getattr(patient, "tenant_id", None) or getattr(record, "tenant_id", None),
+            form_data=record.form_data or {},
+        ),
         "locked": record.locked,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
@@ -606,7 +900,7 @@ def get_rnica_assessment_by_patient(
     except ValueError:
         raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
 
-    get_authorized_patient(db, patient_uuid, current_user)
+    patient = get_authorized_patient(db, patient_uuid, current_user)
 
     records = (
         db.query(RnicaAssessment)
@@ -621,7 +915,12 @@ def get_rnica_assessment_by_patient(
     return {
         "assessmentId": str(record.id),
         "patientId": str(record.patient_id),
-        "formData": record.form_data or {},
+        "formData": _overlay_shared_code_status(
+            db,
+            patient_id=record.patient_id,
+            tenant_id=getattr(patient, "tenant_id", None) or getattr(record, "tenant_id", None),
+            form_data=record.form_data or {},
+        ),
         "locked": record.locked,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
@@ -660,6 +959,13 @@ def update_rnica_assessment(
         tenant_id=getattr(patient, "tenant_id", None) if patient else None,
         patient_id=record.patient_id,
         form_data=form_data,
+    )
+    _sync_shared_records_from_rnica(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None) if patient else None,
+        patient_id=record.patient_id,
+        form_data=form_data,
+        actor_id=getattr(current_user, "id", None),
     )
 
     return {

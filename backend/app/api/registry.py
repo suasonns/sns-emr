@@ -43,6 +43,9 @@ from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
 from app.api.routes.plan_of_care import router as poc_router
 from app.api.patient_allergies import router as patient_allergies_router
+from app.api.patient_code_status import router as patient_code_status_router
+from app.api.patient_physicians import router as patient_physicians_router
+from app.api.patient_contacts import router as patient_contacts_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -155,6 +158,9 @@ def register_routers(app: FastAPI) -> None:
         audit_dashboard_router,
         medications.router,
         patient_allergies_router,
+        patient_code_status_router,
+        patient_physicians_router,
+        patient_contacts_router,
         chha_pocs.router,
         f2f.router,
         certifications.router,

@@ -200,9 +200,9 @@ const INITIAL_FORM = {
 };
 
 const styles = {
-  page: { minHeight: "100vh", background: CLINICAL_BRAND.canvas },
+  page: { minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", background: CLINICAL_BRAND.canvas },
   frame: { maxWidth: 1220, margin: "0 auto", padding: "24px 0" },
-  shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
+  shell: { display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 12 },
   sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
   patientCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
   patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 700 },
@@ -220,7 +220,7 @@ const styles = {
     cursor: "pointer",
     borderRadius: 8,
   },
-  main: { background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+  main: { background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden", minWidth: 0 },
   header: { borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
   headerTitle: { fontSize: 18, fontWeight: 700 },
   headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },

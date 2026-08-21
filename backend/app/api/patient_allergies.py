@@ -118,6 +118,98 @@ def add_allergy(
     }
 
 
+def sync_allergies_from_source(
+    db: Session,
+    *,
+    patient_id: uuid.UUID,
+    allergy_items: list[dict] | None,
+) -> dict:
+    """
+    Synchronize allergies captured elsewhere (e.g. an RN ICA / RNICA
+    assessment form) into the shared patient_allergies table so the
+    medication safety engine, Facesheet, and every other consumer read the
+    exact same allergy records.
+
+    allergy_items: list of dicts shaped like
+        {"allergen_text": str, "reaction": str | None, "severity": str | None}
+    or simple strings (allergen text only).
+
+    Safety posture: only ADDS new allergen records (deduped by
+    case-insensitive allergen_text among currently active rows). Never
+    deactivates an allergy the caller's payload omits - an allergy must
+    only ever be removed through the explicit remove_allergy action, never
+    silently dropped because one form save didn't happen to repeat it.
+
+    Does NOT commit; caller owns the transaction boundary.
+    """
+
+    if not allergy_items:
+        return {"synced": True, "added": [], "matched": []}
+
+    existing_rows = (
+        db.query(PatientAllergy)
+        .filter(
+            PatientAllergy.patient_id == patient_id,
+            PatientAllergy.active.is_(True),
+        )
+        .all()
+    )
+    existing_by_text = {
+        (row.allergen_text or "").strip().casefold(): row for row in existing_rows
+    }
+
+    added: list[str] = []
+    matched: list[str] = []
+
+    for item in allergy_items:
+        if isinstance(item, str):
+            allergen_text = item.strip()
+            reaction = None
+            severity = None
+        elif isinstance(item, dict):
+            allergen_text = str(
+                item.get("allergen_text") or item.get("name") or item.get("description") or ""
+            ).strip()
+            reaction = str(item.get("reaction") or item.get("reaction_description") or "").strip() or None
+            severity = str(item.get("severity") or "").strip().upper() or None
+        else:
+            continue
+
+        if not allergen_text:
+            continue
+
+        key = allergen_text.casefold()
+        existing = existing_by_text.get(key)
+
+        if existing:
+            if reaction and not existing.reaction_description:
+                existing.reaction_description = reaction
+            if severity and severity in _ALLOWED_SEVERITIES and not existing.severity:
+                existing.severity = severity
+            matched.append(allergen_text)
+            continue
+
+        allergen_type = "DRUG"
+        drug_class, _ = resolve_allergen(allergen_text)
+
+        new_allergy = PatientAllergy(
+            patient_id=patient_id,
+            allergen_text=allergen_text,
+            allergen_type=allergen_type,
+            drug_class=drug_class,
+            reaction_description=reaction,
+            severity=severity if severity in _ALLOWED_SEVERITIES else None,
+            active=True,
+        )
+        db.add(new_allergy)
+        db.flush()
+
+        existing_by_text[key] = new_allergy
+        added.append(allergen_text)
+
+    return {"synced": True, "added": added, "matched": matched}
+
+
 @router.delete("/{allergy_id}", summary="Remove (deactivate) a patient allergy")
 def remove_allergy(
     patient_id: uuid.UUID,

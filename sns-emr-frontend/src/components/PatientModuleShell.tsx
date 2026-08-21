@@ -110,7 +110,7 @@ export default function PatientModuleShell({
   const displayMrn = resolvedMrn && !looksLikeUuid(resolvedMrn) ? resolvedMrn : "No MRN on file";
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: CLINICAL_BRAND.canvas, fontFamily: "'Inter', 'Segoe UI', sans-serif" }}>
+    <div style={{ display: "flex", minHeight: "100vh", width: "100%", maxWidth: "100vw", background: CLINICAL_BRAND.canvas, fontFamily: "'Inter', 'Segoe UI', sans-serif", overflowX: "hidden" }}>
       <PatientContextSidebar
         patientId={patientId}
         mrn={displayMrn}
@@ -123,7 +123,7 @@ export default function PatientModuleShell({
         patientOverview={patientOverview as any}
       />
 
-      <main style={{ flex: 1, padding: 28 }}>
+      <main style={{ flex: 1, minWidth: 0, padding: 28, overflowX: "auto" }}>
         <div
           style={{
             maxWidth: 1180,

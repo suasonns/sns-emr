@@ -296,6 +296,35 @@ export type PerformanceHistoryResponse = {
   history: PerformanceHistoryEntry[];
 };
 
+export type PatientAllergyEntry = {
+  allergy_id: string;
+  allergen_text: string;
+  allergen_type: string;
+  drug_class: NullableString;
+  reaction_description: NullableString;
+  severity: NullableString;
+};
+
+export async function fetchAllergies(patientId: string) {
+  const response = await api.get<PatientAllergyEntry[]>(`/patients/${patientId}/allergies`);
+  return response.data;
+}
+
+export async function addAllergy(
+  patientId: string,
+  payload: { allergen_text: string; allergen_type?: string; reaction_description?: string; severity?: string },
+) {
+  // Backend endpoint declares these as plain scalar params (not a Pydantic
+  // body model), so FastAPI binds them as query parameters.
+  const response = await api.post<PatientAllergyEntry>(`/patients/${patientId}/allergies`, null, { params: payload });
+  return response.data;
+}
+
+export async function removeAllergy(patientId: string, allergyId: string) {
+  const response = await api.delete(`/patients/${patientId}/allergies/${allergyId}`);
+  return response.data;
+}
+
 export async function fetchPerformanceHistory(patientId: string) {
   const response = await api.get<PerformanceHistoryResponse>(`/patients/${patientId}/performance-history`);
   return response.data;
@@ -310,6 +339,76 @@ export async function saveFacesheet(patientId: string, payload: FaceSheetPayload
   const response = await api.post<SaveFacesheetResponse>(`/patients/${patientId}/facesheet`, payload);
   return response.data;
 }
+
+export type CodeStatusEntry = {
+  code_status_id: string;
+  code_status: string;
+  effective_date: NullableString;
+  source: string;
+  notes: NullableString;
+  is_current: boolean;
+  created_at: NullableString;
+};
+
+export type CodeStatusHistoryResponse = {
+  current: CodeStatusEntry | null;
+  history: CodeStatusEntry[];
+};
+
+export async function fetchCodeStatusHistory(patientId: string) {
+  const response = await api.get<CodeStatusHistoryResponse>(`/patients/${patientId}/code-status`);
+  return response.data;
+}
+
+export type PhysicianAssignmentEntry = {
+  role: string;
+  name: NullableString;
+  address: NullableString;
+  phone: NullableString;
+  fax: NullableString;
+  npi: NullableString;
+  will_follow_in_hospice: boolean | null;
+  source: NullableString;
+  updated_at: NullableString;
+  created_at: NullableString;
+};
+
+export type PatientPhysiciansResponse = {
+  attending: PhysicianAssignmentEntry | null;
+  medical_director: PhysicianAssignmentEntry | null;
+  associate_medical_director: PhysicianAssignmentEntry | null;
+};
+
+export async function fetchPatientPhysicians(patientId: string) {
+  const response = await api.get<PatientPhysiciansResponse>(`/patients/${patientId}/physicians`);
+  return response.data;
+}
+
+export type PatientContactEntry = {
+  role: string;
+  name: NullableString;
+  relationship: NullableString;
+  phone: NullableString;
+  address: NullableString;
+  source: NullableString;
+  updated_at: NullableString;
+  created_at: NullableString;
+};
+
+export type PatientContactsResponse = {
+  responsible_party: PatientContactEntry | null;
+  emergency_contact: PatientContactEntry | null;
+  primary_caregiver: PatientContactEntry | null;
+  dpoa: PatientContactEntry | null;
+  healthcare_agent: PatientContactEntry | null;
+  decision_maker: PatientContactEntry | null;
+};
+
+export async function fetchPatientContacts(patientId: string) {
+  const response = await api.get<PatientContactsResponse>(`/patients/${patientId}/contacts`);
+  return response.data;
+}
+
 
 export async function fetchPosHistory(patientId: string) {
   const response = await api.get<PosHistoryResponse>(`/patients/${patientId}/pos-history`);

@@ -229,16 +229,16 @@ function getBrand(colors) {
 
 function getStyles(brand) {
   return {
-    page: { minHeight: "100vh", background: brand.canvas },
+    page: { minHeight: "100vh", width: "100%", maxWidth: "100vw", overflowX: "hidden", background: brand.canvas },
     frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
-    shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
+    shell: { display: "grid", gridTemplateColumns: "260px minmax(0, 1fr)", gap: 12 },
     sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
     patientCard: { border: `1px solid ${brand.line}`, background: brand.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
     patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 700 },
     navCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
     navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 700, color: brand.text },
     navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
-    main: { background: brand.bg, border: `1px solid ${brand.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+    main: { background: brand.bg, border: `1px solid ${brand.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden", minWidth: 0 },
     header: { borderBottom: `1px solid ${brand.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
     headerTitle: { fontSize: 18, fontWeight: 700 },
     headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },

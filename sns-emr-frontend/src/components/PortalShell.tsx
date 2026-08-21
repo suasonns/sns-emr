@@ -75,7 +75,7 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
   ));
 
   return (
-    <Box sx={{ minHeight: "100vh", bgcolor: C.gray50, color: C.white, display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif" }}>
+    <Box sx={{ minHeight: "100vh", width: "100%", maxWidth: "100vw", bgcolor: C.gray50, color: C.white, display: "flex", flexDirection: "column", fontFamily: "'Inter', sans-serif", overflowX: "hidden" }}>
       <Box sx={{ bgcolor: "var(--sns-card)", color: C.white }}>
         <Box
           sx={{
@@ -144,8 +144,8 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
         </Box>
       </Box>
 
-      <Box sx={{ flex: 1, width: "100%" }}>
-        <Box sx={{ width: "100%", px: 4, py: 3.5, boxSizing: "border-box" }}>{children}</Box>
+      <Box sx={{ flex: 1, width: "100%", minWidth: 0 }}>
+        <Box sx={{ width: "100%", minWidth: 0, px: 4, py: 3.5, boxSizing: "border-box", overflowX: "auto" }}>{children}</Box>
       </Box>
 
       <Box sx={{ bgcolor: "var(--sns-card)", color: C.white }}>

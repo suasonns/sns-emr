@@ -104,8 +104,8 @@ export default function TenantDashboard() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: COLORS.bg, fontFamily: 'Inter, sans-serif' }}>
-      <div style={{ width: 220, background: COLORS.card, borderRight: `1px solid ${COLORS.border}`, padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', width: '100%', maxWidth: '100vw', background: COLORS.bg, fontFamily: 'Inter, sans-serif', overflowX: 'hidden' }}>
+      <div style={{ width: 220, flexShrink: 0, background: COLORS.card, borderRight: `1px solid ${COLORS.border}`, padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '0 20px', marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <img
@@ -174,7 +174,7 @@ export default function TenantDashboard() {
         </div>
       </div>
 
-      <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
+      <div style={{ flex: 1, minWidth: 0, padding: '32px 40px', overflowY: 'auto', overflowX: 'auto' }}>
         {error ? <div style={{ ...S.card, color: COLORS.red }}>{error}</div> : null}
         <ActivePage workspace={workspace} census={census} loading={loading} />
       </div>

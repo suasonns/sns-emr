@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     Boolean,
     Index,
+    JSON,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -116,6 +117,7 @@ class PatientFaceSheet(Base):
     # --------------------------------------------------
     primary_diagnosis = Column(String)
     secondary_diagnoses = Column(Text)
+    diagnosis_entries = Column(JSON)
     allergies = Column(Text)
     
     # --------------------------------------------------
@@ -130,6 +132,36 @@ class PatientFaceSheet(Base):
     soc_date = Column(Date)
     ref_date = Column(Date)
     recert_date = Column(Date)
+    election_date = Column(Date)
+    face_to_face_due_date = Column(Date)
+
+    # --------------------------------------------------
+    # ✅ BENEFIT PERIOD
+    # --------------------------------------------------
+    benefit_period_number = Column(String)
+    benefit_period_start = Column(Date)
+    benefit_period_end = Column(Date)
+
+    # --------------------------------------------------
+    # ✅ HOSPICE SNAPSHOT (functional/regulatory status)
+    # --------------------------------------------------
+    pps_score = Column(String)
+    kps_score = Column(String)
+    fast_stage = Column(String)
+    code_status = Column(String)
+    cti_status = Column(String)
+    noe_status = Column(String)
+    primary_rn_name = Column(String)
+    social_worker_name = Column(String)
+
+    # --------------------------------------------------
+    # ✅ CARE TEAM
+    # --------------------------------------------------
+    lvn_name = Column(String)
+    chaplain_name = Column(String)
+    chha_name = Column(String)
+    volunteer_name = Column(String)
+    clinical_manager_name = Column(String)
     
     # --------------------------------------------------
     # ✅ ALLERGY
@@ -212,11 +244,21 @@ class PatientFaceSheet(Base):
 
     dme_vendor_phone = Column(String)
 
+    oxygen_vendor_name = Column(String)
+
+    oxygen_vendor_phone = Column(String)
+
+    oxygen_vendor_emergency_phone = Column(String)
+
     # --------------------------------------------------
     # ✅ MORTUARY
     # --------------------------------------------------
     mortuary_name = Column(String)
     mortuary_phone = Column(String)
+    mortuary_prearranged = Column(Boolean)
+    mortuary_contact_name = Column(String)
+    mortuary_contact_phone = Column(String)
+    mortuary_notes = Column(Text)
 
     # --------------------------------------------------
     # ✅ NOTES

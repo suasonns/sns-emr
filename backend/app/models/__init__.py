@@ -46,6 +46,9 @@ from app.models.benefit_period import BenefitPeriod
 
 from app.models.medication import Medication
 from app.models.patient_allergy import PatientAllergy
+from app.models.patient_code_status import PatientCodeStatus
+from app.models.patient_physician_assignment import PatientPhysicianAssignment
+from app.models.patient_contact import PatientContact
 from app.models.admission import Admission
 
 # ---------------------------------------------------------

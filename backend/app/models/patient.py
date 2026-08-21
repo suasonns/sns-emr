@@ -265,6 +265,24 @@ class Patient(Base):
         cascade="all, delete-orphan",
     )
 
+    code_statuses = relationship(
+        "PatientCodeStatus",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    physician_assignments = relationship(
+        "PatientPhysicianAssignment",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
+    contacts = relationship(
+        "PatientContact",
+        back_populates="patient",
+        cascade="all, delete-orphan",
+    )
+
     patient_orders = relationship(
         "PatientOrder",
         back_populates="patient",

@@ -4,6 +4,7 @@ import { getCurrentUser } from "../api/session";
 import { addMedication } from "../api/medications";
 import { listVendors } from "../api/vendors";
 import MedicationNameInput from "../components/MedicationNameInput";
+import { fetchCodeStatusHistory, fetchPatientPhysicians } from "../api/facesheet";
 import {
   listPhysicianOrders,
   createPhysicianOrder,
@@ -47,6 +48,73 @@ const poLabel = { fontSize: 11, fontWeight: 600, color: COLORS.dim, textTransfor
 const poFormGroup = { marginBottom: 10 };
 const poBtnPrimary = { ...S.btn(COLORS.teal) };
 const poBtnSecondary = { ...S.btnOutline, padding: "6px 12px", fontSize: 12 };
+
+const CODE_STATUS_DISPLAY_LABELS = {
+  FULL_CODE: "Full Code",
+  DNR_DNI: "DNR/DNI",
+  COMFORT_MEASURES_ONLY: "Comfort Measures Only",
+  OTHER: "Other",
+};
+
+const CodeStatusOrderBanner = ({ current }) => {
+  if (!current) return null;
+  const isDnr = current.code_status === "DNR_DNI" || current.code_status === "COMFORT_MEASURES_ONLY";
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "10px 14px",
+        borderRadius: 8,
+        border: `1px solid ${isDnr ? COLORS.red : COLORS.teal}`,
+        background: isDnr ? "rgba(239, 68, 68, 0.1)" : "rgba(16, 183, 162, 0.1)",
+      }}
+    >
+      <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, color: COLORS.dim }}>
+        Code Status
+      </span>
+      <span style={{ fontSize: 14, fontWeight: 800, color: isDnr ? COLORS.red : COLORS.teal }}>
+        {CODE_STATUS_DISPLAY_LABELS[current.code_status] || current.code_status}
+      </span>
+      <span style={{ fontSize: 11, color: COLORS.muted }}>
+        Source: {current.source} · {current.effective_date}
+      </span>
+    </div>
+  );
+};
+
+const PhysicianAssignmentBanner = ({ physicians }) => {
+  if (!physicians || (!physicians.attending && !physicians.medical_director)) return null;
+  const attending = physicians.attending;
+  const medicalDirector = physicians.medical_director;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        alignItems: "center",
+        gap: 16,
+        padding: "10px 14px",
+        borderRadius: 8,
+        border: `1px solid ${COLORS.border}`,
+        background: "rgba(255, 255, 255, 0.03)",
+      }}
+    >
+      {attending?.name && (
+        <span style={{ fontSize: 12, color: COLORS.muted }}>
+          <b style={{ color: COLORS.white }}>Attending:</b> {attending.name}
+          {attending.will_follow_in_hospice ? " (following in hospice)" : ""}
+        </span>
+      )}
+      {medicalDirector?.name && (
+        <span style={{ fontSize: 12, color: COLORS.muted }}>
+          <b style={{ color: COLORS.white }}>Medical Director:</b> {medicalDirector.name}
+        </span>
+      )}
+    </div>
+  );
+};
 
 const STATUS_COLORS = {
   DRAFT: COLORS.muted,
@@ -115,6 +183,22 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
   const [reconciledIds, setReconciledIds] = useState([]);
   const [reconcilingId, setReconcilingId] = useState(null);
   const [pharmacyVendors, setPharmacyVendors] = useState([]);
+  const [currentCodeStatus, setCurrentCodeStatus] = useState(null);
+  const [physicianAssignments, setPhysicianAssignments] = useState(null);
+
+  useEffect(() => {
+    if (!patientId) {
+      setCurrentCodeStatus(null);
+      setPhysicianAssignments(null);
+      return;
+    }
+    fetchCodeStatusHistory(patientId)
+      .then((result) => setCurrentCodeStatus(result?.current || null))
+      .catch(() => setCurrentCodeStatus(null));
+    fetchPatientPhysicians(patientId)
+      .then((result) => setPhysicianAssignments(result || null))
+      .catch(() => setPhysicianAssignments(null));
+  }, [patientId]);
 
   useEffect(() => {
     listVendors({ status: "active", vendor_type: "Pharmacy" })
@@ -238,6 +322,8 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <CodeStatusOrderBanner current={currentCodeStatus} />
+      <PhysicianAssignmentBanner physicians={physicianAssignments} />
       {initialView === "add" && (
         <div style={S.card}>
           <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white, marginBottom: 14 }}>
