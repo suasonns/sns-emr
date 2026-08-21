@@ -32,7 +32,13 @@ router = APIRouter(prefix="/physician-orders", tags=["physician-orders"])
 
 # Any clinical role may draft/submit an order; only MD may approve.
 CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "Surveyor"]
-MD_ONLY = ["MD"]
+# "MD" is the legacy/live provider-discipline role. MEDICAL_DIRECTOR and
+# ATTENDING_PHYSICIAN are the newer canonical prescriber roles used by the
+# dashboard widget-visibility engine (app/core/roles.py). Both vocabularies
+# are accepted here so a real prescriber is recognized either way, but
+# administrative rank (Administrator/DPCS) must NEVER satisfy this gate —
+# see the `allow_clinical_admin=False` on the approval endpoint below.
+MD_ONLY = ["MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"]
 
 
 class OrderCreate(BaseModel):
@@ -190,7 +196,10 @@ def approve_order(
     order_id: uuid.UUID,
     payload: OrderApprove,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(MD_ONLY)),
+    # allow_clinical_admin=False: Administrator/DPCS must never gain physician
+    # signature authority merely by rank. Only an actual prescriber role may
+    # sign — dashboard visibility of this queue is a separate concern.
+    user: CurrentUser = Depends(require_roles(MD_ONLY, allow_clinical_admin=False)),
 ):
     order = _get_order_or_404(db, order_id, user)
     try:

@@ -27,7 +27,11 @@ router = APIRouter(prefix="/idg", tags=["IDG"])
 # and reviewed_by_physician_directly is only set when the MD is the one
 # actually logged in and clicking. Batch signing itself stays MD-only.
 CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "MSW", "Chaplain", "Surveyor"]
-MD_ONLY = ["MD"]
+# "MD" is the legacy/live provider-discipline role; MEDICAL_DIRECTOR and
+# ATTENDING_PHYSICIAN are the newer canonical prescriber roles used by the
+# dashboard widget-visibility engine. Both are accepted so a real prescriber
+# is recognized either way.
+MD_ONLY = ["MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"]
 ADMIN_ROLES = ["ADMIN"]
 # Everyone allowed to VIEW IDG rosters/PHI: clinical staff who actually
 # attend/run IDG, plus agency admins. Deliberately excludes OWNER (the
@@ -270,7 +274,10 @@ def batch_sign_orders(
     idg_meeting_id: UUID,
     payload: BatchSignRequest,
     db: Session = Depends(get_db_tenant_with_request_state),
-    user: CurrentUser = Depends(require_roles(MD_ONLY)),
+    # allow_clinical_admin=False: batch signing is a real signature action.
+    # Administrator/DPCS may monitor the queue (GET above) but must never
+    # gain signing authority via the administrative-role fallback.
+    user: CurrentUser = Depends(require_roles(MD_ONLY, allow_clinical_admin=False)),
 ):
     try:
         result = review_svc.batch_sign(
