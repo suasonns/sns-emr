@@ -139,6 +139,7 @@ def get_clinical_compliance_dashboard(
     notes = _load_tenant_notes(db, tenant_id)
     incidents = _load_tenant_incidents(db, tenant_id)
     unsigned_orders = _load_unsigned_orders(db, tenant_id)
+    clinical_review_orders = _load_orders_pending_clinical_review(db, tenant_id)
     all_orders = _load_all_orders(db, tenant_id)
 
     open_tasks = [task for task in tasks if _task_is_open(task)]
@@ -796,6 +797,11 @@ WIDGET_VISIBILITY: dict[str, set[str]] = {
     "orders_requiring_my_signature": {"MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"},
     # Clinical coordination duty on the same orders — not a signature action.
     "orders_requiring_clinical_follow_up": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
+    # Phase 1 lifecycle expansion (2026-08-21): orders conditionally routed
+    # to PENDING_CLINICAL_REVIEW (non-clinical/office-entered, incomplete
+    # authentication, or returned-for-clarification orders) — a distinct
+    # queue from clinical follow-up on already-signed orders.
+    "orders_pending_clinical_review": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
     "cti_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
     "f2f_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN"},
     "hope_due": set(_AGENCY_COMPLIANCE_ROLES),
@@ -915,6 +921,9 @@ def _build_compliance_queue(
     scoped_unsigned_orders = [
         order for order in unsigned_orders if _in_scope(getattr(order, "patient_id", None))
     ]
+    scoped_clinical_review_orders = [
+        order for order in clinical_review_orders if _in_scope(getattr(order, "patient_id", None))
+    ]
     scoped_blocked_patients = [
         blocker for blocker in blocked_patients if _in_scope(getattr(blocker, "patient_id", None))
     ]
@@ -1002,6 +1011,14 @@ def _build_compliance_queue(
     ]
 
     priority_2 = [
+        {
+            "key": "orders_pending_clinical_review",
+            "label": "Orders Pending Clinical Review",
+            "value": len(scoped_clinical_review_orders),
+            "tone": "orange",
+            "action": "clinical_review",
+            "action_label": "Review Order",
+        },
         {
             "key": "orders_requiring_clinical_follow_up",
             "label": "Orders Requiring Clinical Follow-up",
@@ -1091,9 +1108,19 @@ def _load_tenant_incidents(db: Session, tenant_id: UUID) -> list[IncidentReport]
 
 def _load_unsigned_orders(db: Session, tenant_id: UUID) -> list[DashboardOrderItem]:
     """Every physician order in this tenant that is NOT yet signed by an MD
-    (still DRAFT or PENDING_HOSPICE_MD_APPROVAL) — the agency's single view
-    of "which orders are signed vs. not signed" across every patient."""
-    return _load_tenant_orders(db, tenant_id, statuses=["DRAFT", "PENDING_HOSPICE_MD_APPROVAL"])
+    (DRAFT, PENDING_CLINICAL_REVIEW, or PENDING_HOSPICE_MD_APPROVAL) — the
+    agency's single view of "which orders are signed vs. not signed" across
+    every patient. PENDING_CLINICAL_REVIEW is included here (Phase 1 lifecycle
+    expansion, 2026-08-21) since those orders are also not yet MD-signed."""
+    return _load_tenant_orders(db, tenant_id, statuses=["DRAFT", "PENDING_CLINICAL_REVIEW", "PENDING_HOSPICE_MD_APPROVAL"])
+
+
+def _load_orders_pending_clinical_review(db: Session, tenant_id: UUID) -> list[DashboardOrderItem]:
+    """Orders conditionally routed to PENDING_CLINICAL_REVIEW — distinct from
+    the general unsigned-orders view so RN/clinical-reviewer roles see
+    exactly which orders need their review action, separate from orders
+    already awaiting physician signature."""
+    return _load_tenant_orders(db, tenant_id, statuses=["PENDING_CLINICAL_REVIEW"])
 
 
 def _load_all_orders(db: Session, tenant_id: UUID, limit: int = 300) -> list[DashboardOrderItem]:

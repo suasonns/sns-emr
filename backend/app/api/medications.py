@@ -405,7 +405,9 @@ def add_medication(
         phone_readback_confirmed=phone_readback_confirmed,
         created_by=user.user_id,
     )
-    order = physician_order_service.submit_for_approval(db, order=draft, submitted_by=user.user_id)
+    order = physician_order_service.submit_for_approval(
+        db, order=draft, submitted_by=user.user_id, submitted_by_role=user.role,
+    )
 
     # Always allow creation (do NOT block clinicians)
     medication = Medication(

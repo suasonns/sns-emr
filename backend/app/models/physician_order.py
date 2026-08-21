@@ -13,11 +13,30 @@ class PhysicianOrder(BaseModel):
     (DME/Supply/Lab/Treatment/Diet/Other) table used by the Orders Hub.
 
     Implements the compliance-defined order lifecycle from
-    docs/compliance/orders.md:
+    docs/compliance/orders.md, extended per the Phase 1 lifecycle expansion
+    (owner directive 2026-08-21 — additive only, existing literals preserved):
 
-        DRAFT -> PENDING_HOSPICE_MD_APPROVAL -> APPROVED -> EXECUTED
-                                              -> CANCELLED (from any
-                                                 pre-EXECUTED status)
+        DRAFT -> [PENDING_CLINICAL_REVIEW] -> PENDING_HOSPICE_MD_APPROVAL
+              -> APPROVED -> EXECUTED -> COMPLETED
+              -> EXPIRED (from APPROVED/EXECUTED, when expires_at passes)
+              -> CANCELLED (from any pre-EXECUTED status)
+
+    Display labels (see physician_order_service.STATUS_LABELS) differ from
+    the stored literals for readability without a breaking rename:
+        DRAFT -> "Draft"
+        PENDING_CLINICAL_REVIEW -> "Pending Clinical Review"
+        PENDING_HOSPICE_MD_APPROVAL -> "Pending Physician Signature"
+        APPROVED -> "Signed"
+        EXECUTED -> "Implemented"
+        COMPLETED -> "Completed"
+        EXPIRED -> "Expired"
+        CANCELLED -> "Cancelled"
+
+    PENDING_CLINICAL_REVIEW is CONDITIONAL, not mandatory for every order —
+    see physician_order_service.requires_clinical_review(). STAT/urgent
+    orders may bypass it (clinical_review_bypassed=True, with
+    clinical_review_bypass_reason recorded and audited via
+    PhysicianOrderStatusEvent).
 
     Only the Medical Director (MD role) may approve. Approval requires
     prescriber_authenticated=True and, for verbal/phone orders,
@@ -25,6 +44,13 @@ class PhysicianOrder(BaseModel):
     (signed_by_user_id, signed_at, signature_method, signature_event_id)
     and the linked ORDER_MD_APPROVAL task (see Task.reference_type /
     Task.reference_id) is auto-completed.
+
+    IMPLEMENTED (EXECUTED) vs COMPLETED are distinct: EXECUTED means
+    fulfillment/implementation began (e.g. transmitted to pharmacy, DME
+    delivery initiated); COMPLETED means all required implementation,
+    follow-up, and completion evidence is documented (completed_by,
+    completed_at, completion_evidence) — never inferred solely from
+    signature or transmission.
     """
 
     __tablename__ = "physician_orders"
@@ -81,4 +107,67 @@ class PhysicianOrder(BaseModel):
     cancelled_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     cancel_reason = Column(Text, nullable=True)
 
+    # --- Phase 1 lifecycle expansion (additive, 2026-08-21) ---
+
+    # ROUTINE | STAT | URGENT — STAT/URGENT orders may bypass clinical review
+    # so patient care (O2, comfort meds, DME, symptom management) is never
+    # delayed waiting in a clinical-review queue.
+    priority = Column(String(16), nullable=False, server_default="ROUTINE")
+    urgency_reason = Column(Text, nullable=True)
+
+    # Conditional clinical review (NOT mandatory for every order — see
+    # physician_order_service.requires_clinical_review()). Null until
+    # determined at submit time.
+    clinical_review_required = Column(Boolean, nullable=True)
+    clinical_reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    clinical_reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    # APPROVED_FOR_SIGNATURE | RETURNED_TO_DRAFT
+    clinical_review_result = Column(String(32), nullable=True)
+    clinical_review_bypassed = Column(Boolean, nullable=False, server_default="false")
+    clinical_review_bypass_reason = Column(Text, nullable=True)
+
+    # Implementation (EXECUTED) vs completion (COMPLETED) are distinct.
+    implemented_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    completed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    completion_evidence = Column(Text, nullable=True)
+
+    # Expiration tracking — set explicitly per order-type/agency policy, never
+    # inferred. An expired order must never continue to appear active.
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    expiration_type = Column(String(32), nullable=True)
+    expired_at = Column(DateTime(timezone=True), nullable=True)
+
     patient = relationship("Patient", back_populates="physician_orders")
+
+
+class PhysicianOrderStatusEvent(BaseModel):
+    """
+    Append-only, structured audit trail of every physician_order status
+    transition. Distinct from the generic AuditLog so lifecycle history is
+    directly queryable (e.g. "show the review/signature history for order
+    X") without parsing free-form JSON metadata. Never updated or deleted.
+    """
+
+    __tablename__ = "physician_order_status_events"
+
+    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    order_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("physician_orders.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    from_status = Column(String(32), nullable=True)
+    to_status = Column(String(32), nullable=False)
+
+    changed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    changed_by_role = Column(String(64), nullable=True)
+    changed_at = Column(DateTime(timezone=True), nullable=False)
+
+    reason = Column(Text, nullable=True)
+    automatic = Column(Boolean, nullable=False, server_default="false")
+    clinical_review_bypassed = Column(Boolean, nullable=False, server_default="false")
+    clinical_review_bypass_reason = Column(Text, nullable=True)
+    evidence = Column(Text, nullable=True)
