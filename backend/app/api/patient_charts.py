@@ -234,7 +234,7 @@ def get_patient_physician_summary(
 
     certifications = (
         db.query(Certification)
-        .filter(Certification.patient_id == patient.id)
+        .filter(Certification.patient_id == patient.id, Certification.tenant_id == user.tenant_id)
         .order_by(Certification.signed_at.desc())
         .all()
     )

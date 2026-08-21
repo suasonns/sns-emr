@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.clinical_note import ClinicalNote
+from app.models.certification import Certification
 from app.models.incident_report import IncidentReport
 from app.models.patient import Patient
 from app.models.patient_assignment import PatientAssignment
@@ -23,6 +25,7 @@ from app.models.user import User
 from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
 from app.services.clinical_note_validation_engine import get_note_validation_flags
+from app.services.certification_service import CTI_SIGNER_ROLES
 from app.core.names import person_name_expression
 from app.core.roles import normalize_role
 
@@ -803,6 +806,18 @@ WIDGET_VISIBILITY: dict[str, set[str]] = {
     # queue from clinical follow-up on already-signed orders.
     "orders_pending_clinical_review": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
     "cti_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    # Certification-record-based state (DRAFT/PENDING_SIGNATURE), distinct
+    # from the task-based "due/missing" signal above — the physician-level
+    # signer's own queue plus oversight monitoring. Never NP/PA/RN/LVN/
+    # DPCS/Administrator signing capability; oversight roles may only
+    # monitor per md_signatures_pending_oversight's precedent.
+    "cti_pending_signature": (
+        set(CTI_SIGNER_ROLES) | {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR"}
+        | COMPLIANCE_OVERSIGHT_ROLES
+    ),
+    "cti_expiring": (
+        set(CTI_SIGNER_ROLES) | _AGENCY_COMPLIANCE_ROLES | {"RN"}
+    ),
     "f2f_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN"},
     "hope_due": set(_AGENCY_COMPLIANCE_ROLES),
     "qies_rejected": set(_AGENCY_COMPLIANCE_ROLES),
@@ -828,7 +843,7 @@ FIELD_CLINICIAN_ROLES = {"RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR",
 # unmapped role must never receive protected compliance data.
 CANONICAL_DASHBOARD_ROLES = {
     "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
-    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
+    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN",
     "RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA",
     "INTAKE_MANAGER", "INTAKE_COORDINATOR",
 } | COMPLIANCE_OVERSIGHT_ROLES
@@ -928,6 +943,26 @@ def _build_compliance_queue(
         blocker for blocker in blocked_patients if _in_scope(getattr(blocker, "patient_id", None))
     ]
 
+    cti_pending_query = (
+        db.query(Certification)
+        .filter(Certification.tenant_id == tenant_id)
+        .filter(Certification.status.in_(["DRAFT", "PENDING_SIGNATURE"]))
+    )
+    if scope_patient_ids is not None:
+        cti_pending_query = cti_pending_query.filter(Certification.patient_id.in_(scope_patient_ids))
+    cti_pending_signature_count = _safe_count(db, cti_pending_query)
+
+    cti_expiring_query = (
+        db.query(Certification)
+        .filter(Certification.tenant_id == tenant_id)
+        .filter(Certification.status == "FINALIZED")
+        .filter(Certification.expires_at.isnot(None))
+        .filter(Certification.expires_at <= datetime.utcnow() + timedelta(days=15))
+    )
+    if scope_patient_ids is not None:
+        cti_expiring_query = cti_expiring_query.filter(Certification.patient_id.in_(scope_patient_ids))
+    cti_expiring_count = _safe_count(db, cti_expiring_query)
+
     rnica_query = (
         db.query(RnicaAssessment)
         .filter(RnicaAssessment.tenant_id == tenant_id)
@@ -985,6 +1020,22 @@ def _build_compliance_queue(
             "label": "CTI Due / Missing",
             "value": len(cti_tasks),
             "tone": "red",
+        },
+        {
+            "key": "cti_pending_signature",
+            "label": "CTI Pending Signature",
+            "value": cti_pending_signature_count,
+            "tone": "red",
+            "action": "view_queue",
+            "action_label": "Review Queue",
+        },
+        {
+            "key": "cti_expiring",
+            "label": "CTI Expiring (15 days)",
+            "value": cti_expiring_count,
+            "tone": "orange",
+            "action": "view_queue",
+            "action_label": "Review Queue",
         },
         {
             "key": "f2f_due_missing",

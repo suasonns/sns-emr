@@ -71,6 +71,7 @@ def require_f2f_completed_for_bp3_plus(
     f2f_task = (
         db.query(Task)
         .filter(
+            Task.tenant_id == tenant_id,
             Task.patient_id == patient_id,
             Task.benefit_period_id == benefit_period_id,
             Task.task_type == TaskType.F2F,
@@ -81,7 +82,7 @@ def require_f2f_completed_for_bp3_plus(
 
     if (
         not f2f_task
-        or f2f_task.status != TaskStatus.COMPLETE
+        or f2f_task.status != TaskStatus.COMPLETED
     ):
         raise HTTPException(
             status_code=400,
@@ -95,6 +96,7 @@ def require_f2f_completed_for_bp3_plus(
 def complete_task_with_evidence(
     db: Session,
     *,
+    tenant_id,
     patient_id,
     benefit_period_id,
     task_type,
@@ -117,6 +119,7 @@ def complete_task_with_evidence(
     task = (
         db.query(Task)
         .filter(
+            Task.tenant_id == tenant_id,
             Task.patient_id == patient_id,
             Task.benefit_period_id == benefit_period_id,
             Task.task_type == task_type,
@@ -129,7 +132,7 @@ def complete_task_with_evidence(
     if not task:
         return None
 
-    task.status = TaskStatus.COMPLETE
+    task.status = TaskStatus.COMPLETED
     task.completed_at = datetime.utcnow()
     task.completion_reference_type = ref_type
     task.completion_reference_id = ref_id

@@ -112,6 +112,9 @@ class CompletionReferenceType(str, enum.Enum):
     PHYSICIAN_ORDER = "PHYSICIAN_ORDER"
     IDG_PATIENT_REVIEW = "IDG_PATIENT_REVIEW"
 
+    CERTIFICATION = "CERTIFICATION"
+    RECERTIFICATION = "RECERTIFICATION"
+
 
 # ==========================================================
 # ✅ TASK DISCIPLINE (DB-STABLE)
