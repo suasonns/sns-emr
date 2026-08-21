@@ -729,23 +729,51 @@ ADMISSION_PIPELINE_STATUSES = [
 # Authority separation: seeing a problem, coordinating it, correcting it,
 # signing it, and monitoring agency-wide compliance are distinct
 # authorities and are modeled as distinct widget keys rather than one
-# widget with multiple audiences:
-#   - md_signatures_pending: physician / medical-director signature
-#     authority (plus agency oversight) — this is the provider's
-#     regulatory signature backlog, not a to-do list for RN/LVN staff.
-#   - orders_requiring_clinical_action: the RN/LVN's coordination duty
-#     for the same underlying orders — they can follow up and prep the
-#     order, but they cannot discharge the physician's signature
-#     obligation, so this is a separate key even though it draws on the
-#     same order queue.
+# widget with multiple audiences. The same underlying unsigned-order queue
+# is surfaced as THREE separate widget keys, each with its own action:
+#   - md_signatures_pending_oversight: Administrator/DPCS/DPCS_ADMINISTRATOR/
+#     Clinical Supervisor/Compliance/QA may VIEW or MONITOR the backlog for
+#     agency oversight and survey-readiness purposes. This is a read-only
+#     queue — action label "Review Queue" — and must NEVER be labeled as
+#     signature authority. Backend enforcement lives independently at
+#     POST /physician-orders/{id}/approve and POST /idg/.../batch-sign,
+#     both of which require an actual prescriber role via
+#     require_roles(..., allow_clinical_admin=False) — dashboard visibility
+#     of this widget grants no signing capability whatsoever.
+#   - orders_requiring_my_signature: the actual credentialed signer's queue
+#     (Medical Director / Attending Physician / other authorized
+#     prescribers) — action label "Review and Sign". NOTE: true per-patient
+#     scoping for Attending Physician ("only orders linked to their own
+#     authorized patients") is not yet representable in the data model —
+#     there is no user_id linkage from a physician login account to either
+#     PatientPhysicianAssignment or PhysicianOrder — so this widget is
+#     currently agency-wide for both Medical Director and Attending
+#     Physician. A schema addition (physician-user linkage) is required
+#     before that scoping can be implemented; see SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED
+#     note below.
+#   - orders_requiring_clinical_follow_up (renamed from
+#     orders_requiring_clinical_action): the RN/LVN/DPCS/Clinical
+#     Supervisor's coordination duty for the same underlying orders — they
+#     can follow up and prep the order, but they cannot discharge the
+#     physician's signature obligation. Action label "Open Follow-up".
 # ---------------------------------------------------------------
+
+# True per-physician patient-scoping (Attending Physician sees only their
+# own patients' orders) requires a physician-to-user_id link that does not
+# exist yet in PatientPhysicianAssignment/Physician/PhysicianOrder. Until
+# that schema work lands, orders_requiring_my_signature is agency-wide for
+# any role in this set rather than falsely appearing patient-scoped.
+SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED = True
 
 # "Compliance" oversight roles (QA_ROLES from app.core.roles): read-only
 # agency-wide monitoring, per CMS/CDPH survey-readiness and documentation
 # accountability. They see the SAME agency-wide monitoring widgets as
-# ADMINISTRATOR/DPCS, but never signature authority (md_signatures_pending)
-# and never RN/LVN care-coordination duty (orders_requiring_clinical_action)
-# and never Intake's admissions pipeline — monitoring is a distinct
+# ADMINISTRATOR/DPCS, but never actual signature authority
+# (orders_requiring_my_signature) and never RN/LVN care-coordination duty
+# (orders_requiring_clinical_follow_up) — they may still MONITOR the
+# signature backlog (md_signatures_pending_oversight) alongside ADMINISTRATOR/
+# DPCS/Clinical Supervisor, but never Intake's admissions pipeline —
+# monitoring is a distinct
 # authority from signing, coordinating, or admitting.
 COMPLIANCE_OVERSIGHT_ROLES = {"COMPLIANCE_OFFICER", "QA_MANAGER", "QA_REVIEWER"}
 
@@ -755,11 +783,19 @@ COMPLIANCE_OVERSIGHT_ROLES = {"COMPLIANCE_OFFICER", "QA_MANAGER", "QA_REVIEWER"}
 _AGENCY_COMPLIANCE_ROLES = {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"} | COMPLIANCE_OVERSIGHT_ROLES
 
 WIDGET_VISIBILITY: dict[str, set[str]] = {
-    "md_signatures_pending": {
-        "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
-        "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
-    },
-    "orders_requiring_clinical_action": {"RN", "LVN", "CLINICAL_SUPERVISOR"},
+    # View/monitor only — never implies signing capability. See the
+    # authority-separation note above and require_roles(allow_clinical_admin=False)
+    # on the real signing endpoints.
+    "md_signatures_pending_oversight": (
+        {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR"}
+        | COMPLIANCE_OVERSIGHT_ROLES
+    ),
+    # The actual credentialed signer's queue. Deliberately excludes
+    # Administrator/DPCS/Clinical Supervisor/Compliance/QA — administrative
+    # rank and oversight are never signature authority.
+    "orders_requiring_my_signature": {"MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"},
+    # Clinical coordination duty on the same orders — not a signature action.
+    "orders_requiring_clinical_follow_up": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
     "cti_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
     "f2f_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN"},
     "hope_due": set(_AGENCY_COMPLIANCE_ROLES),
@@ -916,10 +952,24 @@ def _build_compliance_queue(
 
     priority_1 = [
         {
-            "key": "md_signatures_pending",
+            "key": "md_signatures_pending_oversight",
             "label": "MD Signatures Pending",
             "value": len(scoped_unsigned_orders),
             "tone": "red",
+            "action": "view_queue",
+            "action_label": "Review Queue",
+        },
+        {
+            "key": "orders_requiring_my_signature",
+            "label": "Orders Requiring My Signature",
+            "value": len(scoped_unsigned_orders),
+            "tone": "red",
+            "action": "sign",
+            "action_label": "Review and Sign",
+            "note": (
+                "Agency-wide for now — per-physician patient scoping requires a "
+                "physician-to-account link not yet in the data model."
+            ),
         },
         {
             "key": "cti_due_missing",
@@ -953,10 +1003,12 @@ def _build_compliance_queue(
 
     priority_2 = [
         {
-            "key": "orders_requiring_clinical_action",
-            "label": "Orders Requiring Clinical Action",
+            "key": "orders_requiring_clinical_follow_up",
+            "label": "Orders Requiring Clinical Follow-up",
             "value": len(scoped_unsigned_orders),
             "tone": "orange",
+            "action": "follow_up",
+            "action_label": "Open Follow-up",
         },
         {
             "key": "rnica_incomplete",

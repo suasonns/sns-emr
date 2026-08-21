@@ -34,6 +34,27 @@ function ComplianceWidgetCard({ widget }) {
       ) : (
         <div style={{ fontSize: 26, fontWeight: 800, color: COLORS.white }}>{widget.value}</div>
       )}
+      {widget.note && !unavailable && (
+        <div style={{ fontSize: 11, color: COLORS.dim, marginTop: 4 }}>{widget.note}</div>
+      )}
+      {widget.action_label && !unavailable && (
+        <button
+          type="button"
+          style={{
+            marginTop: 10,
+            fontSize: 12,
+            fontWeight: 600,
+            color: tone,
+            background: 'transparent',
+            border: `1px solid ${tone}`,
+            borderRadius: 6,
+            padding: '4px 10px',
+            cursor: 'pointer',
+          }}
+        >
+          {widget.action_label}
+        </button>
+      )}
       {Array.isArray(widget.breakdown) && widget.breakdown.some((b) => b.count > 0) && (
         <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {widget.breakdown.filter((b) => b.count > 0).map((b) => (
