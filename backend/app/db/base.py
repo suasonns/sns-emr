@@ -61,3 +61,4 @@ import app.models.fax_log
 import app.models.physician_order
 import app.models.scica_assessment
 import app.models.certification
+import app.models.f2f_encounter

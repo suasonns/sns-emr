@@ -1,3 +1,23 @@
+# app/api/f2f.py
+
+"""
+Face-to-Face (F2F) encounter endpoints per docs/compliance/f2f.md.
+
+F2F is a separate ENCOUNTER workflow from CTI CERTIFICATION
+(app/api/certifications.py) — performer/signing authority is never
+combined or inferred between the two. An NP who performs/signs an F2F
+gains ZERO CTI certification authority.
+
+Additive-only lifecycle: DRAFT -> FINALIZED. Only F2F_PERFORMER_ROLES
+(Hospice Physician / Medical Director / Medical Director Designee /
+Attending Physician / hospice-employed or contracted NP / hospice-employed
+or contracted PA) may create a draft (the performer records their own
+encounter) or finalize it. Any clinical role may list/view F2F encounters
+and their status history. `performed_by_role`/attestor role is ALWAYS the
+endpoint-authenticated user's own role — never accepted from request
+body.
+"""
+
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
@@ -14,10 +34,16 @@ from app.core.database import get_db
 from app.core.permissions import require_roles
 from app.models.benefit_period import BenefitPeriod
 from app.models.f2f_encounter import F2FEncounter
-from app.services.f2f_service import create_f2f, finalize_f2f
-
+from app.models.user import User
+from app.services import f2f_service as svc
+from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/f2f", tags=["F2F"])
+
+# Any clinical role may list/view F2F encounters and their status
+# history; only F2F_PERFORMER_ROLES (physician-level + NP + PA) may
+# create a draft or finalize an encounter — see require_roles(...) below.
+CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN"]
 
 
 # =========================================================
@@ -29,10 +55,12 @@ class F2FCreateRequest(BaseModel):
     benefit_period_id: UUID
     encounter_date: date
 
-    performed_by_role: Literal[
-        "MD",
-        "NP",
-    ]
+    # performed_by_role is NOT accepted from the request — the endpoint
+    # always derives it from the authenticated user's own role, so a
+    # caller can never record an unauthorized discipline as the F2F
+    # performer. Retained here only for backward-compatible clients;
+    # any client-supplied value is ignored.
+    performed_by_role: Optional[str] = None
 
     summary: Optional[str] = Field(default=None, max_length=5000)
     clinical_decline_summary: Optional[str] = Field(default=None, max_length=5000)
@@ -71,15 +99,6 @@ class F2FCreateResponse(BaseModel):
 
 class F2FFinalizeRequest(BaseModel):
     # Used when NP performed the F2F and physician review/attestation is captured on the encounter.
-    attesting_provider_user_id: Optional[UUID] = None
-    attesting_provider_role: Optional[
-        Literal[
-            "MD",
-            "MEDICAL_DIRECTOR",
-            "ALTERNATE_MEDICAL_DIRECTOR",
-            "MEDICAL_DIRECTOR_DESIGNEE",
-        ]
-    ] = None
     attestation_summary: Optional[str] = Field(default=None, max_length=5000)
 
 
@@ -92,6 +111,14 @@ class F2FFinalizeResponse(BaseModel):
 # =========================================================
 # HELPERS
 # =========================================================
+
+def _user_name_map(db: Session, user_ids: set) -> dict:
+    ids = {uid for uid in user_ids if uid}
+    if not ids:
+        return {}
+    rows = db.query(User.id, User.full_name, User.display_name).filter(User.id.in_(ids)).all()
+    return {row[0]: (row[2] or row[1] or "Unknown") for row in rows}
+
 
 def _generate_f2f_summary(f2f: F2FEncounter) -> str:
     parts: list[str] = []
@@ -204,6 +231,82 @@ def _validate_f2f_for_finalize(f2f: F2FEncounter) -> None:
         raise HTTPException(status_code=422, detail=errors)
 
 
+def _serialize(f2f: F2FEncounter, name_map: dict | None = None) -> dict:
+    name_map = name_map or {}
+    return {
+        "id": str(f2f.id),
+        "patient_id": str(f2f.patient_id),
+        "benefit_period_id": str(f2f.benefit_period_id),
+        "status": f2f.status,
+        "status_label": svc.label_for(f2f.status),
+        "encounter_date": f2f.encounter_date.isoformat() if f2f.encounter_date else None,
+        "performed_by_role": f2f.performed_by_role,
+        "performed_by_user_id": str(f2f.performed_by_user_id) if f2f.performed_by_user_id else None,
+        "performed_by_name": name_map.get(f2f.performed_by_user_id),
+        "attesting_provider_user_id": str(f2f.attesting_provider_user_id) if f2f.attesting_provider_user_id else None,
+        "attesting_provider_name": name_map.get(f2f.attesting_provider_user_id),
+        "attested_at": f2f.attested_at.isoformat() if f2f.attested_at else None,
+        "summary": f2f.summary,
+        "finalized_at": f2f.finalized_at.isoformat() if f2f.finalized_at else None,
+    }
+
+
+def _get_f2f_or_404(db: Session, f2f_id: UUID, user: CurrentUser) -> F2FEncounter:
+    f2f = svc.get_f2f_encounter(db, tenant_id=user.tenant_id, f2f_encounter_id=f2f_id)
+    if not f2f:
+        raise HTTPException(status_code=404, detail="F2F encounter not found.")
+    get_authorized_patient(db, f2f.patient_id, user)
+    return f2f
+
+
+# =========================================================
+# LIST / STATUS HISTORY
+# =========================================================
+
+@router.get("/patients/{patient_id}", summary="List a patient's F2F encounters")
+def list_f2f_encounters(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(CLINICAL_ROLES)),
+):
+    get_authorized_patient(db, patient_id, user)
+    encounters = svc.list_f2f_encounters(db, tenant_id=user.tenant_id, patient_id=patient_id)
+    ids = set()
+    for e in encounters:
+        ids.update({e.performed_by_user_id, e.attesting_provider_user_id})
+    name_map = _user_name_map(db, ids)
+    return [_serialize(e, name_map) for e in encounters]
+
+
+@router.get("/{f2f_id}/status-history", summary="Immutable status-transition audit trail for an F2F encounter")
+def f2f_status_history(
+    f2f_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(CLINICAL_ROLES)),
+):
+    f2f = _get_f2f_or_404(db, f2f_id, user)
+    events = svc.get_status_history(db, tenant_id=user.tenant_id, f2f_encounter_id=f2f.id)
+    ids = {e.changed_by_user_id for e in events if e.changed_by_user_id}
+    name_map = _user_name_map(db, ids)
+    return [
+        {
+            "id": str(e.id),
+            "from_status": e.from_status,
+            "from_status_label": svc.label_for(e.from_status) if e.from_status else None,
+            "to_status": e.to_status,
+            "to_status_label": svc.label_for(e.to_status),
+            "changed_by_user_id": str(e.changed_by_user_id) if e.changed_by_user_id else None,
+            "changed_by_name": name_map.get(e.changed_by_user_id),
+            "changed_by_role": e.changed_by_role,
+            "changed_at": e.changed_at.isoformat() if e.changed_at else None,
+            "reason": e.reason,
+            "automatic": e.automatic,
+            "evidence": e.evidence,
+        }
+        for e in events
+    ]
+
+
 # =========================================================
 # CREATE F2F (DRAFT)
 # =========================================================
@@ -212,9 +315,12 @@ def _validate_f2f_for_finalize(f2f: F2FEncounter) -> None:
 def create_f2f_endpoint(
     request: F2FCreateRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(
-        require_roles(["RN", "NP", "MD", "Administrator", "DPCS"])
-    ),
+    # Only the actual performer/signer roles may be recorded as the F2F
+    # performer. RN/LVN/PA(disabled-by-default)/Administrator/DPCS may
+    # never create a draft claiming to have performed the encounter —
+    # allow_clinical_admin=False so administrative rank never satisfies
+    # this gate.
+    user: CurrentUser = Depends(require_roles(svc.F2F_PERFORMER_ROLES, allow_clinical_admin=False)),
 ):
     get_authorized_patient(db, request.patient_id, user)
 
@@ -224,6 +330,7 @@ def create_f2f_endpoint(
         .filter(
             BenefitPeriod.id == request.benefit_period_id,
             BenefitPeriod.patient_id == request.patient_id,
+            BenefitPeriod.tenant_id == user.tenant_id,
             BenefitPeriod.is_current == True,
         )
         .first()
@@ -244,16 +351,23 @@ def create_f2f_endpoint(
             detail="Encounter date is after the benefit period end date.",
         )
 
-    # Create draft through service
-    f2f = create_f2f(
-        db=db,
-        patient_id=request.patient_id,
-        benefit_period_id=request.benefit_period_id,
-        encounter_date=request.encounter_date,
-        performed_by_role=request.performed_by_role,
-        performed_by_user_id=user.user_id,
-        summary=request.summary,
-    )
+    # Create draft through service — performed_by_role is ALWAYS the
+    # authenticated user's own role, never the request body value.
+    try:
+        f2f = svc.create_f2f(
+            db=db,
+            tenant_id=user.tenant_id,
+            patient_id=request.patient_id,
+            benefit_period_id=request.benefit_period_id,
+            encounter_date=request.encounter_date,
+            performed_by_role=user.role,
+            performed_by_user_id=user.user_id,
+            summary=request.summary,
+            created_by=user.user_id,
+            created_by_role=user.role,
+        )
+    except svc.F2FError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
     # Persist structured data
     f2f.kps_score = request.kps_score
@@ -278,6 +392,11 @@ def create_f2f_endpoint(
     if not f2f.summary:
         f2f.summary = _generate_f2f_summary(f2f)
 
+    log_event(
+        db=db, tenant_id=str(user.tenant_id), user_id=user.user_id, role=user.role,
+        action="CREATE_F2F_DRAFT", entity_type="f2f_encounter", entity_id=str(f2f.id),
+        metadata={"patient_id": str(request.patient_id), "performed_by_role": f2f.performed_by_role},
+    )
     db.commit()
     db.refresh(f2f)
 
@@ -297,16 +416,12 @@ def finalize_f2f_endpoint(
     f2f_id: UUID,
     request: F2FFinalizeRequest,
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(
-        require_roles(["NP", "MD", "Administrator", "DPCS"])
-    ),
+    # Only F2F performer-tier roles may finalize — Administrator/DPCS are
+    # oversight/monitoring roles only and must never gain finalize
+    # capability merely by having visibility into the F2F queue.
+    user: CurrentUser = Depends(require_roles(svc.F2F_PERFORMER_ROLES, allow_clinical_admin=False)),
 ):
-    f2f = db.query(F2FEncounter).filter(F2FEncounter.id == f2f_id).first()
-
-    if not f2f:
-        raise HTTPException(status_code=404, detail="F2F encounter not found.")
-
-    get_authorized_patient(db, f2f.patient_id, user)
+    f2f = _get_f2f_or_404(db, f2f_id, user)
 
     if not f2f.summary:
         f2f.summary = _generate_f2f_summary(f2f)
@@ -314,26 +429,39 @@ def finalize_f2f_endpoint(
     # ADR / CMS-oriented validation
     _validate_f2f_for_finalize(f2f)
 
-    # NP performed F2F → capture physician review/attestation on the encounter
-    if f2f.performed_by_role == "NP":
-        if user.role not in {"MD", "Administrator", "DPCS"}:
+    # NP or PA performed F2F -> capture physician review/attestation on
+    # the encounter. The attesting role MUST be a genuine physician-level
+    # role (never Administrator/DPCS) and is ALWAYS the authenticated
+    # caller's own role, never accepted from the request body.
+    if f2f.performed_by_role in ("NP", "PA"):
+        if not svc.is_authorized_f2f_physician_attestor(user.role):
             raise HTTPException(
                 status_code=403,
-                detail="Physician review is required to finalize NP-performed F2F.",
+                detail="Physician-level review (Medical Director/Attending Physician/Hospice Physician) "
+                f"is required to finalize an {f2f.performed_by_role}-performed F2F.",
             )
 
         if not request.attestation_summary:
             raise HTTPException(
                 status_code=422,
-                detail="Attestation summary is required for NP-performed F2F.",
+                detail=f"Attestation summary is required for {f2f.performed_by_role}-performed F2F.",
             )
 
-        f2f.attesting_provider_user_id = request.attesting_provider_user_id or user.user_id
+        f2f.attesting_provider_user_id = user.user_id
         f2f.attested_at = datetime.now(timezone.utc)
 
-    # Finalize through service
-    f2f = finalize_f2f(db=db, f2f=f2f)
+    # Finalize through service — finalized_by_role is ALWAYS the
+    # authenticated user's own role, never the request body.
+    try:
+        f2f = svc.finalize_f2f(db=db, f2f=f2f, finalized_by=user.user_id, finalized_by_role=user.role)
+    except svc.F2FError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
+    log_event(
+        db=db, tenant_id=str(user.tenant_id), user_id=user.user_id, role=user.role,
+        action="FINALIZE_F2F", entity_type="f2f_encounter", entity_id=str(f2f.id),
+        metadata={"performed_by_role": f2f.performed_by_role},
+    )
     db.commit()
     db.refresh(f2f)
 

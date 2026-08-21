@@ -115,6 +115,8 @@ class CompletionReferenceType(str, enum.Enum):
     CERTIFICATION = "CERTIFICATION"
     RECERTIFICATION = "RECERTIFICATION"
 
+    F2F_ENCOUNTER = "F2F_ENCOUNTER"
+
 
 # ==========================================================
 # ✅ TASK DISCIPLINE (DB-STABLE)

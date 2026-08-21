@@ -241,7 +241,7 @@ def get_patient_physician_summary(
 
     f2f_encounters = (
         db.query(F2FEncounter)
-        .filter(F2FEncounter.patient_id == patient.id)
+        .filter(F2FEncounter.patient_id == patient.id, F2FEncounter.tenant_id == user.tenant_id)
         .order_by(F2FEncounter.encounter_date.desc(), F2FEncounter.created_at.desc())
         .all()
     )
