@@ -744,17 +744,20 @@ ADMISSION_PIPELINE_STATUSES = [
 #     both of which require an actual prescriber role via
 #     require_roles(..., allow_clinical_admin=False) — dashboard visibility
 #     of this widget grants no signing capability whatsoever.
-#   - orders_requiring_my_signature: the actual credentialed signer's queue
-#     (Medical Director / Attending Physician / other authorized
-#     prescribers) — action label "Review and Sign". NOTE: true per-patient
-#     scoping for Attending Physician ("only orders linked to their own
-#     authorized patients") is not yet representable in the data model —
-#     there is no user_id linkage from a physician login account to either
-#     PatientPhysicianAssignment or PhysicianOrder — so this widget is
-#     currently agency-wide for both Medical Director and Attending
-#     Physician. A schema addition (physician-user linkage) is required
-#     before that scoping can be implemented; see SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED
-#     note below.
+#   - orders_requiring_provider_signature (renamed from
+#     orders_requiring_my_signature) — the actual credentialed signer's queue
+#     (Medical Director / Attending Physician / Hospice Physician / Medical
+#     Director Designee, plus alternate authorized provider signers NP/PA
+#     for STAT/URGENT eligible-category orders — see Provider Signature
+#     Authority Model in app/services/physician_order_service.py) — action
+#     label "Review and Sign". NOTE: true per-patient scoping for Attending
+#     Physician ("only orders linked to their own authorized patients") is
+#     not yet representable in the data model — there is no user_id linkage
+#     from a physician login account to either PatientPhysicianAssignment or
+#     PhysicianOrder — so this widget is currently agency-wide for all roles
+#     in its visibility set. A schema addition (physician-user linkage) is
+#     required before that scoping can be implemented; see
+#     SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED note below.
 #   - orders_requiring_clinical_follow_up (renamed from
 #     orders_requiring_clinical_action): the RN/LVN/DPCS/Clinical
 #     Supervisor's coordination duty for the same underlying orders — they
@@ -765,15 +768,16 @@ ADMISSION_PIPELINE_STATUSES = [
 # True per-physician patient-scoping (Attending Physician sees only their
 # own patients' orders) requires a physician-to-user_id link that does not
 # exist yet in PatientPhysicianAssignment/Physician/PhysicianOrder. Until
-# that schema work lands, orders_requiring_my_signature is agency-wide for
-# any role in this set rather than falsely appearing patient-scoped.
+# that schema work lands, orders_requiring_provider_signature is
+# agency-wide for any role in this set rather than falsely appearing
+# patient-scoped.
 SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED = True
 
 # "Compliance" oversight roles (QA_ROLES from app.core.roles): read-only
 # agency-wide monitoring, per CMS/CDPH survey-readiness and documentation
 # accountability. They see the SAME agency-wide monitoring widgets as
 # ADMINISTRATOR/DPCS, but never actual signature authority
-# (orders_requiring_my_signature) and never RN/LVN care-coordination duty
+# (orders_requiring_provider_signature) and never RN/LVN care-coordination duty
 # (orders_requiring_clinical_follow_up) — they may still MONITOR the
 # signature backlog (md_signatures_pending_oversight) alongside ADMINISTRATOR/
 # DPCS/Clinical Supervisor, but never Intake's admissions pipeline —
@@ -796,8 +800,16 @@ WIDGET_VISIBILITY: dict[str, set[str]] = {
     ),
     # The actual credentialed signer's queue. Deliberately excludes
     # Administrator/DPCS/Clinical Supervisor/Compliance/QA — administrative
-    # rank and oversight are never signature authority.
-    "orders_requiring_my_signature": {"MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"},
+    # rank and oversight are never signature authority. Includes both
+    # primary providers (Attending Physician/Hospice Physician/Medical
+    # Director/Medical Director Designee) and alternate authorized
+    # provider signers (NP/PA) — the STAT/URGENT eligible-category
+    # restriction on NP/PA is enforced at the API/service layer
+    # (svc.is_authorized_order_signer), not dashboard visibility, matching
+    # the CTI/F2F precedent that dashboard visibility != actual authorization.
+    "orders_requiring_provider_signature": {
+        "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "NP", "PA",
+    },
     # Clinical coordination duty on the same orders — not a signature action.
     "orders_requiring_clinical_follow_up": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
     # Phase 1 lifecycle expansion (2026-08-21): orders conditionally routed
@@ -843,7 +855,7 @@ FIELD_CLINICIAN_ROLES = {"RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR",
 # unmapped role must never receive protected compliance data.
 CANONICAL_DASHBOARD_ROLES = {
     "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
-    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN",
+    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "NP", "PA",
     "RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA",
     "INTAKE_MANAGER", "INTAKE_COORDINATOR",
 } | COMPLIANCE_OVERSIGHT_ROLES
@@ -1004,7 +1016,7 @@ def _build_compliance_queue(
             "action_label": "Review Queue",
         },
         {
-            "key": "orders_requiring_my_signature",
+            "key": "orders_requiring_provider_signature",
             "label": "Orders Requiring My Signature",
             "value": len(scoped_unsigned_orders),
             "tone": "red",

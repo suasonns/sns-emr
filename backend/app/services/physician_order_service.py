@@ -43,6 +43,7 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.roles import normalize_role, role_matches
 from app.models.physician_order import PhysicianOrder, PhysicianOrderStatusEvent
 from app.models.task import Task
 from app.models.enums import (
@@ -65,6 +66,76 @@ VALID_PRIORITIES = {"ROUTINE", "URGENT", "STAT"}
 # agency policy). Everyone else (office/intake/unclear-source entries)
 # triggers PENDING_CLINICAL_REVIEW by default.
 SELF_VERIFYING_ROLES = {"MD", "NP", "PA", "RN"}
+
+# =====================================================================
+# PROVIDER SIGNATURE AUTHORITY MODEL (owner decision 2026-08-21)
+#
+# Generalizes the earlier MD-only signer assumption. Signature authority
+# is evaluated by document type, provider credential, agency policy,
+# workflow type, order type, and urgency — never a flat "is this a
+# physician?" check. This is Physician Orders' own signer model; it is
+# deliberately NOT a shared/generic engine — CTI (certification_service),
+# F2F (f2f_service), and Orders each define independent signer rules per
+# their own document type, exactly as directed.
+#
+# PRIMARY SIGNERS (routed to first, in this precedence order):
+#   Attending Physician -> Hospice Physician -> Medical Director ->
+#   Medical Director Designee (alias -> Medical Director). "MD" is kept
+#   as an accepted primary-signer literal for backward compatibility with
+#   the legacy generic provider-discipline role already stored on orders
+#   entered before this model existed.
+#
+# ALTERNATE AUTHORIZED PROVIDER SIGNERS (NP, PA): usable ONLY for
+# STAT/URGENT patient-care needs (oxygen, comfort medications, DME,
+# hospital bed, supplies, symptom management, immediate treatment
+# changes) so patient care is never delayed while attempting to reach a
+# specific physician. Never usable for ROUTINE orders, and never usable
+# outside the order categories below. Every alternate-signer use must
+# record an alternate_signer_reason (see approve_order()).
+# =====================================================================
+ORDER_PRIMARY_SIGNER_ROLES = [
+    "MD", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "MEDICAL_DIRECTOR", "MEDICAL_DIRECTOR_DESIGNEE",
+]
+ORDER_ALTERNATE_SIGNER_ROLES = ["NP", "PA"]
+ORDER_ALL_SIGNER_ROLES = ORDER_PRIMARY_SIGNER_ROLES + ORDER_ALTERNATE_SIGNER_ROLES
+
+# STAT/urgent categories an alternate (NP/PA) signer may act on: oxygen
+# and comfort medications (MEDICATION), DME/hospital bed (DME), supplies
+# (SUPPLY), and symptom management/immediate treatment changes
+# (TREATMENT). LAB/DIET/OTHER are excluded — not part of the owner's
+# STAT/urgent patient-care list.
+ORDER_ALTERNATE_SIGNER_ELIGIBLE_CATEGORIES = {"MEDICATION", "DME", "SUPPLY", "TREATMENT"}
+
+
+def is_authorized_order_signer(
+    role: Optional[str],
+    *,
+    priority: Optional[str] = None,
+    order_category: Optional[str] = None,
+) -> bool:
+    """True when `role` may sign THIS order under THIS workflow.
+
+    Primary signers (physician-tier) may always sign, any priority/category.
+    Alternate signers (NP/PA) may sign ONLY when the order is STAT/URGENT
+    AND its category is one of ORDER_ALTERNATE_SIGNER_ELIGIBLE_CATEGORIES —
+    never for ROUTINE orders, never outside those categories.
+    """
+    normalized = normalize_role(role)
+    if not normalized:
+        return False
+
+    if role_matches(normalized, ORDER_PRIMARY_SIGNER_ROLES, allow_clinical_admin=False):
+        return True
+
+    if role_matches(normalized, ORDER_ALTERNATE_SIGNER_ROLES, allow_clinical_admin=False):
+        priority_norm = (priority or "").strip().upper()
+        category_norm = (order_category or "").strip().upper()
+        return (
+            priority_norm in ("STAT", "URGENT")
+            and category_norm in ORDER_ALTERNATE_SIGNER_ELIGIBLE_CATEGORIES
+        )
+
+    return False
 
 # --- Display-label layer (owner directive: no rename of stored literals) ---
 STATUS_LABELS = {
@@ -421,7 +492,20 @@ def approve_order(
     approved_by,
     approved_by_role: Optional[str] = None,
     signature_method: str = "ELECTRONIC",
+    alternate_signer_reason: Optional[str] = None,
 ) -> PhysicianOrder:
+    """Sign/approve an order. Signature authority is evaluated per THIS
+    order (document type = Physician Order, provider credential =
+    `approved_by_role`, order type = `order.order_category`, urgency =
+    `order.priority`) via `is_authorized_order_signer()` — never a flat
+    "is this a physician?" check. Primary signers (Attending Physician,
+    Hospice Physician, Medical Director, Medical Director Designee, and
+    the legacy "MD" literal) may always sign. Alternate authorized
+    provider signers (NP, PA) may sign ONLY STAT/URGENT orders in an
+    eligible category (oxygen/comfort meds, DME, supplies, symptom
+    management/treatment changes) and MUST supply
+    `alternate_signer_reason` documenting why an alternate signer (rather
+    than the primary provider) is signing this order."""
     if order.status not in ("PENDING_HOSPICE_MD_APPROVAL", "EXECUTED"):
         raise PhysicianOrderError(
             f"Only orders PENDING_HOSPICE_MD_APPROVAL (or already-executed verbal "
@@ -429,6 +513,26 @@ def approve_order(
         )
     if order.status == "EXECUTED" and order.signed_at:
         raise PhysicianOrderError("This order has already been countersigned")
+
+    if not is_authorized_order_signer(
+        approved_by_role, priority=order.priority, order_category=order.order_category,
+    ):
+        raise PhysicianOrderError(
+            f"Role '{approved_by_role}' is not authorized to sign this "
+            f"{order.priority}/{order.order_category} order. Primary signers "
+            f"({', '.join(ORDER_PRIMARY_SIGNER_ROLES)}) may sign any order; "
+            f"alternate signers ({', '.join(ORDER_ALTERNATE_SIGNER_ROLES)}) may sign "
+            f"only STAT/URGENT orders in {sorted(ORDER_ALTERNATE_SIGNER_ELIGIBLE_CATEGORIES)}."
+        )
+
+    is_alternate_signer = role_matches(
+        normalize_role(approved_by_role), ORDER_ALTERNATE_SIGNER_ROLES, allow_clinical_admin=False,
+    )
+    if is_alternate_signer and not alternate_signer_reason:
+        raise PhysicianOrderError(
+            "alternate_signer_reason is required when an alternate authorized "
+            "provider (NP/PA) signs in place of the primary provider."
+        )
 
     now = datetime.now(timezone.utc)
     from_status = order.status
@@ -441,6 +545,8 @@ def approve_order(
     order.signed_at = now
     order.signature_method = signature_method
     order.signature_event_id = uuid.uuid4()
+    order.signed_by_provider_role = normalize_role(approved_by_role)
+    order.alternate_signer_reason = alternate_signer_reason if is_alternate_signer else None
     db.add(order)
 
     task = (
@@ -466,7 +572,10 @@ def approve_order(
         _record_transition(
             db, order=order, from_status=from_status, to_status=order.status,
             changed_by=approved_by, changed_by_role=approved_by_role,
-            evidence=f"signature_event_id={order.signature_event_id}",
+            evidence=(
+                f"signature_event_id={order.signature_event_id}"
+                + (f"; alternate_signer_reason={alternate_signer_reason}" if is_alternate_signer else "")
+            ),
         )
     else:
         # Countersignature of an already-EXECUTED order: no status change,
@@ -475,7 +584,10 @@ def approve_order(
             db, order=order, from_status=from_status, to_status=order.status,
             changed_by=approved_by, changed_by_role=approved_by_role,
             reason="Countersignature of previously-executed verbal order",
-            evidence=f"signature_event_id={order.signature_event_id}",
+            evidence=(
+                f"signature_event_id={order.signature_event_id}"
+                + (f"; alternate_signer_reason={alternate_signer_reason}" if is_alternate_signer else "")
+            ),
         )
     db.commit()
     return order

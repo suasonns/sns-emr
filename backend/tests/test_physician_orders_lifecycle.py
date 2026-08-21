@@ -267,3 +267,107 @@ class TestDisplayLabelLayer:
         assert svc.label_for("EXPIRED") == "Expired"
         # Unknown status falls back to the raw literal, never raises.
         assert svc.label_for("SOMETHING_NEW") == "SOMETHING_NEW"
+
+
+class TestProviderSignatureAuthorityModel:
+    """Owner directive (2026-08-21): replace the flat MD-only signer
+    assumption with a tiered Primary Signer / Alternate Authorized
+    Provider Signer model. Primary providers (Attending Physician,
+    Hospice Physician, Medical Director, Medical Director Designee, and
+    the legacy "MD" literal) may always sign. Alternate authorized
+    provider signers (NP/PA) may sign ONLY STAT/URGENT orders in an
+    eligible category, and MUST supply an alternate_signer_reason. Never
+    "is this a physician?" — always "is this provider authorized to sign
+    THIS document under THIS workflow?".
+    """
+
+    def _submitted_order(self, db_session, tenant_id, patient_id, **overrides):
+        order = _make_draft(db_session, tenant_id, patient_id, **overrides)
+        return svc.submit_for_approval(
+            db_session, order=order, submitted_by=TEST_USER_ID, submitted_by_role="RN",
+        )
+
+    @pytest.mark.parametrize(
+        "role",
+        ["MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "MEDICAL_DIRECTOR_DESIGNEE"],
+    )
+    def test_primary_signers_may_sign_any_priority_and_category(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(db_session, tenant_id, patient.id, order_category="LAB", priority="ROUTINE")
+        order = svc.approve_order(db_session, order=order, approved_by=TEST_USER_ID, approved_by_role=role)
+        assert order.status == "APPROVED"
+        assert order.signed_by_provider_role is not None
+        assert order.alternate_signer_reason is None
+
+    @pytest.mark.parametrize("role", ["NP", "PA"])
+    def test_alternate_signer_authorized_for_stat_eligible_category(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(
+            db_session, tenant_id, patient.id, order_category="MEDICATION",
+            priority="STAT", urgency_reason="Uncontrolled dyspnea",
+        )
+        order = svc.approve_order(
+            db_session, order=order, approved_by=TEST_USER_ID, approved_by_role=role,
+            alternate_signer_reason="Attending Physician unreachable; patient in acute distress.",
+        )
+        assert order.status == "APPROVED"
+        assert order.alternate_signer_reason
+
+    @pytest.mark.parametrize("role", ["NP", "PA"])
+    def test_alternate_signer_requires_reason(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(
+            db_session, tenant_id, patient.id, order_category="MEDICATION",
+            priority="STAT", urgency_reason="Uncontrolled dyspnea",
+        )
+        with pytest.raises(svc.PhysicianOrderError):
+            svc.approve_order(db_session, order=order, approved_by=TEST_USER_ID, approved_by_role=role)
+
+    @pytest.mark.parametrize("role", ["NP", "PA"])
+    def test_alternate_signer_rejected_for_routine_order(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(db_session, tenant_id, patient.id, order_category="MEDICATION", priority="ROUTINE")
+        with pytest.raises(svc.PhysicianOrderError):
+            svc.approve_order(
+                db_session, order=order, approved_by=TEST_USER_ID, approved_by_role=role,
+                alternate_signer_reason="Not actually urgent",
+            )
+
+    @pytest.mark.parametrize("category", ["LAB", "DIET", "OTHER"])
+    def test_alternate_signer_rejected_for_ineligible_category_even_if_stat(self, db_session, category):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(
+            db_session, tenant_id, patient.id, order_category=category,
+            priority="STAT", urgency_reason="Testing ineligible category",
+        )
+        with pytest.raises(svc.PhysicianOrderError):
+            svc.approve_order(
+                db_session, order=order, approved_by=TEST_USER_ID, approved_by_role="NP",
+                alternate_signer_reason="Attempting to sign an ineligible-category STAT order",
+            )
+
+    @pytest.mark.parametrize("role", ["ADMINISTRATOR", "DPCS", "RN", "LVN"])
+    def test_non_provider_roles_never_authorized_regardless_of_priority(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(
+            db_session, tenant_id, patient.id, order_category="MEDICATION",
+            priority="STAT", urgency_reason="Testing non-provider rejection",
+        )
+        with pytest.raises(svc.PhysicianOrderError):
+            svc.approve_order(db_session, order=order, approved_by=TEST_USER_ID, approved_by_role=role)
+
+    def test_signed_by_provider_role_recorded_for_primary_signer(self, db_session):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = self._submitted_order(db_session, tenant_id, patient.id)
+        order = svc.approve_order(
+            db_session, order=order, approved_by=TEST_USER_ID, approved_by_role="MEDICAL_DIRECTOR",
+        )
+        assert order.signed_by_provider_role == "MEDICAL_DIRECTOR"
+

@@ -6,7 +6,7 @@ These tests exist to prove the authority-separation model holds:
   - The physician-signature queue is split into three distinct authorities:
       * md_signatures_pending_oversight — view/monitor only (Administrator,
         DPCS, DPCS_ADMINISTRATOR, Clinical Supervisor, Compliance/QA).
-      * orders_requiring_my_signature — the actual credentialed signer
+      * orders_requiring_provider_signature — the actual credentialed signer
         (Medical Director, Attending Physician) only.
       * orders_requiring_clinical_follow_up — RN/LVN/DPCS/Clinical
         Supervisor coordination duty, never a signature action.
@@ -32,7 +32,7 @@ def _sample_queue() -> dict:
     return {
         "priority_1": [
             {"key": "md_signatures_pending_oversight", "label": "MD Signatures Pending", "value": 3, "tone": "red", "action_label": "Review Queue"},
-            {"key": "orders_requiring_my_signature", "label": "Orders Requiring My Signature", "value": 3, "tone": "red", "action_label": "Review and Sign"},
+            {"key": "orders_requiring_provider_signature", "label": "Orders Requiring My Signature", "value": 3, "tone": "red", "action_label": "Review and Sign"},
             {"key": "cti_due_missing", "label": "CTI Due / Missing", "value": 1, "tone": "red"},
             {"key": "hope_due", "label": "HOPE Due", "value": None, "tone": "red", "data_available": False},
             {"key": "qies_rejected", "label": "QIES Rejected", "value": None, "tone": "red", "data_available": False},
@@ -75,7 +75,7 @@ def test_administrator_monitors_but_cannot_sign():
     assert "admissions_pipeline" in keys
     assert "referrals" in keys
     assert "md_signatures_pending_oversight" in keys
-    assert "orders_requiring_my_signature" not in keys, (
+    assert "orders_requiring_provider_signature" not in keys, (
         "Administrator must never receive the actual signature widget."
     )
     # Administrator does not perform RN coordination follow-up.
@@ -89,7 +89,7 @@ def test_dpcs_monitors_but_cannot_sign():
     filtered = _filter_widgets_for_role(_sample_queue(), "DPCS")
     keys = _keys(filtered)
     assert "md_signatures_pending_oversight" in keys
-    assert "orders_requiring_my_signature" not in keys
+    assert "orders_requiring_provider_signature" not in keys
     assert "orders_requiring_clinical_follow_up" in keys
 
 
@@ -97,7 +97,7 @@ def test_rn_gets_follow_up_widget_not_signature_widgets():
     filtered = _filter_widgets_for_role(_sample_queue(), "RN")
     keys = _keys(filtered)
     assert "orders_requiring_clinical_follow_up" in keys
-    assert "orders_requiring_my_signature" not in keys, (
+    assert "orders_requiring_provider_signature" not in keys, (
         "RN must never see the physician signature-authority widget — "
         "coordinating an order is not the same authority as signing it."
     )
@@ -115,7 +115,7 @@ def test_lvn_gets_follow_up_widget_not_signature_widgets():
     filtered = _filter_widgets_for_role(_sample_queue(), "LVN")
     keys = _keys(filtered)
     assert "orders_requiring_clinical_follow_up" in keys
-    assert "orders_requiring_my_signature" not in keys
+    assert "orders_requiring_provider_signature" not in keys
     assert "md_signatures_pending_oversight" not in keys
 
 
@@ -125,7 +125,7 @@ def test_medical_director_sees_signature_widget_only():
     oversight-only widget or the RN/LVN coordination widget."""
     filtered = _filter_widgets_for_role(_sample_queue(), "MEDICAL_DIRECTOR")
     keys = _keys(filtered)
-    assert "orders_requiring_my_signature" in keys
+    assert "orders_requiring_provider_signature" in keys
     assert "md_signatures_pending_oversight" not in keys
     assert "orders_requiring_clinical_follow_up" not in keys
 
@@ -138,9 +138,23 @@ def test_attending_physician_sees_signature_widget_only():
     test covers widget-key authority only."""
     filtered = _filter_widgets_for_role(_sample_queue(), "ATTENDING_PHYSICIAN")
     keys = _keys(filtered)
-    assert "orders_requiring_my_signature" in keys
+    assert "orders_requiring_provider_signature" in keys
     assert "md_signatures_pending_oversight" not in keys
     assert "orders_requiring_clinical_follow_up" not in keys
+
+
+def test_np_and_pa_see_provider_signature_widget():
+    """Provider Signature Authority Model: NP/PA are alternate authorized
+    provider signers (STAT/URGENT eligible-category orders only — enforced
+    at the API/service layer, not here) and so are visible to this widget,
+    same as CTI/F2F's precedent that dashboard visibility != actual
+    per-order authorization."""
+    for role in ("NP", "PA"):
+        filtered = _filter_widgets_for_role(_sample_queue(), role)
+        keys = _keys(filtered)
+        assert "orders_requiring_provider_signature" in keys
+        assert "md_signatures_pending_oversight" not in keys
+        assert "orders_requiring_clinical_follow_up" not in keys
 
 
 def test_dpcs_administrator_is_union_of_dpcs_and_administrator():
@@ -163,7 +177,7 @@ def test_msw_and_chaplain_never_see_signature_or_agency_widgets():
     for role in ("SW", "CHAPLAIN"):
         keys = _keys(_filter_widgets_for_role(_sample_queue(), role))
         assert "md_signatures_pending_oversight" not in keys
-        assert "orders_requiring_my_signature" not in keys
+        assert "orders_requiring_provider_signature" not in keys
         assert "hope_due" not in keys
         assert "qies_rejected" not in keys
         assert "admissions_pipeline" not in keys
@@ -194,7 +208,7 @@ def test_compliance_officer_monitors_but_cannot_sign_or_coordinate():
         assert "rnica_incomplete" in keys
         assert "idg_blockers" in keys
         assert "md_signatures_pending_oversight" in keys
-        assert "orders_requiring_my_signature" not in keys, (
+        assert "orders_requiring_provider_signature" not in keys, (
             f"{role} monitors compliance but must never hold signature authority."
         )
         assert "orders_requiring_clinical_follow_up" not in keys, (
@@ -210,7 +224,7 @@ def test_intake_roles_see_pipeline_but_not_clinical_signature_widgets():
         assert "admissions_pipeline" in keys
         assert "referrals" in keys
         assert "md_signatures_pending_oversight" not in keys
-        assert "orders_requiring_my_signature" not in keys
+        assert "orders_requiring_provider_signature" not in keys
         assert "hope_due" not in keys
 
 

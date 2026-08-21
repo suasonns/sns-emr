@@ -38,7 +38,8 @@ from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/physician-orders", tags=["physician-orders"])
 
-# Any clinical role may draft/submit an order; only MD may approve.
+# Any clinical role may draft/submit an order; only an authorized provider
+# signer may approve.
 CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "Surveyor"]
 # "MD" is the legacy/live provider-discipline role. MEDICAL_DIRECTOR and
 # ATTENDING_PHYSICIAN are the newer canonical prescriber roles used by the
@@ -46,6 +47,16 @@ CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "Surveyor"]
 # are accepted here so a real prescriber is recognized either way, but
 # administrative rank (Administrator/DPCS) must NEVER satisfy this gate —
 # see the `allow_clinical_admin=False` on the approval endpoint below.
+#
+# Kept for backward compatibility (e.g. regression tests asserting
+# administrative rank never satisfies a signature gate). The live
+# `/approve` endpoint below now gates on
+# `svc.ORDER_ALL_SIGNER_ROLES` (Provider Signature Authority Model,
+# app/services/physician_order_service.py) — primary providers (this
+# list) plus alternate authorized provider signers (NP/PA) — with the
+# NP/PA STAT/URGENT-category eligibility check enforced inside
+# `svc.approve_order()` itself, since that's a per-order (not per-role)
+# authorization decision.
 MD_ONLY = ["MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"]
 
 
@@ -75,6 +86,10 @@ class OrderClinicalReview(BaseModel):
 
 class OrderApprove(BaseModel):
     signature_method: str = "ELECTRONIC"
+    # Required when the signer is an alternate authorized provider (NP/PA)
+    # signing a STAT/URGENT order in place of the primary provider — see
+    # svc.approve_order() / Provider Signature Authority Model.
+    alternate_signer_reason: str | None = None
 
 
 class OrderComplete(BaseModel):
@@ -121,6 +136,8 @@ def _serialize(order: PhysicianOrder, name_map: dict | None = None) -> dict:
         "entered_by_name": name_map.get(order.created_by),
         "signed_by_user_id": str(order.signed_by_user_id) if order.signed_by_user_id else None,
         "signed_by_name": name_map.get(order.signed_by_user_id),
+        "signed_by_provider_role": order.signed_by_provider_role,
+        "alternate_signer_reason": order.alternate_signer_reason,
         "signed_at": order.signed_at.isoformat() if order.signed_at else None,
         "signature_method": order.signature_method,
         "signature_event_id": str(order.signature_event_id) if order.signature_event_id else None,
@@ -319,21 +336,28 @@ def clinical_review_order(
     return _serialize(order, _user_name_map(db, _name_ids(order)))
 
 
-@router.post("/{order_id}/approve", summary="MD-only: approve and sign a pending physician order")
+@router.post("/{order_id}/approve", summary="Authorized provider signer: approve and sign a pending physician order")
 def approve_order(
     order_id: uuid.UUID,
     payload: OrderApprove,
     db: Session = Depends(get_db),
-    # allow_clinical_admin=False: Administrator/DPCS must never gain physician
-    # signature authority merely by rank. Only an actual prescriber role may
-    # sign — dashboard visibility of this queue is a separate concern.
-    user: CurrentUser = Depends(require_roles(MD_ONLY, allow_clinical_admin=False)),
+    # allow_clinical_admin=False: Administrator/DPCS must never gain
+    # provider signature authority merely by rank. Only an actual
+    # authorized provider signer role may sign — dashboard visibility of
+    # this queue is a separate concern. Primary providers (Attending
+    # Physician/Hospice Physician/Medical Director/Medical Director
+    # Designee/legacy "MD") may always sign; alternate authorized
+    # provider signers (NP/PA) pass this endpoint-level role gate but are
+    # further restricted to STAT/URGENT eligible-category orders inside
+    # svc.approve_order() (a per-order, not per-role, decision).
+    user: CurrentUser = Depends(require_roles(svc.ORDER_ALL_SIGNER_ROLES, allow_clinical_admin=False)),
 ):
     order = _get_order_or_404(db, order_id, user)
     try:
         order = svc.approve_order(
             db, order=order, approved_by=user.user_id, approved_by_role=user.role,
             signature_method=payload.signature_method,
+            alternate_signer_reason=payload.alternate_signer_reason,
         )
     except svc.PhysicianOrderError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

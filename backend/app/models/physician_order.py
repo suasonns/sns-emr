@@ -90,6 +90,18 @@ class PhysicianOrder(BaseModel):
     signature_method = Column(String(32), nullable=True)
     signature_event_id = Column(UUID(as_uuid=True), nullable=True)
 
+    # --- Provider Signature Authority Model (2026-08-21) ---
+    # The actual provider role/credential that signed THIS order — captured
+    # at signature time so the signer's tier (primary vs. alternate) is
+    # directly queryable on the record, not just inside the status-event
+    # audit trail. e.g. "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "NP", "PA".
+    signed_by_provider_role = Column(String(64), nullable=True)
+    # Required documentation when an alternate authorized provider (NP/PA)
+    # signs a STAT/URGENT order in place of the primary provider — captures
+    # why the alternate signer acted rather than the primary provider
+    # (e.g. "Attending Physician unreachable, patient in acute distress").
+    alternate_signer_reason = Column(Text, nullable=True)
+
     executed_at = Column(DateTime(timezone=True), nullable=True)
 
     # For VERBAL_PHONE orders executed by the nurse before MD countersignature

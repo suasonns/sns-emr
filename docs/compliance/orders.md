@@ -37,9 +37,11 @@ DRAFT
 (CANCELLED reachable from any non-terminal status; reason required)
 ```
 
-Only the Medical Director (MD) may approve orders (sign). This has not
-changed; Phase 1 adds lifecycle stages around that approval, it does not
-change who may sign.
+Order signature authority is **not** MD-only — see the "Provider Signature
+Authority Model" section below for the full Primary/Alternate signer
+tiering. Phase 1 added lifecycle stages around approval; the Provider
+Signature Authority Model (below) is what changed who may sign and under
+what conditions.
 
 ### Conditional Clinical Review ("Path A" vs "Path B")
 
@@ -108,15 +110,101 @@ Orders missing any required field **cannot** be approved.
 
 ## MD Approval Rules
 
-- MD authentication required
+- Approval requires an authorized provider signer per the Provider
+  Signature Authority Model (see below) — no longer MD-only.
 - Approval recorded via:
   - signed_by_user_id
+  - signed_by_provider_role (NEW — the actual signer's provider role/credential)
   - signed_at
   - signature_method
   - signature_event_id
+  - alternate_signer_reason (NEW — required when an alternate authorized
+    provider signer, NP/PA, signs)
 - Approval transitions status to APPROVED
 
-RN/LVN/NP/PA **cannot** approve orders.
+Administrator, DPCS, and any non-provider role **cannot** approve orders,
+regardless of rank (`allow_clinical_admin=False`).
+
+---
+
+## Provider Signature Authority Model (owner directive 2026-08-21)
+
+SNS does not ask "is this a physician?". It asks "is this provider
+authorized to sign THIS document under THIS workflow?" Signature
+authority is evaluated by document type, provider credential, agency
+policy, workflow type, order type, and urgency — never a flat role
+equivalence.
+
+### Primary Signers (may sign any order, any priority/category)
+
+Routed to in this precedence order when a specific physician is sought:
+
+1. Attending Physician
+2. Hospice Physician
+3. Medical Director
+4. Medical Director Designee
+
+The legacy `"MD"` provider-discipline literal is also accepted as a
+primary signer for backward compatibility with orders/accounts predating
+this model.
+
+### Alternate Authorized Provider Signers (conditional)
+
+- Nurse Practitioner (NP)
+- Physician Assistant (PA)
+
+NP/PA may sign an order **only** when both are true:
+
+- `priority` is `STAT` or `URGENT` (the workflow must never delay patient
+  care — oxygen, comfort medications, DME, hospital bed, supplies, symptom
+  management, immediate treatment changes — while attempting to reach a
+  specific physician), **and**
+- `order_category` is one of `MEDICATION`, `DME`, `SUPPLY`, `TREATMENT`.
+
+NP/PA can never sign a `ROUTINE` order, and never a `LAB`/`DIET`/`OTHER`
+category order regardless of urgency.
+
+Every alternate-signer use **requires** a recorded `alternate_signer_reason`
+documenting why the alternate signer acted instead of the primary
+provider. This is enforced at the service layer
+(`physician_order_service.approve_order()`) — omitting it raises a
+validation error and the order cannot be signed.
+
+### Enforcement layer
+
+`is_authorized_order_signer(role, priority=..., order_category=...)` in
+`app/services/physician_order_service.py` is the single source of truth
+for this decision. The `POST /physician-orders/{id}/approve` endpoint
+gates on the union of primary + alternate roles
+(`svc.ORDER_ALL_SIGNER_ROLES`, `allow_clinical_admin=False`); the
+STAT/URGENT-category restriction on NP/PA is enforced inside
+`approve_order()` itself, since it is a per-order (not per-role) decision.
+
+### Dashboard widget
+
+The signature queue widget key is `orders_requiring_provider_signature`
+(renamed from `orders_requiring_my_signature`) — visible to Medical
+Director, Attending Physician, Hospice Physician, NP, and PA. Dashboard
+*visibility* of this widget does not by itself grant signing capability;
+the API/service layer above is the actual enforcement point, exactly as
+with the CTI/F2F oversight-vs-authority separation.
+
+### Audit requirements
+
+Every provider signature captures: user ID, provider ID
+(`signed_by_user_id`), provider type/credential (`signed_by_provider_role`),
+date/time (`signed_at`), document version (`signature_event_id`), and — for
+alternate signers — the reason (`alternate_signer_reason`). This is in
+addition to the generic `audit_log` entry and the immutable
+`physician_order_status_events` row for the same transition.
+
+### Document-specific authority (not shared across workflows)
+
+CTI, F2F, and Physician Orders each define **independent** signer-role
+rules for their own document type — there is no single generic
+"provider authority engine." A provider authorized to sign a physician
+order is not automatically authorized to certify a CTI or perform an F2F
+encounter; see `docs/compliance/cti.md` and `docs/compliance/f2f.md`.
 
 ---
 
@@ -159,7 +247,10 @@ All answers are traceable in the database.
 
 ## Prohibited Actions
 
-- Approving an order without MD role
+- Approving an order without an authorized provider signer role (see
+  Provider Signature Authority Model)
+- NP/PA signing a ROUTINE order, or a non-eligible-category order, or
+  without a recorded alternate_signer_reason
 - Approving without order_text
 - Approving without prescriber authentication
 - Bypassing task creation or completion
