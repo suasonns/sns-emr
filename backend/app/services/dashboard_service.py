@@ -12,15 +12,19 @@ from sqlalchemy.orm import Session
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
 from app.models.patient import Patient
+from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.physician_order import PhysicianOrder
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.task import Task
+from app.models.admission import Admission
+from app.models.plan_of_care import PlanOfCare
 from app.models.user import User
 from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
 from app.services.clinical_note_validation_engine import get_note_validation_flags
 from app.core.names import person_name_expression
+from app.core.roles import normalize_role
 
 
 # =========================================================
@@ -117,6 +121,7 @@ class DashboardResponse:
     blocked_patients: list[dict[str, Any]]
     unsigned_orders: list[dict[str, Any]]
     all_orders: list[dict[str, Any]]
+    compliance_queue: dict[str, Any]
 
 
 # =========================================================
@@ -127,6 +132,8 @@ def get_clinical_compliance_dashboard(
     db: Session,
     *,
     tenant_id: UUID,
+    role: str | None = None,
+    user_id: UUID | None = None,
 ) -> dict[str, Any]:
     tasks = _load_tenant_tasks(db, tenant_id)
     notes = _load_tenant_notes(db, tenant_id)
@@ -195,6 +202,16 @@ def get_clinical_compliance_dashboard(
         for incident in pending_incidents
     )
 
+    compliance_queue = _build_compliance_queue(
+        db,
+        tenant_id=tenant_id,
+        open_tasks=open_tasks,
+        unsigned_orders=unsigned_orders,
+        blocked_patients=blocked_patients,
+        role=role,
+        user_id=user_id,
+    )
+
     response = DashboardResponse(
         metrics=[asdict(metric) for metric in metrics],
         task_type_counts={
@@ -211,6 +228,7 @@ def get_clinical_compliance_dashboard(
         blocked_patients=[asdict(item) for item in blocked_patients],
         unsigned_orders=[asdict(item) for item in unsigned_orders],
         all_orders=[asdict(item) for item in all_orders],
+        compliance_queue=compliance_queue,
     )
 
     return asdict(response)
@@ -681,6 +699,301 @@ def get_billing_dashboard(
 # LOADERS
 # =========================================================
 
+# =========================================================
+# COMPLIANCE ACTION QUEUE (real data only — no placeholder counts)
+# =========================================================
+
+CTI_TASK_TYPES = {"CERTIFICATION", "RECERTIFICATION"}
+CARE_PLAN_TASK_TYPES = {
+    "POC_REVIEW_REQUIRED",
+    "POC_STALE_REVIEW",
+    "POC_NONCOMPLIANT_STRUCTURE",
+    "POC_PHYSICIAN_REVIEW_REQUIRED",
+}
+ADMISSION_PIPELINE_STATUSES = [
+    "REFERRAL",
+    "POTENTIAL_ADMISSION",
+    "ADMISSION_SCHEDULED",
+    "TRANSFER_PENDING",
+    "SOC_IN_PROGRESS",
+]
+
+# ---------------------------------------------------------------
+# WIDGET VISIBILITY ENGINE
+#
+# The dashboard is not one universal view — each widget declares which
+# canonical roles (see app.core.roles) may see it, and field-clinician
+# roles are additionally scoped down to only their own assigned patients
+# rather than the whole tenant.
+#
+# Authority separation: seeing a problem, coordinating it, correcting it,
+# signing it, and monitoring agency-wide compliance are distinct
+# authorities and are modeled as distinct widget keys rather than one
+# widget with multiple audiences:
+#   - md_signatures_pending: physician / medical-director signature
+#     authority (plus agency oversight) — this is the provider's
+#     regulatory signature backlog, not a to-do list for RN/LVN staff.
+#   - orders_requiring_clinical_action: the RN/LVN's coordination duty
+#     for the same underlying orders — they can follow up and prep the
+#     order, but they cannot discharge the physician's signature
+#     obligation, so this is a separate key even though it draws on the
+#     same order queue.
+# ---------------------------------------------------------------
+
+WIDGET_VISIBILITY: dict[str, set[str]] = {
+    "md_signatures_pending": {
+        "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
+        "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
+    },
+    "orders_requiring_clinical_action": {"RN", "LVN", "CLINICAL_SUPERVISOR"},
+    "cti_due_missing": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    "f2f_due_missing": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "RN"},
+    "hope_due": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"},
+    "qies_rejected": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"},
+    "rnica_incomplete": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN"},
+    "unsigned_visit_notes": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN", "LVN"},
+    "missing_care_plans": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN"},
+    "idg_blockers": {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR", "RN", "SW", "CHAPLAIN"},
+    "admissions_pipeline": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    "referrals": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+}
+
+# Field-clinician roles only ever see figures scoped to patients assigned to
+# them — never agency-wide totals — per the platform's role-visibility model.
+FIELD_CLINICIAN_ROLES = {"RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA"}
+
+# Every canonical role the widget-visibility engine has deliberately
+# considered — including roles whose widget set is intentionally empty
+# (e.g. VOLUNTEER_COORDINATOR/CHHA have no compliance_queue widget yet).
+# Anything NOT in this set is denied by default (returns no widgets) rather
+# than silently falling back to full/unfiltered visibility — an unknown or
+# unmapped role must never receive protected compliance data.
+CANONICAL_DASHBOARD_ROLES = {
+    "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
+    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN",
+    "RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA",
+    "INTAKE_MANAGER", "INTAKE_COORDINATOR",
+}
+
+
+def _assigned_patient_ids(db: Session, *, tenant_id: UUID, user_id: UUID) -> set[UUID]:
+    """Patients in scope for this user's field-clinician widgets: the union
+    of (a) active PatientAssignment rows and (b) patients with a Task
+    directly assigned to this user — either relationship is sufficient
+    grounds for the user to act on that patient's record."""
+    assignment_rows = (
+        db.query(PatientAssignment.patient_id)
+        .filter(PatientAssignment.tenant_id == tenant_id)
+        .filter(PatientAssignment.user_id == user_id)
+        .filter(PatientAssignment.active.is_(True))
+        .all()
+    )
+    task_rows = (
+        db.query(Task.patient_id)
+        .filter(Task.tenant_id == tenant_id)
+        .filter(Task.assigned_user_id == user_id)
+        .filter(Task.patient_id.isnot(None))
+        .all()
+    )
+    return {row[0] for row in assignment_rows} | {row[0] for row in task_rows}
+
+
+def _filter_widgets_for_role(queue: dict[str, list[dict[str, Any]]], role: str | None) -> dict[str, list[dict[str, Any]]]:
+    """Deny by default: a role must be explicitly present in
+    CANONICAL_DASHBOARD_ROLES and in a widget's WIDGET_VISIBILITY set to see
+    that widget. An unmapped/unknown role receives no compliance widgets."""
+    normalized = normalize_role(role)
+    if not normalized or normalized not in CANONICAL_DASHBOARD_ROLES:
+        return {priority_key: [] for priority_key in queue}
+
+    filtered: dict[str, list[dict[str, Any]]] = {}
+    for priority_key, items in queue.items():
+        filtered[priority_key] = [
+            item for item in items
+            if normalized in WIDGET_VISIBILITY.get(item["key"], set())
+        ]
+    return filtered
+
+
+def _build_compliance_queue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    open_tasks: list[Task],
+    unsigned_orders: list[DashboardOrderItem],
+    blocked_patients: list[DashboardPatientBlocker],
+    role: str | None = None,
+    user_id: UUID | None = None,
+) -> dict[str, Any]:
+    """Real, query-backed counts for the dashboard action queue. Every value
+    here is derived directly from live rows (tasks/orders/assessments/notes/
+    admissions) — nothing is estimated or hardcoded, since these are
+    clinical/regulatory compliance figures."""
+
+    normalized_role = normalize_role(role)
+    is_field_scoped = normalized_role in FIELD_CLINICIAN_ROLES and user_id is not None
+    scope_patient_ids: set[UUID] | None = None
+    if is_field_scoped:
+        scope_patient_ids = _assigned_patient_ids(db, tenant_id=tenant_id, user_id=user_id)
+
+    def _in_scope(patient_id: Any) -> bool:
+        if scope_patient_ids is None:
+            return True
+        try:
+            pid = UUID(str(patient_id)) if patient_id is not None else None
+        except (ValueError, TypeError):
+            pid = patient_id
+        return pid in scope_patient_ids
+
+    cti_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() in CTI_TASK_TYPES
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    f2f_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() == "F2F"
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    care_plan_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() in CARE_PLAN_TASK_TYPES
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    scoped_unsigned_orders = [
+        order for order in unsigned_orders if _in_scope(getattr(order, "patient_id", None))
+    ]
+    scoped_blocked_patients = [
+        blocker for blocker in blocked_patients if _in_scope(getattr(blocker, "patient_id", None))
+    ]
+
+    rnica_query = (
+        db.query(RnicaAssessment)
+        .filter(RnicaAssessment.tenant_id == tenant_id)
+        .filter(RnicaAssessment.locked.is_(False))
+    )
+    if scope_patient_ids is not None:
+        rnica_query = rnica_query.filter(RnicaAssessment.patient_id.in_(scope_patient_ids))
+    rnica_incomplete_count = _safe_count(db, rnica_query)
+
+    notes_query = (
+        db.query(ClinicalNote)
+        .filter(ClinicalNote.tenant_id == tenant_id)
+        .filter(ClinicalNote.status == "FINALIZED")
+        .filter(ClinicalNote.signed_at.is_(None))
+    )
+    if scope_patient_ids is not None:
+        notes_query = notes_query.filter(ClinicalNote.patient_id.in_(scope_patient_ids))
+    unsigned_notes_count = _safe_count(db, notes_query)
+
+    admission_status_counts = Counter(
+        _enumish(getattr(admission, "status", None)).upper()
+        for admission in (
+            db.query(Admission).filter(Admission.tenant_id == tenant_id).all()
+        )
+    )
+    admissions_pipeline = [
+        {"status": status, "count": admission_status_counts.get(status, 0)}
+        for status in ADMISSION_PIPELINE_STATUSES
+    ]
+    referrals_count = admission_status_counts.get("REFERRAL", 0)
+
+    priority_1 = [
+        {
+            "key": "md_signatures_pending",
+            "label": "MD Signatures Pending",
+            "value": len(scoped_unsigned_orders),
+            "tone": "red",
+        },
+        {
+            "key": "cti_due_missing",
+            "label": "CTI Due / Missing",
+            "value": len(cti_tasks),
+            "tone": "red",
+        },
+        {
+            "key": "f2f_due_missing",
+            "label": "F2F Due / Missing",
+            "value": len(f2f_tasks),
+            "tone": "red",
+        },
+        {
+            "key": "hope_due",
+            "label": "HOPE Due",
+            "value": None,
+            "tone": "red",
+            "data_available": False,
+            "note": "Not yet tracked — no HOPE assessment data source is wired up.",
+        },
+        {
+            "key": "qies_rejected",
+            "label": "QIES Rejected",
+            "value": None,
+            "tone": "red",
+            "data_available": False,
+            "note": "Not yet tracked — no QIES submission data source is wired up.",
+        },
+    ]
+
+    priority_2 = [
+        {
+            "key": "orders_requiring_clinical_action",
+            "label": "Orders Requiring Clinical Action",
+            "value": len(scoped_unsigned_orders),
+            "tone": "orange",
+        },
+        {
+            "key": "rnica_incomplete",
+            "label": "RNICA Incomplete",
+            "value": rnica_incomplete_count,
+            "tone": "orange",
+        },
+        {
+            "key": "unsigned_visit_notes",
+            "label": "Unsigned Visit Notes",
+            "value": unsigned_notes_count,
+            "tone": "orange",
+        },
+        {
+            "key": "missing_care_plans",
+            "label": "Missing Care Plans",
+            "value": len(care_plan_tasks),
+            "tone": "orange",
+        },
+        {
+            "key": "idg_blockers",
+            "label": "IDG Blockers",
+            "value": len(scoped_blocked_patients),
+            "tone": "orange",
+        },
+    ]
+
+    priority_3 = [
+        {
+            "key": "admissions_pipeline",
+            "label": "Admissions Pipeline",
+            "value": sum(item["count"] for item in admissions_pipeline),
+            "tone": "blue",
+            "breakdown": admissions_pipeline,
+        },
+        {
+            "key": "referrals",
+            "label": "Referrals",
+            "value": referrals_count,
+            "tone": "blue",
+        },
+    ]
+
+    return _filter_widgets_for_role(
+        {
+            "priority_1": priority_1,
+            "priority_2": priority_2,
+            "priority_3": priority_3,
+        },
+        role,
+    )
+
+
 def _load_tenant_tasks(db: Session, tenant_id: UUID) -> list[Task]:
     return (
         db.query(Task)
@@ -837,6 +1150,15 @@ def _safe_scalar(
         # rolling back here, every subsequent query on this session (e.g. the
         # tenant_rows query right after this call in get_owner_dashboard)
         # would also fail with "current transaction is aborted".
+        db.rollback()
+        return 0
+
+
+def _safe_count(db: Session, query) -> int:
+    """Like _safe_scalar but for an ORM Query object — calls .count() safely."""
+    try:
+        return query.count()
+    except SQLAlchemyError:
         db.rollback()
         return 0
 

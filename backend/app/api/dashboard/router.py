@@ -84,7 +84,12 @@ def tenant_dashboard(
         "ai_enabled": bool(getattr(tenant, "ai_enabled", False)),
         "billing_enabled": bool(getattr(tenant, "billing_enabled", False)),
         "user_session_reference": getattr(user, "user_session_reference", None),
-        "dashboard": get_clinical_compliance_dashboard(db=db, tenant_id=user.tenant_id),
+        "dashboard": get_clinical_compliance_dashboard(
+            db=db,
+            tenant_id=user.tenant_id,
+            role=getattr(user, "role", None),
+            user_id=getattr(user, "user_id", None),
+        ),
     }
 
 

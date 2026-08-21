@@ -73,6 +73,12 @@ export default function PatientContextSidebar({
       style={{
         width: 290,
         minWidth: 290,
+        flexShrink: 0,
+        position: "sticky",
+        top: 0,
+        alignSelf: "flex-start",
+        height: "100vh",
+        overflowY: "auto",
         background: "linear-gradient(180deg, var(--sns-bg) 0%, var(--sns-card) 100%)",
         borderRight: `1px solid ${palette.line}`,
         borderTop: `1px solid ${palette.line}`,
@@ -80,6 +86,33 @@ export default function PatientContextSidebar({
         boxShadow: "inset -1px 0 0 rgba(15, 23, 42, 0.04)",
       }}
     >
+      <div
+        style={{
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 14,
+          paddingBottom: 12,
+          borderBottom: `1px solid ${palette.line}`,
+        }}
+      >
+        <img
+          src="/brand/sns-logo-icon.svg"
+          alt="SNS Hospice Solutions logo"
+          style={{ width: 38, height: 38, minWidth: 32, minHeight: 32, flexShrink: 0, display: "block" }}
+        />
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 11.5, fontWeight: 800, lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <span style={{ color: "var(--sns-white)" }}>SNS </span>
+            <span style={{ color: "var(--sns-teal)" }}>Hospice Solutions</span>
+          </p>
+          <p style={{ margin: "2px 0 0", fontSize: 8, fontWeight: 700, color: "var(--sns-muted)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+            Secure Clinical System
+          </p>
+        </div>
+      </div>
+
       <div
         style={{
           background: "linear-gradient(135deg, var(--sns-card) 0%, var(--sns-bgAlt) 50%, var(--sns-teal) 100%)",

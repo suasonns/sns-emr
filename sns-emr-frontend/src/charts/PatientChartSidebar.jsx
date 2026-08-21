@@ -125,6 +125,23 @@ const PatientChartSidebar = ({ activeSection = 'facesheet', onNavigate, patient 
 
   return (
     <div style={{ width: 'clamp(200px, 21vw, 240px)', minWidth: 180, maxWidth: '28vw', height: '100vh', backgroundColor: COLORS.bg, borderRight: `1px solid ${COLORS.border}`, display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 10px', borderBottom: `1px solid ${COLORS.border}`, backgroundColor: COLORS.card }}>
+        <img
+          src="/brand/sns-logo-icon.svg"
+          alt="SNS Hospice Solutions logo"
+          style={{ width: 38, height: 38, minWidth: 32, minHeight: 32, flexShrink: 0, display: 'block' }}
+        />
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: 11.5, fontWeight: 800, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span style={{ color: COLORS.white }}>SNS </span>
+            <span style={{ color: COLORS.teal }}>Hospice Solutions</span>
+          </p>
+          <p style={{ margin: '2px 0 0', fontSize: 8, fontWeight: 700, color: COLORS.label, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            Secure Clinical System
+          </p>
+        </div>
+      </div>
+
       <div style={{ padding: '10px 10px 8px', borderBottom: `1px solid ${COLORS.border}`, backgroundColor: COLORS.soft }}>
         <button
           onClick={() => navigate('/portal')}

@@ -106,19 +106,32 @@ export default function TenantDashboard() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', width: '100%', maxWidth: '100vw', background: COLORS.bg, fontFamily: 'Inter, sans-serif', overflowX: 'hidden' }}>
       <div style={{ width: 220, flexShrink: 0, background: COLORS.card, borderRight: `1px solid ${COLORS.border}`, padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '0 20px', marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img
-              src="/brand/sns-logo-light.svg"
-              alt="SNS logo"
-              onError={(event) => {
-                const target = event.currentTarget;
-                if (!target.src.endsWith('/brand/sns-logo-icon.svg')) {
-                  target.src = '/brand/sns-logo-icon.svg';
-                }
-              }}
-              style={{ width: 220, height: 'auto', display: 'block' }}
-            />
+        <div
+          style={{
+            flexShrink: 0,
+            padding: '4px 16px 20px',
+            marginBottom: 12,
+            borderBottom: `1px solid ${COLORS.border}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            gap: 10,
+          }}
+        >
+          <img
+            src="/brand/sns-logo-icon.svg"
+            alt="SNS Hospice Solutions logo"
+            style={{ width: 68, height: 68, minWidth: 56, minHeight: 56, flexShrink: 0, display: 'block' }}
+          />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 15.5, fontWeight: 800, letterSpacing: '0.01em', lineHeight: 1.3 }}>
+              <span style={{ color: COLORS.white }}>SNS </span>
+              <span style={{ color: COLORS.teal }}>Hospice Solutions</span>
+            </p>
+            <p style={{ margin: '4px 0 0', fontSize: 10.5, fontWeight: 600, color: COLORS.dim, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              Secure Clinical System
+            </p>
           </div>
         </div>
 
