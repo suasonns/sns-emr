@@ -360,6 +360,12 @@ def approve_order(
             alternate_signer_reason=payload.alternate_signer_reason,
         )
     except svc.PhysicianOrderError as exc:
+        log_event(
+            db=db, tenant_id=str(user.tenant_id),
+            user_id=user.user_id, role=user.role, action="PROVIDER_SIGNATURE_ACCESS_DENIED",
+            entity_type="physician_order", entity_id=str(order.id),
+            metadata={"reason": str(exc)},
+        )
         raise HTTPException(status_code=422, detail=str(exc))
 
     log_event(
@@ -367,6 +373,16 @@ def approve_order(
         user_id=user.user_id, role=user.role, action="APPROVE_PHYSICIAN_ORDER",
         entity_type="physician_order", entity_id=str(order.id),
         metadata={"signature_event_id": str(order.signature_event_id)},
+    )
+    # Physician Identity Mapping audit trail: this signature was only
+    # reachable because _get_order_or_404() -> get_authorized_patient()
+    # already confirmed an ACTIVE verified physician_id linkage for this
+    # signer-tier role — record that explicitly for survey evidence.
+    log_event(
+        db=db, tenant_id=str(user.tenant_id),
+        user_id=user.user_id, role=user.role, action="PROVIDER_SIGNATURE_ACCESS_GRANTED",
+        entity_type="physician_order", entity_id=str(order.id),
+        metadata={"signed_by_provider_role": order.signed_by_provider_role},
     )
     db.commit()
     return _serialize(order, _user_name_map(db, _name_ids(order)))

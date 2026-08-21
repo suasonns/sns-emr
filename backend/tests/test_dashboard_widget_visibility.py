@@ -132,10 +132,11 @@ def test_medical_director_sees_signature_widget_only():
 
 def test_attending_physician_sees_signature_widget_only():
     """Acceptance test 5: Attending Physician sees only the signature
-    widget (not oversight or coordination). NOTE: true per-patient scoping
-    to the physician's own patients is not yet implemented — see
-    SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED in dashboard_service.py — this
-    test covers widget-key authority only."""
+    widget (not oversight or coordination). Per-patient scoping to the
+    physician's own patients is enforced separately via Physician Identity
+    Mapping (physician_identity_service.py / SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED
+    in dashboard_service.py, now False) — this test covers widget-key
+    authority only."""
     filtered = _filter_widgets_for_role(_sample_queue(), "ATTENDING_PHYSICIAN")
     keys = _keys(filtered)
     assert "orders_requiring_provider_signature" in keys

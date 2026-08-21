@@ -81,6 +81,9 @@ from app.api.lab_catalog import router as lab_catalog_router
 # PHYSICIAN ORDERS (MD-approval-gated compliant order workflow)
 from app.api.physician_orders import router as physician_orders_router
 
+# PHYSICIAN IDENTITY MAPPING (admin User-to-Physician linkage)
+from app.api.physician_identity import router as physician_identity_router
+
 # EXTERNAL
 from app.api.coverage import router as coverage_router
 from app.api.external_substances import router as external_substances_router
@@ -204,6 +207,7 @@ def register_routers(app: FastAPI) -> None:
         fax_router,
         lab_catalog_router,
         physician_orders_router,
+        physician_identity_router,
     ]
 
     for router in tenant_routes:

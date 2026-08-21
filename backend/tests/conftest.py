@@ -101,6 +101,18 @@ def db_session():
 
     tenant_id = _test_tenant_id()
 
+    # Physician Identity Mapping (owner directive 2026-08-21) added
+    # users.physician_id -> physicians.id. "users" is retained across tests
+    # (see _RETAINED below) but "physicians" is not, so any lingering link
+    # from a prior test would block deleting physicians here. Clear it first.
+    session.execute(
+        text(
+            "UPDATE users SET physician_id = NULL WHERE tenant_id = :tenant_id"
+        ),
+        {"tenant_id": uuid.UUID(tenant_id)},
+    )
+    session.commit()
+
     # Delete child rows before parents; the generated schema enforces the FKs
     # that the old hand-built database did not.
     _RETAINED = {"tenants", "users", "roles", "interfaces"}

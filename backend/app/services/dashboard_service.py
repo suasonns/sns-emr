@@ -26,6 +26,7 @@ from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
 from app.services.clinical_note_validation_engine import get_note_validation_flags
 from app.services.certification_service import CTI_SIGNER_ROLES
+from app.services import physician_identity_service
 from app.core.names import person_name_expression
 from app.core.roles import normalize_role
 
@@ -750,14 +751,12 @@ ADMISSION_PIPELINE_STATUSES = [
 #     Director Designee, plus alternate authorized provider signers NP/PA
 #     for STAT/URGENT eligible-category orders — see Provider Signature
 #     Authority Model in app/services/physician_order_service.py) — action
-#     label "Review and Sign". NOTE: true per-patient scoping for Attending
-#     Physician ("only orders linked to their own authorized patients") is
-#     not yet representable in the data model — there is no user_id linkage
-#     from a physician login account to either PatientPhysicianAssignment or
-#     PhysicianOrder — so this widget is currently agency-wide for all roles
-#     in its visibility set. A schema addition (physician-user linkage) is
-#     required before that scoping can be implemented; see
-#     SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED note below.
+#     label "Review and Sign". Per-patient scoping is now enforced via
+#     Physician Identity Mapping (see SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED
+#     note below): an unverified provider-identity account sees zero orders;
+#     a verified Medical Director/Designee (or legacy "MD") sees tenant-wide;
+#     a verified Attending Physician/Hospice Physician/NP/PA sees only orders
+#     for their own PatientAssignment-scoped patients.
 #   - orders_requiring_clinical_follow_up (renamed from
 #     orders_requiring_clinical_action): the RN/LVN/DPCS/Clinical
 #     Supervisor's coordination duty for the same underlying orders — they
@@ -765,13 +764,22 @@ ADMISSION_PIPELINE_STATUSES = [
 #     physician's signature obligation. Action label "Open Follow-up".
 # ---------------------------------------------------------------
 
-# True per-physician patient-scoping (Attending Physician sees only their
-# own patients' orders) requires a physician-to-user_id link that does not
-# exist yet in PatientPhysicianAssignment/Physician/PhysicianOrder. Until
-# that schema work lands, orders_requiring_provider_signature is
-# agency-wide for any role in this set rather than falsely appearing
-# patient-scoped.
-SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED = True
+# Physician Identity Mapping (owner directive 2026-08-21) closed the gap
+# this flag used to document: orders_requiring_provider_signature (and the
+# rest of _build_compliance_queue's provider-role-scoped widgets) are now
+# scoped via physician_identity_service.authorized_patient_ids_for_provider()
+# — fail-closed for an unverified provider-identity account, tenant-wide for
+# a verified Medical Director/Designee, assigned-patient-only for a verified
+# Attending Physician/Hospice Physician/NP/PA. Kept as False (rather than
+# deleting the flag/name) so any code or docs still checking it fail loudly
+# instead of silently assuming the old agency-wide behavior.
+#
+# Residual gap (not yet covered by this pass): CTI and F2F have their own
+# separate signer/performer models (certification_service.py, f2f_service.py)
+# that are not yet integrated with this same physician_id linkage for
+# patient-level dashboard scoping — CTI/F2F dashboard widgets remain
+# agency-wide for their respective roles until that follow-up work lands.
+SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED = False
 
 # "Compliance" oversight roles (QA_ROLES from app.core.roles): read-only
 # agency-wide monitoring, per CMS/CDPH survey-readiness and documentation
@@ -917,9 +925,26 @@ def _build_compliance_queue(
 
     normalized_role = normalize_role(role)
     is_field_scoped = normalized_role in FIELD_CLINICIAN_ROLES and user_id is not None
+    is_provider_scoped = physician_identity_service.is_provider_identity_role(normalized_role) and user_id is not None
     scope_patient_ids: set[UUID] | None = None
     if is_field_scoped:
         scope_patient_ids = _assigned_patient_ids(db, tenant_id=tenant_id, user_id=user_id)
+    elif is_provider_scoped:
+        # Physician Identity Mapping (owner directive 2026-08-21): fail-closed.
+        # A provider-identity role (MD/MEDICAL_DIRECTOR/MEDICAL_DIRECTOR_DESIGNEE/
+        # ATTENDING_PHYSICIAN/HOSPICE_PHYSICIAN/NP/PA) NEVER gets agency-wide
+        # visibility from its role label alone. None here means "verified
+        # tenant-wide oversight" (Medical Director/Designee, once linked);
+        # an empty set means "deny — no verified linkage yet"; anything
+        # else is the assigned-patient scope for a verified Attending
+        # Physician/Hospice Physician/NP/PA. See
+        # app/services/physician_identity_service.py.
+        db_user = db.query(User).filter(User.id == user_id).first()
+        scope_patient_ids = (
+            physician_identity_service.authorized_patient_ids_for_provider(db, tenant_id=tenant_id, user=db_user)
+            if db_user is not None
+            else set()
+        )
 
     def _in_scope(patient_id: Any) -> bool:
         if scope_patient_ids is None:
