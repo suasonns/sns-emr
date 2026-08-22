@@ -398,7 +398,7 @@ const INITIAL_FORM = {
 
   // ─── 5. DIAGNOSES ──────────────────────────────────
   diagnoses: {
-    primaryDiagnosis: { icd10: "", description: "", onsetDate: "" },
+    primaryDiagnosis: { icd10: "", description: "", onsetDate: "", hopeDiagnosisCategory: "" },
     secondaryDiagnoses: [],
     comorbidities: [],
     terminalPrognosis: "",
@@ -894,6 +894,9 @@ function validateRNICA(formData, mode = "ica") {
     // Diagnoses ? I0010
     if (!formData.diagnoses.primaryDiagnosis.icd10) {
       errors["diagnoses.primaryDiagnosis"] = "HOPE I0010: Primary diagnosis ICD-10 required";
+    }
+    if (!formData.diagnoses.primaryDiagnosis.hopeDiagnosisCategory) {
+      errors["diagnoses.primaryDiagnosis.hopeDiagnosisCategory"] = "HOPE I0010: Principal diagnosis category required";
     }
 
     // Performance Status ? M1190
@@ -5049,9 +5052,21 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Primary Diagnosis", hopeCode: "I0010", fields: [
-          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true, hopeCode: "I0010" },
+          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true },
           { type: "input", label: "Description", path: "primaryDiagnosis.description", required: true },
           { type: "input", label: "Onset Date", path: "primaryDiagnosis.onsetDate", inputType: "date" },
+          { type: "select", label: "HOPE Principal Diagnosis Category (I0010)", path: "primaryDiagnosis.hopeDiagnosisCategory", required: true, hopeCode: "I0010", options: [
+            { value: "01", label: "01 — Cancer" },
+            { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
+            { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
+            { value: "04", label: "04 — Stroke" },
+            { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
+            { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
+            { value: "07", label: "07 — Heart Failure" },
+            { value: "08", label: "08 — Liver Disease" },
+            { value: "09", label: "09 — Renal Disease" },
+            { value: "99", label: "99 — None of the above" },
+          ] },
         ],
       },
       {

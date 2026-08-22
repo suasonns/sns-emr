@@ -430,3 +430,53 @@ describe("mapRnIcaToHopeReport — A1905 Living Arrangements", () => {
     expect(responseCode(report, "A1905")).toBe(PLACEHOLDER);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Priority 3 — I0010 Principal Diagnosis now exports the official CMS
+// diagnosis category code (01-09, 99), additive alongside the existing
+// free-text ICD-10 diagnosis field (kept as supporting detail).
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("mapRnIcaToHopeReport — I0010 Principal Diagnosis category", () => {
+  it.each([
+    ["01", "Cancer"],
+    ["02", "Dementia (including Alzheimer's disease)"],
+    ["03", "Neurological Condition (e.g., Parkinson's disease, multiple sclerosis, ALS)"],
+    ["04", "Stroke"],
+    ["05", "Chronic Obstructive Pulmonary Disease (COPD)"],
+    ["06", "Cardiovascular (excluding heart failure)"],
+    ["07", "Heart Failure"],
+    ["08", "Liver Disease"],
+    ["09", "Renal Disease"],
+    ["99", "None of the above"],
+  ])("category code %s exports with its official description", (code, description) => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01", hopeDiagnosisCategory: code },
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "I0010")).toBe(code);
+    expect(responseDescription(report, "I0010")).toBe(description);
+  });
+
+  it("keeps the ICD-10 code + description as a separate supporting detail entry, not the primary response", () => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01", hopeDiagnosisCategory: "01" },
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "I0010");
+    expect(item.entries).toHaveLength(2);
+    expect(item.entries[1].value).toBe("C50.911 - Malignant neoplasm");
+  });
+
+  it("is not a valid official code when the category field is empty (legacy records predating this field)", () => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01" },
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "I0010")).toBe(PLACEHOLDER);
+  });
+});
+

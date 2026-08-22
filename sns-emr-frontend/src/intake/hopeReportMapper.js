@@ -113,6 +113,20 @@ function officialCodeLookup(value, labelMap, legacyMap) {
   return { code: PLACEHOLDER, description: String(value) };
 }
 
+// I0010 Principal Diagnosis — official CMS category codes.
+const PRINCIPAL_DIAGNOSIS_CATEGORY_LABELS = {
+  "01": "Cancer",
+  "02": "Dementia (including Alzheimer's disease)",
+  "03": "Neurological Condition (e.g., Parkinson's disease, multiple sclerosis, ALS)",
+  "04": "Stroke",
+  "05": "Chronic Obstructive Pulmonary Disease (COPD)",
+  "06": "Cardiovascular (excluding heart failure)",
+  "07": "Heart Failure",
+  "08": "Liver Disease",
+  "09": "Renal Disease",
+  "99": "None of the above",
+};
+
 const ASSISTANCE_MAP = {
   "24/7 available": ["1", "Assistance available around the clock"],
   "Daytime only": ["2", "Assistance available daytime only"],
@@ -348,6 +362,11 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const neuropathicPain = lookup(YES_NO_UNABLE_MAP, pain.uncomfortableBecauseOfPain);
   const imminent = lookup(YES_NO_UNABLE_MAP, imminentDeath.appearsThreeDaysOrLess);
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
+  const principalDiagnosisCategoryCode = diagnoses.primaryDiagnosis?.hopeDiagnosisCategory || "";
+  const principalDiagnosisCategory = {
+    code: principalDiagnosisCategoryCode || PLACEHOLDER,
+    description: PRINCIPAL_DIAGNOSIS_CATEGORY_LABELS[principalDiagnosisCategoryCode] || PLACEHOLDER,
+  };
   const f3000LegacyIndicator = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
   const spiritualAsked = askedStatus(spiritual.concernsAskedStatus, f3000LegacyIndicator);
   const legacyReviewItems = [
@@ -430,7 +449,10 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           ? "Comorbidities harvested from structured RNICA findings (H&P/labs/MD records scan + RN assessment)."
           : "⚠ This assessment predates structured HOPE harvesting from the RNICA — Heart Failure/COPD/Other Medical Condition below were inferred from the free-text diagnosis list only. Verify against the chart (H&P, labs, MD notes) before submission.",
         items: [
-          { code: "I0010", label: "Principal Diagnosis", entries: [{ label: "Code + description", value: principalDiagnosis }] },
+          { code: "I0010", label: "Principal Diagnosis", entries: [
+            { label: "Category", value: `${principalDiagnosisCategory.code} - ${principalDiagnosisCategory.description}` },
+            { label: "ICD-10 code + description (supporting detail)", value: principalDiagnosis },
+          ] },
           ...comorbidityItems,
           { code: "I0000", label: "Comorbidities and Co-existing Conditions", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
         ],
