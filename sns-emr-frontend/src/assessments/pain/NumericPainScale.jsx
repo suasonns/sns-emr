@@ -4,10 +4,8 @@ import { getNumericInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
 const COLORS = {
-  bg: '#0f172a', card: '#1e293b', border: '#334155', teal: '#10b7a2',
-  white: '#ffffff', label: '#94a3b8', text: '#e2e8f0',
-  green: '#059669', red: '#ef4444', amber: '#f59e0b',
-  greenBg: '#05966915', redBg: '#ef444415', amberBg: '#f59e0b15', tealBg: '#10b7a215',
+  bg: 'var(--sns-cardSoft)', card: 'var(--sns-card)', border: 'var(--sns-border)', teal: 'var(--sns-teal)',
+  white: 'var(--sns-white)', label: 'var(--sns-dim)', text: 'var(--sns-muted)',
 };
 
 const SCALE_COLORS = [
@@ -36,20 +34,20 @@ const NumericPainScale = ({ value, onChange }) => {
 
 
   return (
-    <div style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
+    <div className="pain-tool" style={{ backgroundColor: COLORS.card, borderRadius: 8, padding: 24, borderLeft: `4px solid ${COLORS.teal}` }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
-        <div style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>Numeric Pain Rating Scale (0–10)</div>
+        <div className="pain-tool__title" style={{ color: COLORS.white, fontSize: 15, fontWeight: 700 }}>Numeric Pain Rating Scale (0–10)</div>
         <PainScoreBadge tool="numeric" score={selectedScore} />
       </div>
-      <div style={{ color: COLORS.label, fontSize: 12, marginBottom: 20 }}>Patient self-report scale — select the number that best describes pain intensity.</div>
+      <div className="pain-tool__subtitle" style={{ color: COLORS.label, fontSize: 12, marginBottom: 20 }}>Patient self-report scale — select the number that best describes pain intensity.</div>
 
       {/* Scale Circles */}
-      <div style={{ backgroundColor: COLORS.bg, borderRadius: 8, padding: 20, marginBottom: 16 }}>
-        <div style={{ color: COLORS.label, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', textAlign: 'center', marginBottom: 16, letterSpacing: 0.5 }}>PATIENT SELF-REPORT SCALE</div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="pain-tool__surface" style={{ backgroundColor: COLORS.bg, borderRadius: 8, padding: 20, marginBottom: 16 }}>
+        <div className="pain-tool__meta" style={{ color: COLORS.label, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', textAlign: 'center', marginBottom: 16, letterSpacing: 0.5 }}>PATIENT SELF-REPORT SCALE</div>
+        <div className="pain-tool__scale" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           {Array.from({ length: 11 }, (_, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedScore(i)}>
-              <div style={{
+            <button type="button" className="pain-tool__scale-option" aria-pressed={selectedScore === i} key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer' }} onClick={() => setSelectedScore(i)}>
+              <div className="pain-tool__scale-value" style={{
                 width: 36, height: 36, borderRadius: 18,
                 backgroundColor: selectedScore === i ? SCALE_COLORS[i] : 'transparent',
                 border: `2px solid ${SCALE_COLORS[i]}`,
@@ -57,8 +55,8 @@ const NumericPainScale = ({ value, onChange }) => {
                 color: selectedScore === i ? COLORS.white : SCALE_COLORS[i],
                 fontSize: 14, fontWeight: 700, transition: 'all 0.15s',
               }}>{i}</div>
-              {SCALE_LABELS[i] && <span style={{ color: COLORS.label, fontSize: 9, marginTop: 4 }}>{SCALE_LABELS[i]}</span>}
-            </div>
+              {SCALE_LABELS[i] && <span className="pain-tool__meta" style={{ color: COLORS.label, fontSize: 9, marginTop: 4 }}>{SCALE_LABELS[i]}</span>}
+            </button>
           ))}
         </div>
       </div>
@@ -79,7 +77,7 @@ const NumericPainScale = ({ value, onChange }) => {
             width: 52, height: 52, borderRadius: 10, backgroundColor: interp.bg,
             border: `2px solid ${interp.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <span style={{ color: interp.color, fontSize: 22, fontWeight: 800 }}>{selectedScore}</span>
+            <span className="pain-tool__score-value" style={{ color: interp.color, fontSize: 22, fontWeight: 800 }}>{selectedScore}</span>
           </div>
           <div>
             <div style={{ color: COLORS.white, fontSize: 14, fontWeight: 700 }}>Score: {selectedScore}/10</div>
@@ -97,8 +95,8 @@ const NumericPainScale = ({ value, onChange }) => {
           '4-6 = Moderate Pain (amber)',
           '7-10 = Severe Pain (red)',
         ]} />
-        <div style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
-        <div style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
+        <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
+        <div className="pain-tool__meta" style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
       </GuideBox>
 
       {/* Psychometric Properties */}
@@ -112,7 +110,7 @@ const NumericPainScale = ({ value, onChange }) => {
 
       {/* Target Patient Population */}
       <GuideBox title="Target Patient Population">
-        <div style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
           <div><strong style={{ color: COLORS.white }}>Best for:</strong> Adults and older children who can reliably self-report pain intensity.</div>
           <div>Preferred by chronic pain patients over VAS due to comprehensibility and ease of completion.</div>
           <div>Takes &lt; 1 minute to complete.</div>

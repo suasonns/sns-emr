@@ -1,4 +1,5 @@
 import api from "./client";
+import { normalizeListResponse } from "./normalizeListResponse";
 
 // ---------------------------------------------------------
 // Order Templates ("Packs") — Comfort Pack, Standard Admission Pack, etc.
@@ -50,8 +51,12 @@ export type ImportResult = {
 };
 
 export async function listOrderTemplates(): Promise<OrderTemplateSummary[]> {
-  const response = await api.get<OrderTemplateSummary[]>("/order-templates");
-  return response.data;
+  const response = await api.get<unknown>("/order-templates");
+  return normalizeListResponse<OrderTemplateSummary>(
+    response.data,
+    ["templates", "items"],
+    "Order template",
+  );
 }
 
 export async function getOrderTemplate(templateId: string): Promise<OrderTemplateDetail> {
@@ -186,10 +191,14 @@ export async function listPatientOrders(
   orderType?: string,
   statusFilter?: string,
 ): Promise<PatientOrderRecord[]> {
-  const response = await api.get<PatientOrderRecord[]>(`/patient-orders/patients/${patientId}`, {
+  const response = await api.get<unknown>(`/patient-orders/patients/${patientId}`, {
     params: { order_type: orderType, status_filter: statusFilter },
   });
-  return response.data;
+  return normalizeListResponse<PatientOrderRecord>(
+    response.data,
+    ["orders", "items"],
+    "Patient order",
+  );
 }
 
 export async function addPatientOrder(
@@ -220,8 +229,12 @@ export type LabCatalog = {
 };
 
 export async function getLabCatalog(): Promise<LabCatalog> {
-  const response = await api.get<LabCatalog>("/lab-catalog");
-  return response.data;
+  const response = await api.get<LabCatalog | { catalog: LabCatalog }>("/lab-catalog");
+  const catalog = "catalog" in response.data ? response.data.catalog : response.data;
+  if (!Array.isArray(catalog.categories)) {
+    throw new TypeError("Lab catalog response did not contain categories");
+  }
+  return catalog;
 }
 
 // ---------------------------------------------------------
@@ -259,6 +272,10 @@ export async function sendFax(
 }
 
 export async function getFaxHistory(patientId: string): Promise<FaxRecord[]> {
-  const response = await api.get<FaxRecord[]>(`/fax/patients/${patientId}/history`);
-  return response.data;
+  const response = await api.get<unknown>(`/fax/patients/${patientId}/history`);
+  return normalizeListResponse<FaxRecord>(
+    response.data,
+    ["faxes", "history", "items"],
+    "Fax history",
+  );
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import PatientChartSidebar from './PatientChartSidebar';
 import PatientFacesheet from './PatientFacesheet';
@@ -38,6 +38,62 @@ const PatientChart = () => {
   const [activeSection, setActiveSection] = useState('facesheet');
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia('(max-width: 1200px)').matches);
+  const [navigationOpen, setNavigationOpen] = useState(false);
+  const navigationDialogRef = useRef(null);
+  const navigationCloseRef = useRef(null);
+  const navigationButtonRef = useRef(null);
+  const chartContentRef = useRef(null);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 1200px)');
+    const handleChange = (event) => {
+      setCompactNavigation(event.matches);
+      if (!event.matches) setNavigationOpen(false);
+    };
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
+
+  const navigateChart = (section) => {
+    setActiveSection(section);
+    if (compactNavigation) setNavigationOpen(false);
+  };
+
+  useEffect(() => {
+    if (!navigationOpen) return undefined;
+    const chartContent = chartContentRef.current;
+    chartContent?.setAttribute('inert', '');
+    navigationCloseRef.current?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setNavigationOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = navigationDialogRef.current?.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable?.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      chartContent?.removeAttribute('inert');
+      navigationButtonRef.current?.focus();
+    };
+  }, [navigationOpen]);
 
   const resolvedPatientId = routePatientId || getActivePatientId() || '';
 
@@ -565,8 +621,52 @@ const PatientChart = () => {
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100%', maxWidth: '100vw', minWidth: 0, overflow: 'hidden', fontFamily: "'Inter', sans-serif", backgroundColor: colors.bg, color: colors.text }}>
-      <PatientChartSidebar activeSection={activeSection} onNavigate={setActiveSection} patient={patient} />
-      <div style={{ flex: 1, minWidth: 0, width: '100%', height: '100vh', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+      {(!compactNavigation || navigationOpen) && (
+        <>
+          {compactNavigation && (
+            <div
+              aria-hidden="true"
+              onClick={() => setNavigationOpen(false)}
+              style={{ position: 'fixed', inset: 0, zIndex: 39, border: 0, background: 'rgba(2, 6, 23, 0.62)', cursor: 'pointer' }}
+            />
+          )}
+          <div
+            ref={navigationDialogRef}
+            role={compactNavigation ? 'dialog' : undefined}
+            aria-modal={compactNavigation ? 'true' : undefined}
+            aria-label={compactNavigation ? 'Patient chart navigation' : undefined}
+            style={compactNavigation ? { position: 'fixed', inset: '0 auto 0 0', zIndex: 40, boxShadow: '12px 0 32px rgba(2, 6, 23, 0.36)' } : undefined}
+          >
+            {compactNavigation && (
+              <button
+                ref={navigationCloseRef}
+                type="button"
+                onClick={() => setNavigationOpen(false)}
+                style={{ position: 'absolute', top: 8, right: 8, zIndex: 2, minHeight: 40, padding: '7px 10px', border: `1px solid ${colors.accent}`, borderRadius: 8, background: colors.panel, color: colors.text, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Close navigation
+              </button>
+            )}
+            <PatientChartSidebar activeSection={activeSection} onNavigate={navigateChart} patient={patient} />
+          </div>
+        </>
+      )}
+      <div ref={chartContentRef} style={{ flex: 1, minWidth: 0, width: '100%', height: '100vh', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+        {compactNavigation && (
+          <button
+            ref={navigationButtonRef}
+            type="button"
+            onClick={() => setNavigationOpen(true)}
+            aria-expanded={navigationOpen}
+            style={{
+              position: 'sticky', top: 8, left: 8, zIndex: 35, margin: 8, minHeight: 42, padding: '8px 12px',
+              border: `1px solid ${colors.accent}`, borderRadius: 8, background: colors.panel, color: colors.text,
+              fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            Patient chart navigation
+          </button>
+        )}
         {renderContent()}
       </div>
     </div>
