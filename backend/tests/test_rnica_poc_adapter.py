@@ -530,3 +530,71 @@ def test_cardiovascular_structured_fields_save_reload_and_poc_linkage(client, db
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/cardiovascular", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_respiratory_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.3 Respiratory structured fields (treatment declined,
+    expanded exertion level / lung sounds / respirations / cough options,
+    oxygen delivery mode / room air, and ventilator/airway support)
+    persist through the existing RNICA form_data JSONB model, round-trip
+    on reload, and coexist with POC controls on the respiratory
+    section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"respiratory": {}})
+
+    updated_respiratory = {
+        "sobSeverity": "Moderate",
+        "treatmentDeclined": False,
+        "exertionLevel": "Pursed-lip breathing",
+        "shortnessOfBreathScreened": True,
+        "screeningDate": "2026-08-01",
+        "treatmentInitiated": True,
+        "treatmentDate": "2026-08-02",
+        "lungSounds": ["Crackles", "Rales"],
+        "respirations": ["Tachypnea", "Orthopnea"],
+        "coughType": "Barrel chest",
+        "sputumCharacter": "Thick yellow",
+        "oxygenTherapy": {
+            "inUse": True, "type": "Nasal cannula", "litersPerMinute": "2",
+            "hoursPerDay": "24", "satOnO2": "92",
+            "deliveryMode": "Continuous", "onRoomAir": False,
+        },
+        "ventilator": {
+            "shortTermVentilator": False, "longTermVentilator": True,
+            "ventilatorTypeAndSettings": "AC 14/450/40% FiO2",
+            "tracheostomyType": "Cuffed", "tracheostomySize": "6.0",
+        },
+        "notes": "Patient on long-term vent via tracheostomy.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"respiratory": updated_respiratory}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    respiratory = get_resp.json()["formData"]["respiratory"]
+
+    for key, value in updated_respiratory.items():
+        assert respiratory[key] == value, f"respiratory field {key} did not round-trip"
+
+    # POC linkage from the respiratory section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/respiratory",
+        json={
+            "problem_label": "Long-term ventilator dependence via tracheostomy",
+            "evidence_text": "AC 14/450/40% FiO2, cuffed trach size 6.0, SpO2 92% on 2L NC.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/respiratory", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
