@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PatientModuleShell from "../components/PatientModuleShell";
 import { fetchPatientSummary } from "../api/patientCharts";
+import type { PatientSummaryResponse } from "../api/patientCharts";
 import { getActivePatientId } from "../utils/activePatient";
 import {
   getCurrentPlanOfCareByPatient,
@@ -77,7 +78,7 @@ function formatDate(value?: string | null) {
 export default function PlanOfCarePage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<PatientSummaryResponse | null>(null);
   const [poc, setPoc] = useState<CurrentPlanOfCare | null>(null);
   const [versions, setVersions] = useState<PocVersionSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,12 +90,16 @@ export default function PlanOfCarePage() {
 
   useEffect(() => {
     if (!patientId) {
-      setLoading(false);
+      queueMicrotask(() => setLoading(false));
       return;
     }
     let mounted = true;
-    setLoading(true);
-    setNotFound(false);
+    queueMicrotask(() => {
+      if (mounted) {
+        setLoading(true);
+        setNotFound(false);
+      }
+    });
 
     fetchPatientSummary(patientId)
       .then((result) => {
@@ -140,11 +145,11 @@ export default function PlanOfCarePage() {
     return {
       diagnosis: patient?.primary_diagnosis || "No diagnosis on file",
       painSummary: poc ? `${problems.length} active POC problem(s) — v${poc.current_version.version_number}` : "No Plan of Care on file",
-      primaryProvider: summary?.care_team?.find((p: any) => p.primary)?.staff_name || "Provider not assigned",
+      primaryProvider: summary?.care_team?.find((p) => p.primary)?.staff_name || "Provider not assigned",
       hnpStatus: poc?.status || "No POC",
       lastVisit: latestVersion?.created_at ? formatDate(latestVersion.created_at) : "—",
       disciplineHistory: versions.slice(-4).reverse().map((v) => `v${v.version_number} — ${v.source_kind}${v.change_reason ? ` (${v.change_reason})` : ""}`),
-      careTeam: summary?.care_team?.map((m: any) => m.discipline || "Care team") || ["Care team"],
+      careTeam: summary?.care_team?.map((m) => m.discipline || "Care team") || ["Care team"],
     };
   }, [summary, poc, problems.length, versions, latestVersion]);
 

@@ -56,14 +56,19 @@ export function useAssessmentAutosave<T>({
   const lastPersistedPayloadRef = useRef<string | null>(null);
   const lastPersistedAssessmentIdRef = useRef<string | null>(null);
 
-  formDataRef.current = formData;
-  assessmentIdRef.current = assessmentId;
-  lockedRef.current = locked;
-  savingRef.current = saving;
-  patientIdRef.current = patientId;
-  saveFnRef.current = saveFn;
-  updateFnRef.current = updateFn;
-  setAssessmentIdRef.current = setAssessmentId;
+  // Refs must not be written during the render body (React may invoke it
+  // more than once, e.g. under StrictMode/concurrent rendering); sync them
+  // in an effect that runs after every render instead.
+  useEffect(() => {
+    formDataRef.current = formData;
+    assessmentIdRef.current = assessmentId;
+    lockedRef.current = locked;
+    savingRef.current = saving;
+    patientIdRef.current = patientId;
+    saveFnRef.current = saveFn;
+    updateFnRef.current = updateFn;
+    setAssessmentIdRef.current = setAssessmentId;
+  });
 
   const markPersisted = useCallback((persistedFormData: T, persistedAssessmentId?: AssessmentId) => {
     lastPersistedPayloadRef.current = serializeFormData(persistedFormData);
