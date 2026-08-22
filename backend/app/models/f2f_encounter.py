@@ -96,7 +96,7 @@ class F2FEncounter(BaseModel):
     # -----------------------------------------------------
     # STATUS / FINALIZATION
     # -----------------------------------------------------
-    status = Column(String, nullable=False, default="DRAFT")
+    status = Column(String, nullable=False, default="DRAFT", index=True)
     finalized_at = Column(DateTime, nullable=True)
 
 
@@ -110,6 +110,11 @@ class F2FEncounterStatusEvent(BaseModel):
     """
 
     __tablename__ = "f2f_encounter_status_events"
+
+    # Overrides BaseModel.created_by: this table's migration
+    # (t9u0v1w2x3y4_f2f_phase1_lifecycle) created a plain nullable UUID
+    # column with no FK/index, unlike most BaseModel-derived tables.
+    created_by = Column(UUID(as_uuid=True), nullable=True)
 
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     f2f_encounter_id = Column(

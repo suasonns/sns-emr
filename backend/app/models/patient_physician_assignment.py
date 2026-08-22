@@ -29,6 +29,12 @@ class PatientPhysicianAssignment(BaseModel):
 
     __tablename__ = "patient_physician_assignments"
 
+    # Overrides BaseModel.created_by: this table's migration
+    # (f3b8c9d0e1a2_add_patient_physician_assignments) created a real FK
+    # constraint but no separate index on created_by, unlike the BaseModel
+    # default.
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="CASCADE"),

@@ -44,7 +44,7 @@ class Certification(BaseModel):
     signed_by_user_id = Column(UUID(as_uuid=True), nullable=True)
 
     # DRAFT | PENDING_SIGNATURE | FINALIZED | SUPERSEDED
-    status = Column(String, nullable=False, default="FINALIZED")
+    status = Column(String, nullable=False, default="FINALIZED", index=True)
 
     # --- Phase 1 lifecycle expansion (additive, 2026-08-21) ---
 
@@ -64,7 +64,7 @@ class Certification(BaseModel):
     # legal record after its benefit period ends, it just needs a subsequent
     # recert to keep the patient's hospice benefit active (see
     # dashboard_service cti_due_missing / cti_expiring widgets).
-    expires_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     # Set when a later cert (next benefit period's recert) is finalized for
     # the same patient, chaining the certification history.
@@ -84,6 +84,11 @@ class CertificationStatusEvent(BaseModel):
     """
 
     __tablename__ = "certification_status_events"
+
+    # Overrides BaseModel.created_by: this table's migration
+    # (s8t9u0v1w2x3_cti_phase1_lifecycle) created a plain nullable UUID
+    # column with no FK/index, unlike most BaseModel-derived tables.
+    created_by = Column(UUID(as_uuid=True), nullable=True)
 
     tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
     certification_id = Column(

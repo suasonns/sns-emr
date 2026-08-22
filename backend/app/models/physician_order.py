@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -146,7 +146,7 @@ class PhysicianOrder(BaseModel):
 
     # Expiration tracking — set explicitly per order-type/agency policy, never
     # inferred. An expired order must never continue to appear active.
-    expires_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     expiration_type = Column(String(32), nullable=True)
     expired_at = Column(DateTime(timezone=True), nullable=True)
 
@@ -163,7 +163,18 @@ class PhysicianOrderStatusEvent(BaseModel):
 
     __tablename__ = "physician_order_status_events"
 
-    tenant_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    # Overrides BaseModel.created_by: this table's migration
+    # (r7s8t9u0v1w2_physician_orders_phase1_lifecycle) created a real FK
+    # constraint but no separate index on created_by, unlike the BaseModel
+    # default.
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     order_id = Column(
         UUID(as_uuid=True),
         ForeignKey("physician_orders.id", ondelete="CASCADE"),
@@ -176,7 +187,7 @@ class PhysicianOrderStatusEvent(BaseModel):
 
     changed_by_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     changed_by_role = Column(String(64), nullable=True)
-    changed_at = Column(DateTime(timezone=True), nullable=False)
+    changed_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
 
     reason = Column(Text, nullable=True)
     automatic = Column(Boolean, nullable=False, server_default="false")

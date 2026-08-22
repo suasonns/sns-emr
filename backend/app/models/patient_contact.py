@@ -28,6 +28,11 @@ class PatientContact(BaseModel):
 
     __tablename__ = "patient_contacts"
 
+    # Overrides BaseModel.created_by: this table's migration
+    # (a1c2d3e4f5b6_add_patient_contacts) created a real FK constraint but
+    # no separate index on created_by, unlike the BaseModel default.
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
     patient_id = Column(
         UUID(as_uuid=True),
         ForeignKey("patients.id", ondelete="CASCADE"),

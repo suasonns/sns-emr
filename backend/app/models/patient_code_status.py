@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Date, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, Column, Date, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -27,6 +27,11 @@ class PatientCodeStatus(BaseModel):
     """
 
     __tablename__ = "patient_code_statuses"
+
+    # Overrides BaseModel.created_by: this table's migration
+    # (d1fdad4c35bf_add_patient_code_statuses) created a real FK constraint
+    # but no separate index on created_by, unlike the BaseModel default.
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
     patient_id = Column(
         UUID(as_uuid=True),
@@ -60,4 +65,11 @@ class PatientCodeStatus(BaseModel):
     __table_args__ = (
         Index("ix_patient_code_statuses_patient_current", "patient_id", "is_current"),
         Index("ix_patient_code_statuses_patient_effective", "patient_id", "effective_date"),
+        # Exactly one current row per patient (partial unique index).
+        Index(
+            "uq_patient_code_statuses_one_current",
+            "patient_id",
+            unique=True,
+            postgresql_where=text("is_current = true"),
+        ),
     )
