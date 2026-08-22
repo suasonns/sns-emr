@@ -71,6 +71,12 @@ import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
+import {
+  buildClinicalNarrative,
+  DISEASE_TRAJECTORY_OPTIONS,
+  isLegacyDiseaseTrajectoryValue,
+  getDiseaseTrajectoryLabel,
+} from "../intake/clinicalNarrativeBuilder";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
@@ -435,6 +441,36 @@ const INITIAL_FORM = {
     terminalPrognosis: "",
     diseaseTrajectory: "",
     lcdEligibilityNarrative: "",
+    // SECTION 10 — Clinical Narrative & Disease Trajectory. Deliberately
+    // separate from lcdEligibilityNarrative (distinct purpose/field, never
+    // merged/read by the other). clinicalNarrative is populated either by
+    // manual RN typing or by an explicit "Build Draft from Documented
+    // Findings" click that runs the deterministic, non-AI
+    // buildClinicalNarrative() template renderer — it is never generated
+    // automatically and never silently overwrites existing text.
+    clinicalNarrative: "",
+    clinicalNarrativeReviewed: false,
+    // rnAddendum / clinicianClarification are pre-lock working fields
+    // only. Once the assessment is locked, every Section 10 field
+    // (including these two) becomes read-only in the UI — SNS EMR does
+    // not yet have a separate authenticated addendum record/endpoint,
+    // so this build intentionally does NOT fake one by keeping these
+    // fields editable-with-a-timestamp after lock (that would still be
+    // a silent mutation of already-authenticated documentation, not a
+    // distinct traceable addendum).
+    //
+    // Future documentation infrastructure: Authenticated post-lock
+    // addendum workflow — a separate record (parent assessment id,
+    // addendum text, author identifier/credentials, created date/time,
+    // reason/addendum type, authentication status) is the correct way
+    // to capture information added after the original entry is
+    // authenticated, and should be built as its own model/endpoint
+    // rather than as mutable fields on this JSONB blob.
+    rnAddendum: "",
+    clinicianClarification: "",
+    recentHospitalizations: "",
+    recentErVisits: "",
+    utilizationNotes: "",
     ndsEligibility: {
       detectedDisease: "",
       criteriaAnswers: {},
@@ -976,6 +1012,17 @@ function validateRNICA(formData, mode = "ica") {
     warnings["psychosocial.notes"] = "Safety: Suicide concerns indicated — document safety assessment/plan in Psychosocial Notes";
   }
 
+  // SECTION 10 — Clinical Narrative & Disease Trajectory. The frozen
+  // master map does not cite a HOPE code for this narrative (unlike the
+  // hard-blocking Diagnoses/Pain/etc. items above), so this is a soft
+  // completion warning rather than a hard error — but it applies equally
+  // whether the narrative text was typed manually or built via "Build
+  // Draft from Documented Findings," per the rule that a manually
+  // entered narrative is just as valid as a generated one.
+  if (formData.diagnoses.clinicalNarrative?.trim() && formData.diagnoses.clinicalNarrativeReviewed !== true) {
+    warnings["diagnoses.clinicalNarrativeReviewed"] = "Clinical narrative documented but not yet reviewed — confirm review before finalizing (Section 10)";
+  }
+
   // Admissions Order ? Level of Care required
   if (!formData.admissionsOrder.levelOfCare.level) {
     errors["admissionsOrder.levelOfCare"] = "Level of Care is required for admission";
@@ -1190,7 +1237,7 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
+function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1199,7 +1246,7 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
       <label style={styles.label}>{label}</label>
       <textarea
         style={{ ...styles.textarea, minHeight: rows * 24 }} value={value || ""}
-        onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
       />
     </div>
   );
@@ -1835,6 +1882,177 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 10 — Clinical Narrative & Disease Trajectory.
+//
+// This card is deliberately separate from LcdEligibilityCard /
+// lcdEligibilityNarrative (distinct field, distinct purpose — the RN's
+// documented clinical findings narrative vs. the physician's LCD
+// eligibility-support narrative). The deterministic
+// buildClinicalNarrative() template renderer runs ONLY on an explicit
+// "Build Draft from Documented Findings" click — never on mount, never
+// on formData changes, never during save/validation/navigation. No AI
+// service, AI flag, or AI control exists anywhere in this card.
+// ════════════════════════════════════════════════════════════════
+function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked }) {
+  const [pendingReplace, setPendingReplace] = useState(false);
+  const narrative = diagnosesData?.clinicalNarrative || "";
+  const trajectory = diagnosesData?.diseaseTrajectory || "";
+  const isLegacyTrajectory = isLegacyDiseaseTrajectoryValue(trajectory);
+
+  const handleBuildDraft = () => {
+    if (narrative.trim()) {
+      setPendingReplace(true);
+      return;
+    }
+    applyDraft();
+  };
+
+  const applyDraft = () => {
+    const draft = buildClinicalNarrative(fullFormData, {});
+    updateField("clinicalNarrative", draft.text);
+    // Replacing the narrative content always resets review — a
+    // previously reviewed narrative cannot remain "reviewed" once its
+    // text has changed.
+    updateField("clinicalNarrativeReviewed", false);
+    setPendingReplace(false);
+  };
+
+  const handleNarrativeChange = (value) => {
+    updateField("clinicalNarrative", value);
+    updateField("clinicalNarrativeReviewed", false);
+  };
+
+  return (
+    <div>
+      <div style={styles.formGroup}>
+        <label style={styles.label}>Disease Trajectory</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {DISEASE_TRAJECTORY_OPTIONS.map((opt) => (
+            <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: COLORS.dark }}>
+              <input
+                type="radio"
+                name="diseaseTrajectory"
+                value={opt.value}
+                checked={trajectory === opt.value}
+                disabled={locked}
+                onChange={() => updateField("diseaseTrajectory", opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        {isLegacyTrajectory && (
+          <div style={{ marginTop: 6, fontSize: 12, color: COLORS.warning }}>
+            Legacy value on file: "{trajectory}". This was recorded before the current trajectory options existed and is not
+            automatically converted — please review and select one of the options above.
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        <FormInput
+          label="Recent Hospitalizations (count)"
+          type="number"
+          value={diagnosesData?.recentHospitalizations ?? ""}
+          onChange={(v) => updateField("recentHospitalizations", v)}
+          disabled={locked}
+          min={0}
+          step={1}
+          placeholder="Leave blank if not documented"
+        />
+        <FormInput
+          label="Recent Emergency Department Visits (count)"
+          type="number"
+          value={diagnosesData?.recentErVisits ?? ""}
+          onChange={(v) => updateField("recentErVisits", v)}
+          disabled={locked}
+          min={0}
+          step={1}
+          placeholder="Leave blank if not documented"
+        />
+      </div>
+      <FormTextarea
+        label="Utilization Notes"
+        value={diagnosesData?.utilizationNotes}
+        onChange={(v) => updateField("utilizationNotes", v)}
+        rows={2}
+        disabled={locked}
+      />
+
+      <div style={{ marginTop: 12, marginBottom: 8 }}>
+        <button
+          type="button"
+          style={{ ...styles.btnSecondary, opacity: locked ? 0.5 : 1 }}
+          onClick={handleBuildDraft}
+          disabled={locked}
+        >
+          Build Draft from Documented Findings
+        </button>
+        <span style={{ marginLeft: 10, fontSize: 11.5, color: COLORS.gray }}>
+          Assembles a draft strictly from already-documented fields on this assessment. It never runs automatically and never
+          determines eligibility, prognosis, or disease trajectory.
+        </span>
+      </div>
+
+      {pendingReplace && (
+        <div style={{
+          padding: 10, borderRadius: 8, border: `1px solid ${COLORS.warning}`,
+          background: COLORS.warningBoxBg, marginBottom: 10, fontSize: 12.5, color: COLORS.dark,
+        }}>
+          <div style={{ marginBottom: 8 }}>A clinical narrative already exists. Building a new draft will replace the current text.</div>
+          <button type="button" style={styles.btnSecondary} onClick={() => setPendingReplace(false)}>Keep Existing Narrative</button>
+          <button type="button" style={{ ...styles.btnPrimary, marginLeft: 8 }} onClick={applyDraft}>Replace with New Draft</button>
+        </div>
+      )}
+
+      <FormTextarea
+        label="Clinical Narrative"
+        value={narrative}
+        onChange={handleNarrativeChange}
+        rows={10}
+        disabled={locked}
+        placeholder="Document the patient's clinical presentation and supporting findings in your own words, or click Build Draft from Documented Findings above."
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 16px" }}>
+        <input
+          type="checkbox"
+          id="clinicalNarrativeReviewed"
+          checked={!!diagnosesData?.clinicalNarrativeReviewed}
+          disabled={locked}
+          onChange={(e) => updateField("clinicalNarrativeReviewed", e.target.checked)}
+        />
+        <label htmlFor="clinicalNarrativeReviewed" style={{ fontSize: 13, color: COLORS.dark }}>
+          I reviewed this narrative and verified that it matches the documented assessment findings.
+        </label>
+      </div>
+
+      <FormTextarea
+        label="RN Addendum"
+        value={diagnosesData?.rnAddendum}
+        onChange={(v) => updateField("rnAddendum", v)}
+        rows={3}
+        disabled={locked}
+      />
+      <FormTextarea
+        label="Clinician Clarification"
+        value={diagnosesData?.clinicianClarification}
+        onChange={(v) => updateField("clinicianClarification", v)}
+        rows={3}
+        disabled={locked}
+      />
+      {locked && (
+        <div style={{ fontSize: 11.5, color: COLORS.gray }}>
+          This assessment is locked/authenticated. Section 10 fields are read-only. Additional post-authentication information
+          must be captured as a distinct, traceable, authenticated addendum record — a documented gap in current SNS EMR
+          infrastructure, not implemented as an editable field on this locked assessment.
+        </div>
+      )}
     </div>
   );
 }
@@ -4570,7 +4788,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
@@ -4656,6 +4874,21 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 updateField={u}
                 styles={styles}
                 COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "clinicalNarrative") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ClinicalNarrativeCard
+                diagnosesData={data}
+                fullFormData={fullFormData}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+                locked={locked}
               />
             </Card>
           );
@@ -5205,7 +5438,6 @@ const SECTION_CONFIGS = {
       {
         title: "Terminal Prognosis", hopeCode: "J0050", fields: [
           { type: "select", label: "Terminal Prognosis", path: "terminalPrognosis", hopeCode: "J0050", options: ["6 months or less", "More than 6 months", "Undetermined"] },
-          { type: "radio", label: "Disease Trajectory", path: "diseaseTrajectory", options: ["Decline", "Plateau", "Fluctuating"] },
         ],
       },
       {
@@ -5222,9 +5454,13 @@ const SECTION_CONFIGS = {
         customRenderer: "hopeComorbidities",
       },
       {
-        title: "Narrative & Disease Trajectory", fields: [
+        title: "LCD Eligibility Support Narrative", fields: [
           { type: "textarea", label: "LCD Eligibility Narrative", path: "lcdEligibilityNarrative", rows: 6, placeholder: "Document the patient's terminal illness, functional decline trajectory, and LCD eligibility criteria..." },
         ],
+      },
+      {
+        title: "Clinical Narrative & Disease Trajectory",
+        customRenderer: "clinicalNarrative",
       },
     ],
   },
@@ -6449,7 +6685,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
