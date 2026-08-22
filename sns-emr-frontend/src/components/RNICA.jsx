@@ -28,6 +28,10 @@ import {
   updateRnicaAssessment,
   lockRnicaAssessment,
   getRnicaIntelligence,
+  viewRnicaSectionPoc,
+  addRnicaSectionPocProblem,
+  updateRnicaSectionPocProblem,
+  resolveRnicaSectionPocProblem,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -502,6 +506,7 @@ const INITIAL_FORM = {
     swallowingIssues: [], oralMucosa: "",
     dentures: { upper: false, lower: false, condition: "" },
     nutritionalSupplements: "",
+    npoStatus: "", artificialFeeding: [], oralCavityFindings: [],
     notes: "",
   },
 
@@ -2158,6 +2163,84 @@ function DeclineTrackerCard({ patientId, assessmentId, performanceData, weight, 
   );
 }
 
+// Auto-calculates BMI from height (inches) and weight (lbs) so it is never
+// entered as an independent, unrelated manual value. The field remains
+// editable (RN can override), but is pre-populated/kept in sync whenever
+// height or weight change, and is still persisted at vitals.bmi in the
+// existing form_data JSONB model (no new storage location).
+function AnthropometricsAutoBmiCard({ data, updateField, styles, COLORS }) {
+  const height = parseFloat(data?.height);
+  const weight = parseFloat(data?.weight);
+  const calculatedBmi = (!Number.isNaN(height) && !Number.isNaN(weight) && height > 0)
+    ? Math.round((703 * weight / (height * height)) * 10) / 10
+    : null;
+
+  const lastAutoValue = useRef(null);
+  useEffect(() => {
+    if (calculatedBmi === null) return;
+    const currentBmi = data?.bmi === "" || data?.bmi === undefined || data?.bmi === null ? null : parseFloat(data.bmi);
+    // Only auto-fill when the field is empty or still equal to our own last
+    // auto-calculated value — never overwrite an RN's manual entry.
+    if (currentBmi === null || currentBmi === lastAutoValue.current) {
+      lastAutoValue.current = calculatedBmi;
+      if (currentBmi !== calculatedBmi) updateField("bmi", calculatedBmi);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calculatedBmi]);
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        <FormInput label="Height (in)" value={data?.height} onChange={(v) => updateField("height", v)} type="number" />
+        <FormInput label="Weight (lbs)" value={data?.weight} onChange={(v) => updateField("weight", v)} type="number" />
+        <FormInput label="BMI (auto-calculated)" value={data?.bmi ?? ""} onChange={(v) => updateField("bmi", v)} type="number" />
+        <FormInput label="MAC (Mid-Arm Circumference)" value={data?.mac} onChange={(v) => updateField("mac", v)} type="number" />
+      </div>
+      {calculatedBmi !== null && (
+        <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 6 }}>
+          Calculated from height/weight: {calculatedBmi}. Overwrite the BMI field above only if a manually verified value differs.
+        </div>
+      )}
+      {calculatedBmi === null && (
+        <div style={styles.infoBox}>Enter height and weight to auto-calculate BMI.</div>
+      )}
+    </div>
+  );
+}
+
+// Read-only reference of the authoritative anthropometric/metabolic values
+// (height/weight/BMI/MAC live under Vitals; serum albumin lives under LCD
+// Evidence). These are NOT duplicated as new Nutrition fields — this card
+// only displays the existing values in context for the nutrition assessment.
+function NutritionAnthropometricReferenceCard({ fullFormData, styles, COLORS }) {
+  const vitals = fullFormData?.vitals || {};
+  const criteriaFacts = fullFormData?.diagnoses?.ndsEligibility?.criteriaFacts || {};
+  const detectedDisease = fullFormData?.diagnoses?.ndsEligibility?.detectedDisease;
+  const albumin = detectedDisease ? criteriaFacts?.[detectedDisease]?.serum_albumin : null;
+
+  const hasAny = vitals.height || vitals.weight || vitals.bmi || vitals.mac || albumin;
+  if (!hasAny) {
+    return <div style={styles.infoBox}>Height, weight, BMI, and MAC are documented under Vitals & Measurements and will appear here for reference once entered.</div>;
+  }
+
+  const Item = ({ label, value }) => (
+    <div>
+      <div style={{ fontSize: 11, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700 }}>{value || "—"}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+      <Item label="Height" value={vitals.height ? `${vitals.height} in` : null} />
+      <Item label="Weight" value={vitals.weight ? `${vitals.weight} lbs` : null} />
+      <Item label="BMI" value={vitals.bmi} />
+      <Item label="MAC" value={vitals.mac} />
+      <Item label="Serum Albumin" value={albumin} />
+    </div>
+  );
+}
+
 // Auto-computes the 6-month weight-loss % from actual serial weight entries
 // (RNICA/recert history) instead of relying on the RN to calculate it by
 // hand into a free-text field. Purely a suggestion -- the RN must click
@@ -2270,9 +2353,180 @@ function WeightLossAutoCalcCard({ patientId, assessmentId, currentWeight, existi
   );
 }
 
-// Design intent: don't ask the RN to make a subjective call ("is the patient
-// constipated?"). Ask for the objective fact instead — last bowel movement
-// date — and let the system derive a suggested severity from days elapsed,
+// RN ICA -> Plan of Care controls for a single body-system subcard.
+// Add / View / Update / Resolve here all call the authoritative Plan of
+// Care document API (via backend app/services/rnica_poc_adapter.py) — this
+// component holds no POC state of its own beyond what it fetches on demand,
+// and never writes into RnicaAssessment.form_data.
+function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [showList, setShowList] = useState(false);
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({ problem_label: "", evidence_text: "", goal_text: "", intervention_text: "" });
+  const [editingRuleKey, setEditingRuleKey] = useState(null);
+  const [editDraft, setEditDraft] = useState({ severity: "", description_addendum: "" });
+
+  const loadProblems = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    viewRnicaSectionPoc(assessmentId, sectionKey)
+      .then((res) => setProblems(res?.problems || []))
+      .catch((err) => setError(err.message || "Unable to load Plan of Care"))
+      .finally(() => setLoading(false));
+  }, [assessmentId, sectionKey]);
+
+  const handleToggleList = () => {
+    const next = !showList;
+    setShowList(next);
+    if (next) loadProblems();
+  };
+
+  const handleAdd = () => {
+    if (!draft.problem_label.trim() || !draft.evidence_text.trim()) {
+      setError("Problem and supporting evidence are both required to add to the Plan of Care.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    addRnicaSectionPocProblem(assessmentId, sectionKey, {
+      problem_label: draft.problem_label.trim(),
+      evidence_text: draft.evidence_text.trim(),
+      goal_text: draft.goal_text.trim() || undefined,
+      intervention_text: draft.intervention_text.trim() || undefined,
+      discipline: "RN",
+    })
+      .then(() => {
+        setDraft({ problem_label: "", evidence_text: "", goal_text: "", intervention_text: "" });
+        setShowAdd(false);
+        setShowList(true);
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to add problem to Plan of Care"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleResolve = (ruleKey) => {
+    setSaving(true);
+    setError("");
+    resolveRnicaSectionPocProblem(assessmentId, sectionKey, ruleKey)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to resolve Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleUpdate = (ruleKey) => {
+    setSaving(true);
+    setError("");
+    updateRnicaSectionPocProblem(assessmentId, sectionKey, ruleKey, {
+      severity: editDraft.severity || undefined,
+      description_addendum: editDraft.description_addendum.trim() || undefined,
+    })
+      .then(() => {
+        setEditingRuleKey(null);
+        setEditDraft({ severity: "", description_addendum: "" });
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to update Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  if (!assessmentId) return null;
+
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
+          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+          border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
+          color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
+        }}>
+          + Add to POC
+        </button>
+        <button type="button" onClick={handleToggleList} style={{
+          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+          border: `1px solid ${COLORS.gray}`, background: showList ? COLORS.gray : "transparent",
+          color: showList ? COLORS.white : COLORS.gray, cursor: "pointer",
+        }}>
+          {showList ? "Hide POC" : "View POC"}
+        </button>
+      </div>
+
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
+
+      {showAdd && (
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+          <FormInput label="Problem" value={draft.problem_label} onChange={(v) => setDraft((d) => ({ ...d, problem_label: v }))}
+            placeholder={`e.g., ${cardTitle || "clinical"} finding requiring intervention`} />
+          <FormInput label="Supporting Evidence / Finding" value={draft.evidence_text} onChange={(v) => setDraft((d) => ({ ...d, evidence_text: v }))}
+            placeholder="What was assessed/observed" />
+          <FormInput label="Goal (optional)" value={draft.goal_text} onChange={(v) => setDraft((d) => ({ ...d, goal_text: v }))} />
+          <FormInput label="Intervention (optional)" value={draft.intervention_text} onChange={(v) => setDraft((d) => ({ ...d, intervention_text: v }))} />
+          <button type="button" disabled={saving} onClick={handleAdd} style={{
+            fontSize: 12, fontWeight: 700, padding: "8px 12px", borderRadius: 6, border: "none",
+            background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", height: 36, alignSelf: "end",
+          }}>
+            {saving ? "Saving…" : "Save to Plan of Care"}
+          </button>
+        </div>
+      )}
+
+      {showList && (
+        <div style={{ marginTop: 10 }}>
+          {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
+          {!loading && problems && problems.length === 0 && (
+            <div style={styles.infoBox}>No Plan of Care problems linked to this section yet.</div>
+          )}
+          {!loading && problems && problems.map((p) => (
+            <div key={p.rule_key} style={{
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+              marginBottom: 6, fontSize: 12.5, background: p.status === "RESOLVED" ? COLORS.bg : "transparent",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <strong>{p.label}</strong>
+                <span style={{ fontWeight: 700, color: p.status === "RESOLVED" ? COLORS.gray : COLORS.teal }}>
+                  {p.status} {p.severity && p.severity !== "UNKNOWN" ? `· ${p.severity}` : ""}
+                </span>
+              </div>
+              {p.description && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 4, whiteSpace: "pre-wrap" }}>{p.description}</div>}
+              {p.status !== "RESOLVED" && (
+                <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                  <button type="button" onClick={() => setEditingRuleKey(editingRuleKey === p.rule_key ? null : p.rule_key)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer" }}>
+                    Update POC
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleResolve(p.rule_key)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer" }}>
+                    Resolve POC
+                  </button>
+                </div>
+              )}
+              {editingRuleKey === p.rule_key && (
+                <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormSelect label="Severity" value={editDraft.severity} onChange={(v) => setEditDraft((d) => ({ ...d, severity: v }))}
+                    options={["LOW", "MODERATE", "HIGH", "CRITICAL"]} />
+                  <FormInput label="Update / Progress Note" value={editDraft.description_addendum}
+                    onChange={(v) => setEditDraft((d) => ({ ...d, description_addendum: v }))} />
+                  <button type="button" disabled={saving} onClick={() => handleUpdate(p.rule_key)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Saving…" : "Save Update"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 // the same way WeightLossAutoCalcCard turns raw weights into a % change.
 // The RN still confirms/overrides via the existing Constipation radio below;
 // this card only proposes a starting point so the RN isn't over-analyzing.
@@ -4017,6 +4271,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
+  // The 10 Body System Assessment sections (SNS_RNICA_MASTER_MAP_1.1.md)
+  // each get Add/View/Update/Resolve Plan of Care controls on every
+  // field-based subcard.
+  const BODY_SYSTEM_SECTIONS = new Set([
+    "neurological", "cardiovascular", "respiratory", "infection",
+    "gastrointestinal", "nutrition", "endocrine", "genitourinary",
+    "musculoskeletal", "skin",
+  ]);
+
   const normalizePainPatientType = (type) => {
     if (!type || type === "adult-alert" || type === "alert") return "verbal";
     if (type === "adult" || type === "alert-adult") return "verbal";
@@ -4125,6 +4388,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "nutrition" && card.customRenderer === "nutritionAnthropometricReference") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <NutritionAnthropometricReferenceCard fullFormData={fullFormData} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "nutrition" && card.customRenderer === "weightLossAutoCalc") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -4137,6 +4408,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 styles={styles}
                 COLORS={COLORS}
               />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "vitals" && card.customRenderer === "anthropometricsAutoBmi") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <AnthropometricsAutoBmiCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -4375,6 +4654,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
+            {BODY_SYSTEM_SECTIONS.has(sectionKey) && card.fields && (
+              <PocSectionControls
+                assessmentId={assessmentId}
+                sectionKey={sectionKey}
+                cardTitle={card.title}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )}
           </Card>
         );
       })}
@@ -4456,12 +4744,8 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Anthropometrics", fields: [
-          { type: "input", label: "Height", path: "height", inputType: "number" },
-          { type: "input", label: "Weight", path: "weight", inputType: "number" },
-          { type: "input", label: "BMI", path: "bmi", inputType: "number" },
-          { type: "input", label: "MAC (Mid-Arm Circumference)", path: "mac", inputType: "number" },
-        ],
+        title: "Anthropometrics",
+        customRenderer: "anthropometricsAutoBmi",
       },
       {
         title: "IV Assessment", fields: [
@@ -4799,6 +5083,10 @@ const SECTION_CONFIGS = {
     subtitle: "Weight loss, appetite, swallowing, hydration, diet",
     cards: [
       {
+        title: "Anthropometric & Metabolic Reference",
+        customRenderer: "nutritionAnthropometricReference",
+      },
+      {
         title: "Weight Loss Auto-Calculation",
         customRenderer: "weightLossAutoCalc",
       },
@@ -4813,6 +5101,13 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Lower Dentures", path: "dentures.lower" },
         { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
         { type: "textarea", label: "Nutrition Notes", path: "notes" },
+      ]},
+      { title: "NPO / Artificial Feeding", fields: [
+        { type: "radio", label: "NPO Status", path: "npoStatus", options: ["Not NPO", "NPO", "NPO except meds", "Modified/thickened liquids only"] },
+        { type: "checkboxGroup", label: "Artificial Feeding / Access Devices", path: "artificialFeeding", options: ["PEG", "NG", "J-tube", "Pump", "TPN", "None"] },
+      ]},
+      { title: "Oral Cavity", fields: [
+        { type: "checkboxGroup", label: "Oral Cavity Findings", path: "oralCavityFindings", options: ["Edentulous", "Stomatitis", "Thrush", "Poor dentition", "Normal"] },
       ]},
     ],
   },
@@ -5260,6 +5555,29 @@ const SECTION_CONFIGS = {
   },
 };
 
+// Recursively merges a saved form-data object onto the full INITIAL_FORM
+// defaults so that partial/older records (missing nested keys added later)
+// don't crash rendering. Arrays are taken wholesale from `saved` when
+// present (not merged element-wise); plain objects are merged key-by-key.
+function deepMergeFormData(defaults, saved) {
+  if (saved === undefined || saved === null) return defaults;
+  if (Array.isArray(defaults) || Array.isArray(saved)) {
+    return Array.isArray(saved) ? saved : defaults;
+  }
+  if (typeof defaults === "object" && typeof saved === "object") {
+    const merged = { ...defaults };
+    for (const key of Object.keys(defaults)) {
+      merged[key] = deepMergeFormData(defaults[key], saved[key]);
+    }
+    // Preserve any extra keys present in saved but not in defaults.
+    for (const key of Object.keys(saved)) {
+      if (!(key in merged)) merged[key] = saved[key];
+    }
+    return merged;
+  }
+  return saved !== undefined ? saved : defaults;
+}
+
 // ════════════════════════════════════════════════════════════════
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
@@ -5468,8 +5786,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return null;
         }
         if (data.formData) {
-          setFormData(data.formData);
-          markPersisted(data.formData, data.assessmentId || existingAssessmentId);
+          const merged = deepMergeFormData(INITIAL_FORM, data.formData);
+          setFormData(merged);
+          markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
         setLocked(!!data.locked);
         return data;
