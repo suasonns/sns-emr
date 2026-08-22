@@ -91,7 +91,14 @@ def log_event(
             entity_type=str(entity_type) if entity_type else None,
             entity_id=str(entity_id) if entity_id else None,
             ip_address=ip,
-            metadata=metadata or {},                 # ✅ prevent None
+            # NOTE: the mapped attribute is `event_metadata` (DB column
+            # "metadata"); `AuditLog.metadata` is SQLAlchemy's reserved
+            # declarative MetaData descriptor. Passing metadata=... here
+            # previously set a throwaway plain instance attribute that
+            # shadowed that descriptor and was never persisted -- every
+            # caller's metadata silently vanished. Fixed to write the
+            # actual mapped column.
+            event_metadata=metadata or {},           # ✅ prevent None
             created_at=now,                          # ✅ timezone-aware
             updated_at=now,                          # ✅ REQUIRED COLUMN FIX
             created_by=str(user_id) if user_id else None,

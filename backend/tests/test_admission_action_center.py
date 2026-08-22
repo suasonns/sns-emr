@@ -7,6 +7,7 @@ import pytest
 
 from app.models.patient import Patient
 from app.models.rnica_assessment import RnicaAssessment
+from tests.conftest import TEST_USER_ID
 
 
 def _make_patient(db_session, tenant_id):
@@ -52,6 +53,7 @@ def test_create_list_and_update_status_via_action_center_routes(client, db_sessi
             "request_type": "dme_order",
             "details": "Hospital bed and bedside commode for safety.",
             "source_section": "functional_status",
+            "type_details": {"item_description": "Hospital bed and bedside commode"},
         },
         headers=rn_headers,
     )
@@ -94,13 +96,23 @@ def test_action_center_is_global_across_sections_and_available_on_locked_assessm
     record = _make_rnica_assessment(db_session, patient, tenant_id)
 
     # Raise requests from two different sections of the same assessment.
-    for section, request_type, details in (
-        ("nutrition", "medication_request", "Request appetite stimulant."),
-        ("skin_wound", "supply_order", "Wound dressing supplies needed."),
+    for section, request_type, details, extra in (
+        ("nutrition", "medication_request", "Request appetite stimulant.", {}),
+        (
+            "skin_wound",
+            "supply_order",
+            "Wound dressing supplies needed.",
+            {"type_details": {"item_description": "Foam dressing, 4x4"}},
+        ),
     ):
         resp = client.post(
             f"/visits/rnica/{record.id}/action-center",
-            json={"request_type": request_type, "details": details, "source_section": section},
+            json={
+                "request_type": request_type,
+                "details": details,
+                "source_section": section,
+                **extra,
+            },
             headers=rn_headers,
         )
         assert resp.status_code == 201, resp.text
@@ -118,7 +130,11 @@ def test_action_center_is_global_across_sections_and_available_on_locked_assessm
 
     resp = client.post(
         f"/visits/rnica/{record.id}/action-center",
-        json={"request_type": "referral", "details": "Chaplain referral requested."},
+        json={
+            "request_type": "referral",
+            "details": "Chaplain referral requested.",
+            "type_details": {"destination": "Chaplaincy services", "reason": "Spiritual support"},
+        },
         headers=rn_headers,
     )
     assert resp.status_code == 201, resp.text
@@ -164,3 +180,295 @@ def test_action_center_validates_request_type_and_status_values(client, db_sessi
         headers=rn_headers,
     )
     assert missing_resp.status_code == 404, missing_resp.text
+
+
+class TestDmeSupplyReferralPhysicianContactWorkflow:
+    """Item 4: DME, supplies, referrals, and physician-contact workflow.
+
+    Covers completion-evidence gating, cancellation-reason gating,
+    mutation-after-finalization, tenant isolation, and authenticated-user
+    enforcement at the service layer (the service is the single point of
+    authorization/audit enforcement; the route layer only forwards the
+    request-scoped tenant/user).
+    """
+
+    def test_dme_order_requires_item_description_in_type_details(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.create_request(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                user_id=TEST_USER_ID,
+                request_type="DME_ORDER",
+                details="Wheelchair needed.",
+            )
+
+    def test_physician_contact_requires_physician_method_and_reason(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.create_request(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                user_id=user_id,
+                request_type="PHYSICIAN_CONTACT",
+                details="Called MD about new symptom.",
+            )
+
+        result = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="PHYSICIAN_CONTACT",
+            details="Called MD about new symptom.",
+            type_details={
+                "physician_name": "Dr. Smith",
+                "contact_method": "PHONE",
+                "reason": "New unmanaged symptom",
+            },
+        )
+        assert result["typeDetails"]["physician_name"] == "Dr. Smith"
+
+    def test_create_requires_authenticated_user(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.create_request(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                user_id=None,
+                request_type="REFERRAL",
+                details="Chaplain referral.",
+                type_details={"destination": "Chaplaincy", "reason": "Spiritual support"},
+            )
+
+    def test_complete_requires_timestamped_evidence(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="SUPPLY_ORDER",
+            details="Wound dressing supplies.",
+            type_details={"item_description": "Foam dressing"},
+        )
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.complete_request(
+                db_session,
+                tenant_id=tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                completion_evidence="   ",
+            )
+
+        completed = svc.complete_request(
+            db_session,
+            tenant_id=tenant_id,
+            request_id=uuid.UUID(created["id"]),
+            user_id=user_id,
+            completion_evidence="Delivered and signed for by caregiver on 2026-08-30.",
+        )
+        assert completed["status"] == "COMPLETED"
+        assert completed["completedAt"] is not None
+        assert completed["completionEvidence"]
+
+    def test_cancel_requires_reason(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="REFERRAL",
+            details="Home health referral.",
+            type_details={"destination": "Home health agency", "reason": "Skilled need"},
+        )
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.cancel_request(
+                db_session,
+                tenant_id=tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                cancellation_reason="",
+            )
+
+        canceled = svc.cancel_request(
+            db_session,
+            tenant_id=tenant_id,
+            request_id=uuid.UUID(created["id"]),
+            user_id=user_id,
+            cancellation_reason="Patient declined referral",
+        )
+        assert canceled["status"] == "CANCELED"
+        assert canceled["cancellationReason"] == "Patient declined referral"
+
+    def test_finalized_request_cannot_be_mutated(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="SUPPLY_ORDER",
+            details="Incontinence supplies.",
+            type_details={"item_description": "Briefs, size M"},
+        )
+        svc.complete_request(
+            db_session,
+            tenant_id=tenant_id,
+            request_id=uuid.UUID(created["id"]),
+            user_id=user_id,
+            completion_evidence="Delivered 2026-08-30, signed by patient.",
+        )
+
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.update_status(
+                db_session,
+                tenant_id=tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                new_status="ACKNOWLEDGED",
+            )
+        with pytest.raises(svc.AdmissionActionCenterError):
+            svc.cancel_request(
+                db_session,
+                tenant_id=tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                cancellation_reason="Trying to cancel a completed request",
+            )
+
+    def test_cross_tenant_read_and_write_denied(self, db_session):
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        other_tenant_id = uuid.uuid4()
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="REFERRAL",
+            details="PT referral.",
+            type_details={"destination": "Physical therapy", "reason": "Mobility decline"},
+        )
+
+        # Cross-tenant read: request is invisible to another tenant's scope.
+        assert svc.list_requests(db_session, tenant_id=other_tenant_id, patient_id=patient.id) == []
+
+        # Cross-tenant write: status/complete/cancel all report not-found
+        # rather than leaking existence or mutating another tenant's record.
+        with pytest.raises(svc.AdmissionActionCenterError, match="not found"):
+            svc.update_status(
+                db_session,
+                tenant_id=other_tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                new_status="IN_PROGRESS",
+            )
+        with pytest.raises(svc.AdmissionActionCenterError, match="not found"):
+            svc.complete_request(
+                db_session,
+                tenant_id=other_tenant_id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                completion_evidence="Attempted cross-tenant completion",
+            )
+
+    def test_audit_events_recorded_for_create_complete_and_cancel(self, db_session):
+        from sqlalchemy import text
+
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="DME_ORDER",
+            details="Hospital bed.",
+            type_details={"item_description": "Hospital bed, full electric"},
+        )
+        svc.complete_request(
+            db_session,
+            tenant_id=tenant_id,
+            request_id=uuid.UUID(created["id"]),
+            user_id=user_id,
+            completion_evidence="Delivered and set up 2026-08-30.",
+        )
+
+        cancel_target = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            user_id=user_id,
+            request_type="SUPPLY_ORDER",
+            details="Gloves.",
+            type_details={"item_description": "Nitrile gloves, box"},
+        )
+        svc.cancel_request(
+            db_session,
+            tenant_id=tenant_id,
+            request_id=uuid.UUID(cancel_target["id"]),
+            user_id=user_id,
+            cancellation_reason="Duplicate request",
+        )
+
+        rows = db_session.execute(
+            text(
+                "SELECT entity_id, action FROM audit_logs WHERE entity_id IN (:a, :b) "
+                "AND action IN ("
+                "'ADMISSION_ACTION_REQUEST_CREATED', "
+                "'ADMISSION_ACTION_REQUEST_COMPLETED', "
+                "'ADMISSION_ACTION_REQUEST_CANCELED'"
+                ")"
+            ),
+            {"a": created["id"], "b": cancel_target["id"]},
+        ).fetchall()
+        actions_by_entity: dict[str, set[str]] = {}
+        for entity_id, action in rows:
+            actions_by_entity.setdefault(str(entity_id), set()).add(action)
+
+        assert actions_by_entity[created["id"]] == {
+            "ADMISSION_ACTION_REQUEST_CREATED",
+            "ADMISSION_ACTION_REQUEST_COMPLETED",
+        }
+        assert actions_by_entity[cancel_target["id"]] == {
+            "ADMISSION_ACTION_REQUEST_CREATED",
+            "ADMISSION_ACTION_REQUEST_CANCELED",
+        }

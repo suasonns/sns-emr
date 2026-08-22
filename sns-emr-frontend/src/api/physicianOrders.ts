@@ -41,6 +41,11 @@ export type PhysicianOrderCreate = {
   ordered_at?: string | null;
   prescriber_authenticated?: boolean;
   phone_readback_confirmed?: boolean | null;
+  ordered_by_provider_role_source?: {
+    original_input: string;
+    normalized_value: string | null;
+    normalization_method: string;
+  } | null;
 };
 
 export async function listPhysicianOrders(

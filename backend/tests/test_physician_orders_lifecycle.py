@@ -370,3 +370,110 @@ class TestProviderSignatureAuthorityModel:
             db_session, order=order, approved_by=TEST_USER_ID, approved_by_role="MEDICAL_DIRECTOR",
         )
         assert order.signed_by_provider_role == "MEDICAL_DIRECTOR"
+
+
+class TestOrderedByProviderRoleContract:
+    """Contract test: `ordered_by_provider_role` must accept every value in
+    ``VALID_PROVIDER_ROLES`` (the single source of truth for this field, enforced
+    in ``physician_order_service.create_draft``) and round-trip it through the
+    `physician_orders.ordered_by_provider_role VARCHAR(16)` column without
+    truncation or silent substitution. Any value outside that set must be
+    rejected, not stored under a different value.
+    """
+
+    @pytest.mark.parametrize("role", sorted(svc.VALID_PROVIDER_ROLES))
+    def test_every_valid_provider_role_round_trips_without_truncation(self, db_session, role):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = _make_draft(db_session, tenant_id, patient.id, ordered_by_provider_role=role)
+        db_session.flush()
+        db_session.refresh(order)
+        assert order.ordered_by_provider_role == role
+
+    def test_invalid_provider_role_is_rejected_not_substituted(self, db_session):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        with pytest.raises(svc.PhysicianOrderError):
+            _make_draft(
+                db_session, tenant_id, patient.id,
+                ordered_by_provider_role="ATTENDING_PHYSICIAN",
+            )
+
+
+class TestProviderRoleUiNormalizationAuditTrail:
+    """UI normalization layer (sns-emr-frontend/src/utils/providerRoleNormalization.js)
+    lets staff type natural terminology ("attending physician", "doctor",
+    etc.) and resolves it to a canonical MD/NP/PA value client-side. This
+    class proves the backend contract that makes that safe:
+
+    - only the canonical value is ever validated/stored on the order
+      (unchanged strict VALID_PROVIDER_ROLES contract)
+    - the original free-text and how it was resolved are preserved as
+      audit metadata, never as the authoritative role
+    - a caller cannot use `ordered_by_provider_role_source` to smuggle an
+      unauthorized canonical value past validation
+    """
+
+    def test_audit_metadata_captures_original_input_and_normalization_method(self, db_session):
+        from sqlalchemy import text
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = _make_draft(
+            db_session, tenant_id, patient.id,
+            ordered_by_provider_role="MD",
+            ordered_by_provider_role_source={
+                "original_input": "Attending Physician",
+                "normalized_value": "MD",
+                "normalization_method": "ui_alias",
+            },
+        )
+
+        # Canonical, strict value is what's actually stored on the order.
+        assert order.ordered_by_provider_role == "MD"
+
+        rows = db_session.execute(
+            text(
+                "SELECT metadata FROM audit_logs WHERE entity_id = :entity_id "
+                "AND action = 'PHYSICIAN_ORDER_STATUS_TRANSITION' "
+                "ORDER BY created_at ASC LIMIT 1"
+            ),
+            {"entity_id": str(order.id)},
+        ).fetchone()
+        assert rows is not None
+        metadata = rows[0]
+        if isinstance(metadata, str):
+            import json
+
+            metadata = json.loads(metadata)
+        source = metadata["ordered_by_provider_role_source"]
+        assert source["original_input"] == "Attending Physician"
+        assert source["normalized_value"] == "MD"
+        assert source["normalization_method"] == "ui_alias"
+
+    def test_role_source_metadata_cannot_bypass_strict_validation(self, db_session):
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+
+        # Even if the UI-normalization payload claims a canonical value,
+        # the actual `ordered_by_provider_role` argument is the only thing
+        # validated -- an invalid role is still rejected outright.
+        with pytest.raises(svc.PhysicianOrderError):
+            _make_draft(
+                db_session, tenant_id, patient.id,
+                ordered_by_provider_role="ATTENDING_PHYSICIAN",
+                ordered_by_provider_role_source={
+                    "original_input": "attending physician",
+                    "normalized_value": "MD",
+                    "normalization_method": "ui_alias",
+                },
+            )
+
+    def test_missing_role_source_metadata_is_tolerated(self, db_session):
+        # Callers that don't pass ordered_by_provider_role_source (e.g. the
+        # existing frontend/back-compat clients) must keep working exactly
+        # as before -- this field is strictly additive.
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient = _make_patient(db_session, tenant_id)
+        order = _make_draft(db_session, tenant_id, patient.id, ordered_by_provider_role="NP")
+        assert order.ordered_by_provider_role == "NP"

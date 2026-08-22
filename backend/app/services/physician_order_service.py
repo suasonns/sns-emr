@@ -194,6 +194,7 @@ def _record_transition(
     clinical_review_bypassed: bool = False,
     clinical_review_bypass_reason: Optional[str] = None,
     evidence: Optional[str] = None,
+    extra_metadata: Optional[dict] = None,
 ) -> None:
     """Append-only structured audit trail for a status transition. Never
     updated or deleted; written alongside (not instead of) the generic
@@ -215,6 +216,18 @@ def _record_transition(
     )
     db.add(event)
 
+    metadata = {
+        "from_status": from_status,
+        "to_status": to_status,
+        "reason": reason,
+        "automatic": automatic,
+        "order_source": order.source_type,
+        "clinical_review_bypassed": clinical_review_bypassed,
+        "clinical_review_bypass_reason": clinical_review_bypass_reason,
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+
     log_event(
         db=db,
         commit=False,
@@ -224,15 +237,7 @@ def _record_transition(
         action="PHYSICIAN_ORDER_STATUS_TRANSITION",
         entity_type="physician_order",
         entity_id=str(order.id),
-        metadata={
-            "from_status": from_status,
-            "to_status": to_status,
-            "reason": reason,
-            "automatic": automatic,
-            "order_source": order.source_type,
-            "clinical_review_bypassed": clinical_review_bypassed,
-            "clinical_review_bypass_reason": clinical_review_bypass_reason,
-        },
+        metadata=metadata,
     )
 
 
@@ -311,6 +316,7 @@ def create_draft(
     created_by,
     priority: str = "ROUTINE",
     urgency_reason: Optional[str] = None,
+    ordered_by_provider_role_source: Optional[dict] = None,
 ) -> PhysicianOrder:
     source_type = (source_type or "WRITTEN").strip().upper()
     if source_type not in VALID_SOURCE_TYPES:
@@ -320,6 +326,11 @@ def create_draft(
     if order_category not in VALID_ORDER_CATEGORIES:
         raise PhysicianOrderError(f"order_category must be one of {sorted(VALID_ORDER_CATEGORIES)}")
 
+    # Strict, unchanged backend contract: only canonical MD/NP/PA are ever
+    # accepted or stored, regardless of what the UI normalization layer
+    # resolved a free-text entry to. `ordered_by_provider_role_source` (if
+    # provided) is audit metadata ONLY -- it is never used to derive,
+    # relax, or bypass this validation.
     provider_role = (ordered_by_provider_role or "").strip().upper()
     if provider_role not in VALID_PROVIDER_ROLES:
         raise PhysicianOrderError(f"ordered_by_provider_role must be one of {sorted(VALID_PROVIDER_ROLES)}")
@@ -350,7 +361,25 @@ def create_draft(
     db.commit()
     db.refresh(order)
 
-    _record_transition(db, order=order, from_status=None, to_status="DRAFT", changed_by=created_by, reason="Order created")
+    extra_metadata = None
+    if isinstance(ordered_by_provider_role_source, dict) and ordered_by_provider_role_source:
+        extra_metadata = {
+            "ordered_by_provider_role_source": {
+                "original_input": ordered_by_provider_role_source.get("original_input"),
+                "normalized_value": ordered_by_provider_role_source.get("normalized_value") or provider_role,
+                "normalization_method": ordered_by_provider_role_source.get("normalization_method"),
+            }
+        }
+
+    _record_transition(
+        db,
+        order=order,
+        from_status=None,
+        to_status="DRAFT",
+        changed_by=created_by,
+        reason="Order created",
+        extra_metadata=extra_metadata,
+    )
     db.commit()
     return order
 

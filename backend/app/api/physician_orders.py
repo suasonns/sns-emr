@@ -71,6 +71,13 @@ class OrderCreate(BaseModel):
     phone_readback_confirmed: bool | None = None
     priority: str = "ROUTINE"
     urgency_reason: str | None = None
+    # Audit-only metadata from the UI normalization layer (see
+    # sns-emr-frontend/src/utils/providerRoleNormalization.js): what the
+    # user actually typed and how it was resolved to the canonical
+    # ordered_by_provider_role above. Never used for validation -- the
+    # strict MD/NP/PA contract is enforced solely on
+    # ordered_by_provider_role, regardless of what this contains.
+    ordered_by_provider_role_source: dict | None = None
 
 
 class OrderSubmit(BaseModel):
@@ -259,6 +266,7 @@ def create_order(
             created_by=user.user_id,
             priority=payload.priority,
             urgency_reason=payload.urgency_reason,
+            ordered_by_provider_role_source=payload.ordered_by_provider_role_source,
         )
     except svc.PhysicianOrderError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
