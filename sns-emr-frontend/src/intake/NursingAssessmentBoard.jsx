@@ -75,6 +75,8 @@ function mapSummaryToPatient(summary) {
     age: patient.age || defaultPatient.age,
     sex: patient.sex || defaultPatient.sex,
     payer: patient.payer || defaultPatient.payer,
+    primaryPayerType: patient.primary_payer_type || "",
+    secondaryPayerType: patient.secondary_payer_type || "",
     status: patient.status || defaultPatient.status,
     socDate: patient.soc_date || patient.hospice_election_date || defaultPatient.socDate,
     benefitPeriod: patient.benefit_period || defaultPatient.benefitPeriod,

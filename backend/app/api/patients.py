@@ -1277,6 +1277,12 @@ class FaceSheetCreate(BaseModel):
 
     primary_payer: str | None = None
 
+    # HOPE A1400 payer source category (Medicare / Medicare Advantage /
+    # Medicaid-Medi-Cal / Medicaid-Medi-Cal Managed Care / Private-Managed
+    # Care / Other Government / Self Pay / No Payer Source). Distinct from
+    # the free-text payer name; see PAYER_SOURCE_TYPES for allowed values.
+    primary_payer_type: str | None = None
+
     primary_policy_number: str | None = None
 
     mbi_number: str | None = None
@@ -1286,6 +1292,8 @@ class FaceSheetCreate(BaseModel):
     # ==================================================
 
     secondary_payer: str | None = None
+
+    secondary_payer_type: str | None = None
 
     secondary_policy_number: str | None = None
 
@@ -1752,9 +1760,11 @@ def get_facesheet(
 
         "insurance": {
             "primary_payer": facesheet.primary_payer,
+            "primary_payer_type": facesheet.primary_payer_type,
             "primary_policy_number": facesheet.primary_policy_number,
             "mbi_number": facesheet.mbi_number,
             "secondary_payer": facesheet.secondary_payer,
+            "secondary_payer_type": facesheet.secondary_payer_type,
             "secondary_policy_number": facesheet.secondary_policy_number,
         },
 
@@ -2435,8 +2445,10 @@ def patient_chart_summary(
             # COVERAGE
             # -----------------------------------------
             "primary_payer": getattr(facesheet, "primary_payer", None),
+            "primary_payer_type": getattr(facesheet, "primary_payer_type", None),
             "primary_policy_number": getattr(facesheet, "primary_policy_number", None),
             "secondary_payer": getattr(facesheet, "secondary_payer", None),
+            "secondary_payer_type": getattr(facesheet, "secondary_payer_type", None),
             "secondary_policy_number": getattr(facesheet, "secondary_policy_number", None),
             "mbi_number": getattr(facesheet, "mbi_number", None),
 

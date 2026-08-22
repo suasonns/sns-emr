@@ -56,6 +56,7 @@ const PatientBanner = ({ patient, colors }) => (
 export const defaultPatient = {
   firstName: 'LOREN B', lastName: 'SHIELDS', mrn: '054/782',
   dob: '03/15/1948', age: 78, sex: 'M', payer: 'Medicare',
+  primaryPayerType: 'MEDICARE', secondaryPayerType: '',
   status: 'ACTIVE', socDate: '01/15/2026',
   benefitPeriod: '01/15/2026 – 07/14/2026',
 };

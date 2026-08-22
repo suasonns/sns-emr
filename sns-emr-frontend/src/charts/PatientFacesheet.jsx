@@ -89,9 +89,11 @@ const EMPTY_DRAFT = {
   current_level_of_care: '',
   loc_effective_date: '',
   primary_payer: '',
+  primary_payer_type: '',
   primary_policy_number: '',
   mbi_number: '',
   secondary_payer: '',
+  secondary_payer_type: '',
   secondary_policy_number: '',
   requires_prior_authorization: null,
   authorization_required_for: '',
@@ -172,6 +174,21 @@ const LOC_OPTIONS = [
   'GENERAL_INPATIENT',
   'INPATIENT_RESPITE',
 ].map((value) => ({ value, label: value ? value.replaceAll('_', ' ') : 'Select level' }));
+
+// HOPE A1400 payer source category. Stored alongside the free-text payer
+// name so the HOPE report mapper can export the official CMS code without
+// guessing at it from an arbitrary payer name string.
+const PAYER_SOURCE_TYPE_OPTIONS = [
+  { value: '', label: 'Select payer source type' },
+  { value: 'MEDICARE', label: 'Medicare' },
+  { value: 'MEDICARE_ADVANTAGE', label: 'Medicare Advantage/Medicare Part A (MA)' },
+  { value: 'MEDICAID', label: 'Medicaid/Medi-Cal' },
+  { value: 'MEDICAID_MANAGED_CARE', label: 'Medicaid/Medi-Cal Managed Care (MMC)' },
+  { value: 'PRIVATE_MANAGED_CARE', label: 'Private/Managed Care (HMO, Payer Plans, PPO)' },
+  { value: 'OTHER_GOVERNMENT', label: 'Other Government (VA, TRICARE)' },
+  { value: 'SELF_PAY', label: 'Self Pay' },
+  { value: 'NO_PAYER_SOURCE', label: 'No Payer Source (Charity/Pro Bono)' },
+];
 
 const AUTH_REQUIRED_FOR_OPTIONS = [
   '',
@@ -334,9 +351,11 @@ const buildPayload = (draft) => {
   current_level_of_care: toNullableString(draft.current_level_of_care),
   loc_effective_date: toNullableString(draft.loc_effective_date),
   primary_payer: toNullableString(draft.primary_payer),
+  primary_payer_type: toNullableString(draft.primary_payer_type),
   primary_policy_number: toNullableString(draft.primary_policy_number),
   mbi_number: toNullableString(draft.mbi_number),
   secondary_payer: toNullableString(draft.secondary_payer),
+  secondary_payer_type: toNullableString(draft.secondary_payer_type),
   secondary_policy_number: toNullableString(draft.secondary_policy_number),
   requires_prior_authorization: draft.requires_prior_authorization,
   authorization_required_for: toNullableString(draft.authorization_required_for),
@@ -428,9 +447,11 @@ const mapResponseToDraft = (response) => ({
   current_level_of_care: response?.level_of_care?.current_level_of_care || '',
   loc_effective_date: normalizeDateValue(response?.level_of_care?.loc_effective_date),
   primary_payer: response?.insurance?.primary_payer || '',
+  primary_payer_type: response?.insurance?.primary_payer_type || '',
   primary_policy_number: response?.insurance?.primary_policy_number || '',
   mbi_number: response?.insurance?.mbi_number || '',
   secondary_payer: response?.insurance?.secondary_payer || '',
+  secondary_payer_type: response?.insurance?.secondary_payer_type || '',
   secondary_policy_number: response?.insurance?.secondary_policy_number || '',
   requires_prior_authorization: response?.authorization?.requires_prior_authorization ?? null,
   authorization_required_for: response?.authorization?.authorization_required_for || '',
@@ -808,12 +829,14 @@ const InsuranceCard = ({ colors, draft, update }) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ marginBottom: 8 }}><Badge variant="teal" colors={colors}>PRIMARY</Badge></div>
       <Field label="Payer" value={draft.primary_payer} colors={colors} editable onChange={(value) => update('primary_payer', value)} />
+      <Field label="Payer Source Type (HOPE A1400)" value={draft.primary_payer_type} type="select" options={PAYER_SOURCE_TYPE_OPTIONS} colors={colors} editable onChange={(value) => update('primary_payer_type', value)} />
       <Field label="Policy Number" value={draft.primary_policy_number} colors={colors} editable onChange={(value) => update('primary_policy_number', value)} />
       <Field label="MBI Number" value={draft.mbi_number} colors={colors} editable onChange={(value) => update('mbi_number', value)} />
     </div>
     <div>
       <div style={{ marginBottom: 8 }}><Badge variant="teal" colors={colors}>SECONDARY</Badge></div>
       <Field label="Payer" value={draft.secondary_payer} colors={colors} editable onChange={(value) => update('secondary_payer', value)} />
+      <Field label="Payer Source Type (HOPE A1400)" value={draft.secondary_payer_type} type="select" options={PAYER_SOURCE_TYPE_OPTIONS} colors={colors} editable onChange={(value) => update('secondary_payer_type', value)} />
       <Field label="Policy Number" value={draft.secondary_policy_number} colors={colors} editable onChange={(value) => update('secondary_policy_number', value)} />
     </div>
     <SectionNote colors={colors}>Only primary and secondary payer details are stored on the current facesheet backend.</SectionNote>

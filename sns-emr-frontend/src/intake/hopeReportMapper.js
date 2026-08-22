@@ -127,6 +127,51 @@ const PRINCIPAL_DIAGNOSIS_CATEGORY_LABELS = {
   "99": "None of the above",
 };
 
+// A1400 Payer Information — official CMS multi-select codes (check all that apply).
+const PAYER_SOURCE_LABELS = {
+  A: "Medicare (traditional fee-for-service)",
+  B: "Medicare (managed care/Part C/Medicare Advantage)",
+  C: "Medicaid (traditional fee-for-service)",
+  D: "Medicaid (managed care)",
+  G: "Other government (e.g., TRICARE, VA, etc.)",
+  H: "Private Insurance/Medigap",
+  I: "Private managed care",
+  J: "Self-pay",
+  K: "No payer source",
+  X: "Unknown",
+  Y: "Other",
+};
+
+// Facesheet Insurance card "Payer Source Type" category (single source of
+// truth for payer information — see PatientFacesheet.jsx) crosswalked to its
+// official CMS A1400 code. A1400 is a multi-select item, so both the primary
+// and secondary Facesheet payer types (when present) each contribute a code.
+const FACESHEET_PAYER_TYPE_TO_A1400_CODE = {
+  MEDICARE: "A",
+  MEDICARE_ADVANTAGE: "B",
+  MEDICAID: "C",
+  MEDICAID_MANAGED_CARE: "D",
+  PRIVATE_MANAGED_CARE: "I",
+  OTHER_GOVERNMENT: "G",
+  SELF_PAY: "J",
+  NO_PAYER_SOURCE: "K",
+};
+
+function payerSources(primaryPayerType, secondaryPayerType) {
+  const codes = [primaryPayerType, secondaryPayerType]
+    .map((type) => FACESHEET_PAYER_TYPE_TO_A1400_CODE[type])
+    .filter((code) => Boolean(code) && PAYER_SOURCE_LABELS[code]);
+  const uniqueCodes = [...new Set(codes)];
+  if (!uniqueCodes.length) {
+    return { incomplete: true, codes: [], text: "Legacy record: review required" };
+  }
+  return {
+    incomplete: false,
+    codes: uniqueCodes,
+    text: uniqueCodes.map((code) => `${code} - ${PAYER_SOURCE_LABELS[code]}`).join("; "),
+  };
+}
+
 const ASSISTANCE_MAP = {
   "24/7 available": ["1", "Assistance available around the clock"],
   "Daytime only": ["2", "Assistance available daytime only"],
@@ -369,11 +414,13 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   };
   const f3000LegacyIndicator = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
   const spiritualAsked = askedStatus(spiritual.concernsAskedStatus, f3000LegacyIndicator);
+  const payerInformation = payerSources(patient.primaryPayerType, patient.secondaryPayerType);
   const legacyReviewItems = [
     ["F2000", cprAsked],
     ["F2100", lifeSustainingAsked],
     ["F2200", hospitalizationAsked],
     ["F3000", spiritualAsked],
+    ["A1400", payerInformation],
   ].filter(([, result]) => result.incomplete).map(([code]) => code);
   const legacyReviewRequired = {
     required: legacyReviewItems.length > 0,
@@ -425,7 +472,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "A1005", label: "Ethnicity", entries: [{ label: "Selection", value: arrayText(demographics.ethnicity) }] },
           { code: "A1010", label: "Race", entries: [{ label: "Selection", value: arrayText(demographics.race) }] },
           { code: "A1110", label: "Language", entries: [{ label: "A. Preferred language", value: valueText(demographics.preferredLanguage) }, { label: "B. Need interpreter", value: boolCode(Boolean(demographics.needsInterpreter)).description }] },
-          { code: "A1400", label: "Payer Information", entries: [{ label: "Payer", value: valueText(patient.payer) }] },
+          { code: "A1400", label: "Payer Information", entries: [{ label: "Payer source(s)", value: payerInformation.text }] },
           { code: "A1805", label: "Admitted From", entries: [{ label: "Code + description", value: `${admittedFrom.code} - ${admittedFrom.description}` }] },
           { code: "A1905", label: "Living Arrangements", entries: [{ label: "Code + description", value: `${livingArrangement.code} - ${livingArrangement.description}` }] },
           { code: "A1910", label: "Availability of Assistance", entries: [{ label: "Code + description", value: `${assistance.code} - ${assistance.description}` }] },

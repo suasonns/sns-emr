@@ -55,6 +55,27 @@ function baseFormData(overrides = {}) {
   };
 }
 
+// A1400 Payer Information is sourced from the Facesheet insurance record
+// (patient.primaryPayerType / patient.secondaryPayerType), not from RN ICA
+// form_data — see checkpoint notes on why this is Facesheet-owned.
+function basePatient(overrides = {}) {
+  return {
+    firstName: "Test",
+    lastName: "Patient",
+    mrn: "000-000",
+    dob: "1950-01-01",
+    age: 75,
+    sex: "F",
+    payer: "",
+    primaryPayerType: "MEDICARE",
+    secondaryPayerType: "",
+    status: "ACTIVE",
+    socDate: "2026-01-01",
+    benefitPeriod: "",
+    ...overrides,
+  };
+}
+
 function findItem(report, code) {
   for (const section of report.sections) {
     const item = section.items.find((candidate) => candidate.code === code);
@@ -477,6 +498,87 @@ describe("mapRnIcaToHopeReport — I0010 Principal Diagnosis category", () => {
     };
     const report = mapRnIcaToHopeReport(formData);
     expect(responseCode(report, "I0010")).toBe(PLACEHOLDER);
+  });
+});
+
+// A1400 Payer Information is sourced from the Facesheet insurance record
+// (patient.primaryPayerType / patient.secondaryPayerType), not RN ICA
+// form_data. See checkpoint notes: duplicating payer data into RN ICA would
+// create a second, potentially conflicting source of truth, so the mapper
+// crosswalks the Facesheet's structured "Payer Source Type" into the
+// official CMS A1400 code instead.
+describe("mapRnIcaToHopeReport — A1400 Payer Information (Facesheet-sourced)", () => {
+  it.each([
+    ["MEDICARE", "A - Medicare (traditional fee-for-service)"],
+    ["MEDICARE_ADVANTAGE", "B - Medicare (managed care/Part C/Medicare Advantage)"],
+    ["MEDICAID", "C - Medicaid (traditional fee-for-service)"],
+    ["MEDICAID_MANAGED_CARE", "D - Medicaid (managed care)"],
+    ["PRIVATE_MANAGED_CARE", "I - Private managed care"],
+    ["OTHER_GOVERNMENT", "G - Other government (e.g., TRICARE, VA, etc.)"],
+    ["SELF_PAY", "J - Self-pay"],
+    ["NO_PAYER_SOURCE", "K - No payer source"],
+  ])("Facesheet primary payer source type '%s' exports official A1400 code '%s'", (primaryPayerType, expectedText) => {
+    const report = mapRnIcaToHopeReport(baseFormData(), basePatient({ primaryPayerType, secondaryPayerType: "" }));
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe(expectedText);
+  });
+
+  it("primary and secondary payer types that differ both contribute distinct codes (multi-select)", () => {
+    const report = mapRnIcaToHopeReport(
+      baseFormData(),
+      basePatient({ primaryPayerType: "MEDICARE", secondaryPayerType: "PRIVATE_MANAGED_CARE" })
+    );
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe(
+      "A - Medicare (traditional fee-for-service); I - Private managed care"
+    );
+  });
+
+  it("primary and secondary payer types that map to the same code are deduplicated", () => {
+    const report = mapRnIcaToHopeReport(
+      baseFormData(),
+      basePatient({ primaryPayerType: "MEDICARE", secondaryPayerType: "MEDICARE" })
+    );
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe("A - Medicare (traditional fee-for-service)");
+  });
+
+  it("clinical/legacy patient.payer free text does not determine the A1400 response", () => {
+    const report = mapRnIcaToHopeReport(
+      baseFormData(),
+      basePatient({ payer: "Blue Shield", primaryPayerType: "MEDICAID", secondaryPayerType: "" })
+    );
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe("C - Medicaid (traditional fee-for-service)");
+  });
+
+  it("is marked legacy/incomplete when neither Facesheet payer type is set (pre-remediation records)", () => {
+    const report = mapRnIcaToHopeReport(
+      baseFormData(),
+      basePatient({ payer: "Blue Shield", primaryPayerType: "", secondaryPayerType: "" })
+    );
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe("Legacy record: review required");
+    expect(report.legacyReviewRequired.required).toBe(true);
+    expect(report.legacyReviewRequired.items).toContain("A1400");
+  });
+
+  it("an unrecognized/unmapped payer type string does not silently produce a valid code", () => {
+    const report = mapRnIcaToHopeReport(
+      baseFormData(),
+      basePatient({ primaryPayerType: "SOME_UNKNOWN_VALUE", secondaryPayerType: "" })
+    );
+    const item = findItem(report, "A1400");
+    expect(item.entries[0].value).toBe("Legacy record: review required");
+    expect(report.legacyReviewRequired.items).toContain("A1400");
+  });
+
+  it("round-trips through the patient object unchanged", () => {
+    const patient = basePatient({ primaryPayerType: "SELF_PAY", secondaryPayerType: "" });
+    const reportA = mapRnIcaToHopeReport(baseFormData(), patient);
+    const reportB = mapRnIcaToHopeReport(baseFormData(), JSON.parse(JSON.stringify(patient)));
+    expect(findItem(reportA, "A1400").entries[0].value).toBe(findItem(reportB, "A1400").entries[0].value);
+    expect(findItem(reportB, "A1400").entries[0].value).toBe("J - Self-pay");
   });
 });
 

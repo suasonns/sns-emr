@@ -79,7 +79,17 @@ def _patient_full_name(db: Session, patient: Patient) -> str:
     return patient.mrn or "Unknown patient"
 
 
+def _latest_facesheet(db: Session, patient: Patient) -> PatientFaceSheet | None:
+    return (
+        db.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .order_by(PatientFaceSheet.created_at.desc(), PatientFaceSheet.id.desc())
+        .first()
+    )
+
+
 def _base_patient(db: Session, patient: Patient) -> dict:
+    face_sheet = _latest_facesheet(db, patient)
     return {
         "id": str(patient.id),
         "mrn": patient.mrn,
@@ -90,6 +100,12 @@ def _base_patient(db: Session, patient: Patient) -> dict:
         "admission_status": patient.admission_status,
         "hospice_election_date": _serialize_date(patient.hospice_election_date),
         "soc_date": _serialize_datetime(getattr(patient, "soc_date", None)),
+        # HOPE A1400 payer source — structured category from the Facesheet
+        # Insurance card, distinct from the free-text payer name.
+        "primary_payer": getattr(face_sheet, "primary_payer", None) if face_sheet else None,
+        "primary_payer_type": getattr(face_sheet, "primary_payer_type", None) if face_sheet else None,
+        "secondary_payer": getattr(face_sheet, "secondary_payer", None) if face_sheet else None,
+        "secondary_payer_type": getattr(face_sheet, "secondary_payer_type", None) if face_sheet else None,
     }
 
 

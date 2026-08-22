@@ -90,6 +90,12 @@ class PatientFaceSheet(Base):
     primary_payer = Column(String)
     primary_policy_number = Column(String)
 
+    # HOPE A1400 payer source category — official CMS crosswalk category,
+    # distinct from the free-text payer name above. See PAYER_SOURCE_TYPES
+    # in app/api/patients.py for the fixed set of allowed values.
+    primary_payer_type = Column(String)
+    secondary_payer_type = Column(String)
+
     mbi_number = Column(String)
 
     secondary_payer = Column(String)
