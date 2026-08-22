@@ -507,8 +507,10 @@ const INITIAL_FORM = {
 
   // ─── 11. GASTROINTESTINAL ─────────────────────────
   gastrointestinal: {
-    nausea: "", vomiting: "", diarrhea: "", constipation: "",
-    bowelSounds: "", abdomen: "", bowelStatus: "", lastBM: "",
+    nausea: "", vomiting: "", vomitingOccurrences24h: "", diarrhea: "", constipation: "",
+    bowelSounds: "", abdomen: "", ascites: false, abdominalGirth: "",
+    stoolCharacter: [],
+    bowelStatus: "", bowelFrequency: "", reasonBowelRegimenNotInitiated: "", lastBM: "",
     continence: "",
     feedingTube: { present: false, type: "", site: "" },
     ostomy: { present: false, type: "", condition: "" },
@@ -5224,14 +5226,20 @@ const SECTION_CONFIGS = {
       { title: "GI Symptoms", fields: [
         { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
         { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
       { title: "Abdominal / Bowel Assessment", fields: [
         { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
-        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Distended", "Tender", "Rigid"] },
-        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Incontinent"] },
+        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
+        { type: "checkbox", label: "Ascites", path: "ascites" },
+        { type: "input", label: "Abdominal Girth", path: "abdominalGirth" },
+        { type: "checkboxGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
+        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
+        { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
+        { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
       { title: "Feeding Devices", fields: [
         { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },

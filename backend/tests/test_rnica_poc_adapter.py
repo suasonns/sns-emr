@@ -598,3 +598,68 @@ def test_respiratory_structured_fields_save_reload_and_poc_linkage(client, db_se
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/respiratory", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_gastrointestinal_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.5 Gastrointestinal structured fields (vomiting
+    occurrences in 24 hours, expanded abdomen findings, ascites,
+    abdominal girth, stool characteristics, expanded bowel status,
+    bowel frequency, and reason bowel regimen could not be initiated)
+    persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    gastrointestinal section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"gastrointestinal": {}})
+
+    updated_gi = {
+        "nausea": "Mild",
+        "vomiting": "Moderate",
+        "vomitingOccurrences24h": "3",
+        "diarrhea": "None",
+        "constipation": "None",
+        "bowelSounds": "Hypoactive",
+        "abdomen": "Tympanic",
+        "ascites": True,
+        "abdominalGirth": "38 in",
+        "stoolCharacter": ["Bloody"],
+        "bowelStatus": "Impaction",
+        "bowelFrequency": "Every 3-4 days",
+        "reasonBowelRegimenNotInitiated": "Patient declined per family request pending IDG discussion.",
+        "lastBM": "2026-08-18",
+        "continence": "Incontinent",
+        "feedingTube": {"present": False, "type": "", "site": ""},
+        "ostomy": {"present": False, "type": "", "condition": ""},
+        "notes": "Abdomen distended, tympanic to percussion, ascites suspected.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"gastrointestinal": updated_gi}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    gi = get_resp.json()["formData"]["gastrointestinal"]
+
+    for key, value in updated_gi.items():
+        assert gi[key] == value, f"gastrointestinal field {key} did not round-trip"
+
+    # POC linkage from the gastrointestinal section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={
+            "problem_label": "Bowel impaction with bloody stool, ascites",
+            "evidence_text": "Impaction, bloody stool, ascites, abdominal girth 38in, last BM 8/18.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/gastrointestinal", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
