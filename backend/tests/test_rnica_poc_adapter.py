@@ -248,3 +248,104 @@ def test_update_and_resolve_require_explicit_action(client, db_session, rn_heade
     )
     assert resolve_resp.status_code == 200, resolve_resp.text
     assert resolve_resp.json()["problem"]["status"] == "RESOLVED"
+
+
+@pytest.mark.integration
+def test_skin_wound_structured_fields_save_reload_and_preserve_existing_data(client, db_session, rn_headers):
+    """Master Map §5.11 structured wound fields persist through the
+    existing RNICA form_data JSONB model, round-trip on reload, and never
+    disturb pre-existing skin fields (Braden, skinStatus, skinBodySites,
+    woundImpairment, notes)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    initial_form_data = {
+        "skin": {
+            "skinConditionsPresent": True,
+            "skinStatus": ["Dry", "Fragile"],
+            "skinTurgor": "Fair",
+            "skinBodySites": ["sacrum", "left-heel"],
+            "braden": {
+                "sensoryPerception": "2", "moisture": "2", "activity": "2",
+                "mobility": "2", "nutrition": "3", "frictionShear": "2", "total": "13",
+            },
+            "pressureInjuryRisk": "High (≤14)",
+            "woundImpairment": "Pre-existing free-text wound note.",
+            "notes": "Pre-existing skin notes.",
+        },
+    }
+    record = _make_rnica_assessment(db_session, patient, tenant_id, initial_form_data)
+
+    # Add structured wound data + plan-level fields, as the frontend
+    # WoundListCard / "Wound Documentation & Notes" card would.
+    wound_entry = {
+        "presentAsPressureInjury": True,
+        "stage": "Stage 2",
+        "woundType": "Pressure injury",
+        "location": "Sacrum",
+        "length": 2.0,
+        "width": 1.5,
+        "depth": 0.3,
+        "drainage": "Small",
+        "odor": "None",
+        "periwoundCondition": "Intact, mild erythema",
+        "isSkinTear": False,
+        "isSurgicalWound": False,
+        "isNonhealingWound": False,
+        "currentTreatment": "Hydrocolloid dressing",
+        "dressing": "Hydrocolloid",
+        "dressingFrequency": "Every 3 days",
+    }
+    updated_skin = {
+        **initial_form_data["skin"],
+        "wounds": [wound_entry],
+        "pressureReliefMeasures": ["Pressure-relief mattress", "Frequent position changes"],
+        "repositioningPlan": "Reposition every 2 hours, alternate sides",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"skin": updated_skin}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    # Reload and confirm both the new structured fields AND the
+    # pre-existing skin fields all round-trip intact.
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    skin = get_resp.json()["formData"]["skin"]
+
+    # New §5.11 structured fields.
+    assert len(skin["wounds"]) == 1
+    reloaded_wound = skin["wounds"][0]
+    for key, value in wound_entry.items():
+        assert reloaded_wound[key] == value, f"wound field {key} did not round-trip"
+    assert skin["pressureReliefMeasures"] == ["Pressure-relief mattress", "Frequent position changes"]
+    assert skin["repositioningPlan"] == "Reposition every 2 hours, alternate sides"
+
+    # Pre-existing skin fields untouched.
+    assert skin["skinConditionsPresent"] is True
+    assert skin["skinStatus"] == ["Dry", "Fragile"]
+    assert skin["skinTurgor"] == "Fair"
+    assert skin["skinBodySites"] == ["sacrum", "left-heel"]
+    assert skin["braden"]["total"] == "13"
+    assert skin["pressureInjuryRisk"] == "High (≤14)"
+    assert skin["woundImpairment"] == "Pre-existing free-text wound note."
+    assert skin["notes"] == "Pre-existing skin notes."
+
+    # POC linkage from the skin section still works end-to-end after the
+    # structured wound fields are present.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={
+            "problem_label": "Stage 2 pressure injury, sacrum",
+            "evidence_text": "2.0cm x 1.5cm x 0.3cm wound, small serous drainage, no odor.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/skin", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
