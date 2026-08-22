@@ -407,3 +407,64 @@ def test_infection_structured_fields_save_reload_and_poc_linkage(client, db_sess
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/infection", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_endocrine_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.7 Endocrine structured fields (impairment domain,
+    diabetes dependency classification, oral hypoglycemics, current
+    treatment) persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the endocrine
+    section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"endocrine": {}})
+
+    updated_endocrine = {
+        "endocrineImpairment": ["Thyroid", "Pancreas"],
+        "thyroid": {"assessment": "Enlarged", "notes": "Palpable nodule, referred to endocrinology."},
+        "diabetes": {
+            "type": "Type 2",
+            "dependency": "Insulin-dependent",
+            "glucoseMonitoring": "BID",
+            "lastHbA1c": "8.2",
+            "lastHbA1cDate": "2026-07-01",
+            "insulinType": "Lantus",
+            "insulinDose": "20 units qHS",
+            "oralHypoglycemics": ["Metformin"],
+        },
+        "endocrineSymptoms": ["Fatigue", "Polyuria"],
+        "symptomSeverity": {"Fatigue": "Moderate"},
+        "currentEndocrineMeds": ["Insulin", "Levothyroxine"],
+        "notes": "Blood glucose trending high this week.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"endocrine": updated_endocrine}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    endocrine = get_resp.json()["formData"]["endocrine"]
+
+    for key, value in updated_endocrine.items():
+        assert endocrine[key] == value, f"endocrine field {key} did not round-trip"
+
+    # POC linkage from the endocrine section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/endocrine",
+        json={
+            "problem_label": "Glucose-management problem — insulin-dependent, HbA1c 8.2",
+            "evidence_text": "Poorly controlled Type 2 diabetes, HbA1c 8.2, fatigue and polyuria present.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/endocrine", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1

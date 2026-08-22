@@ -518,9 +518,10 @@ const INITIAL_FORM = {
 
   // ─── 13. ENDOCRINE ────────────────────────────────
   endocrine: {
+    endocrineImpairment: [],
     thyroid: { assessment: "", notes: "" },
     diabetes: {
-      type: "", glucoseMonitoring: "",
+      type: "", dependency: "", glucoseMonitoring: "",
       lastHbA1c: "", lastHbA1cDate: "",
       insulinType: "", insulinDose: "",
       oralHypoglycemics: [],
@@ -5249,23 +5250,29 @@ const SECTION_CONFIGS = {
   },
   endocrine: {
     title: "Endocrine",
-    subtitle: "Thyroid, diabetes management, endocrine symptoms",
+    subtitle: "Impairment, thyroid, diabetes management, endocrine symptoms",
     cards: [
+      { title: "Endocrine Impairment", fields: [
+        { type: "checkboxGroup", label: "Impairment", path: "endocrineImpairment", options: ["Thyroid", "Parathyroid", "Pituitary", "Adrenal", "Pancreas", "None"] },
+      ]},
       { title: "Thyroid Assessment", fields: [
         { type: "radio", label: "Thyroid", path: "thyroid.assessment", options: ["Normal", "Enlarged", "Tender", "Nodular", "Not assessed"] },
         { type: "textarea", label: "Thyroid Notes", path: "thyroid.notes" },
       ]},
       { title: "Diabetes Management", fields: [
         { type: "radio", label: "Diabetes Type", path: "diabetes.type", options: ["Type 1", "Type 2", "Not diabetic", "Unknown"] },
+        { type: "radio", label: "Diabetes Dependency", path: "diabetes.dependency", options: ["Insulin-dependent", "Non-insulin-dependent", "Glucose-management concern", "Not applicable"] },
         { type: "select", label: "Glucose Monitoring Frequency", path: "diabetes.glucoseMonitoring", options: ["None", "Daily", "BID", "TID", "QID", "Weekly"] },
         { type: "input", label: "Last HbA1c Value", path: "diabetes.lastHbA1c" },
         { type: "input", label: "Last HbA1c Date", path: "diabetes.lastHbA1cDate", inputType: "date" },
         { type: "input", label: "Insulin Type", path: "diabetes.insulinType" },
         { type: "input", label: "Insulin Dose", path: "diabetes.insulinDose" },
+        { type: "checkboxGroup", label: "Oral Hypoglycemics", path: "diabetes.oralHypoglycemics", options: ["Metformin", "Sulfonylurea", "DPP-4 inhibitor", "SGLT2 inhibitor", "None"] },
       ]},
-      { title: "Endocrine Symptoms", fields: [
+      { title: "Endocrine Symptoms & Treatment", fields: [
         { type: "checkboxGroup", label: "Symptoms Present", path: "endocrineSymptoms", options: ["Fatigue", "Weight changes", "Temperature intolerance", "Hair/skin changes", "Polydipsia", "Polyuria", "Tremors"] },
-        { type: "textarea", label: "Endocrine Notes", path: "notes" },
+        { type: "checkboxGroup", label: "Current Treatment", path: "currentEndocrineMeds", options: ["Levothyroxine", "Insulin", "Oral hypoglycemics", "Corticosteroid replacement", "Other endocrine medication", "None"] },
+        { type: "textarea", label: "Other Observations / Notes", path: "notes" },
       ]},
     ],
   },
