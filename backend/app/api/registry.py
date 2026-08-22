@@ -42,6 +42,7 @@ from app.api.rules.routes import router as rules_router
 from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
 from app.api.routes.plan_of_care import router as poc_router
+from app.api.routes.rnica_poc import router as rnica_poc_router
 from app.api.patient_allergies import router as patient_allergies_router
 from app.api.patient_code_status import router as patient_code_status_router
 from app.api.patient_physicians import router as patient_physicians_router
@@ -153,6 +154,7 @@ def register_routers(app: FastAPI) -> None:
         clinical_translation_router,  # ✅ ADD THIS
 
         poc_router,
+        rnica_poc_router,
         patient_charts_router,
 
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)

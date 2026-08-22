@@ -1,0 +1,683 @@
+# app/services/rnica_poc_adapter.py
+"""
+RN ICA -> Plan of Care adapter.
+
+This module is the ONLY bridge between the RN ICA JSONB assessment
+(`RnicaAssessment.form_data`) and the authoritative Plan of Care document
+model (`app.models.plan_of_care.PlanOfCare`,
+`app.models.plan_of_care_version.PlanOfCareVersion`,
+`app.models.poc.POCProblem/POCGoal/POCIntervention`) that already backs
+`/plan-of-care/*` (`app.api.routes.plan_of_care`, `app.services.poc_service`).
+
+There is deliberately NO second Plan of Care model here. Every RN ICA
+"Add to POC / View POC / Update POC / Resolve POC" action, and the
+existing (previously test-only) `generate_initial_poc_draft` engine, are
+adapted onto the same versioned `poc_content = {"problems": [...]}"`
+snapshot contract that `poc_service.create_plan_of_care` /
+`poc_service.create_new_version` already validate and materialize.
+
+Design rules (per SNS_RNICA_MASTER_MAP_1.1.md Master Sync Rules):
+- Every write goes through `poc_service.create_new_version`, which
+  supersedes the prior version and preserves it (full version history is
+  never destroyed).
+- Every RN-ICA-sourced problem carries a stable `rule_key` so re-running
+  the auto-generator, or re-clicking "Add to POC", never creates a
+  duplicate problem — it is matched, and only new evidence is merged in.
+- Problems are identified across versions by `rule_key` (not by
+  POCProblem.id), because `id` is re-minted every time a new version is
+  materialized.
+- `source_condition` is always `"RNICA:<section_key>"` and each problem's
+  `description` always records the source RN ICA assessment id, section,
+  and originating evidence text, so a Problem can always be traced back to
+  the exact assessment/section/finding that produced it.
+- Nothing here auto-creates a physician attestation
+  (`create_physician_attestation` is always False) and nothing marks a
+  version physician-approved. Physician sign-off remains a separate,
+  explicit workflow (`poc_physician_approval`).
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from datetime import datetime, timezone
+from typing import Any, Optional
+from uuid import UUID
+
+from sqlalchemy.orm import Session
+
+from app.models.admission import Admission
+from app.models.plan_of_care import PlanOfCare
+from app.models.plan_of_care_version import PlanOfCareVersion
+from app.models.poc import POCProblem
+from app.models.rnica_assessment import RnicaAssessment
+from app.services.admission.admission_service import AdmissionService
+from app.services.poc_generation_service import generate_initial_poc_draft
+from app.services.poc_service import (
+    create_new_version as _create_new_poc_version,
+    create_plan_of_care as _create_plan_of_care,
+    get_active_plan_of_care_version,
+    get_plan_of_care_by_admission,
+)
+
+logger = logging.getLogger("sns_emr")
+
+RNICA_SOURCE_CONDITION_PREFIX = "RNICA:"
+
+
+class RnicaPocAdapterError(ValueError):
+    """Raised for adapter-level validation failures (mapped to HTTP 400 by callers)."""
+
+
+# =========================================================
+# NOTE ADAPTER — makes RnicaAssessment.form_data readable by
+# poc_generation_service.generate_initial_poc_draft(note), which only
+# needs a duck-typed object exposing `.content` (+ optional id/patient_id/
+# visit_id/form_key/note_type/discipline via getattr-with-default).
+# =========================================================
+
+class _RnicaNoteAdapter:
+    def __init__(self, assessment: RnicaAssessment):
+        form_data = assessment.form_data or {}
+        # generate_initial_poc_draft reads content["observed_data"] and
+        # content["assessment"]; RN ICA form_data serves as both, since it
+        # already contains both objective findings and clinician
+        # assessment fields in the same section objects.
+        self.content: dict[str, Any] = {
+            "observed_data": form_data,
+            "assessment": form_data,
+        }
+        self.id = assessment.id
+        self.patient_id = assessment.patient_id
+        self.visit_id = assessment.visit_id
+        self.form_key = "RNICA"
+        self.note_type = "RNICA"
+        self.discipline = "RN"
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    return slug or "problem"
+
+
+def _make_rule_key(prefix: str, section_key: str, label: str) -> str:
+    """Builds a stable, deterministic identity key for a Plan of Care
+    problem that is guaranteed to fit `poc_problems.rule_key` (VARCHAR(50)).
+    Same (prefix, section, label) always yields the same key, which is what
+    duplicate-prevention on repeated "Add to POC" clicks relies on.
+    """
+    import hashlib
+
+    digest = hashlib.sha1(label.strip().lower().encode("utf-8")).hexdigest()[:10]
+    section_part = _slug(section_key)[:16]
+    key = f"{prefix}_{section_part}_{digest}"
+    return key[:50]
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+# =========================================================
+# POC BOOTSTRAP / RESOLUTION
+# =========================================================
+
+def _resolve_admission(db: Session, *, tenant_id: UUID, patient_id: UUID) -> Admission:
+    admission = AdmissionService.get_latest_admission(db=db, patient_id=patient_id, tenant_id=tenant_id)
+    if not admission:
+        raise RnicaPocAdapterError(
+            "No admission exists for this patient yet; Plan of Care cannot be created until admission is established."
+        )
+    return admission
+
+
+def _get_or_bootstrap_plan_of_care(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    admission_id: UUID,
+    user_id: Optional[UUID],
+) -> PlanOfCare:
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission_id)
+    if poc:
+        return poc
+
+    return _create_plan_of_care(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        admission_id=admission_id,
+        created_by_user_id=user_id,
+        poc_content={"problems": []},
+        source_kind="ICA",
+        change_reason="RN ICA: Plan of Care initialized",
+        generated_from={"origin": "RNICA"},
+        create_physician_attestation=False,
+    )
+
+
+def _current_snapshot(version: Optional[PlanOfCareVersion]) -> list[dict[str, Any]]:
+    if not version or not isinstance(version.snapshot_json, dict):
+        return []
+    problems = version.snapshot_json.get("problems")
+    return list(problems) if isinstance(problems, list) else []
+
+
+# =========================================================
+# PROBLEM DICT BUILDERS (POCProblemIn-compatible shape)
+# =========================================================
+
+def _build_manual_problem_dict(
+    *,
+    rnica_assessment_id: UUID,
+    section_key: str,
+    problem_label: str,
+    evidence_text: str,
+    goal_text: Optional[str],
+    intervention_text: Optional[str],
+    discipline: str,
+) -> dict[str, Any]:
+    rule_key = _make_rule_key("RNICA_MANUAL", section_key, problem_label)
+    description = (
+        f"Source: RN ICA assessment {rnica_assessment_id}, section '{section_key}'. "
+        f"Finding: {evidence_text}"
+    )
+    goal_text = goal_text or f"Address: {problem_label}"
+    goals: list[dict[str, Any]] = [
+        {
+            "goal_text": goal_text,
+            "status": "ACTIVE",
+            "source_kind": "RN_UPDATE",
+            "interventions": (
+                [
+                    {
+                        "discipline": discipline,
+                        "intervention_text": intervention_text,
+                        "status": "ACTIVE",
+                        "source_kind": "RN_UPDATE",
+                    }
+                ]
+                if intervention_text
+                else []
+            ),
+        }
+    ]
+
+    return {
+        "problem_code": rule_key,
+        "label": problem_label,
+        "description": description,
+        "severity": "UNKNOWN",
+        "source_condition": f"{RNICA_SOURCE_CONDITION_PREFIX}{section_key}",
+        "diagnosis_context": "MANUAL",
+        "rule_key": rule_key,
+        "source_kind": "RN_UPDATE",
+        "status": "ACTIVE",
+        "goals": goals,
+    }
+
+
+def _map_generated_poc_item_to_problem_dict(
+    item: dict[str, Any],
+    *,
+    rnica_assessment_id: UUID,
+    section_key: str,
+) -> dict[str, Any]:
+    """Flattens a poc_generation_service `_poc_item(...)` result (nested
+    problem/clinical_summary shape) into the flat POCProblemIn-compatible
+    dict expected by poc_service._materialize_version_structure.
+    """
+    problem = item.get("problem") or {}
+    clinical_summary = item.get("clinical_summary") or {}
+    rule_key = str(item.get("poc_id") or f"AUTO_{section_key.upper()}")
+    label = problem.get("label") or rule_key
+    evidence = item.get("evidence") or []
+    evidence_text = "; ".join(
+        f"{e.get('source')}: {e.get('value')}" for e in evidence if isinstance(e, dict)
+    ) or "auto-generated from RN ICA findings"
+
+    description = (
+        f"Source: RN ICA assessment {rnica_assessment_id}, section '{section_key}' "
+        f"(auto-generated). Finding: {evidence_text}"
+    )
+
+    raw_goals = item.get("goals") or []
+    raw_interventions = item.get("interventions") or []
+
+    goals: list[dict[str, Any]] = []
+    for g in raw_goals:
+        if isinstance(g, dict):
+            goals.append(
+                {
+                    "goal_text": g.get("goal_text") or label,
+                    "status": g.get("status", "ACTIVE"),
+                    "source_kind": "RULE_GENERATED",
+                    "interventions": [],
+                }
+            )
+    if not goals:
+        goals = [{"goal_text": f"Address: {label}", "status": "ACTIVE", "source_kind": "RULE_GENERATED", "interventions": []}]
+
+    # The generation engine emits interventions at problem level; the
+    # authoritative schema hangs interventions off a goal, so they are
+    # attached to the first goal (documented adapter behavior).
+    for iv in raw_interventions:
+        if isinstance(iv, dict):
+            goals[0]["interventions"].append(
+                {
+                    "discipline": iv.get("discipline", "RN"),
+                    "intervention_text": iv.get("intervention_text"),
+                    "status": iv.get("status", "ACTIVE"),
+                    "source_kind": "RULE_GENERATED",
+                }
+            )
+
+    return {
+        "problem_code": rule_key,
+        "label": label,
+        "description": description,
+        "severity": str(clinical_summary.get("severity", "UNKNOWN")).upper(),
+        "source_condition": f"{RNICA_SOURCE_CONDITION_PREFIX}{section_key}",
+        "diagnosis_context": "MANUAL",
+        "rule_key": rule_key,
+        "source_kind": "RULE_GENERATED",
+        "status": "ACTIVE",
+        "goals": goals,
+    }
+
+
+# =========================================================
+# READ / MUTATE the current active version's problem set
+# =========================================================
+
+def _find_index_by_rule_key(problems: list[dict[str, Any]], rule_key: str) -> Optional[int]:
+    for idx, p in enumerate(problems):
+        if p.get("rule_key") == rule_key:
+            return idx
+    return None
+
+
+def _upsert_problems(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    new_problem_dicts: list[dict[str, Any]],
+    change_reason: str,
+    source_kind: str = "RN_UPDATE",
+) -> dict[str, Any]:
+    """Adds problems that don't already exist (matched by rule_key).
+    Existing ACTIVE problems with the same rule_key are left untouched
+    (their evidence/description is merged, never duplicated, never
+    silently overwritten). Returns a small report dict.
+    """
+    admission = _resolve_admission(db, tenant_id=tenant_id, patient_id=patient_id)
+    poc = _get_or_bootstrap_plan_of_care(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        admission_id=admission.id,
+        user_id=user_id,
+    )
+    current_version = get_active_plan_of_care_version(db, tenant_id=tenant_id, plan_of_care_id=poc.id)
+    problems = _current_snapshot(current_version)
+
+    added: list[str] = []
+    skipped_duplicate: list[str] = []
+    merged: list[str] = []
+
+    for candidate in new_problem_dicts:
+        rule_key = candidate["rule_key"]
+        existing_idx = _find_index_by_rule_key(problems, rule_key)
+        if existing_idx is not None and problems[existing_idx].get("status") != "RESOLVED":
+            # Duplicate prevention: never append a second row for the same
+            # rule_key. Merge new evidence text into the existing
+            # description so nothing is lost, but do not create a new
+            # problem entry.
+            existing_description = problems[existing_idx].get("description") or ""
+            new_description = candidate.get("description") or ""
+            if new_description and new_description not in existing_description:
+                problems[existing_idx]["description"] = (
+                    f"{existing_description}\n---\n{new_description}" if existing_description else new_description
+                )
+                merged.append(rule_key)
+            skipped_duplicate.append(rule_key)
+            continue
+
+        problems.append(candidate)
+        added.append(rule_key)
+
+    if not added and not merged:
+        # Nothing actually changed (pure repeat of an already-recorded
+        # duplicate) — do not create a needless new version.
+        return {
+            "plan_of_care_id": poc.id,
+            "version_id": current_version.id if current_version else None,
+            "added": [],
+            "skipped_duplicate": skipped_duplicate,
+        }
+
+    new_version = _create_new_poc_version(
+        db,
+        plan_of_care_id=poc.id,
+        tenant_id=tenant_id,
+        updated_content={"problems": problems},
+        user_id=user_id,
+        source_kind=source_kind,
+        change_reason=change_reason,
+        generated_from={"origin": "RNICA"},
+        create_physician_attestation=False,
+    )
+
+    return {
+        "plan_of_care_id": poc.id,
+        "version_id": new_version.id,
+        "version_number": new_version.version_number,
+        "added": added,
+        "skipped_duplicate": skipped_duplicate,
+    }
+
+
+def _mutate_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    rule_key: str,
+    change_reason: str,
+    mutate_fn,
+) -> dict[str, Any]:
+    admission = _resolve_admission(db, tenant_id=tenant_id, patient_id=patient_id)
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc:
+        raise RnicaPocAdapterError("No Plan of Care exists yet for this patient/admission.")
+
+    current_version = get_active_plan_of_care_version(db, tenant_id=tenant_id, plan_of_care_id=poc.id)
+    problems = _current_snapshot(current_version)
+
+    idx = _find_index_by_rule_key(problems, rule_key)
+    if idx is None:
+        raise RnicaPocAdapterError(f"No Plan of Care problem found with rule_key={rule_key!r}.")
+
+    mutate_fn(problems[idx])
+
+    new_version = _create_new_poc_version(
+        db,
+        plan_of_care_id=poc.id,
+        tenant_id=tenant_id,
+        updated_content={"problems": problems},
+        user_id=user_id,
+        source_kind="RN_UPDATE",
+        change_reason=change_reason,
+        generated_from={"origin": "RNICA"},
+        create_physician_attestation=False,
+    )
+
+    return {
+        "plan_of_care_id": poc.id,
+        "version_id": new_version.id,
+        "version_number": new_version.version_number,
+        "problem": problems[idx],
+    }
+
+
+# =========================================================
+# PUBLIC API
+# =========================================================
+
+def add_manual_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    rnica_assessment_id: UUID,
+    section_key: str,
+    problem_label: str,
+    evidence_text: str,
+    goal_text: Optional[str] = None,
+    intervention_text: Optional[str] = None,
+    discipline: str = "RN",
+) -> dict[str, Any]:
+    """'Add to POC' button handler for a single RN ICA body-system subcard."""
+    problem_dict = _build_manual_problem_dict(
+        rnica_assessment_id=rnica_assessment_id,
+        section_key=section_key,
+        problem_label=problem_label,
+        evidence_text=evidence_text,
+        goal_text=goal_text,
+        intervention_text=intervention_text,
+        discipline=discipline,
+    )
+    return _upsert_problems(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        user_id=user_id,
+        new_problem_dicts=[problem_dict],
+        change_reason=f"RN ICA: added problem from {section_key} section",
+    )
+
+
+def update_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    section_key: str,
+    rule_key: str,
+    label: Optional[str] = None,
+    description_addendum: Optional[str] = None,
+    severity: Optional[str] = None,
+) -> dict[str, Any]:
+    """'Update POC' button handler. Patches an existing problem in place
+    (new version, prior version preserved) — never renames/duplicates it.
+    """
+
+    def _patch(problem: dict[str, Any]) -> None:
+        if label:
+            problem["label"] = label
+        if severity:
+            problem["severity"] = severity.upper()
+        if description_addendum:
+            existing = problem.get("description") or ""
+            problem["description"] = f"{existing}\n---\nUpdate: {description_addendum}" if existing else description_addendum
+
+    return _mutate_problem(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        user_id=user_id,
+        rule_key=rule_key,
+        change_reason=f"RN ICA: updated problem in {section_key} section",
+        mutate_fn=_patch,
+    )
+
+
+def resolve_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    section_key: str,
+    rule_key: str,
+) -> dict[str, Any]:
+    """'Resolve POC' button handler. Marks the problem RESOLVED (never
+    deletes it) in a new version.
+    """
+
+    def _resolve(problem: dict[str, Any]) -> None:
+        problem["status"] = "RESOLVED"
+        for goal in problem.get("goals", []):
+            if isinstance(goal, dict) and goal.get("status") == "ACTIVE":
+                goal["status"] = "MET"
+
+    return _mutate_problem(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        user_id=user_id,
+        rule_key=rule_key,
+        change_reason=f"RN ICA: resolved problem in {section_key} section",
+        mutate_fn=_resolve,
+    )
+
+
+def list_section_problems(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    section_key: str,
+) -> list[dict[str, Any]]:
+    """'View POC' button handler — returns materialized POCProblem rows
+    (with goals/interventions) for the current active version, scoped to
+    this RN ICA section.
+    """
+    admission = AdmissionService.get_latest_admission(db=db, patient_id=patient_id, tenant_id=tenant_id)
+    if not admission:
+        return []
+
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc or not poc.current_version_id:
+        return []
+
+    source_condition = f"{RNICA_SOURCE_CONDITION_PREFIX}{section_key}"
+    rows = (
+        db.query(POCProblem)
+        .filter(
+            POCProblem.tenant_id == tenant_id,
+            POCProblem.poc_version_id == poc.current_version_id,
+            POCProblem.source_condition == source_condition,
+        )
+        .order_by(POCProblem.sort_order)
+        .all()
+    )
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        results.append(
+            {
+                "rule_key": row.rule_key,
+                "problem_code": row.problem_code,
+                "label": row.label,
+                "description": row.description,
+                "severity": row.severity,
+                "status": row.status,
+                "source_kind": row.source_kind,
+                "goals": [
+                    {
+                        "goal_text": g.goal_text,
+                        "status": g.status,
+                        "interventions": [
+                            {
+                                "discipline": i.discipline,
+                                "intervention_text": i.intervention_text,
+                                "status": i.status,
+                            }
+                            for i in g.interventions
+                        ],
+                    }
+                    for g in row.goals
+                ],
+            }
+        )
+    return results
+
+
+def _payload_matches_authoritative_model(draft: dict[str, Any]) -> bool:
+    """Confirms generate_initial_poc_draft's output shape is still the one
+    this adapter maps (item.problem.code/label, item.clinical_summary.severity,
+    item.goals[], item.interventions[], item.evidence[]) before it is ever
+    applied to the live Plan of Care. If the shape drifts, we refuse to
+    apply it rather than silently writing malformed problems.
+    """
+    if not isinstance(draft, dict) or "pocs" not in draft:
+        return False
+    for item in draft.get("pocs", []):
+        if not isinstance(item, dict):
+            return False
+        if "problem" not in item or not isinstance(item.get("problem"), dict):
+            return False
+        if "code" not in item["problem"] or "label" not in item["problem"]:
+            return False
+    return True
+
+
+def generate_and_apply_poc_from_assessment(
+    db: Session,
+    *,
+    tenant_id: Optional[UUID],
+    user_id: Optional[UUID],
+    assessment: RnicaAssessment,
+) -> dict[str, Any]:
+    """Wires the existing `poc_generation_service.generate_initial_poc_draft`
+    engine into the live RN ICA finalize/lock workflow.
+
+    - Confirms the generator's payload shape matches the authoritative POC
+      model before applying anything.
+    - Applies via the same `_upsert_problems` path as manual Add-to-POC, so
+      duplicate rule_keys are matched/merged rather than duplicated, and no
+      existing problem or prior version is overwritten.
+    - Never finalizes/attests — output remains DRAFT/ACTIVE, clinician review
+      required, per Master Sync Rules.
+    """
+    if tenant_id is None:
+        return {"applied": False, "reason": "missing_tenant_id"}
+
+    note = _RnicaNoteAdapter(assessment)
+    try:
+        draft = generate_initial_poc_draft(note)
+    except Exception:
+        logger.exception(
+            "RNICA_POC_GENERATION_FAILED assessment_id=%s patient_id=%s",
+            str(assessment.id),
+            str(assessment.patient_id),
+        )
+        return {"applied": False, "reason": "generation_error"}
+
+    if not _payload_matches_authoritative_model(draft):
+        logger.warning(
+            "RNICA_POC_GENERATION_SHAPE_MISMATCH assessment_id=%s — refusing to apply, generator output does not match POCProblemIn contract",
+            str(assessment.id),
+        )
+        return {"applied": False, "reason": "shape_mismatch"}
+
+    pocs = draft.get("pocs", [])
+    if not pocs:
+        return {"applied": True, "added": [], "skipped_duplicate": [], "reason": "no_findings"}
+
+    problem_dicts = [
+        _map_generated_poc_item_to_problem_dict(
+            item,
+            rnica_assessment_id=assessment.id,
+            section_key="rnica_auto",
+        )
+        for item in pocs
+    ]
+
+    try:
+        result = _upsert_problems(
+            db,
+            tenant_id=tenant_id,
+            patient_id=assessment.patient_id,
+            user_id=user_id,
+            new_problem_dicts=problem_dicts,
+            change_reason="RN ICA finalized: auto-generated POC draft applied",
+            source_kind="RULE_GENERATED",
+        )
+    except RnicaPocAdapterError as e:
+        logger.warning(
+            "RNICA_POC_GENERATION_NOT_APPLIED assessment_id=%s reason=%s",
+            str(assessment.id),
+            str(e),
+        )
+        return {"applied": False, "reason": str(e)}
+
+    result["applied"] = True
+    return result

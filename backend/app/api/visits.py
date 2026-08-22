@@ -46,6 +46,7 @@ from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_d
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
+from app.services.rnica_poc_adapter import generate_and_apply_poc_from_assessment
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 
 from app.services.chha_outcome_service import upsert_chha_outcome
@@ -996,7 +997,34 @@ def lock_rnica_assessment(
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
     db.commit()
-    return {"assessmentId": str(record.id), "status": "locked", "locked": True}
+
+    # Wire existing (previously test-only) POC generation into the live
+    # RN ICA finalize workflow. This never blocks locking: if generation
+    # fails, or its output shape doesn't match the authoritative Plan of
+    # Care model, we log and continue rather than raise.
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+    poc_generation_result: Dict[str, Any] = {"applied": False, "reason": "not_attempted"}
+    try:
+        poc_generation_result = generate_and_apply_poc_from_assessment(
+            db,
+            tenant_id=tenant_id,
+            user_id=getattr(current_user, "id", None),
+            assessment=record,
+        )
+    except Exception:
+        logging.getLogger("sns_emr").exception(
+            "RNICA_LOCK_POC_GENERATION_UNHANDLED_ERROR assessment_id=%s",
+            str(record.id),
+        )
+        poc_generation_result = {"applied": False, "reason": "unhandled_error"}
+
+    return {
+        "assessmentId": str(record.id),
+        "status": "locked",
+        "locked": True,
+        "pocGeneration": poc_generation_result,
+    }
 
 
 @router.get("/rnica/{assessment_id}/intelligence")

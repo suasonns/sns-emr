@@ -70,6 +70,51 @@ export async function getRnicaIntelligence(assessmentId: string) {
   return unwrap(api.get(`/visits/rnica/${assessmentId}/intelligence`), "RN ICA intelligence failed");
 }
 
+// --- RN ICA -> Plan of Care (Add / View / Update / Resolve per body-system
+// section). These call the authoritative Plan of Care document API via the
+// backend adapter in app/services/rnica_poc_adapter.py — there is no
+// separate/duplicate POC store on either side. ---
+
+export async function viewRnicaSectionPoc(assessmentId: string, sectionKey: string) {
+  return unwrap(api.get(`/visits/rnica/${assessmentId}/poc/${sectionKey}`), "Unable to load Plan of Care for this section");
+}
+
+export async function addRnicaSectionPocProblem(
+  assessmentId: string,
+  sectionKey: string,
+  payload: {
+    problem_label: string;
+    evidence_text: string;
+    goal_text?: string;
+    intervention_text?: string;
+    discipline?: string;
+  },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/poc/${sectionKey}`, payload),
+    "Unable to add problem to Plan of Care",
+  );
+}
+
+export async function updateRnicaSectionPocProblem(
+  assessmentId: string,
+  sectionKey: string,
+  ruleKey: string,
+  payload: { label?: string; description_addendum?: string; severity?: string },
+) {
+  return unwrap(
+    api.put(`/visits/rnica/${assessmentId}/poc/${sectionKey}/${encodeURIComponent(ruleKey)}`, payload),
+    "Unable to update Plan of Care problem",
+  );
+}
+
+export async function resolveRnicaSectionPocProblem(assessmentId: string, sectionKey: string, ruleKey: string) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/poc/${sectionKey}/${encodeURIComponent(ruleKey)}/resolve`),
+    "Unable to resolve Plan of Care problem",
+  );
+}
+
 export async function saveMswIcaAssessment(payload: AssessmentPayload) {
   return unwrap(api.post("/visits/msw-ica/save", payload), "MSW ICA save failed");
 }
