@@ -150,7 +150,10 @@ def test_add_view_update_resolve_poc_problem_via_rnica_routes(client, db_session
 
 
 @pytest.mark.integration
-def test_lock_rnica_assessment_wires_poc_generation_without_duplicating(client, db_session, rn_headers):
+def test_lock_rnica_assessment_creates_no_poc_version_or_problem(client, db_session, rn_headers):
+    """Locking RN ICA must only validate/sign/lock/preserve data — it must
+    never create a PlanOfCareVersion or POCProblem. POC changes are strictly
+    clinician-initiated via the explicit Add/Update/Resolve routes."""
     tenant_id = db_session.info.get("tenant_id")
     patient, admission = _make_patient_and_admission(db_session, tenant_id)
 
@@ -168,16 +171,80 @@ def test_lock_rnica_assessment_wires_poc_generation_without_duplicating(client, 
     assert lock_resp.status_code == 200, lock_resp.text
     body = lock_resp.json()
     assert body["locked"] is True
-    assert "pocGeneration" in body
+    assert body["status"] == "locked"
+    # The lock response must not carry any POC-generation payload.
+    assert "pocGeneration" not in body
 
-    # Locking a second time (idempotent re-run) must never duplicate
-    # auto-generated problems.
-    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first()
-    if poc and body["pocGeneration"].get("applied") and body["pocGeneration"].get("added"):
-        rule_key = body["pocGeneration"]["added"][0]
-        rows_before = (
-            db_session.query(POCProblem)
-            .filter_by(rule_key=rule_key)
-            .count()
-        )
-        assert rows_before >= 1
+    db_session.refresh(record)
+    assert record.locked is True
+    assert record.status == "LOCKED"
+
+    # No PlanOfCare, PlanOfCareVersion, or POCProblem was created as a
+    # side effect of locking.
+    assert db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first() is None
+    assert db_session.query(PlanOfCareVersion).count() == 0
+    assert db_session.query(POCProblem).count() == 0
+
+    # Locking a second time is likewise a no-op for POC.
+    lock_resp_2 = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp_2.status_code == 200, lock_resp_2.text
+    assert db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first() is None
+    assert db_session.query(POCProblem).count() == 0
+
+
+@pytest.mark.integration
+def test_update_and_resolve_require_explicit_action(client, db_session, rn_headers):
+    """A problem added to the POC must remain untouched (no severity
+    change, no status change) until an explicit Update/Resolve call is
+    made — proving neither happens implicitly as a side effect of any
+    other RN ICA action (e.g. saving/locking the assessment)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"skin": {}})
+    section_key = "skin"
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}",
+        json={
+            "problem_label": "Stage 2 pressure injury, sacrum",
+            "evidence_text": "2cm x 1.5cm partial-thickness wound noted on assessment.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    rule_key = add_resp.json()["added"][0]
+
+    problem = db_session.query(POCProblem).filter_by(rule_key=rule_key).one()
+    assert problem.status == "ACTIVE"
+    assert problem.severity == "UNKNOWN"
+    version_after_add = problem.poc_version_id
+
+    # Locking the assessment (an unrelated action) must not update or
+    # resolve the POC problem.
+    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp.status_code == 200, lock_resp.text
+
+    unchanged = db_session.query(POCProblem).filter_by(rule_key=rule_key).one()
+    assert unchanged.status == "ACTIVE"
+    assert unchanged.severity == "UNKNOWN"
+    assert unchanged.poc_version_id == version_after_add
+
+    # Only the explicit Update route changes severity.
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
+        json={"severity": "moderate"},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["problem"]["severity"] == "MODERATE"
+
+    still_active = db_session.query(POCProblem).filter_by(rule_key=rule_key).order_by(POCProblem.created_at.desc()).first()
+    assert still_active.status == "ACTIVE", "explicit Update must not resolve the problem"
+
+    # Only the explicit Resolve route changes status.
+    resolve_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}/resolve",
+        headers=rn_headers,
+    )
+    assert resolve_resp.status_code == 200, resolve_resp.text
+    assert resolve_resp.json()["problem"]["status"] == "RESOLVED"
