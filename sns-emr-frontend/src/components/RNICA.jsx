@@ -571,6 +571,7 @@ const INITIAL_FORM = {
     pressureInjuryRisk: "",
     wounds: [],
     woundImpairment: "",
+    pressureReliefMeasures: [], repositioningPlan: "",
     notes: "",
   },
 
@@ -1807,6 +1808,112 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS }) 
       </div>
       <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
         + Add Secondary Diagnosis
+      </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// SKIN / WOUND — Structured wound documentation (Master Map §5.11).
+// Each wound is a repeatable row capturing every §5.11 attribute.
+// Wound Count is intentionally derived (rows.length), not a separate
+// manual field, so it can never drift out of sync with the actual
+// documented wounds (same "reuse, don't duplicate" rule applied to BMI).
+// Pressure-relief measures and repositioning plan are plan-level (not
+// per-wound) and are rendered as ordinary fields on the existing
+// "Wound Documentation & Notes" card — see SECTION_CONFIGS.skin.
+// ════════════════════════════════════════════════════════════════
+const WOUND_STAGE_OPTIONS = [
+  "Stage 1", "Stage 2", "Stage 3", "Stage 4",
+  "Unstageable", "Deep Tissue Injury", "N/A",
+];
+const WOUND_TYPE_OPTIONS = [
+  "Pressure injury", "Skin tear", "Surgical wound", "Venous ulcer",
+  "Arterial ulcer", "Diabetic ulcer", "Nonhealing wound", "Other",
+];
+const WOUND_DRAINAGE_OPTIONS = ["None", "Scant", "Small", "Moderate", "Large"];
+const WOUND_ODOR_OPTIONS = ["None", "Mild", "Foul"];
+
+function WoundEntryCard({ wound, index, onChange, onRemove, styles, COLORS }) {
+  const set = (field, value) => onChange(index, field, value);
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+      background: COLORS.bg, marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <strong style={{ fontSize: 13 }}>Wound {index + 1}</strong>
+        <button type="button" style={{ ...styles.btnDanger, padding: "5px 10px", fontSize: 11.5 }} onClick={() => onRemove(index)}>
+          Remove
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.presentAsPressureInjury} onChange={(e) => set("presentAsPressureInjury", e.target.checked)} />
+          Pressure injury
+        </label>
+        <FormSelect label="Stage" value={wound.stage} onChange={(v) => set("stage", v)} options={WOUND_STAGE_OPTIONS} />
+        <FormSelect label="Wound Type" value={wound.woundType} onChange={(v) => set("woundType", v)} options={WOUND_TYPE_OPTIONS} />
+        <FormInput label="Location" value={wound.location} onChange={(v) => set("location", v)} placeholder="e.g., Sacrum, L heel" />
+        <FormInput label="Length (cm)" value={wound.length} onChange={(v) => set("length", v)} type="number" />
+        <FormInput label="Width (cm)" value={wound.width} onChange={(v) => set("width", v)} type="number" />
+        <FormInput label="Depth (cm)" value={wound.depth} onChange={(v) => set("depth", v)} type="number" />
+        <FormSelect label="Drainage" value={wound.drainage} onChange={(v) => set("drainage", v)} options={WOUND_DRAINAGE_OPTIONS} />
+        <FormSelect label="Odor" value={wound.odor} onChange={(v) => set("odor", v)} options={WOUND_ODOR_OPTIONS} />
+        <FormInput label="Periwound Condition" value={wound.periwoundCondition} onChange={(v) => set("periwoundCondition", v)} />
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isSkinTear} onChange={(e) => set("isSkinTear", e.target.checked)} />
+          Skin tear
+        </label>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isSurgicalWound} onChange={(e) => set("isSurgicalWound", e.target.checked)} />
+          Surgical wound
+        </label>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isNonhealingWound} onChange={(e) => set("isNonhealingWound", e.target.checked)} />
+          Nonhealing wound
+        </label>
+        <FormInput label="Current Treatment" value={wound.currentTreatment} onChange={(v) => set("currentTreatment", v)} />
+        <FormInput label="Dressing" value={wound.dressing} onChange={(v) => set("dressing", v)} />
+        <FormInput label="Dressing Frequency" value={wound.dressingFrequency} onChange={(v) => set("dressingFrequency", v)} placeholder="e.g., Daily, Q3 days" />
+      </div>
+    </div>
+  );
+}
+
+function WoundListCard({ data, updateField, styles, COLORS }) {
+  const wounds = data?.wounds || [];
+
+  const setWounds = (next) => updateField("wounds", next);
+
+  const addWound = () => setWounds([...wounds, {
+    presentAsPressureInjury: false, stage: "", woundType: "", location: "",
+    length: "", width: "", depth: "", drainage: "", odor: "",
+    periwoundCondition: "", isSkinTear: false, isSurgicalWound: false,
+    isNonhealingWound: false, currentTreatment: "", dressing: "", dressingFrequency: "",
+  }]);
+
+  const updateWound = (idx, field, value) => {
+    setWounds(wounds.map((w, i) => (i === idx ? { ...w, [field]: value } : w)));
+  };
+
+  const removeWound = (idx) => setWounds(wounds.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 10 }}>
+        Wound Count (auto): <strong style={{ color: COLORS.dark }}>{wounds.length}</strong>
+      </div>
+      {wounds.length === 0 && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray, fontStyle: "italic", marginBottom: 10 }}>
+          No wounds documented yet.
+        </div>
+      )}
+      {wounds.map((wound, idx) => (
+        <WoundEntryCard key={idx} wound={wound} index={idx} onChange={updateWound} onRemove={removeWound} styles={styles} COLORS={COLORS} />
+      ))}
+      <button type="button" style={styles.btnSecondary} onClick={addWound}>
+        + Add Wound
       </button>
     </div>
   );
@@ -4420,6 +4527,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "skin" && card.customRenderer === "woundList") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -5217,8 +5332,14 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Friction & Shear", path: "braden.frictionShear", options: [{ value: "1", label: "1 — Problem" }, { value: "2", label: "2 — Potential problem" }, { value: "3", label: "3 — No apparent problem" }] },
         { type: "radio", label: "Pressure Injury Risk", path: "pressureInjuryRisk", options: ["Low (19-23)", "Moderate (15-18)", "High (≤14)"] },
       ]},
+      {
+        title: "Wound Documentation (Structured)",
+        customRenderer: "woundList",
+      },
       { title: "Wound Documentation & Notes", fields: [
         { type: "textarea", label: "Wound Impairment", path: "woundImpairment" },
+        { type: "checkboxGroup", label: "Pressure-Relief Measures", path: "pressureReliefMeasures", options: ["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"] },
+        { type: "input", label: "Repositioning Plan", path: "repositioningPlan", placeholder: "e.g., Reposition every 2 hours, alternate sides" },
         { type: "textarea", label: "Skin Notes", path: "notes", rows: 4 },
       ]},
     ],
