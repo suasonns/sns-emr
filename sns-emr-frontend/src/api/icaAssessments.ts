@@ -175,6 +175,40 @@ export async function getRnicaSectionPocProblemHistory(assessmentId: string, sec
   );
 }
 
+// ADMISSION ACTION CENTER (Phase A) — global request/status tracker
+// reachable from every RN ICA section (Medication Request, Physician
+// Order, DME Order, Supply Order, Referral). Lightweight linear status
+// tracking only: REQUESTED -> ORDERED -> SENT -> ACKNOWLEDGED ->
+// DELIVERED -> COMPLETED. No approval routing, no fulfillment workflow,
+// no notifications.
+export async function listRnicaActionCenterRequests(assessmentId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/action-center`),
+    "Unable to load Admission Action Center requests",
+  );
+}
+
+export async function createRnicaActionCenterRequest(
+  assessmentId: string,
+  payload: { request_type: string; details: string; source_section?: string },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/action-center`, payload),
+    "Unable to create Admission Action Center request",
+  );
+}
+
+export async function updateRnicaActionCenterRequestStatus(
+  assessmentId: string,
+  requestId: string,
+  payload: { status: string; note?: string },
+) {
+  return unwrap(
+    api.patch(`/visits/rnica/${assessmentId}/action-center/${requestId}/status`, payload),
+    "Unable to update Admission Action Center request status",
+  );
+}
+
 export async function saveMswIcaAssessment(payload: AssessmentPayload) {
   return unwrap(api.post("/visits/msw-ica/save", payload), "MSW ICA save failed");
 }

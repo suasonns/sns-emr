@@ -19,6 +19,9 @@ import React, { useState, useCallback, useMemo, useEffect, useContext, useRef } 
 import { useNavigate } from "react-router-dom";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
+import AdmissionActionCenterDrawer, {
+  AdmissionActionCenterButton,
+} from "./AdmissionActionCenterDrawer";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import {
@@ -6867,6 +6870,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
   const autosavePatientId = resolvedPatientId || patientId || "";
+  // Admission Action Center (Phase A) — global drawer, reachable from every
+  // section via the persistent footer button. No draft loss / navigation:
+  // opening/closing this never touches `formData` or `activeSection`.
+  const [actionCenterOpen, setActionCenterOpen] = useState(false);
 
   const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
     formData,
@@ -7558,6 +7565,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <button style={styles.btnSecondary} onClick={goNext} disabled={activeSection === routes[routes.length - 1]?.key}>
             Next &rarr;
           </button>
+          {assessmentId && (
+            <AdmissionActionCenterButton
+              styles={styles}
+              onClick={() => setActionCenterOpen(true)}
+            />
+          )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {assessmentId && (
@@ -7585,6 +7598,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           )}
         </div>
       </div>
+
+      <AdmissionActionCenterDrawer
+        open={actionCenterOpen}
+        onClose={() => setActionCenterOpen(false)}
+        assessmentId={assessmentId}
+        sourceSection={activeSection}
+        styles={styles}
+        COLORS={COLORS}
+      />
       </div>
     </AssessmentModeContext.Provider>
   );
