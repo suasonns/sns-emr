@@ -343,6 +343,10 @@ const INITIAL_FORM = {
       hospitalizationPreferenceDate: "", decisionMaker: "",
       poaName: "", poaPhone: "",
       advanceDirectiveOnFile: false, polstOnFile: false,
+      // HOPE F2000/F2100/F2200 A: was the patient/responsible party asked? (0 No / 1 Yes-discussed / 2 Yes-refused)
+      // Distinct from the clinical preference fields above — CMS defines these
+      // items as "was asked", not the resulting clinical order.
+      cprPreferenceAskedStatus: "", lifeSustainingAskedStatus: "", hospitalizationAskedStatus: "",
     },
   },
 
@@ -665,6 +669,7 @@ const INITIAL_FORM = {
     spiritualConcerns: [],
     spiritualDistressRating: "",
     concernsDiscussed: false,
+    concernsAskedStatus: "", // HOPE F3000 A: 0 No / 1 Yes-discussed / 2 Yes-refused
     concernsDiscussedDate: "",
     chaplainNeeded: false,
     notes: "",
@@ -823,15 +828,24 @@ function validateRNICA(formData, mode = "ica") {
       warnings["demographics.race"] = "HOPE A1010: Race required";
     }
 
-    // Advanced Care Planning ? HOPE required
+    // Advanced Care Planning — HOPE required
+    if (!formData.demographics.advancedCarePlanning.cprPreferenceAskedStatus) {
+      errors["demographics.advancedCarePlanning.cprPreferenceAskedStatus"] = "F2000: Was patient/responsible party asked about CPR preference? is required";
+    }
     if (!formData.demographics.advancedCarePlanning.codeStatus) {
-      errors["demographics.advancedCarePlanning.codeStatus"] = "F2000: Code status is required";
+      errors["demographics.advancedCarePlanning.codeStatus"] = "Code status is required";
+    }
+    if (!formData.demographics.advancedCarePlanning.lifeSustainingAskedStatus) {
+      errors["demographics.advancedCarePlanning.lifeSustainingAskedStatus"] = "F2100: Was patient/responsible party asked about other life-sustaining treatments? is required";
     }
     if (!formData.demographics.advancedCarePlanning.lifeSustainingTreatmentPreference) {
-      errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "F2100: Life-sustaining treatment preference required";
+      errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "Life-sustaining treatment preference required";
+    }
+    if (!formData.demographics.advancedCarePlanning.hospitalizationAskedStatus) {
+      errors["demographics.advancedCarePlanning.hospitalizationAskedStatus"] = "F2200: Was patient/responsible party asked about hospitalization preference? is required";
     }
     if (!formData.demographics.advancedCarePlanning.hospitalizationPreference) {
-      errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "F2200: Hospitalization preference required";
+      errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "Hospitalization preference required";
     }
   }
 
@@ -4363,17 +4377,26 @@ function renderDemographics(data, update, COLORS, styles) {
       </Card>
 
       <Card title="Advanced Care Planning" cms="F2000/F2100/F2200" id="advancedCarePlanning">
+        <FormRadioGroup label="F2000: Was patient/responsible party asked about CPR preference?" value={data.advancedCarePlanning?.cprPreferenceAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.cprPreferenceAskedStatus", v)} hopeCode="F2000"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Code Status" value={data.advancedCarePlanning?.codeStatus} onChange={(v) => u("advancedCarePlanning.codeStatus", v)}
-          hopeCode="F2000" options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
+          options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
         <FormInput label="Code Status Discussion Date" value={data.advancedCarePlanning?.codeStatusDate}
           onChange={(v) => u("advancedCarePlanning.codeStatusDate", v)} type="date" />
+        <FormRadioGroup label="F2100: Was patient/responsible party asked about other life-sustaining treatments?" value={data.advancedCarePlanning?.lifeSustainingAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.lifeSustainingAskedStatus", v)} hopeCode="F2100"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Life-Sustaining Treatment Preference" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreference}
-          onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreference", v)} hopeCode="F2100"
+          onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreference", v)}
           options={["Yes — wants life-sustaining treatment", "No — does not want", "Undecided"]} />
         <FormInput label="Life-Sustaining Treatment Discussion Date" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreferenceDate}
           onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreferenceDate", v)} type="date" />
+        <FormRadioGroup label="F2200: Was patient/responsible party asked about hospitalization preference?" value={data.advancedCarePlanning?.hospitalizationAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.hospitalizationAskedStatus", v)} hopeCode="F2200"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Hospitalization Preference" value={data.advancedCarePlanning?.hospitalizationPreference}
-          onChange={(v) => u("advancedCarePlanning.hospitalizationPreference", v)} hopeCode="F2200"
+          onChange={(v) => u("advancedCarePlanning.hospitalizationPreference", v)}
           options={["Yes — wants hospitalization", "No — does not want", "Undecided"]} />
         <FormInput label="Hospitalization Discussion Date" value={data.advancedCarePlanning?.hospitalizationPreferenceDate}
           onChange={(v) => u("advancedCarePlanning.hospitalizationPreferenceDate", v)} type="date" />
@@ -5570,6 +5593,8 @@ const SECTION_CONFIGS = {
         ]},
         { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
         { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
+        { type: "radio", label: "F3000: Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
+          options: [{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }] },
         { type: "input", label: "Spiritual concerns discussion date", path: "concernsDiscussedDate", inputType: "date" },
         { type: "checkbox", label: "Chaplain Referral Needed", path: "chaplainNeeded" },
         { type: "textarea", label: "Spiritual Notes", path: "notes" },

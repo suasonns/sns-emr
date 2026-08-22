@@ -82,13 +82,6 @@ const ASSISTANCE_MAP = {
   None: ["5", "No assistance available"],
 };
 
-const CODE_STATUS_MAP = {
-  "Full Code": ["1", "Attempt resuscitation / full code"],
-  DNR: ["2", "Do not resuscitate"],
-  "DNR-CC": ["3", "Do not resuscitate - comfort care"],
-  "Comfort Measures Only": ["4", "Comfort measures only"],
-};
-
 const PAIN_SCREEN_MAP = {
   "0": ["0", "No"],
   "1": ["1", "Yes, reliably"],
@@ -121,13 +114,24 @@ const IMPACT_KEYS = [
   ["agitation", "Agitation"],
 ];
 
-function preferenceLookup(value) {
-  const text = String(value || "");
-  if (!text) return { code: PLACEHOLDER, description: PLACEHOLDER };
-  if (text.startsWith("Yes")) return { code: "1", description: text };
-  if (text.startsWith("No")) return { code: "0", description: text };
-  if (text === "Undecided") return { code: "9", description: "Undecided" };
-  return { code: PLACEHOLDER, description: text };
+// HOPE F2000/F2100/F2200/F3000 item A: "was the patient/responsible party asked?"
+// CMS defines this as 0 No / 1 Yes-discussion occurred / 2 Yes-refused to discuss.
+// This is a distinct question from the resulting clinical preference (code status,
+// treatment preference, etc.) that RNICA also documents alongside it.
+const ASKED_STATUS_LABELS = {
+  "0": "No",
+  "1": "Yes, and discussion occurred",
+  "2": "Yes, but patient/responsible party refused to discuss",
+};
+
+function askedStatus(codedValue, legacyIndicator) {
+  if (codedValue === "0" || codedValue === "1" || codedValue === "2") {
+    return { code: codedValue, description: ASKED_STATUS_LABELS[codedValue] };
+  }
+  if (legacyIndicator) {
+    return { code: PLACEHOLDER, description: "Legacy record — asked-status not captured; verify against source documentation" };
+  }
+  return { code: PLACEHOLDER, description: PLACEHOLDER };
 }
 
 function splitPatientName(patient = {}) {
@@ -293,14 +297,15 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const livingArrangement = lookup(LIVING_ARRANGEMENT_MAP, livingSituation.livingArrangement);
   const assistance = lookup(ASSISTANCE_MAP, livingSituation.availabilityOfAssistance);
   const sex = lookup(SEX_MAP, demographics.gender || patient.sex);
-  const codeStatus = lookup(CODE_STATUS_MAP, advancedCarePlanning.codeStatus);
-  const lifeSustaining = preferenceLookup(advancedCarePlanning.lifeSustainingTreatmentPreference);
-  const hospitalization = preferenceLookup(advancedCarePlanning.hospitalizationPreference);
+  const cprAsked = askedStatus(advancedCarePlanning.cprPreferenceAskedStatus, advancedCarePlanning.codeStatus);
+  const lifeSustainingAsked = askedStatus(advancedCarePlanning.lifeSustainingAskedStatus, advancedCarePlanning.lifeSustainingTreatmentPreference);
+  const hospitalizationAsked = askedStatus(advancedCarePlanning.hospitalizationAskedStatus, advancedCarePlanning.hospitalizationPreference);
   const painScreen = lookup(PAIN_SCREEN_MAP, pain.verbalizesPain);
   const neuropathicPain = lookup(YES_NO_UNABLE_MAP, pain.uncomfortableBecauseOfPain);
   const imminent = lookup(YES_NO_UNABLE_MAP, imminentDeath.appearsThreeDaysOrLess);
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
-  const f3000Asked = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
+  const f3000LegacyIndicator = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
+  const spiritualAsked = askedStatus(spiritual.concernsAskedStatus, f3000LegacyIndicator);
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
   const sfvStatus = getSfvStatus(formData);
   const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
@@ -355,10 +360,10 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       {
         title: "Section F - Preferences",
         items: [
-          { code: "F2000", label: "CPR Preference", entries: [{ label: "A. Was patient / rep asked?", value: `${codeStatus.code} - ${codeStatus.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.codeStatusDate) }] },
-          { code: "F2100", label: "Life-sustaining treatments other than CPR", entries: [{ label: "A. Asked?", value: `${lifeSustaining.code} - ${lifeSustaining.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.lifeSustainingTreatmentPreferenceDate) }] },
-          { code: "F2200", label: "Hospitalization preference", entries: [{ label: "A. Asked?", value: `${hospitalization.code} - ${hospitalization.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.hospitalizationPreferenceDate) }] },
-          { code: "F3000", label: "Spiritual / Existential Concerns", entries: [{ label: "A. Asked?", value: boolCode(f3000Asked).description }, { label: "B. Date first asked", value: formatDate(spiritual.concernsDiscussedDate) }] },
+          { code: "F2000", label: "CPR Preference", entries: [{ label: "A. Was patient / rep asked?", value: `${cprAsked.code} - ${cprAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.codeStatusDate) }] },
+          { code: "F2100", label: "Life-sustaining treatments other than CPR", entries: [{ label: "A. Asked?", value: `${lifeSustainingAsked.code} - ${lifeSustainingAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.lifeSustainingTreatmentPreferenceDate) }] },
+          { code: "F2200", label: "Hospitalization preference", entries: [{ label: "A. Asked?", value: `${hospitalizationAsked.code} - ${hospitalizationAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.hospitalizationPreferenceDate) }] },
+          { code: "F3000", label: "Spiritual / Existential Concerns", entries: [{ label: "A. Asked?", value: `${spiritualAsked.code} - ${spiritualAsked.description}` }, { label: "B. Date first asked", value: formatDate(spiritual.concernsDiscussedDate) }] },
         ],
       },
       {
