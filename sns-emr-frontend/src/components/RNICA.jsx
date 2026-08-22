@@ -248,6 +248,21 @@ const FORM_REGISTRY = [
   "admissionsOrder", "ordersHub", "referrals", "finalization",
 ];
 
+// ════════════════════════════════════════════════════════════════
+// SECTION 9 — DME per-item status tracker.
+//
+// Per SNS_RNICA_MASTER_MAP_1.1.md SECTION 9, each DME item must carry
+// its own status (Has / Needs / Ordered / Delivered / Declined / N/A)
+// rather than a single flat "needed" checkbox, since a hospice must be
+// able to distinguish equipment the patient already has from equipment
+// that has been ordered but not yet delivered, or declined.
+// ════════════════════════════════════════════════════════════════
+const DME_ITEM_LIST = [
+  "Air mattress", "Bed", "Bedpan", "Egg crate", "Overbed table", "Cane",
+  "Walker", "Wheelchair", "Shower chair", "Geri-chair/recliner", "Hoyer lift",
+  "Urinal", "Commode", "Nebulizer", "Suction machine", "Oxygen concentrator", "E-tank", "Other",
+];
+
 // Default education topics for Teaching Needs
 const DEFAULT_EDUCATION_TOPICS = [
   "Disease process and prognosis", "Medication management", "Pain management",
@@ -655,11 +670,19 @@ const INITIAL_FORM = {
     homeEnvironment: [],
     fallRiskAssessmentCompleted: false,
     fallRiskLevel: "",
+    transferSafetyLevel: "",
     firearmInHome: false,
     oxygenInUse: false, oxygenSafetyReviewed: false,
+    incidentOccurrenceReported: false,
+    incidentOccurrenceNotes: "",
     disasterLevel: "",
     disasterLevelOneConditions: [],
     disasterLevelTwoConditions: [],
+    disasterLevelThreeConditions: [],
+    dmeItems: DME_ITEM_LIST.map((item) => ({ item, status: "", specify: "" })),
+    supplies: {
+      existingCategories: [], neededCategories: [], otherSuppliesNotes: "",
+    },
     notes: "",
   },
 
@@ -1995,6 +2018,60 @@ function WoundListCard({ data, updateField, styles, COLORS }) {
       <button type="button" style={styles.btnSecondary} onClick={addWound}>
         + Add Wound
       </button>
+    </div>
+  );
+}
+
+const DME_ITEMS_WITH_SPECIFY = new Set(["Commode", "Other"]);
+
+const DME_STATUS_OPTIONS = ["", "Has", "Needs", "Ordered", "Delivered", "Declined", "N/A"];
+
+function DmeStatusCard({ data, updateField, styles, COLORS }) {
+  const items = data?.dmeItems || [];
+
+  const updateItem = (idx, field, value) => {
+    updateField("dmeItems", items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+  };
+
+  return (
+    <div>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Item</th>
+            <th style={styles.th}>Status</th>
+            <th style={styles.th}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={it.item}>
+              <td style={styles.td}>{it.item}</td>
+              <td style={styles.td}>
+                <select
+                  style={styles.select}
+                  value={it.status || ""}
+                  onChange={(e) => updateItem(idx, "status", e.target.value)}
+                >
+                  {DME_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt || "blank"} value={opt}>{opt || "— select —"}</option>
+                  ))}
+                </select>
+              </td>
+              <td style={styles.td}>
+                {DME_ITEMS_WITH_SPECIFY.has(it.item) && (
+                  <input
+                    style={styles.input}
+                    placeholder="(specify)"
+                    value={it.specify || ""}
+                    onChange={(e) => updateItem(idx, "specify", e.target.value)}
+                  />
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -4656,6 +4733,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "safety" && card.customRenderer === "dmeStatus") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <DmeStatusCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -5616,17 +5701,43 @@ const SECTION_CONFIGS = {
         ]},
         { type: "checkbox", label: "Fall Risk Assessment Completed", path: "fallRiskAssessmentCompleted" },
         { type: "radio", label: "Fall Risk Level", path: "fallRiskLevel", options: ["Low", "Moderate", "High"] },
+        { type: "radio", label: "Transfer Safety", path: "transferSafetyLevel", options: [
+          "Independent", "Needs assist x1", "Needs assist x2", "Mechanical lift required", "Unsafe/high risk"
+        ]},
         { type: "checkbox", label: "Firearm in Home", path: "firearmInHome" },
         { type: "checkbox", label: "Oxygen in Use", path: "oxygenInUse" },
         { type: "checkbox", label: "Oxygen Safety Reviewed", path: "oxygenSafetyReviewed" },
+        { type: "checkbox", label: "Incident/Occurrence Reported This Visit", path: "incidentOccurrenceReported" },
+        { type: "textarea", label: "Incident/Occurrence Notes", path: "incidentOccurrenceNotes" },
       ]},
       { title: "Disaster Triage", fields: [
-        { type: "radio", label: "Disaster Level", path: "disasterLevel", options: ["Level 1 — Priority", "Level 2 — Urgent", "Level 3 — Non-urgent"] },
-        { type: "checkboxGroup", label: "Level 1 Conditions", path: "disasterLevelOneConditions", options: [
-          "Ventilator dependent", "IV medications", "Oxygen dependent", "Suction dependent",
-          "Tube feeding dependent", "Wound vac", "No caregiver"
+        { type: "radio", label: "Disaster Level", path: "disasterLevel", options: [
+          "Level 1 — Hospice must assist; no assistance available",
+          "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+          "Level 3 — No need for hospice to assist; has adequate assistance available"
+        ]},
+        { type: "checkboxGroup", label: "Level 1 Conditions (two or more apply)", path: "disasterLevelOneConditions", options: [
+          "Bed- or chair-confined", "Dependent on walker or cane",
+          "Lives above ground floor", "Requires electricity for medical equipment"
+        ]},
+        { type: "checkboxGroup", label: "Level 2 Conditions (one applies)", path: "disasterLevelTwoConditions", options: [
+          "Bed- or chair-confined", "Dependent on walker or cane",
+          "Lives above ground floor", "Requires electricity for medical equipment"
+        ]},
+        { type: "checkboxGroup", label: "Level 3 Conditions", path: "disasterLevelThreeConditions", options: [
+          "Lives in facility with disaster support", "Has alternate location and available helper to go to"
         ]},
         { type: "textarea", label: "Safety Notes", path: "notes" },
+      ]},
+      { title: "DME (Durable Medical Equipment)", customRenderer: "dmeStatus" },
+      { title: "Supplies", fields: [
+        { type: "checkboxGroup", label: "Existing Supplies", path: "supplies.existingCategories", options: [
+          "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
+        ]},
+        { type: "checkboxGroup", label: "Needed Supplies", path: "supplies.neededCategories", options: [
+          "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
+        ]},
+        { type: "textarea", label: "Other Supplies Notes", path: "supplies.otherSuppliesNotes" },
       ]},
     ],
   },
