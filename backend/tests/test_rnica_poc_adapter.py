@@ -349,3 +349,61 @@ def test_skin_wound_structured_fields_save_reload_and_preserve_existing_data(cli
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/skin", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_infection_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.4 Immunological/Infection structured fields (allergies,
+    antibiotic-resistant infection, history of resistant infection, current
+    active infection, antibiotic use, temperature, recurrent infection,
+    infection history) persist through the existing RNICA form_data JSONB
+    model, round-trip on reload, and coexist with POC controls on the
+    infection section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"infection": {}})
+
+    updated_infection = {
+        "allergies": ["Food allergies", "Sensitivities"],
+        "allergyDetails": "Shellfish; adhesive tape sensitivity.",
+        "immunosuppressed": True,
+        "precautions": ["Contact"],
+        "antibioticResistantInfection": ["MRSA"],
+        "historyOfResistantInfections": ["C. difficile"],
+        "currentInfections": ["UTI", "Wound"],
+        "antibioticUse": True,
+        "temperature": "100.4",
+        "recurrentInfection": True,
+        "infectionHistory": "Recurrent UTIs over past year, 3 courses of antibiotics.",
+        "notes": "Wound culture pending.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"infection": updated_infection}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    infection = get_resp.json()["formData"]["infection"]
+
+    for key, value in updated_infection.items():
+        assert infection[key] == value, f"infection field {key} did not round-trip"
+
+    # POC linkage from the infection section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/infection",
+        json={
+            "problem_label": "Active infection risk — recurrent UTI, MRSA history",
+            "evidence_text": "Temp 100.4F, MRSA on current culture, recurrent UTI history.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/infection", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
