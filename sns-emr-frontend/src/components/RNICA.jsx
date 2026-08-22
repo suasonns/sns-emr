@@ -76,7 +76,7 @@ import {
   cancelPhysicianOrder,
 } from "../api/physicianOrders";
 import { getCurrentUser } from "../api/session";
-import { fetchPerformanceHistory } from "../api/facesheet";
+import { fetchFacesheet, fetchPerformanceHistory } from "../api/facesheet";
 import { listVendors } from "../api/vendors";
 import { COLORS as SNS_COLORS, S as SNS_S } from "../tenant/design";
 import PatientContextSidebar from "./PatientContextSidebar";
@@ -185,7 +185,7 @@ const NAV_SECTIONS = [
   "Diagnoses", "Performance Status", "Neurological", "Cardiovascular",
   "Respiratory", "Infection", "Gastrointestinal", "Nutrition",
   "Endocrine", "Genitourinary",
-  "Musculoskeletal", "Skin / Wounds", "Imminent Death", "SFV",
+  "Musculoskeletal", "Integumentary - Skin", "Imminent Death", "SFV",
   "Safety", "Psychosocial", "Spiritual", "Bereavement",
   "Personal Care", "Teaching Needs", "Admissions Order",
   "Hospice Orders Hub", "Referrals", "Finalization",
@@ -207,7 +207,7 @@ const LEGACY_ROUTES = [
   { key: "endocrine",         nav: "Endocrine",             formSection: "endocrine" },
   { key: "genitourinary",     nav: "Genitourinary",         formSection: "genitourinary" },
   { key: "musculoskeletal",   nav: "Musculoskeletal",       formSection: "musculoskeletal" },
-  { key: "skin",              nav: "Skin / Wounds",         formSection: "skin" },
+  { key: "skin",              nav: "Integumentary - Skin",  formSection: "skin" },
   { key: "imminentDeath",     nav: "Imminent Death",        formSection: "imminentDeath" },
   { key: "sfv",               nav: "SFV",                   formSection: "sfv" },
   { key: "safety",            nav: "Safety",                formSection: "safety" },
@@ -248,7 +248,7 @@ const SIDEBAR_CONFIG = [
   { key: "endocrine",         label: "Endocrine",             icon: "🔄", hope: [],                         color: null },
   { key: "genitourinary",     label: "Genitourinary",         icon: "💧", hope: [],                         color: null },
   { key: "musculoskeletal",   label: "Musculoskeletal",       icon: "🦴", hope: [],                         color: null },
-  { key: "skin",              label: "Skin / Wounds",         icon: "🩹", hope: ["M1190"],                  color: "green" },
+  { key: "skin",              label: "Integumentary - Skin",  icon: "🩹", hope: ["M1190"],                  color: "green" },
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
   { key: "safety",            label: "Safety",                icon: "🛡️", hope: [],                   color: null },
@@ -6610,10 +6610,6 @@ const SECTION_CONFIGS = {
         title: "LCD Supporting Evidence",
         customRenderer: "lcdSupportingEvidence",
       },
-      {
-        title: "Clinical Narrative & Disease Trajectory",
-        customRenderer: "clinicalNarrative",
-      },
     ],
   },
 
@@ -6997,7 +6993,7 @@ const SECTION_CONFIGS = {
   },
 
   skin: {
-    title: "Skin / Wounds",
+    title: "Integumentary - Skin",
     subtitle: "Integumentary assessment, Braden Scale, wound documentation (M1190)",
     cards: [
       { title: "Skin Assessment", hopeCode: "M1190", fields: [
@@ -7361,7 +7357,6 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Completed By", path: "medReconciliation.completedBy" },
       ]},
       { title: "Medications — Allergies, Orders & Interaction Safety Check", customRenderer: "medicationOrders" },
-      { title: "Orders Hub — DME, Supplies, Lab, Treatment, Diet & Other", customRenderer: "ordersHub" },
     ],
   },
 
@@ -7448,6 +7443,199 @@ function deepMergeFormData(defaults, saved) {
 }
 
 // ════════════════════════════════════════════════════════════════
+// SECTION 1 — PATIENT & ENCOUNTER SNAPSHOT (read-only)
+// ════════════════════════════════════════════════════════════════
+// Per docs/SNS_RNICA_MASTER_MAP_1.1.md L94-151: "This section displays
+// authoritative information. It does not duplicate or independently own
+// patient data." Every value below comes from the same authoritative,
+// already-existing endpoints PatientFacesheet.jsx uses
+// (GET /patients/{id}/facesheet, /performance-history) — no new backend
+// field/model/write-path was added. PatientFacesheet.jsx itself was used
+// only as a visual model (spacing/typography/card treatment), not
+// imported, extended, or coupled to. Fields with no authoritative source
+// (living arrangement, medication summary, interpreter need, NYHA, POC
+// problem/goal/intervention sub-routes) are intentionally omitted — see
+// the contract's "Open Items" section for the tracked defects.
+const CARE_TEAM_DISPLAY_FIELDS = [
+  { key: "primary_rn_name", label: "Primary RN" },
+  { key: "lvn_name", label: "LVN" },
+  { key: "social_worker_name", label: "Social Worker" },
+  { key: "chaplain_name", label: "Chaplain" },
+  { key: "chha_name", label: "CHHA" },
+  { key: "volunteer_name", label: "Volunteer" },
+  { key: "clinical_manager_name", label: "Clinical Manager" },
+];
+
+function Section1SnapshotBadge({ colors, tone, children }) {
+  const palette = {
+    auto: { bg: colors.tealBg, color: colors.teal },
+    manual: { bg: colors.amberTagBg, color: colors.warning },
+    unassigned: { bg: colors.border, color: colors.gray },
+    synced: { bg: colors.hopeTagBg, color: colors.hope },
+  }[tone] || { bg: colors.border, color: colors.gray };
+  return (
+    <span style={{
+      display: "inline-block", padding: "1px 7px", borderRadius: 4, fontSize: 9,
+      fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase",
+      background: palette.bg, color: palette.color, whiteSpace: "nowrap",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Section1SnapshotItem({ colors, label, value }) {
+  return (
+    <div style={{ minHeight: 34 }}>
+      <span style={{ color: colors.gray, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.4, display: "block" }}>
+        {label}
+      </span>
+      <span style={{ color: colors.dark, fontSize: 12.5, fontWeight: 600 }}>{value || "—"}</span>
+    </div>
+  );
+}
+
+function Section1CareTeamGrid({ colors, facesheet }) {
+  const assignments = facesheet?.care_team?.assignments || {};
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+      gap: 10,
+    }}>
+      {CARE_TEAM_DISPLAY_FIELDS.map(({ key, label }) => {
+        const autoMatch = assignments[key];
+        const manualName = facesheet?.care_team?.[key];
+        const name = autoMatch?.name || manualName || null;
+        const tone = autoMatch ? "auto" : manualName ? "manual" : "unassigned";
+        const tag = autoMatch ? "AUTO" : manualName ? "MANUAL" : "UNASSIGNED";
+        return (
+          <div key={key} style={{
+            display: "flex", flexDirection: "column", justifyContent: "space-between",
+            minHeight: 66, padding: "8px 10px", border: `1px solid ${colors.border}`,
+            borderRadius: 8, background: colors.white,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, minHeight: 24 }}>
+              <span style={{ color: colors.gray, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4, lineHeight: 1.3 }}>
+                {label}
+              </span>
+              <Section1SnapshotBadge colors={colors} tone={tone}>{tag}</Section1SnapshotBadge>
+            </div>
+            <span style={{ color: colors.dark, fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>
+              {name || "Unassigned"}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, performanceHistory, locked, saving, resolvedPatientId, patientIdProp }) {
+  if (!patientSummary?.patient) return null;
+  const identity = facesheet?.identity || {};
+  const address = facesheet?.address || {};
+  const clinical = facesheet?.clinical || {};
+  const levelOfCare = facesheet?.level_of_care || {};
+  const placeOfService = facesheet?.place_of_service || {};
+  const serviceDates = facesheet?.service_dates || {};
+  const benefitPeriod = facesheet?.benefit_period || {};
+  const hospiceSnapshot = facesheet?.hospice_snapshot || {};
+  const physicians = facesheet?.physicians || {};
+  const contacts = facesheet?.contacts || {};
+  const latestPerformance = performanceHistory?.[0] || null;
+  const pid = resolvedPatientId || patientIdProp;
+
+  const age = (() => {
+    if (!identity.dob) return null;
+    const dob = new Date(identity.dob);
+    if (Number.isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let years = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) years--;
+    return years;
+  })();
+
+  const contactLine = (contact) => {
+    if (!contact || !contact.name) return null;
+    return contact.relationship ? `${contact.name} (${contact.relationship})` : contact.name;
+  };
+
+  return (
+    <div style={{
+      margin: "0 24px 16px", padding: "12px 14px", borderRadius: 8,
+      border: `1px solid ${colors.border}`, background: colors.bg,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ color: colors.dark, fontSize: 13, fontWeight: 700 }}>Section 1 — Patient &amp; Encounter Snapshot</span>
+        <Section1SnapshotBadge colors={colors} tone="unassigned">READ ONLY</Section1SnapshotBadge>
+      </div>
+      {facesheetError && (
+        <div style={{ color: colors.error, fontSize: 11, marginBottom: 8 }}>Facesheet: {facesheetError}</div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="DOB / Age" value={identity.dob ? `${identity.dob}${age !== null ? ` (${age}y)` : ""}` : null} />
+        <Section1SnapshotItem colors={colors} label="Sex" value={identity.gender} />
+        <Section1SnapshotItem colors={colors} label="SOC Date" value={serviceDates.soc_date} />
+        <Section1SnapshotItem colors={colors} label="Benefit Period" value={benefitPeriod.benefit_period_number ? `#${benefitPeriod.benefit_period_number} (${benefitPeriod.benefit_period_start || "?"} – ${benefitPeriod.benefit_period_end || "?"})` : null} />
+        <Section1SnapshotItem colors={colors} label="Level of Care" value={levelOfCare.current_level_of_care} />
+        <Section1SnapshotItem colors={colors} label="Payer" value={facesheet?.insurance?.primary_payer} />
+        <Section1SnapshotItem colors={colors} label="Site of Service" value={placeOfService.current_pos_type} />
+        <Section1SnapshotItem colors={colors} label="Facility" value={placeOfService.current_pos_name} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="Terminal Diagnosis" value={clinical.active_primary_diagnosis?.description || clinical.primary_diagnosis} />
+        <Section1SnapshotItem colors={colors} label="Related / Comorbid Dx" value={clinical.secondary_diagnoses} />
+        <Section1SnapshotItem colors={colors} label="Code Status" value={hospiceSnapshot.code_status} />
+        <Section1SnapshotItem colors={colors} label="Allergies" value={clinical.allergies || (clinical.has_allergies === false ? "NKDA" : null)} />
+        <Section1SnapshotItem colors={colors} label="PPS / KPS / FAST" value={
+          (latestPerformance || hospiceSnapshot.pps_score)
+            ? `${latestPerformance?.pps ?? hospiceSnapshot.pps_score ?? "—"} / ${latestPerformance?.kps ?? hospiceSnapshot.kps_score ?? "—"} / ${latestPerformance?.fast_stage ?? hospiceSnapshot.fast_stage ?? "—"}`
+            : null
+        } />
+        <Section1SnapshotItem colors={colors} label="Attending Physician" value={physicians.attending?.name} />
+        <Section1SnapshotItem colors={colors} label="Medical Director" value={physicians.medical_director?.name} />
+        <Section1SnapshotItem colors={colors} label="Preferred Language" value={identity.language} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="Primary Caregiver" value={contactLine(contacts.primary_caregiver)} />
+        <Section1SnapshotItem colors={colors} label="Decision-Maker" value={contactLine(contacts.decision_maker)} />
+        <Section1SnapshotItem colors={colors} label="Emergency Contact" value={contactLine(contacts.emergency_contact)} />
+      </div>
+
+      <div style={{ marginBottom: 6 }}>
+        <span style={{ color: colors.dark, fontSize: 11.5, fontWeight: 700 }}>Care Team</span>
+      </div>
+      <Section1CareTeamGrid colors={colors} facesheet={facesheet} />
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 14 }}>
+          <Section1SnapshotItem colors={colors} label="Assessment Status" value={locked ? "LOCKED" : "IN PROGRESS"} />
+          <Section1SnapshotItem colors={colors} label="Autosave" value={saving ? "Saving…" : "Saved"} />
+        </div>
+        {pid ? (
+          <button
+            type="button"
+            onClick={() => window.open(`/plan-of-care?patientId=${pid}`, "_blank", "noopener")}
+            title="Opens the patient's current Master Plan of Care in a new tab (read-only link — Section 11 problem/goal/intervention deep-links are not yet available)"
+            style={{
+              fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6,
+              border: `1px solid ${colors.border}`, background: colors.white, color: colors.dark, cursor: "pointer",
+            }}
+          >
+            View Master Plan of Care ↗
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
@@ -7457,6 +7645,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
+  // Section 1 (Patient & Encounter Snapshot) read-only data. Sourced
+  // exclusively from the same authoritative endpoints PatientFacesheet.jsx
+  // already uses (GET /patients/{id}/facesheet, /performance-history) — no
+  // new backend field, model, or write path. See
+  // docs/SNS_RNICA_SECTION_1_IMPLEMENTATION_CONTRACT.md.
+  const [facesheetData, setFacesheetData] = useState(null);
+  const [facesheetError, setFacesheetError] = useState("");
+  const [performanceHistory, setPerformanceHistory] = useState([]);
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
   const [activeSection, setActiveSection] = useState("demographics");
   // Sections collapse independently of "activeSection" (which still drives
@@ -7581,6 +7777,42 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setPatientSummary(null);
           setPatientSummaryError(error instanceof Error ? error.message : "Unable to load patient summary.");
         }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedPatientId, patientId]);
+
+  useEffect(() => {
+    const activeId = resolvedPatientId || patientId;
+    if (!activeId) {
+      setFacesheetData(null);
+      setFacesheetError("");
+      setPerformanceHistory([]);
+      return;
+    }
+
+    let mounted = true;
+    setFacesheetError("");
+    fetchFacesheet(activeId)
+      .then((data) => {
+        if (mounted) setFacesheetData(data);
+      })
+      .catch((error) => {
+        console.error("Failed to load facesheet for RN ICA Section 1:", error);
+        if (mounted) {
+          setFacesheetData(null);
+          setFacesheetError(error instanceof Error ? error.message : "Unable to load facesheet.");
+        }
+      });
+    fetchPerformanceHistory(activeId)
+      .then((res) => {
+        if (mounted) setPerformanceHistory(res?.history || []);
+      })
+      .catch((error) => {
+        console.error("Failed to load performance history for RN ICA Section 1:", error);
+        if (mounted) setPerformanceHistory([]);
       });
 
     return () => {
@@ -8074,6 +8306,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           </div>
         </div>
       </div>
+
+      <Section1Snapshot
+        colors={COLORS}
+        patientSummary={patientSummary}
+        facesheet={facesheetData}
+        facesheetError={facesheetError}
+        performanceHistory={performanceHistory}
+        locked={locked}
+        saving={saving}
+        resolvedPatientId={resolvedPatientId}
+        patientIdProp={patientId}
+      />
 
       {(patientSummaryError || pageError) && (
         <div style={styles.warningBox}>

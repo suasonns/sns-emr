@@ -16,7 +16,7 @@ export const RNICA_ASSESSMENT_MODULES = [
   { key: "endocrine", label: "Endocrine", formSection: "endocrine" },
   { key: "genitourinary", label: "Genitourinary", formSection: "genitourinary" },
   { key: "musculoskeletal", label: "Musculoskeletal", formSection: "musculoskeletal" },
-  { key: "skin", label: "Skin / Wounds", formSection: "skin", regulator: "HOPE", hope: ["M1190"] },
+  { key: "skin", label: "Integumentary - Skin", formSection: "skin", regulator: "HOPE", hope: ["M1190"] },
   { key: "imminentDeath", label: "Imminent Death", formSection: "imminentDeath", regulator: "HOPE", hope: ["J0050"] },
   { key: "sfv", label: "SFV", formSection: "sfv", regulator: "HOPE", hope: ["J2050", "J2052", "J2053"] },
   { key: "safety", label: "Safety", formSection: "safety" },

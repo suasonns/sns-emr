@@ -1018,29 +1018,54 @@ const CareTeamCard = ({ colors, draft, update, facesheet }) => {
         <CardHeader title="Care Team" colors={colors} />
       </div>
       <SectionNote colors={colors}>Names marked AUTO are pulled live from active staff assignments. Roles with no active assignment fall back to manual entry until staff is assigned.</SectionNote>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '4px 14px', marginTop: 6 }}>
+      {/* Equal-width responsive grid: 2-3 columns depending on card width,
+          never the previously-compressed 6-across layout. Each role renders
+          as its own fixed-height cell so labels/badges/names line up across
+          rows regardless of label text length. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 10,
+        marginTop: 8,
+      }}>
         {CARE_TEAM_FIELDS.map(({ key, label, autoField }) => {
           const autoMatch = autoField ? assignments[autoField] : null;
-          if (autoMatch) {
-            return (
-              <div key={key}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
-                  <Badge variant="teal" colors={colors}>AUTO</Badge>
-                </div>
-                <span style={{ color: colors.white, fontSize: 12.5, fontWeight: 700 }}>{autoMatch.name}</span>
-              </div>
-            );
-          }
           return (
-            <Field
+            <div
               key={key}
-              label={autoField ? `${label} (manual — no active assignment)` : `${label} (manual)`}
-              value={draft[key]}
-              colors={colors}
-              editable
-              onChange={(value) => update(key, value)}
-            />
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                minHeight: 74,
+                padding: '8px 10px',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                backgroundColor: colors.bg,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, minHeight: 26 }}>
+                <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, lineHeight: 1.3 }}>
+                  {label}
+                </span>
+                <Badge variant={autoMatch ? 'teal' : 'muted'} colors={colors}>
+                  {autoMatch ? 'AUTO' : 'UNASSIGNED'}
+                </Badge>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                {autoMatch ? (
+                  <span style={{ color: colors.white, fontSize: 12.5, fontWeight: 700, display: 'block' }}>{autoMatch.name}</span>
+                ) : (
+                  <input
+                    type="text"
+                    value={draft[key] ?? ''}
+                    placeholder="Enter name (manual)"
+                    onChange={(event) => update(key, event.target.value)}
+                    style={{ ...baseInputStyle(colors), border: `1px solid ${colors.border}`, fontSize: 12.5, padding: '5px 8px' }}
+                  />
+                )}
+              </div>
+            </div>
           );
         })}
       </div>
