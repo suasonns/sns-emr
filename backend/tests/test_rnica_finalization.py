@@ -247,14 +247,25 @@ def test_correction_request_stub_requires_locked_assessment(client, db_session, 
     patient, _admission = _make_patient_and_admission(db_session, tenant_id)
     record = _make_rnica_assessment(db_session, patient, tenant_id, COMPLETE_FORM_DATA)
 
-    unlocked_resp = client.post(f"/visits/rnica/{record.id}/correction-request", headers=rn_headers)
+    amendment_payload = {
+        "amendment_category": "CLINICAL_CORRECTION",
+        "reason_code": "OMITTED_FINDING",
+        "requested_change": "Add documented finding omitted at signing.",
+    }
+
+    unlocked_resp = client.post(
+        f"/visits/rnica/{record.id}/correction-request", json=amendment_payload, headers=rn_headers
+    )
     assert unlocked_resp.status_code == 400, unlocked_resp.text
 
     lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
     assert lock_resp.status_code == 200, lock_resp.text
 
-    locked_resp = client.post(f"/visits/rnica/{record.id}/correction-request", headers=rn_headers)
-    assert locked_resp.status_code == 501, locked_resp.text
+    locked_resp = client.post(
+        f"/visits/rnica/{record.id}/correction-request", json=amendment_payload, headers=rn_headers
+    )
+    assert locked_resp.status_code == 200, locked_resp.text
+    assert locked_resp.json()["status"] == "PENDING"
 
 
 @pytest.mark.integration

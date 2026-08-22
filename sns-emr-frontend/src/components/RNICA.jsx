@@ -39,6 +39,9 @@ import {
   deactivateRnicaSectionPocProblem,
   getRnicaFinalizationReadiness,
   requestRnicaCorrection,
+  listRnicaAmendments,
+  approveRnicaAmendment,
+  denyRnicaAmendment,
   getRnicaSectionPocProblemHistory,
   linkExistingRnicaSectionPocProblem,
   mergeRnicaPocDuplicateProblems,
@@ -3539,12 +3542,273 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
 // Lock endpoint enforces server-side — see rnica_finalization_service.py /
 // GET .../finalization-readiness) and renders it as a pass/fail checklist,
 // plus the future correction/amendment entry point once locked.
+const AMENDMENT_CATEGORY_OPTIONS = [
+  { value: "CLINICAL_CORRECTION", label: "Clinical correction" },
+  { value: "ADDITIONAL_FINDING", label: "Additional finding" },
+  { value: "DOCUMENTATION_ERROR", label: "Documentation error" },
+  { value: "CLARIFICATION", label: "Clarification" },
+  { value: "OTHER", label: "Other" },
+];
+
+const AMENDMENT_REASON_CODE_OPTIONS = [
+  { value: "OMITTED_FINDING", label: "Omitted finding" },
+  { value: "INCORRECT_VALUE", label: "Incorrect value" },
+  { value: "CLARIFICATION_NEEDED", label: "Clarification needed" },
+  { value: "LATE_ENTRY", label: "Late entry" },
+  { value: "OTHER", label: "Other" },
+];
+
+// SECTION 12 -- who may approve/deny a proposed amendment. Mirrors the
+// server's AMENDMENT_APPROVAL_ROLES gate (app/api/visits.py) so the button
+// is hidden for roles the backend would 403 anyway; the backend remains the
+// real enforcement point.
+const AMENDMENT_APPROVAL_ROLES = new Set([
+  "DPCS",
+  "DPCS_DESIGNEE",
+  "CASE_MANAGER",
+  "SUPERVISOR",
+  "ADMIN",
+  "ADMINISTRATOR",
+  "QA",
+  "SYSTEM",
+]);
+
+function AmendmentPanel({ assessmentId, styles, COLORS }) {
+  const [amendments, setAmendments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [decidingId, setDecidingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    amendmentCategory: "",
+    reasonCode: "",
+    requestedChange: "",
+    sectionReference: "",
+    proposedValue: "",
+  });
+
+  const currentUser = getCurrentUser();
+  const currentRole = String(currentUser?.role || "").trim().toUpperCase();
+  const currentUserId = currentUser?.userId || currentUser?.user_id || currentUser?.id || null;
+  const canReview = AMENDMENT_APPROVAL_ROLES.has(currentRole);
+
+  const loadAmendments = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    listRnicaAmendments(assessmentId)
+      .then((res) => setAmendments(res?.amendments || []))
+      .catch((err) => setError(err.message || "Unable to load amendment history"))
+      .finally(() => setLoading(false));
+  }, [assessmentId]);
+
+  useEffect(() => {
+    loadAmendments();
+  }, [loadAmendments]);
+
+  const updateForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleSubmit = () => {
+    if (!form.amendmentCategory || !form.reasonCode || !form.requestedChange.trim()) {
+      setMessage("Category, reason, and the requested change are required.");
+      return;
+    }
+    setSubmitting(true);
+    setMessage("");
+    requestRnicaCorrection(assessmentId, {
+      amendmentCategory: form.amendmentCategory,
+      reasonCode: form.reasonCode,
+      requestedChange: form.requestedChange,
+      sectionReference: form.sectionReference.trim() || null,
+      proposedValue: form.proposedValue.trim() || null,
+    })
+      .then(() => {
+        setMessage("Amendment submitted and is pending review.");
+        setForm({ amendmentCategory: "", reasonCode: "", requestedChange: "", sectionReference: "", proposedValue: "" });
+        setShowForm(false);
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Amendment submission failed."))
+      .finally(() => setSubmitting(false));
+  };
+
+  const handleApprove = (amendmentId) => {
+    setDecidingId(amendmentId);
+    setMessage("");
+    approveRnicaAmendment(assessmentId, amendmentId)
+      .then(() => {
+        setMessage("Amendment approved.");
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Unable to approve amendment."))
+      .finally(() => setDecidingId(null));
+  };
+
+  const handleDeny = (amendmentId) => {
+    const reason = window.prompt("Reason for denying this amendment:");
+    if (reason == null) return;
+    if (!reason.trim()) {
+      setMessage("A denial reason is required.");
+      return;
+    }
+    setDecidingId(amendmentId);
+    setMessage("");
+    denyRnicaAmendment(assessmentId, amendmentId, reason.trim())
+      .then(() => {
+        setMessage("Amendment denied.");
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Unable to deny amendment."))
+      .finally(() => setDecidingId(null));
+  };
+
+  const statusColor = (status) => {
+    if (status === "APPROVED") return COLORS.success || "#16a34a";
+    if (status === "DENIED") return COLORS.error || "#ef4444";
+    return COLORS.gray;
+  };
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Correction / Amendment</div>
+      <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+        This assessment is locked and signed. A correction is a distinct, traceable addendum linked to the
+        original -- it never overwrites the signed content, even once approved.
+      </div>
+
+      <button type="button" onClick={() => setShowForm((v) => !v)} style={{
+        fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+        border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+      }}>
+        {showForm ? "Cancel" : "Request Correction / Amendment"}
+      </button>
+
+      {showForm && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, maxWidth: 480 }}>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Category
+            <select
+              value={form.amendmentCategory}
+              onChange={(e) => updateForm("amendmentCategory", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              <option value="">Select…</option>
+              {AMENDMENT_CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Reason
+            <select
+              value={form.reasonCode}
+              onChange={(e) => updateForm("reasonCode", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              <option value="">Select…</option>
+              {AMENDMENT_REASON_CODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Section reference (optional)
+            <input
+              type="text"
+              value={form.sectionReference}
+              onChange={(e) => updateForm("sectionReference", e.target.value)}
+              placeholder="e.g. section_10_clinical_narrative"
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Requested change
+            <textarea
+              value={form.requestedChange}
+              onChange={(e) => updateForm("requestedChange", e.target.value)}
+              rows={3}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Proposed value (optional, for reference only -- never auto-applied)
+            <textarea
+              value={form.proposedValue}
+              onChange={(e) => updateForm("proposedValue", e.target.value)}
+              rows={2}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <button type="button" disabled={submitting} onClick={handleSubmit} style={{
+            alignSelf: "flex-start", fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+            border: `1px solid ${COLORS.teal}`, background: COLORS.teal, color: "#fff",
+            cursor: submitting ? "wait" : "pointer",
+          }}>
+            {submitting ? "Submitting…" : "Submit Amendment"}
+          </button>
+        </div>
+      )}
+
+      {message && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{message}</div>}
+
+      {loading && <div style={{ fontSize: 11.5, color: COLORS.gray, marginTop: 8 }}>Loading amendment history…</div>}
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 8 }}>{error}</div>}
+
+      {!loading && amendments.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>Amendment History</div>
+          {amendments.map((a) => (
+            <div key={a.id} style={{
+              padding: "6px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 11.5,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontWeight: 600 }}>
+                  {AMENDMENT_CATEGORY_OPTIONS.find((o) => o.value === a.amendmentCategory)?.label || a.amendmentCategory}
+                  {a.sectionReference ? ` — ${a.sectionReference}` : ""}
+                </span>
+                <span style={{ color: statusColor(a.status), fontWeight: 700 }}>{a.status}</span>
+              </div>
+              <div style={{ color: COLORS.gray, marginTop: 2 }}>{a.requestedChange}</div>
+              {a.status === "DENIED" && a.deniedReason && (
+                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.deniedReason}</div>
+              )}
+              {a.status === "PENDING" && canReview && String(currentUserId) !== String(a.createdBy) && (
+                <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+                  <button type="button" disabled={decidingId === a.id} onClick={() => handleApprove(a.id)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
+                    border: `1px solid ${COLORS.success || "#16a34a"}`, background: "transparent",
+                    color: COLORS.success || "#16a34a", cursor: decidingId === a.id ? "wait" : "pointer",
+                  }}>
+                    Approve
+                  </button>
+                  <button type="button" disabled={decidingId === a.id} onClick={() => handleDeny(a.id)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
+                    border: `1px solid ${COLORS.error || "#ef4444"}`, background: "transparent",
+                    color: COLORS.error || "#ef4444", cursor: decidingId === a.id ? "wait" : "pointer",
+                  }}>
+                    Deny
+                  </button>
+                </div>
+              )}
+              {a.status === "PENDING" && canReview && String(currentUserId) === String(a.createdBy) && (
+                <div style={{ color: COLORS.gray, marginTop: 4, fontStyle: "italic" }}>
+                  Awaiting review by another reviewer (you submitted this amendment).
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS, onReadinessChange }) {
   const [readiness, setReadiness] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [correctionMessage, setCorrectionMessage] = useState("");
-  const [requestingCorrection, setRequestingCorrection] = useState(false);
 
   const loadReadiness = useCallback(() => {
     if (!assessmentId) return;
@@ -3562,15 +3826,6 @@ function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS, onRead
   useEffect(() => {
     loadReadiness();
   }, [loadReadiness]);
-
-  const handleRequestCorrection = () => {
-    setRequestingCorrection(true);
-    setCorrectionMessage("");
-    requestRnicaCorrection(assessmentId)
-      .then(() => setCorrectionMessage("Correction request submitted."))
-      .catch((err) => setCorrectionMessage(err.message || "Correction/amendment workflow is not available yet."))
-      .finally(() => setRequestingCorrection(false));
-  };
 
   if (!assessmentId) {
     return <div style={styles.infoBox}>Save the assessment once to enable the Final Review Dashboard.</div>;
@@ -3622,24 +3877,7 @@ function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS, onRead
         </>
       )}
 
-      {locked && (
-        <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
-          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Correction / Amendment</div>
-          <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
-            This assessment is locked and signed. A correction requires a distinct, traceable addendum rather than
-            editing signed content.
-          </div>
-          <button type="button" disabled={requestingCorrection} onClick={handleRequestCorrection} style={{
-            fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
-            border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: requestingCorrection ? "wait" : "pointer",
-          }}>
-            {requestingCorrection ? "Requesting…" : "Request Correction / Amendment"}
-          </button>
-          {correctionMessage && (
-            <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{correctionMessage}</div>
-          )}
-        </div>
-      )}
+      {locked && <AmendmentPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />}
     </div>
   );
 }

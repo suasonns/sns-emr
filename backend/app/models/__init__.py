@@ -57,6 +57,7 @@ from app.models.notification import Notification
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.admission_action_request import AdmissionActionRequest
+from app.models.rnica_amendment import RnicaAmendment
 from app.models.msw_ica_assessment import MswIcaAssessment
 from app.models.scica_assessment import ScicaAssessment
 from app.models.communications_log import CommunicationsLog

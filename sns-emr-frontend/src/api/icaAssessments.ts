@@ -80,14 +80,62 @@ export async function getRnicaFinalizationReadiness(assessmentId: string) {
   );
 }
 
-// SECTION 12 — future correction/amendment entry point (stub). Only
-// reachable once an assessment is locked; the backend intentionally
-// responds 501 today (see app/api/visits.py) until the full traceable
-// addendum workflow is built.
-export async function requestRnicaCorrection(assessmentId: string) {
+// SECTION 12 — Amendment Infrastructure. Reachable once an assessment is
+// locked; submits a distinct, timestamped, attributable correction/addendum
+// record. Never mutates the original signed assessment content.
+export async function requestRnicaCorrection(
+  assessmentId: string,
+  payload: {
+    amendmentCategory: string;
+    reasonCode: string;
+    requestedChange: string;
+    sectionReference?: string | null;
+    originalValueSnapshot?: unknown;
+    proposedValue?: unknown;
+  }
+) {
   return unwrap(
-    api.post(`/visits/rnica/${assessmentId}/correction-request`),
+    api.post(`/visits/rnica/${assessmentId}/correction-request`, {
+      amendment_category: payload.amendmentCategory,
+      reason_code: payload.reasonCode,
+      requested_change: payload.requestedChange,
+      section_reference: payload.sectionReference ?? null,
+      original_value_snapshot: payload.originalValueSnapshot ?? null,
+      proposed_value: payload.proposedValue ?? null,
+    }),
     "Correction/amendment request failed"
+  );
+}
+
+// SECTION 12 — Amendment Infrastructure read-only history.
+export async function listRnicaAmendments(assessmentId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/amendments`),
+    "Unable to load amendment history"
+  );
+}
+
+// SECTION 12 — Amendment Infrastructure review actions. Restricted server
+// side to DPCS / DPCS Designee / Case Manager / Supervisor (plus
+// Admin/QA/System oversight parity); a 403 here means the current user's
+// role is not a review authority.
+export async function approveRnicaAmendment(assessmentId: string, amendmentId: string) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/amendments/${amendmentId}/approve`),
+    "Unable to approve amendment"
+  );
+}
+
+export async function denyRnicaAmendment(
+  assessmentId: string,
+  amendmentId: string,
+  deniedReason: string
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/amendments/${amendmentId}/deny`, {
+      denied_reason: deniedReason,
+    }),
+    "Unable to deny amendment"
   );
 }
 

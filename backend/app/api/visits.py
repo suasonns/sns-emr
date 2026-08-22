@@ -44,6 +44,7 @@ from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.rnica_assessment import RnicaAssessment
 from app.services import rnica_poc_adapter
 from app.services.rnica_finalization_service import evaluate_finalization_readiness
+from app.services import rnica_amendment_service
 from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_data
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
@@ -476,7 +477,38 @@ TELEPHONE_MODES: Set[str] = {
 }
 
 VISIT_CORRECTION_WINDOW_HOURS = 72
-ALLOWED_REOPEN_ROLES = {"ADMIN", "SUPERVISOR", "DON", "QA", "SYSTEM"}
+
+# Reopening a FINALIZED visit is a distinct, higher-bar action from
+# approving/denying an amendment (see AMENDMENT_APPROVAL_ROLES below): per
+# owner direction, rank-and-file staff may NEVER unlock a locked/finalized
+# chart. Only Administrator, DPCS, DPCS Designee, Supervisor, or Case
+# Manager may reopen finalized documentation. ("ADMIN"/"ADMINISTRATOR" are
+# both accepted -- this codebase uses both spellings for the same role.)
+ALLOWED_REOPEN_ROLES = {
+    "ADMIN",
+    "ADMINISTRATOR",
+    "DPCS",
+    "DPCS_DESIGNEE",
+    "SUPERVISOR",
+    "CASE_MANAGER",
+}
+
+# SECTION 12 -- Amendment Infrastructure review authority. This governs who
+# may approve/deny a *proposed* amendment record; it does NOT unlock or
+# modify the original locked assessment (see ALLOWED_REOPEN_ROLES above,
+# which has its own, separately-defined set of higher-bar roles). Per owner
+# direction: DPCS is this system's name for the DON role. Case Manager and
+# Supervisor may also review/decide amendments; QA/ADMIN/SYSTEM retain
+# oversight parity.
+AMENDMENT_APPROVAL_ROLES = {
+    "DPCS",
+    "DPCS_DESIGNEE",
+    "CASE_MANAGER",
+    "SUPERVISOR",
+    "ADMIN",
+    "QA",
+    "SYSTEM",
+}
 
 VISIT_TYPE_ALIASES: dict[str, str] = {
     "SN": "RN",
@@ -781,22 +813,34 @@ def lock_rnica_assessment(
     }
 
 
-@router.post("/rnica/{assessment_id}/correction-request")
-def request_rnica_correction(
-    assessment_id: str,
-    db: Session = Depends(get_db),
-    current_user: CurrentUser = Security(get_current_user),
-):
-    """SECTION 12 — future correction/amendment entry point (stub only).
+class RnicaAmendmentRequest(BaseModel):
+    section_reference: Optional[str] = None
+    amendment_category: str = Field(..., min_length=1)
+    reason_code: str = Field(..., min_length=1)
+    requested_change: str = Field(..., min_length=1)
+    original_value_snapshot: Optional[Any] = None
+    proposed_value: Optional[Any] = None
 
-    A locked RN ICA is immutable (see `update_rnica_assessment`). This
-    endpoint documents where the traceable correction/addendum workflow
-    will live once built: a distinct, timestamped, attributable entry
-    appended alongside — never overwriting — the signed narrative. It is
-    intentionally NOT implemented yet per SECTION 12 scope; only the entry
-    point exists so the UI has somewhere to route a "Request Correction"
-    action without inventing ad hoc amendment infrastructure now.
-    """
+    @field_validator("requested_change")
+    @classmethod
+    def _requested_change_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("requested_change must not be blank")
+        return v
+
+
+class RnicaAmendmentDenyRequest(BaseModel):
+    denied_reason: str = Field(..., min_length=1)
+
+    @field_validator("denied_reason")
+    @classmethod
+    def _denied_reason_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("denied_reason must not be blank")
+        return v
+
+
+def _load_locked_rnica_assessment_for_amendment(db: Session, assessment_id: str, current_user: CurrentUser) -> RnicaAssessment:
     try:
         assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
@@ -807,18 +851,167 @@ def request_rnica_correction(
         raise HTTPException(status_code=404, detail="Assessment not found")
 
     get_authorized_patient(db, record.patient_id, current_user)
+    return record
+
+
+@router.post("/rnica/{assessment_id}/correction-request")
+def request_rnica_correction(
+    assessment_id: str,
+    payload: RnicaAmendmentRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — Amendment Infrastructure. Submits a distinct,
+    timestamped, attributable correction/addendum entry against an
+    already-locked (signed) RN ICA assessment.
+
+    A locked RN ICA is immutable (see `update_rnica_assessment`) — this
+    endpoint NEVER modifies `record.form_data`. It only creates a new,
+    separate `RnicaAmendment` row in PENDING status, awaiting review by
+    an AMENDMENT_APPROVAL_ROLES reviewer via the approve/deny endpoints
+    below. The original signed record remains fully preserved regardless
+    of the amendment's eventual outcome.
+    """
+    record = _load_locked_rnica_assessment_for_amendment(db, assessment_id, current_user)
 
     if not record.locked:
         raise HTTPException(status_code=400, detail="Only a locked assessment can be corrected or amended.")
 
-    raise HTTPException(
-        status_code=501,
-        detail=(
-            "The correction/amendment workflow has not been implemented yet. "
-            "This endpoint reserves the future path for a distinct, traceable "
-            "addendum to a signed RN ICA assessment."
-        ),
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+
+    try:
+        result = rnica_amendment_service.create_amendment(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            rnica_assessment_id=record.id,
+            user_id=user_id,
+            section_reference=payload.section_reference,
+            amendment_category=payload.amendment_category,
+            reason_code=payload.reason_code,
+            requested_change=payload.requested_change,
+            original_value_snapshot=payload.original_value_snapshot,
+            proposed_value=payload.proposed_value,
+        )
+    except rnica_amendment_service.RnicaAmendmentError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), **result}
+
+
+@router.get("/rnica/{assessment_id}/amendments")
+def list_rnica_amendments(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — Amendment Infrastructure read-only list. Any authorized
+    clinician with access to the patient may view amendment history,
+    matching the read access already granted for the assessment itself.
+    """
+    record = _load_locked_rnica_assessment_for_amendment(db, assessment_id, current_user)
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+
+    amendments = rnica_amendment_service.list_amendments(
+        db,
+        tenant_id=tenant_id,
+        rnica_assessment_id=record.id,
     )
+    return {"assessmentId": str(record.id), "amendments": amendments}
+
+
+@router.post("/rnica/{assessment_id}/amendments/{amendment_id}/approve")
+def approve_rnica_amendment(
+    assessment_id: str,
+    amendment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — Amendment Infrastructure approval. Restricted to
+    AMENDMENT_APPROVAL_ROLES (DPCS/DPCS Designee/Case Manager/Supervisor,
+    plus Admin/QA/System for oversight parity with ALLOWED_REOPEN_ROLES).
+    Approving an amendment records the decision only -- it never
+    retroactively rewrites the original signed assessment content.
+    """
+    record = _load_locked_rnica_assessment_for_amendment(db, assessment_id, current_user)
+
+    actor_role = str(getattr(current_user, "role", "SYSTEM")).strip().upper()
+    if actor_role not in AMENDMENT_APPROVAL_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="DPCS, DPCS Designee, Case Manager, or Supervisor approval is required to decide an amendment.",
+        )
+
+    try:
+        amendment_uuid = uuid.UUID(amendment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="amendment_id must be a valid UUID") from None
+
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+
+    try:
+        result = rnica_amendment_service.approve_amendment(
+            db,
+            tenant_id=tenant_id,
+            amendment_id=amendment_uuid,
+            user_id=user_id,
+        )
+    except rnica_amendment_service.RnicaAmendmentError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), **result}
+
+
+@router.post("/rnica/{assessment_id}/amendments/{amendment_id}/deny")
+def deny_rnica_amendment(
+    assessment_id: str,
+    amendment_id: str,
+    payload: RnicaAmendmentDenyRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — Amendment Infrastructure denial. Same review-authority
+    restriction as approval; requires a non-blank `denied_reason` so the
+    decision itself stays traceable.
+    """
+    record = _load_locked_rnica_assessment_for_amendment(db, assessment_id, current_user)
+
+    actor_role = str(getattr(current_user, "role", "SYSTEM")).strip().upper()
+    if actor_role not in AMENDMENT_APPROVAL_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="DPCS, DPCS Designee, Case Manager, or Supervisor approval is required to decide an amendment.",
+        )
+
+    try:
+        amendment_uuid = uuid.UUID(amendment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="amendment_id must be a valid UUID") from None
+
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+
+    try:
+        result = rnica_amendment_service.deny_amendment(
+            db,
+            tenant_id=tenant_id,
+            amendment_id=amendment_uuid,
+            user_id=user_id,
+            denied_reason=payload.denied_reason,
+        )
+    except rnica_amendment_service.RnicaAmendmentError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), **result}
 
 
 @router.get("/rnica/{assessment_id}/intelligence")
@@ -3549,7 +3742,7 @@ def reopen_visit(
     if actor_role not in ALLOWED_REOPEN_ROLES:
         raise HTTPException(
             status_code=403,
-            detail="Supervisor or admin approval is required to reopen finalized documentation.",
+            detail="Administrator, DPCS, DPCS Designee, Supervisor, or Case Manager approval is required to reopen finalized documentation.",
         )
 
     # =========================================================
