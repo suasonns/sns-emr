@@ -291,6 +291,39 @@ def deactivate_section_poc_problem(
     return {"assessmentId": str(record.id), "sectionKey": section_key, **_jsonable(result)}
 
 
+@router.get("/{assessment_id}/poc/{section_key}/{rule_key}/history")
+def get_section_poc_problem_history(
+    assessment_id: str,
+    section_key: str,
+    rule_key: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 11.B — Master Plan of Care Review 'View History'.
+
+    Read-only governance view (Created By/Date, Last Updated By/Date,
+    Status Changes, Resolve Events, Deactivate Events) reconstructed from
+    existing `plan_of_care_versions` / `poc_problems` metadata — no new
+    audit storage. See `rnica_poc_adapter.get_problem_history`.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    tenant_id = _tenant_id_for(db, record)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    try:
+        history = rnica_poc_adapter.get_problem_history(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            rule_key=rule_key,
+        )
+    except rnica_poc_adapter.RnicaPocAdapterError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), "sectionKey": section_key, **history}
+
+
 def _jsonable(result: dict) -> dict:
     """UUID values in adapter results need to be stringified for the JSON response."""
     out = {}

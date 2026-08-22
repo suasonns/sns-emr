@@ -51,6 +51,7 @@ from app.models.plan_of_care import PlanOfCare
 from app.models.plan_of_care_version import PlanOfCareVersion
 from app.models.poc import POCProblem
 from app.models.rnica_assessment import RnicaAssessment
+from app.models.user import User
 from app.services.admission.admission_service import AdmissionService
 from app.services.poc_generation_service import generate_initial_poc_draft
 from app.services.poc_service import (
@@ -670,6 +671,130 @@ def list_all_problems(
     )
 
     return [_serialize_problem_row(row) for row in rows]
+
+
+def _user_name_map(db: Session, user_ids: set) -> dict:
+    """Batch-resolve user ids -> display name for audit-trail attribution
+    (same pattern as app/api/physician_orders.py::_user_name_map)."""
+    ids = {uid for uid in user_ids if uid}
+    if not ids:
+        return {}
+    rows = db.query(User.id, User.full_name, User.display_name).filter(User.id.in_(ids)).all()
+    return {row[0]: (row[2] or row[1] or "Unknown") for row in rows}
+
+
+def get_problem_history(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    rule_key: str,
+) -> dict[str, Any]:
+    """SECTION 11.B — Master Plan of Care Review 'View History'.
+
+    Read-only governance view. Reconstructs a single problem's full
+    lifecycle (created, last updated, status transitions, resolve events,
+    deactivate events) entirely from metadata that already exists — no new
+    audit table, no new storage.
+
+    Every Plan of Care mutation (`poc_service.create_new_version`) fully
+    re-materializes *every* still-present problem into the new version's
+    `poc_problems` rows, each row stamped with that version's actor and
+    timestamp (see `poc_service._materialize_version_structure`). So the
+    ordered sequence of `PlanOfCareVersion` rows for a `rule_key` — and
+    whether the problem's own fields differ between consecutive versions —
+    already *is* the audit trail of what changed, when, and by whom;
+    `PlanOfCareVersion.change_reason` records why (e.g. "RN ICA: resolved
+    problem in skin section").
+    """
+    admission = AdmissionService.get_latest_admission(db=db, patient_id=patient_id, tenant_id=tenant_id)
+    if not admission:
+        raise RnicaPocAdapterError("No admission exists for this patient yet.")
+
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc:
+        raise RnicaPocAdapterError("No Plan of Care exists yet for this patient/admission.")
+
+    versions = (
+        db.query(PlanOfCareVersion)
+        .filter(
+            PlanOfCareVersion.tenant_id == tenant_id,
+            PlanOfCareVersion.plan_of_care_id == poc.id,
+        )
+        .order_by(PlanOfCareVersion.version_number.asc())
+        .all()
+    )
+    if not versions:
+        raise RnicaPocAdapterError("No Plan of Care versions exist yet for this patient/admission.")
+
+    version_ids = [v.id for v in versions]
+    problem_rows = (
+        db.query(POCProblem)
+        .filter(
+            POCProblem.tenant_id == tenant_id,
+            POCProblem.poc_version_id.in_(version_ids),
+            POCProblem.rule_key == rule_key,
+        )
+        .all()
+    )
+    rows_by_version_id = {row.poc_version_id: row for row in problem_rows}
+
+    # Chronological sequence of (version, problem-row-as-of-that-version),
+    # skipping versions where this problem did not yet exist / no longer
+    # appears in the snapshot.
+    timeline = [(v, rows_by_version_id[v.id]) for v in versions if v.id in rows_by_version_id]
+    if not timeline:
+        raise RnicaPocAdapterError(f"No Plan of Care problem found with rule_key={rule_key!r}.")
+
+    name_map = _user_name_map(db, {v.created_by_user_id for v, _ in timeline})
+
+    def _actor(version: PlanOfCareVersion) -> str:
+        return name_map.get(version.created_by_user_id, "Unknown")
+
+    def _at(version: PlanOfCareVersion) -> Optional[str]:
+        return version.created_at.isoformat() if version.created_at else None
+
+    first_version, _first_row = timeline[0]
+    _last_version, last_row = timeline[-1]
+
+    status_changes: list[dict[str, Any]] = []
+    last_changed_version = first_version
+    prev_row: Optional[POCProblem] = None
+    for version, row in timeline:
+        if prev_row is not None:
+            if row.status != prev_row.status:
+                status_changes.append(
+                    {
+                        "versionNumber": version.version_number,
+                        "changedAt": _at(version),
+                        "changedBy": _actor(version),
+                        "fromStatus": prev_row.status,
+                        "toStatus": row.status,
+                        "changeReason": version.change_reason,
+                    }
+                )
+            if (
+                row.status != prev_row.status
+                or row.severity != prev_row.severity
+                or row.label != prev_row.label
+                or row.description != prev_row.description
+            ):
+                last_changed_version = version
+        prev_row = row
+
+    return {
+        "ruleKey": rule_key,
+        "problemCode": last_row.problem_code,
+        "label": last_row.label,
+        "currentStatus": last_row.status,
+        "createdBy": _actor(first_version),
+        "createdDate": _at(first_version),
+        "lastUpdatedBy": _actor(last_changed_version),
+        "lastUpdatedDate": _at(last_changed_version),
+        "statusChanges": status_changes,
+        "resolveEvents": [c for c in status_changes if c["toStatus"] == "RESOLVED"],
+        "deactivateEvents": [c for c in status_changes if c["toStatus"] == "HISTORICAL"],
+    }
 
 
 def _payload_matches_authoritative_model(draft: dict[str, Any]) -> bool:

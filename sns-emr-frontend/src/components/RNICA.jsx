@@ -36,6 +36,7 @@ import {
   deactivateRnicaSectionPocProblem,
   getRnicaFinalizationReadiness,
   requestRnicaCorrection,
+  getRnicaSectionPocProblemHistory,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -3048,6 +3049,10 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   const [expandedRuleKey, setExpandedRuleKey] = useState(null);
   const [editingRuleKey, setEditingRuleKey] = useState(null);
   const [editDraft, setEditDraft] = useState({ label: "", severity: "", description_addendum: "" });
+  const [historyRuleKey, setHistoryRuleKey] = useState(null);
+  const [historyData, setHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const loadProblems = useCallback(() => {
     if (!assessmentId) return;
@@ -3103,6 +3108,23 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
       .finally(() => setSaving(false));
   };
 
+  const toggleHistory = (p) => {
+    if (historyRuleKey === p.rule_key) {
+      setHistoryRuleKey(null);
+      setHistoryData(null);
+      setHistoryError("");
+      return;
+    }
+    setHistoryRuleKey(p.rule_key);
+    setHistoryData(null);
+    setHistoryError("");
+    setHistoryLoading(true);
+    getRnicaSectionPocProblemHistory(assessmentId, p.origin_section, p.rule_key)
+      .then((res) => setHistoryData(res))
+      .catch((err) => setHistoryError(err.message || "Unable to load problem history"))
+      .finally(() => setHistoryLoading(false));
+  };
+
   if (!assessmentId) {
     return <div style={styles.infoBox}>Save the assessment once to enable the Master Plan of Care Review.</div>;
   }
@@ -3150,6 +3172,12 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                 border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
               }}>
                 {isExpanded ? "Hide Details" : "View Problem"}
+              </button>
+              <button type="button" onClick={() => toggleHistory(p)} style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+              }}>
+                {historyRuleKey === p.rule_key ? "Hide History" : "View History"}
               </button>
               {isActive && (
                 <>
@@ -3215,6 +3243,56 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     ))}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {historyRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, fontSize: 11.5 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Problem History (read-only)</div>
+                {historyLoading && <div style={{ color: COLORS.gray }}>Loading history…</div>}
+                {historyError && <div style={{ color: COLORS.error || "#ef4444" }}>{historyError}</div>}
+                {!historyLoading && !historyError && historyData && (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 6, marginBottom: 8 }}>
+                      <div><strong>Created By:</strong> {historyData.createdBy || "—"}</div>
+                      <div><strong>Created Date:</strong> {historyData.createdDate ? new Date(historyData.createdDate).toLocaleString() : "—"}</div>
+                      <div><strong>Last Updated By:</strong> {historyData.lastUpdatedBy || "—"}</div>
+                      <div><strong>Last Updated Date:</strong> {historyData.lastUpdatedDate ? new Date(historyData.lastUpdatedDate).toLocaleString() : "—"}</div>
+                    </div>
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Status Changes</div>
+                    {(historyData.statusChanges || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>No status changes recorded since creation.</div>
+                    )}
+                    {(historyData.statusChanges || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        v{c.versionNumber}: {c.fromStatus} → {c.toStatus} by {c.changedBy} on{" "}
+                        {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                        {c.changeReason ? ` — ${c.changeReason}` : ""}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Resolve Events</div>
+                    {(historyData.resolveEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.resolveEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Resolved by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Deactivate Events</div>
+                    {(historyData.deactivateEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.deactivateEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Deactivated by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

@@ -150,6 +150,16 @@ export async function resolveRnicaSectionPocProblem(assessmentId: string, sectio
   );
 }
 
+// SECTION 11.B — Master Plan of Care Review 'View History'. Read-only
+// governance view reconstructed from existing plan_of_care_versions /
+// poc_problems metadata — no new audit storage on either side.
+export async function getRnicaSectionPocProblemHistory(assessmentId: string, sectionKey: string, ruleKey: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/poc/${sectionKey}/${encodeURIComponent(ruleKey)}/history`),
+    "Unable to load Plan of Care problem history",
+  );
+}
+
 export async function saveMswIcaAssessment(payload: AssessmentPayload) {
   return unwrap(api.post("/visits/msw-ica/save", payload), "MSW ICA save failed");
 }
