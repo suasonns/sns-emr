@@ -374,13 +374,17 @@ const INITIAL_FORM = {
     // checkpoint "HOPE J0900/J0915 Pain compliance remediation".
     neuropathicPain: "",
     screeningDate: "",
-    // HOPE J0900.A / J0900.C official CMS responses. Distinct from
+    // HOPE J0900.A / J0900.C / J0900.D official CMS responses. Distinct from
     // verbalizesPain (which drives pain-scale tool selection, not the
-    // official "was the patient screened for pain?" HOPE answer) and from
+    // official "was the patient screened for pain?" HOPE answer),
     // painIntensity.current (a raw numeric score, not the official 0/1/2/3/9
-    // severity category). See checkpoint "HOPE J0900 compliance remediation".
+    // severity category), and assessmentTool (an auto-derived UI tool
+    // selection based on communication status/age, not the clinician's
+    // explicit confirmation of which standardized CMS tool category was
+    // used). See checkpoint "HOPE J0900 compliance remediation".
     screenedForPain: "",
     painSeverityCategory: "",
+    standardizedPainToolType: "",
     comprehensiveAssessmentCompleted: false,
     comprehensiveAssessmentDate: "",
     assessmentTool: "",
@@ -893,6 +897,9 @@ function validateRNICA(formData, mode = "ica") {
     }
     if (formData.pain.screenedForPain === "1" && !formData.pain.painSeverityCategory) {
       errors["pain.painSeverityCategory"] = "J0900.C: Patient's pain severity is required when screened for pain";
+    }
+    if (formData.pain.screenedForPain === "1" && !formData.pain.standardizedPainToolType) {
+      errors["pain.standardizedPainToolType"] = "J0900.D: Type of standardized pain tool used is required when screened for pain";
     }
     if (!formData.pain.verbalizesPain) {
       warnings["pain.verbalizesPain"] = "Pain verbalization status required to select pain scale";
@@ -4998,6 +5005,9 @@ const SECTION_CONFIGS = {
           { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
           { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
             { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
+          ]},
+          { type: "radio", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
+            { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
           ]},
           { type: "radio", label: "Can the patient verbalize pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
