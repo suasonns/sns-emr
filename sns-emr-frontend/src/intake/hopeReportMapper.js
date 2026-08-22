@@ -180,11 +180,69 @@ const ASSISTANCE_MAP = {
   None: ["5", "No assistance available"],
 };
 
-const PAIN_SCREEN_MAP = {
+// HOPE J0900.A "Was the patient screened for pain?" (0 No / 1 Yes) and
+// J0900.C "The patient's pain severity was:" (0 None / 1 Mild / 2 Moderate /
+// 3 Severe / 9 Pain not rated). These are distinct from RN ICA's
+// verbalizesPain (drives which pain scale tool to show — Numeric / PAINAD /
+// FLACC) and painIntensity.current (a raw numeric score), neither of which
+// is an official CMS HOPE response on its own.
+const PAIN_SCREENED_LABELS = {
+  "0": "No",
+  "1": "Yes",
+};
+
+const PAIN_SEVERITY_LABELS = {
+  "0": "None",
+  "1": "Mild",
+  "2": "Moderate",
+  "3": "Severe",
+  "9": "Pain not rated",
+};
+
+function painScreeningResponse(screenedForPain, painSeverityCategory) {
+  if (screenedForPain !== "0" && screenedForPain !== "1") {
+    return {
+      a: PLACEHOLDER,
+      aDescription: "Legacy record: review required",
+      c: PLACEHOLDER,
+      cDescription: PLACEHOLDER,
+      incomplete: true,
+    };
+  }
+  if (screenedForPain === "0") {
+    return {
+      a: "0",
+      aDescription: PAIN_SCREENED_LABELS["0"],
+      c: PLACEHOLDER,
+      cDescription: "Skipped — not screened (J0905, Pain Active Problem)",
+      incomplete: false,
+    };
+  }
+  const severityDescription = PAIN_SEVERITY_LABELS[painSeverityCategory];
+  if (!severityDescription) {
+    return {
+      a: "1",
+      aDescription: PAIN_SCREENED_LABELS["1"],
+      c: PLACEHOLDER,
+      cDescription: "Legacy record: review required",
+      incomplete: true,
+    };
+  }
+  return {
+    a: "1",
+    aDescription: PAIN_SCREENED_LABELS["1"],
+    c: painSeverityCategory,
+    cDescription: severityDescription,
+    incomplete: false,
+  };
+}
+
+// HOPE J0915 "Does the patient have neuropathic pain?" (0 No / 1 Yes) —
+// distinct from the clinical "uncomfortable because of pain" question,
+// which is not itself a CMS HOPE item.
+const NEUROPATHIC_PAIN_MAP = {
   "0": ["0", "No"],
-  "1": ["1", "Yes, reliably"],
-  "2": ["2", "Sometimes"],
-  "3": ["3", "Unable to determine"],
+  "1": ["1", "Yes"],
 };
 
 const YES_NO_UNABLE_MAP = {
@@ -403,8 +461,8 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const cprAsked = askedStatus(advancedCarePlanning.cprPreferenceAskedStatus, advancedCarePlanning.codeStatus);
   const lifeSustainingAsked = askedStatus(advancedCarePlanning.lifeSustainingAskedStatus, advancedCarePlanning.lifeSustainingTreatmentPreference);
   const hospitalizationAsked = askedStatus(advancedCarePlanning.hospitalizationAskedStatus, advancedCarePlanning.hospitalizationPreference);
-  const painScreen = lookup(PAIN_SCREEN_MAP, pain.verbalizesPain);
-  const neuropathicPain = lookup(YES_NO_UNABLE_MAP, pain.uncomfortableBecauseOfPain);
+  const painScreening = painScreeningResponse(pain.screenedForPain, pain.painSeverityCategory);
+  const neuropathicPain = lookup(NEUROPATHIC_PAIN_MAP, pain.neuropathicPain);
   const imminent = lookup(YES_NO_UNABLE_MAP, imminentDeath.appearsThreeDaysOrLess);
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
   const principalDiagnosisCategoryCode = diagnoses.primaryDiagnosis?.hopeDiagnosisCategory || "";
@@ -421,6 +479,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
     ["F2200", hospitalizationAsked],
     ["F3000", spiritualAsked],
     ["A1400", payerInformation],
+    ["J0900", painScreening],
   ].filter(([, result]) => result.incomplete).map(([code]) => code);
   const legacyReviewRequired = {
     required: legacyReviewItems.length > 0,
@@ -508,7 +567,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         title: "Section J - Health Conditions",
         items: [
           { code: "J0050", label: "Death is Imminent", entries: [{ label: "Yes / No", value: `${imminent.code} - ${imminent.description}` }] },
-          { code: "J0900", label: "Pain Screening", entries: [{ label: "A. Screened?", value: `${painScreen.code} - ${painScreen.description}` }, { label: "B. Date", value: formatDate(pain.screeningDate) }, { label: "C. Severity", value: valueText(pain.painIntensity?.current) }, { label: "D. Tool used", value: valueText(pain.assessmentTool) }] },
+          { code: "J0900", label: "Pain Screening", entries: [{ label: "A. Screened?", value: `${painScreening.a} - ${painScreening.aDescription}` }, { label: "B. Date", value: formatDate(pain.screeningDate) }, { label: "C. Severity", value: `${painScreening.c} - ${painScreening.cDescription}` }, { label: "D. Tool used", value: valueText(pain.assessmentTool) }] },
           { code: "J0905", label: "Pain Active Problem", entries: [{ label: "Yes / No", value: boolCode(Boolean(pain.painIntensity?.current || pain.painManagementPlan || (pain.painLocation || []).length)).description }] },
           { code: "J0910", label: "Comprehensive Pain Assessment", entries: [{ label: "A. Done?", value: boolCode(Boolean(pain.comprehensiveAssessmentCompleted)).description }, { label: "B. Date", value: formatDate(pain.comprehensiveAssessmentDate) }, { label: "C. Findings included", value: derivePainFindings(pain) }] },
           { code: "J0915", label: "Neuropathic Pain", entries: [{ label: "Yes / No / blank", value: `${neuropathicPain.code} - ${neuropathicPain.description}` }] },

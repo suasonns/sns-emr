@@ -303,6 +303,7 @@ describe("mapRnIcaToHopeReport — legacyReviewRequired banner/filter data", () 
     const formData = baseFormData({
       advancedCarePlanning: { cprPreferenceAskedStatus: "0", lifeSustainingAskedStatus: "0", hospitalizationAskedStatus: "0" },
       spiritual: { concernsAskedStatus: "0" },
+      pain: { screenedForPain: "0" },
     });
     const report = mapRnIcaToHopeReport(formData);
     expect(report.legacyReviewRequired.required).toBe(false);
@@ -313,6 +314,7 @@ describe("mapRnIcaToHopeReport — legacyReviewRequired banner/filter data", () 
     const formData = baseFormData({
       advancedCarePlanning: { cprPreferenceAskedStatus: "1", lifeSustainingAskedStatus: "", hospitalizationAskedStatus: "1" },
       spiritual: { concernsAskedStatus: "" },
+      pain: { screenedForPain: "0" },
     });
     const report = mapRnIcaToHopeReport(formData);
     expect(report.legacyReviewRequired.required).toBe(true);
@@ -322,7 +324,7 @@ describe("mapRnIcaToHopeReport — legacyReviewRequired banner/filter data", () 
   it("lists all four items when the record is fully legacy (no new fields at all)", () => {
     const report = mapRnIcaToHopeReport(baseFormData());
     expect(report.legacyReviewRequired.required).toBe(true);
-    expect(report.legacyReviewRequired.items).toEqual(["F2000", "F2100", "F2200", "F3000"]);
+    expect(report.legacyReviewRequired.items).toEqual(["F2000", "F2100", "F2200", "F3000", "J0900"]);
   });
 });
 
@@ -579,6 +581,115 @@ describe("mapRnIcaToHopeReport — A1400 Payer Information (Facesheet-sourced)",
     const reportB = mapRnIcaToHopeReport(baseFormData(), JSON.parse(JSON.stringify(patient)));
     expect(findItem(reportA, "A1400").entries[0].value).toBe(findItem(reportB, "A1400").entries[0].value);
     expect(findItem(reportB, "A1400").entries[0].value).toBe("J - Self-pay");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Priority 5 — J0900 Pain Screening / J0915 Neuropathic Pain.
+//
+// J0900.A ("Was the patient screened for pain?") and J0900.C ("The
+// patient's pain severity was:") are official CMS-coded responses that must
+// come from dedicated fields (screenedForPain / painSeverityCategory), not
+// be inferred from verbalizesPain (a communication-status/tool-selection
+// field) or painIntensity.current (a raw numeric score). J0915
+// ("Does the patient have neuropathic pain?") must come from the
+// neuropathicPain field, not the separate uncomfortableBecauseOfPain
+// clinical field it was previously (incorrectly) tagged to.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("mapRnIcaToHopeReport — J0900 Pain Screening", () => {
+  it.each([
+    ["0", "No"],
+    ["1", "Yes"],
+  ])("J0900.A code '%s' exports with its official description", (screenedForPain, description) => {
+    const formData = baseFormData({ pain: { screenedForPain, painSeverityCategory: screenedForPain === "1" ? "1" : "" } });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0900")).toBe(screenedForPain);
+    expect(responseDescription(report, "J0900")).toBe(description);
+  });
+
+  it.each([
+    ["0", "None"],
+    ["1", "Mild"],
+    ["2", "Moderate"],
+    ["3", "Severe"],
+    ["9", "Pain not rated"],
+  ])("J0900.C severity code '%s' exports with its official description when screened = Yes", (severityCode, description) => {
+    const formData = baseFormData({ pain: { screenedForPain: "1", painSeverityCategory: severityCode } });
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "J0900");
+    expect(item.entries[2].value).toBe(`${severityCode} - ${description}`);
+  });
+
+  it("J0900.C is validly skipped (not required) when J0900.A is 'No'", () => {
+    const formData = baseFormData({ pain: { screenedForPain: "0", painSeverityCategory: "" } });
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "J0900");
+    expect(item.entries[0].value).toBe("0 - No");
+    expect(item.entries[2].value).toContain("Skipped");
+    expect(report.legacyReviewRequired.items).not.toContain("J0900");
+  });
+
+  it("is legacy/incomplete when screenedForPain is absent (pre-remediation records)", () => {
+    const formData = baseFormData({ pain: {} });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0900")).toBe(PLACEHOLDER);
+    expect(report.legacyReviewRequired.required).toBe(true);
+    expect(report.legacyReviewRequired.items).toContain("J0900");
+  });
+
+  it("is legacy/incomplete when screenedForPain is 'Yes' but painSeverityCategory is missing", () => {
+    const formData = baseFormData({ pain: { screenedForPain: "1", painSeverityCategory: "" } });
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "J0900");
+    expect(item.entries[0].value).toBe("1 - Yes");
+    expect(item.entries[2].value).toBe("^ - Legacy record: review required");
+    expect(report.legacyReviewRequired.items).toContain("J0900");
+  });
+
+  it("verbalizesPain (tool-selection) does not influence the J0900.A response", () => {
+    const formData = baseFormData({ pain: { screenedForPain: "0", verbalizesPain: "1" } });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0900")).toBe("0");
+  });
+
+  it("painIntensity.current (raw numeric score) does not influence the J0900.C response", () => {
+    const formData = baseFormData({ pain: { screenedForPain: "1", painSeverityCategory: "2", painIntensity: { current: 7 } } });
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "J0900");
+    expect(item.entries[2].value).toBe("2 - Moderate");
+  });
+
+  it("round-trips through JSONB save/reload unchanged", () => {
+    const formData = baseFormData({ pain: { screenedForPain: "1", painSeverityCategory: "3" } });
+    const reloaded = JSON.parse(JSON.stringify(formData));
+    const report = mapRnIcaToHopeReport(reloaded);
+    expect(responseCode(report, "J0900")).toBe("1");
+    expect(findItem(report, "J0900").entries[2].value).toBe("3 - Severe");
+  });
+});
+
+describe("mapRnIcaToHopeReport — J0915 Neuropathic Pain", () => {
+  it.each([
+    ["0", "No"],
+    ["1", "Yes"],
+  ])("code '%s' exports with its official description", (neuropathicPain, description) => {
+    const formData = baseFormData({ pain: { neuropathicPain } });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0915")).toBe(neuropathicPain);
+    expect(responseDescription(report, "J0915")).toBe(description);
+  });
+
+  it("uncomfortableBecauseOfPain (a separate clinical field) does not influence the J0915 response", () => {
+    const formData = baseFormData({ pain: { neuropathicPain: "0", uncomfortableBecauseOfPain: "1" } });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0915")).toBe("0");
+  });
+
+  it("is blank/placeholder when neuropathicPain is not set (legacy records)", () => {
+    const formData = baseFormData({ pain: {} });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "J0915")).toBe(PLACEHOLDER);
   });
 });
 

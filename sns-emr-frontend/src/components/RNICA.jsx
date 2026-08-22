@@ -367,8 +367,20 @@ const INITIAL_FORM = {
   // ─── 3. PAIN ───────────────────────────────────────
   pain: {
     verbalizesPain: "", uncomfortableBecauseOfPain: "",
-    neuropathicPain: false,
+    // HOPE J0915 official CMS response: "Does the patient have neuropathic
+    // pain?" (0 No / 1 Yes). Previously a plain boolean checkbox that was
+    // never exported to HOPE at all — the mapper incorrectly exported
+    // uncomfortableBecauseOfPain under the J0915 code instead. See
+    // checkpoint "HOPE J0900/J0915 Pain compliance remediation".
+    neuropathicPain: "",
     screeningDate: "",
+    // HOPE J0900.A / J0900.C official CMS responses. Distinct from
+    // verbalizesPain (which drives pain-scale tool selection, not the
+    // official "was the patient screened for pain?" HOPE answer) and from
+    // painIntensity.current (a raw numeric score, not the official 0/1/2/3/9
+    // severity category). See checkpoint "HOPE J0900 compliance remediation".
+    screenedForPain: "",
+    painSeverityCategory: "",
     comprehensiveAssessmentCompleted: false,
     comprehensiveAssessmentDate: "",
     assessmentTool: "",
@@ -876,11 +888,17 @@ function validateRNICA(formData, mode = "ica") {
 
   if (includeHopeRequirements) {
     // Pain ? HOPE J0900, J0915
-    if (!formData.pain.verbalizesPain) {
-      warnings["pain.verbalizesPain"] = "HOPE J0900: Pain verbalization required";
+    if (!formData.pain.screenedForPain) {
+      errors["pain.screenedForPain"] = "J0900.A: Was the patient screened for pain? is required";
     }
-    if (!formData.pain.uncomfortableBecauseOfPain) {
-      warnings["pain.uncomfortableBecauseOfPain"] = "HOPE J0915: Uncomfortable because of pain required";
+    if (formData.pain.screenedForPain === "1" && !formData.pain.painSeverityCategory) {
+      errors["pain.painSeverityCategory"] = "J0900.C: Patient's pain severity is required when screened for pain";
+    }
+    if (!formData.pain.verbalizesPain) {
+      warnings["pain.verbalizesPain"] = "Pain verbalization status required to select pain scale";
+    }
+    if (!formData.pain.neuropathicPain) {
+      errors["pain.neuropathicPain"] = "J0915: Does the patient have neuropathic pain? is required";
     }
 
     // Symptom Impact ? J2051 A-H (all 8 required)
@@ -4482,8 +4500,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const patientAge = sectionKey === "pain" ? calculateAgeFromDob(demographics?.dob) : null;
   const isPediatricAge = typeof patientAge === "number" && patientAge < 18;
 
-  // Auto-derive the pain scale from HOPE J0900 (can the patient verbalize
-  // pain?) and the patient's age — only one scale (Numeric / PAINAD / FLACC)
+  // Auto-derive the pain scale from the patient's pain-communication status
+  // (can the patient verbalize pain? — a clinical tool-selection question,
+  // distinct from the official HOPE J0900.A response) and the patient's age
+  // — only one scale (Numeric / PAINAD / FLACC)
   // is ever shown. A nurse can still override via the BodyMap patient-type
   // toggle, which updates painMapMode directly.
   const deriveModeFromScreening = (verbalizesPain) => {
@@ -4797,10 +4817,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               const onChange = (v) => {
                 u(fieldForRender.path, v);
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
-                  // Auto-select the correct pain scale from the HOPE J0900
-                  // answer + patient age so only one tool is ever shown:
+                  // Auto-select the correct pain scale from the patient's
+                  // communication status + age so only one tool is ever shown:
                   // verbal (reliable/sometimes) -> Numeric, non-verbal adult
-                  // -> PAINAD, pediatric -> FLACC.
+                  // -> PAINAD, pediatric -> FLACC. Note: this communication
+                  // status is distinct from the official HOPE J0900.A
+                  // "was patient screened for pain?" response (screenedForPain).
                   const mode = deriveModeFromScreening(v);
                   u("painMapMode", mode);
                   if (mode === "verbal") {
@@ -4970,14 +4992,22 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Pain Screening", hopeCode: "J0900", fields: [
-          { type: "radio", label: "Can the patient verbalize pain?", path: "verbalizesPain", hopeCode: "J0900", options: [
+          { type: "radio", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
+            { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
+          ]},
+          { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
+          { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
+            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
+          ]},
+          { type: "radio", label: "Can the patient verbalize pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
-          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", hopeCode: "J0915", options: [
+          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
-          { type: "checkbox", label: "Neuropathic pain present", path: "neuropathicPain" },
-          { type: "input", label: "Pain screening date", path: "screeningDate", inputType: "date" },
+          { type: "radio", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          ]},
         ],
       },
       {
