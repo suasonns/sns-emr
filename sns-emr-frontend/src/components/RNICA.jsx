@@ -571,6 +571,10 @@ const INITIAL_FORM = {
     // existing None/Mild/Moderate/Severe severity radio.
     contracturesLocation: [],
     romLimitations: [],
+    // §5.10 Issues/Additional items not covered by the existing severity
+    // radios (weakness/rigidity/contractures) or paralysis/romLimitations.
+    musculoskeletalIssues: [],
+    strength: "", balance: "", painWithMovement: "",
     gait: "", assistiveDevices: [],
     fallHistory: { fallsLast90Days: "", fallInjuries: "" },
     mobility: {
@@ -5367,6 +5371,9 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Contractures", path: "contractures", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "checkboxGroup", label: "Contracture Location", path: "contracturesLocation", options: ["Bilateral lower extremities", "Unilateral LE", "Upper extremities", "Hands/fingers", "Neck/spine", "Generalized"] },
+        { type: "checkboxGroup", label: "ROM Loss Location", path: "romLimitations", options: ["Upper extremities", "Lower extremities", "Neck/spine", "Hands/fingers", "Generalized"] },
+        { type: "checkboxGroup", label: "Issues", path: "musculoskeletalIssues", options: ["Joint swelling", "Spasms / cramps", "Amputation", "Prosthesis", "ROM loss", "None"] },
+        { type: "radio", label: "Disability", path: "paralysis", options: ["None", "Paraplegia", "Quadriplegia", "Right hemiplegia", "Left hemiplegia", "Right hemiparesis", "Left hemiparesis"] },
         { type: "radio", label: "Gait", path: "gait", options: ["Normal", "Unsteady", "Shuffling", "Unable"] },
         { type: "checkboxGroup", label: "Assistive Devices", path: "assistiveDevices", options: ["Walker", "Wheelchair", "Cane", "Crutches", "Hospital bed", "Hoyer lift", "None"] },
       ]},
@@ -5374,6 +5381,9 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Ambulatory Status", path: "mobility.ambulatoryStatus", options: ["Independent", "Supervised", "Assisted", "Dependent", "Bedbound"] },
         { type: "radio", label: "Endurance", path: "mobility.endurance", options: ["Good", "Fair", "Poor"] },
         { type: "radio", label: "Transfer Ability", path: "mobility.transferAbility", options: ["Independent", "Standby assist", "1-person assist", "2-person assist", "Hoyer lift"] },
+        { type: "radio", label: "Strength", path: "strength", options: ["Normal", "Decreased", "Absent"] },
+        { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
+        { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
       { title: "ADL Assessment (0=Independent, 5=Dependent)", fields: [
         { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },

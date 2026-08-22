@@ -778,3 +778,63 @@ def test_sleep_rest_structured_fields_save_reload_and_poc_linkage(client, db_ses
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/neurological", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+def test_musculoskeletal_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.10 Musculoskeletal structured fields (Issues checklist,
+    ROM-loss location, Disability classification, and Additional items —
+    Strength/Balance/Pain with movement) persist through the existing
+    RNICA form_data JSONB model, round-trip on reload, and coexist with
+    POC controls on the musculoskeletal section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"musculoskeletal": {}})
+
+    updated_musculoskeletal = {
+        "weakness": "Moderate",
+        "rigidity": "Mild",
+        "contractures": "None",
+        "paralysis": "Right hemiparesis",
+        "contracturesLocation": [],
+        "romLimitations": ["Upper extremities", "Neck/spine"],
+        "musculoskeletalIssues": ["Joint swelling", "Spasms / cramps", "Prosthesis"],
+        "strength": "Decreased",
+        "balance": "Impaired",
+        "painWithMovement": "Moderate",
+        "gait": "Unsteady",
+        "assistiveDevices": ["Walker"],
+        "fallHistory": {"fallsLast90Days": "1", "fallInjuries": "None"},
+        "mobility": {"ambulatoryStatus": "Assisted", "endurance": "Fair", "transferAbility": "Standby assist"},
+        "adl": {"bathing": "3", "dressing": "2", "toileting": "2", "transferring": "3", "eating": "0", "grooming": "1"},
+        "notes": "Right-sided weakness following recent CVA; fall precautions in place.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"musculoskeletal": updated_musculoskeletal}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    musculoskeletal = get_resp.json()["formData"]["musculoskeletal"]
+
+    for key, value in updated_musculoskeletal.items():
+        assert musculoskeletal[key] == value, f"musculoskeletal field {key} did not round-trip"
+
+    # POC linkage from the musculoskeletal section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/musculoskeletal",
+        json={
+            "problem_label": "Fall risk — right hemiparesis with impaired balance",
+            "evidence_text": "Right hemiparesis, decreased strength, impaired balance, 1 fall in last 90 days.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/musculoskeletal", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
