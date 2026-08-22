@@ -186,6 +186,17 @@ from app.models.poc_physician_approval import (
 )
 
 # ---------------------------------------------------------
+# ✅ PHYSICIAN IDENTITY / ORDERS PHASE 1 / CTI / F2F / SIGNATURE AUTHORITY
+# ---------------------------------------------------------
+
+from app.models.patient_physician_assignment import PatientPhysicianAssignment
+from app.models.patient_contact import PatientContact
+from app.models.patient_code_status import PatientCodeStatus
+from app.models.physician_order import PhysicianOrder, PhysicianOrderStatusEvent
+from app.models.certification import Certification, CertificationStatusEvent
+from app.models.f2f_encounter import F2FEncounter, F2FEncounterStatusEvent
+
+# ---------------------------------------------------------
 # ✅ EXPORT (REQUIRED)
 # ---------------------------------------------------------
 

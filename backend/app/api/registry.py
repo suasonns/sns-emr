@@ -36,6 +36,12 @@ from app.api import (
     visit_recordings,
 )
 
+# PHYSICIAN IDENTITY MAPPING / SHARED PATIENT-CONTACT-DECISION-MAKER RECORDS
+from app.api.physician_identity import router as physician_identity_router
+from app.api.patient_code_status import router as patient_code_status_router
+from app.api.patient_contacts import router as patient_contacts_router
+from app.api.patient_physicians import router as patient_physicians_router
+
 # DOMAIN / WORKFLOW
 from app.api.eligibility.routes import router as eligibility_router
 from app.api.rules.routes import router as rules_router
@@ -202,6 +208,12 @@ def register_routers(app: FastAPI) -> None:
         fax_router,
         lab_catalog_router,
         physician_orders_router,
+
+        # Physician Identity Mapping / shared patient contact-decision-maker records
+        physician_identity_router,
+        patient_code_status_router,
+        patient_contacts_router,
+        patient_physicians_router,
     ]
 
     for router in tenant_routes:
