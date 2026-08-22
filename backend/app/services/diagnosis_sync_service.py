@@ -503,6 +503,7 @@ def sync_official_primary_diagnosis(
     if not facesheet:
         facesheet = PatientFaceSheet(
             patient_id=patient.id,
+            tenant_id=patient.tenant_id,
             dob=getattr(patient, "date_of_birth", None),
             primary_diagnosis=display_name,
             created_by=actor_id,

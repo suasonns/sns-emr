@@ -242,6 +242,22 @@ def get_batch_signature_queue(
     except review_svc.IDGPhysicianReviewError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
+    # Physician Identity Mapping fail-closed gate: an ATTENDING_PHYSICIAN
+    # (assigned-patient-scoped, unlike MEDICAL_DIRECTOR/legacy "MD" tenant-
+    # wide oversight roles) must never see a patient in this batch queue
+    # that they hold no ACTIVE verified assignment/linkage to, even though
+    # role alone satisfies MD_ONLY. Drop unauthorized entries silently
+    # (never expose them via 403/404 — this is a filtered list, not a
+    # single-resource lookup) rather than trusting queue membership alone.
+    authorized_queue = []
+    for entry in queue:
+        try:
+            get_authorized_patient(db, UUID(entry["patient_id"]), user)
+        except HTTPException:
+            continue
+        authorized_queue.append(entry)
+    queue = authorized_queue
+
     return [
         {
             "patient_id": entry["patient_id"],
@@ -279,13 +295,41 @@ def batch_sign_orders(
     # gain signing authority via the administrative-role fallback.
     user: CurrentUser = Depends(require_roles(MD_ONLY, allow_clinical_admin=False)),
 ):
+    # Physician Identity Mapping fail-closed gate (mirrors the GET queue
+    # above and every other Provider Signature Authority endpoint): resolve
+    # the patients this specific signer is authorized for BEFORE signing
+    # anything, rather than trusting MD_ONLY role membership alone. An
+    # ATTENDING_PHYSICIAN with no verified assignment to a patient must be
+    # silently excluded from this batch, never signed for.
+    try:
+        queue = review_svc.get_batch_signature_queue(
+            db, tenant_id=user.tenant_id, idg_meeting_id=idg_meeting_id
+        )
+    except review_svc.IDGPhysicianReviewError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    authorized_patient_ids = []
+    for entry in queue:
+        try:
+            get_authorized_patient(db, UUID(entry["patient_id"]), user)
+        except HTTPException:
+            continue
+        authorized_patient_ids.append(UUID(entry["patient_id"]))
+
+    if payload.patient_ids is not None:
+        requested = {str(p) for p in payload.patient_ids}
+        scoped_patient_ids = [p for p in authorized_patient_ids if str(p) in requested]
+    else:
+        scoped_patient_ids = authorized_patient_ids
+
     try:
         result = review_svc.batch_sign(
             db,
             tenant_id=user.tenant_id,
             idg_meeting_id=idg_meeting_id,
             physician_user_id=user.user_id,
-            patient_ids=payload.patient_ids,
+            physician_role=user.role,
+            patient_ids=scoped_patient_ids,
             signature_method=payload.signature_method,
         )
     except review_svc.IDGPhysicianReviewError as exc:
