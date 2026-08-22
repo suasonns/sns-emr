@@ -123,7 +123,7 @@ export default function IDGWorkspacePage() {
   };
 
   useEffect(() => {
-    if (selectedDate) loadPatients(selectedDate);
+    if (selectedDate) queueMicrotask(() => loadPatients(selectedDate));
   }, [selectedDate]);
 
   const reviewedCount = useMemo(() => patients.filter((p) => p.review_status === "REVIEWED").length, [patients]);
