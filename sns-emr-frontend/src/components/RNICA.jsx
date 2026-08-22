@@ -482,9 +482,15 @@ const INITIAL_FORM = {
   // ─── 10. INFECTION ────────────────────────────────
   infection: {
     allergies: [],
+    allergyDetails: "",
     currentInfections: [],
+    antibioticResistantInfection: [],
     historyOfResistantInfections: [],
     immunosuppressed: false,
+    antibioticUse: false,
+    temperature: "",
+    recurrentInfection: false,
+    infectionHistory: "",
     precautions: [],
     notes: "",
   },
@@ -5156,12 +5162,27 @@ const SECTION_CONFIGS = {
 
   infection: {
     title: "Immunological / Infection",
-    subtitle: "Allergies, current infections, precautions",
+    subtitle: "Allergies, current infections, resistant-organism history, precautions",
     cards: [
-      { title: "Infection Assessment", fields: [
+      { title: "Allergies", fields: [
+        { type: "checkboxGroup", label: "Allergies", path: "allergies", options: ["Food allergies", "Other allergies", "Sensitivities", "None known"] },
+        { type: "input", label: "Allergy Details", path: "allergyDetails" },
+      ]},
+      { title: "Immune Status", fields: [
         { type: "checkbox", label: "Immunosuppressed", path: "immunosuppressed" },
         { type: "checkboxGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
-        { type: "textarea", label: "Current Infections", path: "notes", placeholder: "List active infections..." },
+      ]},
+      { title: "Infection Assessment", fields: [
+        { type: "checkboxGroup", label: "Antibiotic-Resistant Infection (current)", path: "antibioticResistantInfection", options: ["None", "MRSA", "C. difficile", "Other"] },
+        { type: "checkboxGroup", label: "History of Resistant Infection", path: "historyOfResistantInfections", options: ["None", "MRSA", "C. difficile", "Other"] },
+        { type: "checkboxGroup", label: "Current Active Infection", path: "currentInfections", options: ["None", "Sepsis", "UTI", "Respiratory tract", "IV site", "Wound", "HIV-related", "Pressure area", "Other"] },
+      ]},
+      { title: "Additional Findings", fields: [
+        { type: "checkbox", label: "Antibiotic Use", path: "antibioticUse" },
+        { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "°F" },
+        { type: "checkbox", label: "Recurrent Infection", path: "recurrentInfection" },
+        { type: "textarea", label: "Infection History", path: "infectionHistory" },
+        { type: "textarea", label: "Other Observations / Notes", path: "notes", placeholder: "List active infections..." },
       ]},
     ],
   },
