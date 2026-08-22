@@ -5114,7 +5114,7 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Sleep / Rest", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
+          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
           { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
           { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
