@@ -1,4 +1,5 @@
 import api from "./client";
+import { normalizeListResponse } from "./normalizeListResponse";
 
 export type SafetyAlert = {
   severity: string;
@@ -72,6 +73,16 @@ export type PatientAllergyRecord = {
   severity: string | null;
 };
 
+export function normalizePatientAllergyResponse(
+  payload: unknown,
+): PatientAllergyRecord[] {
+  return normalizeListResponse<PatientAllergyRecord>(
+    payload,
+    ["allergies", "items"],
+    "Patient allergy",
+  );
+}
+
 export async function checkMedicationSafety(
   patientId: string,
   drugName: string,
@@ -84,8 +95,8 @@ export async function checkMedicationSafety(
 }
 
 export async function listMedications(patientId: string): Promise<MedicationRecord[]> {
-  const response = await api.get<MedicationRecord[]>(`/medications/patients/${patientId}`);
-  return response.data;
+  const response = await api.get<unknown>(`/medications/patients/${patientId}`);
+  return normalizeListResponse<MedicationRecord>(response.data, ["medications", "items"], "Medication");
 }
 
 export async function addMedication(
@@ -132,8 +143,8 @@ export async function getMedicationHistory(
 }
 
 export async function listPatientAllergies(patientId: string): Promise<PatientAllergyRecord[]> {
-  const response = await api.get<PatientAllergyRecord[]>(`/patients/${patientId}/allergies`);
-  return response.data;
+  const response = await api.get<unknown>(`/patients/${patientId}/allergies`);
+  return normalizePatientAllergyResponse(response.data);
 }
 
 export async function addPatientAllergy(
@@ -205,4 +216,3 @@ export async function getDrugFamily(drugName: string): Promise<DrugFamilyRespons
   );
   return response.data;
 }
-

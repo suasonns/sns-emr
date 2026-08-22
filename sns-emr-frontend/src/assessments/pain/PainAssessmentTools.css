@@ -1,0 +1,67 @@
+.pain-tool {
+  --pain-body-size: var(--ccw-body-size, 12px);
+  --pain-label-size: var(--ccw-label-size, 10px);
+  --pain-meta-size: var(--ccw-meta-size, 9.5px);
+  --pain-section-size: var(--ccw-section-size, 14.5px);
+  padding: var(--ccw-pad, 0.625rem) !important;
+  border: 1px solid var(--sns-border);
+  border-left: 4px solid var(--sns-teal);
+  border-radius: 8px;
+  background: var(--sns-card) !important;
+  color: var(--sns-white);
+  font-family: Inter, sans-serif;
+  font-size: var(--pain-body-size);
+}
+
+.pain-tool__title { color: var(--sns-white) !important; font-size: var(--pain-section-size) !important; }
+.pain-tool__subtitle, .pain-tool__body { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
+.pain-tool__meta, .pain-score-badge { color: var(--sns-muted) !important; font-size: var(--pain-meta-size) !important; }
+.pain-score-badge {
+  background: var(--sns-cardSoft) !important;
+  color: var(--sns-white) !important;
+}
+.pain-tool__surface, .pain-guide-box { background: var(--sns-cardSoft) !important; }
+.pain-tool__table { max-width: 100%; overflow-x: auto !important; }
+.pain-tool__table table { color: var(--sns-white); }
+.pain-tool__table thead tr { background: var(--sns-card) !important; }
+.pain-tool__table th { color: var(--sns-teal) !important; font-size: var(--pain-label-size) !important; }
+.pain-tool__table td { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
+.pain-tool__table td:first-child { color: var(--sns-white) !important; font-weight: 700; }
+.pain-tool__option {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sns-muted);
+  font: inherit;
+  line-height: 1.4;
+  text-align: left;
+}
+.pain-tool__option[aria-pressed="true"] { border-color: var(--sns-teal) !important; background: var(--sns-card) !important; color: var(--sns-white); }
+.pain-tool__option:focus-visible { outline: 3px solid var(--sns-blue); outline-offset: -3px; }
+.pain-tool__scale { display: grid !important; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 0.25rem; }
+.pain-tool__scale-option {
+  min-width: 0;
+  padding: 0 !important;
+  border: 0;
+  background: transparent;
+  color: var(--sns-white);
+  font-family: Inter, sans-serif;
+}
+.pain-tool__scale-option:focus-visible { outline: 3px solid var(--sns-blue); outline-offset: 2px; }
+.pain-tool__scale-value {
+  background: var(--sns-card) !important;
+  color: var(--sns-white) !important;
+}
+.pain-tool__score-value { color: var(--sns-white) !important; }
+.pain-guide-box { padding: var(--ccw-pad, 0.625rem) !important; border: 1px solid var(--sns-border); }
+.pain-guide__title { color: var(--sns-teal) !important; font-size: var(--pain-label-size) !important; }
+.pain-guide__list, .pain-guide__body { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
+.pain-guide__references, .pain-guide__references span { color: var(--sns-muted) !important; font-size: var(--pain-meta-size) !important; }
+
+@container clinical-command-workspace (max-width: 520px) {
+  .pain-tool__scale { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .pain-tool__summary { align-items: flex-start !important; flex-direction: column; }
+}

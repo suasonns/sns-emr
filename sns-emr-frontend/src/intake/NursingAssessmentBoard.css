@@ -1,0 +1,78 @@
+.nursing-assessment-board--pilot {
+  width: 100%;
+  min-width: 0;
+  padding-bottom: var(--ccw-gap);
+  overflow-x: hidden;
+  background: var(--sns-bg);
+  color: var(--sns-white);
+}
+
+.nursing-assessment-board__pilot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ccw-gap);
+  padding: var(--ccw-pad);
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-card);
+}
+
+.nursing-assessment-board__pilot-copy {
+  min-width: 0;
+}
+
+.nursing-assessment-board__pilot-copy > span {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: var(--sns-teal);
+  font-size: var(--ccw-meta-size);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.nursing-assessment-board__pilot-copy h2 {
+  margin: 0;
+  color: var(--sns-white);
+  font-size: var(--ccw-section-size);
+}
+
+.nursing-assessment-board__pilot-copy p {
+  margin: 0.2rem 0 0;
+  color: var(--sns-muted);
+  font-size: var(--ccw-body-size);
+  line-height: 1.4;
+}
+
+.nursing-assessment-board__pilot-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--ccw-gap);
+  flex-wrap: wrap;
+}
+
+.nursing-assessment-board__pilot-actions button {
+  min-height: var(--ccw-control-height);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font: 700 var(--ccw-button-size) Inter, sans-serif;
+}
+
+.nursing-assessment-board__pilot-actions button:last-child {
+  border-color: var(--sns-teal);
+  color: var(--sns-teal);
+}
+
+@media (max-width: 700px) {
+  .nursing-assessment-board__pilot-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .nursing-assessment-board__pilot-actions {
+    width: 100%;
+  }
+}

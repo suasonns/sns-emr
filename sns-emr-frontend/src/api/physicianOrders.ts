@@ -1,4 +1,5 @@
 import api from "./client";
+import { normalizeListResponse } from "./normalizeListResponse";
 
 export type PhysicianOrderStatus =
   | "DRAFT"
@@ -47,10 +48,14 @@ export async function listPhysicianOrders(
   statusFilter?: string,
   categoryFilter?: string,
 ): Promise<PhysicianOrderRecord[]> {
-  const response = await api.get<PhysicianOrderRecord[]>(`/physician-orders/patients/${patientId}`, {
+  const response = await api.get<unknown>(`/physician-orders/patients/${patientId}`, {
     params: { status_filter: statusFilter, category_filter: categoryFilter },
   });
-  return response.data;
+  return normalizeListResponse<PhysicianOrderRecord>(
+    response.data,
+    ["orders", "items"],
+    "Physician order",
+  );
 }
 
 export async function createPhysicianOrder(

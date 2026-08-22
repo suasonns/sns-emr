@@ -1,5 +1,6 @@
 import React from "react";
 import { getPainInterpretation, PAIN_TOOL_LABELS } from "./painScoring";
+import "./PainAssessmentTools.css";
 
 /**
  * PainScoreBadge — compact, reusable "Score + description" chip.
@@ -18,6 +19,7 @@ const PainScoreBadge = ({ tool = "numeric", score, size = "md", style: extra }) 
 
   return (
     <span
+      className="pain-score-badge"
       style={{
         display: "inline-flex",
         alignItems: "center",
