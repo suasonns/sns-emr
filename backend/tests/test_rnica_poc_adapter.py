@@ -838,3 +838,63 @@ def test_musculoskeletal_structured_fields_save_reload_and_poc_linkage(client, d
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/musculoskeletal", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+def test_neurological_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.1 Neurological/Mental/Sensory structured fields
+    (Symptoms/Demeanor checklist, expanded Level of Consciousness,
+    Disoriented, structured Psychiatric History, expanded Communication
+    and Balance options, and Sensory Aids) persist through the existing
+    RNICA form_data JSONB model, round-trip on reload, and coexist with
+    POC controls on the neurological section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"neurological": {}})
+
+    updated_neuro = {
+        "consciousness": "Minimally responsive",
+        "orientation": {"time": False, "place": False, "person": True, "situation": False, "disoriented": True},
+        "communication": "Aphasia",
+        "hearing": "Impaired",
+        "vision": "Impaired",
+        "balance": "Impaired",
+        "cognition": "Severely impaired",
+        "delirium": True,
+        "seizureHistory": False,
+        "psychiatricHistory": "History of major depressive disorder, stable on sertraline.",
+        "psychiatricHistoryType": ["Depression"],
+        "sensoryDeficits": ["Numbness"],
+        "sensoryAids": ["Glasses", "Hearing aids"],
+        "symptomsDemeanor": ["Agitation", "Sundowning", "Tremors / twitching"],
+        "notes": "Patient exhibits sundowning behavior in early evening hours.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"neurological": updated_neuro}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    neuro = get_resp.json()["formData"]["neurological"]
+
+    for key, value in updated_neuro.items():
+        assert neuro[key] == value, f"neurological field {key} did not round-trip"
+
+    # POC linkage from the neurological section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/neurological",
+        json={
+            "problem_label": "Agitation / sundowning behavior",
+            "evidence_text": "Agitation, sundowning, and tremors observed; minimally responsive with aphasia.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/neurological", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1

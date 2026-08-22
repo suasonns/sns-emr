@@ -442,11 +442,13 @@ const INITIAL_FORM = {
   // ─── 7. NEUROLOGICAL ──────────────────────────────
   neurological: {
     consciousness: "",
-    orientation: { time: false, place: false, person: false, situation: false },
+    orientation: { time: false, place: false, person: false, situation: false, disoriented: false },
     communication: "", hearing: "", vision: "", balance: "",
     cognition: "", delirium: false, seizureHistory: false,
-    psychiatricHistory: "",
+    psychiatricHistory: "", psychiatricHistoryType: [],
     sensoryDeficits: [],
+    sensoryAids: [],
+    symptomsDemeanor: [],
     sleepRest: {
       sleepPattern: "", averageSleepHours: "",
       sleepAids: [], restfulness: "",
@@ -5085,11 +5087,13 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Mental Status", hopeCode: "N0500", fields: [
-          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose"] },
+          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
           { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
           { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
           { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
+          { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
         ],
       },
       {
@@ -5101,11 +5105,12 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Communication & Sensory", fields: [
-          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable"] },
+          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
           { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
           { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand"] },
+          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
           { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
         ],
       },
       {
@@ -5113,7 +5118,8 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Cognition Assessment", path: "cognition" },
           { type: "checkbox", label: "Delirium", path: "delirium" },
           { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
-          { type: "textarea", label: "Psychiatric History", path: "psychiatricHistory" },
+          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
         ],
       },
       {
