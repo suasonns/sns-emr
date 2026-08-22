@@ -48,6 +48,49 @@ DEVELOPMENT_IDENTITIES = (
         full_name="Development Billing",
         role="BILLING",
     ),
+    # ---------------------------------------------------------------
+    # Owner-acceptance test identities (Angela Hospice / Silva Hospice
+    # training tenants only). One synthetic, non-PHI account per role
+    # needed to exercise the RN ICA -> Plan of Care -> orders ->
+    # signature -> IDG -> finalization workflow end-to-end in the
+    # browser. No implicit secrets: each account is a no-op unless its
+    # *_EMAIL/*_PASSWORD env vars are explicitly configured.
+    # ---------------------------------------------------------------
+    DevelopmentIdentity(
+        email_env="DEV_RN_EMAIL",
+        password_env="DEV_RN_PASSWORD",
+        tenant_env=DEV_TENANT_ID_ENV,
+        full_name="Development RN",
+        role="RN",
+    ),
+    DevelopmentIdentity(
+        email_env="DEV_MEDICAL_DIRECTOR_EMAIL",
+        password_env="DEV_MEDICAL_DIRECTOR_PASSWORD",
+        tenant_env=DEV_TENANT_ID_ENV,
+        full_name="Development Medical Director",
+        role="MEDICAL_DIRECTOR",
+    ),
+    DevelopmentIdentity(
+        email_env="DEV_MSW_EMAIL",
+        password_env="DEV_MSW_PASSWORD",
+        tenant_env=DEV_TENANT_ID_ENV,
+        full_name="Development MSW",
+        role="SW",
+    ),
+    DevelopmentIdentity(
+        email_env="DEV_CHAPLAIN_EMAIL",
+        password_env="DEV_CHAPLAIN_PASSWORD",
+        tenant_env=DEV_TENANT_ID_ENV,
+        full_name="Development Spiritual Counselor",
+        role="CHAPLAIN",
+    ),
+    DevelopmentIdentity(
+        email_env="DEV_QA_REVIEWER_EMAIL",
+        password_env="DEV_QA_REVIEWER_PASSWORD",
+        tenant_env=DEV_TENANT_ID_ENV,
+        full_name="Development Read-Only Reviewer",
+        role="QA_REVIEWER",
+    ),
 )
 
 

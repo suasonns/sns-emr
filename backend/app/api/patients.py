@@ -17,7 +17,7 @@ from sqlalchemy import func, text
 
 from app.core.security import get_current_user
 from app.core.patient_access import get_authorized_patient
-from app.core.roles import role_matches
+from app.core.capabilities import VIEW_ALL_TENANT_PATIENTS, has_capability
 from app.db_tenant_dependency import get_db_tenant
 
 from app.models.patient import Patient
@@ -254,11 +254,15 @@ def list_patients(
     # -----------------------------------------------------
     # Access scoping
     # Use EXISTS instead of JOIN to avoid duplicate rows
+    #
+    # Single clinical-admin access group (ADMINISTRATOR/DPCS/
+    # DPCS_ADMINISTRATOR) + verified tenant-wide physician oversight
+    # (MEDICAL_DIRECTOR) see every same-tenant patient. Everyone else
+    # (RN, CASE_MANAGER, ATTENDING_PHYSICIAN, etc.) only sees patients
+    # they are ACTIVELY assigned to.
     # -----------------------------------------------------
-    FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
-
     if not (
-        role_matches(user.role, FULL_ACCESS_ROLES)
+        has_capability(user.role, VIEW_ALL_TENANT_PATIENTS)
         or access_level == "FULL_ACCESS"
     ):
         assignment_exists = (
@@ -267,6 +271,7 @@ def list_patients(
                 PatientAssignment.patient_id == Patient.id,
                 PatientAssignment.tenant_id == tenant_id,
                 PatientAssignment.user_id == user.user_id,
+                PatientAssignment.active.is_(True),
             )
             .exists()
         )
