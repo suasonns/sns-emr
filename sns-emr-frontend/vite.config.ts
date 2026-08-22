@@ -1,3 +1,4 @@
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
@@ -8,8 +9,25 @@ const apiTarget =
   process.env.VITE_API_TARGET ??
   "http://localhost:8000";
 
+// Non-production build identity badge (branch/commit). Read once at build
+// time so the running app can show exactly what commit is live without
+// hitting any API.
+function gitInfo(cmd: string): string {
+  try {
+    return execSync(cmd, { cwd: frontendRoot }).toString().trim();
+  } catch {
+    return "unknown";
+  }
+}
+const BUILD_BRANCH = gitInfo("git rev-parse --abbrev-ref HEAD");
+const BUILD_COMMIT = gitInfo("git rev-parse --short HEAD");
+
 export default defineConfig({
   root: frontendRoot,
+  define: {
+    __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
+    __BUILD_COMMIT__: JSON.stringify(BUILD_COMMIT),
+  },
   plugins: [react()],
   resolve: {
     preserveSymlinks: true,

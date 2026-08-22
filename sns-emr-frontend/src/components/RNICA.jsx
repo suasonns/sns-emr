@@ -7569,7 +7569,12 @@ function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, p
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
         <span style={{ color: colors.dark, fontSize: 13, fontWeight: 700 }}>Section 1 — Patient &amp; Encounter Snapshot</span>
-        <Section1SnapshotBadge colors={colors} tone="unassigned">READ ONLY</Section1SnapshotBadge>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: colors.gray, fontSize: 9.5, fontFamily: "monospace" }}>
+            {typeof __BUILD_BRANCH__ !== "undefined" ? `${__BUILD_BRANCH__} @ ${__BUILD_COMMIT__}` : ""}
+          </span>
+          <Section1SnapshotBadge colors={colors} tone="unassigned">READ ONLY</Section1SnapshotBadge>
+        </div>
       </div>
       {facesheetError && (
         <div style={{ color: colors.error, fontSize: 11, marginBottom: 8 }}>Facesheet: {facesheetError}</div>
