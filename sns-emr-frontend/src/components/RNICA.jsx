@@ -4286,10 +4286,11 @@ function renderDemographics(data, update, COLORS, styles) {
             onChange={(v) => {
               u("pcg.noPcgReason", v);
               // Keep Living Situation in sync so the facility type is only entered once.
-              const siteOfService = { "Memory Care": "Memory Care", "Board & Care": "Board & Care", "Skilled Nursing Facility": "SNF", "Assisted Living Facility": "ALF", "Other facility-based care": "Other" }[v];
+              // Values are the official CMS HOPE A0215 Site of Service codes.
+              const siteOfService = { "Memory Care": "02", "Board & Care": "02", "Skilled Nursing Facility": "04", "Assisted Living Facility": "02", "Other facility-based care": "99" }[v];
               if (siteOfService) {
                 u("livingSituation.siteOfService", siteOfService);
-                u("livingSituation.livingArrangement", "Facility");
+                u("livingSituation.livingArrangement", "4"); // A1905: Inpatient facility
               }
             }}
             options={["Memory Care", "Board & Care", "Skilled Nursing Facility", "Assisted Living Facility", "Other facility-based care"]} />
@@ -4365,15 +4366,44 @@ function renderDemographics(data, update, COLORS, styles) {
       </Card>
       )}
 
-      <Card title="Living Situation" hopeCode="A1905">
+      <Card title="Living Situation">
         <FormSelect label="Site of Service" value={data.livingSituation?.siteOfService} onChange={(v) => u("livingSituation.siteOfService", v)}
-          options={["Home", "SNF", "ALF", "Board & Care", "Memory Care", "Hospital", "Homeless", "Other"]} />
+          hopeCode="A0215" options={[
+            { value: "01", label: "Patient's Home/Residence" },
+            { value: "02", label: "Assisted Living Facility" },
+            { value: "03", label: "Nursing Long Term Care (LTC) or Non-Skilled Nursing Facility (NF)" },
+            { value: "04", label: "Skilled Nursing Facility (SNF)" },
+            { value: "05", label: "Inpatient Hospital" },
+            { value: "06", label: "Inpatient Hospice Facility (General Inpatient / GIP)" },
+            { value: "07", label: "Long Term Care Hospital (LTCH)" },
+            { value: "08", label: "Inpatient Psychiatric Facility" },
+            { value: "09", label: "Hospice Home Care (Routine Home Care) Provided in a Hospice Facility" },
+            { value: "99", label: "Not listed" },
+          ]} />
         <FormSelect label="Admitted From" value={data.livingSituation?.admittedFrom} onChange={(v) => u("livingSituation.admittedFrom", v)}
-          options={["Home", "Hospital", "SNF", "ALF", "Rehab", "Other"]} />
+          hopeCode="A1805" options={[
+            { value: "01", label: "Home/Community (private home/apt., board/care, assisted living, group home, etc.)" },
+            { value: "02", label: "Nursing Home (long-term care facility)" },
+            { value: "03", label: "Skilled Nursing Facility (SNF, swing beds)" },
+            { value: "04", label: "Short-Term General Hospital (acute hospital, IPPS)" },
+            { value: "05", label: "Long-Term Care Hospital (LTCH)" },
+            { value: "06", label: "Inpatient Rehabilitation Facility (IRF)" },
+            { value: "07", label: "Inpatient Psychiatric Facility" },
+            { value: "08", label: "Intermediate Care Facility (ID/DD facility)" },
+            { value: "10", label: "Hospice (institutional facility)" },
+            { value: "11", label: "Critical Access Hospital (CAH)" },
+            { value: "99", label: "Not Listed" },
+          ]} />
         <FormRadioGroup label="Living Arrangement" value={data.livingSituation?.livingArrangement} onChange={(v) => u("livingSituation.livingArrangement", v)}
-          options={["Alone", "With spouse", "With family", "With non-relative", "Facility"]} />
+          hopeCode="A1905" options={[
+            { value: "1", label: "Alone (no other residents in the home)" },
+            { value: "2", label: "With others in the home (family, friends, or paid caregiver)" },
+            { value: "3", label: "Congregate home (e.g., assisted living or residential care home)" },
+            { value: "4", label: "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)" },
+            { value: "5", label: "Does not have a permanent home (unstable housing / homeless)" },
+          ]} />
         <FormRadioGroup label="Availability of Assistance" value={data.livingSituation?.availabilityOfAssistance} onChange={(v) => u("livingSituation.availabilityOfAssistance", v)}
-          options={["24/7 available", "Daytime only", "Nighttime only", "Limited", "None"]} />
+          hopeCode="A1910" options={["24/7 available", "Daytime only", "Nighttime only", "Limited", "None"]} />
       </Card>
 
       <Card title="Advanced Care Planning" cms="F2000/F2100/F2200" id="advancedCarePlanning">

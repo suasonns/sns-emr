@@ -11,6 +11,7 @@ function baseFormData(overrides = {}) {
   const {
     advancedCarePlanning: acpOverrides = {},
     spiritual: spiritualOverrides = {},
+    livingSituation: livingSituationOverrides = {},
     ...rest
   } = overrides;
 
@@ -33,6 +34,13 @@ function baseFormData(overrides = {}) {
         lifeSustainingAskedStatus: "",
         hospitalizationAskedStatus: "",
         ...acpOverrides,
+      },
+      livingSituation: {
+        siteOfService: "",
+        admittedFrom: "",
+        livingArrangement: "",
+        availabilityOfAssistance: "",
+        ...livingSituationOverrides,
       },
     },
     spiritual: {
@@ -294,5 +302,131 @@ describe("mapRnIcaToHopeReport — legacyReviewRequired banner/filter data", () 
     const report = mapRnIcaToHopeReport(baseFormData());
     expect(report.legacyReviewRequired.required).toBe(true);
     expect(report.legacyReviewRequired.items).toEqual(["F2000", "F2100", "F2200", "F3000"]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Priority 2 — A0215 Site of Service, A1805 Admitted From, A1905 Living
+// Arrangements now persist/export the official CMS code directly instead of
+// a locally-invented code translated from a free-text label.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("mapRnIcaToHopeReport — A0215 Site of Service", () => {
+  it.each([
+    ["01", "Patient's Home/Residence"],
+    ["02", "Assisted Living Facility"],
+    ["03", "Nursing Long Term Care (LTC) or Non-Skilled Nursing Facility (NF)"],
+    ["04", "Skilled Nursing Facility (SNF)"],
+    ["05", "Inpatient Hospital"],
+    ["06", "Inpatient Hospice Facility (General Inpatient (GIP))"],
+    ["07", "Long Term Care Hospital (LTCH)"],
+    ["08", "Inpatient Psychiatric Facility"],
+    ["09", "Hospice Home Care (Routine Home Care (RHC)) Provided in a Hospice Facility"],
+    ["99", "Not listed"],
+  ])("official code %s passes through unchanged with its official description", (code, description) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { siteOfService: code } }));
+    expect(responseCode(report, "A0215")).toBe(code);
+    expect(responseDescription(report, "A0215")).toBe(description);
+  });
+
+  it.each([
+    ["Home", "01"],
+    ["ALF", "02"],
+    ["Board & Care", "02"],
+    ["Memory Care", "02"],
+    ["SNF", "04"],
+    ["Hospital", "05"],
+    ["Homeless", "99"],
+    ["Other", "99"],
+  ])("legacy value '%s' translates to official code %s", (legacyValue, expectedCode) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { siteOfService: legacyValue } }));
+    expect(responseCode(report, "A0215")).toBe(expectedCode);
+  });
+
+  it("is not a valid official code when the field is empty", () => {
+    const report = mapRnIcaToHopeReport(baseFormData());
+    expect(responseCode(report, "A0215")).toBe(PLACEHOLDER);
+  });
+});
+
+describe("mapRnIcaToHopeReport — A1805 Admitted From", () => {
+  it.each([
+    ["01", "Home/Community"],
+    ["02", "Nursing Home (long-term care facility)"],
+    ["03", "Skilled Nursing Facility (SNF, swing beds)"],
+    ["04", "Short-Term General Hospital (acute hospital, IPPS)"],
+    ["05", "Long-Term Care Hospital (LTCH)"],
+    ["06", "Inpatient Rehabilitation Facility (IRF)"],
+    ["07", "Inpatient Psychiatric Facility"],
+    ["08", "Intermediate Care Facility (ID/DD facility)"],
+    ["10", "Hospice (institutional facility)"],
+    ["11", "Critical Access Hospital (CAH)"],
+    ["99", "Not Listed"],
+  ])("official code %s passes through unchanged with its official description", (code, description) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { admittedFrom: code } }));
+    expect(responseCode(report, "A1805")).toBe(code);
+    expect(responseDescription(report, "A1805")).toBe(description);
+  });
+
+  it("does not use code 09 (official A1805 code set skips from 08 to 10)", () => {
+    expect(Object.keys({
+      "01": 1, "02": 1, "03": 1, "04": 1, "05": 1, "06": 1, "07": 1, "08": 1, "10": 1, "11": 1, "99": 1,
+    })).not.toContain("09");
+  });
+
+  it.each([
+    ["Home", "01"],
+    ["ALF", "01"],
+    ["Hospital", "04"],
+    ["SNF", "03"],
+    ["Rehab", "06"],
+    ["Other", "99"],
+  ])("legacy value '%s' translates to official code %s", (legacyValue, expectedCode) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { admittedFrom: legacyValue } }));
+    expect(responseCode(report, "A1805")).toBe(expectedCode);
+  });
+
+  it("is not a valid official code when the field is empty", () => {
+    const report = mapRnIcaToHopeReport(baseFormData());
+    expect(responseCode(report, "A1805")).toBe(PLACEHOLDER);
+  });
+});
+
+describe("mapRnIcaToHopeReport — A1905 Living Arrangements", () => {
+  it.each([
+    ["1", "Alone (no other residents in the home)"],
+    ["2", "With others in the home (e.g., family, friends, or paid caregiver)"],
+    ["3", "Congregate home (e.g., assisted living or residential care home)"],
+    ["4", "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)"],
+    ["5", "Does not have a permanent home"],
+  ])("official code %s passes through unchanged with its official description", (code, description) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { livingArrangement: code } }));
+    expect(responseCode(report, "A1905")).toBe(code);
+    expect(responseDescription(report, "A1905")).toBe(description);
+  });
+
+  it.each([
+    ["Alone", "1"],
+    ["With spouse", "2"],
+    ["With family", "2"],
+    ["With non-relative", "2"],
+    ["Facility", "4"],
+  ])("legacy value '%s' translates to official code %s", (legacyValue, expectedCode) => {
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { livingArrangement: legacyValue } }));
+    expect(responseCode(report, "A1905")).toBe(expectedCode);
+  });
+
+  it("legacy code collision is resolved correctly: old code '5' (Facility) must now export official code 4, not 5", () => {
+    // Old local vocabulary used numeric code 5 for "Facility resident", but the
+    // official CMS code 5 means "Does not have a permanent home" — a materially
+    // different, opposite-risk category. Confirms no accidental code collision.
+    const report = mapRnIcaToHopeReport(baseFormData({ livingSituation: { livingArrangement: "Facility" } }));
+    expect(responseCode(report, "A1905")).toBe("4");
+    expect(responseCode(report, "A1905")).not.toBe("5");
+  });
+
+  it("is not a valid official code when the field is empty", () => {
+    const report = mapRnIcaToHopeReport(baseFormData());
+    expect(responseCode(report, "A1905")).toBe(PLACEHOLDER);
   });
 });

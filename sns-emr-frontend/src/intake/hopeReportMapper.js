@@ -48,31 +48,70 @@ const SEX_MAP = {
   F: ["2", "Female"],
 };
 
-const SITE_OF_SERVICE_MAP = {
-  Home: ["1", "Private home / residence"],
-  SNF: ["2", "Skilled nursing facility"],
-  ALF: ["3", "Assisted living facility"],
-  Hospital: ["4", "Hospital"],
-  Homeless: ["5", "Homeless / shelter"],
-  Other: ["9", "Other"],
+// A0215 Site of Service at Admission — official CMS codes.
+const SITE_OF_SERVICE_LABELS = {
+  "01": "Patient's Home/Residence",
+  "02": "Assisted Living Facility",
+  "03": "Nursing Long Term Care (LTC) or Non-Skilled Nursing Facility (NF)",
+  "04": "Skilled Nursing Facility (SNF)",
+  "05": "Inpatient Hospital",
+  "06": "Inpatient Hospice Facility (General Inpatient (GIP))",
+  "07": "Long Term Care Hospital (LTCH)",
+  "08": "Inpatient Psychiatric Facility",
+  "09": "Hospice Home Care (Routine Home Care (RHC)) Provided in a Hospice Facility",
+  "99": "Not listed",
+};
+// Legacy RNICA free-vocab values (pre-code-set fix) translated to the official code.
+const LEGACY_SITE_OF_SERVICE_TO_CODE = {
+  Home: "01", ALF: "02", "Board & Care": "02", "Memory Care": "02", SNF: "04", Hospital: "05", Homeless: "99", Other: "99",
 };
 
-const ADMITTED_FROM_MAP = {
-  Home: ["1", "Private home / residence"],
-  Hospital: ["2", "Acute care hospital"],
-  SNF: ["3", "Skilled nursing facility"],
-  ALF: ["4", "Assisted living facility"],
-  Rehab: ["5", "Rehabilitation facility"],
-  Other: ["9", "Other"],
+// A1805 Admitted From — official CMS codes.
+const ADMITTED_FROM_LABELS = {
+  "01": "Home/Community",
+  "02": "Nursing Home (long-term care facility)",
+  "03": "Skilled Nursing Facility (SNF, swing beds)",
+  "04": "Short-Term General Hospital (acute hospital, IPPS)",
+  "05": "Long-Term Care Hospital (LTCH)",
+  "06": "Inpatient Rehabilitation Facility (IRF)",
+  "07": "Inpatient Psychiatric Facility",
+  "08": "Intermediate Care Facility (ID/DD facility)",
+  "10": "Hospice (institutional facility)",
+  "11": "Critical Access Hospital (CAH)",
+  "99": "Not Listed",
+};
+const LEGACY_ADMITTED_FROM_TO_CODE = {
+  Home: "01", ALF: "01", Hospital: "04", SNF: "03", Rehab: "06", Other: "99",
 };
 
-const LIVING_ARRANGEMENT_MAP = {
-  Alone: ["1", "Lives alone"],
-  "With spouse": ["2", "Lives with spouse / partner"],
-  "With family": ["3", "Lives with family"],
-  "With non-relative": ["4", "Lives with non-relative"],
-  Facility: ["5", "Facility resident"],
+// A1905 Living Arrangements — official CMS codes.
+const LIVING_ARRANGEMENT_LABELS = {
+  "1": "Alone (no other residents in the home)",
+  "2": "With others in the home (e.g., family, friends, or paid caregiver)",
+  "3": "Congregate home (e.g., assisted living or residential care home)",
+  "4": "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)",
+  "5": "Does not have a permanent home",
 };
+const LEGACY_LIVING_ARRANGEMENT_TO_CODE = {
+  Alone: "1", "With spouse": "2", "With family": "2", "With non-relative": "2", Facility: "4",
+};
+
+// Resolve a value to its official CMS code: pass through if it's already an
+// official code, translate if it's a legacy pre-fix vocabulary value, else
+// fall back to the placeholder (never guess at an unrecognized value).
+function officialCodeLookup(value, labelMap, legacyMap) {
+  if (value === undefined || value === null || value === "") {
+    return { code: PLACEHOLDER, description: PLACEHOLDER };
+  }
+  if (labelMap[value]) {
+    return { code: value, description: labelMap[value] };
+  }
+  const legacyCode = legacyMap[value];
+  if (legacyCode) {
+    return { code: legacyCode, description: labelMap[legacyCode] };
+  }
+  return { code: PLACEHOLDER, description: String(value) };
+}
 
 const ASSISTANCE_MAP = {
   "24/7 available": ["1", "Assistance available around the clock"],
@@ -297,9 +336,9 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
     ccn: agency.ccn || PLACEHOLDER,
     facilityId: agency.facilityId || PLACEHOLDER,
   };
-  const siteOfService = lookup(SITE_OF_SERVICE_MAP, livingSituation.siteOfService);
-  const admittedFrom = lookup(ADMITTED_FROM_MAP, livingSituation.admittedFrom);
-  const livingArrangement = lookup(LIVING_ARRANGEMENT_MAP, livingSituation.livingArrangement);
+  const siteOfService = officialCodeLookup(livingSituation.siteOfService, SITE_OF_SERVICE_LABELS, LEGACY_SITE_OF_SERVICE_TO_CODE);
+  const admittedFrom = officialCodeLookup(livingSituation.admittedFrom, ADMITTED_FROM_LABELS, LEGACY_ADMITTED_FROM_TO_CODE);
+  const livingArrangement = officialCodeLookup(livingSituation.livingArrangement, LIVING_ARRANGEMENT_LABELS, LEGACY_LIVING_ARRANGEMENT_TO_CODE);
   const assistance = lookup(ASSISTANCE_MAP, livingSituation.availabilityOfAssistance);
   const sex = lookup(SEX_MAP, demographics.gender || patient.sex);
   const cprAsked = askedStatus(advancedCarePlanning.cprPreferenceAskedStatus, advancedCarePlanning.codeStatus);
