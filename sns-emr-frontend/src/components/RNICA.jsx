@@ -473,12 +473,18 @@ const INITIAL_FORM = {
   respiratory: {
     sobSeverity: "", exertionLevel: "",
     shortnessOfBreathScreened: false, screeningDate: "",
-    treatmentInitiated: false, treatmentDate: "",
+    treatmentInitiated: false, treatmentDate: "", treatmentDeclined: false,
     lungSounds: [], respirations: [],
     coughType: "", sputumCharacter: "",
     oxygenTherapy: {
       inUse: false, type: "", litersPerMinute: "",
       hoursPerDay: "", satOnO2: "",
+      deliveryMode: "", onRoomAir: false,
+    },
+    ventilator: {
+      shortTermVentilator: false, longTermVentilator: false,
+      ventilatorTypeAndSettings: "",
+      tracheostomyType: "", tracheostomySize: "",
     },
     notes: "",
   },
@@ -5150,14 +5156,15 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Respiratory Assessment", fields: [
         { type: "radio", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
-        { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion"] },
+        { type: "checkbox", label: "Treatment Declined (when applicable)", path: "treatmentDeclined" },
+        { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion", "With speech", "Push of speech", "Pursed-lip breathing", "Other"] },
         { type: "checkbox", label: "Screened for shortness of breath", path: "shortnessOfBreathScreened" },
         { type: "input", label: "SOB screening date", path: "screeningDate", inputType: "date" },
         { type: "checkbox", label: "Treatment for shortness of breath initiated", path: "treatmentInitiated" },
         { type: "input", label: "SOB treatment date", path: "treatmentDate", inputType: "date" },
-        { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub"] },
-        { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal"] },
-        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis"] },
+        { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub", "Rales"] },
+        { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Normal", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal", "Tachypnea", "Bradypnea", "Orthopnea"] },
+        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"] },
         { type: "input", label: "Sputum Character", path: "sputumCharacter" },
       ]},
       { title: "Oxygen Therapy", fields: [
@@ -5165,7 +5172,16 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Delivery Type", path: "oxygenTherapy.type", options: ["Nasal cannula", "Simple mask", "Non-rebreather", "Venturi mask", "High flow"] },
         { type: "input", label: "Liters/Minute", path: "oxygenTherapy.litersPerMinute", inputType: "number" },
         { type: "input", label: "Hours/Day", path: "oxygenTherapy.hoursPerDay" },
+        { type: "radio", label: "Delivery Mode", path: "oxygenTherapy.deliveryMode", options: ["Continuous", "PRN"] },
+        { type: "checkbox", label: "On Room Air", path: "oxygenTherapy.onRoomAir" },
         { type: "input", label: "SpO2 on O2", path: "oxygenTherapy.satOnO2", inputType: "number" },
+      ]},
+      { title: "Ventilator / Airway Support", fields: [
+        { type: "checkbox", label: "Short-Term Ventilator", path: "ventilator.shortTermVentilator" },
+        { type: "checkbox", label: "Long-Term Ventilator", path: "ventilator.longTermVentilator" },
+        { type: "input", label: "Ventilator Type and Settings", path: "ventilator.ventilatorTypeAndSettings" },
+        { type: "input", label: "Tracheostomy Type", path: "ventilator.tracheostomyType" },
+        { type: "input", label: "Tracheostomy Size", path: "ventilator.tracheostomySize" },
       ]},
       { title: "Notes", fields: [
         { type: "textarea", label: "Respiratory Notes", path: "notes" },
