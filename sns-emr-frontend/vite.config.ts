@@ -21,13 +21,14 @@ function gitInfo(cmd: string): string {
 }
 const BUILD_BRANCH = gitInfo("git rev-parse --abbrev-ref HEAD");
 const BUILD_COMMIT = gitInfo("git rev-parse --short HEAD");
+// Use Vite's native import.meta.env mechanism (VITE_-prefixed process.env
+// vars are picked up automatically) rather than a custom `define`, which
+// proved unreliable to hot-apply in this Vite version.
+process.env.VITE_BUILD_BRANCH = BUILD_BRANCH;
+process.env.VITE_BUILD_COMMIT = BUILD_COMMIT;
 
 export default defineConfig({
   root: frontendRoot,
-  define: {
-    __BUILD_BRANCH__: JSON.stringify(BUILD_BRANCH),
-    __BUILD_COMMIT__: JSON.stringify(BUILD_COMMIT),
-  },
   plugins: [react()],
   resolve: {
     preserveSymlinks: true,
