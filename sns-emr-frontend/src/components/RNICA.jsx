@@ -4277,7 +4277,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const BODY_SYSTEM_SECTIONS = new Set([
     "neurological", "cardiovascular", "respiratory", "infection",
     "gastrointestinal", "nutrition", "endocrine", "genitourinary",
-    "musculoskeletal", "skin",
+    "musculoskeletal", "skin", "imminentDeath",
   ]);
 
   const normalizePainPatientType = (type) => {
