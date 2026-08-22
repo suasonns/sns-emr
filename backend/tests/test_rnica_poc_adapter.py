@@ -320,17 +320,8 @@ def test_update_and_resolve_require_explicit_action(client, db_session, rn_heade
     assert problem.severity == "UNKNOWN"
     version_after_add = problem.poc_version_id
 
-    # Locking the assessment (an unrelated action) must not update or
-    # resolve the POC problem.
-    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
-    assert lock_resp.status_code == 200, lock_resp.text
-
-    unchanged = db_session.query(POCProblem).filter_by(rule_key=rule_key).one()
-    assert unchanged.status == "ACTIVE"
-    assert unchanged.severity == "UNKNOWN"
-    assert unchanged.poc_version_id == version_after_add
-
-    # Only the explicit Update route changes severity.
+    # Only the explicit Update route changes severity — nothing else
+    # (e.g. adding the problem itself) implicitly changes it.
     update_resp = client.put(
         f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
         json={"severity": "moderate"},
@@ -349,6 +340,31 @@ def test_update_and_resolve_require_explicit_action(client, db_session, rn_heade
     )
     assert resolve_resp.status_code == 200, resolve_resp.text
     assert resolve_resp.json()["problem"]["status"] == "RESOLVED"
+
+    # Locking the assessment (an unrelated action) must not update or
+    # resolve any POC problem as a side effect.
+    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp.status_code == 200, lock_resp.text
+
+    unchanged = db_session.query(POCProblem).filter_by(rule_key=rule_key).order_by(POCProblem.created_at.desc()).first()
+    assert unchanged.status == "RESOLVED"
+    assert unchanged.severity == "MODERATE"
+
+    # SECTION 12: once locked, POC problem mutation routes must also be
+    # immutable (mirrors update_rnica_assessment's 423 guard) — a signed
+    # assessment cannot have its Plan of Care silently altered post-signature.
+    locked_update_resp = client.put(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
+        json={"severity": "severe"},
+        headers=rn_headers,
+    )
+    assert locked_update_resp.status_code == 423
+
+    locked_resolve_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}/resolve",
+        headers=rn_headers,
+    )
+    assert locked_resolve_resp.status_code == 423
 
 
 @pytest.mark.integration

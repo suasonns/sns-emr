@@ -76,6 +76,23 @@ def _user_id(current_user: CurrentUser):
     return raw
 
 
+def _reject_if_locked(record: RnicaAssessment) -> None:
+    """Mirror the immutability guard in app/api/visits.py::update_rnica_assessment.
+
+    A signed/locked RN ICA assessment must not be mutated through any path,
+    including Plan of Care problem management reached from its subcards.
+    """
+    if record.locked:
+        raise HTTPException(
+            status_code=423,
+            detail=(
+                "This RN ICA assessment is locked and cannot be edited. "
+                "Use the correction/amendment workflow (POST /rnica/{assessment_id}/correction-request) "
+                "to request a traceable addendum instead of modifying signed content."
+            ),
+        )
+
+
 @router.get("/{assessment_id}/poc")
 def view_all_poc(
     assessment_id: str,
@@ -158,6 +175,7 @@ def add_section_poc_problem(
     current_user: CurrentUser = Security(get_current_user),
 ):
     record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
     tenant_id = _tenant_id_for(db, record)
     if tenant_id is None:
         raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
@@ -192,6 +210,7 @@ def update_section_poc_problem(
     current_user: CurrentUser = Security(get_current_user),
 ):
     record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
     tenant_id = _tenant_id_for(db, record)
     if tenant_id is None:
         raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
@@ -223,6 +242,7 @@ def resolve_section_poc_problem(
     current_user: CurrentUser = Security(get_current_user),
 ):
     record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
     tenant_id = _tenant_id_for(db, record)
     if tenant_id is None:
         raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
@@ -251,6 +271,7 @@ def deactivate_section_poc_problem(
     current_user: CurrentUser = Security(get_current_user),
 ):
     record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
     tenant_id = _tenant_id_for(db, record)
     if tenant_id is None:
         raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
