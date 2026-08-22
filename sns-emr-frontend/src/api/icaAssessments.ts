@@ -150,6 +150,21 @@ export async function resolveRnicaSectionPocProblem(assessmentId: string, sectio
   );
 }
 
+// SECTION 11.C — Master Plan of Care Review 'Link Existing Problem'.
+// Attaches additional documented evidence (from `sectionKey`) to an
+// ALREADY-EXISTING Plan of Care problem identified by `ruleKey`. Never
+// creates a new problem, never changes the problem's origin section.
+export async function linkExistingRnicaSectionPocProblem(
+  assessmentId: string,
+  sectionKey: string,
+  payload: { rule_key: string; evidence_text: string },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/poc/${sectionKey}/link-existing`, payload),
+    "Unable to link existing Plan of Care problem",
+  );
+}
+
 // SECTION 11.B — Master Plan of Care Review 'View History'. Read-only
 // governance view reconstructed from existing plan_of_care_versions /
 // poc_problems metadata — no new audit storage on either side.

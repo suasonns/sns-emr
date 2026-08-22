@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Security, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -48,6 +48,18 @@ class UpdatePocProblemRequest(BaseModel):
     label: str | None = None
     description_addendum: str | None = None
     severity: str | None = None
+
+
+class LinkExistingPocProblemRequest(BaseModel):
+    rule_key: str = Field(..., min_length=1)
+    evidence_text: str = Field(..., min_length=1)
+
+    @field_validator("evidence_text")
+    @classmethod
+    def _evidence_text_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("evidence_text must not be blank")
+        return v
 
 
 def _load_assessment_and_authorize(db: Session, assessment_id: str, current_user: CurrentUser) -> RnicaAssessment:
@@ -196,6 +208,44 @@ def add_section_poc_problem(
         )
     except rnica_poc_adapter.RnicaPocAdapterError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), "sectionKey": section_key, **_jsonable(result)}
+
+
+@router.post("/{assessment_id}/poc/{section_key}/link-existing")
+def link_existing_section_poc_problem(
+    assessment_id: str,
+    section_key: str,
+    payload: LinkExistingPocProblemRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 11.C — Master Plan of Care Review 'Link Existing Problem'.
+
+    Attaches additional source evidence (documented in `section_key`) to
+    an already-existing Plan of Care problem identified by `rule_key`.
+    Never creates a new problem row, never changes the problem's origin
+    section, and never duplicates identical evidence.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
+    tenant_id = _tenant_id_for(db, record)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    try:
+        result = rnica_poc_adapter.link_existing_problem(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            user_id=_user_id(current_user),
+            rnica_assessment_id=record.id,
+            section_key=section_key,
+            rule_key=payload.rule_key,
+            evidence_text=payload.evidence_text,
+        )
+    except rnica_poc_adapter.RnicaPocAdapterError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
     return {"assessmentId": str(record.id), "sectionKey": section_key, **_jsonable(result)}
 

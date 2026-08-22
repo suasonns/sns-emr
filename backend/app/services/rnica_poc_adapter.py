@@ -563,10 +563,134 @@ def deactivate_problem(
     )
 
 
-def _serialize_problem_row(row: POCProblem) -> dict[str, Any]:
+def link_existing_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    rnica_assessment_id: UUID,
+    section_key: str,
+    rule_key: str,
+    evidence_text: str,
+) -> dict[str, Any]:
+    """SECTION 11.C — Master Plan of Care Review 'Link Existing Problem'.
+
+    Attaches additional source evidence — documented in `section_key` — to
+    an ALREADY-EXISTING Plan of Care problem, matched by its stable
+    `rule_key`. This is the explicit, clinician-initiated counterpart to
+    the automatic rule_key-match dedup in `_upsert_problems`: it lets a
+    clinician deliberately say "this finding also supports a problem that
+    was already documented elsewhere" without ever creating a second
+    problem row for it.
+
+    Guarantees:
+    - No new POC storage: reuses the same versioned
+      `poc_content = {"problems": [...]}` snapshot contract as every other
+      adapter write (`poc_service.create_new_version`).
+    - No duplicate problem creation: `rule_key` must already exist in the
+      current active version; this function only ever mutates that one
+      existing row, it never appends a new problem dict.
+    - Origin metadata preserved: `source_condition` (and therefore
+      `origin_section`) is never modified by linking — it always reflects
+      where the problem was first documented.
+    - Multiple evidence sources per problem: each link appends a
+      structured entry (never overwrites/removes a prior one) to the
+      problem's `evidence_sources` list, which round-trips through
+      `PlanOfCareVersion.snapshot_json` the same way every other problem
+      field already does.
+    - Idempotent: re-linking identical evidence text from the same section
+      is a no-op (no needless new version).
+    """
+    if not evidence_text or not evidence_text.strip():
+        raise RnicaPocAdapterError("Evidence text is required to link an existing problem.")
+    evidence_text = evidence_text.strip()
+
+    admission = _resolve_admission(db, tenant_id=tenant_id, patient_id=patient_id)
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc:
+        raise RnicaPocAdapterError("No Plan of Care exists yet for this patient/admission.")
+
+    current_version = get_active_plan_of_care_version(db, tenant_id=tenant_id, plan_of_care_id=poc.id)
+    problems = _current_snapshot(current_version)
+
+    idx = _find_index_by_rule_key(problems, rule_key)
+    if idx is None:
+        raise RnicaPocAdapterError(f"No Plan of Care problem found with rule_key={rule_key!r}.")
+
+    problem = problems[idx]
+    existing_sources = problem.get("evidence_sources")
+    existing_sources = list(existing_sources) if isinstance(existing_sources, list) else []
+
+    already_linked = any(
+        isinstance(s, dict) and s.get("section_key") == section_key and s.get("evidence_text") == evidence_text
+        for s in existing_sources
+    )
+    if already_linked:
+        # Identical evidence from this section is already recorded on this
+        # problem — do not append a duplicate entry or create a needless
+        # new version.
+        return {
+            "plan_of_care_id": poc.id,
+            "version_id": current_version.id if current_version else None,
+            "version_number": current_version.version_number if current_version else None,
+            "problem": problem,
+            "already_linked": True,
+        }
+
+    actor_name = _user_name_map(db, {user_id}).get(user_id) if user_id else None
+    linked_at = _utcnow().isoformat()
+
+    existing_sources.append(
+        {
+            "section_key": section_key,
+            "rnica_assessment_id": str(rnica_assessment_id),
+            "evidence_text": evidence_text,
+            "linked_by_user_id": str(user_id) if user_id else None,
+            "linked_by": actor_name,
+            "linked_at": linked_at,
+        }
+    )
+    problem["evidence_sources"] = existing_sources
+
+    existing_description = problem.get("description") or ""
+    addition = f"Linked from '{section_key}' section: {evidence_text}"
+    if addition not in existing_description:
+        problem["description"] = f"{existing_description}\n---\n{addition}" if existing_description else addition
+
+    new_version = _create_new_poc_version(
+        db,
+        plan_of_care_id=poc.id,
+        tenant_id=tenant_id,
+        updated_content={"problems": problems},
+        user_id=user_id,
+        source_kind="RN_UPDATE",
+        change_reason=f"RN ICA: linked existing problem to {section_key} section",
+        generated_from={"origin": "RNICA"},
+        create_physician_attestation=False,
+    )
+
+    return {
+        "plan_of_care_id": poc.id,
+        "version_id": new_version.id,
+        "version_number": new_version.version_number,
+        "problem": problem,
+        "already_linked": False,
+    }
+
+
+def _serialize_problem_row(row: POCProblem, *, evidence_sources: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
     """Shared read-model serializer for a materialized POCProblem row,
     used by both the per-section view (`list_section_problems`) and the
     cross-section Master Plan of Care Review (`list_all_problems`).
+
+    `evidence_sources` (SECTION 11.C — Link Existing Problem) is optional
+    because it is not a `POCProblem` SQL column — it lives in the current
+    `PlanOfCareVersion.snapshot_json` problem dict (the same JSONB
+    mechanism every problem is already round-tripped through) and is
+    looked up separately by the caller. `origin_section` (parsed from
+    `source_condition`) always reflects where the problem was *first*
+    documented and is never changed by linking.
     """
     origin_section = None
     if row.source_condition and row.source_condition.startswith(RNICA_SOURCE_CONDITION_PREFIX):
@@ -582,6 +706,7 @@ def _serialize_problem_row(row: POCProblem) -> dict[str, Any]:
         "source_kind": row.source_kind,
         "source_condition": row.source_condition,
         "origin_section": origin_section,
+        "evidence_sources": evidence_sources or [],
         "goals": [
             {
                 "goal_text": g.goal_text,
@@ -599,6 +724,32 @@ def _serialize_problem_row(row: POCProblem) -> dict[str, Any]:
             for g in row.goals
         ],
     }
+
+
+def _evidence_sources_by_rule_key(db: Session, *, tenant_id: UUID, version_id: Optional[UUID]) -> dict[str, list[dict[str, Any]]]:
+    """SECTION 11.C — Link Existing Problem read-side helper.
+
+    `evidence_sources` is carried inside the current version's
+    `snapshot_json` problem dicts (see `link_existing_problem`), not as a
+    `POCProblem` SQL column, so it must be looked up separately and merged
+    into the read model rather than read off the ORM row directly.
+    """
+    if not version_id:
+        return {}
+    version = (
+        db.query(PlanOfCareVersion)
+        .filter(PlanOfCareVersion.id == version_id, PlanOfCareVersion.tenant_id == tenant_id)
+        .first()
+    )
+    if not version:
+        return {}
+    out: dict[str, list[dict[str, Any]]] = {}
+    for problem in _current_snapshot(version):
+        rule_key = problem.get("rule_key")
+        sources = problem.get("evidence_sources")
+        if rule_key and isinstance(sources, list):
+            out[rule_key] = sources
+    return out
 
 
 def list_section_problems(
@@ -632,7 +783,8 @@ def list_section_problems(
         .all()
     )
 
-    return [_serialize_problem_row(row) for row in rows]
+    evidence_by_rule_key = _evidence_sources_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
+    return [_serialize_problem_row(row, evidence_sources=evidence_by_rule_key.get(row.rule_key)) for row in rows]
 
 
 def list_all_problems(
@@ -670,7 +822,8 @@ def list_all_problems(
         .all()
     )
 
-    return [_serialize_problem_row(row) for row in rows]
+    evidence_by_rule_key = _evidence_sources_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
+    return [_serialize_problem_row(row, evidence_sources=evidence_by_rule_key.get(row.rule_key)) for row in rows]
 
 
 def _user_name_map(db: Session, user_ids: set) -> dict:

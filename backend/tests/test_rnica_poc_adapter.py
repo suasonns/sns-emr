@@ -1015,3 +1015,146 @@ def test_neurological_structured_fields_save_reload_and_poc_linkage(client, db_s
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/neurological", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_link_existing_problem_attaches_evidence_without_duplicating(client, db_session, rn_headers):
+    """SECTION 11.C - Link Existing Problem. Attaching evidence documented
+    in a *different* section to an already-existing problem must not
+    create a second problem row, must preserve the problem's original
+    origin_section/source_condition, must record the linked evidence so it
+    is retrievable, and must be idempotent for identical repeats."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "skin": {}})
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    rule_key = add_resp.json()["added"][0]
+
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).one()
+    version_count_before = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+
+    # --- Link evidence documented in a different (skin) section --------
+    link_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={
+            "rule_key": rule_key,
+            "evidence_text": "Loose, tenting skin turgor consistent with malnutrition/dehydration.",
+        },
+        headers=rn_headers,
+    )
+    assert link_resp.status_code == 200, link_resp.text
+    assert link_resp.json()["already_linked"] is False
+
+    # --- No duplicate problem row was created ---------------------------
+    poc_rows = db_session.query(POCProblem).filter_by(rule_key=rule_key).all()
+    current_poc = db_session.query(PlanOfCare).filter_by(id=poc.id).one()
+    current_version_rows = [p for p in poc_rows if p.poc_version_id == current_poc.current_version_id]
+    assert len(current_version_rows) == 1, "linking must never create a duplicate problem row"
+
+    # --- Origin metadata preserved (still nutrition, not skin) ----------
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers)
+    problems = view_resp.json()["problems"]
+    assert len(problems) == 1
+    linked_problem = problems[0]
+    assert linked_problem["origin_section"] == "nutrition"
+    assert linked_problem["source_condition"] == "RNICA:nutrition"
+
+    # --- Evidence source recorded and retrievable, multiple sources allowed
+    assert len(linked_problem["evidence_sources"]) == 1
+    source = linked_problem["evidence_sources"][0]
+    assert source["section_key"] == "skin"
+    assert source["evidence_text"] == "Loose, tenting skin turgor consistent with malnutrition/dehydration."
+    assert "tenting skin turgor" in linked_problem["description"]
+
+    # The problem does NOT show up under the skin section's own view -- it
+    # remains a nutrition-origin problem, only additionally evidenced by skin.
+    skin_view = client.get(f"/visits/rnica/{record.id}/poc/skin", headers=rn_headers).json()
+    assert skin_view["problems"] == []
+
+    # A new version was created for the link.
+    db_session.refresh(poc)
+    version_count_after_link = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_link == version_count_before + 1
+
+    # --- Idempotent: relinking identical evidence from the same section
+    # must not create another version or duplicate evidence-source entry.
+    relink_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={
+            "rule_key": rule_key,
+            "evidence_text": "Loose, tenting skin turgor consistent with malnutrition/dehydration.",
+        },
+        headers=rn_headers,
+    )
+    assert relink_resp.status_code == 200, relink_resp.text
+    assert relink_resp.json()["already_linked"] is True
+
+    version_count_after_relink = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_relink == version_count_after_link
+
+    view_after_relink = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers).json()
+    assert len(view_after_relink["problems"][0]["evidence_sources"]) == 1
+
+    # --- Multiple distinct evidence sources are allowed -----------------
+    third_link = client.post(
+        f"/visits/rnica/{record.id}/poc/vitals/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "Orthostatic hypotension noted on standing."},
+        headers=rn_headers,
+    )
+    assert third_link.status_code == 200, third_link.text
+    view_after_third = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers).json()
+    sources = view_after_third["problems"][0]["evidence_sources"]
+    assert len(sources) == 2
+    assert {s["section_key"] for s in sources} == {"skin", "vitals"}
+
+    # --- Linking a nonexistent rule_key fails without side effects ------
+    missing_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": "does-not-exist", "evidence_text": "Some finding."},
+        headers=rn_headers,
+    )
+    assert missing_resp.status_code == 404, missing_resp.text
+
+
+@pytest.mark.integration
+def test_link_existing_problem_requires_evidence_text_and_respects_lock(client, db_session, rn_headers):
+    """Evidence text is required, and a locked RN ICA assessment must
+    reject link-existing the same way it rejects every other POC mutation
+    path (mirrors the fix applied to add/update/resolve/deactivate)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}})
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={"problem_label": "Unintentional weight loss", "evidence_text": "Weight down 10% in 60 days."},
+        headers=rn_headers,
+    )
+    rule_key = add_resp.json()["added"][0]
+
+    blank_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "   "},
+        headers=rn_headers,
+    )
+    assert blank_resp.status_code == 422, blank_resp.text
+
+    record.locked = True
+    db_session.add(record)
+    db_session.commit()
+
+    locked_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "Some finding."},
+        headers=rn_headers,
+    )
+    assert locked_resp.status_code == 423, locked_resp.text

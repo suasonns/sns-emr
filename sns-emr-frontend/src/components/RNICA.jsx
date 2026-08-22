@@ -37,6 +37,7 @@ import {
   getRnicaFinalizationReadiness,
   requestRnicaCorrection,
   getRnicaSectionPocProblemHistory,
+  linkExistingRnicaSectionPocProblem,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -3053,6 +3054,9 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   const [historyData, setHistoryData] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [linkingRuleKey, setLinkingRuleKey] = useState(null);
+  const [linkDraft, setLinkDraft] = useState({ sectionKey: "", evidenceText: "" });
+  const [linkError, setLinkError] = useState("");
 
   const loadProblems = useCallback(() => {
     if (!assessmentId) return;
@@ -3125,6 +3129,49 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
       .finally(() => setHistoryLoading(false));
   };
 
+  // SECTION 11.C — Link Existing Problem. No new Plan of Care storage,
+  // no duplicate problem creation: this reuses the same rule_key-matched
+  // problem and only attaches additional documented evidence to it.
+  const toggleLinkExisting = (p) => {
+    if (linkingRuleKey === p.rule_key) {
+      setLinkingRuleKey(null);
+      setLinkDraft({ sectionKey: "", evidenceText: "" });
+      setLinkError("");
+      return;
+    }
+    setLinkingRuleKey(p.rule_key);
+    setLinkDraft({ sectionKey: "", evidenceText: "" });
+    setLinkError("");
+  };
+
+  const handleLinkExisting = (p) => {
+    if (!linkDraft.sectionKey.trim()) {
+      setLinkError("Select which section documents this additional evidence.");
+      return;
+    }
+    if (!linkDraft.evidenceText.trim()) {
+      setLinkError("Evidence text is required to link this problem.");
+      return;
+    }
+    setSaving(true);
+    setLinkError("");
+    linkExistingRnicaSectionPocProblem(assessmentId, linkDraft.sectionKey.trim(), {
+      rule_key: p.rule_key,
+      evidence_text: linkDraft.evidenceText.trim(),
+    })
+      .then(() => {
+        setLinkingRuleKey(null);
+        setLinkDraft({ sectionKey: "", evidenceText: "" });
+        loadProblems();
+      })
+      .catch((err) => setLinkError(err.message || "Unable to link existing Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const knownSectionKeys = Array.from(
+    new Set((problems || []).map((p) => p.origin_section).filter(Boolean))
+  ).sort();
+
   if (!assessmentId) {
     return <div style={styles.infoBox}>Save the assessment once to enable the Master Plan of Care Review.</div>;
   }
@@ -3180,6 +3227,14 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                 {historyRuleKey === p.rule_key ? "Hide History" : "View History"}
               </button>
               {isActive && (
+                <button type="button" onClick={() => toggleLinkExisting(p)} style={{
+                  fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                  border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                }}>
+                  {linkingRuleKey === p.rule_key ? "Cancel Link" : "Link Existing Problem"}
+                </button>
+              )}
+              {isActive && (
                 <>
                   <button type="button" onClick={() => startEdit(p)} style={{
                     fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
@@ -3219,11 +3274,53 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
               </div>
             )}
 
+            {linkingRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+                  Attach additional documented evidence — from another RN ICA section — to this same problem. This
+                  never creates a duplicate problem; the finding is linked to <strong>{p.label}</strong>, which
+                  remains sourced from <strong>{p.origin_section}</strong>.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormSelect
+                    label="Evidence Documented In Section"
+                    value={linkDraft.sectionKey}
+                    onChange={(v) => setLinkDraft((d) => ({ ...d, sectionKey: v }))}
+                    options={knownSectionKeys}
+                  />
+                  <FormInput
+                    label="Evidence Text"
+                    value={linkDraft.evidenceText}
+                    onChange={(v) => setLinkDraft((d) => ({ ...d, evidenceText: v }))}
+                  />
+                  <button type="button" disabled={saving} onClick={() => handleLinkExisting(p)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Linking…" : "Link Evidence"}
+                  </button>
+                </div>
+                {linkError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
+              </div>
+            )}
+
             {isExpanded && (
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
                 <div style={{ color: COLORS.gray, fontSize: 11.5, whiteSpace: "pre-wrap" }}>
                   <strong>Source Evidence:</strong> {p.description || "—"}
                 </div>
+                {(p.evidence_sources || []).length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11.5 }}>Linked Evidence Sources</div>
+                    {(p.evidence_sources || []).map((s, si) => (
+                      <div key={si} style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 2 }}>
+                        From <strong>{s.section_key}</strong>: {s.evidence_text}
+                        {s.linked_by ? ` — linked by ${s.linked_by}` : ""}
+                        {s.linked_at ? ` on ${new Date(s.linked_at).toLocaleString()}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {(p.goals || []).length === 0 && (
                   <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>No goals recorded.</div>
                 )}
