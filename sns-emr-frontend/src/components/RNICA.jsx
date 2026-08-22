@@ -449,7 +449,9 @@ const INITIAL_FORM = {
     sensoryDeficits: [],
     sleepRest: {
       sleepPattern: "", averageSleepHours: "",
-      sleepAids: [], restfulness: "", notes: "",
+      sleepAids: [], restfulness: "",
+      nighttimeSymptoms: [], response: "",
+      notes: "",
     },
     hopeItems: { n0500: "", n0510: "", n0520: "" },
     notes: "",
@@ -5112,9 +5114,11 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Sleep / Rest", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented"] },
+          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
           { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
-          { type: "checkboxGroup", label: "Sleep Aids", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
           { type: "radio", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
         ],
