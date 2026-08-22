@@ -175,6 +175,22 @@ export async function getRnicaSectionPocProblemHistory(assessmentId: string, sec
   );
 }
 
+// SECTION 11 — Master Plan of Care Review 'Merge Duplicate Problems'.
+// Cross-section (not per-section-key) control: consolidates one or more
+// duplicate problems into a single surviving problem, matched by
+// rule_key. Nothing is deleted -- duplicates are marked SUPERSEDED and
+// remain visible via View History; their evidence and description are
+// folded into the survivor.
+export async function mergeRnicaPocDuplicateProblems(
+  assessmentId: string,
+  payload: { surviving_rule_key: string; duplicate_rule_keys: string[]; reason: string },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/poc/merge`, payload),
+    "Unable to merge duplicate Plan of Care problems",
+  );
+}
+
 // ADMISSION ACTION CENTER (Phase A) — global request/status tracker
 // reachable from every RN ICA section (Medication Request, Physician
 // Order, DME Order, Supply Order, Referral). Lightweight linear status

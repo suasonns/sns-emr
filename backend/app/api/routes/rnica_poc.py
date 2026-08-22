@@ -62,6 +62,19 @@ class LinkExistingPocProblemRequest(BaseModel):
         return v
 
 
+class MergeDuplicateProblemsRequest(BaseModel):
+    surviving_rule_key: str = Field(..., min_length=1)
+    duplicate_rule_keys: list[str] = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("reason must not be blank")
+        return v
+
+
 def _load_assessment_and_authorize(db: Session, assessment_id: str, current_user: CurrentUser) -> RnicaAssessment:
     try:
         assessment_uuid = uuid.UUID(assessment_id)
@@ -126,6 +139,45 @@ def view_all_poc(
         patient_id=record.patient_id,
     )
     return {"assessmentId": str(record.id), "problems": problems}
+
+
+@router.post("/{assessment_id}/poc/merge")
+def merge_duplicate_poc_problems(
+    assessment_id: str,
+    payload: MergeDuplicateProblemsRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 11 — Master Plan of Care Review 'Merge Duplicate Problems'.
+
+    Cross-section control: unlike Link Existing (documented per-section),
+    merging operates across the whole problem list, so this route is not
+    nested under a `section_key`. Folds each duplicate's evidence and
+    description into the surviving problem, marks the duplicate(s)
+    SUPERSEDED with a `merged_into_rule_key` pointer, and never deletes
+    anything. This is a genuine POC content mutation, so it is lock-gated
+    like every other write path.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
+    tenant_id = _tenant_id_for(db, record)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    try:
+        result = rnica_poc_adapter.merge_duplicate_problems(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            user_id=_user_id(current_user),
+            surviving_rule_key=payload.surviving_rule_key,
+            duplicate_rule_keys=payload.duplicate_rule_keys,
+            merge_reason=payload.reason,
+        )
+    except rnica_poc_adapter.RnicaPocAdapterError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), **_jsonable(result)}
 
 
 @router.get("/{assessment_id}/finalization-readiness")

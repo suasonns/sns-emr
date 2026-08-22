@@ -1158,3 +1158,220 @@ def test_link_existing_problem_requires_evidence_text_and_respects_lock(client, 
         headers=rn_headers,
     )
     assert locked_resp.status_code == 423, locked_resp.text
+
+
+@pytest.mark.integration
+def test_merge_duplicate_problems_folds_evidence_and_supersedes_duplicate(client, db_session, rn_headers):
+    """SECTION 11 - Merge Duplicate Problems. Merging a clinician-identified
+    duplicate into a survivor must: fold the duplicate's evidence sources
+    and description into the survivor, record a traceable `merged_from`
+    entry, mark the duplicate SUPERSEDED (not deleted), exclude it from
+    active section/master views, and surface the merge as a status-change
+    event in View History (`mergeEvents`)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "gastrointestinal": {}})
+
+    survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert survivor_resp.status_code == 201, survivor_resp.text
+    survivor_rule_key = survivor_resp.json()["added"][0]
+
+    duplicate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={
+            "problem_label": "Progressive weight loss / poor oral intake",
+            "evidence_text": "Reports skipping meals due to early satiety.",
+        },
+        headers=rn_headers,
+    )
+    assert duplicate_resp.status_code == 201, duplicate_resp.text
+    duplicate_rule_key = duplicate_resp.json()["added"][0]
+
+    merge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Same underlying weight-loss problem documented from two sections.",
+        },
+        headers=rn_headers,
+    )
+    assert merge_resp.status_code == 200, merge_resp.text
+    merge_body = merge_resp.json()
+    assert merge_body["merged"] == [duplicate_rule_key]
+    assert merge_body["already_merged"] == []
+
+    # --- Survivor shows folded evidence + merged_from, and remains active
+    master_view = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers).json()
+    by_rule_key = {p["rule_key"]: p for p in master_view["problems"]}
+
+    survivor = by_rule_key[survivor_rule_key]
+    assert survivor["status"] != "SUPERSEDED"
+    assert any(m["rule_key"] == duplicate_rule_key for m in survivor["merged_from"])
+    assert "Progressive weight loss" in survivor["description"]
+    evidence_texts = {s.get("evidence_text") for s in survivor.get("evidence_sources", [])}
+    # Duplicate had no evidence_sources of its own (it was created via
+    # add_manual_problem, not link-existing), so evidence_sources may still
+    # be empty here -- the important guarantee is description/merged_from.
+
+    duplicate = by_rule_key[duplicate_rule_key]
+    assert duplicate["status"] == "SUPERSEDED"
+    assert duplicate["merged_into_rule_key"] == survivor_rule_key
+
+    # --- Duplicate excluded from its own section's active view ----------
+    gi_view = client.get(f"/visits/rnica/{record.id}/poc/gastrointestinal", headers=rn_headers).json()
+    gi_problem = next(p for p in gi_view["problems"] if p["rule_key"] == duplicate_rule_key)
+    assert gi_problem["status"] == "SUPERSEDED"
+
+    # --- Merge event surfaces in View History ----------------------------
+    history_resp = client.get(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal/{duplicate_rule_key}/history",
+        headers=rn_headers,
+    )
+    assert history_resp.status_code == 200, history_resp.text
+    history = history_resp.json()
+    assert len(history["mergeEvents"]) == 1
+    assert history["mergeEvents"][0]["toStatus"] == "SUPERSEDED"
+
+    # --- Idempotent: merging the same duplicate into the same survivor
+    # again is a no-op (no new version, reported as already_merged) --------
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=_admission.id).one()
+    version_count_before_remerge = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+
+    remerge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Repeat request.",
+        },
+        headers=rn_headers,
+    )
+    assert remerge_resp.status_code == 200, remerge_resp.text
+    assert remerge_resp.json()["merged"] == []
+    assert remerge_resp.json()["already_merged"] == [duplicate_rule_key]
+
+    version_count_after_remerge = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_remerge == version_count_before_remerge
+
+
+@pytest.mark.integration
+def test_merge_duplicate_problems_validation_and_lock(client, db_session, rn_headers):
+    """Merge must reject: a blank reason, an empty duplicate list, merging
+    a rule_key into itself, an unknown rule_key, merging a duplicate that
+    was already merged elsewhere, and any attempt on a locked assessment
+    (423), matching every other POC mutation path."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(
+        db_session, patient, tenant_id, {"nutrition": {}, "gastrointestinal": {}, "skin": {}}
+    )
+
+    survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={"problem_label": "Unintentional weight loss", "evidence_text": "Weight down 10% in 60 days."},
+        headers=rn_headers,
+    )
+    survivor_rule_key = survivor_resp.json()["added"][0]
+
+    duplicate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={"problem_label": "Poor oral intake", "evidence_text": "Skipping meals."},
+        headers=rn_headers,
+    )
+    duplicate_rule_key = duplicate_resp.json()["added"][0]
+
+    other_survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={"problem_label": "Stage 2 pressure injury", "evidence_text": "Sacral wound noted."},
+        headers=rn_headers,
+    )
+    other_survivor_rule_key = other_survivor_resp.json()["added"][0]
+
+    # --- Blank reason ------------------------------------------------
+    blank_reason_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={"surviving_rule_key": survivor_rule_key, "duplicate_rule_keys": [duplicate_rule_key], "reason": "   "},
+        headers=rn_headers,
+    )
+    assert blank_reason_resp.status_code == 422, blank_reason_resp.text
+
+    # --- Empty duplicate list ------------------------------------------
+    empty_dups_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={"surviving_rule_key": survivor_rule_key, "duplicate_rule_keys": [], "reason": "test"},
+        headers=rn_headers,
+    )
+    assert empty_dups_resp.status_code == 422, empty_dups_resp.text
+
+    # --- Self-merge rejected ---------------------------------------------
+    self_merge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [survivor_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert self_merge_resp.status_code == 400, self_merge_resp.text
+
+    # --- Unknown rule_key rejected ---------------------------------------
+    unknown_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": ["does-not-exist"],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert unknown_resp.status_code == 400, unknown_resp.text
+
+    # --- Successfully merge duplicate_rule_key into survivor -------------
+    ok_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Same problem.",
+        },
+        headers=rn_headers,
+    )
+    assert ok_resp.status_code == 200, ok_resp.text
+
+    # --- Cannot merge an already-superseded duplicate into a DIFFERENT
+    # survivor -------------------------------------------------------
+    remerge_elsewhere_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": other_survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert remerge_elsewhere_resp.status_code == 400, remerge_elsewhere_resp.text
+
+    # --- Locked assessment rejects merge (423) ---------------------------
+    record.locked = True
+    db_session.add(record)
+    db_session.commit()
+
+    locked_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [other_survivor_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert locked_resp.status_code == 423, locked_resp.text

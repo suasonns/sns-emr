@@ -679,18 +679,198 @@ def link_existing_problem(
     }
 
 
-def _serialize_problem_row(row: POCProblem, *, evidence_sources: Optional[list[dict[str, Any]]] = None) -> dict[str, Any]:
+def merge_duplicate_problems(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    surviving_rule_key: str,
+    duplicate_rule_keys: list[str],
+    merge_reason: str,
+) -> dict[str, Any]:
+    """SECTION 11 — Master Plan of Care Review 'Merge Duplicate Problems'.
+
+    Consolidates one or more clinician-identified duplicate problems into a
+    single surviving problem, matched by stable `rule_key`s. This is the
+    explicit, clinician-initiated counterpart to the automatic rule_key-match
+    dedup in `_upsert_problems`: it handles the case where two DIFFERENT
+    rule_keys ended up documenting the same underlying clinical problem
+    (e.g. raised from two different sections with different wording).
+
+    Guarantees (per SNS_RNICA_MASTER_MAP_1.1.md Section 11 "Merge duplicate
+    problems" / Master Sync Rule 4 -- "There is only ONE Problem ... for
+    each problem. No duplicates."):
+    - No new POC storage: reuses the same versioned
+      `poc_content = {"problems": [...]}` snapshot contract as every other
+      adapter write (`poc_service.create_new_version`).
+    - Nothing is deleted. The duplicate's `POCProblem` row is marked
+      `SUPERSEDED` (an existing, already-allowed status value -- no schema
+      change) and carries a `merged_into_rule_key` pointer, so it remains
+      fully visible to `View History` (SECTION 11.B) and to any audit
+      reconstruction, it is just no longer surfaced as an active problem.
+    - All of the duplicate's documented evidence is preserved: its
+      `evidence_sources` are folded into the survivor's, and a structured
+      `merged_from` entry (rule_key/label/description/who/when/reason) is
+      appended to the survivor so the merge itself is traceable.
+    - The survivor's own `origin_section`/`source_condition` (where IT was
+      first documented) is never changed by merging another problem into
+      it.
+    - Idempotent per duplicate: a duplicate already marked SUPERSEDED with
+      the same `merged_into_rule_key` is left alone (not re-merged, no
+      needless new version) rather than erroring on a repeat request.
+    """
+    if not merge_reason or not merge_reason.strip():
+        raise RnicaPocAdapterError("A reason is required to merge duplicate problems.")
+    merge_reason = merge_reason.strip()
+
+    duplicate_rule_keys = [k for k in dict.fromkeys(duplicate_rule_keys or []) if k]
+    if not duplicate_rule_keys:
+        raise RnicaPocAdapterError("At least one duplicate rule_key is required.")
+    if surviving_rule_key in duplicate_rule_keys:
+        raise RnicaPocAdapterError("The surviving problem cannot also be listed as a duplicate.")
+
+    admission = _resolve_admission(db, tenant_id=tenant_id, patient_id=patient_id)
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc:
+        raise RnicaPocAdapterError("No Plan of Care exists yet for this patient/admission.")
+
+    current_version = get_active_plan_of_care_version(db, tenant_id=tenant_id, plan_of_care_id=poc.id)
+    problems = _current_snapshot(current_version)
+
+    survivor_idx = _find_index_by_rule_key(problems, surviving_rule_key)
+    if survivor_idx is None:
+        raise RnicaPocAdapterError(f"No Plan of Care problem found with rule_key={surviving_rule_key!r}.")
+    survivor = problems[survivor_idx]
+
+    actor_name = _user_name_map(db, {user_id}).get(user_id) if user_id else None
+    merged_at = _utcnow().isoformat()
+
+    survivor_evidence = survivor.get("evidence_sources")
+    survivor_evidence = list(survivor_evidence) if isinstance(survivor_evidence, list) else []
+    survivor_merged_from = survivor.get("merged_from")
+    survivor_merged_from = list(survivor_merged_from) if isinstance(survivor_merged_from, list) else []
+
+    already_merged: list[str] = []
+    merged: list[str] = []
+    changed = False
+
+    for dup_rule_key in duplicate_rule_keys:
+        dup_idx = _find_index_by_rule_key(problems, dup_rule_key)
+        if dup_idx is None:
+            raise RnicaPocAdapterError(f"No Plan of Care problem found with rule_key={dup_rule_key!r}.")
+        duplicate = problems[dup_idx]
+
+        if duplicate.get("status") == "SUPERSEDED" and duplicate.get("merged_into_rule_key") == surviving_rule_key:
+            # Already merged into this exact survivor on a prior request —
+            # no-op, do not re-fold evidence or create a needless version.
+            already_merged.append(dup_rule_key)
+            continue
+        if duplicate.get("status") == "SUPERSEDED":
+            raise RnicaPocAdapterError(
+                f"Problem {dup_rule_key!r} has already been merged elsewhere and cannot be merged again."
+            )
+
+        # Fold the duplicate's linked evidence sources into the survivor's.
+        dup_evidence = duplicate.get("evidence_sources")
+        if isinstance(dup_evidence, list):
+            for source in dup_evidence:
+                if source not in survivor_evidence:
+                    survivor_evidence.append(source)
+
+        # Record the merge itself as a structured, traceable entry.
+        survivor_merged_from.append(
+            {
+                "rule_key": dup_rule_key,
+                "label": duplicate.get("label"),
+                "origin_section": (
+                    duplicate.get("source_condition", "").split(RNICA_SOURCE_CONDITION_PREFIX, 1)[-1]
+                    if isinstance(duplicate.get("source_condition"), str)
+                    and duplicate["source_condition"].startswith(RNICA_SOURCE_CONDITION_PREFIX)
+                    else None
+                ),
+                "description": duplicate.get("description"),
+                "merge_reason": merge_reason,
+                "merged_by_user_id": str(user_id) if user_id else None,
+                "merged_by": actor_name,
+                "merged_at": merged_at,
+            }
+        )
+
+        existing_description = survivor.get("description") or ""
+        addition = f"Merged duplicate problem '{duplicate.get('label')}' ({dup_rule_key}): {duplicate.get('description') or ''}"
+        if addition not in existing_description:
+            survivor["description"] = f"{existing_description}\n---\n{addition}" if existing_description else addition
+
+        duplicate["status"] = "SUPERSEDED"
+        duplicate["merged_into_rule_key"] = surviving_rule_key
+        for goal in duplicate.get("goals", []):
+            if isinstance(goal, dict) and goal.get("status") == "ACTIVE":
+                goal["status"] = "SUPERSEDED"
+                for intervention in goal.get("interventions", []):
+                    if isinstance(intervention, dict) and intervention.get("status") == "ACTIVE":
+                        intervention["status"] = "SUPERSEDED"
+
+        merged.append(dup_rule_key)
+        changed = True
+
+    survivor["evidence_sources"] = survivor_evidence
+    survivor["merged_from"] = survivor_merged_from
+
+    if not changed:
+        return {
+            "plan_of_care_id": poc.id,
+            "version_id": current_version.id if current_version else None,
+            "version_number": current_version.version_number if current_version else None,
+            "survivor": survivor,
+            "merged": [],
+            "already_merged": already_merged,
+        }
+
+    new_version = _create_new_poc_version(
+        db,
+        plan_of_care_id=poc.id,
+        tenant_id=tenant_id,
+        updated_content={"problems": problems},
+        user_id=user_id,
+        source_kind="RN_UPDATE",
+        change_reason=(
+            f"RN ICA: merged duplicate problem(s) {', '.join(merged)} into {surviving_rule_key} ({merge_reason})"
+        ),
+        generated_from={"origin": "RNICA"},
+        create_physician_attestation=False,
+    )
+
+    return {
+        "plan_of_care_id": poc.id,
+        "version_id": new_version.id,
+        "version_number": new_version.version_number,
+        "survivor": survivor,
+        "merged": merged,
+        "already_merged": already_merged,
+    }
+
+
+def _serialize_problem_row(
+    row: POCProblem,
+    *,
+    evidence_sources: Optional[list[dict[str, Any]]] = None,
+    merged_from: Optional[list[dict[str, Any]]] = None,
+    merged_into_rule_key: Optional[str] = None,
+) -> dict[str, Any]:
     """Shared read-model serializer for a materialized POCProblem row,
     used by both the per-section view (`list_section_problems`) and the
     cross-section Master Plan of Care Review (`list_all_problems`).
 
-    `evidence_sources` (SECTION 11.C — Link Existing Problem) is optional
-    because it is not a `POCProblem` SQL column — it lives in the current
-    `PlanOfCareVersion.snapshot_json` problem dict (the same JSONB
-    mechanism every problem is already round-tripped through) and is
+    `evidence_sources` (SECTION 11.C — Link Existing Problem) and
+    `merged_from` / `merged_into_rule_key` (Merge Duplicate Problems) are
+    optional because none of them are `POCProblem` SQL columns — they live
+    in the current `PlanOfCareVersion.snapshot_json` problem dict (the same
+    JSONB mechanism every problem is already round-tripped through) and are
     looked up separately by the caller. `origin_section` (parsed from
     `source_condition`) always reflects where the problem was *first*
-    documented and is never changed by linking.
+    documented and is never changed by linking or by having another
+    problem merged into it.
     """
     origin_section = None
     if row.source_condition and row.source_condition.startswith(RNICA_SOURCE_CONDITION_PREFIX):
@@ -707,6 +887,8 @@ def _serialize_problem_row(row: POCProblem, *, evidence_sources: Optional[list[d
         "source_condition": row.source_condition,
         "origin_section": origin_section,
         "evidence_sources": evidence_sources or [],
+        "merged_from": merged_from or [],
+        "merged_into_rule_key": merged_into_rule_key,
         "goals": [
             {
                 "goal_text": g.goal_text,
@@ -726,13 +908,14 @@ def _serialize_problem_row(row: POCProblem, *, evidence_sources: Optional[list[d
     }
 
 
-def _evidence_sources_by_rule_key(db: Session, *, tenant_id: UUID, version_id: Optional[UUID]) -> dict[str, list[dict[str, Any]]]:
-    """SECTION 11.C — Link Existing Problem read-side helper.
-
-    `evidence_sources` is carried inside the current version's
-    `snapshot_json` problem dicts (see `link_existing_problem`), not as a
-    `POCProblem` SQL column, so it must be looked up separately and merged
-    into the read model rather than read off the ORM row directly.
+def _snapshot_extras_by_rule_key(db: Session, *, tenant_id: UUID, version_id: Optional[UUID]) -> dict[str, dict[str, Any]]:
+    """Read-side helper for problem fields that live only in the current
+    version's `snapshot_json` problem dicts, not as `POCProblem` SQL
+    columns: `evidence_sources` (SECTION 11.C — Link Existing Problem) and
+    `merged_from` / `merged_into_rule_key` (Merge Duplicate Problems). Both
+    round-trip through `PlanOfCareVersion.snapshot_json` the same way every
+    other problem field already does, so they must be looked up separately
+    and merged into the read model rather than read off the ORM row.
     """
     if not version_id:
         return {}
@@ -743,12 +926,18 @@ def _evidence_sources_by_rule_key(db: Session, *, tenant_id: UUID, version_id: O
     )
     if not version:
         return {}
-    out: dict[str, list[dict[str, Any]]] = {}
+    out: dict[str, dict[str, Any]] = {}
     for problem in _current_snapshot(version):
         rule_key = problem.get("rule_key")
+        if not rule_key:
+            continue
         sources = problem.get("evidence_sources")
-        if rule_key and isinstance(sources, list):
-            out[rule_key] = sources
+        merged_from = problem.get("merged_from")
+        out[rule_key] = {
+            "evidence_sources": sources if isinstance(sources, list) else [],
+            "merged_from": merged_from if isinstance(merged_from, list) else [],
+            "merged_into_rule_key": problem.get("merged_into_rule_key"),
+        }
     return out
 
 
@@ -783,8 +972,16 @@ def list_section_problems(
         .all()
     )
 
-    evidence_by_rule_key = _evidence_sources_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
-    return [_serialize_problem_row(row, evidence_sources=evidence_by_rule_key.get(row.rule_key)) for row in rows]
+    extras_by_rule_key = _snapshot_extras_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
+    return [
+        _serialize_problem_row(
+            row,
+            evidence_sources=extras_by_rule_key.get(row.rule_key, {}).get("evidence_sources"),
+            merged_from=extras_by_rule_key.get(row.rule_key, {}).get("merged_from"),
+            merged_into_rule_key=extras_by_rule_key.get(row.rule_key, {}).get("merged_into_rule_key"),
+        )
+        for row in rows
+    ]
 
 
 def list_all_problems(
@@ -822,8 +1019,16 @@ def list_all_problems(
         .all()
     )
 
-    evidence_by_rule_key = _evidence_sources_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
-    return [_serialize_problem_row(row, evidence_sources=evidence_by_rule_key.get(row.rule_key)) for row in rows]
+    extras_by_rule_key = _snapshot_extras_by_rule_key(db, tenant_id=tenant_id, version_id=poc.current_version_id)
+    return [
+        _serialize_problem_row(
+            row,
+            evidence_sources=extras_by_rule_key.get(row.rule_key, {}).get("evidence_sources"),
+            merged_from=extras_by_rule_key.get(row.rule_key, {}).get("merged_from"),
+            merged_into_rule_key=extras_by_rule_key.get(row.rule_key, {}).get("merged_into_rule_key"),
+        )
+        for row in rows
+    ]
 
 
 def _user_name_map(db: Session, user_ids: set) -> dict:
@@ -947,6 +1152,7 @@ def get_problem_history(
         "statusChanges": status_changes,
         "resolveEvents": [c for c in status_changes if c["toStatus"] == "RESOLVED"],
         "deactivateEvents": [c for c in status_changes if c["toStatus"] == "HISTORICAL"],
+        "mergeEvents": [c for c in status_changes if c["toStatus"] == "SUPERSEDED"],
     }
 
 

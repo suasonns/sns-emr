@@ -41,6 +41,7 @@ import {
   requestRnicaCorrection,
   getRnicaSectionPocProblemHistory,
   linkExistingRnicaSectionPocProblem,
+  mergeRnicaPocDuplicateProblems,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -3060,6 +3061,10 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   const [linkingRuleKey, setLinkingRuleKey] = useState(null);
   const [linkDraft, setLinkDraft] = useState({ sectionKey: "", evidenceText: "" });
   const [linkError, setLinkError] = useState("");
+  const [mergingSurvivorKey, setMergingSurvivorKey] = useState(null);
+  const [mergeSelection, setMergeSelection] = useState(() => new Set());
+  const [mergeReason, setMergeReason] = useState("");
+  const [mergeError, setMergeError] = useState("");
 
   const loadProblems = useCallback(() => {
     if (!assessmentId) return;
@@ -3175,6 +3180,61 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
     new Set((problems || []).map((p) => p.origin_section).filter(Boolean))
   ).sort();
 
+  // SECTION 11 — Merge Duplicate Problems. Consolidates one or more
+  // clinician-identified duplicates (matched by rule_key) into a single
+  // surviving problem. Nothing is deleted: duplicates are marked
+  // SUPERSEDED (an existing status value — no schema change) and remain
+  // visible via View History; their evidence/description fold into the
+  // survivor.
+  const toggleMerge = (p) => {
+    if (mergingSurvivorKey === p.rule_key) {
+      setMergingSurvivorKey(null);
+      setMergeSelection(new Set());
+      setMergeReason("");
+      setMergeError("");
+      return;
+    }
+    setMergingSurvivorKey(p.rule_key);
+    setMergeSelection(new Set());
+    setMergeReason("");
+    setMergeError("");
+  };
+
+  const toggleMergeCandidate = (ruleKey) => {
+    setMergeSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(ruleKey)) next.delete(ruleKey);
+      else next.add(ruleKey);
+      return next;
+    });
+  };
+
+  const handleMerge = (survivor) => {
+    if (mergeSelection.size === 0) {
+      setMergeError("Select at least one duplicate problem to merge.");
+      return;
+    }
+    if (!mergeReason.trim()) {
+      setMergeError("A reason is required to merge duplicate problems.");
+      return;
+    }
+    setSaving(true);
+    setMergeError("");
+    mergeRnicaPocDuplicateProblems(assessmentId, {
+      surviving_rule_key: survivor.rule_key,
+      duplicate_rule_keys: Array.from(mergeSelection),
+      reason: mergeReason.trim(),
+    })
+      .then(() => {
+        setMergingSurvivorKey(null);
+        setMergeSelection(new Set());
+        setMergeReason("");
+        loadProblems();
+      })
+      .catch((err) => setMergeError(err.message || "Unable to merge duplicate Plan of Care problems"))
+      .finally(() => setSaving(false));
+  };
+
   if (!assessmentId) {
     return <div style={styles.infoBox}>Save the assessment once to enable the Master Plan of Care Review.</div>;
   }
@@ -3214,6 +3274,9 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
             <div style={{ color: COLORS.gray, fontSize: 11, marginTop: 4 }}>
               Origin Section: <strong>{p.origin_section || "—"}</strong>
               {disciplines.length > 0 && <> · Disciplines: <strong>{disciplines.join(", ")}</strong></>}
+              {p.status === "SUPERSEDED" && p.merged_into_rule_key && (
+                <> · Merged into: <strong>{p.merged_into_rule_key}</strong></>
+              )}
             </div>
 
             <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -3235,6 +3298,14 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                   border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
                 }}>
                   {linkingRuleKey === p.rule_key ? "Cancel Link" : "Link Existing Problem"}
+                </button>
+              )}
+              {isActive && (problems || []).some((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED") && (
+                <button type="button" onClick={() => toggleMerge(p)} style={{
+                  fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                  border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                }}>
+                  {mergingSurvivorKey === p.rule_key ? "Cancel Merge" : "Merge Duplicates Into This"}
                 </button>
               )}
               {isActive && (
@@ -3307,6 +3378,43 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
               </div>
             )}
 
+            {mergingSurvivorKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+                  Select one or more duplicate problems to merge into <strong>{p.label}</strong>. Duplicates are
+                  never deleted — they are marked SUPERSEDED and their evidence and description are folded into
+                  this problem, remaining fully traceable via View History.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                  {(problems || [])
+                    .filter((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED")
+                    .map((other) => (
+                      <label key={other.rule_key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+                        <input
+                          type="checkbox"
+                          checked={mergeSelection.has(other.rule_key)}
+                          onChange={() => toggleMergeCandidate(other.rule_key)}
+                        />
+                        {other.label} <span style={{ color: COLORS.gray }}>({other.origin_section || "—"})</span>
+                      </label>
+                    ))}
+                  {(problems || []).filter((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED").length === 0 && (
+                    <div style={{ color: COLORS.gray, fontSize: 11.5 }}>No other active problems available to merge.</div>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormInput label="Merge Reason" value={mergeReason} onChange={setMergeReason} />
+                  <button type="button" disabled={saving} onClick={() => handleMerge(p)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Merging…" : "Merge Selected"}
+                  </button>
+                </div>
+                {mergeError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
+              </div>
+            )}
+
             {isExpanded && (
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
                 <div style={{ color: COLORS.gray, fontSize: 11.5, whiteSpace: "pre-wrap" }}>
@@ -3320,6 +3428,19 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                         From <strong>{s.section_key}</strong>: {s.evidence_text}
                         {s.linked_by ? ` — linked by ${s.linked_by}` : ""}
                         {s.linked_at ? ` on ${new Date(s.linked_at).toLocaleString()}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(p.merged_from || []).length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11.5 }}>Merged Duplicate Problems</div>
+                    {(p.merged_from || []).map((m, mi) => (
+                      <div key={mi} style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 2 }}>
+                        <strong>{m.label}</strong> ({m.rule_key}) from <strong>{m.origin_section || "—"}</strong>
+                        {m.merged_by ? ` — merged by ${m.merged_by}` : ""}
+                        {m.merged_at ? ` on ${new Date(m.merged_at).toLocaleString()}` : ""}
+                        {m.merge_reason ? ` — ${m.merge_reason}` : ""}
                       </div>
                     ))}
                   </div>
@@ -3389,6 +3510,17 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     {(historyData.deactivateEvents || []).map((c, ci) => (
                       <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
                         Deactivated by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Merge Events</div>
+                    {(historyData.mergeEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.mergeEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Merged (superseded) by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                        {c.changeReason ? ` — ${c.changeReason}` : ""}
                       </div>
                     ))}
                   </div>
