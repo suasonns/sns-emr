@@ -268,3 +268,31 @@ describe("mapRnIcaToHopeReport — value 0 is a completed answer, not a missing 
     }
   });
 });
+
+describe("mapRnIcaToHopeReport — legacyReviewRequired banner/filter data", () => {
+  it("is not required when all four asked-status fields are answered (including '0')", () => {
+    const formData = baseFormData({
+      advancedCarePlanning: { cprPreferenceAskedStatus: "0", lifeSustainingAskedStatus: "0", hospitalizationAskedStatus: "0" },
+      spiritual: { concernsAskedStatus: "0" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(report.legacyReviewRequired.required).toBe(false);
+    expect(report.legacyReviewRequired.items).toEqual([]);
+  });
+
+  it("is required and lists exactly the missing items when some asked-status fields are absent", () => {
+    const formData = baseFormData({
+      advancedCarePlanning: { cprPreferenceAskedStatus: "1", lifeSustainingAskedStatus: "", hospitalizationAskedStatus: "1" },
+      spiritual: { concernsAskedStatus: "" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(report.legacyReviewRequired.required).toBe(true);
+    expect(report.legacyReviewRequired.items).toEqual(["F2100", "F3000"]);
+  });
+
+  it("lists all four items when the record is fully legacy (no new fields at all)", () => {
+    const report = mapRnIcaToHopeReport(baseFormData());
+    expect(report.legacyReviewRequired.required).toBe(true);
+    expect(report.legacyReviewRequired.items).toEqual(["F2000", "F2100", "F2200", "F3000"]);
+  });
+});

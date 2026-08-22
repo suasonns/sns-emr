@@ -311,6 +311,16 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
   const f3000LegacyIndicator = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
   const spiritualAsked = askedStatus(spiritual.concernsAskedStatus, f3000LegacyIndicator);
+  const legacyReviewItems = [
+    ["F2000", cprAsked],
+    ["F2100", lifeSustainingAsked],
+    ["F2200", hospitalizationAsked],
+    ["F3000", spiritualAsked],
+  ].filter(([, result]) => result.incomplete).map(([code]) => code);
+  const legacyReviewRequired = {
+    required: legacyReviewItems.length > 0,
+    items: legacyReviewItems,
+  };
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
   const sfvStatus = getSfvStatus(formData);
   const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
@@ -338,6 +348,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
     agency: agencyInfo,
     patientName: name.display,
     sfvStatus,
+    legacyReviewRequired,
     sections: [
       {
         title: "Section A - Administrative Information",
@@ -364,6 +375,9 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       },
       {
         title: "Section F - Preferences",
+        dataSourceNote: legacyReviewRequired.required
+          ? `⚠ HOPE Legacy Review Required — this assessment predates HOPE discussion-status tracking. Review ${legacyReviewRequired.items.join(", ")} before submission.`
+          : undefined,
         items: [
           { code: "F2000", label: "CPR Preference", entries: [{ label: "A. Was patient / rep asked?", value: `${cprAsked.code} - ${cprAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.codeStatusDate) }] },
           { code: "F2100", label: "Life-sustaining treatments other than CPR", entries: [{ label: "A. Asked?", value: `${lifeSustainingAsked.code} - ${lifeSustainingAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.lifeSustainingTreatmentPreferenceDate) }] },

@@ -33,6 +33,10 @@ const styles = {
   }),
   sfvTitle: (required) => ({ fontSize: 13, fontWeight: 800, color: required ? "#c2410c" : "#334155", marginBottom: 6 }),
   sfvText: { fontSize: 13, color: "#334155", lineHeight: 1.5 },
+  legacyBanner: { marginBottom: 18, padding: 14, borderRadius: 8, border: "1px solid #fecaca", backgroundColor: "#fef2f2" },
+  legacyTitle: { fontSize: 13, fontWeight: 800, color: "#b91c1c", marginBottom: 6 },
+  legacyText: { fontSize: 13, color: "#7f1d1d", lineHeight: 1.5 },
+  disabledButton: (colors) => ({ padding: "10px 18px", backgroundColor: "#94a3b8", color: "#fff", border: "none", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "not-allowed" }),
 };
 
 export default function HopeReport({ formData = {}, patient = defaultPatient, agency, onBack }) {
@@ -46,7 +50,15 @@ export default function HopeReport({ formData = {}, patient = defaultPatient, ag
       <div className="hope-report-actions" style={styles.actions}>
         <div style={styles.buttonRow}>
           {onBack ? <button type="button" style={styles.secondaryButton(colors)} onClick={onBack}>Back to RN Assessment</button> : null}
-          <button type="button" style={styles.primaryButton(colors)} onClick={() => window.print()}>Print HOPE Report</button>
+          <button
+            type="button"
+            style={report.legacyReviewRequired.required ? styles.disabledButton(colors) : styles.primaryButton(colors)}
+            onClick={() => window.print()}
+            disabled={report.legacyReviewRequired.required}
+            title={report.legacyReviewRequired.required ? "Blocked: complete HOPE Legacy Review before printing/submission" : undefined}
+          >
+            Print HOPE Report
+          </button>
         </div>
       </div>
 
@@ -62,6 +74,15 @@ export default function HopeReport({ formData = {}, patient = defaultPatient, ag
 
           <div style={{ ...styles.title, fontSize: 22, marginBottom: 16 }}>HOPE REPORT - Admission</div>
           <div style={{ ...styles.patientLine, marginBottom: 8 }}>Patient Name: {report.patientName}</div>
+
+          {report.legacyReviewRequired.required && (
+            <div style={styles.legacyBanner}>
+              <div style={styles.legacyTitle}>HOPE Legacy Review Required</div>
+              <div style={styles.legacyText}>
+                This assessment predates HOPE discussion-status tracking. Review {report.legacyReviewRequired.items.join(", ")} before submission.
+              </div>
+            </div>
+          )}
 
           <div style={styles.sfvBanner(report.sfvStatus.required)}>
             <div style={styles.sfvTitle(report.sfvStatus.required)}>
