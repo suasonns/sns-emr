@@ -9,13 +9,16 @@ content is never mutated by this workflow, regardless of amendment
 outcome.
 
 Workflow:
-    RN/Clinician submits amendment
+    RN/Clinician submits amendment (with a request_source noting who
+    originated the request: PATIENT / REPRESENTATIVE / STAFF / INTERNAL_QA)
         -> status = PENDING
-        -> Review authority (DPCS / DPCS Designee / Case Manager
+        -> Review authority (DPCS / DPCS Designee / Case Manager /
            Supervisor -- see AMENDMENT_APPROVAL_ROLES in app/api/visits.py)
            evaluates
         -> APPROVED or DENIED
-        -> Decision logged (approved_by/approved_at or denied_reason)
+        -> Decision logged: decision_user_id/decision_timestamp always;
+           decision_reason required for DENIED (CDPH requires a written
+           justification), optional for APPROVED
         -> Original record preserved -- the amendment stays a linked,
            separate row; `proposed_value` is never auto-applied back onto
            the signed content.
@@ -34,6 +37,7 @@ from sqlalchemy.orm import Session
 from app.models.rnica_amendment import (
     AMENDMENT_CATEGORIES,
     AMENDMENT_REASON_CODES,
+    AMENDMENT_REQUEST_SOURCES,
     RnicaAmendment,
 )
 from app.services.audit_events import audit_event
@@ -55,12 +59,13 @@ def _serialize(record: RnicaAmendment) -> dict:
         "requestedChange": record.requested_change,
         "originalValueSnapshot": record.original_value_snapshot,
         "proposedValue": record.proposed_value,
+        "requestSource": record.request_source,
         "status": record.status,
         "createdBy": str(record.created_by) if record.created_by else None,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "approvedBy": str(record.approved_by) if record.approved_by else None,
-        "approvedAt": record.approved_at.isoformat() if record.approved_at else None,
-        "deniedReason": record.denied_reason,
+        "decisionUserId": str(record.decision_user_id) if record.decision_user_id else None,
+        "decisionTimestamp": record.decision_timestamp.isoformat() if record.decision_timestamp else None,
+        "decisionReason": record.decision_reason,
     }
 
 
@@ -75,6 +80,7 @@ def create_amendment(
     amendment_category: str,
     reason_code: str,
     requested_change: str,
+    request_source: str = "STAFF",
     original_value_snapshot: Optional[Any] = None,
     proposed_value: Optional[Any] = None,
 ) -> dict:
@@ -90,6 +96,12 @@ def create_amendment(
             f"reason_code must be one of {', '.join(AMENDMENT_REASON_CODES)}"
         )
 
+    request_source = (request_source or "STAFF").strip().upper()
+    if request_source not in AMENDMENT_REQUEST_SOURCES:
+        raise RnicaAmendmentError(
+            f"request_source must be one of {', '.join(AMENDMENT_REQUEST_SOURCES)}"
+        )
+
     if not requested_change or not requested_change.strip():
         raise RnicaAmendmentError("requested_change must not be blank")
 
@@ -101,6 +113,7 @@ def create_amendment(
         amendment_category=amendment_category,
         reason_code=reason_code,
         requested_change=requested_change.strip(),
+        request_source=request_source,
         original_value_snapshot=original_value_snapshot,
         proposed_value=proposed_value,
         status="PENDING",
@@ -121,6 +134,7 @@ def create_amendment(
             "sectionReference": section_reference,
             "amendmentCategory": amendment_category,
             "reasonCode": reason_code,
+            "requestSource": request_source,
         },
     )
 
@@ -158,6 +172,7 @@ def approve_amendment(
     tenant_id,
     amendment_id,
     user_id,
+    decision_reason: Optional[str] = None,
 ) -> dict:
     record = _load_pending(db, tenant_id=tenant_id, amendment_id=amendment_id)
 
@@ -165,8 +180,9 @@ def approve_amendment(
         raise RnicaAmendmentError("The submitting clinician cannot approve their own amendment.")
 
     record.status = "APPROVED"
-    record.approved_by = user_id
-    record.approved_at = datetime.now(timezone.utc)
+    record.decision_user_id = user_id
+    record.decision_timestamp = datetime.now(timezone.utc)
+    record.decision_reason = (decision_reason or "").strip() or None
     db.add(record)
     db.flush()
 
@@ -177,7 +193,7 @@ def approve_amendment(
         entity_id=str(record.id),
         user_id=str(user_id) if user_id else None,
         tenant_id=str(tenant_id) if tenant_id else None,
-        meta={"assessmentId": str(record.rnica_assessment_id)},
+        meta={"assessmentId": str(record.rnica_assessment_id), "decisionReason": record.decision_reason},
     )
 
     db.commit()
@@ -191,10 +207,10 @@ def deny_amendment(
     tenant_id,
     amendment_id,
     user_id,
-    denied_reason: str,
+    decision_reason: str,
 ) -> dict:
-    if not denied_reason or not denied_reason.strip():
-        raise RnicaAmendmentError("denied_reason must not be blank")
+    if not decision_reason or not decision_reason.strip():
+        raise RnicaAmendmentError("decision_reason must not be blank")
 
     record = _load_pending(db, tenant_id=tenant_id, amendment_id=amendment_id)
 
@@ -202,9 +218,9 @@ def deny_amendment(
         raise RnicaAmendmentError("The submitting clinician cannot deny their own amendment.")
 
     record.status = "DENIED"
-    record.approved_by = user_id
-    record.approved_at = datetime.now(timezone.utc)
-    record.denied_reason = denied_reason.strip()
+    record.decision_user_id = user_id
+    record.decision_timestamp = datetime.now(timezone.utc)
+    record.decision_reason = decision_reason.strip()
     db.add(record)
     db.flush()
 
@@ -215,7 +231,7 @@ def deny_amendment(
         entity_id=str(record.id),
         user_id=str(user_id) if user_id else None,
         tenant_id=str(tenant_id) if tenant_id else None,
-        meta={"assessmentId": str(record.rnica_assessment_id), "deniedReason": record.denied_reason},
+        meta={"assessmentId": str(record.rnica_assessment_id), "decisionReason": record.decision_reason},
     )
 
     db.commit()

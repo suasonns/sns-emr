@@ -73,6 +73,50 @@ def _supervisor_headers(db_session, role="DPCS"):
 
 
 @pytest.mark.integration
+def test_submit_validates_request_source_and_defaults_to_staff(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient = _make_patient(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, locked=True)
+
+    bad_source = client.post(
+        f"/visits/rnica/{record.id}/correction-request",
+        json={
+            "amendment_category": "CLINICAL_CORRECTION",
+            "reason_code": "OMITTED_FINDING",
+            "requested_change": "Something.",
+            "request_source": "NOT_A_SOURCE",
+        },
+        headers=rn_headers,
+    )
+    assert bad_source.status_code == 400, bad_source.text
+
+    default_source_resp = client.post(
+        f"/visits/rnica/{record.id}/correction-request",
+        json={
+            "amendment_category": "CLINICAL_CORRECTION",
+            "reason_code": "OMITTED_FINDING",
+            "requested_change": "Something without an explicit request_source.",
+        },
+        headers=rn_headers,
+    )
+    assert default_source_resp.status_code == 200, default_source_resp.text
+    assert default_source_resp.json()["requestSource"] == "STAFF"
+
+    patient_source_resp = client.post(
+        f"/visits/rnica/{record.id}/correction-request",
+        json={
+            "amendment_category": "CLARIFICATION",
+            "reason_code": "CLARIFICATION_NEEDED",
+            "requested_change": "Family requested clarification of documented findings.",
+            "request_source": "representative",
+        },
+        headers=rn_headers,
+    )
+    assert patient_source_resp.status_code == 200, patient_source_resp.text
+    assert patient_source_resp.json()["requestSource"] == "REPRESENTATIVE"
+
+
+@pytest.mark.integration
 def test_submit_requires_locked_assessment(client, db_session, rn_headers):
     tenant_id = db_session.info.get("tenant_id")
     patient = _make_patient(db_session, tenant_id)
@@ -179,8 +223,8 @@ def test_full_amendment_workflow_approve_and_deny_never_mutate_original(client, 
     assert approve_resp.status_code == 200, approve_resp.text
     approved = approve_resp.json()
     assert approved["status"] == "APPROVED"
-    assert approved["approvedBy"] == str(supervisor_id)
-    assert approved["approvedAt"] is not None
+    assert approved["decisionUserId"] == str(supervisor_id)
+    assert approved["decisionTimestamp"] is not None
 
     # --- Original assessment content is never mutated -----------------------
     db_session.refresh(record)
@@ -218,21 +262,21 @@ def test_deny_requires_reason_and_supports_case_manager_and_supervisor_roles(cli
 
         missing_reason_resp = client.post(
             f"/visits/rnica/{record.id}/amendments/{amendment_id}/deny",
-            json={"denied_reason": "   "},
+            json={"decision_reason": "   "},
             headers=reviewer_headers,
         )
         assert missing_reason_resp.status_code == 422, missing_reason_resp.text
 
         deny_resp = client.post(
             f"/visits/rnica/{record.id}/amendments/{amendment_id}/deny",
-            json={"denied_reason": f"Not supported by documentation ({role})."},
+            json={"decision_reason": f"Not supported by documentation ({role})."},
             headers=reviewer_headers,
         )
         assert deny_resp.status_code == 200, deny_resp.text
         denied = deny_resp.json()
         assert denied["status"] == "DENIED"
-        assert denied["approvedBy"] == str(reviewer_id)
-        assert denied["deniedReason"] == f"Not supported by documentation ({role})."
+        assert denied["decisionUserId"] == str(reviewer_id)
+        assert denied["decisionReason"] == f"Not supported by documentation ({role})."
 
 
 @pytest.mark.integration
@@ -266,7 +310,7 @@ def test_submitter_cannot_approve_or_deny_own_amendment(client, db_session):
 
     self_deny_resp = client.post(
         f"/visits/rnica/{record.id}/amendments/{amendment_id}/deny",
-        json={"denied_reason": "Self review not permitted."},
+        json={"decision_reason": "Self review not permitted."},
         headers=dpcs_headers,
     )
     assert self_deny_resp.status_code == 400, self_deny_resp.text

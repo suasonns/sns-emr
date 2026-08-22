@@ -3558,6 +3558,13 @@ const AMENDMENT_REASON_CODE_OPTIONS = [
   { value: "OTHER", label: "Other" },
 ];
 
+const AMENDMENT_REQUEST_SOURCE_OPTIONS = [
+  { value: "PATIENT", label: "Patient" },
+  { value: "REPRESENTATIVE", label: "Representative" },
+  { value: "STAFF", label: "Staff" },
+  { value: "INTERNAL_QA", label: "Internal QA" },
+];
+
 // SECTION 12 -- who may approve/deny a proposed amendment. Mirrors the
 // server's AMENDMENT_APPROVAL_ROLES gate (app/api/visits.py) so the button
 // is hidden for roles the backend would 403 anyway; the backend remains the
@@ -3585,6 +3592,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
     amendmentCategory: "",
     reasonCode: "",
     requestedChange: "",
+    requestSource: "STAFF",
     sectionReference: "",
     proposedValue: "",
   });
@@ -3621,12 +3629,13 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
       amendmentCategory: form.amendmentCategory,
       reasonCode: form.reasonCode,
       requestedChange: form.requestedChange,
+      requestSource: form.requestSource,
       sectionReference: form.sectionReference.trim() || null,
       proposedValue: form.proposedValue.trim() || null,
     })
       .then(() => {
         setMessage("Amendment submitted and is pending review.");
-        setForm({ amendmentCategory: "", reasonCode: "", requestedChange: "", sectionReference: "", proposedValue: "" });
+        setForm({ amendmentCategory: "", reasonCode: "", requestedChange: "", requestSource: "STAFF", sectionReference: "", proposedValue: "" });
         setShowForm(false);
         loadAmendments();
       })
@@ -3714,6 +3723,18 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
             </select>
           </label>
           <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Requested by
+            <select
+              value={form.requestSource}
+              onChange={(e) => updateForm("requestSource", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              {AMENDMENT_REQUEST_SOURCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
             Section reference (optional)
             <input
               type="text"
@@ -3771,8 +3792,19 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
                 <span style={{ color: statusColor(a.status), fontWeight: 700 }}>{a.status}</span>
               </div>
               <div style={{ color: COLORS.gray, marginTop: 2 }}>{a.requestedChange}</div>
-              {a.status === "DENIED" && a.deniedReason && (
-                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.deniedReason}</div>
+              <div style={{ color: COLORS.gray, marginTop: 2, fontSize: 11 }}>
+                Requested by: {AMENDMENT_REQUEST_SOURCE_OPTIONS.find((o) => o.value === a.requestSource)?.label || a.requestSource || "Staff"}
+              </div>
+              {(a.status === "APPROVED" || a.status === "DENIED") && a.decisionUserId && (
+                <div style={{ color: COLORS.gray, marginTop: 2, fontSize: 11 }}>
+                  Decision by {a.decisionUserId} on {a.decisionTimestamp ? new Date(a.decisionTimestamp).toLocaleString() : "—"}
+                </div>
+              )}
+              {a.status === "DENIED" && a.decisionReason && (
+                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.decisionReason}</div>
+              )}
+              {a.status === "APPROVED" && a.decisionReason && (
+                <div style={{ color: COLORS.gray, marginTop: 2 }}>Note: {a.decisionReason}</div>
               )}
               {a.status === "PENDING" && canReview && String(currentUserId) !== String(a.createdBy) && (
                 <div style={{ marginTop: 4, display: "flex", gap: 6 }}>

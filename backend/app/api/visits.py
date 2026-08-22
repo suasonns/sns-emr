@@ -818,6 +818,7 @@ class RnicaAmendmentRequest(BaseModel):
     amendment_category: str = Field(..., min_length=1)
     reason_code: str = Field(..., min_length=1)
     requested_change: str = Field(..., min_length=1)
+    request_source: str = Field(default="STAFF")
     original_value_snapshot: Optional[Any] = None
     proposed_value: Optional[Any] = None
 
@@ -829,14 +830,18 @@ class RnicaAmendmentRequest(BaseModel):
         return v
 
 
-class RnicaAmendmentDenyRequest(BaseModel):
-    denied_reason: str = Field(..., min_length=1)
+class RnicaAmendmentApproveRequest(BaseModel):
+    decision_reason: Optional[str] = None
 
-    @field_validator("denied_reason")
+
+class RnicaAmendmentDenyRequest(BaseModel):
+    decision_reason: str = Field(..., min_length=1)
+
+    @field_validator("decision_reason")
     @classmethod
-    def _denied_reason_not_blank(cls, v: str) -> str:
+    def _decision_reason_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("denied_reason must not be blank")
+            raise ValueError("decision_reason must not be blank")
         return v
 
 
@@ -895,6 +900,7 @@ def request_rnica_correction(
             amendment_category=payload.amendment_category,
             reason_code=payload.reason_code,
             requested_change=payload.requested_change,
+            request_source=payload.request_source,
             original_value_snapshot=payload.original_value_snapshot,
             proposed_value=payload.proposed_value,
         )
@@ -930,6 +936,7 @@ def list_rnica_amendments(
 def approve_rnica_amendment(
     assessment_id: str,
     amendment_id: str,
+    payload: RnicaAmendmentApproveRequest = RnicaAmendmentApproveRequest(),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),
 ):
@@ -963,6 +970,7 @@ def approve_rnica_amendment(
             tenant_id=tenant_id,
             amendment_id=amendment_uuid,
             user_id=user_id,
+            decision_reason=payload.decision_reason,
         )
     except rnica_amendment_service.RnicaAmendmentError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -979,8 +987,8 @@ def deny_rnica_amendment(
     current_user: CurrentUser = Security(get_current_user),
 ):
     """SECTION 12 — Amendment Infrastructure denial. Same review-authority
-    restriction as approval; requires a non-blank `denied_reason` so the
-    decision itself stays traceable.
+    restriction as approval; requires a non-blank `decision_reason` (CDPH
+    written justification) so the decision itself stays traceable.
     """
     record = _load_locked_rnica_assessment_for_amendment(db, assessment_id, current_user)
 
@@ -1006,7 +1014,7 @@ def deny_rnica_amendment(
             tenant_id=tenant_id,
             amendment_id=amendment_uuid,
             user_id=user_id,
-            denied_reason=payload.denied_reason,
+            decision_reason=payload.decision_reason,
         )
     except rnica_amendment_service.RnicaAmendmentError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

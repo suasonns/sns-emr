@@ -89,6 +89,7 @@ export async function requestRnicaCorrection(
     amendmentCategory: string;
     reasonCode: string;
     requestedChange: string;
+    requestSource?: string;
     sectionReference?: string | null;
     originalValueSnapshot?: unknown;
     proposedValue?: unknown;
@@ -99,6 +100,7 @@ export async function requestRnicaCorrection(
       amendment_category: payload.amendmentCategory,
       reason_code: payload.reasonCode,
       requested_change: payload.requestedChange,
+      request_source: payload.requestSource ?? "STAFF",
       section_reference: payload.sectionReference ?? null,
       original_value_snapshot: payload.originalValueSnapshot ?? null,
       proposed_value: payload.proposedValue ?? null,
@@ -119,9 +121,15 @@ export async function listRnicaAmendments(assessmentId: string) {
 // side to DPCS / DPCS Designee / Case Manager / Supervisor (plus
 // Admin/QA/System oversight parity); a 403 here means the current user's
 // role is not a review authority.
-export async function approveRnicaAmendment(assessmentId: string, amendmentId: string) {
+export async function approveRnicaAmendment(
+  assessmentId: string,
+  amendmentId: string,
+  decisionReason?: string
+) {
   return unwrap(
-    api.post(`/visits/rnica/${assessmentId}/amendments/${amendmentId}/approve`),
+    api.post(`/visits/rnica/${assessmentId}/amendments/${amendmentId}/approve`, {
+      decision_reason: decisionReason ?? null,
+    }),
     "Unable to approve amendment"
   );
 }
@@ -129,11 +137,11 @@ export async function approveRnicaAmendment(assessmentId: string, amendmentId: s
 export async function denyRnicaAmendment(
   assessmentId: string,
   amendmentId: string,
-  deniedReason: string
+  decisionReason: string
 ) {
   return unwrap(
     api.post(`/visits/rnica/${assessmentId}/amendments/${amendmentId}/deny`, {
-      denied_reason: deniedReason,
+      decision_reason: decisionReason,
     }),
     "Unable to deny amendment"
   );

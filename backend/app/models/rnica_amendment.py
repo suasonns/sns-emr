@@ -24,6 +24,12 @@ AMENDMENT_REASON_CODES = (
     "OTHER",
 )
 
+# Who originated the correction/amendment request. Distinct from
+# created_by (the clinician who documents/submits it in the system) --
+# e.g. a PATIENT or REPRESENTATIVE may verbally request a correction that
+# STAFF then documents, or INTERNAL_QA may flag it during chart review.
+AMENDMENT_REQUEST_SOURCES = ("PATIENT", "REPRESENTATIVE", "STAFF", "INTERNAL_QA")
+
 # PENDING -> APPROVED | DENIED. There is no auto-approval and no
 # intermediate states -- a review authority (see AMENDMENT_APPROVAL_ROLES
 # in app/api/visits.py) must explicitly decide.
@@ -38,9 +44,16 @@ class RnicaAmendment(BaseModel):
     frozen master map ("Correction / amendment path"), an amendment is
     ALWAYS appended alongside the signed record and NEVER overwrites it:
     `rnica_assessments.form_data` for a locked assessment is never mutated
-    by this workflow. Approving an amendment only changes this row's
-    `status`/`approved_by`/`approved_at` -- it does not retroactively
-    apply `proposed_value` back onto the original signed content.
+    by this workflow. Deciding an amendment only changes this row's
+    `status`/`decision_user_id`/`decision_timestamp`/`decision_reason` --
+    it does not retroactively apply `proposed_value` back onto the
+    original signed content.
+
+    Per CDPH documentation requirements for amendments/corrections, the
+    record must show: the request made (request_source/created_by/
+    created_at), the disposition (status), who decided it and when
+    (decision_user_id/decision_timestamp), and a written justification
+    when denied (decision_reason, required for DENIED).
     """
 
     __tablename__ = "rnica_amendments"
@@ -85,12 +98,19 @@ class RnicaAmendment(BaseModel):
     # The clinician's proposed replacement value/text. Never auto-applied.
     proposed_value = Column(JSONB, nullable=True)
 
+    # PATIENT | REPRESENTATIVE | STAFF | INTERNAL_QA -- who originated the
+    # request (see AMENDMENT_REQUEST_SOURCES above).
+    request_source = Column(String(16), nullable=False, server_default="STAFF")
+
     # PENDING | APPROVED | DENIED
     status = Column(String(16), nullable=False, server_default="PENDING", index=True)
 
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    approved_at = Column(DateTime(timezone=True), nullable=True)
-    denied_reason = Column(Text, nullable=True)
+    # Unified decision metadata -- applies to either disposition. For
+    # DENIED, decision_reason is required (written justification); for
+    # APPROVED it is optional context.
+    decision_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    decision_timestamp = Column(DateTime(timezone=True), nullable=True)
+    decision_reason = Column(Text, nullable=True)
 
     __table_args__ = (
         Index("ix_rnica_amendments_assessment_status", "rnica_assessment_id", "status"),
