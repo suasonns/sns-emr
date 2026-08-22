@@ -663,3 +663,65 @@ def test_gastrointestinal_structured_fields_save_reload_and_poc_linkage(client, 
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/gastrointestinal", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_genitourinary_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.8 Genitourinary/Reproductive structured fields
+    (expanded continence options, general urine characteristics/color,
+    expanded catheter type, catheter irrigation, and catheter care)
+    persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    genitourinary section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"genitourinary": {}})
+
+    updated_gu = {
+        "urinaryStatus": "Retention",
+        "frequency": "Every 2 hours",
+        "urineCharacteristics": ["Cloudy", "Odor"],
+        "urineColor": "Dark amber",
+        "catheter": {
+            "present": True, "type": "Urostomy", "size": "16 Fr",
+            "insertionDate": "2026-07-01", "lastChangeDate": "2026-08-01",
+            "condition": "Patent", "urineCharacteristics": ["Cloudy", "Foul odor"],
+            "irrigation": {"solution": "Normal saline", "frequency": "Daily", "duration": "15 min"},
+        },
+        "catheterCare": "Stoma site cleaned, appliance changed, no skin breakdown noted.",
+        "urineOutput": "Decreased",
+        "twentyFourHourVolume": "450",
+        "reproductive": {"concerns": [], "notes": ""},
+        "bladderManagement": ["Scheduled toileting"],
+        "notes": "Urostomy functioning well, output decreased today.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"genitourinary": updated_gu}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    gu = get_resp.json()["formData"]["genitourinary"]
+
+    for key, value in updated_gu.items():
+        assert gu[key] == value, f"genitourinary field {key} did not round-trip"
+
+    # POC linkage from the genitourinary section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/genitourinary",
+        json={
+            "problem_label": "Urinary-elimination problem — retention, decreased output via urostomy",
+            "evidence_text": "Retention noted, urostomy output decreased to 450mL/24h, cloudy urine with odor.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/genitourinary", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1

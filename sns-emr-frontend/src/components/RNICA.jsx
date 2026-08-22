@@ -547,11 +547,14 @@ const INITIAL_FORM = {
   // ─── 14. GENITOURINARY ────────────────────────────
   genitourinary: {
     urinaryStatus: "", frequency: "",
+    urineCharacteristics: [], urineColor: "",
     catheter: {
       present: false, type: "", size: "",
       insertionDate: "", lastChangeDate: "",
       condition: "", urineCharacteristics: [],
+      irrigation: { solution: "", frequency: "", duration: "" },
     },
+    catheterCare: "",
     urineOutput: "", twentyFourHourVolume: "",
     reproductive: { concerns: [], notes: "" },
     bladderManagement: [],
@@ -5318,17 +5321,23 @@ const SECTION_CONFIGS = {
     subtitle: "Urinary status, catheter, urine output, reproductive concerns",
     cards: [
       { title: "Urinary Status", fields: [
-        { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized"] },
+        { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized", "Bladder program", "Urostomy", "Retention", "Painful urination", "Nocturia"] },
         { type: "input", label: "Frequency", path: "frequency" },
+        { type: "checkboxGroup", label: "Urine", path: "urineCharacteristics", options: ["Clear", "Cloudy", "Pale", "Blood", "Odor"] },
+        { type: "input", label: "Urine Color", path: "urineColor" },
       ]},
       { title: "Catheter Assessment", fields: [
         { type: "checkbox", label: "Catheter Present", path: "catheter.present" },
-        { type: "select", label: "Type", path: "catheter.type", options: ["Foley", "Suprapubic", "Condom", "Intermittent"] },
+        { type: "select", label: "Type", path: "catheter.type", options: ["None", "Foley", "Suprapubic", "Condom", "Intermittent", "Urostomy"] },
         { type: "input", label: "Size", path: "catheter.size" },
         { type: "input", label: "Insertion Date", path: "catheter.insertionDate", inputType: "date" },
         { type: "input", label: "Last Change Date", path: "catheter.lastChangeDate", inputType: "date" },
         { type: "radio", label: "Condition", path: "catheter.condition", options: ["Patent", "Blocked", "Leaking"] },
-        { type: "checkboxGroup", label: "Urine Characteristics", path: "catheter.urineCharacteristics", options: ["Clear", "Cloudy", "Amber", "Dark", "Hematuria", "Sediment", "Foul odor"] },
+        { type: "checkboxGroup", label: "Urine Characteristics (Catheter)", path: "catheter.urineCharacteristics", options: ["Clear", "Cloudy", "Amber", "Dark", "Hematuria", "Sediment", "Foul odor"] },
+        { type: "input", label: "Irrigation Solution", path: "catheter.irrigation.solution" },
+        { type: "input", label: "Irrigation Frequency", path: "catheter.irrigation.frequency" },
+        { type: "input", label: "Irrigation Duration", path: "catheter.irrigation.duration" },
+        { type: "textarea", label: "Catheter Care", path: "catheterCare" },
       ]},
       { title: "Urine Output", fields: [
         { type: "radio", label: "Output", path: "urineOutput", options: ["Adequate", "Decreased", "Anuria", "Polyuria"] },
