@@ -126,12 +126,17 @@ const ASKED_STATUS_LABELS = {
 
 function askedStatus(codedValue, legacyIndicator) {
   if (codedValue === "0" || codedValue === "1" || codedValue === "2") {
-    return { code: codedValue, description: ASKED_STATUS_LABELS[codedValue] };
+    return { code: codedValue, description: ASKED_STATUS_LABELS[codedValue], incomplete: false };
   }
   if (legacyIndicator) {
-    return { code: PLACEHOLDER, description: "Legacy record — asked-status not captured; verify against source documentation" };
+    return {
+      code: PLACEHOLDER,
+      description: "Legacy record: review required",
+      incomplete: true,
+      blockedFromSubmission: true,
+    };
   }
-  return { code: PLACEHOLDER, description: PLACEHOLDER };
+  return { code: PLACEHOLDER, description: PLACEHOLDER, incomplete: true, blockedFromSubmission: true };
 }
 
 function splitPatientName(patient = {}) {
