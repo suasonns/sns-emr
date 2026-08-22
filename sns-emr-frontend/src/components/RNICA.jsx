@@ -458,10 +458,14 @@ const INITIAL_FORM = {
   // ─── 8. CARDIOVASCULAR ────────────────────────────
   cardiovascular: {
     bpSymptoms: [],
+    pulseSites: [],
     pulseQuality: "",
     edema: { present: "", location: [], severity: "", pitting: "" },
     chestPain: { present: "", type: "", frequency: "" },
     peripheralCirculation: "", heartSounds: "", jvd: "",
+    skinColor: "", pacemaker: false, internalDefibrillator: false,
+    varicoseVeins: false, centralVenousLine: false,
+    coolExtremities: false, stasisUlcer: false,
     notes: "",
   },
 
@@ -5118,7 +5122,8 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Cardiovascular Assessment", fields: [
         { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
-        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Strong", "Weak", "Thready", "Bounding", "Irregular"] },
+        { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
+        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Regular", "Strong", "Weak", "Thready", "Bounding", "Irregular", "Tachycardia", "Bradycardia", "Absent"] },
         { type: "triState", label: "Edema Present", path: "edema.present" },
         { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
         { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
@@ -5127,6 +5132,13 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
         { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
+        { type: "input", label: "Skin Color", path: "skinColor" },
+        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
+        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
+        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
+        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
+        { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
+        { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
       ]},
     ],

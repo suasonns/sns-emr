@@ -468,3 +468,65 @@ def test_endocrine_structured_fields_save_reload_and_poc_linkage(client, db_sess
     view_resp = client.get(f"/visits/rnica/{record.id}/poc/endocrine", headers=rn_headers)
     assert view_resp.status_code == 200, view_resp.text
     assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_cardiovascular_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.2 Cardiovascular structured fields (pulse sites,
+    expanded pulse characteristics, pacemaker/defibrillator, varicose
+    veins, central venous line, cool extremities, stasis ulcer, skin
+    color) persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    cardiovascular section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"cardiovascular": {}})
+
+    updated_cardio = {
+        "bpSymptoms": ["Hypertensive"],
+        "pulseSites": ["Apical", "Pedal"],
+        "pulseQuality": "Tachycardia",
+        "edema": {"present": "Yes", "location": ["Bilateral lower extremities"], "severity": "2+", "pitting": ""},
+        "chestPain": {"present": "No", "type": "", "frequency": ""},
+        "peripheralCirculation": "Diminished",
+        "heartSounds": "S1S2 regular, no murmur",
+        "jvd": "No",
+        "skinColor": "Pale",
+        "pacemaker": True,
+        "internalDefibrillator": False,
+        "varicoseVeins": True,
+        "centralVenousLine": False,
+        "coolExtremities": True,
+        "stasisUlcer": False,
+        "notes": "Bilateral pedal pulses weak but palpable.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"cardiovascular": updated_cardio}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    cardio = get_resp.json()["formData"]["cardiovascular"]
+
+    for key, value in updated_cardio.items():
+        assert cardio[key] == value, f"cardiovascular field {key} did not round-trip"
+
+    # POC linkage from the cardiovascular section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/cardiovascular",
+        json={
+            "problem_label": "Perfusion concern — pacemaker, cool extremities, weak pedal pulses",
+            "evidence_text": "Cool extremities, weak pedal/apical pulses, tachycardia noted, pacemaker present.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/cardiovascular", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
