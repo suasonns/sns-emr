@@ -673,6 +673,7 @@ const INITIAL_FORM = {
     psychosocialHistory: [],
     copingAssessment: "", copingNotes: "",
     interventionPlan: [],
+    socialWorkVisitNeeded: false,
     notes: "",
   },
 
@@ -721,6 +722,8 @@ const INITIAL_FORM = {
     educationTopics: DEFAULT_EDUCATION_TOPICS.map((topic) => ({
       topic, taught: false, understood: false, returnDemo: false, na: false,
     })),
+    teachingTopics: [],
+    teachingTopicsOther: "",
     teachingMethods: [],
     patientFamilyResponse: "",
     followUpPlan: "",
@@ -943,6 +946,11 @@ function validateRNICA(formData, mode = "ica") {
   // Skin ? Braden
   if (!formData.skin.braden.total) {
     warnings["skin.braden.total"] = "Braden Scale total required";
+  }
+
+  // Psychosocial ? Suicide/self-harm safety documentation (CDPH: complete, accurate documentation required)
+  if (formData.psychosocial.patientConcerns?.includes("Suicide concerns") && !formData.psychosocial.notes?.trim()) {
+    warnings["psychosocial.notes"] = "Safety: Suicide concerns indicated — document safety assessment/plan in Psychosocial Notes";
   }
 
   // Admissions Order ? Level of Care required
@@ -5634,9 +5642,14 @@ const SECTION_CONFIGS = {
       ]},
       { title: "Patient Concerns", fields: [
         { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
+          "None indicated",
           "Anxiety about illness", "Depression", "Grief/loss", "Financial concerns",
           "Family conflict", "Caregiver burden", "Social isolation", "Role changes",
-          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns"
+          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns",
+          "Non-acceptance of diagnosis", "Potential for non-compliance", "Lack of coping skills",
+          "Suicide concerns", "Substance abuse concerns", "History of emotional illness",
+          "Cultural concerns", "Burial concerns", "Anger",
+          "Want/need help with advance directives", "Want/need help with funeral plans"
         ]},
       ]},
       { title: "Caregiver/Family Concerns", fields: [
@@ -5658,6 +5671,7 @@ const SECTION_CONFIGS = {
         { type: "checkboxGroup", label: "Interventions", path: "interventionPlan", options: [
           "Counseling referral", "Support group", "Community resources", "Crisis intervention", "Psychiatric evaluation"
         ]},
+        { type: "checkbox", label: "Social Work Visit Needed", path: "socialWorkVisitNeeded" },
         { type: "textarea", label: "Psychosocial Notes", path: "notes" },
       ]},
     ],
@@ -5674,7 +5688,8 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Caregiver Faith Tradition", path: "caregiverFaith" },
         { type: "checkboxGroup", label: "Spiritual Concerns", path: "spiritualConcerns", options: [
           "Meaning of illness", "Forgiveness", "Hope", "Legacy", "Prayer requests",
-          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress"
+          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress",
+          "Fear", "Hopelessness"
         ]},
         { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
         { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
@@ -5693,11 +5708,13 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Bereavement Assessment", fields: [
         { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness"
+          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness",
+          "Multiple losses", "Active grieving"
         ]},
         { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverConcerns", options: [
           "Anticipatory grief", "Previous losses", "Complicated grief history",
-          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors"
+          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors",
+          "Multiple losses", "Active grieving"
         ]},
         { type: "radio", label: "Bereavement Risk Level", path: "bereavementRisk", options: ["Low", "Moderate", "High"] },
         { type: "checkbox", label: "Bereavement Visit Needed", path: "bereavementVisitNeeded" },
@@ -5712,9 +5729,11 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Home Visit Aide Tasks", fields: [
         { type: "checkboxGroup", label: "Aide Tasks Needed", path: "aideTasks", options: [
+          "None",
           "Bathing/showering", "Hair care/grooming", "Oral hygiene", "Skin care",
           "Dressing", "Toileting assistance", "Transfers/mobility", "Light meal preparation",
-          "Light housekeeping", "Laundry", "Vital signs", "Range of motion exercises", "Respite for caregiver"
+          "Light housekeeping", "Laundry", "Linen change", "Vital signs", "Range of motion exercises",
+          "Respite for caregiver", "See ADL assessment for other needs"
         ]},
       ]},
       { title: "Aide Visit Preferences", fields: [
@@ -5724,12 +5743,14 @@ const SECTION_CONFIGS = {
       ]},
       { title: "Volunteer Services", fields: [
         { type: "checkboxGroup", label: "Services Needed", path: "volunteerServices", options: [
+          "None",
           "Companionship/visits", "Respite care", "Errand assistance", "Transportation",
           "Vigil/11th hour", "Pet care", "Legacy project", "Music/art therapy", "Reading/letter writing"
         ]},
       ]},
       { title: "Community Resources", fields: [
         { type: "checkboxGroup", label: "Resources Needed", path: "communityResources", options: [
+          "None",
           "Meals on Wheels", "Adult day care", "Transportation services", "Legal aid",
           "Financial assistance programs", "Faith community support", "Veteran services", "Disease-specific organizations"
         ]},
@@ -5757,6 +5778,24 @@ const SECTION_CONFIGS = {
           "Language", "Literacy", "Cognitive impairment", "Hearing deficit",
           "Vision deficit", "Emotional readiness", "Cultural considerations", "Denial of diagnosis"
         ]},
+      ]},
+      { title: "Teaching Topics", fields: [
+        { type: "checkboxGroup", label: "Teach Patient/Family/PCG", path: "teachingTopics", options: [
+          "Diagnosis and disease process",
+          "Medication administration",
+          "Medication side effects",
+          "Medication contraindications",
+          "Comfort pack use",
+          "Opioid use and risk",
+          "Medication reconciliation",
+          "Oxygen",
+          "DME (durable medical equipment)",
+          "Infection control",
+          "Universal precautions",
+          "Safe use and disposal of controlled medications",
+          "Other education",
+        ]},
+        { type: "input", label: "Other Topic (specify)", path: "teachingTopicsOther" },
       ]},
       { title: "Teaching Methods Used", fields: [
         { type: "checkboxGroup", label: "Methods", path: "teachingMethods", options: [
