@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapRnIcaToHopeReport } from "./hopeReportMapper";
+import { mapRnIcaToHopeReport, getHopeAdmissionStatus } from "./hopeReportMapper";
 
 // Priority 1 HOPE compliance remediation — focused mapper tests for
 // F2000 / F2100 / F2200 / F3000 "was patient/responsible party asked?"
@@ -735,6 +735,68 @@ describe("mapRnIcaToHopeReport — J0915 Neuropathic Pain", () => {
     const formData = baseFormData({ pain: {} });
     const report = mapRnIcaToHopeReport(formData);
     expect(responseCode(report, "J0915")).toBe(PLACEHOLDER);
+  });
+});
+
+describe("getHopeAdmissionStatus — SECTION 7 HOPE Admission harvest/completion-status", () => {
+  // Mirrors the subset of RNICA.jsx's SIDEBAR_CONFIG entries relevant here —
+  // { key, label, hope: [...] } per section, exactly as getHopeAdmissionStatus
+  // expects to receive it from the caller.
+  const sections = [
+    { key: "pain", label: "Pain Assessment", hope: ["J0900", "J0915"] },
+    { key: "advancedCarePlanning", label: "Advanced Care Planning", hope: ["F2000", "F2100", "F2200"] },
+    { key: "vitals", label: "Vitals", hope: [] },
+  ];
+
+  it("reports 0% complete and lists every HOPE section as missing on a blank assessment", () => {
+    const status = getHopeAdmissionStatus(baseFormData({ pain: {} }), undefined, {}, sections);
+    expect(status.totalSections).toBe(2); // "vitals" has no hope codes, excluded
+    expect(status.completedCount).toBe(0);
+    expect(status.missingCount).toBe(2);
+    expect(status.percentComplete).toBe(0);
+    expect(status.allComplete).toBe(false);
+    expect(status.missingSections.map((s) => s.key)).toEqual(["pain", "advancedCarePlanning"]);
+  });
+
+  it("marks a section complete only once every one of its HOPE codes resolves", () => {
+    const formData = baseFormData({
+      pain: {
+        screenedForPain: "1",
+        painSeverityCategory: "1",
+        standardizedPainToolType: "1",
+        screeningDate: "2024-01-01",
+        neuropathicPain: "0",
+      },
+    });
+    const status = getHopeAdmissionStatus(formData, undefined, {}, sections);
+    const pain = status.sections.find((s) => s.key === "pain");
+    expect(pain.complete).toBe(true);
+    expect(pain.missingCodes).toEqual([]);
+  });
+
+  it("lists only the specific unresolved codes for a partially-complete section", () => {
+    const formData = baseFormData({
+      pain: { screenedForPain: "1", painSeverityCategory: "1", standardizedPainToolType: "1", screeningDate: "2024-01-01" }, // neuropathicPain missing
+    });
+    const status = getHopeAdmissionStatus(formData, undefined, {}, sections);
+    const pain = status.sections.find((s) => s.key === "pain");
+    expect(pain.complete).toBe(false);
+    expect(pain.missingCodes).toEqual(["J0915"]);
+  });
+
+  it("is 100% complete / allComplete when there are no HOPE-tagged sections (e.g. recert/ongoing visits)", () => {
+    const status = getHopeAdmissionStatus(baseFormData(), undefined, {}, [{ key: "vitals", label: "Vitals", hope: [] }]);
+    expect(status.totalSections).toBe(0);
+    expect(status.percentComplete).toBe(100);
+    expect(status.allComplete).toBe(true);
+    expect(status.missingSections).toEqual([]);
+  });
+
+  it("does not generate, export, or submit a HOPE Admission record — only reports status", () => {
+    const status = getHopeAdmissionStatus(baseFormData(), undefined, {}, sections);
+    expect(status).not.toHaveProperty("submission");
+    expect(status).not.toHaveProperty("export");
+    expect(status).not.toHaveProperty("generated");
   });
 });
 

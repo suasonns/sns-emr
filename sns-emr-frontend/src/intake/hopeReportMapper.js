@@ -632,4 +632,61 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   };
 }
 
+// HOPE Admission harvest/completion-status (RN ICA Master Map SECTION 7).
+// RN ICA's role for HOPE Admission is to harvest the assessment answers that
+// feed the HOPE Admission report and show completion status / missing HOPE
+// sources — it does NOT generate, export, or submit the HOPE Admission
+// record itself (that is a separate downstream concern out of RN ICA scope).
+//
+// `sections` is the caller's per-section HOPE-code inventory (RNICA.jsx's
+// SIDEBAR_CONFIG entries — { key, label, hope: [...] } — already curated to
+// the clinically-relevant, assessment-driven HOPE codes, deliberately
+// excluding purely administrative/agency-level report fields like A0050 or
+// Z0500 that are not "things the clinician charts" and would never read as
+// complete for a real assessment). This function reuses the exact same
+// completeness signal mapRnIcaToHopeReport already computes per code (no
+// value in an item's entries containing the PLACEHOLDER "^") so there is a
+// single source of truth for "is this HOPE code answered."
+export function getHopeAdmissionStatus(formData = {}, patient = defaultPatient, agency = {}, sections = []) {
+  const report = mapRnIcaToHopeReport(formData, patient, agency);
+  const itemsByCode = new Map();
+  report.sections.forEach((section) => {
+    section.items.forEach((item) => {
+      if (!itemsByCode.has(item.code)) itemsByCode.set(item.code, item);
+    });
+  });
+
+  const isCodeComplete = (code) => {
+    const item = itemsByCode.get(code);
+    if (!item) return true; // Not a code the mapper harvests — not a gap.
+    return !(item.entries || []).some((entry) => String(entry.value ?? "").includes(PLACEHOLDER));
+  };
+
+  const hopeSections = (sections || []).filter((section) => Array.isArray(section.hope) && section.hope.length > 0);
+  const evaluated = hopeSections.map((section) => {
+    const missingCodes = section.hope.filter((code) => !isCodeComplete(code));
+    return {
+      key: section.key,
+      label: section.label,
+      codes: section.hope,
+      complete: missingCodes.length === 0,
+      missingCodes,
+    };
+  });
+
+  const missingSections = evaluated.filter((section) => !section.complete);
+  const totalSections = evaluated.length;
+  const completedCount = totalSections - missingSections.length;
+
+  return {
+    totalSections,
+    completedCount,
+    missingCount: missingSections.length,
+    percentComplete: totalSections ? Math.round((completedCount / totalSections) * 100) : 100,
+    sections: evaluated,
+    missingSections,
+    allComplete: missingSections.length === 0,
+  };
+}
+
 export default mapRnIcaToHopeReport;

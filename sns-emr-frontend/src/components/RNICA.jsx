@@ -70,7 +70,7 @@ import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
-import { getSfvStatus } from "../intake/hopeReportMapper";
+import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
@@ -6227,6 +6227,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const currentSectionData = formData[currentRoute?.formSection];
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
   const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
+  // SECTION 7 — HOPE Admission harvest/completion-status. RN ICA's job here is
+  // only to harvest the answers and show completion status / missing HOPE
+  // sources (never to generate, export, or submit the HOPE Admission record
+  // itself). A1400 (Payer Information) is Facesheet-sourced, not an RN ICA
+  // field, so it isn't part of SIDEBAR_CONFIG's per-section hope arrays and
+  // is intentionally excluded from this section-level completion check.
+  const hopeAdmissionPatient = useMemo(() => ({
+    primaryPayerType: patientSummary?.patient?.primary_payer_type || "",
+    secondaryPayerType: patientSummary?.patient?.secondary_payer_type || "",
+  }), [patientSummary]);
+  const hopeAdmissionStatus = useMemo(
+    () => getHopeAdmissionStatus(formData, hopeAdmissionPatient, {}, sidebarConfigItems),
+    [formData, hopeAdmissionPatient, sidebarConfigItems]
+  );
 
   // Navigate — move focus + scroll to the next/previous section (all
   // sections stay mounted; this no longer swaps content).
@@ -6448,6 +6462,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 <div style={{ marginTop: 6 }}>
                   Complete J2052 after the follow-up visit. J2053 may then be documented by an RN or LPN/LVN.
                 </div>
+              </div>
+            )}
+            {!isOngoing && hopeAdmissionStatus.totalSections > 0 && (
+              <div style={{
+                ...styles.warningBox,
+                marginBottom: 16,
+                border: `1px solid ${hopeAdmissionStatus.allComplete ? "rgba(16,185,129,0.35)" : "rgba(234, 88, 12, 0.28)"}`,
+                background: hopeAdmissionStatus.allComplete ? COLORS.successBoxBg : COLORS.warningBoxBg,
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                  HOPE Admission Completion: {hopeAdmissionStatus.completedCount} / {hopeAdmissionStatus.totalSections} sections ({hopeAdmissionStatus.percentComplete}%)
+                </div>
+                {hopeAdmissionStatus.allComplete ? (
+                  <div>All HOPE Admission sources harvested from this assessment are complete.</div>
+                ) : (
+                  <div>
+                    Missing HOPE sources: {hopeAdmissionStatus.missingSections.map((section) => `${section.label} (${section.missingCodes.join(", ")})`).join("; ")}.
+                  </div>
+                )}
               </div>
             )}
             {renderAllSections()}
