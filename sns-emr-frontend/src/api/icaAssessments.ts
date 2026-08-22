@@ -79,6 +79,20 @@ export async function viewRnicaSectionPoc(assessmentId: string, sectionKey: stri
   return unwrap(api.get(`/visits/rnica/${assessmentId}/poc/${sectionKey}`), "Unable to load Plan of Care for this section");
 }
 
+// SECTION 11 — Master Plan of Care Review: cross-section, read-oriented
+// synchronization view over the same authoritative poc_problems rows.
+// Never creates problems; only views/edits/resolves/deactivates existing ones.
+export async function viewRnicaAllPoc(assessmentId: string) {
+  return unwrap(api.get(`/visits/rnica/${assessmentId}/poc`), "Unable to load Plan of Care");
+}
+
+export async function deactivateRnicaSectionPocProblem(assessmentId: string, sectionKey: string, ruleKey: string) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/poc/${sectionKey}/${encodeURIComponent(ruleKey)}/deactivate`),
+    "Unable to deactivate Plan of Care problem",
+  );
+}
+
 export async function addRnicaSectionPocProblem(
   assessmentId: string,
   sectionKey: string,

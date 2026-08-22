@@ -528,6 +528,78 @@ def resolve_problem(
     )
 
 
+def deactivate_problem(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    user_id: Optional[UUID],
+    section_key: str,
+    rule_key: str,
+) -> dict[str, Any]:
+    """'Deactivate Problem' handler (SECTION 11 — Master Plan of Care
+    Review). Distinct from `resolve_problem`: deactivation means the
+    problem is no longer being actively tracked/reviewed (e.g. superseded
+    by a later finding, or determined not clinically relevant), NOT that
+    its goal was clinically met. Marks the problem HISTORICAL (never
+    deletes it) in a new version.
+    """
+
+    def _deactivate(problem: dict[str, Any]) -> None:
+        problem["status"] = "HISTORICAL"
+        for goal in problem.get("goals", []):
+            if isinstance(goal, dict) and goal.get("status") == "ACTIVE":
+                goal["status"] = "HISTORICAL"
+
+    return _mutate_problem(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        user_id=user_id,
+        rule_key=rule_key,
+        change_reason=f"RN ICA: deactivated problem in {section_key} section",
+        mutate_fn=_deactivate,
+    )
+
+
+def _serialize_problem_row(row: POCProblem) -> dict[str, Any]:
+    """Shared read-model serializer for a materialized POCProblem row,
+    used by both the per-section view (`list_section_problems`) and the
+    cross-section Master Plan of Care Review (`list_all_problems`).
+    """
+    origin_section = None
+    if row.source_condition and row.source_condition.startswith(RNICA_SOURCE_CONDITION_PREFIX):
+        origin_section = row.source_condition[len(RNICA_SOURCE_CONDITION_PREFIX):]
+
+    return {
+        "rule_key": row.rule_key,
+        "problem_code": row.problem_code,
+        "label": row.label,
+        "description": row.description,
+        "severity": row.severity,
+        "status": row.status,
+        "source_kind": row.source_kind,
+        "source_condition": row.source_condition,
+        "origin_section": origin_section,
+        "goals": [
+            {
+                "goal_text": g.goal_text,
+                "status": g.status,
+                "interventions": [
+                    {
+                        "discipline": i.discipline,
+                        "intervention_text": i.intervention_text,
+                        "frequency": i.frequency,
+                        "status": i.status,
+                    }
+                    for i in g.interventions
+                ],
+            }
+            for g in row.goals
+        ],
+    }
+
+
 def list_section_problems(
     db: Session,
     *,
@@ -559,35 +631,45 @@ def list_section_problems(
         .all()
     )
 
-    results: list[dict[str, Any]] = []
-    for row in rows:
-        results.append(
-            {
-                "rule_key": row.rule_key,
-                "problem_code": row.problem_code,
-                "label": row.label,
-                "description": row.description,
-                "severity": row.severity,
-                "status": row.status,
-                "source_kind": row.source_kind,
-                "goals": [
-                    {
-                        "goal_text": g.goal_text,
-                        "status": g.status,
-                        "interventions": [
-                            {
-                                "discipline": i.discipline,
-                                "intervention_text": i.intervention_text,
-                                "status": i.status,
-                            }
-                            for i in g.interventions
-                        ],
-                    }
-                    for g in row.goals
-                ],
-            }
+    return [_serialize_problem_row(row) for row in rows]
+
+
+def list_all_problems(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+) -> list[dict[str, Any]]:
+    """SECTION 11 — Master Plan of Care Review. Returns every RN-ICA-sourced
+    problem (any originating section) for the current active POC version,
+    each carrying its `origin_section` (parsed from `source_condition`) so
+    the review screen can display "Origin Section" without re-deriving it.
+
+    This is a read-only synchronization/governance view over the same
+    authoritative `poc_problems` rows that `list_section_problems` reads —
+    it does not introduce a second Plan of Care store, and it never creates
+    problems.
+    """
+    admission = AdmissionService.get_latest_admission(db=db, patient_id=patient_id, tenant_id=tenant_id)
+    if not admission:
+        return []
+
+    poc = get_plan_of_care_by_admission(db, tenant_id=tenant_id, admission_id=admission.id)
+    if not poc or not poc.current_version_id:
+        return []
+
+    rows = (
+        db.query(POCProblem)
+        .filter(
+            POCProblem.tenant_id == tenant_id,
+            POCProblem.poc_version_id == poc.current_version_id,
+            POCProblem.source_condition.like(f"{RNICA_SOURCE_CONDITION_PREFIX}%"),
         )
-    return results
+        .order_by(POCProblem.sort_order)
+        .all()
+    )
+
+    return [_serialize_problem_row(row) for row in rows]
 
 
 def _payload_matches_authoritative_model(draft: dict[str, Any]) -> bool:

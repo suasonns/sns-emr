@@ -32,6 +32,8 @@ import {
   addRnicaSectionPocProblem,
   updateRnicaSectionPocProblem,
   resolveRnicaSectionPocProblem,
+  viewRnicaAllPoc,
+  deactivateRnicaSectionPocProblem,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -3009,6 +3011,210 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
 }
 
 
+// SECTION 11 — Master Plan of Care Review (Phase A: synchronized review /
+// governance layer, NOT a second Plan of Care database).
+//
+// Reads the same authoritative poc_problems rows already written by
+// PocSectionControls' "Add to POC" (via rnica_poc_adapter), across ALL RN
+// ICA sections at once, and exposes View / Edit / Resolve / Deactivate.
+//
+// Deliberately does NOT:
+// - create new problems (no "Add" control here — creation stays scoped to
+//   the originating body-system section's PocSectionControls),
+// - merge duplicate problems, link an existing problem, or show version
+//   history (deferred — see Section 11 spec "Does not" list),
+// - replace the assessment section that originated each problem.
+const POC_STATUS_COLOR = (status, COLORS) => {
+  if (status === "RESOLVED") return COLORS.gray;
+  if (status === "HISTORICAL" || status === "SUPERSEDED") return COLORS.gray;
+  return COLORS.teal;
+};
+
+function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [expandedRuleKey, setExpandedRuleKey] = useState(null);
+  const [editingRuleKey, setEditingRuleKey] = useState(null);
+  const [editDraft, setEditDraft] = useState({ label: "", severity: "", description_addendum: "" });
+
+  const loadProblems = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    viewRnicaAllPoc(assessmentId)
+      .then((res) => setProblems(res?.problems || []))
+      .catch((err) => setError(err.message || "Unable to load Plan of Care"))
+      .finally(() => setLoading(false));
+  }, [assessmentId]);
+
+  useEffect(() => {
+    loadProblems();
+  }, [loadProblems]);
+
+  const startEdit = (p) => {
+    setEditingRuleKey(editingRuleKey === p.rule_key ? null : p.rule_key);
+    setEditDraft({ label: p.label || "", severity: p.severity && p.severity !== "UNKNOWN" ? p.severity : "", description_addendum: "" });
+  };
+
+  const handleSaveEdit = (p) => {
+    setSaving(true);
+    setError("");
+    updateRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key, {
+      label: editDraft.label.trim() || undefined,
+      severity: editDraft.severity || undefined,
+      description_addendum: editDraft.description_addendum.trim() || undefined,
+    })
+      .then(() => {
+        setEditingRuleKey(null);
+        setEditDraft({ label: "", severity: "", description_addendum: "" });
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to update Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleResolve = (p) => {
+    setSaving(true);
+    setError("");
+    resolveRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to resolve Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleDeactivate = (p) => {
+    setSaving(true);
+    setError("");
+    deactivateRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to deactivate Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  if (!assessmentId) {
+    return <div style={styles.infoBox}>Save the assessment once to enable the Master Plan of Care Review.</div>;
+  }
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+        A synchronized, read-oriented view of every problem already recorded on the Plan of Care from any RN ICA
+        section. This is a review and governance layer, not a second Plan of Care record — new problems are still
+        added from the section that identified them.
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {!loading && problems && problems.length === 0 && (
+        <div style={styles.infoBox}>No Plan of Care problems have been recorded yet.</div>
+      )}
+
+      {!loading && problems && problems.map((p) => {
+        const isActive = p.status !== "RESOLVED" && p.status !== "HISTORICAL" && p.status !== "SUPERSEDED";
+        const isExpanded = expandedRuleKey === p.rule_key;
+        const disciplines = Array.from(
+          new Set((p.goals || []).flatMap((g) => (g.interventions || []).map((i) => i.discipline).filter(Boolean)))
+        );
+
+        return (
+          <div key={p.rule_key} style={{
+            padding: "10px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+            marginBottom: 8, fontSize: 12.5, background: isActive ? "transparent" : COLORS.bg,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <strong>{p.label}</strong>
+              <span style={{ fontWeight: 700, color: POC_STATUS_COLOR(p.status, COLORS) }}>
+                {p.status} {p.severity && p.severity !== "UNKNOWN" ? `· ${p.severity}` : ""}
+              </span>
+            </div>
+            <div style={{ color: COLORS.gray, fontSize: 11, marginTop: 4 }}>
+              Origin Section: <strong>{p.origin_section || "—"}</strong>
+              {disciplines.length > 0 && <> · Disciplines: <strong>{disciplines.join(", ")}</strong></>}
+            </div>
+
+            <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setExpandedRuleKey(isExpanded ? null : p.rule_key)} style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+              }}>
+                {isExpanded ? "Hide Details" : "View Problem"}
+              </button>
+              {isActive && (
+                <>
+                  <button type="button" onClick={() => startEdit(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                  }}>
+                    Edit Problem
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleResolve(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  }}>
+                    Resolve Problem
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleDeactivate(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  }}>
+                    Deactivate Problem
+                  </button>
+                </>
+              )}
+            </div>
+
+            {editingRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                <FormInput label="Problem Label" value={editDraft.label} onChange={(v) => setEditDraft((d) => ({ ...d, label: v }))} />
+                <FormSelect label="Severity" value={editDraft.severity} onChange={(v) => setEditDraft((d) => ({ ...d, severity: v }))}
+                  options={["LOW", "MODERATE", "HIGH", "CRITICAL"]} />
+                <FormInput label="Update / Progress Note" value={editDraft.description_addendum}
+                  onChange={(v) => setEditDraft((d) => ({ ...d, description_addendum: v }))} />
+                <button type="button" disabled={saving} onClick={() => handleSaveEdit(p)} style={{
+                  fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                  background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                }}>
+                  {saving ? "Saving…" : "Save Update"}
+                </button>
+              </div>
+            )}
+
+            {isExpanded && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, whiteSpace: "pre-wrap" }}>
+                  <strong>Source Evidence:</strong> {p.description || "—"}
+                </div>
+                {(p.goals || []).length === 0 && (
+                  <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>No goals recorded.</div>
+                )}
+                {(p.goals || []).map((g, gi) => (
+                  <div key={gi} style={{ marginTop: 8 }}>
+                    <div style={{ fontWeight: 700 }}>
+                      Goal: {g.goal_text} <span style={{ fontWeight: 400, color: COLORS.gray }}>({g.status})</span>
+                    </div>
+                    {(g.interventions || []).length === 0 && (
+                      <div style={{ color: COLORS.gray, fontSize: 11.5, marginLeft: 12 }}>No interventions recorded.</div>
+                    )}
+                    {(g.interventions || []).map((iv, ii) => (
+                      <div key={ii} style={{ marginLeft: 12, fontSize: 11.5, color: COLORS.gray }}>
+                        {iv.discipline || "—"}: {iv.intervention_text || "—"}
+                        {iv.frequency ? ` (${iv.frequency})` : ""} — {iv.status}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
 // the same way WeightLossAutoCalcCard turns raw weights into a % change.
 // The RN still confirms/overrides via the existing Constipation radio below;
 // this card only proposes a starting point so the RN isn't over-analyzing.
@@ -5005,6 +5211,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "finalization" && card.customRenderer === "masterPocReview") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <MasterPocReviewCard assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         return (
           <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
@@ -6249,6 +6463,7 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "All assessment problems have been reviewed and POC entries generated", path: "pocGenerationCompleted" },
         { type: "checkbox", label: "POC reviewed with IDG team", path: "pocReviewedWithIdg" },
       ]},
+      { title: "Master Plan of Care Review", customRenderer: "masterPocReview", fields: [] },
       { title: "Completion Status", cms: "F2000/F2100/F2200", fields: [
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
         { type: "input", label: "Clinician Signature", path: "clinicianSignature", required: true },

@@ -150,6 +150,82 @@ def test_add_view_update_resolve_poc_problem_via_rnica_routes(client, db_session
 
 
 @pytest.mark.integration
+def test_master_poc_review_lists_all_sections_and_supports_deactivate(client, db_session, rn_headers):
+    """SECTION 11 — Master Plan of Care Review (Phase A). GET
+    /visits/rnica/{assessment_id}/poc (no section) must return problems from
+    every RN-ICA-sourced section with an `origin_section`, and the new
+    deactivate action must mark a problem HISTORICAL (distinct from
+    RESOLVED) without deleting it or touching other sections' problems.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    assert tenant_id is not None
+
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "skin": {}})
+
+    nutrition_add = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert nutrition_add.status_code == 201, nutrition_add.text
+    nutrition_rule_key = nutrition_add.json()["added"][0]
+
+    skin_add = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={
+            "problem_label": "Stage 2 sacral pressure injury",
+            "evidence_text": "2cm x 2cm partial thickness wound noted on sacrum.",
+            "intervention_text": "RN wound care 3x/week.",
+            "discipline": "RN",
+        },
+        headers=rn_headers,
+    )
+    assert skin_add.status_code == 201, skin_add.text
+    skin_rule_key = skin_add.json()["added"][0]
+
+    # --- Master review lists BOTH sections' problems in one call --------
+    all_resp = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers)
+    assert all_resp.status_code == 200, all_resp.text
+    problems = all_resp.json()["problems"]
+    by_rule_key = {p["rule_key"]: p for p in problems}
+    assert set(by_rule_key) == {nutrition_rule_key, skin_rule_key}
+    assert by_rule_key[nutrition_rule_key]["origin_section"] == "nutrition"
+    assert by_rule_key[skin_rule_key]["origin_section"] == "skin"
+    # Interventions carry frequency so the review can display it.
+    skin_goal = by_rule_key[skin_rule_key]["goals"][0]
+    assert skin_goal["interventions"][0]["discipline"] == "RN"
+
+    # --- Deactivate the skin problem only --------------------------------
+    deactivate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/{skin_rule_key}/deactivate",
+        headers=rn_headers,
+    )
+    assert deactivate_resp.status_code == 200, deactivate_resp.text
+    assert deactivate_resp.json()["problem"]["status"] == "HISTORICAL"
+
+    all_after = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers).json()["problems"]
+    by_rule_key_after = {p["rule_key"]: p for p in all_after}
+    # Deactivated problem still present (never deleted) but HISTORICAL...
+    assert by_rule_key_after[skin_rule_key]["status"] == "HISTORICAL"
+    # ...and distinct from RESOLVED — the nutrition problem is untouched.
+    assert by_rule_key_after[nutrition_rule_key]["status"] == "ACTIVE"
+
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).one()
+    version_count = (
+        db_session.query(PlanOfCareVersion)
+        .filter_by(plan_of_care_id=poc.id)
+        .count()
+    )
+    # bootstrap, add-nutrition, add-skin, deactivate-skin = 4 versions;
+    # full history preserved, nothing overwritten in place.
+    assert version_count == 4
+
+
+@pytest.mark.integration
 def test_lock_rnica_assessment_creates_no_poc_version_or_problem(client, db_session, rn_headers):
     """Locking RN ICA must only validate/sign/lock/preserve data — it must
     never create a PlanOfCareVersion or POCProblem. POC changes are strictly

@@ -75,6 +75,29 @@ def _user_id(current_user: CurrentUser):
     return raw
 
 
+@router.get("/{assessment_id}/poc")
+def view_all_poc(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 11 — Master Plan of Care Review. Returns every RN-ICA-sourced
+    problem (any originating section) for the current active Plan of Care
+    version. Read-only synchronization view; does not create problems.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    tenant_id = _tenant_id_for(db, record)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    problems = rnica_poc_adapter.list_all_problems(
+        db,
+        tenant_id=tenant_id,
+        patient_id=record.patient_id,
+    )
+    return {"assessmentId": str(record.id), "problems": problems}
+
+
 @router.get("/{assessment_id}/poc/{section_key}")
 def view_section_poc(
     assessment_id: str,
@@ -176,6 +199,34 @@ def resolve_section_poc_problem(
 
     try:
         result = rnica_poc_adapter.resolve_problem(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            user_id=_user_id(current_user),
+            section_key=section_key,
+            rule_key=rule_key,
+        )
+    except rnica_poc_adapter.RnicaPocAdapterError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+    return {"assessmentId": str(record.id), "sectionKey": section_key, **_jsonable(result)}
+
+
+@router.post("/{assessment_id}/poc/{section_key}/{rule_key}/deactivate")
+def deactivate_section_poc_problem(
+    assessment_id: str,
+    section_key: str,
+    rule_key: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    tenant_id = _tenant_id_for(db, record)
+    if tenant_id is None:
+        raise HTTPException(status_code=400, detail="Patient has no tenant assigned")
+
+    try:
+        result = rnica_poc_adapter.deactivate_problem(
             db,
             tenant_id=tenant_id,
             patient_id=record.patient_id,
