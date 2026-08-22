@@ -42,6 +42,8 @@ from app.models.sfv_requirement import SFVRequirement
 from app.models.admission import Admission
 from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.rnica_assessment import RnicaAssessment
+from app.services import rnica_poc_adapter
+from app.services.rnica_finalization_service import evaluate_finalization_readiness
 from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_data
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
@@ -590,6 +592,7 @@ def get_rnica_assessment(
         "patientId": str(record.patient_id),
         "formData": record.form_data or {},
         "locked": record.locked,
+        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
     }
@@ -623,6 +626,7 @@ def get_rnica_assessment_by_patient(
         "patientId": str(record.patient_id),
         "formData": record.form_data or {},
         "locked": record.locked,
+        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
     }
@@ -645,6 +649,22 @@ def update_rnica_assessment(
         raise HTTPException(status_code=404, detail="Assessment not found")
 
     get_authorized_patient(db, record.patient_id, current_user)
+
+    if record.locked:
+        # SECTION 12 — a locked/signed RN ICA is immutable at the API layer,
+        # not just in the UI. This is intentionally NOT the amendment
+        # workflow itself (that infrastructure is not built yet) — it is
+        # the documented future entry point: a distinct, traceable
+        # correction/addendum path (see POST /rnica/{id}/correction-request)
+        # will be layered in later without ever rewriting signed content.
+        raise HTTPException(
+            status_code=423,
+            detail=(
+                "This RN ICA assessment is locked and cannot be edited. "
+                "Use the correction/amendment workflow (POST /rnica/{assessment_id}/correction-request) "
+                "to request a traceable addendum instead of modifying signed content."
+            ),
+        )
 
     form_data = (payload or {}).get("formData") or record.form_data or {}
     record.form_data = form_data
@@ -686,6 +706,45 @@ def lock_rnica_assessment(
 
     get_authorized_patient(db, record.patient_id, current_user)
 
+    if record.locked:
+        # Idempotent: re-locking an already-locked assessment is a no-op,
+        # not an error — it must not re-run readiness checks (which could
+        # spuriously fail if reference data changed after signing) or emit
+        # a duplicate audit event for the same signature.
+        return {
+            "assessmentId": str(record.id),
+            "status": "locked",
+            "locked": True,
+            "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
+        }
+
+    # SECTION 12 — the backend re-checks the *same* readiness rules the
+    # Final Review Dashboard shows (see rnica_finalization_service /
+    # GET .../finalization-readiness). A disabled Lock button in the UI is
+    # a courtesy; this is the actual enforcement boundary, since the lock
+    # endpoint can be called directly.
+    patient = db.query(Patient).filter(Patient.id == record.patient_id).first()
+    tenant_id = record.tenant_id or getattr(patient, "tenant_id", None)
+    poc_problems: list = []
+    if tenant_id is not None:
+        poc_problems = rnica_poc_adapter.list_all_problems(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+        )
+
+    readiness = evaluate_finalization_readiness(record.form_data or {}, poc_problems)
+    if not readiness["ready"]:
+        unmet = [check["label"] for check in readiness["checks"].values() if not check["ready"]]
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Cannot lock: required Section 12 finalization checks have not passed.",
+                "unmetChecks": unmet,
+                "checks": readiness["checks"],
+            },
+        )
+
     record.locked = True
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
@@ -698,11 +757,68 @@ def lock_rnica_assessment(
     # is intentionally NOT invoked here; it is only reachable through the
     # explicit "Add to POC" control (see app/api/routes/rnica_poc.py), which
     # requires an explicit clinician action.
+    db.info["tenant_id"] = tenant_id
+    _safe_log_event(
+        db=db,
+        user_id=getattr(current_user, "id", None) or getattr(current_user, "user_id", None),
+        action="RNICA_ASSESSMENT_LOCKED",
+        entity_type="rnica_assessment",
+        entity_id=record.id,
+        metadata={
+            "patientId": str(record.patient_id),
+            "signatureCertification": bool(((record.form_data or {}).get("finalization") or {}).get("signatureCertification")),
+            "clinicianSignature": ((record.form_data or {}).get("finalization") or {}).get("clinicianSignature"),
+            "lockedAt": record.locked_at.isoformat(),
+        },
+    )
+    db.commit()
+
     return {
         "assessmentId": str(record.id),
         "status": "locked",
         "locked": True,
+        "lockedAt": record.locked_at.isoformat(),
     }
+
+
+@router.post("/rnica/{assessment_id}/correction-request")
+def request_rnica_correction(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — future correction/amendment entry point (stub only).
+
+    A locked RN ICA is immutable (see `update_rnica_assessment`). This
+    endpoint documents where the traceable correction/addendum workflow
+    will live once built: a distinct, timestamped, attributable entry
+    appended alongside — never overwriting — the signed narrative. It is
+    intentionally NOT implemented yet per SECTION 12 scope; only the entry
+    point exists so the UI has somewhere to route a "Request Correction"
+    action without inventing ad hoc amendment infrastructure now.
+    """
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    get_authorized_patient(db, record.patient_id, current_user)
+
+    if not record.locked:
+        raise HTTPException(status_code=400, detail="Only a locked assessment can be corrected or amended.")
+
+    raise HTTPException(
+        status_code=501,
+        detail=(
+            "The correction/amendment workflow has not been implemented yet. "
+            "This endpoint reserves the future path for a distinct, traceable "
+            "addendum to a signed RN ICA assessment."
+        ),
+    )
 
 
 @router.get("/rnica/{assessment_id}/intelligence")

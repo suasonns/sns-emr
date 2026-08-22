@@ -23,6 +23,7 @@ from app.core.security import get_current_user, CurrentUser
 from app.models.patient import Patient
 from app.models.rnica_assessment import RnicaAssessment
 from app.services import rnica_poc_adapter
+from app.services.rnica_finalization_service import evaluate_finalization_readiness
 
 router = APIRouter(prefix="/visits/rnica", tags=["rnica-poc"])
 
@@ -96,6 +97,35 @@ def view_all_poc(
         patient_id=record.patient_id,
     )
     return {"assessmentId": str(record.id), "problems": problems}
+
+
+@router.get("/{assessment_id}/finalization-readiness")
+def get_finalization_readiness(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """SECTION 12 — Final Review Dashboard data source. Single source of
+    truth shared with `lock_rnica_assessment` (app/api/visits.py) so the
+    UI's Lock button and the server's lock gate can never disagree.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    tenant_id = _tenant_id_for(db, record)
+
+    poc_problems: list = []
+    if tenant_id is not None:
+        poc_problems = rnica_poc_adapter.list_all_problems(
+            db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+        )
+
+    readiness = evaluate_finalization_readiness(record.form_data or {}, poc_problems)
+    return {
+        "assessmentId": str(record.id),
+        "locked": record.locked,
+        **readiness,
+    }
 
 
 @router.get("/{assessment_id}/poc/{section_key}")

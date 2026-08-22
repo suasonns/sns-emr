@@ -34,6 +34,8 @@ import {
   resolveRnicaSectionPocProblem,
   viewRnicaAllPoc,
   deactivateRnicaSectionPocProblem,
+  getRnicaFinalizationReadiness,
+  requestRnicaCorrection,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -831,6 +833,7 @@ const INITIAL_FORM = {
     pharmacist: { referred: false, reason: "" },
     other: [],
     notes: "",
+    reviewed: false,
   },
 
   // ─── 28. FINALIZATION ─────────────────────────────
@@ -1038,6 +1041,13 @@ function validateRNICA(formData, mode = "ica") {
   // Finalization ? signature
   if (!formData.finalization.clinicianSignature) {
     errors["finalization.clinicianSignature"] = "Clinician signature required";
+  }
+
+  // SECTION 12 — attestation. Previously present in the UI/INITIAL_FORM
+  // but never enforced; the assessment must not be lockable without an
+  // explicit clinician attestation that it is complete and accurate.
+  if (formData.finalization.signatureCertification !== true) {
+    errors["finalization.signatureCertification"] = "Signature certification (attestation) is required before locking";
   }
 
   return { errors, warnings, isValid: Object.keys(errors).length === 0 };
@@ -3214,6 +3224,116 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   );
 }
 
+// SECTION 12 — Final Review Dashboard. Fetches the single-source-of-truth
+// finalization readiness breakdown from the backend (the same function the
+// Lock endpoint enforces server-side — see rnica_finalization_service.py /
+// GET .../finalization-readiness) and renders it as a pass/fail checklist,
+// plus the future correction/amendment entry point once locked.
+function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS, onReadinessChange }) {
+  const [readiness, setReadiness] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [correctionMessage, setCorrectionMessage] = useState("");
+  const [requestingCorrection, setRequestingCorrection] = useState(false);
+
+  const loadReadiness = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    getRnicaFinalizationReadiness(assessmentId)
+      .then((res) => {
+        setReadiness(res);
+        onReadinessChange?.(res);
+      })
+      .catch((err) => setError(err.message || "Unable to load finalization readiness"))
+      .finally(() => setLoading(false));
+  }, [assessmentId, onReadinessChange]);
+
+  useEffect(() => {
+    loadReadiness();
+  }, [loadReadiness]);
+
+  const handleRequestCorrection = () => {
+    setRequestingCorrection(true);
+    setCorrectionMessage("");
+    requestRnicaCorrection(assessmentId)
+      .then(() => setCorrectionMessage("Correction request submitted."))
+      .catch((err) => setCorrectionMessage(err.message || "Correction/amendment workflow is not available yet."))
+      .finally(() => setRequestingCorrection(false));
+  };
+
+  if (!assessmentId) {
+    return <div style={styles.infoBox}>Save the assessment once to enable the Final Review Dashboard.</div>;
+  }
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+        Every check below must pass before this assessment can be locked. This is the same rule set the server
+        enforces on Lock — disabling the Lock button here is a courtesy, not the real safeguard.
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Checking finalization readiness…</div>}
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+
+      {!loading && readiness && (
+        <>
+          <div style={{
+            fontWeight: 700, fontSize: 13, marginBottom: 8,
+            color: readiness.ready ? (COLORS.success || "#16a34a") : (COLORS.error || "#ef4444"),
+          }}>
+            {readiness.ready ? "✓ Ready to lock" : "✗ Not yet ready to lock"}
+          </div>
+          {Object.entries(readiness.checks || {}).map(([key, check]) => (
+            <div key={key} style={{
+              display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 0",
+              borderBottom: `1px solid ${COLORS.border}`, fontSize: 12.5,
+            }}>
+              <span style={{ color: check.ready ? (COLORS.success || "#16a34a") : (COLORS.error || "#ef4444"), fontWeight: 700 }}>
+                {check.ready ? "✓" : "✗"}
+              </span>
+              <div>
+                <div style={{ fontWeight: 600 }}>{check.label}</div>
+                <div style={{ color: COLORS.gray, fontSize: 11.5 }}>{check.message}</div>
+                {Array.isArray(check.incompleteLabels) && check.incompleteLabels.length > 0 && (
+                  <div style={{ color: COLORS.gray, fontSize: 11, marginTop: 2 }}>
+                    Incomplete: {check.incompleteLabels.join(", ")}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          <button type="button" onClick={loadReadiness} style={{
+            marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+            border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+          }}>
+            Refresh Readiness Check
+          </button>
+        </>
+      )}
+
+      {locked && (
+        <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
+          <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Correction / Amendment</div>
+          <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+            This assessment is locked and signed. A correction requires a distinct, traceable addendum rather than
+            editing signed content.
+          </div>
+          <button type="button" disabled={requestingCorrection} onClick={handleRequestCorrection} style={{
+            fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+            border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: requestingCorrection ? "wait" : "pointer",
+          }}>
+            {requestingCorrection ? "Requesting…" : "Request Correction / Amendment"}
+          </button>
+          {correctionMessage && (
+            <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{correctionMessage}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // the same way WeightLossAutoCalcCard turns raw weights into a % change.
 // The RN still confirms/overrides via the existing Constipation radio below;
@@ -4994,7 +5114,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, onFinalizationReadinessChange) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
@@ -5215,6 +5335,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <MasterPocReviewCard assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "finalization" && card.customRenderer === "finalReviewDashboard") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FinalReviewDashboardCard
+                assessmentId={assessmentId}
+                locked={locked}
+                styles={styles}
+                COLORS={COLORS}
+                onReadinessChange={onFinalizationReadinessChange}
+              />
             </Card>
           );
         }
@@ -6443,6 +6577,7 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Pharmacist Referral", path: "pharmacist.referred" },
         { type: "input", label: "Pharmacist Reason", path: "pharmacist.reason" },
         { type: "textarea", label: "Referral Notes", path: "notes" },
+        { type: "checkbox", label: "I reviewed the referral status for this patient and it is current and complete.", path: "reviewed" },
       ]},
     ],
   },
@@ -6464,6 +6599,7 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "POC reviewed with IDG team", path: "pocReviewedWithIdg" },
       ]},
       { title: "Master Plan of Care Review", customRenderer: "masterPocReview", fields: [] },
+      { title: "Final Review Dashboard", customRenderer: "finalReviewDashboard", fields: [] },
       { title: "Completion Status", cms: "F2000/F2100/F2200", fields: [
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
         { type: "input", label: "Clinician Signature", path: "clinicianSignature", required: true },
@@ -6549,6 +6685,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [intelligenceError, setIntelligenceError] = useState("");
   const [validation, setValidation] = useState({ errors: {}, warnings: {}, isValid: true });
   const [locked, setLocked] = useState(false);
+  const [lockedAt, setLockedAt] = useState(null);
+  const [finalizationReadiness, setFinalizationReadiness] = useState(null);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const isOngoing = mode === "ongoing";
@@ -6688,6 +6826,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     }
   }, []);
 
+  const refreshFinalizationReadiness = useCallback(async (currentAssessmentId) => {
+    if (!currentAssessmentId) {
+      setFinalizationReadiness(null);
+      return;
+    }
+    try {
+      const data = await getRnicaFinalizationReadiness(currentAssessmentId);
+      setFinalizationReadiness(data);
+    } catch (err) {
+      console.error("RN ICA finalization readiness load error:", err);
+      // Fail closed: an unreadable readiness check must not silently enable Lock.
+      setFinalizationReadiness({ ready: false, checks: {} });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (assessmentId) {
+      refreshFinalizationReadiness(assessmentId);
+    }
+  }, [assessmentId, refreshFinalizationReadiness]);
+
   // Load existing assessment
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
@@ -6716,6 +6875,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
         setLocked(!!data.locked);
+        setLockedAt(data.lockedAt || null);
         return data;
       })
       .then((data) => {
@@ -6775,6 +6935,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setAssessmentId(activeAssessmentId);
       }
       await refreshIntelligence(activeAssessmentId);
+      await refreshFinalizationReadiness(activeAssessmentId);
       markPersisted(formData, activeAssessmentId);
       setSaveStatus("saved");
     } catch (err) {
@@ -6784,7 +6945,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setSaving(false);
     }
-  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence]);
+  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence, refreshFinalizationReadiness]);
 
   // Lock
   const handleLock = useCallback(async () => {
@@ -6794,15 +6955,22 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       alert("Cannot lock: there are validation errors. Please complete all required fields.");
       return;
     }
+    if (finalizationReadiness && !finalizationReadiness.ready) {
+      alert("Cannot lock: the Final Review Dashboard has unmet Section 12 checks. Review it before locking.");
+      return;
+    }
     setPageError("");
     try {
-      await api.lockRNICAAssessment(assessmentId);
+      const result = await api.lockRNICAAssessment(assessmentId);
       setLocked(true);
+      setLockedAt(result?.lockedAt || null);
+      await refreshFinalizationReadiness(assessmentId);
     } catch (err) {
       console.error("Lock error:", err);
-      setPageError(err instanceof Error ? err.message : "Unable to lock RN ICA assessment.");
+      const detail = err instanceof Error ? err.message : "Unable to lock RN ICA assessment.";
+      setPageError(detail);
     }
-  }, [assessmentId, formData]);
+  }, [assessmentId, formData, mode, finalizationReadiness, refreshFinalizationReadiness]);
 
   // Section completion tracker
   const completedSections = useMemo(() => {
@@ -6900,7 +7068,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, setFinalizationReadiness)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -7220,11 +7388,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           {assessmentId && (
             <span style={{ fontSize: 12, color: COLORS.gray }}>ID: {assessmentId}</span>
           )}
+          {locked && lockedAt && (
+            <span style={{ fontSize: 12, color: COLORS.gray }}>
+              Signed: {new Date(lockedAt).toLocaleString()}
+            </span>
+          )}
           <button style={styles.btnPrimary} onClick={handleSave} disabled={saving || locked}>
             {saving ? "Saving..." : saveButtonLabel}
           </button>
           {assessmentId && !locked && (
-            <button style={styles.btnDanger} onClick={handleLock}>
+            <button
+              style={styles.btnDanger}
+              onClick={handleLock}
+              disabled={!!(finalizationReadiness && !finalizationReadiness.ready)}
+              title={finalizationReadiness && !finalizationReadiness.ready
+                ? "Complete all Section 12 Final Review Dashboard checks before locking."
+                : undefined}
+            >
               Lock Assessment
             </button>
           )}

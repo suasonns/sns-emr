@@ -239,7 +239,14 @@ def test_lock_rnica_assessment_creates_no_poc_version_or_problem(client, db_sess
             "appetite": "Poor",
             "notes": "Significant unintentional weight loss noted.",
         },
-        "finalization": {"clinicianSignature": "RN Test"},
+        "diagnoses": {"lcdEligibilityNarrative": "Documented decline per LCD criteria."},
+        "referrals": {"reviewed": True},
+        "finalization": {
+            "clinicianSignature": "RN Test",
+            "signatureCertification": True,
+            "pocGenerationCompleted": True,
+            "responseToInterventions": {"baselineEstablished": True},
+        },
     }
     record = _make_rnica_assessment(db_session, patient, tenant_id, form_data)
 
@@ -276,7 +283,22 @@ def test_update_and_resolve_require_explicit_action(client, db_session, rn_heade
     other RN ICA action (e.g. saving/locking the assessment)."""
     tenant_id = db_session.info.get("tenant_id")
     patient, admission = _make_patient_and_admission(db_session, tenant_id)
-    record = _make_rnica_assessment(db_session, patient, tenant_id, {"skin": {}})
+    record = _make_rnica_assessment(
+        db_session,
+        patient,
+        tenant_id,
+        {
+            "skin": {},
+            "diagnoses": {"lcdEligibilityNarrative": "Documented decline per LCD criteria."},
+            "referrals": {"reviewed": True},
+            "finalization": {
+                "clinicianSignature": "RN Test",
+                "signatureCertification": True,
+                "pocGenerationCompleted": True,
+                "responseToInterventions": {"baselineEstablished": True},
+            },
+        },
+    )
     section_key = "skin"
 
     add_resp = client.post(
@@ -284,6 +306,9 @@ def test_update_and_resolve_require_explicit_action(client, db_session, rn_heade
         json={
             "problem_label": "Stage 2 pressure injury, sacrum",
             "evidence_text": "2cm x 1.5cm partial-thickness wound noted on assessment.",
+            "goal_text": "Promote wound healing / prevent progression",
+            "intervention_text": "RN to assess and dress wound per protocol.",
+            "discipline": "RN",
         },
         headers=rn_headers,
     )

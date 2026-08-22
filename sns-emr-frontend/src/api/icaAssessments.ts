@@ -70,6 +70,27 @@ export async function getRnicaIntelligence(assessmentId: string) {
   return unwrap(api.get(`/visits/rnica/${assessmentId}/intelligence`), "RN ICA intelligence failed");
 }
 
+// SECTION 12 — Final Review Dashboard data source. Single source of truth
+// shared with the backend lock endpoint, so the UI's Lock button and the
+// server's lock gate can never disagree.
+export async function getRnicaFinalizationReadiness(assessmentId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/finalization-readiness`),
+    "Unable to load Section 12 finalization readiness"
+  );
+}
+
+// SECTION 12 — future correction/amendment entry point (stub). Only
+// reachable once an assessment is locked; the backend intentionally
+// responds 501 today (see app/api/visits.py) until the full traceable
+// addendum workflow is built.
+export async function requestRnicaCorrection(assessmentId: string) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/correction-request`),
+    "Correction/amendment request failed"
+  );
+}
+
 // --- RN ICA -> Plan of Care (Add / View / Update / Resolve per body-system
 // section). These call the authoritative Plan of Care document API via the
 // backend adapter in app/services/rnica_poc_adapter.py — there is no

@@ -45,8 +45,12 @@ def test_rnica_assessment_save_get_update_and_lock(client, db_session, rn_header
             },
             "finalization": {
                 "clinicianSignature": "RN Test",
+                "signatureCertification": True,
                 "pocGenerationCompleted": True,
+                "responseToInterventions": {"baselineEstablished": True},
             },
+            "diagnoses": {"lcdEligibilityNarrative": "Documented decline per LCD criteria."},
+            "referrals": {"reviewed": True},
         },
     }
 
