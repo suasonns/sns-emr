@@ -1,7 +1,7 @@
 """add tenant_id to patient_code_statuses
 
 Revision ID: e2a7b8c9d0f1
-Revises: d1fdad4c35bf
+Revises: c4d5e6f7a8b9
 Create Date: 2026-08-22
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "e2a7b8c9d0f1"
-down_revision: Union[str, Sequence[str], None] = "d1fdad4c35bf"
+down_revision: Union[str, Sequence[str], None] = "c4d5e6f7a8b9"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

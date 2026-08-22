@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 import re
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
@@ -49,6 +49,21 @@ from app.services.icd10_resolver_service import (
 )
 from app.services.diagnosis_sync_service import (
     sync_official_primary_diagnosis,
+)
+from app.services.code_status_sync_service import (
+    CODE_STATUS_DISPLAY_LABELS,
+    get_current_code_status,
+)
+from app.services.physician_sync_service import (
+    ASSOCIATE_MEDICAL_DIRECTOR,
+    ATTENDING,
+    MEDICAL_DIRECTOR,
+    get_physician_assignments,
+)
+from app.services.contact_sync_service import (
+    EMERGENCY_CONTACT,
+    RESPONSIBLE_PARTY,
+    get_patient_contacts,
 )
 from app.services.hnp_parser_service import build_hnp_summary
 from enum import Enum
@@ -657,6 +672,150 @@ def _get_diagnosis_summary_payload(
             for diagnosis in active_comorbidities
         ],
     }
+
+# =========================================================
+# CARE TEAM — AUTO-POPULATED FROM SHARED ASSIGNMENT SYSTEM
+# =========================================================
+#
+# Facesheet must NOT be the source of truth for who is on a patient's
+# care team. app.models.patient_assignment.PatientAssignment (assigned
+# via RNICA / scheduling) is the shared source of truth. This helper
+# reads the current active assignments and maps them onto the roles the
+# Facesheet Hospice Snapshot / Care Team card displays.
+#
+# NOTE: "Volunteer" has no Discipline enum value yet in this codebase,
+# so it cannot be auto-populated from PatientAssignment today; it
+# remains a manually-maintained facesheet field until a VOLUNTEER
+# discipline is added to app.models.enums.Discipline.
+# =========================================================
+
+_CARE_TEAM_DISCIPLINE_MAP: dict[str, tuple[str, ...]] = {
+    "primary_rn_name": ("RN",),
+    "lvn_name": ("LVN", "LPN"),
+    "social_worker_name": ("MSW", "SW", "LCSW", "BSW"),
+    "chaplain_name": ("CHAPLAIN",),
+    "chha_name": ("CHHA", "AIDE"),
+    "clinical_manager_name": ("CASE_MANAGER",),
+}
+
+
+def _get_care_team_assignments(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+) -> dict:
+    rows = (
+        db.query(PatientAssignment, User)
+        .join(User, User.id == PatientAssignment.user_id)
+        .filter(
+            PatientAssignment.tenant_id == tenant_id,
+            PatientAssignment.patient_id == patient_id,
+            PatientAssignment.active.is_(True),
+        )
+        .order_by(
+            PatientAssignment.is_primary.desc(),
+            PatientAssignment.assigned_at.desc(),
+        )
+        .all()
+    )
+
+    by_discipline: dict[str, tuple[str, str]] = {}
+    for assignment, assigned_user in rows:
+        discipline_value = getattr(assignment.discipline, "value", assignment.discipline)
+        if discipline_value in by_discipline:
+            continue
+        name = assigned_user.display_name or assigned_user.full_name or assigned_user.email
+        by_discipline[discipline_value] = (name, str(assigned_user.id))
+
+    result: dict[str, dict | None] = {}
+    for field, disciplines in _CARE_TEAM_DISCIPLINE_MAP.items():
+        match = None
+        for discipline in disciplines:
+            if discipline in by_discipline:
+                match = by_discipline[discipline]
+                break
+        result[field] = (
+            {"name": match[0], "user_id": match[1], "source": "ASSIGNMENT"}
+            if match
+            else None
+        )
+
+    return result
+
+
+# =========================================================
+# BENEFIT PERIOD — SYSTEM-CALCULATED SCHEDULE
+# =========================================================
+#
+# Hospice benefit periods (per CMS): the first two benefit periods are
+# 90 days each; every subsequent benefit period is 60 days, and periods
+# continue indefinitely as long as the patient remains eligible. This
+# schedule is derived from the election date and should be the primary,
+# auto-calculated source for the Facesheet's Benefit Period fields —
+# manual entry is a fallback/override only when no election date is on
+# file yet (e.g. still in referral).
+# =========================================================
+
+def _compute_benefit_period_schedule(
+    election_date: date | None,
+    *,
+    today: date | None = None,
+) -> dict:
+    if not election_date:
+        return {
+            "available": False,
+            "reason": "NO_ELECTION_DATE",
+            "benefit_period_number": None,
+            "benefit_period_start": None,
+            "benefit_period_end": None,
+            "days_remaining": None,
+            "recert_due_date": None,
+            "face_to_face_due_date": None,
+        }
+
+    today = today or date.today()
+
+    period_number = 1
+    period_start = election_date
+    period_length = 90
+
+    # Walk forward through the BP schedule until we find the period
+    # containing "today" (or the next upcoming period if today is
+    # before election, or the most recent period if the patient has
+    # somehow lapsed past all computed periods).
+    while True:
+        period_end = period_start + timedelta(days=period_length)
+
+        if today < period_end or period_number >= 60:
+            break
+
+        period_number += 1
+        period_start = period_end
+        period_length = 90 if period_number <= 2 else 60
+
+    days_remaining = (period_end - today).days
+
+    # Operational buffer: recert paperwork should be completed before
+    # the benefit period ends; flag 15 days ahead as the internal due
+    # date so staff aren't scrambling on the last day.
+    recert_due_date = period_end - timedelta(days=15)
+
+    # CMS requires a face-to-face encounter within the 30 days prior to
+    # the start of the 3rd benefit period and every period thereafter.
+    face_to_face_due_date = period_start if period_number >= 3 else None
+
+    return {
+        "available": True,
+        "reason": None,
+        "benefit_period_number": period_number,
+        "benefit_period_start": period_start,
+        "benefit_period_end": period_end,
+        "days_remaining": days_remaining,
+        "recert_due_date": recert_due_date,
+        "face_to_face_due_date": face_to_face_due_date,
+    }
+
 
 def _generate_mrn_for_tenant(
     db: Session,
@@ -1333,6 +1492,8 @@ class FaceSheetCreate(BaseModel):
 
     secondary_diagnoses: str | None = None
 
+    diagnosis_entries: list[dict] | None = None
+
     has_allergies: bool | None = None
 
     allergies: str | None = None
@@ -1344,6 +1505,54 @@ class FaceSheetCreate(BaseModel):
     ref_date: date | None = None
 
     recert_date: date | None = None
+
+    election_date: date | None = None
+
+    face_to_face_due_date: date | None = None
+
+    # ==================================================
+    # ✅ BENEFIT PERIOD
+    # ==================================================
+
+    benefit_period_number: str | None = None
+
+    benefit_period_start: date | None = None
+
+    benefit_period_end: date | None = None
+
+    # ==================================================
+    # ✅ HOSPICE SNAPSHOT
+    # ==================================================
+
+    pps_score: str | None = None
+
+    kps_score: str | None = None
+
+    fast_stage: str | None = None
+
+    code_status: str | None = None
+
+    cti_status: str | None = None
+
+    noe_status: str | None = None
+
+    primary_rn_name: str | None = None
+
+    social_worker_name: str | None = None
+
+    # ==================================================
+    # ✅ CARE TEAM
+    # ==================================================
+
+    lvn_name: str | None = None
+
+    chaplain_name: str | None = None
+
+    chha_name: str | None = None
+
+    volunteer_name: str | None = None
+
+    clinical_manager_name: str | None = None
 
     # ==================================================
     # ✅ RESPONSIBLE PARTY
@@ -1422,12 +1631,30 @@ class FaceSheetCreate(BaseModel):
     dme_vendor_phone: str | None = None
 
     # ==================================================
+    # ✅ OXYGEN
+    # ==================================================
+
+    oxygen_vendor_name: str | None = None
+
+    oxygen_vendor_phone: str | None = None
+
+    oxygen_vendor_emergency_phone: str | None = None
+
+    # ==================================================
     # ✅ MORTUARY
     # ==================================================
 
     mortuary_name: str | None = None
 
     mortuary_phone: str | None = None
+
+    mortuary_prearranged: bool | None = None
+
+    mortuary_contact_name: str | None = None
+
+    mortuary_contact_phone: str | None = None
+
+    mortuary_notes: str | None = None
 
     # ==================================================
     # ✅ SPECIAL INSTRUCTIONS
@@ -1701,6 +1928,88 @@ def get_facesheet(
         )
 
     # --------------------------------------------------
+    # ✅ SHARED CODE STATUS (authoritative, cross-module)
+    # --------------------------------------------------
+    current_code_status_row = get_current_code_status(db, patient_id=patient.id, tenant_id=tenant_id)
+    current_code_status = (
+        {
+            "code_status_id": str(current_code_status_row.id),
+            "code_status": current_code_status_row.code_status,
+            "display_label": CODE_STATUS_DISPLAY_LABELS.get(
+                current_code_status_row.code_status, current_code_status_row.code_status
+            ),
+            "effective_date": (
+                current_code_status_row.effective_date.isoformat()
+                if current_code_status_row.effective_date
+                else None
+            ),
+            "source": current_code_status_row.source,
+            "notes": current_code_status_row.notes,
+            "created_at": (
+                current_code_status_row.created_at.isoformat()
+                if current_code_status_row.created_at
+                else None
+            ),
+        }
+        if current_code_status_row
+        else None
+    )
+
+    # --------------------------------------------------
+    # ✅ SHARED PHYSICIAN ASSIGNMENTS (authoritative, cross-module)
+    # --------------------------------------------------
+    physician_assignments = get_physician_assignments(db, patient_id=patient.id, tenant_id=tenant_id)
+
+    def _physician_dict(role: str, legacy_name, legacy_address=None, legacy_phone=None, legacy_fax=None, legacy_npi=None, legacy_following=None):
+        row = physician_assignments.get(role)
+        if row is not None:
+            return {
+                "name": row.name if row.name is not None else legacy_name,
+                "address": row.address if row.address is not None else legacy_address,
+                "phone": row.phone if row.phone is not None else legacy_phone,
+                "fax": row.fax if row.fax is not None else legacy_fax,
+                "npi": row.npi if row.npi is not None else legacy_npi,
+                "following": row.will_follow_in_hospice if row.will_follow_in_hospice is not None else legacy_following,
+                "source": row.source,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+        # No shared row yet - fall back to legacy facesheet-only values.
+        return {
+            "name": legacy_name,
+            "address": legacy_address,
+            "phone": legacy_phone,
+            "fax": legacy_fax,
+            "npi": legacy_npi,
+            "following": legacy_following,
+            "source": None,
+            "updated_at": None,
+        }
+
+    # --------------------------------------------------
+    # ✅ SHARED CAREGIVER / DECISION-MAKER CONTACTS (authoritative, cross-module)
+    # --------------------------------------------------
+    patient_contacts = get_patient_contacts(db, patient_id=patient.id, tenant_id=tenant_id)
+
+    def _contact_dict(role: str, legacy_name=None, legacy_relationship=None, legacy_phone=None):
+        row = patient_contacts.get(role)
+        if row is not None:
+            return {
+                "name": row.name if row.name is not None else legacy_name,
+                "relationship": row.relationship_to_patient if row.relationship_to_patient is not None else legacy_relationship,
+                "phone": row.phone if row.phone is not None else legacy_phone,
+                "source": row.source,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+        # No shared row yet - fall back to legacy facesheet-only values.
+        return {
+            "name": legacy_name,
+            "relationship": legacy_relationship,
+            "phone": legacy_phone,
+            "source": None,
+            "updated_at": None,
+        }
+
+    # --------------------------------------------------
     # ✅ DIAGNOSIS SUMMARY
     # --------------------------------------------------
     diagnosis_summary = _get_diagnosis_summary_payload(
@@ -1713,6 +2022,16 @@ def get_facesheet(
         db,
         tenant_id=tenant_id,
         patient_id=patient.id,
+    )
+
+    care_team_assignments = _get_care_team_assignments(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    benefit_period_schedule = _compute_benefit_period_schedule(
+        facesheet.election_date
     )
 
     # --------------------------------------------------
@@ -1786,6 +2105,7 @@ def get_facesheet(
         "clinical": {
             "primary_diagnosis": facesheet.primary_diagnosis,
             "secondary_diagnoses": facesheet.secondary_diagnoses,
+            "diagnosis_entries": facesheet.diagnosis_entries,
             "diagnoses": diagnosis_summary,
             "active_primary_diagnosis":
                 diagnosis_summary["primary"],
@@ -1820,61 +2140,53 @@ def get_facesheet(
         },
 
         "contacts": {
-            "responsible_party": {
-                "name": facesheet.responsible_party_name,
-                "relationship":
-                    facesheet.responsible_party_relationship,
-                "phone":
-                    facesheet.responsible_party_phone,
-            },
-            "emergency_contact": {
-                "name": facesheet.emergency_contact_name,
-                "relationship":
-                    facesheet.emergency_contact_relationship,
-                "phone":
-                    facesheet.emergency_contact_phone,
-            },
+            "responsible_party": _contact_dict(
+                RESPONSIBLE_PARTY,
+                facesheet.responsible_party_name,
+                facesheet.responsible_party_relationship,
+                facesheet.responsible_party_phone,
+            ),
+            "emergency_contact": _contact_dict(
+                EMERGENCY_CONTACT,
+                facesheet.emergency_contact_name,
+                facesheet.emergency_contact_relationship,
+                facesheet.emergency_contact_phone,
+            ),
+            "primary_caregiver": _contact_dict("PRIMARY_CAREGIVER"),
+            "dpoa": _contact_dict("DPOA"),
+            "healthcare_agent": _contact_dict("HEALTHCARE_AGENT"),
+            "decision_maker": _contact_dict("DECISION_MAKER"),
         },
 
         "physicians": {
-            "attending": {
-                "name":
-                    facesheet.attending_physician_name,
-                "address":
-                    facesheet.attending_physician_address,
-                "phone":
-                    facesheet.attending_physician_phone,
-                "fax":
-                    facesheet.attending_physician_fax,
-                "npi":
-                    facesheet.attending_physician_npi,
-                "following":
-                    facesheet.attending_physician_following,
-            },
-            "medical_director": {
-                "name":
-                    facesheet.medical_director_name,
-                "address":
-                    facesheet.medical_director_address,
-                "phone":
-                    facesheet.medical_director_phone,
-                "fax":
-                    facesheet.medical_director_fax,
-                "npi":
-                    facesheet.medical_director_npi,
-            },
+            "attending": _physician_dict(
+                ATTENDING,
+                facesheet.attending_physician_name,
+                facesheet.attending_physician_address,
+                facesheet.attending_physician_phone,
+                facesheet.attending_physician_fax,
+                facesheet.attending_physician_npi,
+                facesheet.attending_physician_following,
+            ),
+            "medical_director": _physician_dict(
+                MEDICAL_DIRECTOR,
+                facesheet.medical_director_name,
+                facesheet.medical_director_address,
+                facesheet.medical_director_phone,
+                facesheet.medical_director_fax,
+                facesheet.medical_director_npi,
+            ),
             "medical_director_designee": {
                 "name":
                     facesheet.medical_director_designee_name,
                 "npi":
                     facesheet.medical_director_designee_npi,
             },
-            "associate_medical_director": {
-                "name":
-                    facesheet.associate_medical_director_name,
-                "npi":
-                    facesheet.associate_medical_director_npi,
-            },
+            "associate_medical_director": _physician_dict(
+                ASSOCIATE_MEDICAL_DIRECTOR,
+                facesheet.associate_medical_director_name,
+                legacy_npi=facesheet.associate_medical_director_npi,
+            ),
         },
 
         "vendors": {
@@ -1887,9 +2199,18 @@ def get_facesheet(
                 "name": facesheet.dme_vendor_name,
                 "phone": facesheet.dme_vendor_phone,
             },
+            "oxygen": {
+                "name": facesheet.oxygen_vendor_name,
+                "phone": facesheet.oxygen_vendor_phone,
+                "emergency_phone": facesheet.oxygen_vendor_emergency_phone,
+            },
             "mortuary": {
                 "name": facesheet.mortuary_name,
                 "phone": facesheet.mortuary_phone,
+                "prearranged": facesheet.mortuary_prearranged,
+                "contact_name": facesheet.mortuary_contact_name,
+                "contact_phone": facesheet.mortuary_contact_phone,
+                "notes": facesheet.mortuary_notes,
             },
         },
 
@@ -1900,6 +2221,40 @@ def get_facesheet(
             "admission_date": active_admission.admission_date if active_admission else None,
             "ref_date": facesheet.ref_date,
             "recert_date": facesheet.recert_date,
+            "election_date": facesheet.election_date,
+            "face_to_face_due_date": facesheet.face_to_face_due_date,
+        },
+
+        "benefit_period": {
+            "benefit_period_number": facesheet.benefit_period_number,
+            "benefit_period_start": facesheet.benefit_period_start,
+            "benefit_period_end": facesheet.benefit_period_end,
+            "auto_calculated": benefit_period_schedule,
+        },
+
+        "hospice_snapshot": {
+            "pps_score": facesheet.pps_score,
+            "kps_score": facesheet.kps_score,
+            "fast_stage": facesheet.fast_stage,
+            "code_status": (
+                current_code_status["display_label"]
+                if current_code_status
+                else facesheet.code_status
+            ),
+            "code_status_detail": current_code_status,
+            "cti_status": facesheet.cti_status,
+            "noe_status": facesheet.noe_status,
+        },
+
+        "care_team": {
+            "primary_rn_name": facesheet.primary_rn_name,
+            "lvn_name": facesheet.lvn_name,
+            "social_worker_name": facesheet.social_worker_name,
+            "chaplain_name": facesheet.chaplain_name,
+            "chha_name": facesheet.chha_name,
+            "volunteer_name": facesheet.volunteer_name,
+            "clinical_manager_name": facesheet.clinical_manager_name,
+            "assignments": care_team_assignments,
         },
 
         "notes": {

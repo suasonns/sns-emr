@@ -35,7 +35,11 @@ def require_system_access():
 # ROLE-BASED ACCESS (CLINICAL)
 # =========================================================
 
-def require_roles(allowed_roles: Optional[Iterable[str]] = None):
+def require_roles(
+    allowed_roles: Optional[Iterable[str]] = None,
+    *,
+    allow_clinical_admin: bool = True,
+):
     """
     Enforces role-based access using JWT user context.
 
@@ -45,10 +49,20 @@ def require_roles(allowed_roles: Optional[Iterable[str]] = None):
     - F2F
     - certifications
     - tasks
+
+    `allow_clinical_admin` controls whether ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR
+    implicitly satisfy this gate (see `role_matches`). Set it to False for
+    endpoints that grant an actual clinical/legal signing authority (e.g.
+    physician order approval, batch signature) — administrative rank must
+    never itself confer the ability to sign as a prescriber. Leave it True
+    (default) for viewing/monitoring endpoints, where oversight roles are
+    intentionally allowed to satisfy the gate.
     """
 
     def dependency(user: CurrentUser = Depends(get_current_user)):
-        if not role_matches(user.role, allowed_roles):
+        if not role_matches(
+            user.role, allowed_roles, allow_clinical_admin=allow_clinical_admin
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Role '{user.role}' not allowed",

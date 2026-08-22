@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -10,17 +11,24 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.clinical_note import ClinicalNote
+from app.models.certification import Certification
 from app.models.incident_report import IncidentReport
 from app.models.patient import Patient
+from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.physician_order import PhysicianOrder
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.task import Task
+from app.models.admission import Admission
+from app.models.plan_of_care import PlanOfCare
 from app.models.user import User
 from app.models.enums import TaskStatus
 from app.services.idg_engine import enforce_idg_readiness
 from app.services.clinical_note_validation_engine import get_note_validation_flags
+from app.services.certification_service import CTI_SIGNER_ROLES
+from app.services import physician_identity_service
 from app.core.names import person_name_expression
+from app.core.roles import normalize_role
 
 
 # =========================================================
@@ -117,6 +125,7 @@ class DashboardResponse:
     blocked_patients: list[dict[str, Any]]
     unsigned_orders: list[dict[str, Any]]
     all_orders: list[dict[str, Any]]
+    compliance_queue: dict[str, Any]
 
 
 # =========================================================
@@ -127,11 +136,14 @@ def get_clinical_compliance_dashboard(
     db: Session,
     *,
     tenant_id: UUID,
+    role: str | None = None,
+    user_id: UUID | None = None,
 ) -> dict[str, Any]:
     tasks = _load_tenant_tasks(db, tenant_id)
     notes = _load_tenant_notes(db, tenant_id)
     incidents = _load_tenant_incidents(db, tenant_id)
     unsigned_orders = _load_unsigned_orders(db, tenant_id)
+    clinical_review_orders = _load_orders_pending_clinical_review(db, tenant_id)
     all_orders = _load_all_orders(db, tenant_id)
 
     open_tasks = [task for task in tasks if _task_is_open(task)]
@@ -195,6 +207,16 @@ def get_clinical_compliance_dashboard(
         for incident in pending_incidents
     )
 
+    compliance_queue = _build_compliance_queue(
+        db,
+        tenant_id=tenant_id,
+        open_tasks=open_tasks,
+        unsigned_orders=unsigned_orders,
+        blocked_patients=blocked_patients,
+        role=role,
+        user_id=user_id,
+    )
+
     response = DashboardResponse(
         metrics=[asdict(metric) for metric in metrics],
         task_type_counts={
@@ -211,6 +233,7 @@ def get_clinical_compliance_dashboard(
         blocked_patients=[asdict(item) for item in blocked_patients],
         unsigned_orders=[asdict(item) for item in unsigned_orders],
         all_orders=[asdict(item) for item in all_orders],
+        compliance_queue=compliance_queue,
     )
 
     return asdict(response)
@@ -681,6 +704,469 @@ def get_billing_dashboard(
 # LOADERS
 # =========================================================
 
+# =========================================================
+# COMPLIANCE ACTION QUEUE (real data only — no placeholder counts)
+# =========================================================
+
+CTI_TASK_TYPES = {"CERTIFICATION", "RECERTIFICATION"}
+CARE_PLAN_TASK_TYPES = {
+    "POC_REVIEW_REQUIRED",
+    "POC_STALE_REVIEW",
+    "POC_NONCOMPLIANT_STRUCTURE",
+    "POC_PHYSICIAN_REVIEW_REQUIRED",
+}
+ADMISSION_PIPELINE_STATUSES = [
+    "REFERRAL",
+    "POTENTIAL_ADMISSION",
+    "ADMISSION_SCHEDULED",
+    "TRANSFER_PENDING",
+    "SOC_IN_PROGRESS",
+]
+
+# ---------------------------------------------------------------
+# WIDGET VISIBILITY ENGINE
+#
+# The dashboard is not one universal view — each widget declares which
+# canonical roles (see app.core.roles) may see it, and field-clinician
+# roles are additionally scoped down to only their own assigned patients
+# rather than the whole tenant.
+#
+# Authority separation: seeing a problem, coordinating it, correcting it,
+# signing it, and monitoring agency-wide compliance are distinct
+# authorities and are modeled as distinct widget keys rather than one
+# widget with multiple audiences. The same underlying unsigned-order queue
+# is surfaced as THREE separate widget keys, each with its own action:
+#   - md_signatures_pending_oversight: Administrator/DPCS/DPCS_ADMINISTRATOR/
+#     Clinical Supervisor/Compliance/QA may VIEW or MONITOR the backlog for
+#     agency oversight and survey-readiness purposes. This is a read-only
+#     queue — action label "Review Queue" — and must NEVER be labeled as
+#     signature authority. Backend enforcement lives independently at
+#     POST /physician-orders/{id}/approve and POST /idg/.../batch-sign,
+#     both of which require an actual prescriber role via
+#     require_roles(..., allow_clinical_admin=False) — dashboard visibility
+#     of this widget grants no signing capability whatsoever.
+#   - orders_requiring_provider_signature (renamed from
+#     orders_requiring_my_signature) — the actual credentialed signer's queue
+#     (Medical Director / Attending Physician / Hospice Physician / Medical
+#     Director Designee, plus alternate authorized provider signers NP/PA
+#     for STAT/URGENT eligible-category orders — see Provider Signature
+#     Authority Model in app/services/physician_order_service.py) — action
+#     label "Review and Sign". Per-patient scoping is now enforced via
+#     Physician Identity Mapping (see SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED
+#     note below): an unverified provider-identity account sees zero orders;
+#     a verified Medical Director/Designee (or legacy "MD") sees tenant-wide;
+#     a verified Attending Physician/Hospice Physician/NP/PA sees only orders
+#     for their own PatientAssignment-scoped patients.
+#   - orders_requiring_clinical_follow_up (renamed from
+#     orders_requiring_clinical_action): the RN/LVN/DPCS/Clinical
+#     Supervisor's coordination duty for the same underlying orders — they
+#     can follow up and prep the order, but they cannot discharge the
+#     physician's signature obligation. Action label "Open Follow-up".
+# ---------------------------------------------------------------
+
+# Physician Identity Mapping (owner directive 2026-08-21) closed the gap
+# this flag used to document: orders_requiring_provider_signature (and the
+# rest of _build_compliance_queue's provider-role-scoped widgets) are now
+# scoped via physician_identity_service.authorized_patient_ids_for_provider()
+# — fail-closed for an unverified provider-identity account, tenant-wide for
+# a verified Medical Director/Designee, assigned-patient-only for a verified
+# Attending Physician/Hospice Physician/NP/PA. Kept as False (rather than
+# deleting the flag/name) so any code or docs still checking it fail loudly
+# instead of silently assuming the old agency-wide behavior.
+#
+# Residual gap (not yet covered by this pass): CTI and F2F have their own
+# separate signer/performer models (certification_service.py, f2f_service.py)
+# that are not yet integrated with this same physician_id linkage for
+# patient-level dashboard scoping — CTI/F2F dashboard widgets remain
+# agency-wide for their respective roles until that follow-up work lands.
+SIGNATURE_SCOPING_NOT_YET_IMPLEMENTED = False
+
+# "Compliance" oversight roles (QA_ROLES from app.core.roles): read-only
+# agency-wide monitoring, per CMS/CDPH survey-readiness and documentation
+# accountability. They see the SAME agency-wide monitoring widgets as
+# ADMINISTRATOR/DPCS, but never actual signature authority
+# (orders_requiring_provider_signature) and never RN/LVN care-coordination duty
+# (orders_requiring_clinical_follow_up) — they may still MONITOR the
+# signature backlog (md_signatures_pending_oversight) alongside ADMINISTRATOR/
+# DPCS/Clinical Supervisor, but never Intake's admissions pipeline —
+# monitoring is a distinct
+# authority from signing, coordinating, or admitting.
+COMPLIANCE_OVERSIGHT_ROLES = {"COMPLIANCE_OFFICER", "QA_MANAGER", "QA_REVIEWER"}
+
+# Roles that hold agency-wide (not caseload-scoped) compliance-monitoring
+# authority: ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR plus the QA/Compliance
+# oversight roles above.
+_AGENCY_COMPLIANCE_ROLES = {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR"} | COMPLIANCE_OVERSIGHT_ROLES
+
+WIDGET_VISIBILITY: dict[str, set[str]] = {
+    # View/monitor only — never implies signing capability. See the
+    # authority-separation note above and require_roles(allow_clinical_admin=False)
+    # on the real signing endpoints.
+    "md_signatures_pending_oversight": (
+        {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR"}
+        | COMPLIANCE_OVERSIGHT_ROLES
+    ),
+    # The actual credentialed signer's queue. Deliberately excludes
+    # Administrator/DPCS/Clinical Supervisor/Compliance/QA — administrative
+    # rank and oversight are never signature authority. Includes both
+    # primary providers (Attending Physician/Hospice Physician/Medical
+    # Director/Medical Director Designee) and alternate authorized
+    # provider signers (NP/PA) — the STAT/URGENT eligible-category
+    # restriction on NP/PA is enforced at the API/service layer
+    # (svc.is_authorized_order_signer), not dashboard visibility, matching
+    # the CTI/F2F precedent that dashboard visibility != actual authorization.
+    "orders_requiring_provider_signature": {
+        "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "NP", "PA",
+    },
+    # Clinical coordination duty on the same orders — not a signature action.
+    "orders_requiring_clinical_follow_up": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
+    # Phase 1 lifecycle expansion (2026-08-21): orders conditionally routed
+    # to PENDING_CLINICAL_REVIEW (non-clinical/office-entered, incomplete
+    # authentication, or returned-for-clarification orders) — a distinct
+    # queue from clinical follow-up on already-signed orders.
+    "orders_pending_clinical_review": {"RN", "LVN", "CLINICAL_SUPERVISOR", "DPCS", "DPCS_ADMINISTRATOR"},
+    "cti_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    # Certification-record-based state (DRAFT/PENDING_SIGNATURE), distinct
+    # from the task-based "due/missing" signal above — the physician-level
+    # signer's own queue plus oversight monitoring. Never NP/PA/RN/LVN/
+    # DPCS/Administrator signing capability; oversight roles may only
+    # monitor per md_signatures_pending_oversight's precedent.
+    "cti_pending_signature": (
+        set(CTI_SIGNER_ROLES) | {"ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR"}
+        | COMPLIANCE_OVERSIGHT_ROLES
+    ),
+    "cti_expiring": (
+        set(CTI_SIGNER_ROLES) | _AGENCY_COMPLIANCE_ROLES | {"RN"}
+    ),
+    "f2f_due_missing": _AGENCY_COMPLIANCE_ROLES | {"RN"},
+    "hope_due": set(_AGENCY_COMPLIANCE_ROLES),
+    "qies_rejected": set(_AGENCY_COMPLIANCE_ROLES),
+    "rnica_incomplete": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN"},
+    "unsigned_visit_notes": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN", "LVN"},
+    "missing_care_plans": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN"},
+    "idg_blockers": _AGENCY_COMPLIANCE_ROLES | {"CLINICAL_SUPERVISOR", "RN", "SW", "CHAPLAIN"},
+    "admissions_pipeline": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+    "referrals": {"ADMINISTRATOR", "DPCS_ADMINISTRATOR", "INTAKE_MANAGER", "INTAKE_COORDINATOR"},
+}
+
+# Field-clinician roles only ever see figures scoped to patients assigned to
+# them — never agency-wide totals — per the platform's role-visibility model.
+# Compliance/QA oversight roles are deliberately excluded: their authority is
+# agency-wide monitoring, not an individual caseload.
+FIELD_CLINICIAN_ROLES = {"RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA"}
+
+# Every canonical role the widget-visibility engine has deliberately
+# considered — including roles whose widget set is intentionally empty
+# (e.g. VOLUNTEER_COORDINATOR/CHHA have no compliance_queue widget yet).
+# Anything NOT in this set is denied by default (returns no widgets) rather
+# than silently falling back to full/unfiltered visibility — an unknown or
+# unmapped role must never receive protected compliance data.
+CANONICAL_DASHBOARD_ROLES = {
+    "ADMINISTRATOR", "DPCS", "DPCS_ADMINISTRATOR", "CLINICAL_SUPERVISOR",
+    "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "NP", "PA",
+    "RN", "LVN", "SW", "CHAPLAIN", "VOLUNTEER_COORDINATOR", "CHHA",
+    "INTAKE_MANAGER", "INTAKE_COORDINATOR",
+} | COMPLIANCE_OVERSIGHT_ROLES
+
+
+def _assigned_patient_ids(db: Session, *, tenant_id: UUID, user_id: UUID) -> set[UUID]:
+    """Patients in scope for this user's field-clinician widgets: the union
+    of (a) active PatientAssignment rows and (b) patients with a Task
+    directly assigned to this user — either relationship is sufficient
+    grounds for the user to act on that patient's record."""
+    assignment_rows = (
+        db.query(PatientAssignment.patient_id)
+        .filter(PatientAssignment.tenant_id == tenant_id)
+        .filter(PatientAssignment.user_id == user_id)
+        .filter(PatientAssignment.active.is_(True))
+        .all()
+    )
+    task_rows = (
+        db.query(Task.patient_id)
+        .filter(Task.tenant_id == tenant_id)
+        .filter(Task.assigned_user_id == user_id)
+        .filter(Task.patient_id.isnot(None))
+        .all()
+    )
+    return {row[0] for row in assignment_rows} | {row[0] for row in task_rows}
+
+
+def _filter_widgets_for_role(queue: dict[str, list[dict[str, Any]]], role: str | None) -> dict[str, list[dict[str, Any]]]:
+    """Deny by default: a role must be explicitly present in
+    CANONICAL_DASHBOARD_ROLES and in a widget's WIDGET_VISIBILITY set to see
+    that widget. An unmapped/unknown role receives no compliance widgets."""
+    normalized = normalize_role(role)
+    if not normalized or normalized not in CANONICAL_DASHBOARD_ROLES:
+        return {priority_key: [] for priority_key in queue}
+
+    filtered: dict[str, list[dict[str, Any]]] = {}
+    for priority_key, items in queue.items():
+        filtered[priority_key] = [
+            item for item in items
+            if normalized in WIDGET_VISIBILITY.get(item["key"], set())
+        ]
+    return filtered
+
+
+def _build_compliance_queue(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    open_tasks: list[Task],
+    unsigned_orders: list[DashboardOrderItem],
+    blocked_patients: list[DashboardPatientBlocker],
+    role: str | None = None,
+    user_id: UUID | None = None,
+) -> dict[str, Any]:
+    """Real, query-backed counts for the dashboard action queue. Every value
+    here is derived directly from live rows (tasks/orders/assessments/notes/
+    admissions) — nothing is estimated or hardcoded, since these are
+    clinical/regulatory compliance figures."""
+
+    normalized_role = normalize_role(role)
+    is_field_scoped = normalized_role in FIELD_CLINICIAN_ROLES and user_id is not None
+    is_provider_scoped = physician_identity_service.is_provider_identity_role(normalized_role) and user_id is not None
+    scope_patient_ids: set[UUID] | None = None
+    if is_field_scoped:
+        scope_patient_ids = _assigned_patient_ids(db, tenant_id=tenant_id, user_id=user_id)
+    elif is_provider_scoped:
+        # Physician Identity Mapping (owner directive 2026-08-21): fail-closed.
+        # A provider-identity role (MD/MEDICAL_DIRECTOR/MEDICAL_DIRECTOR_DESIGNEE/
+        # ATTENDING_PHYSICIAN/HOSPICE_PHYSICIAN/NP/PA) NEVER gets agency-wide
+        # visibility from its role label alone. None here means "verified
+        # tenant-wide oversight" (Medical Director/Designee, once linked);
+        # an empty set means "deny — no verified linkage yet"; anything
+        # else is the assigned-patient scope for a verified Attending
+        # Physician/Hospice Physician/NP/PA. See
+        # app/services/physician_identity_service.py.
+        db_user = db.query(User).filter(User.id == user_id).first()
+        scope_patient_ids = (
+            physician_identity_service.authorized_patient_ids_for_provider(db, tenant_id=tenant_id, user=db_user)
+            if db_user is not None
+            else set()
+        )
+
+    def _in_scope(patient_id: Any) -> bool:
+        if scope_patient_ids is None:
+            return True
+        try:
+            pid = UUID(str(patient_id)) if patient_id is not None else None
+        except (ValueError, TypeError):
+            pid = patient_id
+        return pid in scope_patient_ids
+
+    cti_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() in CTI_TASK_TYPES
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    f2f_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() == "F2F"
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    care_plan_tasks = [
+        task for task in open_tasks
+        if _enumish(getattr(task, "task_type", None)).upper() in CARE_PLAN_TASK_TYPES
+        and _in_scope(getattr(task, "patient_id", None))
+    ]
+    scoped_unsigned_orders = [
+        order for order in unsigned_orders if _in_scope(getattr(order, "patient_id", None))
+    ]
+    scoped_clinical_review_orders = [
+        order for order in clinical_review_orders if _in_scope(getattr(order, "patient_id", None))
+    ]
+    scoped_blocked_patients = [
+        blocker for blocker in blocked_patients if _in_scope(getattr(blocker, "patient_id", None))
+    ]
+
+    cti_pending_query = (
+        db.query(Certification)
+        .filter(Certification.tenant_id == tenant_id)
+        .filter(Certification.status.in_(["DRAFT", "PENDING_SIGNATURE"]))
+    )
+    if scope_patient_ids is not None:
+        cti_pending_query = cti_pending_query.filter(Certification.patient_id.in_(scope_patient_ids))
+    cti_pending_signature_count = _safe_count(db, cti_pending_query)
+
+    cti_expiring_query = (
+        db.query(Certification)
+        .filter(Certification.tenant_id == tenant_id)
+        .filter(Certification.status == "FINALIZED")
+        .filter(Certification.expires_at.isnot(None))
+        .filter(Certification.expires_at <= datetime.utcnow() + timedelta(days=15))
+    )
+    if scope_patient_ids is not None:
+        cti_expiring_query = cti_expiring_query.filter(Certification.patient_id.in_(scope_patient_ids))
+    cti_expiring_count = _safe_count(db, cti_expiring_query)
+
+    rnica_query = (
+        db.query(RnicaAssessment)
+        .filter(RnicaAssessment.tenant_id == tenant_id)
+        .filter(RnicaAssessment.locked.is_(False))
+    )
+    if scope_patient_ids is not None:
+        rnica_query = rnica_query.filter(RnicaAssessment.patient_id.in_(scope_patient_ids))
+    rnica_incomplete_count = _safe_count(db, rnica_query)
+
+    notes_query = (
+        db.query(ClinicalNote)
+        .filter(ClinicalNote.tenant_id == tenant_id)
+        .filter(ClinicalNote.status == "FINALIZED")
+        .filter(ClinicalNote.signed_at.is_(None))
+    )
+    if scope_patient_ids is not None:
+        notes_query = notes_query.filter(ClinicalNote.patient_id.in_(scope_patient_ids))
+    unsigned_notes_count = _safe_count(db, notes_query)
+
+    admission_status_counts = Counter(
+        _enumish(getattr(admission, "status", None)).upper()
+        for admission in (
+            db.query(Admission).filter(Admission.tenant_id == tenant_id).all()
+        )
+    )
+    admissions_pipeline = [
+        {"status": status, "count": admission_status_counts.get(status, 0)}
+        for status in ADMISSION_PIPELINE_STATUSES
+    ]
+    referrals_count = admission_status_counts.get("REFERRAL", 0)
+
+    priority_1 = [
+        {
+            "key": "md_signatures_pending_oversight",
+            "label": "MD Signatures Pending",
+            "value": len(scoped_unsigned_orders),
+            "tone": "red",
+            "action": "view_queue",
+            "action_label": "Review Queue",
+        },
+        {
+            "key": "orders_requiring_provider_signature",
+            "label": "Orders Requiring My Signature",
+            "value": len(scoped_unsigned_orders),
+            "tone": "red",
+            "action": "sign",
+            "action_label": "Review and Sign",
+            "note": (
+                "Agency-wide for now — per-physician patient scoping requires a "
+                "physician-to-account link not yet in the data model."
+            ),
+        },
+        {
+            "key": "cti_due_missing",
+            "label": "CTI Due / Missing",
+            "value": len(cti_tasks),
+            "tone": "red",
+        },
+        {
+            "key": "cti_pending_signature",
+            "label": "CTI Pending Signature",
+            "value": cti_pending_signature_count,
+            "tone": "red",
+            "action": "view_queue",
+            "action_label": "Review Queue",
+        },
+        {
+            "key": "cti_expiring",
+            "label": "CTI Expiring (15 days)",
+            "value": cti_expiring_count,
+            "tone": "orange",
+            "action": "view_queue",
+            "action_label": "Review Queue",
+        },
+        {
+            "key": "f2f_due_missing",
+            "label": "F2F Due / Missing",
+            "value": len(f2f_tasks),
+            "tone": "red",
+        },
+        {
+            "key": "hope_due",
+            "label": "HOPE Due",
+            "value": None,
+            "tone": "red",
+            "data_available": False,
+            "note": "Not yet tracked — no HOPE assessment data source is wired up.",
+        },
+        {
+            "key": "qies_rejected",
+            "label": "QIES Rejected",
+            "value": None,
+            "tone": "red",
+            "data_available": False,
+            "note": "Not yet tracked — no QIES submission data source is wired up.",
+        },
+    ]
+
+    priority_2 = [
+        {
+            "key": "orders_pending_clinical_review",
+            "label": "Orders Pending Clinical Review",
+            "value": len(scoped_clinical_review_orders),
+            "tone": "orange",
+            "action": "clinical_review",
+            "action_label": "Review Order",
+        },
+        {
+            "key": "orders_requiring_clinical_follow_up",
+            "label": "Orders Requiring Clinical Follow-up",
+            "value": len(scoped_unsigned_orders),
+            "tone": "orange",
+            "action": "follow_up",
+            "action_label": "Open Follow-up",
+        },
+        {
+            "key": "rnica_incomplete",
+            "label": "RNICA Incomplete",
+            "value": rnica_incomplete_count,
+            "tone": "orange",
+        },
+        {
+            "key": "unsigned_visit_notes",
+            "label": "Unsigned Visit Notes",
+            "value": unsigned_notes_count,
+            "tone": "orange",
+        },
+        {
+            "key": "missing_care_plans",
+            "label": "Missing Care Plans",
+            "value": len(care_plan_tasks),
+            "tone": "orange",
+        },
+        {
+            "key": "idg_blockers",
+            "label": "IDG Blockers",
+            "value": len(scoped_blocked_patients),
+            "tone": "orange",
+        },
+    ]
+
+    priority_3 = [
+        {
+            "key": "admissions_pipeline",
+            "label": "Admissions Pipeline",
+            "value": sum(item["count"] for item in admissions_pipeline),
+            "tone": "blue",
+            "breakdown": admissions_pipeline,
+        },
+        {
+            "key": "referrals",
+            "label": "Referrals",
+            "value": referrals_count,
+            "tone": "blue",
+        },
+    ]
+
+    return _filter_widgets_for_role(
+        {
+            "priority_1": priority_1,
+            "priority_2": priority_2,
+            "priority_3": priority_3,
+        },
+        role,
+    )
+
+
 def _load_tenant_tasks(db: Session, tenant_id: UUID) -> list[Task]:
     return (
         db.query(Task)
@@ -710,9 +1196,19 @@ def _load_tenant_incidents(db: Session, tenant_id: UUID) -> list[IncidentReport]
 
 def _load_unsigned_orders(db: Session, tenant_id: UUID) -> list[DashboardOrderItem]:
     """Every physician order in this tenant that is NOT yet signed by an MD
-    (still DRAFT or PENDING_HOSPICE_MD_APPROVAL) — the agency's single view
-    of "which orders are signed vs. not signed" across every patient."""
-    return _load_tenant_orders(db, tenant_id, statuses=["DRAFT", "PENDING_HOSPICE_MD_APPROVAL"])
+    (DRAFT, PENDING_CLINICAL_REVIEW, or PENDING_HOSPICE_MD_APPROVAL) — the
+    agency's single view of "which orders are signed vs. not signed" across
+    every patient. PENDING_CLINICAL_REVIEW is included here (Phase 1 lifecycle
+    expansion, 2026-08-21) since those orders are also not yet MD-signed."""
+    return _load_tenant_orders(db, tenant_id, statuses=["DRAFT", "PENDING_CLINICAL_REVIEW", "PENDING_HOSPICE_MD_APPROVAL"])
+
+
+def _load_orders_pending_clinical_review(db: Session, tenant_id: UUID) -> list[DashboardOrderItem]:
+    """Orders conditionally routed to PENDING_CLINICAL_REVIEW — distinct from
+    the general unsigned-orders view so RN/clinical-reviewer roles see
+    exactly which orders need their review action, separate from orders
+    already awaiting physician signature."""
+    return _load_tenant_orders(db, tenant_id, statuses=["PENDING_CLINICAL_REVIEW"])
 
 
 def _load_all_orders(db: Session, tenant_id: UUID, limit: int = 300) -> list[DashboardOrderItem]:
@@ -837,6 +1333,15 @@ def _safe_scalar(
         # rolling back here, every subsequent query on this session (e.g. the
         # tenant_rows query right after this call in get_owner_dashboard)
         # would also fail with "current transaction is aborted".
+        db.rollback()
+        return 0
+
+
+def _safe_count(db: Session, query) -> int:
+    """Like _safe_scalar but for an ORM Query object — calls .count() safely."""
+    try:
+        return query.count()
+    except SQLAlchemyError:
         db.rollback()
         return 0
 
