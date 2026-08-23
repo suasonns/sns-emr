@@ -57,6 +57,11 @@ import {
   upsertChhaVisitOutcome,
 } from "../api/chhaVisits";
 import {
+  listCcHourlyNarrativeEntries,
+  createCcHourlyNarrativeEntry,
+  deleteCcHourlyNarrativeEntry,
+} from "../api/ccHourlyNarrative";
+import {
   checkMedicationSafety,
   listMedications,
   addMedication,
@@ -4062,6 +4067,184 @@ const DEFAULT_CHHA_VISIT_META = {
   careLevel: "",
 };
 
+// ════════════════════════════════════════════════════════════════
+// Continuous Care (CC) Hourly Narrative — shared across RN, LVN, AIDE
+// (CHHA), MSW, and Chaplain visits whenever the patient's care level is
+// Continuous Care (see app.domain.forms.form_registry, get_cc_package).
+// Renders live off note.visitMeta.careLevel so it appears/disappears the
+// instant the visit's Care Level dropdown changes — no locking, no
+// separate save step, since Care Level can change at any time.
+// ════════════════════════════════════════════════════════════════
+
+const DEFAULT_CC_ENTRY_DRAFT = {
+  entry_date: "",
+  entry_time: "",
+  temperature: "",
+  pulse: "",
+  respirations: "",
+  bp_systolic: "",
+  bp_diastolic: "",
+  o2_sat: "",
+  pain_level: "",
+  pain_location: "",
+  pain_intervention: "",
+  symptoms: "",
+  care_provided: "",
+  issue_identified: false,
+  issue_narrative: "",
+  poc_update_narrative: "",
+  narrative: "",
+};
+
+export function ContinuousCareLogSection({ visitId, discipline, enteredBy, styles, COLORS, disabled }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(DEFAULT_CC_ENTRY_DRAFT);
+
+  const updateDraft = (key, value) => setDraft((p) => ({ ...p, [key]: value }));
+
+  useEffect(() => {
+    if (!visitId) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    listCcHourlyNarrativeEntries(visitId)
+      .then((rows) => setEntries(Array.isArray(rows) ? rows : []))
+      .catch((err) => setError(err.message || "Unable to load the continuous care log."))
+      .finally(() => setLoading(false));
+  }, [visitId]);
+
+  const handleAddEntry = () => {
+    if (!visitId || disabled) return;
+    setSaving(true);
+    setError("");
+    createCcHourlyNarrativeEntry(visitId, { discipline, entered_by: enteredBy || "", ...draft })
+      .then((created) => {
+        setEntries((prev) => [...prev, created]);
+        setDraft(DEFAULT_CC_ENTRY_DRAFT);
+      })
+      .catch((err) => setError(err.message || "Unable to save this continuous care log entry."))
+      .finally(() => setSaving(false));
+  };
+
+  const handleRemoveEntry = (entryId) => {
+    if (!visitId || disabled) return;
+    deleteCcHourlyNarrativeEntry(visitId, entryId)
+      .then(() => setEntries((prev) => prev.filter((e) => e.id !== entryId)))
+      .catch((err) => setError(err.message || "Unable to remove this continuous care log entry."));
+  };
+
+  if (!visitId) {
+    return (
+      <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
+        <div style={{ ...styles.infoBox }}>Save this visit first to start the continuous care log.</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
+      {loading ? (
+        <div style={{ fontSize: 12, color: COLORS.gray }}>Loading continuous care log…</div>
+      ) : (
+        <>
+          {!disabled && (
+            <div style={{ ...styles.fieldsGrid, marginBottom: 12 }}>
+              <FormInput label="Date" type="date" value={draft.entry_date} onChange={(v) => updateDraft("entry_date", v)} />
+              <FormInput label="Time" type="time" value={draft.entry_time} onChange={(v) => updateDraft("entry_time", v)} />
+              <FormInput label="Temp" value={draft.temperature} onChange={(v) => updateDraft("temperature", v)} />
+              <FormInput label="Pulse" value={draft.pulse} onChange={(v) => updateDraft("pulse", v)} />
+              <FormInput label="Resp" value={draft.respirations} onChange={(v) => updateDraft("respirations", v)} />
+              <FormInput label="BP Systolic" value={draft.bp_systolic} onChange={(v) => updateDraft("bp_systolic", v)} />
+              <FormInput label="BP Diastolic" value={draft.bp_diastolic} onChange={(v) => updateDraft("bp_diastolic", v)} />
+              <FormInput label="O2 Sat %" value={draft.o2_sat} onChange={(v) => updateDraft("o2_sat", v)} />
+              <FormInput label="Pain Level" value={draft.pain_level} onChange={(v) => updateDraft("pain_level", v)} />
+              <FormInput label="Pain Location" value={draft.pain_location} onChange={(v) => updateDraft("pain_location", v)} />
+              <FormInput label="Pain Intervention" value={draft.pain_intervention} onChange={(v) => updateDraft("pain_intervention", v)} />
+              <FormInput label="Symptoms" value={draft.symptoms} onChange={(v) => updateDraft("symptoms", v)} />
+              <FormInput label="Care Provided" value={draft.care_provided} onChange={(v) => updateDraft("care_provided", v)} />
+              <label style={styles.formGroup}>
+                <span style={styles.label}>Issue Identified</span>
+                <input
+                  type="checkbox"
+                  checked={draft.issue_identified}
+                  onChange={(e) => updateDraft("issue_identified", e.target.checked)}
+                  style={{ width: 18, height: 18 }}
+                />
+              </label>
+              {draft.issue_identified && (
+                <FormInput label="Issue Narrative" value={draft.issue_narrative} onChange={(v) => updateDraft("issue_narrative", v)} />
+              )}
+              <FormInput label="POC Update" value={draft.poc_update_narrative} onChange={(v) => updateDraft("poc_update_narrative", v)} />
+              <FormInput label="Narrative" value={draft.narrative} onChange={(v) => updateDraft("narrative", v)} />
+            </div>
+          )}
+          {!disabled && (
+            <button
+              type="button"
+              onClick={handleAddEntry}
+              disabled={saving}
+              style={{ ...styles.btnPrimary, opacity: saving ? 0.55 : 1, cursor: saving ? "not-allowed" : "pointer", marginBottom: 14 }}
+            >
+              {saving ? "Adding…" : "Add Hourly Entry"}
+            </button>
+          )}
+
+          {entries.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLORS.gray }}>No continuous care log entries recorded yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {entries.map((entry) => (
+                <div key={entry.id} style={{ border: `1px solid ${COLORS.border || "#e2e8f0"}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <strong>
+                      {entry.entry_date || "—"} {entry.entry_time || ""} · {entry.discipline}
+                      {entry.entered_by ? ` · ${entry.entered_by}` : ""}
+                    </strong>
+                    {!disabled && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEntry(entry.id)}
+                        style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 4, color: COLORS.dark }}>
+                    {(entry.temperature || entry.pulse || entry.respirations || entry.bp_systolic || entry.o2_sat) && (
+                      <div>
+                        Vitals: T {entry.temperature || "—"} · P {entry.pulse || "—"} · R {entry.respirations || "—"} · BP{" "}
+                        {entry.bp_systolic || "—"}/{entry.bp_diastolic || "—"} · O2 {entry.o2_sat || "—"}%
+                      </div>
+                    )}
+                    {(entry.pain_level || entry.pain_location || entry.pain_intervention) && (
+                      <div>
+                        Pain: {entry.pain_level || "—"} {entry.pain_location ? `@ ${entry.pain_location}` : ""}{" "}
+                        {entry.pain_intervention ? `— ${entry.pain_intervention}` : ""}
+                      </div>
+                    )}
+                    {entry.symptoms && <div>Symptoms: {entry.symptoms}</div>}
+                    {entry.care_provided && <div>Care provided: {entry.care_provided}</div>}
+                    {entry.issue_identified && <div style={{ color: "#b91c1c" }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
+                    {entry.poc_update_narrative && <div>POC update: {entry.poc_update_narrative}</div>}
+                    {entry.narrative && <div>Narrative: {entry.narrative}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
 const DEFAULT_CHHA_VISIT_NOTE = {
   taskResults: {}, // task value -> { state: "completed"|"refused"|"notDone", note: string }
   skin: [],
@@ -4525,6 +4708,17 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
             />
           </div>
       </Card>
+
+      {note.visitMeta.careLevel === "Continuous Care" && (
+        <ContinuousCareLogSection
+          visitId={selectedVisitId}
+          discipline="AIDE"
+          enteredBy={note.visitMeta.enteredBy}
+          styles={styles}
+          COLORS={COLORS}
+          disabled={visitLocked}
+        />
+      )}
 
       {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
       {(todayWatchFor.length > 0) && (

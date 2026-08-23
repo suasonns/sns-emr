@@ -550,6 +550,36 @@ def get_current_plan_of_care_by_patient_v2(
 
 
 # =========================================================
+# GET MASTER POC REVIEW BY PATIENT (IDG-facing synchronized
+# read view of every RN-ICA-sourced problem, any originating
+# section, for the patient's current active Plan of Care
+# version — moved here from RN ICA finalization per product
+# direction: "Master POC Review belongs in IDG, not RN ICA".)
+# =========================================================
+
+@router.get(
+    "/by-patient/{patient_id}/problems/",
+    status_code=status.HTTP_200_OK,
+)
+def get_master_poc_review_by_patient(
+    patient_id: UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    from app.services import rnica_poc_adapter
+
+    tenant_id = _tenant_id_uuid(user)
+    get_authorized_patient(db, patient_id, user)
+
+    problems = rnica_poc_adapter.list_all_problems(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+    )
+    return {"patientId": str(patient_id), "problems": problems}
+
+
+# =========================================================
 # GET VERSION HISTORY
 # =========================================================
 

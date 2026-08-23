@@ -118,6 +118,8 @@ class ClinicalReasoningEngine:
         findings.extend(self._extract_cardiac_findings(assessment_data, source, observed_at))
         findings.extend(self._extract_cognitive_behavior_findings(assessment_data, source, observed_at))
         findings.extend(self._extract_spiritual_findings(assessment_data, source, observed_at))
+        findings.extend(self._extract_psychosocial_findings(assessment_data, source, observed_at))
+        findings.extend(self._extract_f2f_decline_findings(assessment_data, source, observed_at))
 
         return self._dedupe_findings(findings)
 
@@ -1221,6 +1223,247 @@ class ClinicalReasoningEngine:
                     category="spiritual",
                     finding_type="hopelessness",
                     trend="new",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        return findings
+
+    def _extract_psychosocial_findings(
+        self,
+        assessment_data: Dict[str, Any],
+        source: str,
+        observed_at: datetime,
+    ) -> List[FindingCandidate]:
+        """
+        MSW / SC psychosocial + spiritual extraction.
+
+        Suicide risk and abuse/neglect/exploitation are also handled by a
+        separate, dedicated urgent Task escalation
+        (create_suicide_risk_escalation_task /
+        create_abuse_neglect_exploitation_task in app/api/visits.py) that
+        is never removed or replaced by this. Per product decision, these
+        findings are ALSO recorded here so the whole care team has one
+        shared source of intelligence (IDG review / POC-update pipeline),
+        in addition to the dedicated urgent escalation.
+        """
+        findings: List[FindingCandidate] = []
+
+        if assessment_data.get("suicide_risk_identified"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="suicide_risk_identified",
+                    value_text=assessment_data.get("suicide_risk_detail"),
+                    trend="new",
+                    severity="severe",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        if assessment_data.get("abuse_neglect_suspected"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="abuse_neglect_suspected",
+                    value_text=assessment_data.get("abuse_neglect_detail"),
+                    trend="new",
+                    severity="severe",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        patient_distress = self._to_decimal(assessment_data.get("patient_distress_score"))
+        if patient_distress is not None and patient_distress >= Decimal("7"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="patient_distress_elevated",
+                    value_numeric=patient_distress,
+                    trend="worsening" if assessment_data.get("patient_distress_worsening") else None,
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        caregiver_distress = self._to_decimal(assessment_data.get("caregiver_distress_score"))
+        if caregiver_distress is not None and caregiver_distress >= Decimal("7"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="caregiver_distress_elevated",
+                    value_numeric=caregiver_distress,
+                    trend="worsening" if assessment_data.get("caregiver_distress_worsening") else None,
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        if assessment_data.get("caregiver_capacity_concern"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="caregiver_capacity_concern",
+                    value_text=assessment_data.get("caregiver_capacity_detail"),
+                    trend="new",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        if assessment_data.get("unmet_needs_identified"):
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="unmet_needs_identified",
+                    value_text=assessment_data.get("unmet_needs_detail"),
+                    trend="new",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        psychosocial_narrative = assessment_data.get("psychosocial_narrative")
+        if psychosocial_narrative:
+            findings.append(
+                FindingCandidate(
+                    category="psychosocial",
+                    finding_type="assessment_summary",
+                    value_text=str(psychosocial_narrative),
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        return findings
+
+    def _extract_f2f_decline_findings(
+        self,
+        assessment_data: Dict[str, Any],
+        source: str,
+        observed_at: datetime,
+    ) -> List[FindingCandidate]:
+        """
+        MD / NP F2F (and, where a narrative is provided, CTI) decline
+        extraction. Uses the F2F encounter's structured functional/decline
+        fields (PPS, ECOG, ADL dependency, oxygen requirement,
+        hospitalizations, dysphagia, weight loss) as evidence supporting
+        continued hospice eligibility, feeding the same shared
+        findings / clinical_reasoning_results / IDG intelligence stream as
+        RN/LVN and MSW/SC.
+        """
+        findings: List[FindingCandidate] = []
+
+        pps_current = self._to_decimal(assessment_data.get("pps_score_current"))
+        pps_previous = self._to_decimal(assessment_data.get("pps_score_previous"))
+        if pps_current is not None and pps_previous is not None and pps_current < pps_previous:
+            findings.append(
+                FindingCandidate(
+                    category="functional",
+                    finding_type="pps_decline",
+                    value_numeric=pps_current,
+                    previous_value_numeric=pps_previous,
+                    trend="declining",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        ecog_current = self._to_decimal(assessment_data.get("ecog_score_current"))
+        ecog_previous = self._to_decimal(assessment_data.get("ecog_score_previous"))
+        if ecog_current is not None and ecog_previous is not None and ecog_current > ecog_previous:
+            findings.append(
+                FindingCandidate(
+                    category="functional",
+                    finding_type="ecog_decline",
+                    value_numeric=ecog_current,
+                    previous_value_numeric=ecog_previous,
+                    trend="worsening",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        oxygen_current = self._to_decimal(assessment_data.get("oxygen_lpm_current"))
+        oxygen_previous = self._to_decimal(assessment_data.get("oxygen_lpm_previous"))
+        if oxygen_current is not None and oxygen_previous is not None and oxygen_current > oxygen_previous:
+            findings.append(
+                FindingCandidate(
+                    category="respiratory",
+                    finding_type="f2f_oxygen_increase",
+                    value_numeric=oxygen_current,
+                    previous_value_numeric=oxygen_previous,
+                    trend="worsening",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        if assessment_data.get("is_bedbound") or assessment_data.get("adl_dependency_increased"):
+            findings.append(
+                FindingCandidate(
+                    category="functional",
+                    finding_type="functional_decline_adl",
+                    value_text=assessment_data.get("adl_dependency_level"),
+                    trend="worsening",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        hospitalizations = self._to_decimal(assessment_data.get("hospitalizations_30d"))
+        if hospitalizations is not None and hospitalizations > 0:
+            findings.append(
+                FindingCandidate(
+                    category="functional",
+                    finding_type="recent_hospitalization",
+                    value_numeric=hospitalizations,
+                    trend="new",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        if assessment_data.get("dysphagia"):
+            findings.append(
+                FindingCandidate(
+                    category="nutrition",
+                    finding_type="dysphagia_present",
+                    trend="new",
+                    source=source,
+                    observed_at=observed_at,
+                )
+            )
+
+        weight_loss_lbs = self._to_decimal(assessment_data.get("weight_loss_lbs"))
+        if weight_loss_lbs is not None and weight_loss_lbs > 0:
+            findings.append(
+                FindingCandidate(
+                    category="nutrition",
+                    finding_type="weight_loss_f2f",
+                    value_numeric=weight_loss_lbs,
+                    trend="declining",
+                    source=source,
+                    observed_at=observed_at,
+                    is_significant_change=True,
+                )
+            )
+
+        clinical_decline_summary = assessment_data.get("clinical_decline_summary")
+        if clinical_decline_summary:
+            findings.append(
+                FindingCandidate(
+                    category="functional",
+                    finding_type="assessment_summary",
+                    value_text=str(clinical_decline_summary),
                     source=source,
                     observed_at=observed_at,
                 )

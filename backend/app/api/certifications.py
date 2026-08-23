@@ -32,6 +32,7 @@ from app.models.certification import Certification
 from app.models.patient import Patient
 from app.models.user import User
 from app.services import certification_service as svc
+from app.services import clinical_reasoning_bridge
 from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/certifications", tags=["Certifications"])
@@ -40,6 +41,31 @@ router = APIRouter(prefix="/certifications", tags=["Certifications"])
 # (physician-level) may sign it — see require_roles(..., allow_clinical_admin=False)
 # on the /sign endpoint below.
 CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN"]
+
+
+def _extract_cti_reasoning_payload(cert: Certification) -> dict:
+    """
+    Bridges a signed CTI certification's narrative/evidence into the flat
+    assessment_data dict the shared ClinicalReasoningEngine expects. CTI
+    has no discrete numeric decline fields of its own (those live on the
+    F2F encounter) so this is evidence-only: the physician narrative,
+    supporting evidence, and clinical decline indicators are recorded as
+    generic evidence text findings, feeding the same shared findings /
+    clinical_reasoning_results / IDG intelligence stream as F2F, RN/LVN,
+    and MSW/SC.
+    """
+    narrative_parts = [
+        cert.physician_narrative,
+        cert.clinical_decline_indicators,
+        cert.supporting_evidence,
+    ]
+    combined_narrative = "\n\n".join(part.strip() for part in narrative_parts if part and part.strip())
+    if not combined_narrative:
+        return {}
+    return {
+        "source": "CTI",
+        "nursing_summary": combined_narrative,
+    }
 
 
 class CertDraftCreate(BaseModel):
@@ -250,6 +276,20 @@ def sign_certification(
     except svc.CertificationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
 
+    # Feed the signed CTI's narrative/evidence into the shared Clinical
+    # Reasoning Engine -- same findings / clinical_reasoning_results / IDG
+    # Intelligence stream as F2F, RN/LVN, and MSW/SC, so the whole care
+    # team has one source of clinical intelligence.
+    clinical_reasoning_bridge.run_clinical_reasoning(
+        db=db,
+        patient_id=cert.patient_id,
+        tenant_id=user.tenant_id,
+        episode_id=cert.id,
+        assessment_payload=_extract_cti_reasoning_payload(cert),
+        request_id=str(cert.id),
+        log_label=f"cti_id={cert.id}",
+    )
+
     log_event(
         db=db, tenant_id=str(user.tenant_id), user_id=user.user_id, role=user.role,
         action="SIGN_CTI", entity_type="certification", entity_id=str(cert.id),
@@ -283,6 +323,16 @@ def finalize_cert_endpoint(
         )
     except svc.CertificationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    clinical_reasoning_bridge.run_clinical_reasoning(
+        db=db,
+        patient_id=cert.patient_id,
+        tenant_id=user.tenant_id,
+        episode_id=cert.id,
+        assessment_payload=_extract_cti_reasoning_payload(cert),
+        request_id=str(cert.id),
+        log_label=f"cti_id={cert.id}",
+    )
 
     log_event(
         db=db, tenant_id=str(user.tenant_id), user_id=user.user_id, role=user.role,

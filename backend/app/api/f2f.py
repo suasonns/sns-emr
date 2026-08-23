@@ -20,12 +20,10 @@ body.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from typing import Literal, Optional
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.patient_access import get_authorized_patient
@@ -35,7 +33,14 @@ from app.core.permissions import require_roles
 from app.models.benefit_period import BenefitPeriod
 from app.models.f2f_encounter import F2FEncounter
 from app.models.user import User
+from app.schemas.f2f import (
+    F2FCreateRequest,
+    F2FCreateResponse,
+    F2FFinalizeRequest,
+    F2FFinalizeResponse,
+)
 from app.services import f2f_service as svc
+from app.services import clinical_reasoning_bridge
 from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/f2f", tags=["F2F"])
@@ -45,67 +50,9 @@ router = APIRouter(prefix="/f2f", tags=["F2F"])
 # create a draft or finalize an encounter — see require_roles(...) below.
 CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN"]
 
-
-# =========================================================
-# REQUEST / RESPONSE SCHEMAS
-# =========================================================
-
-class F2FCreateRequest(BaseModel):
-    patient_id: UUID
-    benefit_period_id: UUID
-    encounter_date: date
-
-    # performed_by_role is NOT accepted from the request — the endpoint
-    # always derives it from the authenticated user's own role, so a
-    # caller can never record an unauthorized discipline as the F2F
-    # performer. Retained here only for backward-compatible clients;
-    # any client-supplied value is ignored.
-    performed_by_role: Optional[str] = None
-
-    summary: Optional[str] = Field(default=None, max_length=5000)
-    clinical_decline_summary: Optional[str] = Field(default=None, max_length=5000)
-
-    # Functional scoring
-    kps_score: Optional[int] = None
-    pps_score_previous: Optional[int] = None
-    pps_score_current: Optional[int] = None
-
-    # Disease scoring
-    fast_score: Optional[str] = None
-    nyha_class: Optional[str] = None
-
-    # ADL / decline
-    adl_dependency_level: Optional[str] = None
-    adl_dependency_count: Optional[int] = None
-    is_bedbound: Optional[bool] = None
-
-    # Objective decline indicators
-    weight_loss_lbs: Optional[float] = None
-    oral_intake_decline: Optional[bool] = None
-    dysphagia: Optional[bool] = None
-    hospitalizations_30d: Optional[int] = None
-    oxygen_lpm_previous: Optional[float] = None
-    oxygen_lpm_current: Optional[float] = None
-
-    primary_diagnosis: Optional[str] = None
-    secondary_conditions: Optional[str] = None
-
-
-class F2FCreateResponse(BaseModel):
-    id: UUID
-    status: str
-    encounter_date: date
-
-
-class F2FFinalizeRequest(BaseModel):
-    # Used when NP performed the F2F and physician review/attestation is captured on the encounter.
-    attestation_summary: Optional[str] = Field(default=None, max_length=5000)
-
-
-class F2FFinalizeResponse(BaseModel):
-    id: UUID
-    status: str
-    finalized_at: Optional[str]
+# Request/response schemas moved to app/schemas/f2f.py (2026-08-22) — this
+# was previously an inline duplicate of a stale, unused schema module.
+# See app/schemas/f2f.py for the authoritative contract.
 
 
 # =========================================================
@@ -142,6 +89,18 @@ def _generate_f2f_summary(f2f: F2FEncounter) -> str:
         )
     elif f2f.pps_score_current is not None:
         parts.append(f"PPS score is {f2f.pps_score_current}%.")
+
+    if f2f.ecog_score_previous is not None and f2f.ecog_score_current is not None:
+        if f2f.ecog_score_current > f2f.ecog_score_previous:
+            parts.append(
+                f"ECOG performance status worsened from {f2f.ecog_score_previous} to {f2f.ecog_score_current}."
+            )
+        else:
+            parts.append(
+                f"ECOG performance status is {f2f.ecog_score_current} (previously {f2f.ecog_score_previous})."
+            )
+    elif f2f.ecog_score_current is not None:
+        parts.append(f"ECOG performance status is {f2f.ecog_score_current}.")
 
     if f2f.fast_score:
         parts.append(f"FAST stage is {f2f.fast_score}.")
@@ -196,6 +155,34 @@ def _generate_f2f_summary(f2f: F2FEncounter) -> str:
     return " ".join(parts)
 
 
+def _extract_f2f_reasoning_payload(f2f: F2FEncounter) -> dict:
+    """
+    Bridges an F2FEncounter's structured decline fields into the flat
+    assessment_data dict the shared ClinicalReasoningEngine expects, so
+    MD/NP F2F decline evidence (PPS, ECOG, ADL dependency, oxygen
+    requirement, hospitalizations, dysphagia, weight loss) feeds the same
+    shared findings / clinical_reasoning_results / IDG intelligence
+    stream as RN/LVN and MSW/SC.
+    """
+    payload: dict = {
+        "source": "F2F",
+        "pps_score_current": f2f.pps_score_current,
+        "pps_score_previous": f2f.pps_score_previous,
+        "ecog_score_current": f2f.ecog_score_current,
+        "ecog_score_previous": f2f.ecog_score_previous,
+        "oxygen_lpm_current": f2f.oxygen_lpm_current,
+        "oxygen_lpm_previous": f2f.oxygen_lpm_previous,
+        "is_bedbound": f2f.is_bedbound,
+        "adl_dependency_level": f2f.adl_dependency_level,
+        "hospitalizations_30d": f2f.hospitalizations_30d,
+        "dysphagia": f2f.dysphagia,
+        "weight_loss_lbs": f2f.weight_loss_lbs,
+        "clinical_decline_summary": f2f.clinical_decline_summary,
+        "terminal_diagnosis": f2f.primary_diagnosis,
+    }
+    return {key: value for key, value in payload.items() if value not in (None, "")}
+
+
 def _validate_f2f_for_finalize(f2f: F2FEncounter) -> None:
     errors: list[str] = []
 
@@ -203,10 +190,11 @@ def _validate_f2f_for_finalize(f2f: F2FEncounter) -> None:
     if not any([
         f2f.kps_score is not None,
         f2f.pps_score_current is not None,
+        f2f.ecog_score_current is not None,
         bool(f2f.fast_score),
         bool(f2f.nyha_class),
     ]):
-        errors.append("At least one scoring system is required (KPS, PPS, FAST, or NYHA).")
+        errors.append("At least one scoring system is required (KPS, PPS, ECOG, FAST, or NYHA).")
 
     # ADL dependency required
     if not f2f.adl_dependency_level:
@@ -373,6 +361,8 @@ def create_f2f_endpoint(
     f2f.kps_score = request.kps_score
     f2f.pps_score_previous = request.pps_score_previous
     f2f.pps_score_current = request.pps_score_current
+    f2f.ecog_score_previous = request.ecog_score_previous
+    f2f.ecog_score_current = request.ecog_score_current
     f2f.fast_score = request.fast_score
     f2f.nyha_class = request.nyha_class
     f2f.adl_dependency_level = request.adl_dependency_level
@@ -456,6 +446,20 @@ def finalize_f2f_endpoint(
         f2f = svc.finalize_f2f(db=db, f2f=f2f, finalized_by=user.user_id, finalized_by_role=user.role)
     except svc.F2FError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail)
+
+    # Feed the F2F's decline evidence into the shared Clinical Reasoning
+    # Engine -- same findings / clinical_reasoning_results / IDG
+    # Intelligence stream as RN/LVN visit finalize and MSW/SC ICA lock,
+    # so the whole care team has one source of clinical intelligence.
+    clinical_reasoning_bridge.run_clinical_reasoning(
+        db=db,
+        patient_id=f2f.patient_id,
+        tenant_id=user.tenant_id,
+        episode_id=f2f.id,
+        assessment_payload=_extract_f2f_reasoning_payload(f2f),
+        request_id=str(f2f.id),
+        log_label=f"f2f_id={f2f.id}",
+    )
 
     log_event(
         db=db, tenant_id=str(user.tenant_id), user_id=user.user_id, role=user.role,

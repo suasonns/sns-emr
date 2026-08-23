@@ -393,10 +393,6 @@ def get_clinical_alerts_dashboard(
                 election_signed = getattr(patient, "election_signed_at", None) is not None
                 admission_status = _enumish(getattr(patient, "admission_status", None)) or "Unknown"
                 locked = _truthy(getattr(assessment, "locked", False))
-                finalization = getattr(assessment, "form_data", {}) or {}
-                poc_completed = bool(
-                    finalization.get("finalization", {}).get("pocGenerationCompleted", False)
-                )
 
                 if not election_signed:
                     alert_rows.append(
@@ -433,7 +429,7 @@ def get_clinical_alerts_dashboard(
                         )
                     )
 
-                if locked or poc_completed:
+                if locked:
                     alert_rows.append(
                         DashboardClinicalAlertItem(
                             alert_id=f"assessment:{assessment.id}",

@@ -59,6 +59,13 @@ class F2FEncounter(BaseModel):
     pps_score_previous = Column(Integer, nullable=True)
     pps_score_current = Column(Integer, nullable=True)
 
+    # ECOG (Eastern Cooperative Oncology Group) performance status: 0
+    # (fully active) through 5 (dead). Higher = worse. Tracked as a
+    # previous/current pair, same shape as PPS, so decline can be
+    # detected the same way (current > previous == worsening).
+    ecog_score_previous = Column(Integer, nullable=True)
+    ecog_score_current = Column(Integer, nullable=True)
+
     # Disease-specific scoring
     fast_score = Column(String, nullable=True)
     nyha_class = Column(String, nullable=True)

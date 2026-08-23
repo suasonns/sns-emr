@@ -4,10 +4,19 @@ Seed the tenant roster.
 Ids come from the environment so nothing agency-specific is compiled into the
 application. Safe to re-run: existing tenants are updated in place.
 
+    SNS Hospice Solutions  PLATFORM     vendor/platform org (OWNER staff)
+    North East Billing     BILLING      separate billing org (BILLING staff)
     Love & Faith Hospice   PRODUCTION   real agency
     Angela Hospice         TRAINING     permanent training tenant
     Silva Hospice          TRAINING     permanent training tenant
     Dev Tenant A / B       DEV          removed at pre-production cutover
+
+SNS Hospice Solutions and SNS Billing Services are real, permanent
+organizations distinct from any hospice agency — not test/dev fixtures.
+They exist so tenant_id can remain required (NOT NULL) for OWNER/BILLING
+staff instead of being made nullable; access to hospice data is controlled
+by tenant + domain + role, not by which tenant a platform/billing staff
+member's own account happens to belong to.
 
 Usage (PowerShell, from backend/):
 
@@ -40,6 +49,33 @@ PERMANENT = "PERMANENT"
 TEMPORARY = "TEMPORARY"
 
 TENANTS = [
+    {
+        "env_var": "DEV_TENANT_PLATFORM_ID",
+        "legal_name": "SNS Hospice Solutions",
+        "display_name": "SNS Hospice Solutions",
+        # npi is required by schema; this is not a billing NPI submitter,
+        # so it gets an obviously non-real placeholder like the training
+        # tenants below.
+        "npi": "0000000005",
+        "ein": None,
+        "ptan": None,
+        "tenant_type": "PLATFORM",
+        "environment_tag": PERMANENT,
+        "ai_enabled": True,
+        "billing_enabled": False,
+    },
+    {
+        "env_var": "DEV_TENANT_BILLING_ID",
+        "legal_name": "North East Billing",
+        "display_name": "North East Billing",
+        "npi": "0000000006",
+        "ein": None,
+        "ptan": None,
+        "tenant_type": "BILLING",
+        "environment_tag": PERMANENT,
+        "ai_enabled": True,
+        "billing_enabled": False,
+    },
     {
         "env_var": "DEV_TENANT_REAL_ID",
         "legal_name": "Love & Faith Hospice Services, Inc.",

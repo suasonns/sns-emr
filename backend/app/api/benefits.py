@@ -8,10 +8,53 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.patient_access import get_authorized_patient
 from app.core.permissions import require_roles
+from app.core.security import CurrentUser
+from app.models.benefit_period import BenefitPeriod
 from app.services.benefit_period_service import rollover_benefit_period
 
 router = APIRouter(prefix="/benefits", tags=["Benefits"])
+
+# Any clinical role may view a patient's benefit periods (needed to select
+# the benefit_period_id when preparing a CTI/F2F draft); this is read-only
+# and does not grant any certification/order/signature authority.
+CLINICAL_ROLES = ["LVN", "RN", "NP", "PA", "MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN"]
+
+
+@router.get("/patients/{patient_id}", summary="List a patient's benefit periods (for CTI/F2F benefit_period_id selection)")
+def list_benefit_periods(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(require_roles(CLINICAL_ROLES)),
+):
+    try:
+        parsed_patient_id = UUID(patient_id)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid UUID format for patient_id.")
+
+    get_authorized_patient(db, parsed_patient_id, user)
+
+    periods = (
+        db.query(BenefitPeriod)
+        .filter(BenefitPeriod.patient_id == parsed_patient_id)
+        .filter(BenefitPeriod.tenant_id == user.tenant_id)
+        .order_by(BenefitPeriod.period_number.asc())
+        .all()
+    )
+    return [
+        {
+            "id": str(bp.id),
+            "patient_id": str(bp.patient_id),
+            "benefit_type": bp.benefit_type,
+            "period_number": bp.period_number,
+            "election_date": bp.election_date.isoformat() if bp.election_date else None,
+            "start_date": bp.start_date.isoformat() if bp.start_date else None,
+            "end_date": bp.end_date.isoformat() if bp.end_date else None,
+            "is_current": bp.is_current,
+        }
+        for bp in periods
+    ]
 
 
 @router.post("/", summary="Create or rollover benefit period")

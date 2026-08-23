@@ -116,6 +116,16 @@ class ClinicalNote(BaseModel):
 
     late_entry_reason = Column(String(255), nullable=True)
 
+    # Captures visit.care_level (or the requested level_of_care) at the
+    # moment this note is created, for audit/reporting purposes -- the
+    # live care_level on the visit can change later, so this column
+    # preserves what was true when the note was authored. Originally added
+    # by migration 8bd03327f9df ("add care_level_snapshot to
+    # clinical_notes"); that migration was lost when the migration history
+    # was collapsed into the consolidated baseline and never re-added here.
+    # Restored via a forward-only migration (see alembic/versions).
+    care_level_snapshot = Column(String(20), nullable=True)
+
     # ===================================================
     # CONTENT
     # ===================================================

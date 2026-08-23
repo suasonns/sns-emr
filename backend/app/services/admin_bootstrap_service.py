@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass
+from typing import Iterable, Optional
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -15,6 +16,7 @@ MIN_PASSWORD_LENGTH = 12
 
 DEV_TENANT_ID_ENV = "DEV_TENANT_ID"
 DEV_PLATFORM_TENANT_ID_ENV = "DEV_PLATFORM_TENANT_ID"
+DEV_BILLING_TENANT_ID_ENV = "DEV_BILLING_TENANT_ID"
 
 
 @dataclass(frozen=True)
@@ -44,7 +46,7 @@ DEVELOPMENT_IDENTITIES = (
     DevelopmentIdentity(
         email_env="DEV_BILLING_EMAIL",
         password_env="DEV_BILLING_PASSWORD",
-        tenant_env=DEV_TENANT_ID_ENV,
+        tenant_env=DEV_BILLING_TENANT_ID_ENV,
         full_name="Development Billing",
         role="BILLING",
     ),
@@ -126,15 +128,41 @@ def _ensure_tenant(db: Session, tenant_id: uuid.UUID, *, platform: bool) -> None
 
     tenant.status = "ACTIVE"
     tenant.ai_enabled = True
-    if platform:
-        tenant.billing_enabled = False
+    # Only force billing_enabled=False when we just created a brand-new
+    # placeholder "SNS Development Platform" tenant above (the `return`
+    # in that branch means we never reach here for a fresh tenant). If a
+    # caller points DEV_PLATFORM_TENANT_ID_ENV at an existing real tenant
+    # (e.g. to give an OWNER-role login access to a production agency),
+    # we must not silently mutate that tenant's billing configuration.
 
 
-def provision_development_logins(db: Session) -> int:
-    """Create/update configured development identities without implicit secrets."""
+def provision_development_logins(
+    db: Session, *, roles: Optional[Iterable[str]] = None
+) -> int:
+    """Create/update configured development identities without implicit secrets.
+
+    ``roles`` scopes which of the module-level ``DEVELOPMENT_IDENTITIES`` are
+    processed on this call, matched against ``DevelopmentIdentity.role``.
+
+    - ``roles=None`` (the default) preserves the existing, unscoped bootstrap
+      behavior: every globally configured identity is reconciled. This is what
+      real startup (``app/main.py``) and the operator script
+      (``scripts/seed_login_accounts.py``) rely on, and it must keep working
+      unchanged.
+    - Passing an explicit ``roles`` iterable (e.g. ``{"DPCS_ADMINISTRATOR",
+      "OWNER", "BILLING"}``) restricts processing to only those roles. This
+      lets a caller — in particular a test — provision a small, explicit set
+      of identities without silently reconciling every other globally
+      configured identity (including acceptance identities such as
+      MEDICAL_DIRECTOR) onto whatever tenant the caller happens to have
+      configured for its own test run.
+    """
     provisioned = 0
+    role_filter = set(roles) if roles is not None else None
 
     for identity in DEVELOPMENT_IDENTITIES:
+        if role_filter is not None and identity.role not in role_filter:
+            continue
         email = (os.getenv(identity.email_env) or "").strip().lower()
         password = os.getenv(identity.password_env)
 

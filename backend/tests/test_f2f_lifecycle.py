@@ -243,6 +243,35 @@ class TestCTIF2FAuthorityIndependence:
         assert svc.is_authorized_f2f_performer("NP") is True
         assert cti_svc.is_authorized_cti_signer("NP") is False
 
+
+class TestAuthoritativeSchemaConsolidation:
+    """Proves the F2F contract has exactly one authoritative definition
+    (app/schemas/f2f.py), the router imports it rather than defining its
+    own copy, and the generated OpenAPI contract exposes every clinical
+    field. Guards against the duplicate-schema drift found 2026-08-22."""
+
+    def test_router_uses_the_schemas_module_class_not_a_duplicate(self):
+        from app.api import f2f as f2f_api
+        from app.schemas.f2f import F2FCreateRequest as AuthoritativeRequest
+
+        assert f2f_api.F2FCreateRequest is AuthoritativeRequest
+
+    def test_openapi_contract_includes_all_clinical_fields(self, client):
+        schema = client.app.openapi()
+        request_schema = schema["components"]["schemas"]["F2FCreateRequest"]
+        properties = set(request_schema["properties"].keys())
+
+        expected_clinical_fields = {
+            "kps_score", "pps_score_previous", "pps_score_current",
+            "fast_score", "nyha_class",
+            "adl_dependency_level", "adl_dependency_count", "is_bedbound",
+            "weight_loss_lbs", "oral_intake_decline", "dysphagia",
+            "hospitalizations_30d", "oxygen_lpm_previous", "oxygen_lpm_current",
+            "primary_diagnosis", "secondary_conditions",
+        }
+        missing = expected_clinical_fields - properties
+        assert not missing, f"OpenAPI contract is missing clinical fields: {missing}"
+
     def test_pa_is_valid_f2f_performer_but_not_cti_signer(self):
         from app.services import certification_service as cti_svc
 

@@ -13,6 +13,7 @@ import { getRnicaAssessmentByPatient } from '../api/icaAssessments';
 import PhysicianOrdersBoard from './PhysicianOrdersBoard';
 import CertificationsBoard from './CertificationsBoard';
 import F2FBoard from './F2FBoard';
+import VisitNoteBoard from '../components/VisitNotes';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
@@ -385,52 +386,6 @@ const PatientChart = () => {
     </div>
   );
 
-  const VisitNotesBoard = () => (
-    <div style={{ flex: 1, minWidth: 0, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-        <div style={{ ...boardCard }}>
-          <div style={boardHeader}>Visit notes timeline</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['RN Visit', 'Symptom management reviewed; patient remains alert and comfortable.', '08/14/2026 • 9:10 AM'],
-              ['LVN Skilled Nursing', 'Medication review and wound status follow-up completed.', '08/11/2026 • 10:45 AM'],
-              ['MSW', 'Caregiver support and resource follow-up documented.', '08/09/2026 • 2:00 PM'],
-              ['SC', 'Spiritual support and prayer request addressed.', '08/08/2026 • 1:30 PM'],
-            ].map(([title, detail, stamp]) => (
-              <div key={title} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                  <div style={{ color: colors.text, fontSize: 12.5, fontWeight: 700 }}>{title}</div>
-                  <span style={{ ...badge('teal', 'status'), fontSize: 8.5 }}>{stamp}</span>
-                </div>
-                <div style={{ color: colors.muted, fontSize: 11.5, lineHeight: 1.5 }}>{detail}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ ...boardCard }}>
-          <div style={boardHeader}>Visit queue</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['RN', 'Today • 9:00 AM', 'Scheduled'],
-              ['LVN', 'Thu • 9:30 AM', 'Pending'],
-              ['MSW', 'Fri • 1:00 PM', 'Confirmed'],
-              ['SC', 'Sat • 2:30 PM', 'Planned'],
-            ].map(([staff, time, status]) => (
-              <div key={staff} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${colors.border}`, paddingBottom: 5 }}>
-                <div>
-                  <div style={{ color: colors.text, fontWeight: 700, fontSize: 12.5 }}>{staff}</div>
-                  <div style={{ color: colors.muted, fontSize: 10.5 }}>{time}</div>
-                </div>
-                <span style={{ ...badge(status === 'Scheduled' ? 'teal' : status === 'Confirmed' ? 'green' : 'amber', 'status'), fontSize: 8.5 }}>{status}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
   const TxMedsBoard = () => (
     <div style={{ flex: 1, minWidth: 0, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
@@ -610,7 +565,7 @@ const PatientChart = () => {
       case 'add-visit':
       case 'my-visit-notes':
       case 'visit-history':
-        return <VisitNotesBoard />;
+        return <VisitNoteBoard patientId={resolvedPatientId} />;
       case 'tx-meds':
       case 'add-order':
       case 'dme-orders':

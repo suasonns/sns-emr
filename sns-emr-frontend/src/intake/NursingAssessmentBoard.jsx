@@ -85,7 +85,7 @@ function mapSummaryToPatient(summary) {
   };
 }
 
-export default function NursingAssessmentBoard({ patientId = "" }) {
+export default function NursingAssessmentBoard({ patientId = "", onNavigateToSection = undefined }) {
   const { enabled: workspacePilot, disable: exitWorkspacePilot } = useRnIcaCommandWorkspace();
   const storageKey = useMemo(() => "sns-emr:ica-complete:rn:" + (patientId || "unknown-patient"), [patientId]);
   const [initialComplete, setInitialComplete] = useState(() => localStorage.getItem(storageKey) === "true");
@@ -205,6 +205,7 @@ export default function NursingAssessmentBoard({ patientId = "" }) {
             onFormDataChange={setReportFormData}
             workspacePilot={workspacePilot}
             onExitWorkspacePilot={exitWorkspacePilot}
+            onNavigateToSection={onNavigateToSection}
           />
         </div>
       )}

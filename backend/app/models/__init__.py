@@ -70,6 +70,12 @@ from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.chha_visit_task_result import CHHAVisitTaskResult
 
 # ---------------------------------------------------------
+# ✅ CONTINUOUS CARE (shared hourly narrative form)
+# ---------------------------------------------------------
+
+from app.models.cc_hourly_narrative_entry import CCHourlyNarrativeEntry
+
+# ---------------------------------------------------------
 # ✅ PATIENT SUPPORT / DEPENDENCIES
 # ---------------------------------------------------------
 

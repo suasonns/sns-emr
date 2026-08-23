@@ -116,8 +116,15 @@ class Tenant(BaseModel):
     __table_args__ = (
 
         # ✅ Enforce valid tenant types
+        # PLATFORM = SNS Hospice Solutions (vendor/platform org: OWNER-role
+        # staff — executives, compliance, QA, support, developers,
+        # implementation). BILLING = SNS Billing Services (separate billing
+        # org: BILLING-role staff). Both are real, permanent organizations,
+        # not hospice agencies — kept distinct so tenant_id stays required
+        # (no nullable tenant_id) while access is still tenant + domain +
+        # role scoped.
         CheckConstraint(
-            "tenant_type IN ('PRODUCTION', 'TRAINING', 'DEV')",
+            "tenant_type IN ('PRODUCTION', 'TRAINING', 'DEV', 'PLATFORM', 'BILLING')",
             name="ck_tenant_type_valid",
         ),
 

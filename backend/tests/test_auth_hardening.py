@@ -8,7 +8,22 @@ from app.models.user import User
 from app.services.admin_bootstrap_service import provision_development_logins
 
 
+# Roles this test is actually responsible for. Passing this set to
+# provision_development_logins(..., roles=...) guarantees the call only
+# touches these three synthetic identities -- it can never reconcile
+# unrelated globally configured identities (e.g. the real acceptance
+# Medical Director) onto this test's throwaway tenant, because the function
+# skips every DEVELOPMENT_IDENTITIES entry whose role isn't in this set.
+TEST_ROLES = {"DPCS_ADMINISTRATOR", "OWNER", "BILLING"}
+
+
 def _configured_identities(monkeypatch):
+    # Unique synthetic identities/tenants per test invocation (not the real
+    # DEV_TENANT_ID / DEV_PLATFORM_TENANT_ID env vars, and not the canonical
+    # Love & Faith Medical Director account). A fresh uuid4 tenant is used
+    # purely as an ephemeral container for these 3 synthetic users; because
+    # provisioning is now scoped to TEST_ROLES, no other identity (and no
+    # unrelated tenant) is ever touched by this call.
     suffix = uuid.uuid4().hex
     tenant_id = uuid.uuid4()
     platform_tenant_id = uuid.uuid4()
@@ -19,6 +34,7 @@ def _configured_identities(monkeypatch):
     }
     monkeypatch.setenv("DEV_TENANT_ID", str(tenant_id))
     monkeypatch.setenv("DEV_PLATFORM_TENANT_ID", str(platform_tenant_id))
+    monkeypatch.setenv("DEV_BILLING_TENANT_ID", str(tenant_id))
     monkeypatch.setenv("DEV_DPCS_ADMIN_EMAIL", credentials["DPCS_ADMINISTRATOR"][0])
     monkeypatch.setenv("DEV_DPCS_ADMIN_PASSWORD", credentials["DPCS_ADMINISTRATOR"][1])
     monkeypatch.setenv("DEV_PLATFORM_OWNER_EMAIL", credentials["OWNER"][0])
@@ -32,7 +48,7 @@ def test_provisioning_authentication_authorization_and_password_flows(
     client, db_session, monkeypatch
 ):
     tenant_id, platform_tenant_id, credentials = _configured_identities(monkeypatch)
-    assert provision_development_logins(db_session) == 3
+    assert provision_development_logins(db_session, roles=TEST_ROLES) == 3
 
     original_hashes = {}
     tokens = {}
@@ -72,7 +88,7 @@ def test_provisioning_authentication_authorization_and_password_flows(
         "DEV_BILLING_PASSWORD",
     ):
         monkeypatch.delenv(env_name)
-    assert provision_development_logins(db_session) == 3
+    assert provision_development_logins(db_session, roles=TEST_ROLES) == 3
     for role, (email, _) in credentials.items():
         user = db_session.query(User).filter(User.email == email).one()
         assert user.password_hash == original_hashes[role]
