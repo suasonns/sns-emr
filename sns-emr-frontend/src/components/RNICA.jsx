@@ -3402,7 +3402,7 @@ const CHHA_TASK_OPTIONS = [
       { code: "GERI_CHAIR", label: "Uses geri chair (every visit)" },
       { code: "BEDBOUND", label: "Bedbound" },
       { code: "CHAIR_TO_BED", label: "Chair-to-bed only" },
-      { code: "BED_RAILS", label: "Bed rails up (every visit)", detail: true, detailLabel: "Which side(s) — 1, 2, or partial" },
+      { code: "BED_RAILS", label: "Bed rails up (every visit)", detail: true, detailLabel: "Type & side(s) — e.g. full rail both sides, half rail left only" },
       { code: "CLEAR_PATH", label: "Keep walking path/objects within reach clear (every visit)" },
       { code: "LOW_BED", label: "Keep bed in low position (every visit)" },
       { code: "REPOSITION", label: "Turn and reposition patient (every visit)", detail: true, detailLabel: "How often / which side(s)" },
@@ -3522,6 +3522,12 @@ const CHHA_MINIMUM_ASSIST_OPTIONS = [
 // At least one box is required whenever the task is marked "Completed as
 // ordered" so the record always shows exactly what was done, not just that
 // "something" was done.
+// Checklist codes that mean "another staff member physically helped" -- when
+// any of these are checked, we require the aide to name who assisted, both
+// for staffing-safety accountability and because a solo bariatric/lift
+// transfer is a documented safety violation.
+const ASSIST_NAME_TRIGGER_CODES = ["SECOND_PERSON_PRESENT", "TWO_PERSON_BATH_TRANSFER"];
+
 const CHHA_VISIT_FACT_OPTIONS = {
   "Ambulation": [
     { code: "USED_ORDERED_DEVICE", label: "Used the ordered device/assist level (walker, cane, wheelchair, etc.)" },
@@ -4442,7 +4448,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
     if (state === "completed") {
       const catalog = visitFactCatalog(t);
       const needsChecklist = !!catalog && (result?.checklist || []).length === 0;
-      const needsAssistedBy = (result?.checklist || []).includes("SECOND_PERSON_PRESENT") && !result?.assistedBy?.trim();
+      const needsAssistedBy = (result?.checklist || []).some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result?.assistedBy?.trim();
       return needsChecklist || needsAssistedBy;
     }
     return false;
@@ -4590,7 +4596,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               const catalog = visitFactCatalog(t);
               const checklist = result.checklist || [];
               const needsChecklist = result.state === "completed" && !!catalog && checklist.length === 0;
-              const needsAssistedBy = result.state === "completed" && checklist.includes("SECOND_PERSON_PRESENT") && !result.assistedBy?.trim();
+              const needsAssistedBy = result.state === "completed" && checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result.assistedBy?.trim();
               const needsFreeNote = (result.state === "refused" || result.state === "notDone") && !result.note?.trim();
               const anyMissing = needsChecklist || needsAssistedBy || needsFreeNote;
               const showChecklist = result.state === "completed" && !!catalog;
@@ -4639,7 +4645,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                         ))}
                       </div>
                       {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
-                      {checklist.includes("SECOND_PERSON_PRESENT") && (
+                      {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
                         <div style={{ marginTop: 6, maxWidth: 360 }}>
                           <FormInput
                             label="Who assisted? (name/role — required, staffing safety record)"
