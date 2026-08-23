@@ -105,23 +105,54 @@ def db_session():
     # users.physician_id -> physicians.id. "users" is retained across tests
     # (see _RETAINED below) but "physicians" is not, so any lingering link
     # from a prior test would block deleting physicians here. Clear it first.
+    #
+    # Defect fixed here (traced 2026-08-22): this statement previously
+    # nulled physician_id WITHOUT resetting physician_link_status, so a
+    # user a prior test had linked (ACTIVE) or unlinked (ENDED) kept that
+    # stale status label with physician_id now NULL — reproducing the
+    # exact ACTIVE+NULL / ENDED+NULL anomaly found in the shared dev DB
+    # across repeated local test runs. Reset both together.
     session.execute(
         text(
-            "UPDATE users SET physician_id = NULL WHERE tenant_id = :tenant_id"
+            "UPDATE users SET physician_id = NULL, physician_link_status = 'UNLINKED' "
+            "WHERE tenant_id = :tenant_id"
         ),
         {"tenant_id": uuid.UUID(tenant_id)},
     )
     session.commit()
 
     # Delete child rows before parents; the generated schema enforces the FKs
-    # that the old hand-built database did not.
+    # that the old hand-built database did not. sorted_tables can't fully
+    # topologically order everything (see the physicians<->users cycle
+    # warning below), so a single pass may hit an FK violation for tables
+    # outside that cycle too (e.g. chha_visit_outcomes / chha_visit_task_
+    # results). Retry failed deletes in dependency-agnostic passes -- each
+    # pass runs in its own SAVEPOINT so one failure doesn't abort the rest.
     _RETAINED = {"tenants", "users", "roles", "interfaces"}
-    for table in reversed(Base.metadata.sorted_tables):
-        if table.name in _RETAINED or "tenant_id" not in table.c:
-            continue
-        session.execute(
-            table.delete().where(table.c.tenant_id == uuid.UUID(tenant_id))
-        )
+    _candidates = [
+        table
+        for table in reversed(Base.metadata.sorted_tables)
+        if table.name not in _RETAINED and "tenant_id" in table.c
+    ]
+    for _pass in range(len(_candidates) + 1):
+        if not _candidates:
+            break
+        remaining = []
+        for table in _candidates:
+            nested = session.begin_nested()
+            try:
+                session.execute(
+                    table.delete().where(table.c.tenant_id == uuid.UUID(tenant_id))
+                )
+                nested.commit()
+            except Exception:
+                nested.rollback()
+                remaining.append(table)
+        if len(remaining) == len(_candidates):
+            # No progress this pass -- give up retrying and let the final
+            # commit surface whatever's left.
+            break
+        _candidates = remaining
     session.commit()
 
     tenant = session.get(Tenant, tenant_id)
