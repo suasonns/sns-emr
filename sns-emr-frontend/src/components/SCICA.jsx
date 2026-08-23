@@ -25,6 +25,17 @@ const MENTAL_STATUS_OPTIONS = ["", "Alert", "Awake", "Oriented", "Calm", "Confus
 const MARITAL_STATUS_OPTIONS = ["", "Widowed", "Married", "Single", "Divorced", "Separated", "Partnered"];
 const INVOLVEMENT_OPTIONS = ["", "Active", "Inactive", "Occasional", "Unknown"];
 const RATING_OPTIONS = ["", "None", "Mild", "Moderate", "Severe"];
+const CARE_LEVEL_OPTIONS = ["", "Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
 const SPIRITUAL_SUPPORT_OPTIONS = [
   "Faith Community",
   "Prayer",
@@ -115,8 +126,13 @@ const INITIAL_FORM = {
     careLevel: "",
   },
   pain: {
-    controlled: "",
-    level: "",
+    uncomfortable: "",
+    painLevel: "",
+    mentalStatus: "",
+    historian: "",
+    historianOtherName: "",
+    historianOtherRelation: "",
+    notes: "",
   },
   deliveryOfCare: {
     declined: "",
@@ -480,7 +496,7 @@ function DistressSourceGrid({ distress, onToggleSource, onSourceDetailChange }) 
   const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
   const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
       {DISTRESS_OPTIONS.map((option) => {
         const needsDetail = DISTRESS_DETAIL_OPTIONS.includes(option) && distress.sources.includes(option);
         return (
@@ -748,10 +764,11 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
       visitMeta: {
         ...prev.visitMeta,
         staffAssigned: prev.visitMeta.staffAssigned || spiritualStaff?.staff_name || currentUser?.full_name || "",
+        discipline: currentUser?.role || prev.visitMeta.discipline || "SC",
         careLevel: prev.visitMeta.careLevel || patientSummary.patient.acuity_state || "",
       },
     }, { preserveExisting: true }));
-  }, [currentUser?.full_name, patientSummary, prepareFormForPersist]);
+  }, [currentUser?.full_name, currentUser?.role, patientSummary, prepareFormForPersist]);
 
   const updateSection = useCallback((section, key, value) => {
     setFormData((prev) => withFormDefaults({
@@ -984,7 +1001,9 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
                   </select>
                 </Field>
                 <Field label="Reason for Visit">
-                  <input value={formData.visitMeta.reasonForVisit} readOnly style={{ ...styles.input, background: "#f8fafc" }} />
+                  <select value={formData.visitMeta.reasonForVisit} onChange={(e) => updateSection("visitMeta", "reasonForVisit", e.target.value)} style={styles.select}>
+                    {selectOptions(REASON_FOR_VISIT_OPTIONS)}
+                  </select>
                 </Field>
                 <Field label="Visit Date">
                   <input type="date" value={formData.visitMeta.visitDate} onChange={(e) => updateSection("visitMeta", "visitDate", e.target.value)} style={styles.input} />
@@ -1006,7 +1025,11 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
                 <Field label="Entered By"><input value={formData.visitMeta.enteredBy} onChange={(e) => updateSection("visitMeta", "enteredBy", e.target.value)} style={styles.input} /></Field>
                 <Field label="Staff Assigned"><input value={formData.visitMeta.staffAssigned} onChange={(e) => updateSection("visitMeta", "staffAssigned", e.target.value)} style={styles.input} /></Field>
                 <Field label="Discipline"><input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
-                <Field label="Care Level"><input value={formData.visitMeta.careLevel} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
+                <Field label="Care Level">
+                  <select value={formData.visitMeta.careLevel} onChange={(e) => updateSection("visitMeta", "careLevel", e.target.value)} style={styles.select}>
+                    {selectOptions(CARE_LEVEL_OPTIONS)}
+                  </select>
+                </Field>
               </div>
             </div>
 
@@ -1014,11 +1037,36 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
               {patientSummaryError ? <div style={styles.alert}>Patient summary: {patientSummaryError}</div> : null}
               {pageError ? <div style={styles.alert}>{pageError}</div> : null}
 
-              <Card title="1. Pain" subtitle="Comfort screening at the spiritual care visit" id="pain">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 220px", gap: 12, alignItems: "end" }}>
-                  <Field label="Is Pain controlled at a comfortable level?"><select value={formData.pain.controlled} onChange={(e) => updateSection("pain", "controlled", e.target.value)} style={styles.select}>{selectOptions(YES_NO)}</select></Field>
-                  <Field label="If No, Pain level?"><input type="number" min="0" max="10" value={formData.pain.level} onChange={(e) => updateSection("pain", "level", e.target.value)} style={styles.input} disabled={formData.pain.controlled !== "No"} /></Field>
-                  <button type="button" style={styles.stubButton} disabled>Pain Assessment Tool</button>
+              <Card title="1. Pain" subtitle="Patient response to illness" id="pain">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
+                  <Field label="Are you uncomfortable because of pain?">
+                    <select value={formData.pain.uncomfortable} onChange={(e) => updateSection("pain", "uncomfortable", e.target.value)} style={styles.select}>{selectOptions(YES_NO)}</select>
+                  </Field>
+                  <Field label="If yes, pain level (0-10)">
+                    <input type="number" min="0" max="10" value={formData.pain.painLevel} onChange={(e) => updateSection("pain", "painLevel", e.target.value)} style={styles.input} />
+                  </Field>
+                  <Field label="Observed patient mental status">
+                    <select value={formData.pain.mentalStatus} onChange={(e) => updateSection("pain", "mentalStatus", e.target.value)} style={styles.select}>{selectOptions(MENTAL_STATUS_OPTIONS)}</select>
+                  </Field>
+                  <Field label="Historian / primary support">
+                    <select value={formData.pain.historian} onChange={(e) => updateSection("pain", "historian", e.target.value)} style={styles.select}>{selectOptions(["", "Patient", "PCG", "Family", "Other"])}</select>
+                  </Field>
+                  {formData.pain.historian === "Other" ? (
+                    <>
+                      <Field label="If other: name"><input value={formData.pain.historianOtherName} onChange={(e) => updateSection("pain", "historianOtherName", e.target.value)} style={styles.input} /></Field>
+                      <Field label="If other: relation"><input value={formData.pain.historianOtherRelation} onChange={(e) => updateSection("pain", "historianOtherRelation", e.target.value)} style={styles.input} /></Field>
+                    </>
+                  ) : null}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <Field label="Narrative">
+                      <textarea
+                        value={formData.pain.notes}
+                        onChange={(e) => updateSection("pain", "notes", e.target.value)}
+                        style={styles.textarea}
+                        placeholder="Social worker narrative and support context."
+                      />
+                    </Field>
+                  </div>
                 </div>
               </Card>
 
