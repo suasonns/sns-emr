@@ -4590,7 +4590,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         {orderedTaskItems.length === 0 ? (
           <div style={{ fontSize: 12, color: COLORS.gray }}>No tasks are ordered in this patient's CHHA Plan of Care yet.</div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 8, alignItems: "start" }}>
             {orderedTaskItems.map((t) => {
               const result = note.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
               const catalog = visitFactCatalog(t);
