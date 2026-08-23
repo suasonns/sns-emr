@@ -311,6 +311,7 @@ const REASON_FOR_VISIT_OPTIONS = [
   "Discharge/Transfer",
   "Other",
 ];
+const CHHA_REASON_FOR_VISIT_OPTIONS = ["Follow-up", "Routine", "CC"];
 
 // ════════════════════════════════════════════════════════════════
 // 2. INITIAL_FORM — Complete State Shape (28 sections)
@@ -4499,7 +4500,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               label="Reason for Visit"
               value={note.visitMeta.reasonForVisit}
               onChange={(v) => updateVisitMeta("reasonForVisit", v)}
-              options={REASON_FOR_VISIT_OPTIONS}
+              options={CHHA_REASON_FOR_VISIT_OPTIONS}
               disabled={visitLocked}
             />
             <FormInput
