@@ -236,7 +236,7 @@ function getStyles(brand, COLORS) {
   const base = getRnicaStyles(COLORS);
   return {
     page: base.page,
-    frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
+    frame: { width: "100%", padding: "16px 20px 24px" },
     shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
     sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
     patientCard: { ...base.card, fontSize: 11.5, marginBottom: 12, padding: 0 },
