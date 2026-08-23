@@ -31,10 +31,36 @@ const ONGOING_COPING_OPTIONS = [
   "Ability to fulfill desired sexual expression",
 ];
 const ABUSE_CATEGORY_OPTIONS = ["Abuse/Domestic Violence", "Abandonment", "Neglect", "Exploitation"];
+const CARE_LEVEL_OPTIONS = ["", "Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
 
 const createSupportPerson = () => ({ name: "", phone: "", relationship: "" });
 
 const INITIAL_FORM = {
+  visitMeta: {
+    correction: false,
+    typeOfVisit: "",
+    visitKind: "",
+    visitKindSpecify: "",
+    reasonForVisit: "Initial Comprehensive Assessment",
+    visitDate: "",
+    timeIn: "",
+    timeOut: "",
+    duration: "",
+    enteredBy: "",
+    staffAssigned: "",
+    discipline: "MSW",
+    careLevel: "",
+  },
   pain: {
     uncomfortable: "",
     painLevel: "",
@@ -250,6 +276,7 @@ function getStyles(brand, COLORS) {
     headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
     progress: { fontSize: 11, fontWeight: 700 },
     uploadBar: { padding: 10, background: brand.tealLight, borderBottom: `1px solid ${brand.line}`, fontSize: 11, color: brand.text },
+    metaBar: { padding: "16px 24px", background: brand.canvas, borderBottom: `1px solid ${brand.line}` },
     alert: base.warningBox,
     content: { padding: 24 },
     sectionStack: { display: "flex", flexDirection: "column", gap: 12 },
@@ -298,6 +325,7 @@ function withFormDefaults(value) {
   return {
     ...base,
     ...parsed,
+    visitMeta: { ...base.visitMeta, ...(parsed.visitMeta || {}) },
     pain: { ...base.pain, ...(parsed.pain || {}) },
     psychosocial: {
       ...base.psychosocial,
@@ -347,6 +375,9 @@ function seedCurrentUserBindings(value, { preserveExisting = false } = {}) {
   const currentUserId = currentUser?.id || "";
   const next = withFormDefaults(value);
 
+  next.visitMeta.discipline = currentUser?.role || next.visitMeta.discipline || "MSW";
+  if (!preserveExisting || !next.visitMeta.enteredBy) next.visitMeta.enteredBy = currentUserName;
+  if (!preserveExisting || !next.visitMeta.staffAssigned) next.visitMeta.staffAssigned = currentUserName;
   if (!preserveExisting || !next.finalization.clinician_name) next.finalization.clinician_name = currentUserName;
   if (!preserveExisting || !next.finalization.clinician_user_id) next.finalization.clinician_user_id = currentUserId;
   if (!preserveExisting || !next.finalization.countersign_staff_name) next.finalization.countersign_staff_name = currentUserName;
@@ -475,6 +506,17 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
       mounted = false;
     };
   }, [patientId]);
+
+  useEffect(() => {
+    if (!patientSummary) return;
+    setFormData((prev) => withFormDefaults({
+      ...prev,
+      visitMeta: {
+        ...prev.visitMeta,
+        careLevel: prev.visitMeta.careLevel || patientSummary.patient?.acuity_state || "",
+      },
+    }));
+  }, [patientSummary]);
 
   useEffect(() => {
     const nextFormData = readStoredForm(patientId);
@@ -1151,6 +1193,70 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: progressTone }}>{progressLabel}</div>
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.8)" }}>Close</div>
+              </div>
+            </div>
+
+            <div style={styles.metaBar}>
+              <div style={{ display: "grid", gridTemplateColumns: "180px repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                <Field label="Correction">
+                  <label style={styles.checkboxLabel}>
+                    <input type="checkbox" checked={formData.visitMeta.correction} onChange={(e) => updateField("visitMeta", "correction", e.target.checked)} />
+                    Correction
+                  </label>
+                </Field>
+                <Field label="Type of Visit">
+                  <select value={formData.visitMeta.typeOfVisit} onChange={(e) => updateField("visitMeta", "typeOfVisit", e.target.value)} style={styles.select}>
+                    <option value="">Select</option>
+                    <option value="In-Person">In-Person</option>
+                    <option value="Telephone">Telephone</option>
+                    <option value="Video">Video</option>
+                  </select>
+                </Field>
+                <Field label="Visit">
+                  <select value={formData.visitMeta.visitKind} onChange={(e) => updateField("visitMeta", "visitKind", e.target.value)} style={styles.select}>
+                    <option value="">Select</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Unscheduled">Unscheduled</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </Field>
+                <Field label="Reason for Visit">
+                  <select value={formData.visitMeta.reasonForVisit} onChange={(e) => updateField("visitMeta", "reasonForVisit", e.target.value)} style={styles.select}>
+                    {REASON_FOR_VISIT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Visit Date">
+                  <input type="date" value={formData.visitMeta.visitDate} onChange={(e) => updateField("visitMeta", "visitDate", e.target.value)} style={styles.input} />
+                </Field>
+              </div>
+
+              {formData.visitMeta.visitKind === "Other" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                  <Field label="Visit specify">
+                    <input value={formData.visitMeta.visitKindSpecify} onChange={(e) => updateField("visitMeta", "visitKindSpecify", e.target.value)} style={styles.input} />
+                  </Field>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12 }}>
+                <Field label="Time In"><input type="time" value={formData.visitMeta.timeIn} onChange={(e) => updateField("visitMeta", "timeIn", e.target.value)} style={styles.input} /></Field>
+                <Field label="Time Out"><input type="time" value={formData.visitMeta.timeOut} onChange={(e) => updateField("visitMeta", "timeOut", e.target.value)} style={styles.input} /></Field>
+                <Field label="Duration (h:m)"><input value={formData.visitMeta.duration} onChange={(e) => updateField("visitMeta", "duration", e.target.value)} style={styles.input} placeholder="1h 15m" /></Field>
+                <Field label="Entered By"><input value={formData.visitMeta.enteredBy} onChange={(e) => updateField("visitMeta", "enteredBy", e.target.value)} style={styles.input} /></Field>
+                <Field label="Staff Assigned"><input value={formData.visitMeta.staffAssigned} onChange={(e) => updateField("visitMeta", "staffAssigned", e.target.value)} style={styles.input} /></Field>
+                <Field label="Discipline"><input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                <Field label="Care Level">
+                  <select value={formData.visitMeta.careLevel} onChange={(e) => updateField("visitMeta", "careLevel", e.target.value)} style={styles.select}>
+                    {CARE_LEVEL_OPTIONS.map((option) => (
+                      <option key={option || "blank"} value={option}>{option || "Select"}</option>
+                    ))}
+                  </select>
+                </Field>
               </div>
             </div>
 
