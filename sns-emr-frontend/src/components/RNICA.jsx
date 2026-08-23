@@ -4461,8 +4461,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         )}
       </Card>
 
-      {!!selectedVisitId && (
-        <Card title="Visit Details" cms="Logistics & payroll tracking for this visit">
+      <Card title="Visit Details" cms="Logistics & payroll tracking for this visit">
           <div style={styles.fieldsGrid}>
             <label style={styles.formGroup}>
               <span style={styles.label}>Correction</span>
@@ -4524,8 +4523,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               disabled={visitLocked}
             />
           </div>
-        </Card>
-      )}
+      </Card>
 
       {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
       {(todayWatchFor.length > 0) && (
