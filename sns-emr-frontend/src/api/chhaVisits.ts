@@ -98,19 +98,6 @@ export async function listAideVisitsForPatient(patientId: string): Promise<AideV
   return unwrap(api.get(`/visits/patient/${patientId}/aide`), "Unable to load this patient's HA visits");
 }
 
-export async function createAideVisit(patientId: string): Promise<{ visit_id: string }> {
-  return unwrap(
-    api.post(`/visits/`, {
-      patient_id: patientId,
-      visit_type: "AIDE",
-      service_type: "AIDE",
-      form_type: "ROUTINE_VISIT",
-      visit_schedule_type: "SCHEDULED",
-    }),
-    "Unable to create a new CHHA visit"
-  );
-}
-
 export async function getChhaVisitOutcome(visitId: string): Promise<CHHAVisitOutcome | null> {
   return unwrap(api.get(`/visits/${visitId}/chha-outcome`), "Unable to load this visit's CHHA note");
 }
