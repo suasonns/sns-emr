@@ -53,6 +53,7 @@ import {
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
   listAideVisitsForPatient,
+  createAideVisit,
   getChhaVisitOutcome,
   upsertChhaVisitOutcome,
 } from "../api/chhaVisits";
@@ -4092,6 +4093,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
   const [selectedVisitId, setSelectedVisitId] = useState("");
   const [selectedVisitMeta, setSelectedVisitMeta] = useState(null);
   const [note, setNote] = useState(DEFAULT_CHHA_VISIT_NOTE);
+  const [creatingVisit, setCreatingVisit] = useState(false);
 
   const reloadPatientContext = useCallback(() => {
     setLoading(true);
@@ -4343,6 +4345,26 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
     setNote((p) => ({ ...p, visitMeta: { ...p.visitMeta, [key]: value } }));
   };
 
+  const handleCreateVisit = () => {
+    setCreatingVisit(true);
+    setError("");
+    createAideVisit(patientId)
+      .then((created) => {
+        const newVisit = {
+          visit_id: created.visit_id,
+          visit_datetime: new Date().toISOString(),
+          status: "DRAFT",
+          has_outcome: false,
+          rn_notification_required: false,
+        };
+        setVisits((prev) => [newVisit, ...prev]);
+        setSelectedVisitId(newVisit.visit_id);
+        setSelectedVisitMeta(newVisit);
+      })
+      .catch((err) => setError(err.message || "Unable to create a new CHHA visit."))
+      .finally(() => setCreatingVisit(false));
+  };
+
   const handleSubmit = () => {
     if (!selectedVisitId || !canSubmit) return;
     setSaving(true);
@@ -4437,21 +4459,41 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
 
       <Card title="CHHA Visit Note" cms="Home Health Aide">
         {visits.length === 0 ? (
-          <div style={{ ...styles.infoBox }}>No Home Health Aide visits are on record for this patient yet.</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+            <div style={{ ...styles.infoBox }}>No Home Health Aide visits are on record for this patient yet.</div>
+            <button
+              type="button"
+              onClick={handleCreateVisit}
+              disabled={creatingVisit}
+              style={{ ...styles.btnPrimary, opacity: creatingVisit ? 0.55 : 1, cursor: creatingVisit ? "not-allowed" : "pointer" }}
+            >
+              {creatingVisit ? "Creating…" : "+ New Visit"}
+            </button>
+          </div>
         ) : (
-          <div style={{ maxWidth: 360 }}>
-            <FormSelect
-              label="Visit"
-              value={selectedVisitId}
-              onChange={(v) => {
-                setSelectedVisitId(v);
-                setSelectedVisitMeta(visits.find((x) => x.visit_id === v) || null);
-              }}
-              options={visits.map((v) => ({
-                value: v.visit_id,
-                label: `${v.visit_datetime ? new Date(v.visit_datetime).toLocaleString() : "Undated visit"} — ${v.status}${v.has_outcome ? " ✓ documented" : ""}`,
-              }))}
-            />
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 12, flexWrap: "wrap" }}>
+            <div style={{ maxWidth: 360, flex: 1 }}>
+              <FormSelect
+                label="Visit"
+                value={selectedVisitId}
+                onChange={(v) => {
+                  setSelectedVisitId(v);
+                  setSelectedVisitMeta(visits.find((x) => x.visit_id === v) || null);
+                }}
+                options={visits.map((v) => ({
+                  value: v.visit_id,
+                  label: `${v.visit_datetime ? new Date(v.visit_datetime).toLocaleString() : "Undated visit"} — ${v.status}${v.has_outcome ? " ✓ documented" : ""}`,
+                }))}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateVisit}
+              disabled={creatingVisit}
+              style={{ ...styles.btnPrimary, opacity: creatingVisit ? 0.55 : 1, cursor: creatingVisit ? "not-allowed" : "pointer" }}
+            >
+              {creatingVisit ? "Creating…" : "+ New Visit"}
+            </button>
           </div>
         )}
         {visitLocked && (
