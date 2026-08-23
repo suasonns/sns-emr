@@ -41,6 +41,7 @@ from app.models.med_reconciliation import MedReconciliationItem
 from app.models.sfv_requirement import SFVRequirement
 from app.models.admission import Admission
 from app.models.chha_visit_outcome import CHHAVisitOutcome
+from app.models.chha_visit_task_result import CHHAVisitTaskResult
 from app.models.rnica_assessment import RnicaAssessment
 from app.services import rnica_poc_adapter
 from app.services.rnica_finalization_service import evaluate_finalization_readiness
@@ -3975,6 +3976,120 @@ def upsert_chha_visit_outcome(
         "visit_id": str(visit.id),
         "outcome_id": str(outcome.id),
         "request_id": request_id,
+    }
+
+
+@router.get("/patient/{patient_id}/aide")
+def list_aide_visits_for_patient(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """
+    Lists this patient's Home Health Aide (CHHA) visits, most recent first, so
+    the aide/RN can pick which visit to document a CHHA Visit Note for.
+    Includes whether a structured outcome has already been recorded, so the
+    UI can distinguish "start a note" from "resume/edit the note already
+    saved" instead of risking an accidental overwrite.
+    """
+    get_authorized_patient(db, patient_id, current_user)
+
+    visits = (
+        db.query(Visit)
+        .filter(
+            Visit.patient_id == patient_id,
+            Visit.visit_discipline == "AIDE",
+            Visit.deleted_at.is_(None),
+        )
+        .order_by(Visit.visit_datetime.desc())
+        .limit(50)
+        .all()
+    )
+
+    if not visits:
+        return []
+
+    visit_ids = [v.id for v in visits]
+    outcome_by_visit = {
+        o.visit_id: o
+        for o in db.query(CHHAVisitOutcome).filter(CHHAVisitOutcome.visit_id.in_(visit_ids)).all()
+    }
+
+    return [
+        {
+            "visit_id": str(v.id),
+            "visit_datetime": v.visit_datetime,
+            "status": v.status,
+            "has_outcome": v.id in outcome_by_visit,
+            "rn_notification_required": (
+                outcome_by_visit[v.id].rn_notification_required if v.id in outcome_by_visit else False
+            ),
+        }
+        for v in visits
+    ]
+
+
+@router.get("/{visit_id}/chha-outcome")
+def get_chha_visit_outcome(
+    visit_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """
+    Fetches the structured CHHA Visit Note already saved for a visit (if
+    any), including its task results, so the UI can resume/edit an
+    in-progress note instead of starting blank and silently overwriting a
+    prior submission on save.
+    """
+    visit = db.query(Visit).filter(Visit.id == visit_id).first()
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+
+    get_authorized_patient(db, visit.patient_id, current_user)
+
+    outcome = (
+        db.query(CHHAVisitOutcome)
+        .filter(CHHAVisitOutcome.visit_id == visit_id)
+        .first()
+    )
+    if not outcome:
+        return None
+
+    task_results = (
+        db.query(CHHAVisitTaskResult)
+        .filter(CHHAVisitTaskResult.outcome_id == outcome.id)
+        .all()
+    )
+
+    return {
+        "outcome_id": str(outcome.id),
+        "visit_id": str(outcome.visit_id),
+        "poc_reference_id": str(outcome.poc_reference_id) if outcome.poc_reference_id else None,
+        "tolerance_to_care": outcome.tolerance_to_care,
+        "condition_during_visit": outcome.condition_during_visit,
+        "skin_outcome": outcome.skin_outcome,
+        "pain_or_change_observed": outcome.pain_or_change_observed,
+        "rn_notification_required": outcome.rn_notification_required,
+        "rn_notified": outcome.rn_notified,
+        "rn_notified_at": outcome.rn_notified_at,
+        "rn_notified_name": outcome.rn_notified_name,
+        "caregiver_instruction_provided": outcome.caregiver_instruction_provided,
+        "caregiver_understanding_confirmed": outcome.caregiver_understanding_confirmed,
+        "exception_narrative": outcome.exception_narrative,
+        "updated_at": outcome.updated_at,
+        "task_results": [
+            {
+                "section_code": t.section_code,
+                "task_code": t.task_code,
+                "was_assigned": t.was_assigned,
+                "completed": t.completed,
+                "refused": t.refused,
+                "not_done": t.not_done,
+                "observation_code": t.observation_code,
+                "result_note": t.result_note,
+            }
+            for t in task_results
+        ],
     }
 
 

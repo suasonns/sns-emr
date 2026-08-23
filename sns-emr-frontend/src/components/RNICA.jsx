@@ -9,7 +9,7 @@
  *          neurological, cardiovascular, respiratory, infection, gastrointestinal,
  *          nutrition, endocrine, genitourinary, musculoskeletal, skin, imminentDeath,
  *          sfv, safety, psychosocial, spiritual, bereavement, personalCare,
- *          teachingNeeds, admissionsOrder, ordersHub, referrals, finalization
+ *          teachingNeeds, admissionsOrder, referrals, finalization
  *
  * Color System: HOPE = GREEN (#059669), SFV = RED (#DC2626), CMS = BLUE (#2563EB)
  * Accent: Teal (#0D9488)
@@ -51,6 +51,11 @@ import {
   mergeRnicaPocDuplicateProblems,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
+import {
+  listAideVisitsForPatient,
+  getChhaVisitOutcome,
+  upsertChhaVisitOutcome,
+} from "../api/chhaVisits";
 import {
   checkMedicationSafety,
   listMedications,
@@ -188,7 +193,7 @@ const NAV_SECTIONS = [
   "Musculoskeletal", "Integumentary - Skin", "Imminent Death", "SFV",
   "Safety", "Psychosocial", "Spiritual", "Bereavement",
   "Personal Care", "Teaching Needs", "Admissions Order",
-  "Hospice Orders Hub", "Referrals", "Finalization",
+  "Referrals", "Finalization",
 ];
 
 const LEGACY_ROUTES = [
@@ -218,8 +223,6 @@ const LEGACY_ROUTES = [
   { key: "teachingNeeds",     nav: "Teaching Needs",        formSection: "teachingNeeds" },
   { key: "admissionsOrder",   nav: "Admissions Order",      formSection: "admissionsOrder",
     subFields: ["levelOfCare","visitFrequency","haAssignment","initialPocIdg","nonCoveredItems"] },
-  { key: "ordersHub",         nav: "Hospice Orders Hub",    formSection: "medications",
-    subViews: ["ordersList","orderEntry","medReconciliation","startedStoppedLog"] },
   { key: "referrals",         nav: "Referrals",             formSection: "referrals" },
   { key: "finalization",      nav: "Finalization",          formSection: "finalization" },
 ];
@@ -261,12 +264,24 @@ const SIDEBAR_CONFIG = [
   { key: "admissionsOrder",   label: "Admissions Order",      icon: "📝", hope: [],                         color: "blue",
     subFields: ["levelOfCare","visitFrequency","haAssignment","initialPocIdg","nonCoveredItems"],
     features: ["verbalOrderReadBack","locSelection","disciplineFrequency"] },
-  { key: "ordersHub",         label: "Hospice Orders Hub",    icon: "📋", hope: [],                         color: null,
-    orderCategories: ["Meds","DME","Supplies","Lab","Treatment","Diet","Other"],
-    features: ["eRx","phoneOrderReadBack","medReconciliation","compounding","startedStoppedLog"] },
   { key: "referrals",         label: "Referrals",             icon: "🔗", hope: [],                         color: null },
   { key: "finalization",      label: "Finalization",          icon: "✅",    hope: ["F2000","F2100","F2200"],   color: "green" },
 ];
+
+// Maps a Section 12 finalization readiness check key (see
+// rnica_finalization_service.py) to the RN ICA section the nurse should be
+// navigated to in order to resolve it. Checks without an obvious single
+// section (e.g. POC completeness, which spans every section's "Add to POC"
+// actions) are intentionally omitted here.
+const FINALIZATION_CHECK_SECTION_MAP = {
+  attestation: "finalization",
+  signature: "finalization",
+  narrativeReviewed: "diagnoses",
+  lcdBaseline: "diagnoses",
+  referralsReviewed: "referrals",
+  chhaPocCompleted: "admissionsOrder",
+};
+
 
 const FORM_REGISTRY = [
   "demographics", "vitals", "pain", "symptomImpact", "diagnoses",
@@ -274,7 +289,7 @@ const FORM_REGISTRY = [
   "infection", "gastrointestinal", "nutrition", "endocrine", "genitourinary",
   "musculoskeletal", "skin", "imminentDeath", "sfv", "safety",
   "psychosocial", "spiritual", "bereavement", "personalCare", "teachingNeeds",
-  "admissionsOrder", "ordersHub", "referrals", "finalization",
+  "admissionsOrder", "referrals", "finalization",
 ];
 
 // ════════════════════════════════════════════════════════════════
@@ -302,13 +317,54 @@ const DEFAULT_EDUCATION_TOPICS = [
   "Signs and symptoms of approaching death", "Grief and bereavement resources",
 ];
 
-// Default visit frequency disciplines for Admissions Order
+// Every discipline that may need an ordered visit frequency — not just the
+// core hospice team. PT/OT/ST, dietitian, podiatry, chaplain/volunteer, etc.
+// can all be added as-needed via the "+ Add Discipline" control below; this
+// list is the full picklist, not a fixed set of rows.
+const VISIT_FREQUENCY_DISCIPLINE_OPTIONS = [
+  { value: "RN", label: "RN — Registered Nurse" },
+  { value: "RN-SUP", label: "RN — Supervisory Visit" },
+  { value: "LVN", label: "LVN/LPN — Licensed Vocational/Practical Nurse" },
+  { value: "HA", label: "HA — Home Health Aide" },
+  { value: "SC", label: "SC — Spiritual Counselor / Chaplain" },
+  { value: "MSW", label: "MSW — Medical Social Worker" },
+  { value: "BSW", label: "BSW — Bachelor Social Worker" },
+  { value: "LCSW", label: "LCSW — Licensed Clinical Social Worker" },
+  { value: "LSW", label: "LSW — Licensed Social Worker" },
+  { value: "VOL", label: "VOL — Volunteer" },
+  { value: "MD", label: "MD — Physician" },
+  { value: "DO", label: "DO — Osteopathic Physician" },
+  { value: "NP", label: "NP — Nurse Practitioner" },
+  { value: "SN", label: "SN — Skilled Nursing" },
+  { value: "PT", label: "PT — Physical Therapist" },
+  { value: "OT", label: "OT — Occupational Therapist" },
+  { value: "ST", label: "ST — Speech Therapist" },
+  { value: "Dietitian", label: "Dietitian" },
+  { value: "Podiatry", label: "Podiatry" },
+  { value: "Pharm.D", label: "Pharm.D — Pharmacist" },
+  { value: "BC", label: "BC — Bereavement Coordinator" },
+];
+
+const VISIT_FREQUENCY_COUNT_OPTIONS = Array.from({ length: 10 }, (_, i) => String(i + 1));
+
+const VISIT_FREQUENCY_PERIOD_OPTIONS = [
+  "As Needed", "Recert", "As needed and Recert", "One-time then PRN", "1 PRN",
+  "per Week", "per Week + 1 PRN Visits", "per Week +2 PRN Visits", "per Week +3 PRN Visits",
+  "per 2 Week + 1 PRN Visits", "per 2 Week +2 PRN Visits", "per 2 Week +3 PRN Visits",
+  "per Month", "per Month + 1 PRN Visits", "per Month +2 PRN Visits", "per Month +3 PRN Visits",
+  "every 14 days", "Declined", "Daily until further orders", "Face-to-Face",
+];
+
+// Default visit frequency rows for Admissions Order — the core hospice IDG
+// disciplines are pre-populated; any other discipline the patient needs
+// (PT/OT/ST, dietitian, podiatry, an upcoming F2F, etc.) is added on demand
+// via "+ Add Discipline" in DisciplineFrequencyOfVisitCard.
 const DEFAULT_VISIT_DISCIPLINES = [
-  { discipline: "SN", label: "Skilled Nursing", frequency: "", duration: "per Week", prnVisits: "" },
-  { discipline: "HA", label: "Home Aide", frequency: "", duration: "per Week", prnVisits: "" },
-  { discipline: "MSW", label: "Medical Social Worker", frequency: "", duration: "", prnVisits: "" },
-  { discipline: "SC", label: "Spiritual Counselor", frequency: "", duration: "", prnVisits: "" },
-  { discipline: "RN-SUP", label: "RN Supervisory", frequency: "", duration: "every 14 days", prnVisits: "" },
+  { discipline: "SN", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "HA", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "MSW", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "SC", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "RN-SUP", numberOfVisits: "", period: "", specify: "" },
 ];
 
 // ════════════════════════════════════════════════════════════════
@@ -800,16 +856,6 @@ const INITIAL_FORM = {
     },
   },
 
-  // ─── 26. ORDERS HUB (medications) ─────────────────
-  medications: {
-    scheduledOpioid: false, scheduledOpioidDate: "",
-    prnOpioid: false, prnOpioidDate: "",
-    bowelRegimen: false, bowelRegimenDate: "",
-    currentMedications: [],
-    orders: [],
-    medReconciliation: { completed: false, completedDate: "", completedBy: "" },
-  },
-
   // ─── 27. REFERRALS ────────────────────────────────
   referrals: {
     socialWork: { referred: false, reason: "", urgency: "" },
@@ -828,19 +874,6 @@ const INITIAL_FORM = {
     completedSections: [],
     incompleteCount: 0,
     clinicalNarrative: "",
-    // Gap #3 — Response to Interventions (CDPH: assessment-to-assessment change baseline)
-    responseToInterventions: {
-      initialResponseSummary: "",
-      interventionEffectiveness: [],
-      baselineEstablished: false,
-      baselineDate: "",
-      progressNotes: "",
-    },
-    // Gap #4 — POC Auto-Generation (CDPH: every problem → Problem/Goal/Intervention/Discipline)
-    pocEntries: [],
-    pocDraft: { problem: "", goal: "", intervention: "", discipline: "" },
-    pocGenerationCompleted: false,
-    pocReviewedWithIdg: false,
     signatureCertification: false,
     clinicianSignature: "",
     signatureDate: "",
@@ -948,11 +981,6 @@ function validateRNICA(formData, mode = "ica") {
     if (!formData.demographics.pcg.caregiverEvaluation?.capabilityScore) {
       warnings["demographics.pcg.caregiverEvaluation.capabilityScore"] = "CDPH: Caregiver capability score required";
     }
-  }
-
-  // CDPH Gap #4 ? POC entries from assessment
-  if (!formData.finalization.pocGenerationCompleted) {
-    warnings["finalization.pocGenerationCompleted"] = "CDPH: POC generation from assessment problems required before lock";
   }
 
   if (includeHopeRequirements) {
@@ -1075,34 +1103,34 @@ export function getRnicaStyles(COLORS) {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "14px 24px",
+      padding: "8px 16px",
       background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)",
       color: "#FFFFFF",
-      fontSize: 13,
+      fontSize: 11.5,
       boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
       borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
     },
-    bannerName: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" },
-    bannerMeta: { fontSize: 12, opacity: 0.82, letterSpacing: "0.01em" },
+    bannerName: { fontSize: 14, fontWeight: 800, letterSpacing: "-0.02em" },
+    bannerMeta: { fontSize: 10, opacity: 0.82, letterSpacing: "0.01em" },
     workspace: { display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "visible" },
     sidebar: {
-      width: 220,
+      width: 200,
       background: COLORS.sidebarBg,
       borderRight: `1px solid ${COLORS.border}`,
       overflowY: "auto",
-      padding: "12px 8px",
+      padding: "8px 6px",
       flexShrink: 0,
       minHeight: 0,
     },
     sidebarItem: {
       display: "flex",
       alignItems: "center",
-      gap: 8,
-      padding: "6px 10px",
-      margin: "2px 0",
-      fontSize: 12.5,
+      gap: 6,
+      padding: "4px 8px",
+      margin: "1px 0",
+      fontSize: 11.5,
       cursor: "pointer",
-      borderRadius: 8,
+      borderRadius: 6,
       borderLeft: "3px solid transparent",
       transition: "all 0.2s ease",
       color: COLORS.sidebarItemColor,
@@ -1115,45 +1143,46 @@ export function getRnicaStyles(COLORS) {
       boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
     },
     mainArea: { flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "visible" },
-    content: { flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, minWidth: 0, padding: "24px 28px 32px" },
+    content: { flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, minWidth: 0, padding: "12px 14px 16px" },
     rightPanel: {
-      width: 290,
+      width: 260,
       background: COLORS.panelBg,
       borderLeft: `1px solid ${COLORS.border}`,
       overflowY: "auto",
-      padding: 18,
+      padding: 10,
       flexShrink: 0,
       backdropFilter: "blur(10px)",
       minHeight: 0,
     },
     card: {
       background: COLORS.white,
-      borderRadius: 10,
+      borderRadius: 8,
       border: `1px solid ${COLORS.border}`,
-      padding: 12,
-      marginBottom: 10,
+      padding: 10,
+      marginBottom: 8,
       boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
     },
     cardTitle: {
-      fontSize: 14,
+      fontSize: 13,
       fontWeight: 800,
-      marginBottom: 8,
+      marginBottom: 6,
       color: COLORS.dark,
       letterSpacing: "-0.01em",
     },
-    sectionTitle: { fontSize: 18, fontWeight: 800, marginBottom: 3, letterSpacing: "-0.02em", color: COLORS.dark },
-    sectionSubtitle: { fontSize: 12, color: COLORS.gray, marginBottom: 12, lineHeight: 1.4 },
-    formGroup: { marginBottom: 10 },
-    fieldsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0px 16px", alignItems: "start" },
+    sectionTitle: { fontSize: 14, fontWeight: 800, marginBottom: 2, letterSpacing: "-0.02em", color: COLORS.dark },
+    sectionSubtitle: { fontSize: 10, color: COLORS.gray, marginBottom: 8, lineHeight: 1.3 },
+    formGroup: { marginBottom: 8 },
+    fieldsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0px 12px", alignItems: "start" },
     fieldSpanFull: { gridColumn: "1 / -1" },
-    stackedFields: { display: "flex", flexDirection: "column", gap: 10 },
-    label: { display: "block", fontSize: 12.5, fontWeight: 700, marginBottom: 4, color: COLORS.dark, lineHeight: 1.3 },
+    stackedFields: { display: "flex", flexDirection: "column", gap: 8 },
+    label: { display: "block", fontSize: 8.5, fontWeight: 400, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3, color: COLORS.label || COLORS.gray, lineHeight: 1.3 },
     input: {
       width: "100%",
-      padding: "7px 10px",
+      padding: "5px 7px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
+      borderRadius: 5,
+      fontSize: 11.5,
+      lineHeight: 1.25,
       boxSizing: "border-box",
       background: COLORS.inputBg,
       color: COLORS.dark,
@@ -1162,11 +1191,12 @@ export function getRnicaStyles(COLORS) {
     },
     textarea: {
       width: "100%",
-      padding: "7px 10px",
+      padding: "5px 7px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
-      minHeight: 60,
+      borderRadius: 5,
+      fontSize: 11.5,
+      lineHeight: 1.25,
+      minHeight: 46,
       resize: "vertical",
       boxSizing: "border-box",
       background: COLORS.inputBg,
@@ -1175,33 +1205,34 @@ export function getRnicaStyles(COLORS) {
     },
     select: {
       width: "100%",
-      padding: "7px 10px",
+      padding: "5px 7px",
       border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
+      borderRadius: 5,
+      fontSize: 11.5,
+      lineHeight: 1.25,
       background: COLORS.inputBg,
       color: COLORS.dark,
       boxSizing: "border-box",
       boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
     },
-    radioGroup: { display: "flex", gap: 12, flexWrap: "wrap" },
-    radioLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
-    checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "4px 14px" },
-    checkboxLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
-    hopeTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
-    sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
-    cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
-    statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
-    btnPrimary: { padding: "11px 18px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
-    btnSecondary: { padding: "11px 18px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
-    btnDanger: { padding: "11px 18px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
-    footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
-    table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-    th: { padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
-    td: { padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}` },
-    infoBox: { padding: 16, background: COLORS.infoBoxBg, borderRadius: 12, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
-    warningBox: { padding: 16, background: COLORS.warningBoxBg, borderRadius: 12, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
-    successBox: { padding: 16, background: COLORS.successBoxBg, borderRadius: 12, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
+    radioGroup: { display: "flex", gap: 8, flexWrap: "wrap" },
+    radioLabel: { display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
+    checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "3px 10px" },
+    checkboxLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
+    hopeTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
+    sfvTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
+    cmsTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
+    statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
+    btnPrimary: { padding: "8px 14px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
+    btnSecondary: { padding: "8px 14px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
+    btnDanger: { padding: "8px 14px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
+    footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
+    table: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 },
+    th: { padding: "6px 10px", textAlign: "left", fontWeight: 700, fontSize: 10, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
+    td: { padding: "6px 10px", borderBottom: `1px solid ${COLORS.border}` },
+    infoBox: { padding: 10, background: COLORS.infoBoxBg, borderRadius: 8, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 11.5, lineHeight: 1.4, marginBottom: 10, color: COLORS.dark },
+    warningBox: { padding: 10, background: COLORS.warningBoxBg, borderRadius: 8, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 11.5, lineHeight: 1.4, marginBottom: 10, color: COLORS.dark },
+    successBox: { padding: 10, background: COLORS.successBoxBg, borderRadius: 8, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 11.5, lineHeight: 1.4, marginBottom: 10, color: COLORS.dark },
   };
 }
 
@@ -1397,13 +1428,13 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
   );
 }
 
-function FormCheckbox({ label, checked, onChange }) {
+function FormCheckbox({ label, checked, onChange, disabled = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <label style={{ ...styles.checkboxLabel, ...styles.formGroup }}>
-      <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)} />
+    <label style={{ ...styles.checkboxLabel, ...styles.formGroup, opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
+      <input type="checkbox" checked={checked || false} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
     </label>
   );
@@ -2536,6 +2567,20 @@ function categorizeIcd10(icd10) {
   return HOPE_COMORBIDITY_CATEGORIES.find((cat) => matchesCategory(icd10, cat.regex)) || null;
 }
 
+// Used to gate disease-specific performance scales (NYHA/FAST/ECOG) in the
+// Performance Status section so the RN only sees the scale relevant to this
+// patient's actual diagnoses, checking both the primary diagnosis and every
+// secondary diagnosis (not just the principal one) against the same
+// ICD-10 category regexes used for HOPE comorbidity categorization above.
+function diagnosesIncludeCategory(diagnosesData, categoryKey) {
+  const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
+  if (!category) return false;
+  const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
+  if (matchesCategory(primaryIcd10, category.regex)) return true;
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  return secondaryDx.some((dx) => matchesCategory(dx?.icd10, category.regex));
+}
+
 function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
@@ -3062,6 +3107,21 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
       .finally(() => setLoading(false));
   }, [assessmentId, sectionKey]);
 
+  // Quietly check whether this section already has any POC problems (not
+  // just on-demand when the RN opens the list) so "View POC" only ever
+  // appears once there's something to view — a section with no linked
+  // problems yet shows only "+ Add to POC".
+  useEffect(() => {
+    if (!assessmentId) return;
+    let active = true;
+    viewRnicaSectionPoc(assessmentId, sectionKey)
+      .then((res) => { if (active) setProblems(res?.problems || []); })
+      .catch(() => { /* silent — this is just existence-check prefetch */ });
+    return () => { active = false; };
+  }, [assessmentId, sectionKey]);
+
+  const hasProblems = (problems?.length || 0) > 0;
+
   const handleToggleList = () => {
     const next = !showList;
     setShowList(next);
@@ -3129,13 +3189,15 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
         }}>
           + Add to POC
         </button>
-        <button type="button" onClick={handleToggleList} style={{
-          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
-          border: `1px solid ${COLORS.gray}`, background: showList ? COLORS.gray : "transparent",
-          color: showList ? COLORS.white : COLORS.gray, cursor: "pointer",
-        }}>
-          {showList ? "Hide POC" : "View POC"}
-        </button>
+        {hasProblems && (
+          <button type="button" onClick={handleToggleList} style={{
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+            border: `1px solid ${COLORS.gray}`, background: showList ? COLORS.gray : "transparent",
+            color: showList ? COLORS.white : COLORS.gray, cursor: "pointer",
+          }}>
+            {showList ? "Hide POC" : "View POC"}
+          </button>
+        )}
       </div>
 
       {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
@@ -3210,8 +3272,1565 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
 }
 
 
-// SECTION 11 — Master Plan of Care Review (Phase A: synchronized review /
-// governance layer, NOT a second Plan of Care database).
+// SECTION 5B (Admissions Order) — Discipline Frequency of Visit. Physician-
+// ordered visit frequency, one row per discipline, added on demand — not a
+// fixed 5-discipline table. Any discipline the patient needs (PT/OT/ST,
+// dietitian, podiatry consult, an upcoming F2F-driving MD visit, etc.) can
+// be added via "+ Add Discipline", each with its own number-of-visits /
+// period, or a free-text "specify as required" override for anything that
+// doesn't fit the standard period picklist.
+function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
+  const list = Array.isArray(rows) ? rows : [];
+
+  const updateRow = (idx, patch) => {
+    onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const removeRow = (idx) => {
+    onChange(list.filter((_, i) => i !== idx));
+  };
+
+  const addRow = () => {
+    onChange([...list, { discipline: "", numberOfVisits: "", period: "", specify: "" }]);
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+        Physician-ordered visit frequency for every discipline on this patient's plan of care. Add a row for each
+        discipline needed — core IDG disciplines are pre-populated below, but any discipline can be added or removed.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {list.map((row, idx) => (
+          <div key={idx} style={{
+            display: "grid", gridTemplateColumns: "1.3fr 0.7fr 1.3fr 1.6fr auto", gap: 8, alignItems: "end",
+            padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+          }}>
+            <FormSelect
+              label="Discipline"
+              value={row.discipline}
+              onChange={(v) => updateRow(idx, { discipline: v })}
+              options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
+            />
+            <FormSelect
+              label="No. of Visits"
+              value={row.numberOfVisits}
+              onChange={(v) => updateRow(idx, { numberOfVisits: v })}
+              options={VISIT_FREQUENCY_COUNT_OPTIONS}
+            />
+            <FormSelect
+              label="Period"
+              value={row.period}
+              onChange={(v) => updateRow(idx, { period: v })}
+              options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+            />
+            <FormInput
+              label="Or specify as required"
+              value={row.specify || row.frequency || ""}
+              onChange={(v) => updateRow(idx, { specify: v })}
+              placeholder="e.g., within 5 days of admission then RECERT and PRN"
+            />
+            <button
+              type="button"
+              onClick={() => removeRow(idx)}
+              title="Remove this discipline"
+              style={{
+                border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
+                fontSize: 16, fontWeight: 700, height: 34, alignSelf: "end",
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        {list.length === 0 && (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>No disciplines added yet.</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={addRow}
+        style={{
+          marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+          border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+        }}
+      >
+        + Add Discipline
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// CHHA (Home Health Aide) Plan of Care. RN-authored once per patient, lives at
+// PatientChart's 'chha-assignment' destination (linked from RN ICA's HA
+// Assignment card, and reachable from the CHHA/HHA nav group, so it's never
+// forgotten once a patient has an aide assigned). Data is stored on the SAME
+// RN ICA assessment record (form_data.chhaPoc) -- there is no separate CHHA
+// data store, so this reads/writes through the same
+// getRnicaAssessmentByPatient / updateRnicaAssessment endpoints RNICA itself
+// uses.
+//
+// Deliberately does NOT list medications (an aide does not need drug names
+// or doses) -- instead, the "Safety Alerts & Report To" banner below is
+// auto-derived from documented risk factors (fall risk level, oxygen use,
+// aspiration/swallowing risk, skin breakdown risk, and active
+// anticoagulant/opioid/diabetes medication classes) so the relevant plain-
+// language precaution + "call [Report To] if you see this" symptom is
+// always surfaced -- the RN never has to remember to write it in by hand.
+// "Report To" is configurable (RN / RN and MD / MD) rather than hardcoded
+// to "RN office", since who the aide escalates to can differ once
+// LVN-authored plans exist. Any suggested alert can still be dismissed if
+// it doesn't apply, and custom alerts can be added.
+// ---------------------------------------------------------------------------------
+
+// Each task category expands into the specific, checkable interventions a
+// real HA order actually needs (equipment, catheter/colostomy care, diet
+// specifics, bed-rail configuration, razor type, etc.) -- a single
+// "Ambulation" checkbox with a free-text Instructions box was too vague to
+// act as the standing order. `detail: true` items show a required
+// specify-box when checked (e.g., which diet, which vitals, bed rail sides).
+const CHHA_TASK_OPTIONS = [
+  {
+    value: "Ambulation", label: "Ambulation",
+    items: [
+      { code: "AD_LIB", label: "Ambulates ad lib (no restriction)" },
+      { code: "RESTRICTED", label: "Ambulation restricted", detail: true, detailLabel: "Restriction (specify distance/limits)" },
+      { code: "WALKER", label: "Uses walker" },
+      { code: "CANE", label: "Uses cane" },
+      { code: "WHEELCHAIR", label: "Uses wheelchair" },
+      { code: "GERI_CHAIR", label: "Uses geri chair (every visit)" },
+      { code: "BEDBOUND", label: "Bedbound" },
+      { code: "CHAIR_TO_BED", label: "Chair-to-bed only" },
+      { code: "BED_RAILS", label: "Bed rails up (every visit)", detail: true, detailLabel: "Which side(s) — 1, 2, or partial" },
+      { code: "CLEAR_PATH", label: "Keep walking path/objects within reach clear (every visit)" },
+      { code: "LOW_BED", label: "Keep bed in low position (every visit)" },
+      { code: "REPOSITION", label: "Turn and reposition patient (every visit)", detail: true, detailLabel: "How often / which side(s)" },
+    ],
+  },
+  {
+    value: "Toileting/Continence Care", label: "Toileting / Continence Care",
+    items: [
+      { code: "BATHROOM", label: "Assist to bathroom" },
+      { code: "COMMODE", label: "Assist with bedside commode" },
+      { code: "BEDPAN", label: "Assist with bedpan" },
+      { code: "URINAL", label: "Assist with urinal (every visit)" },
+      { code: "ADULT_DIAPERS", label: "Adult diapers" },
+      { code: "BRIEFS", label: "Briefs (every visit)" },
+      { code: "URINARY_CONTINENT", label: "Continent — urinary" },
+      { code: "URINARY_INCONTINENT", label: "Incontinent — urinary (incontinence care every visit)" },
+      { code: "FOLEY_CARE", label: "Foley catheter care (every visit)" },
+      { code: "CONDOM_CATH", label: "Condom catheter — reapply (every visit)" },
+      { code: "MEASURE_OUTPUT", label: "Measure and record urinary output (every visit)" },
+      { code: "EMPTY_BAG", label: "Empty urinary collection bag" },
+      { code: "BOWEL_CONTINENT", label: "Continent — bowel" },
+      { code: "BOWEL_INCONTINENT", label: "Incontinent — bowel (incontinence care, record bowel movements every visit)" },
+      { code: "COLOSTOMY_CARE", label: "Colostomy care / empty bag" },
+    ],
+  },
+  {
+    value: "Transfer", label: "Transfer",
+    items: [
+      { code: "ONE_PERSON", label: "1-person assist" },
+      { code: "TWO_PERSON", label: "2-person assist" },
+      { code: "MECHANICAL_LIFT", label: "Mechanical lift" },
+      { code: "FALL_PRECAUTION", label: "Fall precaution (every visit)" },
+    ],
+  },
+  {
+    value: "Dressing", label: "Dressing",
+    items: [
+      { code: "STREET_CLOTHES", label: "Street clothes" },
+      { code: "PAJAMAS", label: "Pajamas / gown" },
+      { code: "DRESS_EVERY_VISIT", label: "Dress patient (every visit)" },
+    ],
+  },
+  {
+    value: "Feeding", label: "Feeding",
+    items: [
+      { code: "DIET_ORDER", label: "Diet order", detail: true, detailLabel: "Specify diet (e.g., mechanical soft, NAS, thickened liquids)" },
+      { code: "ASPIRATION_PRECAUTION", label: "Aspiration precaution (every visit)" },
+      { code: "MEAL_PREP", label: "Prepare meal(s)", detail: true, detailLabel: "Which meals (breakfast/lunch/dinner/snack)" },
+      { code: "FEEDING_ASSIST", label: "Feeding assistance (every visit)" },
+      { code: "ORAL_MED_ASSIST", label: "Assist with oral medication as ordered" },
+      { code: "ENCOURAGE_FLUIDS", label: "Encourage fluids as tolerated if not contraindicated (every visit)" },
+    ],
+  },
+  {
+    value: "Bathing/Hygiene", label: "Bathing / Hygiene",
+    items: [
+      { code: "BATH", label: "Bath (every visit)", detail: true, detailLabel: "Type — shower, tub bath, bed bath, or shower chair" },
+      { code: "HAIR_CARE", label: "Hair care — brush/comb/shampoo (every visit)" },
+      { code: "FACIAL_HAIR", label: "Facial hair care — use electric razor, not a blade, unless otherwise ordered (every visit)" },
+      { code: "MOUTH_CARE", label: "Mouth care — brush teeth / clean dentures (every visit)" },
+      { code: "NAIL_CARE", label: "Nail care — clean and file (every visit)" },
+      { code: "DEODORANT", label: "Apply deodorant (every visit)" },
+      { code: "LOTION", label: "Apply lotion (every visit)" },
+      { code: "SKIN_VISUALIZE", label: "Visualize skin condition and report to RN (every visit)" },
+      { code: "PERI_CARE", label: "Peri care (every visit)" },
+    ],
+  },
+  {
+    value: "Light Housekeeping", label: "Light Housekeeping (patient-care related)",
+    items: [
+      { code: "CHANGE_LINENS", label: "Change patient linens (every visit)" },
+      { code: "TIDY_ROOM", label: "Tidy patient's immediate area / empty trash (every visit)" },
+      { code: "COMPANION", label: "Provide companionship/supervision as ordered" },
+    ],
+  },
+  {
+    value: "Vital Signs", label: "Vital Signs Monitoring",
+    items: [
+      { code: "CHECK_VITALS", label: "Check and record vital signs (every visit)", detail: true, detailLabel: "Which parameters (e.g., temp, pulse, respirations, BP, O2 sat, weight)" },
+    ],
+  },
+];
+
+// Fixed scope-of-practice caption per task -- every task carries a
+// plain-language reminder of what is (and is not) within scope, in addition
+// to whatever the RN writes in Instructions. Static text, not
+// patient-specific, so it is not persisted.
+const CHHA_TASK_GUIDANCE = {
+  "Ambulation": "Assist only per the device/assist level checked below. Do not adjust the assist level yourself even if the patient asks.",
+  "Transfer": "Use the assist level and equipment (gait belt, walker, wheelchair) checked below every time. Do not attempt a higher-risk transfer alone.",
+  "Toileting/Continence Care": "Follow the assist level checked below. Report any change in continence, blood, or unusual color/odor -- do not assess or diagnose it yourself.",
+  "Dressing": "Assist per the level checked below. Report any new skin changes noticed while dressing instead of treating them.",
+  "Feeding": "Follow the diet/texture checked below exactly, including thickened liquids if ordered. Never change a patient's diet texture on your own.",
+  "Bathing/Hygiene": "Follow water-temperature and skin precautions checked below. Report any new redness, wound, or bruising instead of treating it.",
+  "Light Housekeeping": "Patient-care-related tasks only (e.g., changing linens, tidying patient's immediate area). Not general household chores.",
+  "Vital Signs": "Record only -- do not interpret the reading or decide it is \"fine.\" Report any value outside the range given below immediately.",
+};
+
+const CHHA_DEPENDENCE_OPTIONS = ["Independent", "Assist", "Complete Dependence"];
+const CHHA_TASK_FREQUENCY_OPTIONS = ["Every visit", "As needed (see instructions for exactly when)"];
+// Minimum safe assist level for ANY transfer/repositioning of this patient --
+// a hard staffing/safety requirement, never left to the HA's judgment
+// (a caregiver who weighs 90 lbs must never be relied on to manually move a
+// 300+ lb patient). Feeds a mandatory "Transfer / Lift Safety" guidance
+// category and gates the Transfer task options below.
+const CHHA_MINIMUM_ASSIST_OPTIONS = [
+  "Independent",
+  "1-person assist",
+  "2-person assist required",
+  "Mechanical lift required — no manual lift",
+];
+
+// Visit-time fact checklist per ordered task category -- what the HA
+// actually saw/did during THIS visit, captured as fixed checkboxes instead
+// of a free-text narrative. Narrative is unreliable (vague, inconsistent,
+// easy to skip); a checklist forces a specific, auditable answer every time.
+// At least one box is required whenever the task is marked "Completed as
+// ordered" so the record always shows exactly what was done, not just that
+// "something" was done.
+const CHHA_VISIT_FACT_OPTIONS = {
+  "Ambulation": [
+    { code: "USED_ORDERED_DEVICE", label: "Used the ordered device/assist level (walker, cane, wheelchair, etc.)" },
+    { code: "BED_RAILS_UP", label: "Bed rails placed up as ordered" },
+    { code: "PATH_CLEAR", label: "Walking path/objects kept clear" },
+    { code: "LOW_BED", label: "Bed kept in low position" },
+    { code: "REPOSITIONED", label: "Repositioned/turned per schedule" },
+    { code: "NO_NEW_MOBILITY_ISSUE", label: "No new weakness, balance problem, or fall observed" },
+  ],
+  "Toileting/Continence Care": [
+    { code: "ASSISTED_TOILETING", label: "Assisted to bathroom/commode/bedpan as ordered" },
+    { code: "CHANGED_BRIEF", label: "Changed brief/diaper" },
+    { code: "INCONTINENCE_CARE", label: "Provided incontinence care" },
+    { code: "MEASURED_OUTPUT", label: "Emptied/measured output as ordered" },
+    { code: "NO_NEW_FINDING", label: "No change in color, odor, or amount noted" },
+  ],
+  "Transfer": [
+    { code: "USED_GAIT_BELT", label: "Used gait belt" },
+    { code: "USED_MECH_LIFT", label: "Used mechanical lift" },
+    { code: "SECOND_PERSON_PRESENT", label: "A second person physically assisted (name required below)" },
+    { code: "FOLLOWED_ORDERED_LEVEL", label: "Followed the ordered assist level — did not attempt a lower-assist transfer alone" },
+    { code: "FALL_PRECAUTIONS", label: "Fall precautions followed" },
+  ],
+  "Dressing": [
+    { code: "DRESSED_AS_ORDERED", label: "Dressed patient as ordered" },
+    { code: "NO_NEW_SKIN_FINDING", label: "No new skin change noticed while dressing" },
+  ],
+  "Feeding": [
+    { code: "FOLLOWED_DIET_ORDER", label: "Followed the ordered diet/texture exactly" },
+    { code: "ASSISTED_FEEDING", label: "Physically assisted with feeding" },
+    { code: "UPRIGHT_DURING_MEAL", label: "Patient upright during the meal" },
+    { code: "ASSISTED_ORAL_MEDS", label: "Assisted with oral medication" },
+    { code: "ENCOURAGED_FLUIDS", label: "Encouraged fluids as tolerated" },
+    { code: "NO_SWALLOWING_ISSUE", label: "No coughing, choking, or pocketing observed" },
+  ],
+  "Bathing/Hygiene": [
+    { code: "BED_BATH", label: "Bed bath given (patient not moved to shower/tub)" },
+    { code: "SHOWER_TUB_BATH", label: "Shower/tub bath given" },
+    { code: "USED_SHOWER_CHAIR", label: "Used shower chair" },
+    { code: "USED_MECH_LIFT_BATH", label: "Used mechanical lift to bathe" },
+    { code: "TWO_PERSON_BATH_TRANSFER", label: "2-person transfer used to bathe" },
+    { code: "HYGIENE_COMPLETED", label: "Hair/mouth/nail/skin care completed as ordered" },
+    { code: "NO_NEW_SKIN_FINDING_BATH", label: "Skin visualized — no new findings" },
+  ],
+  "Light Housekeeping": [
+    { code: "CHANGED_LINENS", label: "Changed patient linens" },
+    { code: "TIDIED_AREA", label: "Tidied patient's immediate area" },
+  ],
+  "Vital Signs": [
+    { code: "VITALS_IN_RANGE", label: "Vitals recorded, within the range ordered" },
+    { code: "VITALS_OUT_OF_RANGE", label: "Vitals recorded, outside the range ordered — reported to RN" },
+  ],
+};
+
+// Name fragments used ONLY to derive a plain-language safety alert -- the
+// medication list itself is never shown in the CHHA POC.
+const CHHA_ANTICOAGULANT_KEYWORDS = ["warfarin", "coumadin", "eliquis", "apixaban", "xarelto", "rivaroxaban", "heparin", "lovenox", "enoxaparin", "plavix", "clopidogrel", "pradaxa", "dabigatran", "savaysa", "edoxaban"];
+const CHHA_OPIOID_KEYWORDS = ["morphine", "oxycodone", "oxycontin", "hydrocodone", "hydromorphone", "dilaudid", "fentanyl", "methadone", "roxanol"];
+const CHHA_DIABETES_KEYWORDS = ["insulin", "metformin", "glipizide", "glyburide", "glimepiride", "januvia", "jardiance", "farxiga", "ozempic", "trulicity", "lantus", "novolog", "humalog"];
+
+const CHHA_REPORT_TO_OPTIONS = [
+  { value: "RN", label: "RN / Hospice Nurse" },
+  { value: "RN_AND_MD", label: "RN and MD" },
+  { value: "MD", label: "MD" },
+];
+
+function chhaTextIncludesAny(text, keywords) {
+  const lower = (text || "").toLowerCase();
+  return keywords.some((k) => lower.includes(k));
+}
+
+function chhaReportToLabel(reportToRole) {
+  if (reportToRole === "RN_AND_MD") return "RN and MD";
+  if (reportToRole === "MD") return "MD";
+  return "RN";
+}
+
+// Derives structured, caregiver-safe guidance from data already documented
+// elsewhere in the chart -- never invented, always traceable to a specific
+// field. Per the "caregiver guidance engine" rule: clinical terms (Dysphagia,
+// Anticoagulation therapy, Aspiration risk, pressure-injury staging, etc.)
+// are NEVER surfaced here -- only the caregiver-safe risk label, what to
+// observe, what to do, and when to escalate. `reportToRole` is configurable
+// (default RN) since who the aide escalates to can differ once LVN-authored
+// plans exist (report to RN and MD, or MD directly).
+function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAssistLevel }) {
+  const reportTo = chhaReportToLabel(reportToRole);
+  const categories = [];
+  const activeMeds = (medications || []).filter((m) => !m.status || m.status === "active");
+  const medNames = activeMeds.map((m) => m.medication_name || "").join(" ");
+  const diagnosisText = `${formData?.diagnoses?.primaryDiagnosis?.description || ""} ${(formData?.diagnoses?.secondaryDiagnoses || []).map((d) => d?.description || "").join(" ")}`;
+
+  const fallRiskLevel = formData?.safety?.fallRiskLevel;
+  if (fallRiskLevel === "Moderate" || fallRiskLevel === "High") {
+    categories.push({
+      key: "fallRisk",
+      riskLabel: "Fall Risk",
+      observe: ["Increased weakness", "Difficulty standing", "New balance problems"],
+      safety: ["Keep pathways clear", "Lock wheelchair/bed brakes before any transfer", "Use walker/cane if ordered", "Do not leave the patient unattended during a transfer"],
+      escalate: [`Any fall, near fall, or sudden weakness — call ${reportTo} immediately`],
+    });
+  }
+  // Transfer/lift safety is a staff-injury risk, not just a patient-care
+  // preference -- never rely on the HA to judge whether they personally can
+  // lift the patient. If the RN has ordered 2-person or mechanical-lift
+  // assist, that is a hard requirement surfaced everywhere, the same way
+  // fall risk or oxygen precautions are.
+  if (minimumAssistLevel === "2-person assist required" || minimumAssistLevel === "Mechanical lift required — no manual lift") {
+    categories.push({
+      key: "transferSafety",
+      riskLabel: "Transfer / Lift Safety",
+      observe: ["Any transfer that cannot be done at the required assist level", "Strain, pain, or skin shearing to the patient or caregiver during a transfer"],
+      safety: [
+        `Required assist level: ${minimumAssistLevel}. Never attempt a lower level of assist, even if it seems faster or no one else is available.`,
+        "Wait for a second caregiver before starting if 2-person assist is required — do not attempt alone",
+        "Use the mechanical lift/equipment ordered every time, not manual lifting",
+      ],
+      escalate: [`Unable to safely transfer the patient at the required assist level, or any caregiver/patient injury during a transfer — call ${reportTo} immediately`],
+    });
+  }
+  if (formData?.safety?.oxygenInUse) {
+    categories.push({
+      key: "oxygen",
+      riskLabel: "Oxygen Use",
+      observe: ["Increased breathing difficulty", "Restlessness", "Lips or skin looking bluish/dusky", "Patient removing the oxygen"],
+      safety: ["No smoking or open flame near the oxygen", "Keep tubing secured, not a tripping hazard", "Do not change the flow rate yourself"],
+      escalate: [`Increased shortness of breath, oxygen not helping, or equipment malfunction — call ${reportTo} immediately`],
+    });
+  }
+  const swallowing = formData?.nutrition?.swallowingIssues || [];
+  if (["Dysphagia", "Aspiration risk", "Coughing with swallowing"].some((s) => swallowing.includes(s))) {
+    categories.push({
+      key: "swallowing",
+      riskLabel: "Swallowing Precautions",
+      observe: ["Coughing during meals", "Choking", "Food pocketing in the cheeks", "Wet or gurgly voice after swallowing"],
+      safety: ["Keep the patient upright during and after meals", "Follow the diet/texture ordered exactly", "Small bites, slow feeding — never rush"],
+      escalate: [`Choking episode, unable to swallow, refusing food due to swallowing difficulty, or increased coughing during meals — call ${reportTo} immediately`],
+    });
+  }
+  const pressureRisk = formData?.skinWounds?.pressureInjuryRisk || "";
+  if (pressureRisk.startsWith("High") || pressureRisk.startsWith("Moderate")) {
+    categories.push({
+      key: "skin",
+      riskLabel: "Skin Precautions",
+      observe: ["Redness", "Open areas", "Drainage", "Swelling"],
+      safety: ["Reposition exactly per the schedule ordered", "Keep skin clean and dry"],
+      escalate: [`New skin breakdown, drainage, or worsening redness — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_ANTICOAGULANT_KEYWORDS)) {
+    categories.push({
+      key: "bleeding",
+      riskLabel: "Bleeding Precautions",
+      observe: ["New bruising", "Bleeding gums", "Blood in urine or stool", "Black/tarry stool", "Nosebleeds", "Pale skin color"],
+      safety: ["Use an electric razor, not a blade", "Use a soft-bristle toothbrush", "Avoid activities likely to cause cuts or skin injury", "Report falls immediately, even minor ones"],
+      escalate: [`Any bleeding, significant bruising, a fall with head impact, or pale skin color — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_OPIOID_KEYWORDS)) {
+    categories.push({
+      key: "sedation",
+      riskLabel: "Pain Medication Precautions",
+      observe: ["Excessive sleepiness or difficulty waking", "Slow or shallow breathing", "Unrelieved pain"],
+      safety: ["Do not adjust medication timing or dose yourself"],
+      escalate: [`Excessive sleepiness/difficulty waking, slow or shallow breathing, or unrelieved pain — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_DIABETES_KEYWORDS) || chhaTextIncludesAny(diagnosisText, ["diabet"])) {
+    categories.push({
+      key: "glucose",
+      riskLabel: "Blood Sugar Precautions",
+      observe: ["Shakiness", "Sweating", "Confusion", "Other signs of low blood sugar"],
+      safety: ["Follow the diet ordered", "Do not give food/juice on your own to \"treat\" a suspected episode without an order"],
+      escalate: [`Shakiness, sweating, confusion, or other signs of low blood sugar — call ${reportTo} immediately`],
+    });
+  }
+  return categories;
+}
+
+const DEFAULT_CHHA_POC = {
+  tasks: [],
+  dietInstructions: "",
+  additionalInstructions: "",
+  reportToRole: "RN",
+  patientWeightLbs: "",
+  minimumAssistLevel: "",
+  safetyAlerts: [],
+  dismissedSafetyAlertKeys: [],
+  completed: false,
+  completedDate: "",
+  completedBy: "",
+};
+
+export function CHHAPocCard({ patientId, styles, COLORS }) {
+  const [assessmentId, setAssessmentId] = useState(null);
+  const [locked, setLocked] = useState(false);
+  const [assignedAide, setAssignedAide] = useState("");
+  const [fullFormData, setFullFormData] = useState(null);
+  const [chhaPoc, setChhaPoc] = useState(DEFAULT_CHHA_POC);
+  const [medications, setMedications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [customAlertDraft, setCustomAlertDraft] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    setError("");
+    Promise.all([
+      getRnicaAssessmentByPatient(patientId).catch(() => null),
+      listMedications(patientId).catch(() => []),
+    ])
+      .then(([assessment, medList]) => {
+        if (assessment?.assessmentId) {
+          setAssessmentId(assessment.assessmentId);
+          setLocked(!!assessment.locked);
+          setFullFormData(assessment.formData || {});
+          setAssignedAide(assessment.formData?.haAssignment?.assignedAide || "");
+          setChhaPoc({ ...DEFAULT_CHHA_POC, ...(assessment.formData?.chhaPoc || {}) });
+        } else {
+          setError("No RN ICA assessment found for this patient yet — complete the RN ICA Admissions Order section first.");
+        }
+        setMedications(medList || []);
+      })
+      .catch((err) => setError(err.message || "Unable to load CHHA Plan of Care."))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const derivedCategories = useMemo(
+    () => deriveChhaCareGuidance({ formData: fullFormData, medications, reportToRole: chhaPoc.reportToRole, minimumAssistLevel: chhaPoc.minimumAssistLevel }),
+    [fullFormData, medications, chhaPoc.reportToRole, chhaPoc.minimumAssistLevel],
+  );
+
+  // System-derived guidance is computed live (never persisted as static text)
+  // so changing "Report To", fall risk level, meds, etc. always updates the
+  // wording immediately -- only *which keys were dismissed* is persisted.
+  const dismissedKeys = useMemo(() => new Set(chhaPoc.dismissedSafetyAlertKeys || []), [chhaPoc.dismissedSafetyAlertKeys]);
+  const visibleCategories = derivedCategories.filter((c) => !dismissedKeys.has(c.key));
+  const customAlerts = (chhaPoc.safetyAlerts || []).filter((a) => a.custom);
+  const todayWatchFor = [...new Set(visibleCategories.flatMap((c) => c.observe))];
+  const chhaTaskMissingCounts = (chhaPoc.tasks || []).map((t) => {
+    const items = t.items || [];
+    const catalog = CHHA_TASK_OPTIONS.find((o) => o.value === t.task);
+    const missingItemDetails = items.filter((i) => {
+      const itemDef = catalog?.items.find((c) => c.code === i.code);
+      return itemDef?.detail && !i.detail?.trim();
+    }).length;
+    const missingInstructions = items.length === 0 && !t.instructions?.trim() ? 1 : 0;
+    const requiredAssistCode = chhaPoc.minimumAssistLevel === "2-person assist required" ? "TWO_PERSON"
+      : chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "MECHANICAL_LIFT" : null;
+    const missingTransferSafety = t.task === "Transfer" && requiredAssistCode && !items.some((i) => i.code === requiredAssistCode) ? 1 : 0;
+    return missingItemDetails + missingInstructions + missingTransferSafety;
+  });
+  const tasksMissingInstructions = chhaTaskMissingCounts.reduce((sum, n) => sum + n, 0)
+    + (["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
+      && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") ? 1 : 0);
+
+  const persist = (next) => {
+    setChhaPoc(next);
+    if (!assessmentId || !fullFormData) return;
+    setSaving(true);
+    setSaveMessage("");
+    updateRnicaAssessment(assessmentId, { ...fullFormData, chhaPoc: next })
+      .then(() => setSaveMessage("Saved"))
+      .catch((err) => setError(err.message || "Unable to save CHHA Plan of Care."))
+      .finally(() => setSaving(false));
+  };
+
+  const dismissCategory = (key) => {
+    persist({ ...chhaPoc, dismissedSafetyAlertKeys: [...new Set([...(chhaPoc.dismissedSafetyAlertKeys || []), key])] });
+  };
+
+  const removeCustomAlert = (key) => {
+    persist({ ...chhaPoc, safetyAlerts: (chhaPoc.safetyAlerts || []).filter((a) => a.key !== key) });
+  };
+
+  const addCustomAlert = () => {
+    const text = customAlertDraft.trim();
+    if (!text) return;
+    persist({ ...chhaPoc, safetyAlerts: [...(chhaPoc.safetyAlerts || []), { key: `custom-${Date.now()}`, text, custom: true }] });
+    setCustomAlertDraft("");
+  };
+
+  const toggleTask = (taskValue, checked) => {
+    const existing = (chhaPoc.tasks || []).some((t) => t.task === taskValue);
+    if (checked) {
+      if (existing) return;
+      persist({ ...chhaPoc, tasks: [...(chhaPoc.tasks || []), { task: taskValue, dependence: "", frequency: "", instructions: "", items: [] }] });
+    } else {
+      persist({ ...chhaPoc, tasks: (chhaPoc.tasks || []).filter((t) => t.task !== taskValue) });
+    }
+  };
+  const updateTaskField = (taskValue, patch) => {
+    const next = (chhaPoc.tasks || []).map((t) => (t.task === taskValue ? { ...t, ...patch } : t));
+    persist({ ...chhaPoc, tasks: next });
+  };
+  const toggleTaskItem = (taskValue, itemCode, checked) => {
+    const next = (chhaPoc.tasks || []).map((t) => {
+      if (t.task !== taskValue) return t;
+      const items = t.items || [];
+      if (checked) {
+        if (items.some((i) => i.code === itemCode)) return t;
+        return { ...t, items: [...items, { code: itemCode, detail: "" }] };
+      }
+      return { ...t, items: items.filter((i) => i.code !== itemCode) };
+    });
+    persist({ ...chhaPoc, tasks: next });
+  };
+  const updateTaskItemDetail = (taskValue, itemCode, detailValue) => {
+    const next = (chhaPoc.tasks || []).map((t) => {
+      if (t.task !== taskValue) return t;
+      return { ...t, items: (t.items || []).map((i) => (i.code === itemCode ? { ...i, detail: detailValue } : i)) };
+    });
+    persist({ ...chhaPoc, tasks: next });
+  };
+
+  if (loading) {
+    return <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Plan of Care…</div>;
+  }
+
+  return (
+    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+
+      <Card title="CHHA Plan of Care" cms="Home Health Aide">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 8 }}>
+          <div style={{ fontSize: 12.5, color: COLORS.gray }}>
+            Assigned Home Aide: <strong style={{ color: COLORS.dark }}>{assignedAide || "Not yet assigned"}</strong>
+          </div>
+          {chhaPoc.completed && (
+            <div style={{ fontSize: 12.5, color: "#22c55e", fontWeight: 700 }}>
+              ✓ Completed{chhaPoc.completedDate ? ` — ${chhaPoc.completedDate}` : ""}{chhaPoc.completedBy ? ` by ${chhaPoc.completedBy}` : ""}
+            </div>
+          )}
+        </div>
+        {locked && (
+          <div style={{ ...styles.infoBox, marginBottom: 8 }}>
+            This patient's RN ICA is locked. CHHA Plan of Care edits after lock should go through the amendment process.
+          </div>
+        )}
+      </Card>
+
+      {/* ── Today's Key Observations — auto-generated summary card, always at the top ── */}
+      {(visibleCategories.length > 0 || customAlerts.length > 0) && (
+        <Card title="Today's Key Observations">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {visibleCategories.map((c) => (
+              <span key={c.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {c.riskLabel}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>Today, watch for:</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
+            {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
+            {customAlerts.map((a) => <li key={a.key}>{a.text}</li>)}
+          </ul>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+            Notify {chhaReportToLabel(chhaPoc.reportToRole)} immediately if observed.
+          </div>
+        </Card>
+      )}
+
+      {/* ── Safety Alerts & Report To — structured Observe / Safety / Escalate per risk, system-derived ── */}
+      <Card title="Safety Alerts & Report To">
+        <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+          Auto-generated from this patient's documented fall risk, oxygen use, swallowing risk, skin breakdown risk,
+          and active medication classes — clinical terms and medication names/doses are never shown here, only what
+          the HA should observe, do, and report. Dismiss a category if it doesn't apply; add anything else the RN
+          wants flagged below.
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ maxWidth: 260 }}>
+            <FormSelect
+              label="Report To"
+              value={chhaPoc.reportToRole}
+              onChange={(v) => persist({ ...chhaPoc, reportToRole: v })}
+              options={CHHA_REPORT_TO_OPTIONS}
+            />
+          </div>
+          <div style={{ maxWidth: 160 }}>
+            <FormInput
+              label="Patient Weight (lbs)"
+              type="number"
+              value={chhaPoc.patientWeightLbs}
+              onChange={(v) => persist({ ...chhaPoc, patientWeightLbs: v })}
+            />
+          </div>
+          <div style={{ maxWidth: 280 }}>
+            <FormSelect
+              label="Minimum Safe Assist Level for ANY Transfer (required)"
+              value={chhaPoc.minimumAssistLevel}
+              onChange={(v) => persist({ ...chhaPoc, minimumAssistLevel: v })}
+              options={CHHA_MINIMUM_ASSIST_OPTIONS}
+            />
+          </div>
+        </div>
+        {["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
+          && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+            ⚠️ Check "Transfer" in Ordered Tasks below and select {chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "Mechanical lift" : "2-person assist"} —
+            a caregiver must never be relied on to manually move this patient at a lower assist level than ordered.
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {visibleCategories.map((c) => (
+            <div key={c.key} style={{
+              padding: "10px 12px", borderRadius: 8,
+              background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.3)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 13 }}>⚠</span>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: COLORS.dark }}>{c.riskLabel}</div>
+                <button
+                  type="button"
+                  onClick={() => dismissCategory(c.key)}
+                  title="Dismiss — does not apply to this patient"
+                  style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 12, color: COLORS.dark }}>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Observe</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.observe.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Safety</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.safety.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Escalate — call {chhaReportToLabel(chhaPoc.reportToRole)}</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.escalate.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+              </div>
+            </div>
+          ))}
+          {customAlerts.map((a) => (
+            <div key={a.key} style={{
+              display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 8,
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)",
+            }}>
+              <span style={{ fontSize: 14 }}>⚠</span>
+              <div style={{ flex: 1, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.5 }}>{a.text}</div>
+              <button
+                type="button"
+                onClick={() => removeCustomAlert(a.key)}
+                title="Remove"
+                style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {visibleCategories.length === 0 && customAlerts.length === 0 && (
+            <div style={{ fontSize: 12, color: COLORS.gray }}>No active safety alerts for this patient right now.</div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <FormInput
+            label="Add custom safety alert"
+            value={customAlertDraft}
+            onChange={setCustomAlertDraft}
+            placeholder={`e.g., Report to ${chhaReportToLabel(chhaPoc.reportToRole)} if patient refuses two consecutive visits`}
+          />
+          <button type="button" onClick={addCustomAlert} style={{ ...styles.btnSecondary, alignSelf: "end", height: 34 }}>
+            + Add
+          </button>
+        </div>
+      </Card>
+
+
+      {/* ── Ordered tasks — checklist of the standard task categories; check the specific items this patient needs ── */}
+      <Card title="Ordered Tasks">
+        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+          Check the category, then check only the specific items this patient actually needs. Fill in the specify-box for
+          any item that needs one (diet, bed rails, which vitals, etc.) so the HA has exact instructions, not a
+          judgment call.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {CHHA_TASK_OPTIONS.map((opt) => {
+            const row = (chhaPoc.tasks || []).find((t) => t.task === opt.value);
+            const checked = !!row;
+            const items = row?.items || [];
+            const missingInstructions = checked && items.length === 0 && !row.instructions?.trim();
+            const missingItemDetail = (code) => {
+              const itemDef = opt.items.find((c) => c.code === code);
+              const selected = items.find((i) => i.code === code);
+              return checked && itemDef?.detail && selected && !selected.detail?.trim();
+            };
+            // Transfer/lift safety is a staff-injury risk -- if the RN set a
+            // Minimum Safe Assist Level above, the matching Transfer item is
+            // mandatory and lower (unsafe) assist levels are disabled, not
+            // left as an option the HA or a rushed RN could pick by mistake.
+            const isTransfer = opt.value === "Transfer";
+            const transferRequiredCode = chhaPoc.minimumAssistLevel === "2-person assist required" ? "TWO_PERSON"
+              : chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "MECHANICAL_LIFT" : null;
+            const transferRequiredMissing = isTransfer && checked && transferRequiredCode && !items.some((i) => i.code === transferRequiredCode);
+            const anyMissing = missingInstructions || opt.items.some((i) => missingItemDetail(i.code)) || transferRequiredMissing;
+            return (
+              <div key={opt.value} style={{
+                borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+              }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: COLORS.dark, cursor: "pointer" }}>
+                  <input type="checkbox" checked={checked} onChange={(e) => toggleTask(opt.value, e.target.checked)} />
+                  {opt.label}
+                </label>
+                <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2, marginLeft: 24 }}>{CHHA_TASK_GUIDANCE[opt.value]}</div>
+                {checked && (
+                  <div style={{ marginTop: 8, marginLeft: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: "6px 16px" }}>
+                    {opt.items.map((itemDef) => {
+                      const selected = items.find((i) => i.code === itemDef.code);
+                      const itemChecked = !!selected;
+                      const needsDetail = missingItemDetail(itemDef.code);
+                      const isDisallowedAssist = isTransfer && transferRequiredCode === "MECHANICAL_LIFT" && (itemDef.code === "ONE_PERSON" || itemDef.code === "TWO_PERSON")
+                        ? true
+                        : isTransfer && transferRequiredCode === "TWO_PERSON" && itemDef.code === "ONE_PERSON";
+                      return (
+                        <div key={itemDef.code}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: isDisallowedAssist ? COLORS.gray : COLORS.dark, cursor: isDisallowedAssist ? "not-allowed" : "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={itemChecked}
+                              disabled={isDisallowedAssist}
+                              onChange={(e) => toggleTaskItem(opt.value, itemDef.code, e.target.checked)}
+                            />
+                            {itemDef.label}
+                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: "#dc2626" }}>— not safe at this patient's assist level</span>}
+                          </label>
+                          {itemChecked && itemDef.detail && (
+                            <div style={{ marginLeft: 24, marginTop: 4, maxWidth: 420 }}>
+                              <FormInput
+                                label={`${itemDef.detailLabel} (required)`}
+                                value={selected.detail}
+                                onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
+                              />
+                              {needsDetail && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {transferRequiredMissing && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "6px 8px" }}>
+                        ⚠️ Required: this patient's Minimum Safe Assist Level is "{chhaPoc.minimumAssistLevel}" — check{" "}
+                        {transferRequiredCode === "MECHANICAL_LIFT" ? "Mechanical lift" : "2-person assist"} above before finishing this plan.
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+                      <FormSelect label="Dependence Level" value={row.dependence} onChange={(v) => updateTaskField(opt.value, { dependence: v })} options={CHHA_DEPENDENCE_OPTIONS} />
+                      <FormSelect label="Frequency" value={row.frequency} onChange={(v) => updateTaskField(opt.value, { frequency: v })} options={CHHA_TASK_FREQUENCY_OPTIONS} />
+                      <div>
+                        <FormInput
+                          label={items.length === 0 ? "Instructions (required — no items checked above, so spell out exactly what to do)" : "Additional instructions (optional)"}
+                          value={row.instructions}
+                          onChange={(v) => updateTaskField(opt.value, { instructions: v })}
+                          placeholder="e.g., Shower with chair, standby assist only, water lukewarm"
+                        />
+                        {missingInstructions && (
+                          <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <FormTextarea label="Diet / Nutrition Instructions" value={chhaPoc.dietInstructions} onChange={(v) => persist({ ...chhaPoc, dietInstructions: v })} rows={2} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <FormTextarea label="Additional Instructions" value={chhaPoc.additionalInstructions} onChange={(v) => persist({ ...chhaPoc, additionalInstructions: v })} rows={2} />
+        </div>
+        <div style={{ ...styles.infoBox, marginTop: 12 }}>
+          If a task cannot be completed safely as written, or any symptom listed above occurs, stop and contact{" "}
+          {chhaReportToLabel(chhaPoc.reportToRole)}.
+        </div>
+      </Card>
+
+      {/* ── Completion — required before RN ICA can lock if an aide is assigned ── */}
+      <Card title="Completion">
+        {tasksMissingInstructions > 0 && (
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+            {tasksMissingInstructions} required field{tasksMissingInstructions > 1 ? "s are" : " is"} still blank in the
+            Ordered Tasks above (a specify-box or Instructions). Complete those before marking this plan complete.
+          </div>
+        )}
+        <FormCheckbox
+          label="CHHA Plan of Care Completed"
+          checked={chhaPoc.completed}
+          disabled={tasksMissingInstructions > 0}
+          onChange={(checked) => persist({
+            ...chhaPoc,
+            completed: checked,
+            completedDate: checked ? (chhaPoc.completedDate || new Date().toISOString().slice(0, 10)) : "",
+            completedBy: checked ? (chhaPoc.completedBy || getCurrentUser()?.full_name || getCurrentUser()?.name || "") : "",
+          })}
+        />
+        {chhaPoc.completed && (
+          <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+            <FormInput label="Completed Date" type="date" value={chhaPoc.completedDate} onChange={(v) => persist({ ...chhaPoc, completedDate: v })} />
+            <FormInput label="Completed By" value={chhaPoc.completedBy} onChange={(v) => persist({ ...chhaPoc, completedBy: v })} />
+          </div>
+        )}
+        {saving && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Saving…</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+      </Card>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------------
+// CHHA Visit Note — per-visit documentation, distinct from the CHHA Plan of
+// Care above (the POC is the RN's standing order; this is what the aide
+// actually observed/did on ONE visit). Lives at PatientChart's 'chha-visits'
+// destination and is backed by the real chha_visit_outcomes /
+// chha_visit_task_results tables (visits.py's /visits/{id}/chha-outcome),
+// NOT the RNICA form_data blob -- so it participates in the same automatic
+// RN-follow-up-task creation as every other structured visit outcome
+// (upsert_chha_outcome flags a pending RN task whenever redness/breakdown,
+// a condition change, pain, or an explicit RN-notification flag is present).
+//
+// Same "never ask the aide to interpret clinical information" rule as the
+// POC: every observation below is a plain-language, layman-observable
+// checkbox (what was seen/heard), never a diagnosis. Any abnormal selection
+// automatically raises "RN Notification Required" -- the aide never has to
+// decide whether something is significant enough to report.
+// ---------------------------------------------------------------------------------
+
+const CHHA_SKIN_OPTIONS = [
+  { value: "NORMAL", label: "Normal for patient", abnormal: false },
+  { value: "PALE", label: "Pale", abnormal: true },
+  { value: "BRUISING", label: "Increased bruising", abnormal: true },
+  { value: "REDNESS", label: "Redness", abnormal: true },
+  { value: "SWELLING", label: "Swelling", abnormal: true },
+  { value: "BREAKDOWN", label: "Open area", abnormal: true },
+];
+
+const CHHA_RESPIRATION_OPTIONS = [
+  { value: "COMFORTABLE", label: "Breathing comfortably", abnormal: false },
+  { value: "INCREASED_DIFFICULTY", label: "Increased shortness of breath", abnormal: true },
+  { value: "OXYGEN_IN_USE", label: "Oxygen in use", abnormal: false },
+  { value: "COUGH", label: "Cough observed", abnormal: true },
+];
+
+const CHHA_NUTRITION_OPTIONS = [
+  { value: "ATE_MEAL", label: "Ate meal", abnormal: false },
+  { value: "FEEDING_ASSISTANCE", label: "Required feeding assistance", abnormal: false },
+  { value: "COUGHING_WHILE_EATING", label: "Coughing while eating", abnormal: true },
+  { value: "DIFFICULTY_SWALLOWING", label: "Difficulty swallowing", abnormal: true },
+];
+
+// Highest-severity-first, so a single skin_outcome column value can be
+// derived from a multi-select checklist without losing signal.
+const CHHA_SKIN_SEVERITY_ORDER = ["BREAKDOWN", "REDNESS", "SWELLING", "BRUISING", "PALE", "NORMAL"];
+
+const CHHA_TOLERANCE_OPTIONS = [
+  { value: "WELL_TOLERATED", label: "Patient tolerated care well" },
+  { value: "FAIR", label: "Patient had some difficulty" },
+  { value: "POOR", label: "Patient could not tolerate care as planned" },
+];
+
+// Per-visit supply/infection-control checklist -- stored as CHHAVisitTaskResult
+// rows with section_code "SUPPLY" (no dedicated backend column needed).
+const CHHA_SUPPLY_OPTIONS = [
+  { code: "ADULT_DIAPERS", label: "Adult diapers" },
+  { code: "BRIEFS", label: "Briefs" },
+  { code: "UNDERPADS", label: "Chux / underpads" },
+  { code: "DEODORIZERS", label: "Deodorizers" },
+  { code: "DRESSINGS", label: "Dressings" },
+  { code: "GLOVES", label: "Gloves" },
+  { code: "HAND_SANITIZER", label: "Hand sanitizer" },
+  { code: "WIPES", label: "Wipes" },
+  { code: "BARRIER_CREAM", label: "Barrier cream" },
+  { code: "CATHETER_SUPPLIES", label: "Catheter supplies" },
+  { code: "WOUND_CARE_SUPPLIES", label: "Wound care supplies" },
+  { code: "INFECTION_CONTROL_OBSERVED", label: "Infection control precautions observed" },
+  { code: "DME_CHECKED", label: "DME checked and in safe working order" },
+];
+
+function chhaAbnormalSelected(selectedValues, optionList) {
+  return selectedValues.some((v) => optionList.find((o) => o.value === v)?.abnormal);
+}
+
+function chhaDeriveSkinOutcome(selectedValues) {
+  if (!selectedValues.length) return "NOT_ASSESSED";
+  for (const level of CHHA_SKIN_SEVERITY_ORDER) {
+    if (selectedValues.includes(level)) return level;
+  }
+  return "NOT_ASSESSED";
+}
+
+const DEFAULT_CHHA_VISIT_NOTE = {
+  taskResults: {}, // task value -> { state: "completed"|"refused"|"notDone", note: string }
+  skin: [],
+  respiration: [],
+  nutrition: [],
+  supplies: [],
+  painOrChangeObserved: false,
+  painNote: "",
+  toleranceToCare: "WELL_TOLERATED",
+  exceptionNarrative: "",
+  caregiverInstructionProvided: false,
+  caregiverUnderstandingConfirmed: false,
+  rnNotified: false,
+  rnNotifiedName: "",
+};
+
+export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [fullFormData, setFullFormData] = useState(null);
+  const [medications, setMedications] = useState([]);
+  const [orderedTasks, setOrderedTasks] = useState([]);
+  const [reportToRole, setReportToRole] = useState("RN");
+  const [minimumAssistLevel, setMinimumAssistLevel] = useState("");
+  const [visits, setVisits] = useState([]);
+  const [selectedVisitId, setSelectedVisitId] = useState("");
+  const [selectedVisitMeta, setSelectedVisitMeta] = useState(null);
+  const [note, setNote] = useState(DEFAULT_CHHA_VISIT_NOTE);
+
+  const reloadPatientContext = useCallback(() => {
+    setLoading(true);
+    setError("");
+    Promise.all([
+      getRnicaAssessmentByPatient(patientId).catch(() => null),
+      listMedications(patientId).catch(() => []),
+      listAideVisitsForPatient(patientId).catch(() => []),
+    ])
+      .then(([assessment, meds, aideVisits]) => {
+        const formData = assessment?.formData || null;
+        setFullFormData(formData);
+        setMedications(Array.isArray(meds) ? meds : []);
+        setOrderedTasks(formData?.chhaPoc?.tasks || []);
+        setReportToRole(formData?.chhaPoc?.reportToRole || "RN");
+        setMinimumAssistLevel(formData?.chhaPoc?.minimumAssistLevel || "");
+        setVisits(aideVisits || []);
+        const preferred = (aideVisits || []).find((v) => !v.has_outcome) || (aideVisits || [])[0] || null;
+        setSelectedVisitId(preferred?.visit_id || "");
+        setSelectedVisitMeta(preferred || null);
+      })
+      .catch((err) => setError(err.message || "Unable to load this patient's CHHA visit context."))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reloadPatientContext();
+  }, [reloadPatientContext]);
+
+  useEffect(() => {
+    if (!selectedVisitId) {
+      setNote(DEFAULT_CHHA_VISIT_NOTE);
+      return;
+    }
+    setSaveMessage("");
+    getChhaVisitOutcome(selectedVisitId)
+      .then((existing) => {
+        if (!existing) {
+          setNote(DEFAULT_CHHA_VISIT_NOTE);
+          return;
+        }
+        const taskResults = {};
+        const skin = [];
+        const respiration = [];
+        const nutrition = [];
+        const supplies = [];
+        (existing.task_results || []).forEach((t) => {
+          if (t.section_code === "TASK") {
+            taskResults[t.task_code] = {
+              state: t.refused ? "refused" : t.not_done ? "notDone" : t.completed ? "completed" : "",
+              note: t.result_note || "",
+              checklist: [],
+              assistedBy: "",
+              noteIsAuto: false,
+            };
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "SKIN" && t.observation_code) {
+            skin.push(t.observation_code);
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "RESPIRATION" && t.observation_code) {
+            respiration.push(t.observation_code);
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "NUTRITION" && t.observation_code) {
+            nutrition.push(t.observation_code);
+          } else if (t.section_code === "SUPPLY") {
+            supplies.push(t.task_code);
+          }
+        });
+        setNote({
+          taskResults,
+          skin,
+          respiration,
+          nutrition,
+          supplies,
+          painOrChangeObserved: !!existing.pain_or_change_observed,
+          painNote: existing.exception_narrative && existing.pain_or_change_observed ? existing.exception_narrative : "",
+          toleranceToCare: existing.tolerance_to_care || "WELL_TOLERATED",
+          exceptionNarrative: existing.exception_narrative || "",
+          caregiverInstructionProvided: !!existing.caregiver_instruction_provided,
+          caregiverUnderstandingConfirmed: !!existing.caregiver_understanding_confirmed,
+          rnNotified: !!existing.rn_notified,
+          rnNotifiedName: existing.rn_notified_name || "",
+        });
+      })
+      .catch((err) => setError(err.message || "Unable to load this visit's CHHA note."));
+  }, [selectedVisitId]);
+
+  const derivedCategories = useMemo(
+    () => deriveChhaCareGuidance({ formData: fullFormData, medications, reportToRole, minimumAssistLevel }),
+    [fullFormData, medications, reportToRole, minimumAssistLevel],
+  );
+  const todayWatchFor = useMemo(() => [...new Set(derivedCategories.flatMap((c) => c.observe))], [derivedCategories]);
+
+  // Flatten each ordered task category down to the specific items the RN
+  // actually checked in the POC -- the aide documents completion per item
+  // (e.g., "Foley catheter care", "Bed rails up"), not per broad category,
+  // matching how the standing order itself is now written. Carries the
+  // dependence level, frequency, scope-of-practice guidance, and any
+  // category-level instructions along with each item so the aide never has
+  // to leave the Visit Note and go back to the POC screen to see the order.
+  const orderedTaskItems = useMemo(() => orderedTasks.flatMap((t) => {
+    const catalog = CHHA_TASK_OPTIONS.find((o) => o.value === t.task);
+    const categoryLabel = catalog?.label || t.task;
+    const guidance = CHHA_TASK_GUIDANCE[t.task] || "";
+    const shared = { category: t.task, categoryLabel, guidance, dependence: t.dependence || "", frequency: t.frequency || "", categoryInstructions: t.instructions || "" };
+    if ((t.items || []).length > 0) {
+      return t.items.map((i) => {
+        const itemDef = catalog?.items?.find((c) => c.code === i.code);
+        return { key: `${t.task}::${i.code}`, itemCode: i.code, ...shared, label: itemDef?.label || i.code, detail: i.detail };
+      });
+    }
+    // Backward-compatible fallback for a category ordered with free-text
+    // Instructions only (no granular items checked).
+    return [{ key: t.task, itemCode: null, ...shared, label: categoryLabel, detail: "" }];
+  }), [orderedTasks]);
+
+  // Visit-time facts are captured as checklists (CHHA_VISIT_FACT_OPTIONS),
+  // not free narrative -- narrative alone is unreliable (vague, inconsistent,
+  // easy to write nothing useful). The checklist is the required, auditable
+  // record. The narrative box is kept (some RNs/aides want to add color, and
+  // exception detail still needs free text), but it is auto-drafted from
+  // whatever the aide checks so it is never blank/generic -- the checklist
+  // does the heavy lifting and the aide only edits/adds to it if needed.
+  const visitFactCatalog = (t) => CHHA_VISIT_FACT_OPTIONS[t.category] || null;
+
+  const draftNarrativeFromChecklist = (t, checklist) => {
+    const catalog = visitFactCatalog(t) || [];
+    const labels = (checklist || []).map((code) => catalog.find((o) => o.code === code)?.label).filter(Boolean);
+    return labels.join("; ");
+  };
+
+  const setTaskResult = (itemKey, patch) => {
+    setNote((prev) => ({
+      ...prev,
+      taskResults: { ...prev.taskResults, [itemKey]: { ...(prev.taskResults[itemKey] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true }), ...patch } },
+    }));
+  };
+
+  // Editing the narrative by hand "detaches" it from the checklist so later
+  // checklist changes don't clobber what the user typed; a small control lets
+  // them re-sync it to the checklist wording if they want to start over.
+  const setTaskNarrative = (itemKey, value) => {
+    setTaskResult(itemKey, { note: value, noteIsAuto: false });
+  };
+
+  const resyncTaskNarrative = (t) => {
+    const result = note.taskResults[t.key] || {};
+    setTaskResult(t.key, { note: draftNarrativeFromChecklist(t, result.checklist), noteIsAuto: true });
+  };
+
+  const toggleTaskChecklistItem = (t, code, checked) => {
+    setNote((prev) => {
+      const current = prev.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
+      const checklist = checked ? [...new Set([...(current.checklist || []), code])] : (current.checklist || []).filter((c) => c !== code);
+      const noteIsAuto = current.noteIsAuto !== false; // only auto-regenerate if the user hasn't manually diverged
+      const nextNote = noteIsAuto ? draftNarrativeFromChecklist(t, checklist) : current.note;
+      return {
+        ...prev,
+        taskResults: { ...prev.taskResults, [t.key]: { ...current, checklist, note: nextNote, noteIsAuto } },
+      };
+    });
+  };
+
+  const skinAbnormal = chhaAbnormalSelected(note.skin, CHHA_SKIN_OPTIONS);
+  const respirationAbnormal = chhaAbnormalSelected(note.respiration, CHHA_RESPIRATION_OPTIONS);
+  const nutritionAbnormal = chhaAbnormalSelected(note.nutrition, CHHA_NUTRITION_OPTIONS);
+  const anyTaskRefusedOrNotDone = Object.values(note.taskResults).some((t) => t.state === "refused" || t.state === "notDone");
+  const conditionDuringVisit = (respirationAbnormal || nutritionAbnormal) ? "CHANGE_OBSERVED" : "STABLE";
+  const skinOutcome = chhaDeriveSkinOutcome(note.skin);
+
+  const rnNotificationReasons = [
+    skinAbnormal && "Abnormal skin finding",
+    respirationAbnormal && "Abnormal breathing finding",
+    nutritionAbnormal && "Coughing/swallowing difficulty during a meal",
+    note.painOrChangeObserved && "Pain or condition change observed",
+    anyTaskRefusedOrNotDone && "An ordered task was refused or not completed",
+  ].filter(Boolean);
+  const rnNotificationRequired = rnNotificationReasons.length > 0;
+
+  const visitLocked = selectedVisitMeta?.status === "FINALIZED";
+
+  const missingTaskNotes = orderedTaskItems.filter((t) => {
+    const result = note.taskResults[t.key];
+    const state = result?.state;
+    if (state === "refused" || state === "notDone") return !result?.note?.trim();
+    if (state === "completed") {
+      const catalog = visitFactCatalog(t);
+      const needsChecklist = !!catalog && (result?.checklist || []).length === 0;
+      const needsAssistedBy = (result?.checklist || []).includes("SECOND_PERSON_PRESENT") && !result?.assistedBy?.trim();
+      return needsChecklist || needsAssistedBy;
+    }
+    return false;
+  }).length;
+  const missingRnNotifiedName = note.rnNotified && !note.rnNotifiedName.trim();
+  const canSubmit = !visitLocked && !!selectedVisitId && missingTaskNotes === 0 && !missingRnNotifiedName;
+
+  const handleSubmit = () => {
+    if (!selectedVisitId || !canSubmit) return;
+    setSaving(true);
+    setSaveMessage("");
+    setError("");
+
+    // Always lead with the checklist facts (the reliable, structured part of
+    // the record); "Assisted by" and any hand-typed narrative are appended
+    // as supplementary detail rather than replacing the checklist.
+    const buildResultNote = (t, result) => {
+      const catalog = visitFactCatalog(t) || [];
+      const checklistLabels = (result.checklist || []).map((c) => catalog.find((o) => o.code === c)?.label).filter(Boolean);
+      const parts = [];
+      if (checklistLabels.length) parts.push(checklistLabels.join("; "));
+      if (result.assistedBy?.trim()) parts.push(`Assisted by: ${result.assistedBy.trim()}`);
+      if (result.note?.trim() && (result.noteIsAuto === false || checklistLabels.length === 0)) parts.push(result.note.trim());
+      return parts.join(" | ") || null;
+    };
+
+    const taskResultRows = [
+      ...orderedTaskItems.map((t) => {
+        const result = note.taskResults[t.key] || { state: "", note: "" };
+        return {
+          section_code: "TASK",
+          task_code: t.key,
+          was_assigned: true,
+          completed: result.state === "completed",
+          refused: result.state === "refused",
+          not_done: result.state === "notDone",
+          observation_code: null,
+          result_note: buildResultNote(t, result),
+        };
+      }),
+      ...note.skin.map((v) => ({
+        section_code: "OBSERVATION", task_code: "SKIN", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.respiration.map((v) => ({
+        section_code: "OBSERVATION", task_code: "RESPIRATION", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.nutrition.map((v) => ({
+        section_code: "OBSERVATION", task_code: "NUTRITION", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.supplies.map((v) => ({
+        section_code: "SUPPLY", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: null, result_note: null,
+      })),
+    ];
+
+    upsertChhaVisitOutcome(selectedVisitId, {
+      tolerance_to_care: note.toleranceToCare,
+      condition_during_visit: conditionDuringVisit,
+      skin_outcome: skinOutcome,
+      pain_or_change_observed: note.painOrChangeObserved,
+      rn_notification_required: rnNotificationRequired,
+      rn_notified: note.rnNotified,
+      rn_notified_name: note.rnNotified ? note.rnNotifiedName.trim() : null,
+      caregiver_instruction_provided: note.caregiverInstructionProvided,
+      caregiver_understanding_confirmed: note.caregiverUnderstandingConfirmed,
+      exception_narrative: [note.painNote?.trim(), note.exceptionNarrative?.trim()].filter(Boolean).join(" — ") || null,
+      task_results: taskResultRows,
+    })
+      .then(() => {
+        setSaveMessage("Visit note saved");
+        setVisits((prev) => prev.map((v) => (v.visit_id === selectedVisitId ? { ...v, has_outcome: true, rn_notification_required: rnNotificationRequired } : v)));
+      })
+      .catch((err) => setError(err.message || "Unable to save this CHHA visit note."))
+      .finally(() => setSaving(false));
+  };
+
+  if (loading) {
+    return <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Visit Note…</div>;
+  }
+
+  return (
+    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+
+      <Card title="CHHA Visit Note" cms="Home Health Aide">
+        {visits.length === 0 ? (
+          <div style={{ ...styles.infoBox }}>No Home Health Aide visits are on record for this patient yet.</div>
+        ) : (
+          <div style={{ maxWidth: 360 }}>
+            <FormSelect
+              label="Visit"
+              value={selectedVisitId}
+              onChange={(v) => {
+                setSelectedVisitId(v);
+                setSelectedVisitMeta(visits.find((x) => x.visit_id === v) || null);
+              }}
+              options={visits.map((v) => ({
+                value: v.visit_id,
+                label: `${v.visit_datetime ? new Date(v.visit_datetime).toLocaleString() : "Undated visit"} — ${v.status}${v.has_outcome ? " ✓ documented" : ""}`,
+              }))}
+            />
+          </div>
+        )}
+        {visitLocked && (
+          <div style={{ ...styles.infoBox, marginTop: 8 }}>
+            This visit is finalized. It is read-only — corrections go through the amendment process.
+          </div>
+        )}
+      </Card>
+
+      {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
+      {(todayWatchFor.length > 0) && (
+        <Card title="Today's Key Observations">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {derivedCategories.map((c) => (
+              <span key={c.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {c.riskLabel}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>Today, watch for:</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
+            {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+            Notify {chhaReportToLabel(reportToRole)} immediately if observed.
+          </div>
+        </Card>
+      )}
+
+      {/* ── Ordered tasks — what actually happened at THIS visit, one row per ordered item ── */}
+      <Card title="Ordered Tasks — Today's Visit">
+        {orderedTaskItems.length === 0 ? (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>No tasks are ordered in this patient's CHHA Plan of Care yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {orderedTaskItems.map((t) => {
+              const result = note.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
+              const catalog = visitFactCatalog(t);
+              const checklist = result.checklist || [];
+              const needsChecklist = result.state === "completed" && !!catalog && checklist.length === 0;
+              const needsAssistedBy = result.state === "completed" && checklist.includes("SECOND_PERSON_PRESENT") && !result.assistedBy?.trim();
+              const needsFreeNote = (result.state === "refused" || result.state === "notDone") && !result.note?.trim();
+              const anyMissing = needsChecklist || needsAssistedBy || needsFreeNote;
+              const showChecklist = result.state === "completed" && !!catalog;
+              const showNarrative = result.state === "refused" || result.state === "notDone" || result.state === "completed";
+              return (
+                <div key={t.key} style={{
+                  borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+                }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{t.categoryLabel}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.dark, marginTop: 2 }}>{t.label}{t.detail ? ` — ${t.detail}` : ""}</div>
+                  {(t.dependence || t.frequency) && (
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>
+                      {[t.dependence, t.frequency].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  {t.categoryInstructions && (
+                    <div style={{ fontSize: 11.5, color: COLORS.dark, marginTop: 2, fontStyle: "italic" }}>“{t.categoryInstructions}”</div>
+                  )}
+                  {t.guidance && (
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{t.guidance}</div>
+                  )}
+                  <div style={{ display: "flex", gap: 14, marginTop: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                    {[["completed", "Completed as ordered"], ["refused", "Patient refused"], ["notDone", "Not done"]].map(([val, lbl]) => (
+                      <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                        <input type="radio" name={`task-${t.key}`} checked={result.state === val} onChange={() => setTaskResult(t.key, { state: val })} disabled={visitLocked} />
+                        {lbl}
+                      </label>
+                    ))}
+                  </div>
+                  {showChecklist && (
+                    <div style={{ marginBottom: 8 }}>
+                      <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, marginBottom: 4 }}>
+                        What did you actually do/see? (check all that apply — required)
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: "4px 16px" }}>
+                        {catalog.map((fact) => (
+                          <label key={fact.code} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={checklist.includes(fact.code)}
+                              onChange={(e) => toggleTaskChecklistItem(t, fact.code, e.target.checked)}
+                              disabled={visitLocked}
+                            />
+                            {fact.label}
+                          </label>
+                        ))}
+                      </div>
+                      {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
+                      {checklist.includes("SECOND_PERSON_PRESENT") && (
+                        <div style={{ marginTop: 6, maxWidth: 360 }}>
+                          <FormInput
+                            label="Who assisted? (name/role — required, staffing safety record)"
+                            value={result.assistedBy}
+                            onChange={(v) => setTaskResult(t.key, { assistedBy: v })}
+                            placeholder="e.g., Second HA, Maria R."
+                            disabled={visitLocked}
+                          />
+                          {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {showNarrative && (
+                    <div>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                        <span style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray }}>
+                          {result.state === "completed"
+                            ? "Notes (auto-filled from checklist above — add anything else, or edit)"
+                            : "What happened (required — describe only what you saw/heard)"}
+                        </span>
+                        {result.state === "completed" && catalog && result.noteIsAuto === false && (
+                          <button type="button" onClick={() => resyncTaskNarrative(t)} style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 10.5, textDecoration: "underline" }}>
+                            reset to checklist wording
+                          </button>
+                        )}
+                      </div>
+                      <FormInput
+                        value={result.note}
+                        onChange={(v) => setTaskNarrative(t.key, v)}
+                        placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
+                        disabled={visitLocked}
+                      />
+                      {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Structured observations — Skin / Respiration / Nutrition ── */}
+      <Card title="Skin">
+        <FormCheckboxGroup values={note.skin} onChange={(v) => setNote((p) => ({ ...p, skin: v }))} options={CHHA_SKIN_OPTIONS} label="Observed" />
+        {skinAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Respiration">
+        <FormCheckboxGroup values={note.respiration} onChange={(v) => setNote((p) => ({ ...p, respiration: v }))} options={CHHA_RESPIRATION_OPTIONS} label="Observed" />
+        {respirationAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Nutrition / Swallowing">
+        <FormCheckboxGroup values={note.nutrition} onChange={(v) => setNote((p) => ({ ...p, nutrition: v }))} options={CHHA_NUTRITION_OPTIONS} label="Observed" />
+        {nutritionAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Visit Supplies & Infection Control">
+        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+          Check what was used or observed at this visit.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(160px, 1fr))", gap: "4px 16px" }}>
+          {CHHA_SUPPLY_OPTIONS.map((opt) => (
+            <label key={opt.code} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.dark, cursor: "pointer", padding: "2px 0" }}>
+              <input
+                type="checkbox"
+                checked={note.supplies.includes(opt.code)}
+                disabled={visitLocked}
+                onChange={(e) => setNote((p) => ({
+                  ...p,
+                  supplies: e.target.checked ? [...p.supplies, opt.code] : p.supplies.filter((c) => c !== opt.code),
+                }))}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Pain / Condition Change">
+        <FormCheckbox
+          label="Patient showed signs of pain or seemed different from their usual self today"
+          checked={note.painOrChangeObserved}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, painOrChangeObserved: checked }))}
+        />
+        {note.painOrChangeObserved && (
+          <div style={{ marginTop: 6 }}>
+            <FormTextarea
+              label="Describe only what you saw or heard (not why you think it happened)"
+              value={note.painNote}
+              onChange={(v) => setNote((p) => ({ ...p, painNote: v }))}
+              rows={2}
+              disabled={visitLocked}
+            />
+          </div>
+        )}
+      </Card>
+
+      <Card title="Visit Summary">
+        <FormSelect
+          label="Overall"
+          value={note.toleranceToCare}
+          onChange={(v) => setNote((p) => ({ ...p, toleranceToCare: v }))}
+          options={CHHA_TOLERANCE_OPTIONS}
+          disabled={visitLocked}
+        />
+        <div style={{ marginTop: 8 }}>
+          <FormTextarea
+            label="Anything else you noticed (describe only what you saw or heard)"
+            value={note.exceptionNarrative}
+            onChange={(v) => setNote((p) => ({ ...p, exceptionNarrative: v }))}
+            rows={2}
+            disabled={visitLocked}
+          />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <FormCheckbox
+            label="Reviewed care instructions with family/caregiver present"
+            checked={note.caregiverInstructionProvided}
+            disabled={visitLocked}
+            onChange={(checked) => setNote((p) => ({ ...p, caregiverInstructionProvided: checked }))}
+          />
+        </div>
+        <FormCheckbox
+          label="Family/caregiver confirmed understanding"
+          checked={note.caregiverUnderstandingConfirmed}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, caregiverUnderstandingConfirmed: checked }))}
+        />
+      </Card>
+
+      <Card title="RN Notification">
+        {rnNotificationRequired ? (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {rnNotificationReasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 10 }}>Nothing observed today requires RN notification.</div>
+        )}
+        <FormCheckbox
+          label={`I notified ${chhaReportToLabel(reportToRole)}`}
+          checked={note.rnNotified}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, rnNotified: checked }))}
+        />
+        {note.rnNotified && (
+          <div style={{ marginTop: 6 }}>
+            <FormInput
+              label="Name of person notified (required)"
+              value={note.rnNotifiedName}
+              onChange={(v) => setNote((p) => ({ ...p, rnNotifiedName: v }))}
+              disabled={visitLocked}
+            />
+            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Submit">
+        {missingTaskNotes > 0 && (
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+            {missingTaskNotes} task{missingTaskNotes > 1 ? "s" : ""} above still {missingTaskNotes > 1 ? "need" : "needs"} a description of what happened.
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit || saving}
+          style={{ ...styles.btnPrimary, opacity: (!canSubmit || saving) ? 0.55 : 1, cursor: (!canSubmit || saving) ? "not-allowed" : "pointer" }}
+        >
+          {saving ? "Saving…" : "Save Visit Note"}
+        </button>
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+      </Card>
+    </div>
+  );
+}
+
+
 //
 // Reads the same authoritative poc_problems rows already written by
 // PocSectionControls' "Add to POC" (via rnica_poc_adapter), across ALL RN
@@ -3229,7 +4848,7 @@ const POC_STATUS_COLOR = (status, COLORS) => {
   return COLORS.teal;
 };
 
-function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
+export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   const [problems, setProblems] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3717,11 +5336,12 @@ function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   );
 }
 
-// SECTION 12 — Final Review Dashboard. Fetches the single-source-of-truth
-// finalization readiness breakdown from the backend (the same function the
-// Lock endpoint enforces server-side — see rnica_finalization_service.py /
-// GET .../finalization-readiness) and renders it as a pass/fail checklist,
-// plus the future correction/amendment entry point once locked.
+// SECTION 12 — Post-lock amendments. The Lock button itself (see handleLock)
+// runs the same finalization-readiness check the backend enforces
+// server-side (rnica_finalization_service.py) and, if anything is missing,
+// tells the nurse exactly what and navigates them to the relevant section —
+// so there is no need for a standing pre-lock checklist card cluttering the
+// assessment. Once locked, this card exposes the amendment entry point.
 const AMENDMENT_CATEGORY_OPTIONS = [
   { value: "CLINICAL_CORRECTION", label: "Clinical correction" },
   { value: "ADDITIONAL_FINDING", label: "Additional finding" },
@@ -4017,81 +5637,13 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
   );
 }
 
-function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS, onReadinessChange }) {
-  const [readiness, setReadiness] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-
-  const loadReadiness = useCallback(() => {
-    if (!assessmentId) return;
-    setLoading(true);
-    setError("");
-    getRnicaFinalizationReadiness(assessmentId)
-      .then((res) => {
-        setReadiness(res);
-        onReadinessChange?.(res);
-      })
-      .catch((err) => setError(err.message || "Unable to load finalization readiness"))
-      .finally(() => setLoading(false));
-  }, [assessmentId, onReadinessChange]);
-
-  useEffect(() => {
-    loadReadiness();
-  }, [loadReadiness]);
-
-  if (!assessmentId) {
-    return <div style={styles.infoBox}>Save the assessment once to enable the Final Review Dashboard.</div>;
-  }
-
-  return (
-    <div>
-      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
-        Every check below must pass before this assessment can be locked. This is the same rule set the server
-        enforces on Lock — disabling the Lock button here is a courtesy, not the real safeguard.
-      </div>
-
-      {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Checking finalization readiness…</div>}
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
-
-      {!loading && readiness && (
-        <>
-          <div style={{
-            fontWeight: 700, fontSize: 13, marginBottom: 8,
-            color: readiness.ready ? (COLORS.success || "#16a34a") : (COLORS.error || "#ef4444"),
-          }}>
-            {readiness.ready ? "✓ Ready to lock" : "✗ Not yet ready to lock"}
-          </div>
-          {Object.entries(readiness.checks || {}).map(([key, check]) => (
-            <div key={key} style={{
-              display: "flex", gap: 8, alignItems: "flex-start", padding: "6px 0",
-              borderBottom: `1px solid ${COLORS.border}`, fontSize: 12.5,
-            }}>
-              <span style={{ color: check.ready ? (COLORS.success || "#16a34a") : (COLORS.error || "#ef4444"), fontWeight: 700 }}>
-                {check.ready ? "✓" : "✗"}
-              </span>
-              <div>
-                <div style={{ fontWeight: 600 }}>{check.label}</div>
-                <div style={{ color: COLORS.gray, fontSize: 11.5 }}>{check.message}</div>
-                {Array.isArray(check.incompleteLabels) && check.incompleteLabels.length > 0 && (
-                  <div style={{ color: COLORS.gray, fontSize: 11, marginTop: 2 }}>
-                    Incomplete: {check.incompleteLabels.join(", ")}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          <button type="button" onClick={loadReadiness} style={{
-            marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
-            border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
-          }}>
-            Refresh Readiness Check
-          </button>
-        </>
-      )}
-
-      {locked && <AmendmentPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />}
-    </div>
-  );
+// Locked assessments can no longer be edited directly, so this is just the
+// amendment entry point (propose/review corrections). Nothing is rendered
+// pre-lock — see the note above on why the readiness checklist itself was
+// removed from the assessment body.
+function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS }) {
+  if (!locked) return null;
+  return <AmendmentPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />;
 }
 
 
@@ -4174,6 +5726,113 @@ const SEVERITY_COLORS = {
   UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
 };
 
+// Real, backend-linked allergy list — the single source of truth shared by
+// the Infection section (RN ICA), the Medications card (Tx/Meds/DME), and
+// the Facesheet's Structured Allergies panel (all three call the same
+// listPatientAllergies/addPatientAllergy/removePatientAllergy API against
+// the same patient_allergies table, so an allergy entered in any one of
+// them appears in the other two immediately — no separate free-text field).
+export function AllergiesCard({ patientId, styles, COLORS }) {
+  const [allergies, setAllergies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
+  const [allergyError, setAllergyError] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    listPatientAllergies(patientId)
+      .then((list) => setAllergies(list || []))
+      .catch((err) => {
+        console.error("Failed to load allergies:", err);
+        setAllergyError(err?.response?.data?.detail || "Unable to load allergies.");
+      })
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const handleAddAllergy = async () => {
+    if (!allergyForm.allergen_text.trim()) {
+      setAllergyError("Allergen is required.");
+      return;
+    }
+    setAllergyError("");
+    try {
+      await addPatientAllergy(patientId, {
+        allergen_text: allergyForm.allergen_text.trim(),
+        allergen_type: "DRUG",
+        severity: allergyForm.severity || undefined,
+        reaction_description: allergyForm.reaction_description || undefined,
+      });
+      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
+      reload();
+    } catch (err) {
+      console.error("Add allergy failed:", err);
+      setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
+    }
+  };
+
+  const handleRemoveAllergy = async (allergyId) => {
+    try {
+      await removePatientAllergy(patientId, allergyId);
+      reload();
+    } catch (err) {
+      console.error("Remove allergy failed:", err);
+      window.alert("Unable to remove allergy.");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
+      {loading && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>Loading…</div>}
+      {!loading && allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
+      {allergies.map((a) => (
+        <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+          <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
+          {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
+          {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
+          <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <input
+          style={{ ...styles.input, width: 160 }}
+          placeholder="Allergen (e.g. penicillin)"
+          value={allergyForm.allergen_text}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
+        />
+        <select
+          style={{ ...styles.select, width: 130 }}
+          value={allergyForm.severity}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+        >
+          <option value="">Severity</option>
+          <option value="MILD">Mild</option>
+          <option value="MODERATE">Moderate</option>
+          <option value="SEVERE">Severe</option>
+          <option value="ANAPHYLAXIS">Anaphylaxis</option>
+        </select>
+        <input
+          style={{ ...styles.input, width: 180 }}
+          placeholder="Reaction (optional)"
+          value={allergyForm.reaction_description}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
+        />
+        <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
+          + Add Allergy
+        </button>
+      </div>
+      {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+    </div>
+  );
+}
+
 export function MedicationOrdersCard({ patientId, styles, COLORS }) {
   const [meds, setMeds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -4195,21 +5854,14 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [allergies, setAllergies] = useState([]);
-  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
-  const [allergyError, setAllergyError] = useState("");
-
   const reload = useCallback(() => {
     if (!patientId) return;
     setLoading(true);
     setError("");
-    Promise.all([listMedications(patientId), listPatientAllergies(patientId)])
-      .then(([medList, allergyList]) => {
-        setMeds(medList || []);
-        setAllergies(allergyList || []);
-      })
+    listMedications(patientId)
+      .then((medList) => setMeds(medList || []))
       .catch((err) => {
-        console.error("Failed to load medications/allergies:", err);
+        console.error("Failed to load medications:", err);
         setError(err?.response?.data?.detail || "Unable to load medications.");
       })
       .finally(() => setLoading(false));
@@ -4296,82 +5948,11 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
     }
   };
 
-  const handleAddAllergy = async () => {
-    if (!allergyForm.allergen_text.trim()) {
-      setAllergyError("Allergen is required.");
-      return;
-    }
-    setAllergyError("");
-    try {
-      await addPatientAllergy(patientId, {
-        allergen_text: allergyForm.allergen_text.trim(),
-        allergen_type: "DRUG",
-        severity: allergyForm.severity || undefined,
-        reaction_description: allergyForm.reaction_description || undefined,
-      });
-      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
-      reload();
-    } catch (err) {
-      console.error("Add allergy failed:", err);
-      setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
-    }
-  };
-
-  const handleRemoveAllergy = async (allergyId) => {
-    try {
-      await removePatientAllergy(patientId, allergyId);
-      reload();
-    } catch (err) {
-      console.error("Remove allergy failed:", err);
-      window.alert("Unable to remove allergy.");
-    }
-  };
-
   return (
     <div>
-      {/* ── Allergy list ── */}
+      {/* ── Allergy list — shared component, same data as Infection section + Facesheet ── */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
-        {allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
-        {allergies.map((a) => (
-          <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
-            <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
-            {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
-            {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
-            <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
-              Remove
-            </button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          <input
-            style={{ ...styles.input, width: 160 }}
-            placeholder="Allergen (e.g. penicillin)"
-            value={allergyForm.allergen_text}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
-          />
-          <select
-            style={{ ...styles.select, width: 130 }}
-            value={allergyForm.severity}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
-          >
-            <option value="">Severity</option>
-            <option value="MILD">Mild</option>
-            <option value="MODERATE">Moderate</option>
-            <option value="SEVERE">Severe</option>
-            <option value="ANAPHYLAXIS">Anaphylaxis</option>
-          </select>
-          <input
-            style={{ ...styles.input, width: 180 }}
-            placeholder="Reaction (optional)"
-            value={allergyForm.reaction_description}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
-          />
-          <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
-            + Add Allergy
-          </button>
-        </div>
-        {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+        <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
       </div>
 
       {/* ── Add medication form ── */}
@@ -5903,17 +7484,24 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, onFinalizationReadinessChange, workspacePilot = false) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
 
-  // The 10 Body System Assessment sections (SNS_RNICA_MASTER_MAP_1.1.md)
-  // each get Add/View/Update/Resolve Plan of Care controls on every
-  // field-based subcard.
-  const BODY_SYSTEM_SECTIONS = new Set([
+  // Every clinical assessment section where an RN finding can turn into a
+  // Plan of Care problem gets Add/View/Update/Resolve POC controls on each
+  // field-based subcard (matches the legacy vendor system's per-focus-area
+  // "Add Issue" / "View POC" pattern). Excludes purely administrative /
+  // summary sections that don't themselves generate findings: demographics,
+  // vitals (numeric-only), diagnoses, performanceStatus, sfv (follow-up
+  // summary), admissionsOrder, referrals, finalization.
+  const POC_ENABLED_SECTIONS = new Set([
+    "pain", "symptomImpact",
     "neurological", "cardiovascular", "respiratory", "infection",
     "gastrointestinal", "nutrition", "endocrine", "genitourinary",
     "musculoskeletal", "skin", "imminentDeath",
+    "safety", "psychosocial", "spiritual", "bereavement",
+    "personalCare", "teachingNeeds",
   ]);
 
   const normalizePainPatientType = (type) => {
@@ -5955,6 +7543,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
   const painAssessmentMode = sectionKey === "pain" ? getPainAssessmentMode() : null;
 
+  // Disease-specific performance scales only apply to patients with the
+  // matching diagnosis (primary or secondary): NYHA needs CHF/heart
+  // failure, FAST needs dementia, ECOG needs cancer.
+  const showNyha = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "heartFailure");
+  const showFast = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "dementia");
+  const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "cancer");
+
   return (
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
@@ -5966,7 +7561,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
-        const shouldRenderPocIssueEditor = sectionKey === "finalization" && card.title === "Plan of Care — Problem Generation (CDPH Gap #4)";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
@@ -5978,6 +7572,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
         if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
+          return null;
+        }
+
+        if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.title === "FAST Scale (Dementia)" && !showFast) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.title === "ECOG Performance Status" && !showEcog) {
           return null;
         }
 
@@ -6119,31 +7723,61 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
-        if (sectionKey === "medications" && card.customRenderer === "medicationOrders") {
+        if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <MedicationOrdersCard patientId={patientId} styles={styles} COLORS={COLORS} />
+              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
 
-        if (sectionKey === "medications" && card.customRenderer === "ordersHub") {
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "disciplineFrequencyOfVisit") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <OrdersHubCard patientId={patientId} />
+              <DisciplineFrequencyOfVisitCard
+                rows={data.visitFrequency}
+                onChange={(next) => u("visitFrequency", next)}
+                styles={styles}
+                COLORS={COLORS}
+              />
             </Card>
           );
         }
 
-        if (sectionKey === "finalization" && card.customRenderer === "masterPocReview") {
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "haAssignment") {
+          const assignedAide = data.haAssignment?.assignedAide || "";
+          const notApplicable = !!data.haAssignment?.notApplicable;
+          const chhaPocCompleted = fullFormData?.chhaPoc?.completed === true;
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <MasterPocReviewCard assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+              <FormInput label="Assigned Home Aide" value={assignedAide} onChange={(v) => u("haAssignment.assignedAide", v)} />
+              <FormCheckbox label="HA Assignment N/A" checked={notApplicable} onChange={(v) => u("haAssignment.notApplicable", v)} />
+              {!notApplicable && (
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToSection?.("chha-assignment")}
+                    disabled={!onNavigateToSection}
+                    style={{ ...styles.btnSecondary, opacity: onNavigateToSection ? 1 : 0.5 }}
+                    title={onNavigateToSection ? "Open the CHHA Plan of Care" : "Open this patient's chart to reach the CHHA Plan of Care"}
+                  >
+                    → Open CHHA Plan of Care
+                  </button>
+                  {assignedAide.trim() && (
+                    chhaPocCompleted ? (
+                      <span style={{ fontSize: 11.5, color: "#22c55e", fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: "#f59e0b", fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
+                    )
+                  )}
+                </div>
+              )}
             </Card>
           );
         }
 
         if (sectionKey === "finalization" && card.customRenderer === "finalReviewDashboard") {
+          if (!locked) return null;
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <FinalReviewDashboardCard
@@ -6151,7 +7785,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 locked={locked}
                 styles={styles}
                 COLORS={COLORS}
-                onReadinessChange={onFinalizationReadinessChange}
               />
             </Card>
           );
@@ -6236,57 +7869,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               />
             )}
 
-            {shouldRenderPocIssueEditor && (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ ...styles.infoBox, marginBottom: 10 }}>
-                  Add every problem identified during this assessment to the Plan of Care below (Problem / Goal /
-                  Intervention / Discipline), then open the current POC to confirm it was generated correctly.
-                </div>
-                {(data.pocEntries || []).length > 0 && (
-                  <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {data.pocEntries.map((entry, ei) => (
-                      <div key={entry.id || ei} style={{
-                        display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, alignItems: "center",
-                        padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, fontSize: 12.5,
-                      }}>
-                        <div><strong>Problem:</strong> {entry.problem || "—"}</div>
-                        <div><strong>Goal:</strong> {entry.goal || "—"}</div>
-                        <div><strong>Intervention:</strong> {entry.intervention || "—"}</div>
-                        <div style={{ fontWeight: 700, color: COLORS.teal }}>{entry.discipline || "—"}</div>
-                        <button type="button" onClick={() => u("pocEntries", data.pocEntries.filter((_, i) => i !== ei))}
-                          style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
-                          title="Remove this POC entry">×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, alignItems: "end" }}>
-                  <FormInput label="Problem" value={data.pocDraft?.problem} onChange={(v) => u("pocDraft.problem", v)} placeholder="e.g., Pain related to bone mets" />
-                  <FormInput label="Goal" value={data.pocDraft?.goal} onChange={(v) => u("pocDraft.goal", v)} placeholder="e.g., Pain ≤3/10 within 72 hrs" />
-                  <FormInput label="Intervention / Frequency" value={data.pocDraft?.intervention} onChange={(v) => u("pocDraft.intervention", v)} placeholder="e.g., RN visits 2x/wk, titrate opioid per protocol" />
-                  <FormSelect label="Discipline" value={data.pocDraft?.discipline} onChange={(v) => u("pocDraft.discipline", v)}
-                    options={["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]} />
-                  <button type="button"
-                    disabled={!data.pocDraft?.problem}
-                    onClick={() => {
-                      const draft = data.pocDraft || {};
-                      if (!draft.problem) return;
-                      const entries = [...(data.pocEntries || []), { id: `poc-${Date.now()}`, ...draft }];
-                      u("pocEntries", entries);
-                      u("pocDraft", { problem: "", goal: "", intervention: "", discipline: "" });
-                    }}
-                    style={{
-                      fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 6, border: "none",
-                      background: data.pocDraft?.problem ? COLORS.teal : COLORS.border,
-                      color: COLORS.white, cursor: data.pocDraft?.problem ? "pointer" : "not-allowed", height: 38,
-                    }}
-                  >
-                    + Add to POC
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div style={styles.fieldsGrid}>
             {card.fields.map((field, fi) => {
               if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
@@ -6362,7 +7944,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
-            {BODY_SYSTEM_SECTIONS.has(sectionKey) && card.fields && (
+            {POC_ENABLED_SECTIONS.has(sectionKey) && card.fields && (
               <PocSectionControls
                 assessmentId={assessmentId}
                 sectionKey={sectionKey}
@@ -6797,10 +8379,7 @@ const SECTION_CONFIGS = {
     title: "Immunological / Infection",
     subtitle: "Allergies, current infections, resistant-organism history, precautions",
     cards: [
-      { title: "Allergies", fields: [
-        { type: "checkboxGroup", label: "Allergies", path: "allergies", options: ["Food allergies", "Other allergies", "Sensitivities", "None known"] },
-        { type: "input", label: "Allergy Details", path: "allergyDetails" },
-      ]},
+      { title: "Allergies", customRenderer: "patientAllergies", fields: [] },
       { title: "Immune Status", fields: [
         { type: "checkbox", label: "Immunosuppressed", path: "immunosuppressed" },
         { type: "checkboxGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
@@ -7321,7 +8900,8 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Effective Date", path: "levelOfCare.effectiveDate", inputType: "date" },
         { type: "textarea", label: "LOC Justification", path: "levelOfCare.justification" },
       ]},
-      { title: "HA Assignment", fields: [
+      { title: "Discipline Frequency of Visit", customRenderer: "disciplineFrequencyOfVisit", fields: [] },
+      { title: "HA Assignment", customRenderer: "haAssignment", fields: [
         { type: "input", label: "Assigned Home Aide", path: "haAssignment.assignedAide" },
         { type: "checkbox", label: "HA Assignment N/A", path: "haAssignment.notApplicable" },
       ]},
@@ -7336,27 +8916,6 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Prescriber on Call Contacted", path: "toVerification.prescriberContacted" },
         { type: "input", label: "Verification Timestamp", path: "toVerification.verificationTimestamp", inputType: "datetime-local" },
       ]},
-    ],
-  },
-
-  medications: {
-    title: "Hospice Orders Hub",
-    subtitle: "Unified orders — Meds, DME, Supplies, Lab, Treatment, Diet, Other",
-    cards: [
-      { title: "Opioid / Bowel Assessment", fields: [
-        { type: "checkbox", label: "Scheduled Opioid", path: "scheduledOpioid" },
-        { type: "input", label: "Scheduled Opioid Start / Continue Date", path: "scheduledOpioidDate", inputType: "date" },
-        { type: "checkbox", label: "PRN Opioid", path: "prnOpioid" },
-        { type: "input", label: "PRN Opioid Start / Continue Date", path: "prnOpioidDate", inputType: "date" },
-        { type: "checkbox", label: "Bowel Regimen in Place", path: "bowelRegimen" },
-        { type: "input", label: "Bowel Regimen Start / Continue Date", path: "bowelRegimenDate", inputType: "date" },
-      ]},
-      { title: "Medication Reconciliation", fields: [
-        { type: "checkbox", label: "Med Reconciliation Completed", path: "medReconciliation.completed" },
-        { type: "input", label: "Completed Date", path: "medReconciliation.completedDate", inputType: "date" },
-        { type: "input", label: "Completed By", path: "medReconciliation.completedBy" },
-      ]},
-      { title: "Medications — Allergies, Orders & Interaction Safety Check", customRenderer: "medicationOrders" },
     ],
   },
 
@@ -7383,26 +8942,13 @@ const SECTION_CONFIGS = {
 
   finalization: {
     title: "Finalization & Signature",
-    subtitle: "Response to interventions, POC generation, completion, certification, clinician signature",
+    subtitle: "Completion, certification, clinician signature",
     cards: [
       { id: "rnica-clinical-narrative", title: "Clinical Narrative", fields: [
         { type: "textarea", label: "Clinical narrative", path: "clinicalNarrative", rows: 8, required: true,
           placeholder: "Synthesize the completed whole-patient assessment findings, changes, interventions, response, risks, and plan. Review all source-linked draft content before attestation." },
       ]},
-      { title: "Response to Initial Interventions (CDPH Gap #3)", cms: "CDPH", fields: [
-        { type: "textarea", label: "Initial Response Summary", path: "responseToInterventions.initialResponseSummary", rows: 4,
-          placeholder: "Document patient's initial response to admission interventions — pain management, symptom control, comfort measures, family support. This establishes the baseline for subsequent reassessments." },
-        { type: "checkbox", label: "Baseline Response Established", path: "responseToInterventions.baselineEstablished" },
-        { type: "input", label: "Baseline Date", path: "responseToInterventions.baselineDate", inputType: "date" },
-        { type: "textarea", label: "Progress Notes / Assessment-to-Assessment Context", path: "responseToInterventions.progressNotes", rows: 3,
-          placeholder: "Initial observations that will anchor future reassessments and update comparisons..." },
-      ]},
-      { title: "Plan of Care — Problem Generation (CDPH Gap #4)", cms: "CDPH POC", fields: [
-        { type: "checkbox", label: "All assessment problems have been reviewed and POC entries generated", path: "pocGenerationCompleted" },
-        { type: "checkbox", label: "POC reviewed with IDG team", path: "pocReviewedWithIdg" },
-      ]},
-      { title: "Master Plan of Care Review", customRenderer: "masterPocReview", fields: [] },
-      { title: "Final Review Dashboard", customRenderer: "finalReviewDashboard", fields: [] },
+      { title: "Amendments", customRenderer: "finalReviewDashboard", fields: [] },
       { title: "Completion Status", cms: "F2000/F2100/F2200", fields: [
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
         { type: "input", label: "Clinician Signature", path: "clinicianSignature", required: true },
@@ -7644,7 +9190,7 @@ function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, p
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {} }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
@@ -7728,6 +9274,19 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing]);
+
+  // Default every section to collapsed on load so the RN sees one page of
+  // short, tap-to-open rows instead of all 28 sections expanded at once
+  // requiring constant scrolling. Runs once per mount, before the RN has
+  // manually toggled anything — jumpToSection (sidebar nav) still expands
+  // + scrolls to whichever section is clicked afterward, and once opened a
+  // section stays open until the RN collapses it again.
+  const didInitCollapse = useRef(false);
+  useEffect(() => {
+    if (didInitCollapse.current || routes.length === 0) return;
+    didInitCollapse.current = true;
+    setCollapsedSections(new Set(routes.map((route) => route.key).filter((key) => key !== activeSection)));
+  }, [routes, activeSection]);
 
   useEffect(() => {
     resetAutosaveTracking({ markCurrentAsPersisted: true });
@@ -8008,7 +9567,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       return;
     }
     if (finalizationReadiness && !finalizationReadiness.ready) {
-      alert("Cannot lock: the Final Review Dashboard has unmet Section 12 checks. Review it before locking.");
+      const failedChecks = Object.entries(finalizationReadiness.checks || {}).filter(([, check]) => !check.ready);
+      const lines = failedChecks.map(([, check]) => `• ${check.label}: ${check.message}`);
+      const firstMappedSection = failedChecks
+        .map(([key]) => FINALIZATION_CHECK_SECTION_MAP[key])
+        .find(Boolean);
+      alert(
+        `Cannot lock this assessment yet — the following must be completed first:\n\n${lines.join("\n")}`
+      );
+      if (firstMappedSection) setActiveSection(firstMappedSection);
       return;
     }
     setPageError("");
@@ -8033,7 +9600,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setSaving(false);
     }
-  }, [assessmentId, formData, markPersisted, mode, finalizationReadiness, refreshFinalizationReadiness, refreshIntelligence]);
+  }, [assessmentId, formData, markPersisted, mode, finalizationReadiness, refreshFinalizationReadiness, refreshIntelligence, setActiveSection]);
 
   // Section completion tracker
   const completedSections = useMemo(() => {
@@ -8142,7 +9709,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, setFinalizationReadiness)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -8169,8 +9736,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             patientId,
             assessmentId,
             locked,
-            setFinalizationReadiness,
             true,
+            onNavigateToSection,
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
@@ -8598,10 +10165,6 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             <button
               style={styles.btnDanger}
               onClick={handleLock}
-              disabled={!!(finalizationReadiness && !finalizationReadiness.ready)}
-              title={finalizationReadiness && !finalizationReadiness.ready
-                ? "Complete all Section 12 Final Review Dashboard checks before locking."
-                : undefined}
             >
               Lock Assessment
             </button>

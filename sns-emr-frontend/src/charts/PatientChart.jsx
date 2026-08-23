@@ -8,8 +8,11 @@ import ChartCompletionChecklist from '../intake/ChartCompletionChecklist';
 import NursingAssessmentBoard from '../intake/NursingAssessmentBoard';
 import PsychosocialAssessmentBoard from '../intake/PsychosocialAssessmentBoard';
 import SpiritualAssessmentBoard from '../intake/SpiritualAssessmentBoard';
-import { OrdersHubCard, MedicationOrdersCard, getRnicaColors, getRnicaStyles } from '../components/RNICA';
+import { OrdersHubCard, MedicationOrdersCard, MasterPocReviewCard, CHHAPocCard, CHHAVisitNoteCard, getRnicaColors, getRnicaStyles } from '../components/RNICA';
+import { getRnicaAssessmentByPatient } from '../api/icaAssessments';
 import PhysicianOrdersBoard from './PhysicianOrdersBoard';
+import CertificationsBoard from './CertificationsBoard';
+import F2FBoard from './F2FBoard';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
@@ -119,6 +122,31 @@ const PatientChart = () => {
         if (mounted) setLoading(false);
       });
 
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedPatientId]);
+
+  const [idgAssessmentId, setIdgAssessmentId] = useState(null);
+  const [idgAssessmentLoading, setIdgAssessmentLoading] = useState(false);
+
+  useEffect(() => {
+    if (!resolvedPatientId) {
+      setIdgAssessmentId(null);
+      return;
+    }
+    let mounted = true;
+    setIdgAssessmentLoading(true);
+    getRnicaAssessmentByPatient(resolvedPatientId)
+      .then((assessment) => {
+        if (mounted) setIdgAssessmentId(assessment?.id || assessment?.assessmentId || null);
+      })
+      .catch(() => {
+        if (mounted) setIdgAssessmentId(null);
+      })
+      .finally(() => {
+        if (mounted) setIdgAssessmentLoading(false);
+      });
     return () => {
       mounted = false;
     };
@@ -451,6 +479,22 @@ const PatientChart = () => {
 
   const IDGBoard = () => (
     <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ ...boardCard, marginBottom: 10 }}>
+        <div style={boardHeader}>Master plan of care review</div>
+        {idgAssessmentLoading && (
+          <div style={{ color: colors.muted, fontSize: 11.5 }}>Loading plan of care…</div>
+        )}
+        {!idgAssessmentLoading && !idgAssessmentId && (
+          <div style={{ color: colors.muted, fontSize: 11.5 }}>No plan of care on file for this patient yet.</div>
+        )}
+        {!idgAssessmentLoading && idgAssessmentId && (
+          <MasterPocReviewCard
+            assessmentId={idgAssessmentId}
+            styles={getRnicaStyles(getRnicaColors(mode))}
+            COLORS={getRnicaColors(mode)}
+          />
+        )}
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         <div style={{ ...boardCard }}>
           <div style={boardHeader}>IDG meeting summary</div>
@@ -552,7 +596,7 @@ const PatientChart = () => {
       case 'demographics':
         return <IntakeBoard />;
       case 'nursing-assessment':
-        return <NursingAssessmentBoard patientId={resolvedPatientId} />;
+        return <NursingAssessmentBoard patientId={resolvedPatientId} onNavigateToSection={navigateChart} />
       case 'psychosocial-assessment':
         return <PsychosocialAssessmentBoard patientId={resolvedPatientId} />;
       case 'spiritual-assessment':
@@ -585,6 +629,26 @@ const PatientChart = () => {
         return <PhysicianOrdersBoard patientId={resolvedPatientId} initialView="add" />;
       case 'order-history':
         return <PhysicianOrdersBoard patientId={resolvedPatientId} initialView="history" />;
+      case 'chha-assignment':
+        return (
+          <CHHAPocCard
+            patientId={resolvedPatientId}
+            styles={getRnicaStyles(getRnicaColors(mode))}
+            COLORS={getRnicaColors(mode)}
+          />
+        );
+      case 'chha-visits':
+        return (
+          <CHHAVisitNoteCard
+            patientId={resolvedPatientId}
+            styles={getRnicaStyles(getRnicaColors(mode))}
+            COLORS={getRnicaColors(mode)}
+          />
+        );
+      case 'cti':
+        return <CertificationsBoard patientId={resolvedPatientId} />;
+      case 'f2f':
+        return <F2FBoard patientId={resolvedPatientId} />;
       case 'idg':
       case 'add-idg':
       case 'idg-history':

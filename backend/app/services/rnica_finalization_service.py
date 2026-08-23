@@ -8,9 +8,9 @@ a disabled Lock button in the UI is a courtesy, not the enforcement
 boundary).
 
 Layer 1 (attestation / signature) and Layer 2 (POC completeness,
-narrative review, LCD baseline, decline baseline, referrals reviewed)
-checks are intentionally kept in one place, expressed as pure functions
-over already-loaded data, so they are independently testable without a
+narrative review, LCD baseline, referrals reviewed) checks are
+intentionally kept in one place, expressed as pure functions over
+already-loaded data, so they are independently testable without a
 live HTTP request.
 """
 
@@ -134,26 +134,11 @@ def evaluate_finalization_readiness(form_data: dict[str, Any], poc_problems: lis
         "message": "LCD eligibility support narrative is required." if not _has_text(lcd_baseline) else "LCD evidence baseline documented.",
     }
 
-    decline_baseline = _get(form_data, "finalization", "responseToInterventions", "baselineEstablished") is True
-    checks["declineBaseline"] = {
-        "label": "Decline-of-status baseline created",
-        "ready": decline_baseline,
-        "message": "Response-to-interventions baseline has not been established." if not decline_baseline else "Decline baseline established.",
-    }
-
     referrals_reviewed = _get(form_data, "referrals", "reviewed") is True
     checks["referralsReviewed"] = {
         "label": "Referrals reviewed",
         "ready": referrals_reviewed,
         "message": "Referral status has not been marked reviewed." if not referrals_reviewed else "Referrals reviewed.",
-    }
-
-    poc_generation_completed = _get(form_data, "finalization", "pocGenerationCompleted") is True
-    checks["pocGenerationAcknowledged"] = {
-        "label": "POC generation acknowledged",
-        "ready": poc_generation_completed,
-        "message": "RN has not confirmed all assessment problems were reviewed and added to the Plan of Care."
-        if not poc_generation_completed else "POC generation acknowledged.",
     }
 
     poc_completeness = evaluate_poc_completeness(poc_problems)
@@ -162,6 +147,22 @@ def evaluate_finalization_readiness(form_data: dict[str, Any], poc_problems: lis
         "ready": poc_completeness["ready"],
         "message": poc_completeness["message"],
         "incompleteLabels": poc_completeness["incomplete_labels"],
+    }
+
+    # --- HA Assignment -> CHHA Plan of Care must be finished before lock.
+    # Only applies when a Home Health Aide is actually assigned (and the
+    # HA Assignment card isn't marked N/A) -- a patient with no CHHA
+    # involvement has nothing to complete here.
+    ha_not_applicable = _get(form_data, "haAssignment", "notApplicable") is True
+    ha_assigned_aide = _get(form_data, "haAssignment", "assignedAide")
+    ha_assigned = (not ha_not_applicable) and _has_text(ha_assigned_aide)
+    chha_poc_completed = _get(form_data, "chhaPoc", "completed") is True
+    chha_poc_ready = (not ha_assigned) or chha_poc_completed
+    checks["chhaPocCompleted"] = {
+        "label": "CHHA Plan of Care completed",
+        "ready": chha_poc_ready,
+        "message": "A Home Health Aide is assigned but the CHHA Plan of Care has not been marked complete."
+        if not chha_poc_ready else "CHHA Plan of Care completed (or no HA assigned).",
     }
 
     ready = all(check["ready"] for check in checks.values())
