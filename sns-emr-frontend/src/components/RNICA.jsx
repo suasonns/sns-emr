@@ -299,11 +299,40 @@ const DEFAULT_VISIT_DISCIPLINES = [
   { discipline: "RN-SUP", numberOfVisits: "", period: "", specify: "" },
 ];
 
+// ─── Visit meta options (logistics/payroll tracking, shared across all ICA/visit forms) ───
+const CARE_LEVEL_OPTIONS = ["Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
+
 // ════════════════════════════════════════════════════════════════
 // 2. INITIAL_FORM — Complete State Shape (28 sections)
 // ════════════════════════════════════════════════════════════════
 
 const INITIAL_FORM = {
+  // ─── VISIT META — Logistics/payroll tracking (correction, type, reason, time in/out, staff, discipline, care level) ───
+  visitMeta: {
+    correction: false,
+    typeOfVisit: "",
+    visitKind: "",
+    visitKindSpecify: "",
+    reasonForVisit: "Initial Comprehensive Assessment",
+    visitDate: "",
+    timeIn: "",
+    timeOut: "",
+    duration: "",
+    enteredBy: "",
+    staffAssigned: "",
+    discipline: "RN",
+    careLevel: "",
+  },
   // ─── 1. DEMOGRAPHICS ───────────────────────────────
   demographics: {
     firstName: "", lastName: "", dob: "", gender: "",
@@ -9189,6 +9218,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     };
   }, [resolvedPatientId, patientId]);
 
+  // Visit meta — seed discipline/staff/care level for logistics + payroll tracking.
+  useEffect(() => {
+    const currentUser = getCurrentUser();
+    setFormData((prev) => ({
+      ...prev,
+      visitMeta: {
+        ...prev.visitMeta,
+        discipline: currentUser?.role || prev.visitMeta.discipline || "RN",
+        enteredBy: prev.visitMeta.enteredBy || currentUser?.full_name || "",
+        staffAssigned: prev.visitMeta.staffAssigned || currentUser?.full_name || "",
+        careLevel: prev.visitMeta.careLevel || patientSummary?.patient?.acuity_state || "",
+      },
+    }));
+  }, [patientSummary]);
+
   useEffect(() => {
     const activeId = resolvedPatientId || patientId;
     if (!activeId) {
@@ -9716,6 +9760,40 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             }}>
               {locked ? "LOCKED" : "IN PROGRESS"}
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Visit Meta — logistics/payroll tracking (type of visit, reason, time in/out, staff, discipline, care level) ── */}
+      <div style={{ padding: "0 24px 12px" }}>
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>Visit Details</div>
+          <div style={styles.sectionSubtitle}>Visit logistics for agency scheduling and payroll tracking</div>
+          <div style={styles.fieldsGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Correction</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.dark }}>
+                <input type="checkbox" checked={formData.visitMeta.correction} onChange={(e) => updateField("visitMeta", "correction", e.target.checked)} />
+                Correction
+              </label>
+            </div>
+            <FormSelect label="Type of Visit" value={formData.visitMeta.typeOfVisit} onChange={(v) => updateField("visitMeta", "typeOfVisit", v)} options={["In-Person", "Telephone", "Video"]} />
+            <FormSelect label="Visit" value={formData.visitMeta.visitKind} onChange={(v) => updateField("visitMeta", "visitKind", v)} options={["Scheduled", "Unscheduled", "Other"]} />
+            <FormSelect label="Reason for Visit" value={formData.visitMeta.reasonForVisit} onChange={(v) => updateField("visitMeta", "reasonForVisit", v)} options={REASON_FOR_VISIT_OPTIONS} />
+            <FormInput label="Visit Date" type="date" value={formData.visitMeta.visitDate} onChange={(v) => updateField("visitMeta", "visitDate", v)} />
+            {formData.visitMeta.visitKind === "Other" && (
+              <FormInput label="Visit specify" value={formData.visitMeta.visitKindSpecify} onChange={(v) => updateField("visitMeta", "visitKindSpecify", v)} />
+            )}
+            <FormInput label="Time In" type="time" value={formData.visitMeta.timeIn} onChange={(v) => updateField("visitMeta", "timeIn", v)} />
+            <FormInput label="Time Out" type="time" value={formData.visitMeta.timeOut} onChange={(v) => updateField("visitMeta", "timeOut", v)} />
+            <FormInput label="Duration (h:m)" value={formData.visitMeta.duration} onChange={(v) => updateField("visitMeta", "duration", v)} placeholder="1h 15m" />
+            <FormInput label="Entered By" value={formData.visitMeta.enteredBy} onChange={(v) => updateField("visitMeta", "enteredBy", v)} />
+            <FormInput label="Staff Assigned" value={formData.visitMeta.staffAssigned} onChange={(v) => updateField("visitMeta", "staffAssigned", v)} />
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Discipline</label>
+              <input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: COLORS.bg }} />
+            </div>
+            <FormSelect label="Care Level" value={formData.visitMeta.careLevel} onChange={(v) => updateField("visitMeta", "careLevel", v)} options={CARE_LEVEL_OPTIONS} />
           </div>
         </div>
       </div>
