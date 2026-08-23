@@ -4376,6 +4376,31 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
     return [{ key: t.task, itemCode: null, ...shared, label: categoryLabel, detail: "" }];
   }), [orderedTasks]);
 
+  // One card per category (Ambulation, Transfer, Feeding, ...) instead of
+  // one card per item -- the category header, shared dependence/frequency,
+  // instructions, and guidance are shown ONCE, and every item ordered under
+  // that category is listed underneath it as its own row. This is what
+  // keeps a patient with 5 Ambulation items from producing 5 near-identical
+  // cards that all repeat "AMBULATION" at the top.
+  const groupedTaskCategories = useMemo(() => {
+    const byCategory = new Map();
+    for (const item of orderedTaskItems) {
+      if (!byCategory.has(item.category)) {
+        byCategory.set(item.category, {
+          category: item.category,
+          categoryLabel: item.categoryLabel,
+          guidance: item.guidance,
+          dependence: item.dependence,
+          frequency: item.frequency,
+          categoryInstructions: item.categoryInstructions,
+          items: [],
+        });
+      }
+      byCategory.get(item.category).items.push(item);
+    }
+    return [...byCategory.values()];
+  }, [orderedTaskItems]);
+
   // Visit-time facts are captured as checklists (CHHA_VISIT_FACT_OPTIONS),
   // not free narrative -- narrative alone is unreliable (vague, inconsistent,
   // easy to write nothing useful). The checklist is the required, auditable
@@ -4591,97 +4616,120 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           <div style={{ fontSize: 12, color: COLORS.gray }}>No tasks are ordered in this patient's CHHA Plan of Care yet.</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
-            {orderedTaskItems.map((t) => {
-              const result = note.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
-              const catalog = visitFactCatalog(t);
-              const checklist = result.checklist || [];
-              const needsChecklist = result.state === "completed" && !!catalog && checklist.length === 0;
-              const needsAssistedBy = result.state === "completed" && checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result.assistedBy?.trim();
-              const needsFreeNote = (result.state === "refused" || result.state === "notDone") && !result.note?.trim();
-              const anyMissing = needsChecklist || needsAssistedBy || needsFreeNote;
-              const showChecklist = result.state === "completed" && !!catalog;
-              const showNarrative = result.state === "refused" || result.state === "notDone" || result.state === "completed";
+            {groupedTaskCategories.map((cat) => {
+              const anyCategoryMissing = cat.items.some((t) => {
+                const result = note.taskResults[t.key];
+                const state = result?.state;
+                if (state === "refused" || state === "notDone") return !result?.note?.trim();
+                if (state === "completed") {
+                  const catalog = visitFactCatalog(t);
+                  const needsChecklist = !!catalog && (result?.checklist || []).length === 0;
+                  const needsAssistedBy = (result?.checklist || []).some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result?.assistedBy?.trim();
+                  return needsChecklist || needsAssistedBy;
+                }
+                return false;
+              });
               return (
-                <div key={t.key} style={{
-                  borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+                <div key={cat.category} style={{
+                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
                 }}>
-                  <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{t.categoryLabel}</div>
-                  <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.dark, marginTop: 2 }}>{t.label}{t.detail ? ` — ${t.detail}` : ""}</div>
-                  {(t.dependence || t.frequency) && (
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{cat.categoryLabel}</div>
+                  {(cat.dependence || cat.frequency) && (
                     <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>
-                      {[t.dependence, t.frequency].filter(Boolean).join(" · ")}
+                      {[cat.dependence, cat.frequency].filter(Boolean).join(" · ")}
                     </div>
                   )}
-                  {t.categoryInstructions && (
-                    <div style={{ fontSize: 11.5, color: COLORS.dark, marginTop: 2, fontStyle: "italic" }}>“{t.categoryInstructions}”</div>
+                  {cat.categoryInstructions && (
+                    <div style={{ fontSize: 11.5, color: COLORS.dark, marginTop: 2, fontStyle: "italic" }}>“{cat.categoryInstructions}”</div>
                   )}
-                  {t.guidance && (
-                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{t.guidance}</div>
+                  {cat.guidance && (
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{cat.guidance}</div>
                   )}
-                  <div style={{ display: "flex", gap: 14, marginTop: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                    {[["completed", "Completed as ordered"], ["refused", "Patient refused"], ["notDone", "Not done"]].map(([val, lbl]) => (
-                      <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
-                        <input type="radio" name={`task-${t.key}`} checked={result.state === val} onChange={() => setTaskResult(t.key, { state: val })} disabled={visitLocked} />
-                        {lbl}
-                      </label>
-                    ))}
-                  </div>
-                  {showChecklist && (
-                    <div style={{ marginBottom: 8 }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, marginBottom: 4 }}>
-                        What did you actually do/see? (check all that apply — required)
-                      </div>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: "4px 16px" }}>
-                        {catalog.map((fact) => (
-                          <label key={fact.code} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={checklist.includes(fact.code)}
-                              onChange={(e) => toggleTaskChecklistItem(t, fact.code, e.target.checked)}
-                              disabled={visitLocked}
-                            />
-                            {fact.label}
-                          </label>
-                        ))}
-                      </div>
-                      {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
-                      {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
-                        <div style={{ marginTop: 6, maxWidth: 360 }}>
-                          <FormInput
-                            label="Who assisted? (name/role — required, staffing safety record)"
-                            value={result.assistedBy}
-                            onChange={(v) => setTaskResult(t.key, { assistedBy: v })}
-                            placeholder="e.g., Second HA, Maria R."
-                            disabled={visitLocked}
-                          />
-                          {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                    {cat.items.map((t, idx) => {
+                      const result = note.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
+                      const catalog = visitFactCatalog(t);
+                      const checklist = result.checklist || [];
+                      const needsChecklist = result.state === "completed" && !!catalog && checklist.length === 0;
+                      const needsAssistedBy = result.state === "completed" && checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result.assistedBy?.trim();
+                      const needsFreeNote = (result.state === "refused" || result.state === "notDone") && !result.note?.trim();
+                      const anyMissing = needsChecklist || needsAssistedBy || needsFreeNote;
+                      const showChecklist = result.state === "completed" && !!catalog;
+                      const showNarrative = result.state === "refused" || result.state === "notDone" || result.state === "completed";
+                      return (
+                        <div key={t.key} style={{
+                          paddingTop: idx === 0 ? 0 : 10,
+                          borderTop: idx === 0 ? "none" : `1px solid ${COLORS.border}`,
+                        }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: anyMissing ? "#b45309" : COLORS.dark }}>{t.label}{t.detail ? ` — ${t.detail}` : ""}</div>
+                          <div style={{ display: "flex", gap: 14, marginTop: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                            {[["completed", "Completed as ordered"], ["refused", "Patient refused"], ["notDone", "Not done"]].map(([val, lbl]) => (
+                              <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                                <input type="radio" name={`task-${t.key}`} checked={result.state === val} onChange={() => setTaskResult(t.key, { state: val })} disabled={visitLocked} />
+                                {lbl}
+                              </label>
+                            ))}
+                          </div>
+                          {showChecklist && (
+                            <div style={{ marginBottom: 6 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, marginBottom: 4 }}>
+                                What did you actually do/see? (check all that apply — required)
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {catalog.map((fact) => (
+                                  <label key={fact.code} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checklist.includes(fact.code)}
+                                      onChange={(e) => toggleTaskChecklistItem(t, fact.code, e.target.checked)}
+                                      disabled={visitLocked}
+                                    />
+                                    {fact.label}
+                                  </label>
+                                ))}
+                              </div>
+                              {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
+                              {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
+                                <div style={{ marginTop: 6 }}>
+                                  <FormInput
+                                    label="Who assisted? (name/role — required, staffing safety record)"
+                                    value={result.assistedBy}
+                                    onChange={(v) => setTaskResult(t.key, { assistedBy: v })}
+                                    placeholder="e.g., Second HA, Maria R."
+                                    disabled={visitLocked}
+                                  />
+                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {showNarrative && (
+                            <div>
+                              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                                <span style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray }}>
+                                  {result.state === "completed"
+                                    ? "Notes (auto-filled from checklist above — add anything else, or edit)"
+                                    : "What happened (required — describe only what you saw/heard)"}
+                                </span>
+                                {result.state === "completed" && catalog && result.noteIsAuto === false && (
+                                  <button type="button" onClick={() => resyncTaskNarrative(t)} style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 10.5, textDecoration: "underline" }}>
+                                    reset to checklist wording
+                                  </button>
+                                )}
+                              </div>
+                              <FormInput
+                                value={result.note}
+                                onChange={(v) => setTaskNarrative(t.key, v)}
+                                placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
+                                disabled={visitLocked}
+                              />
+                              {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  )}
-                  {showNarrative && (
-                    <div>
-                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                        <span style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray }}>
-                          {result.state === "completed"
-                            ? "Notes (auto-filled from checklist above — add anything else, or edit)"
-                            : "What happened (required — describe only what you saw/heard)"}
-                        </span>
-                        {result.state === "completed" && catalog && result.noteIsAuto === false && (
-                          <button type="button" onClick={() => resyncTaskNarrative(t)} style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 10.5, textDecoration: "underline" }}>
-                            reset to checklist wording
-                          </button>
-                        )}
-                      </div>
-                      <FormInput
-                        value={result.note}
-                        onChange={(v) => setTaskNarrative(t.key, v)}
-                        placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
-                        disabled={visitLocked}
-                      />
-                      {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
