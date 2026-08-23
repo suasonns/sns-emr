@@ -1108,7 +1108,7 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled 
   );
 }
 
-function FormSelect({ label, value, onChange, options, required, hopeCode }) {
+function FormSelect({ label, value, onChange, options, required, hopeCode, disabled }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1118,7 +1118,7 @@ function FormSelect({ label, value, onChange, options, required, hopeCode }) {
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
         <option value="">— Select —</option>
         {options.map((opt) => (
           <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
@@ -4045,6 +4045,22 @@ function chhaDeriveSkinOutcome(selectedValues) {
   return "NOT_ASSESSED";
 }
 
+const DEFAULT_CHHA_VISIT_META = {
+  correction: false,
+  typeOfVisit: "",
+  visitKind: "",
+  visitKindSpecify: "",
+  reasonForVisit: "",
+  visitDate: "",
+  timeIn: "",
+  timeOut: "",
+  duration: "",
+  enteredBy: "",
+  staffAssigned: "",
+  discipline: "CHHA",
+  careLevel: "",
+};
+
 const DEFAULT_CHHA_VISIT_NOTE = {
   taskResults: {}, // task value -> { state: "completed"|"refused"|"notDone", note: string }
   skin: [],
@@ -4059,6 +4075,7 @@ const DEFAULT_CHHA_VISIT_NOTE = {
   caregiverUnderstandingConfirmed: false,
   rnNotified: false,
   rnNotifiedName: "",
+  visitMeta: DEFAULT_CHHA_VISIT_META,
 };
 
 export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
@@ -4110,10 +4127,20 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       return;
     }
     setSaveMessage("");
+    const currentUser = getCurrentUser();
+    const fallbackVisitMeta = {
+      ...DEFAULT_CHHA_VISIT_META,
+      visitDate: selectedVisitMeta?.visit_datetime
+        ? new Date(selectedVisitMeta.visit_datetime).toISOString().slice(0, 10)
+        : "",
+      enteredBy: currentUser?.full_name || currentUser?.name || "",
+      staffAssigned: currentUser?.full_name || currentUser?.name || "",
+      discipline: "CHHA",
+    };
     getChhaVisitOutcome(selectedVisitId)
       .then((existing) => {
         if (!existing) {
-          setNote(DEFAULT_CHHA_VISIT_NOTE);
+          setNote({ ...DEFAULT_CHHA_VISIT_NOTE, visitMeta: fallbackVisitMeta });
           return;
         }
         const taskResults = {};
@@ -4154,10 +4181,25 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           caregiverUnderstandingConfirmed: !!existing.caregiver_understanding_confirmed,
           rnNotified: !!existing.rn_notified,
           rnNotifiedName: existing.rn_notified_name || "",
+          visitMeta: {
+            correction: !!existing.correction,
+            typeOfVisit: existing.type_of_visit || "",
+            visitKind: existing.visit_kind || "",
+            visitKindSpecify: existing.visit_kind_specify || "",
+            reasonForVisit: existing.reason_for_visit || "",
+            visitDate: existing.visit_date || fallbackVisitMeta.visitDate,
+            timeIn: existing.time_in || "",
+            timeOut: existing.time_out || "",
+            duration: existing.duration || "",
+            enteredBy: existing.entered_by || fallbackVisitMeta.enteredBy,
+            staffAssigned: existing.staff_assigned || fallbackVisitMeta.staffAssigned,
+            discipline: "CHHA",
+            careLevel: existing.care_level || "",
+          },
         });
       })
       .catch((err) => setError(err.message || "Unable to load this visit's CHHA note."));
-  }, [selectedVisitId]);
+  }, [selectedVisitId, selectedVisitMeta]);
 
   const derivedCategories = useMemo(
     () => deriveChhaCareGuidance({ formData: fullFormData, medications, reportToRole, minimumAssistLevel }),
@@ -4297,6 +4339,10 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
   const missingRnNotifiedName = note.rnNotified && !note.rnNotifiedName.trim();
   const canSubmit = !visitLocked && !!selectedVisitId && missingTaskNotes === 0 && !missingRnNotifiedName;
 
+  const updateVisitMeta = (key, value) => {
+    setNote((p) => ({ ...p, visitMeta: { ...p.visitMeta, [key]: value } }));
+  };
+
   const handleSubmit = () => {
     if (!selectedVisitId || !canSubmit) return;
     setSaving(true);
@@ -4360,6 +4406,18 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       caregiver_understanding_confirmed: note.caregiverUnderstandingConfirmed,
       exception_narrative: [note.painNote?.trim(), note.exceptionNarrative?.trim()].filter(Boolean).join(" — ") || null,
       task_results: taskResultRows,
+      correction: note.visitMeta.correction,
+      type_of_visit: note.visitMeta.typeOfVisit || null,
+      visit_kind: note.visitMeta.visitKind || null,
+      visit_kind_specify: note.visitMeta.visitKind === "Other" ? (note.visitMeta.visitKindSpecify?.trim() || null) : null,
+      reason_for_visit: note.visitMeta.reasonForVisit || null,
+      visit_date: note.visitMeta.visitDate || null,
+      time_in: note.visitMeta.timeIn || null,
+      time_out: note.visitMeta.timeOut || null,
+      duration: note.visitMeta.duration || null,
+      entered_by: note.visitMeta.enteredBy?.trim() || null,
+      staff_assigned: note.visitMeta.staffAssigned?.trim() || null,
+      care_level: note.visitMeta.careLevel || null,
     })
       .then(() => {
         setSaveMessage("Visit note saved");
@@ -4402,6 +4460,72 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           </div>
         )}
       </Card>
+
+      {!!selectedVisitId && (
+        <Card title="Visit Details" cms="Logistics & payroll tracking for this visit">
+          <div style={styles.fieldsGrid}>
+            <label style={styles.formGroup}>
+              <span style={styles.label}>Correction</span>
+              <input
+                type="checkbox"
+                checked={note.visitMeta.correction}
+                disabled={visitLocked}
+                onChange={(e) => updateVisitMeta("correction", e.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+            </label>
+            <FormSelect
+              label="Type of Visit"
+              value={note.visitMeta.typeOfVisit}
+              onChange={(v) => updateVisitMeta("typeOfVisit", v)}
+              options={["In-Person", "Telephone", "Video"]}
+              disabled={visitLocked}
+            />
+            <FormSelect
+              label="Visit"
+              value={note.visitMeta.visitKind}
+              onChange={(v) => updateVisitMeta("visitKind", v)}
+              options={["Scheduled", "Unscheduled", "Other"]}
+              disabled={visitLocked}
+            />
+            {note.visitMeta.visitKind === "Other" && (
+              <FormInput
+                label="Specify"
+                value={note.visitMeta.visitKindSpecify}
+                onChange={(v) => updateVisitMeta("visitKindSpecify", v)}
+                disabled={visitLocked}
+              />
+            )}
+            <FormSelect
+              label="Reason for Visit"
+              value={note.visitMeta.reasonForVisit}
+              onChange={(v) => updateVisitMeta("reasonForVisit", v)}
+              options={REASON_FOR_VISIT_OPTIONS}
+              disabled={visitLocked}
+            />
+            <FormInput
+              label="Visit Date"
+              type="date"
+              value={note.visitMeta.visitDate}
+              onChange={(v) => updateVisitMeta("visitDate", v)}
+              disabled={visitLocked}
+            />
+            <FormInput label="Time In" type="time" value={note.visitMeta.timeIn} onChange={(v) => updateVisitMeta("timeIn", v)} disabled={visitLocked} />
+            <FormInput label="Time Out" type="time" value={note.visitMeta.timeOut} onChange={(v) => updateVisitMeta("timeOut", v)} disabled={visitLocked} />
+            <FormInput label="Duration (h:m)" value={note.visitMeta.duration} onChange={(v) => updateVisitMeta("duration", v)} placeholder="1h 15m" disabled={visitLocked} />
+            <FormInput label="Entered By" value={note.visitMeta.enteredBy} onChange={(v) => updateVisitMeta("enteredBy", v)} disabled={visitLocked} />
+            <FormInput label="Staff Assigned" value={note.visitMeta.staffAssigned} onChange={(v) => updateVisitMeta("staffAssigned", v)} disabled={visitLocked} />
+            <FormInput label="Discipline" value="CHHA" disabled />
+            <FormSelect
+              label="Care Level"
+              value={note.visitMeta.careLevel}
+              onChange={(v) => updateVisitMeta("careLevel", v)}
+              options={CARE_LEVEL_OPTIONS}
+              disabled={visitLocked}
+            />
+          </div>
+        </Card>
+      )}
 
       {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
       {(todayWatchFor.length > 0) && (

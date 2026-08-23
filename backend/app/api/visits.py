@@ -1634,6 +1634,20 @@ class CHHAOutcomeUpsertRequest(BaseModel):
     exception_narrative: Optional[str] = None
     task_results: List[CHHATaskResultItem] = Field(default_factory=list)
 
+    # Visit logistics / payroll tracking ("Visit Details")
+    correction: bool = False
+    type_of_visit: Optional[str] = None
+    visit_kind: Optional[str] = None
+    visit_kind_specify: Optional[str] = None
+    reason_for_visit: Optional[str] = None
+    visit_date: Optional[str] = None
+    time_in: Optional[str] = None
+    time_out: Optional[str] = None
+    duration: Optional[str] = None
+    entered_by: Optional[str] = None
+    staff_assigned: Optional[str] = None
+    care_level: Optional[str] = None
+
 
 class RefusalRequest(BaseModel):
     discipline: str = Field(
@@ -4076,6 +4090,18 @@ def get_chha_visit_outcome(
         "caregiver_instruction_provided": outcome.caregiver_instruction_provided,
         "caregiver_understanding_confirmed": outcome.caregiver_understanding_confirmed,
         "exception_narrative": outcome.exception_narrative,
+        "correction": outcome.correction,
+        "type_of_visit": outcome.type_of_visit,
+        "visit_kind": outcome.visit_kind,
+        "visit_kind_specify": outcome.visit_kind_specify,
+        "reason_for_visit": outcome.reason_for_visit,
+        "visit_date": outcome.visit_date,
+        "time_in": outcome.time_in,
+        "time_out": outcome.time_out,
+        "duration": outcome.duration,
+        "entered_by": outcome.entered_by,
+        "staff_assigned": outcome.staff_assigned,
+        "care_level": outcome.care_level,
         "updated_at": outcome.updated_at,
         "task_results": [
             {

@@ -78,6 +78,18 @@ def upsert_chha_outcome(
     outcome.caregiver_instruction_provided = payload.caregiver_instruction_provided
     outcome.caregiver_understanding_confirmed = payload.caregiver_understanding_confirmed
     outcome.exception_narrative = payload.exception_narrative
+    outcome.correction = payload.correction
+    outcome.type_of_visit = payload.type_of_visit
+    outcome.visit_kind = payload.visit_kind
+    outcome.visit_kind_specify = payload.visit_kind_specify
+    outcome.reason_for_visit = payload.reason_for_visit
+    outcome.visit_date = payload.visit_date
+    outcome.time_in = payload.time_in
+    outcome.time_out = payload.time_out
+    outcome.duration = payload.duration
+    outcome.entered_by = payload.entered_by
+    outcome.staff_assigned = payload.staff_assigned
+    outcome.care_level = payload.care_level
     outcome.updated_at = now
     outcome.updated_by = user_id
 
