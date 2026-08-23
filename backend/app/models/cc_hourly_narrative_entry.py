@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -50,7 +50,12 @@ class CCHourlyNarrativeEntry(Base):
     care_provided = Column(Text, nullable=True)
 
     # ── Issue management ──
-    issue_identified = Column(Boolean, nullable=False, default=False)
+    issue_identified = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
     issue_narrative = Column(Text, nullable=True)
 
     # ── Plan of care update ──
@@ -61,8 +66,18 @@ class CCHourlyNarrativeEntry(Base):
 
     entered_by = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=func.now(),
+    )
     created_by = Column(UUID(as_uuid=True), nullable=True)
 
     visit = relationship("Visit", backref="cc_hourly_narrative_entries")

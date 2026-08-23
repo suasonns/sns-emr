@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Boolean, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -39,7 +39,12 @@ class CHHAVisitOutcome(Base):
 
     # Visit logistics / payroll tracking (mirrors the "Visit Details" block
     # captured on RN ICA, MSW ICA, and SC ICA)
-    correction = Column(Boolean, nullable=False, default=False)
+    correction = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
     type_of_visit = Column(String(32), nullable=True)
     visit_kind = Column(String(32), nullable=True)
     visit_kind_specify = Column(String(255), nullable=True)
