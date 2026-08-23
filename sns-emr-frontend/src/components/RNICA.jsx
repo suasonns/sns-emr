@@ -4398,7 +4398,11 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       }
       byCategory.get(item.category).items.push(item);
     }
-    return [...byCategory.values()];
+    // Sort largest-to-smallest so the grid's left/right pair on each row is
+    // as close in item count as possible -- adjacent categories in a sorted
+    // list are always the closest match available, which keeps left/right
+    // box heights from looking randomly mismatched row to row.
+    return [...byCategory.values()].sort((a, b) => b.items.length - a.items.length);
   }, [orderedTaskItems]);
 
   // Visit-time facts are captured as checklists (CHHA_VISIT_FACT_OPTIONS),
