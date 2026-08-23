@@ -12,7 +12,9 @@ import {
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { getCurrentUser } from "../api/session";
 import { useThemeMode } from "../theme/theme";
-import { getChartColors } from "../theme/chartColors";
+// Shared design system (colors + base styles) — the same one RNICA/CHHA use, so every
+// clinical page stays visually identical. Do not fork these values locally.
+import { getRnicaColors, getRnicaStyles } from "../theme/clinicalDesign";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 
 const API_BASE = "/visits/msw-ica";
@@ -211,58 +213,63 @@ const sidebarItems = [
   "Monthly Schedule",
 ];
 
-function getBrand(colors) {
+// Maps the shared RNICA color tokens onto the local names this component's
+// JSX already references (brand.line, brand.muted, etc.) so no other code
+// needed to change — only the source of truth did.
+function getBrand(COLORS) {
   return {
-    navy: "#1E3A5F",
-    teal: colors.teal,
-    tealDark: colors.teal,
-    tealLight: colors.tealBg,
-    bg: colors.bg,
-    canvas: colors.bg,
-    panel: colors.card,
-    line: colors.border,
-    text: colors.text,
-    muted: colors.label,
-    slate: colors.text,
+    navy: COLORS.navy,
+    teal: COLORS.teal,
+    tealDark: COLORS.tealDark,
+    tealLight: COLORS.tealBg,
+    bg: COLORS.bg,
+    canvas: COLORS.pageBg,
+    panel: COLORS.white,
+    line: COLORS.border,
+    text: COLORS.dark,
+    muted: COLORS.gray,
+    slate: COLORS.dark,
   };
 }
 
-function getStyles(brand) {
+function getStyles(brand, COLORS) {
+  const base = getRnicaStyles(COLORS);
   return {
-    page: { minHeight: "100vh", background: brand.canvas },
+    page: base.page,
     frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
     shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
     sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
-    patientCard: { border: `1px solid ${brand.line}`, background: brand.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
-    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 700 },
-    navCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
-    navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 700, color: brand.text },
+    patientCard: { ...base.card, fontSize: 11.5, marginBottom: 12, padding: 0 },
+    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em" },
+    navCard: { ...base.card, padding: 0 },
+    navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, color: brand.text, letterSpacing: "-0.01em" },
     navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
-    main: { background: brand.bg, border: `1px solid ${brand.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+    main: { ...base.card, padding: 0, marginBottom: 0 },
     header: { borderBottom: `1px solid ${brand.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
-    headerTitle: { fontSize: 18, fontWeight: 700 },
+    headerTitle: { fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" },
     headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
     progress: { fontSize: 11, fontWeight: 700 },
     uploadBar: { padding: 10, background: brand.tealLight, borderBottom: `1px solid ${brand.line}`, fontSize: 11, color: brand.text },
-    alert: { margin: 10, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
+    alert: base.warningBox,
     content: { padding: 24 },
     sectionStack: { display: "flex", flexDirection: "column", gap: 12 },
-    sectionCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
+    sectionCard: { ...base.card, padding: 0, marginBottom: 0 },
     sectionHeader: { background: brand.panel, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer", userSelect: "none" },
-    sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: brand.text },
-    sectionHint: { fontSize: 10, color: brand.muted },
+    sectionTitle: base.cardTitle,
+    sectionHint: base.sectionSubtitle,
     sectionBadge: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 800, color: brand.tealDark, background: brand.tealLight, letterSpacing: ".04em", textTransform: "uppercase" },
     sectionComplete: { fontSize: 11, fontWeight: 700, color: "#166534" },
     sectionSummary: { fontSize: 11, color: brand.muted },
     sectionBody: { padding: 14 },
-    fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: brand.slate },
+    fieldLabel: base.label,
     fieldShell: { minWidth: 0, marginBottom: 10 },
     fieldShellFull: { minWidth: 0, marginBottom: 10, gridColumn: "1 / -1" },
-    sectionSubcard: { background: brand.canvas, border: `1px solid ${brand.line}`, borderRadius: 10, padding: 10, marginBottom: 12, color: brand.text },
-    input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13 },
-    textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13, lineHeight: 1.3, resize: "vertical" },
-    checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: brand.text },
-    button: { border: `1px solid ${brand.teal}`, background: brand.panel, color: brand.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
+    sectionSubcard: { background: brand.canvas, border: `1px solid ${brand.line}`, borderRadius: 8, padding: 10, marginBottom: 12, color: brand.text },
+    input: base.input,
+    textarea: base.textarea,
+    select: base.select,
+    checkboxLabel: base.checkboxLabel,
+    button: { border: `1px solid ${brand.teal}`, background: brand.panel, color: brand.tealDark, borderRadius: base.btnSecondary.borderRadius, padding: base.btnSecondary.padding, fontSize: base.btnSecondary.fontSize, cursor: "pointer", fontWeight: base.btnSecondary.fontWeight },
     footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
     statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase" },
   };
@@ -406,9 +413,9 @@ const api = {
 
 export default function MSWICA({ patientId = getActivePatientId() ?? "", assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
   const { mode: themeMode } = useThemeMode();
-  const colors = useMemo(() => getChartColors(themeMode), [themeMode]);
+  const colors = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const CLINICAL_BRAND = useMemo(() => getBrand(colors), [colors]);
-  const styles = useMemo(() => getStyles(CLINICAL_BRAND), [CLINICAL_BRAND]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, colors), [CLINICAL_BRAND, colors]);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(() => readStoredForm(patientId));
