@@ -121,6 +121,22 @@ export { getRnicaColors, getRnicaStyles };
 
 const API_BASE = "/visits/rnica";
 
+// HOPE J2051 A-H checklist for the right-panel SFV Status tracker — lets
+// the RN see at a glance which Symptom Impact items are still blank while
+// documenting manually (whether by hand in Symptom Impact, or auto-derived
+// from Pain/Respiratory/GI/Neuro elsewhere in the same RNICA).
+const SYMPTOM_IMPACT_CHECKLIST = [
+  { key: "pain", label: "A. Pain" },
+  { key: "shortnessOfBreath", label: "B. Shortness of Breath" },
+  { key: "anxiety", label: "C. Anxiety" },
+  { key: "nausea", label: "D. Nausea" },
+  { key: "vomiting", label: "E. Vomiting" },
+  { key: "diarrhea", label: "F. Diarrhea" },
+  { key: "constipation", label: "G. Constipation" },
+  { key: "agitation", label: "H. Agitation" },
+];
+const SYMPTOM_SEVERITY_LABEL = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
+
 const AssessmentModeContext = React.createContext("ica");
 
 const NAV_SECTIONS = [
@@ -10393,6 +10409,36 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                     Triggered by: {sfvStatus.triggeredSymptoms.join(", ")}
                   </div>
                 )}
+
+                {/* J2051 A-H checklist — lets the RN see at a glance which
+                    Symptom Impact items are still blank when documenting
+                    manually, without hunting through the Symptom Impact
+                    section itself. Auto-derived values (from Pain,
+                    Respiratory, GI, Neuro sections) show here too. */}
+                <div style={{ marginTop: 8 }}>
+                  {SYMPTOM_IMPACT_CHECKLIST.map(({ key, label }) => {
+                    const value = formData.symptomImpact?.[key];
+                    const filled = value !== undefined && value !== null && value !== "";
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          fontSize: 10.5,
+                          padding: "3px 0",
+                          color: filled ? COLORS.dark : COLORS.gray,
+                        }}
+                      >
+                        <span>{filled ? "✔" : "○"} {label}</span>
+                        <span style={{ fontWeight: 700 }}>
+                          {filled ? SYMPTOM_SEVERITY_LABEL[value] || value : "Not documented"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
