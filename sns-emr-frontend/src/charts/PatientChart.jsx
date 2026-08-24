@@ -17,6 +17,7 @@ import VisitNoteBoard from '../components/VisitNotes';
 import { fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
+import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -614,6 +615,14 @@ const PatientChart = () => {
       case 'add-poc':
       case 'poc-history':
         return <POCBoard />;
+      case 'compliance':
+      case 'lcd-eligibility':
+      case 'hope-admission':
+      case 'hope-huv1':
+      case 'hope-huv2':
+      case 'hope-discharge':
+      case 'decline-of-status':
+        return <ComplianceHopeBoard patientId={resolvedPatientId} activeSection={activeSection} onNavigateToSection={navigateChart} />;
       default:
         return (
           <div style={{

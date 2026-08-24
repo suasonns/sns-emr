@@ -99,7 +99,12 @@ def _base_patient(db: Session, patient: Patient) -> dict:
         "acuity_state": patient.acuity_state,
         "admission_status": patient.admission_status,
         "hospice_election_date": _serialize_date(patient.hospice_election_date),
-        "soc_date": _serialize_datetime(getattr(patient, "soc_date", None)),
+        # Patient has no soc_date column of its own -- Start of Care is
+        # recorded on the Facesheet (and/or the Admission row). Pulling
+        # `getattr(patient, "soc_date", None)` always returned None here,
+        # which caused HOPE Report A0220 (Admission Date) to silently fall
+        # back to a hardcoded UI placeholder date instead of the real SOC.
+        "soc_date": _serialize_date(getattr(face_sheet, "soc_date", None)) if face_sheet else None,
         # HOPE A1400 payer source — structured category from the Facesheet
         # Insurance card, distinct from the free-text payer name.
         "primary_payer": getattr(face_sheet, "primary_payer", None) if face_sheet else None,
