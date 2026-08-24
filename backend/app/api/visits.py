@@ -573,6 +573,13 @@ def save_rnica_assessment(
     current_user: CurrentUser = Security(get_current_user),):
     patient_id_raw = (payload or {}).get("patientId")
     form_data = (payload or {}).get("formData") or {}
+    # "update" / "recert" saves come from the *ongoing* RN visit workflow
+    # (change-in-condition update or a due recertification) which reuses
+    # this same table for storage, but is a distinct kind of visit from the
+    # one-time RN Initial Comprehensive Assessment. Only an initial-mode
+    # save (no assessmentSubtype) is subject to the "once per admission"
+    # rule below.
+    assessment_subtype = (payload or {}).get("assessmentSubtype")
     if not patient_id_raw:
         raise HTTPException(status_code=422, detail="patientId is required")
     try:
@@ -580,9 +587,48 @@ def save_rnica_assessment(
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
     patient = get_authorized_patient(db, patient_uuid, current_user)
+    current_admission = (
+        db.query(Admission)
+        .filter(
+            Admission.patient_id == patient_uuid,
+            Admission.tenant_id == patient.tenant_id,
+            Admission.status == "ADMITTED",
+        )
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+    if not assessment_subtype:
+        # RN ICA (initial comprehensive assessment) is a one-time document
+        # per admission episode. If this admission already has one locked,
+        # refuse to start another -- staff should be documenting an
+        # Update or Recertification Assessment instead (the existing one
+        # remains viewable/read-only, never re-creatable). A patient who
+        # was discharged and re-admitted gets a new Admission row, so this
+        # check naturally allows a fresh RN ICA for that new episode.
+        existing_locked = (
+            db.query(RnicaAssessment)
+            .filter(
+                RnicaAssessment.patient_id == patient_uuid,
+                RnicaAssessment.assessment_type == "RNICA",
+                RnicaAssessment.locked.is_(True),
+                RnicaAssessment.admission_id == (current_admission.id if current_admission else None),
+            )
+            .order_by(RnicaAssessment.created_at.desc())
+            .first()
+        )
+        if existing_locked:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "An RN Initial Comprehensive Assessment has already been completed "
+                    "for this admission. Document further RN visits as an Update or "
+                    "Recertification Assessment instead."
+                ),
+            )
     assessment = RnicaAssessment(
         patient_id=patient_uuid,
         tenant_id=getattr(patient, "tenant_id", None),
+        admission_id=current_admission.id if current_admission else None,
         form_data=form_data,
         assessment_type="RNICA",
         status="DRAFT",
@@ -598,6 +644,50 @@ def save_rnica_assessment(
         form_data=form_data,
     )
     return {"assessmentId": str(assessment.id), "status": "saved"}
+@router.get("/rnica/admission-status/{patient_id}")
+def get_rnica_admission_status(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    """Authoritative (server-side) answer to "has this patient's *current*
+    admission already completed its one-time RN Initial Comprehensive
+    Assessment?" -- used by the frontend instead of a client-only
+    localStorage flag, so the initial-vs-ongoing (update/recert) mode
+    decision can never be bypassed by clearing browser storage or by
+    opening the chart on a different device."""
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    current_admission = (
+        db.query(Admission)
+        .filter(
+            Admission.patient_id == patient_uuid,
+            Admission.tenant_id == patient.tenant_id,
+            Admission.status == "ADMITTED",
+        )
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+    locked_initial = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient_uuid,
+            RnicaAssessment.assessment_type == "RNICA",
+            RnicaAssessment.locked.is_(True),
+            RnicaAssessment.admission_id == (current_admission.id if current_admission else None),
+        )
+        .order_by(RnicaAssessment.created_at.desc())
+        .first()
+    )
+    return {
+        "patientId": str(patient_uuid),
+        "admissionId": str(current_admission.id) if current_admission else None,
+        "initialAssessmentComplete": locked_initial is not None,
+        "initialAssessmentId": str(locked_initial.id) if locked_initial else None,
+    }
+
 @router.get("/rnica/{assessment_id}")
 def get_rnica_assessment(
     assessment_id: str,

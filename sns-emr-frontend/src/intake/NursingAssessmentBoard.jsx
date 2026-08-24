@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import RNICA from "../components/RNICA";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { getCurrentUser } from "../api/session";
+import { getRnicaAdmissionStatus } from "../api/icaAssessments";
 import { defaultPatient } from "./ConsentNotifications";
 import HopeReport from "./HopeReport";
 import { useRnIcaCommandWorkspace } from "../features/rnIcaCommandWorkspace";
@@ -49,16 +50,6 @@ const styles = {
     fontWeight: 700,
     cursor: "pointer",
   },
-  resetRow: { display: "flex", justifyContent: "flex-end", padding: "0 16px" },
-  resetButton: {
-    border: "none",
-    background: "transparent",
-    color: "#5EEAD4",
-    fontSize: 12,
-    cursor: "pointer",
-    textDecoration: "underline",
-    padding: "6px 0",
-  },
 };
 
 function mapSummaryToPatient(summary) {
@@ -87,15 +78,41 @@ function mapSummaryToPatient(summary) {
 
 export default function NursingAssessmentBoard({ patientId = "", onNavigateToSection = undefined }) {
   const { enabled: workspacePilot, disable: exitWorkspacePilot } = useRnIcaCommandWorkspace();
-  const storageKey = useMemo(() => "sns-emr:ica-complete:rn:" + (patientId || "unknown-patient"), [patientId]);
-  const [initialComplete, setInitialComplete] = useState(() => localStorage.getItem(storageKey) === "true");
+  // Whether this patient's *current* admission has already completed its
+  // one-time RN Initial Comprehensive Assessment (RNICA). This used to be
+  // a client-only localStorage flag the RN could flip manually (a "Mark
+  // Initial Assessment Complete" button) -- that let a still-in-progress,
+  // unlocked RN ICA be mislabeled/switched into "ongoing" Update/Recert
+  // mode, and could be bypassed entirely by clearing browser storage or
+  // opening the chart on another device. It is now derived solely from
+  // the backend (GET /visits/rnica/admission-status/{patientId}), which
+  // only reports true once the initial RN ICA is actually locked/signed
+  // for the current admission. null = still loading (treated as "not yet
+  // ongoing" so the initial assessment renders by default).
+  const [initialComplete, setInitialComplete] = useState(null);
   const [view, setView] = useState("assessment");
   const [reportFormData, setReportFormData] = useState(null);
   const [patientSummary, setPatientSummary] = useState(null);
 
   useEffect(() => {
-    setInitialComplete(localStorage.getItem(storageKey) === "true");
-  }, [storageKey]);
+    let mounted = true;
+    if (!patientId) {
+      setInitialComplete(null);
+      return () => {
+        mounted = false;
+      };
+    }
+    getRnicaAdmissionStatus(patientId)
+      .then((status) => {
+        if (mounted) setInitialComplete(Boolean(status?.initialAssessmentComplete));
+      })
+      .catch(() => {
+        if (mounted) setInitialComplete(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [patientId]);
 
   useEffect(() => {
     if (initialComplete && view === "report") {
@@ -131,17 +148,6 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
     fax: "(000) 000-0001",
   }), []);
 
-  const markInitialComplete = () => {
-    localStorage.setItem(storageKey, "true");
-    setInitialComplete(true);
-    setView("assessment");
-  };
-
-  const resetToInitial = () => {
-    localStorage.removeItem(storageKey);
-    setInitialComplete(false);
-  };
-
   return (
     <div
       className={workspacePilot ? "clinical-command clinical-command--compact nursing-assessment-board--pilot" : undefined}
@@ -164,9 +170,6 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
                 {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
               </button>
             )}
-            {!initialComplete && (
-              <button type="button" onClick={markInitialComplete}>Mark Initial Assessment Complete</button>
-            )}
           </div>
         </div>
       ) : (
@@ -176,7 +179,7 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
             <h2 style={styles.title}>{initialComplete ? "Comprehensive Nursing Assessment" : "RN Initial Comprehensive Assessment"}</h2>
             <div style={styles.description}>
               {initialComplete
-                ? "Use the toggle inside the assessment to document either an Update Assessment or a Recertification Assessment."
+                ? "The RN Initial Comprehensive Assessment for this admission is complete and locked. Use the toggle inside the assessment to document either an Update Assessment or a Recertification Assessment."
                 : "Complete the full initial comprehensive assessment first. Use View HOPE Report to review the read-only CMS harvest from the RN ICA before printing or submission."}
             </div>
           </div>
@@ -184,11 +187,6 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
             {!initialComplete && (
               <button type="button" style={styles.secondaryButton} onClick={() => setView((current) => current === "report" ? "assessment" : "report")}>
                 {view === "report" ? "Return to RN Assessment" : "View HOPE Report"}
-              </button>
-            )}
-            {!initialComplete && (
-              <button type="button" style={styles.primaryButton} onClick={markInitialComplete}>
-                Mark Initial Comprehensive Assessment Complete
               </button>
             )}
           </div>
@@ -207,14 +205,6 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
             onExitWorkspacePilot={exitWorkspacePilot}
             onNavigateToSection={onNavigateToSection}
           />
-        </div>
-      )}
-
-      {initialComplete && (
-        <div style={styles.resetRow}>
-          <button type="button" style={styles.resetButton} onClick={resetToInitial}>
-            Reset to Initial Assessment
-          </button>
         </div>
       )}
     </div>

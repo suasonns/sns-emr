@@ -4,6 +4,11 @@ import api from "./client";
 type AssessmentPayload = {
   patientId?: string;
   formData: Record<string, unknown>;
+  // "update" | "recert" -- only present for the *ongoing* RN visit
+  // workflow. Omitted entirely for the one-time RN Initial Comprehensive
+  // Assessment save, which is how the backend tells the two apart (see
+  // save_rnica_assessment in app/api/visits.py).
+  assessmentSubtype?: "update" | "recert";
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -56,6 +61,18 @@ export async function getRnicaAssessment(assessmentId: string) {
 
 export async function getRnicaAssessmentByPatient(patientId: string) {
   return unwrap(api.get(`/visits/rnica/by-patient/${patientId}`), "RN ICA lookup failed");
+}
+
+// Authoritative (server-side) check for whether the patient's *current*
+// admission has already completed its one-time RN Initial Comprehensive
+// Assessment. Drives the initial-vs-ongoing (update/recert) mode switch
+// instead of a client-only flag, so it can't be bypassed by clearing
+// browser storage or opening the chart from a different device.
+export async function getRnicaAdmissionStatus(patientId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/admission-status/${patientId}`),
+    "RN ICA admission status lookup failed"
+  );
 }
 
 export async function updateRnicaAssessment(assessmentId: string, formData: Record<string, unknown>) {

@@ -885,8 +885,10 @@ function normalizeLoadedRnicaFormData(loadedFormData) {
 
 // Delegates to the shared client so requests carry the auth token.
 const api = {
-  saveRNICAAssessment: (patientId, formData) =>
-    saveRnicaAssessment({ patientId, formData }),
+  saveRNICAAssessment: (patientId, formData, assessmentSubtype) =>
+    saveRnicaAssessment(
+      assessmentSubtype ? { patientId, formData, assessmentSubtype } : { patientId, formData }
+    ),
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
   getRNICAAssessmentByPatient: (patientId) => getRnicaAssessmentByPatient(patientId),
   updateRNICAAssessment: (assessmentId, formData) =>
@@ -9809,11 +9811,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     formData.gastrointestinal?.constipation,
   ]);
 
+  // RNICA (RN Initial Comprehensive Assessment) is a one-time document --
+  // it is never "updated" or "recertified" through this same form. Saving
+  // before it is locked is just progressing the single initial assessment,
+  // so the label never changes to "update"/"recert" wording while
+  // mode="ica". mode="ongoing" is a distinct follow-up encounter (not the
+  // RNICA itself) and keeps its own label.
   const saveButtonLabel = isOngoing
     ? "Update Recert Assessment"
-    : assessmentId
-      ? "Update Initial Comprehensive RN Assessment"
-      : "Initial Comprehensive RN Assessment";
+    : "Initial Comprehensive RN Assessment";
 
   // Save / Update
   const handleSave = useCallback(async () => {
@@ -9824,7 +9830,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       if (assessmentId) {
         await api.updateRNICAAssessment(assessmentId, formData);
       } else {
-        const result = await api.saveRNICAAssessment(patientId, formData);
+        const result = await api.saveRNICAAssessment(
+          patientId,
+          formData,
+          isOngoing ? assessmentType : undefined
+        );
         activeAssessmentId = result.assessmentId;
         setAssessmentId(activeAssessmentId);
       }
@@ -9839,7 +9849,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setSaving(false);
     }
-  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence, refreshFinalizationReadiness]);
+  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence, refreshFinalizationReadiness, isOngoing, assessmentType]);
 
   // Lock
   const handleLock = useCallback(async () => {

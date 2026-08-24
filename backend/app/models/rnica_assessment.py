@@ -15,6 +15,14 @@ class RnicaAssessment(Base):
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id", ondelete="SET NULL"), nullable=True, index=True)
 
+    # Scopes this assessment to the admission episode it belongs to. The RN
+    # Initial Comprehensive Assessment (assessment_type == "RNICA") is only
+    # ever performed once per admission -- this column is what lets the
+    # backend enforce that (see _get_current_admission_for_patient /
+    # save_rnica_assessment in app/api/visits.py) while still allowing a
+    # brand-new one after a discharge + re-admission (new Admission row).
+    admission_id = Column(UUID(as_uuid=True), ForeignKey("admissions.id", ondelete="SET NULL"), nullable=True, index=True)
+
     # Defense-in-depth: lets any future query filter/scope by tenant directly
     # instead of relying solely on patient_id being globally unique.
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
