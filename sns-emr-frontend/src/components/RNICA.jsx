@@ -10360,6 +10360,42 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               </div>
             </div>
 
+            {/* SFV (Symptom Follow-up Visit) Status — always visible in the
+                right panel, independent of scroll position or which section
+                is active, since SFV is a required separate visit the RN
+                must not lose track of. Only tracked during the initial ICA;
+                a recert cannot trigger a new SFV requirement. */}
+            {!isOngoing && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 4 }}>SFV Status</div>
+                <div style={{
+                  padding: 8,
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: sfvStatus.completed
+                    ? COLORS.successBoxBg
+                    : sfvStatus.required
+                      ? COLORS.warningBoxBg
+                      : COLORS.bg,
+                  color: sfvStatus.completed ? COLORS.success : sfvStatus.required ? COLORS.warning : COLORS.gray,
+                  border: `1px solid ${sfvStatus.completed ? "rgba(16,185,129,0.35)" : sfvStatus.required ? "rgba(234,88,12,0.28)" : COLORS.border}`,
+                }}>
+                  {sfvStatus.statusLabel}
+                </div>
+                {sfvStatus.required && !sfvStatus.completed && sfvStatus.dueDate && (
+                  <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
+                    Due {sfvStatus.dueDate.slice(5, 7)}/{sfvStatus.dueDate.slice(8, 10)}/{sfvStatus.dueDate.slice(0, 4)}
+                  </div>
+                )}
+                {sfvStatus.required && (
+                  <div style={{ fontSize: 10, color: COLORS.gray, marginTop: 4 }}>
+                    Triggered by: {sfvStatus.triggeredSymptoms.join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* HOPE Items for current section */}
             {!isOngoing && sidebarConfig?.hope?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
