@@ -9809,7 +9809,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     formData.gastrointestinal?.constipation,
   ]);
 
-  const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert Assessment" : "Initial Comprehensive RN Assessment";
+  const saveButtonLabel = isOngoing
+    ? "Update Recert Assessment"
+    : assessmentId
+      ? "Update Initial Comprehensive RN Assessment"
+      : "Initial Comprehensive RN Assessment";
 
   // Save / Update
   const handleSave = useCallback(async () => {
