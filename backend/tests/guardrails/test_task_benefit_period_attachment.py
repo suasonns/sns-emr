@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -20,12 +20,13 @@ from app.services.task_benefit_period_linker import attach_active_benefit_period
 
 @pytest.fixture
 def tenant_id(db_session):
-    tenant_id = db_session.execute(
-        text("SELECT id FROM tenants ORDER BY id LIMIT 1")
-    ).scalar()
-
+    # Use the conftest.py db_session fixture's designated test tenant, not
+    # "the first tenant row" -- that previously resolved to the live Love &
+    # Faith tenant (lowest-sorting UUID) and wrote TASKTEST-* patients
+    # directly into real production-like data.
+    tenant_id = db_session.info.get("tenant_id")
     assert tenant_id is not None
-    return tenant_id
+    return UUID(str(tenant_id))
 
 
 @pytest.fixture

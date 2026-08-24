@@ -176,9 +176,14 @@ def provision_development_logins(
             )
 
         tenant_id = _configured_uuid(identity.tenant_env)
+        # Scope the lookup by tenant too, not just email: uq_users_tenant_email
+        # is a per-tenant unique constraint, so the same email can now
+        # legitimately exist as separate rows across multiple tenants (see
+        # the cross-agency account linking feature). Filtering by email
+        # alone would raise MultipleResultsFound as soon as that happens.
         user = (
             db.query(User)
-            .filter(func.lower(User.email) == email)
+            .filter(func.lower(User.email) == email, User.tenant_id == tenant_id)
             .one_or_none()
         )
         if user is None and password is None:

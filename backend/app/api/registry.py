@@ -32,6 +32,7 @@ from app.api import (
     admission_authorization,
     med_reconciliation,
     physicians,
+    staff,
     vendors,
     visit_recordings,
 )
@@ -176,6 +177,7 @@ def register_routers(app: FastAPI) -> None:
         admission_authorization.router,
         med_reconciliation.router,
         physicians.router,
+        staff.router,
         vendors.router,
         soc_orders_router,
         admission_router,
