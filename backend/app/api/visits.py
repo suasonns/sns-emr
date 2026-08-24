@@ -697,6 +697,34 @@ def update_rnica_assessment(
         "status": "updated",
         "locked": record.locked,
     }
+@router.delete("/rnica/{assessment_id}")
+def delete_rnica_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    get_authorized_patient(db, record.patient_id, current_user)
+    if record.locked:
+        # A locked/signed RN ICA is a permanent clinical record — it can
+        # never be deleted, only amended via the correction/amendment
+        # workflow (POST /rnica/{assessment_id}/correction-request). Only
+        # an in-progress DRAFT (never signed) may be removed outright.
+        raise HTTPException(
+            status_code=423,
+            detail=(
+                "This RN ICA assessment is locked/signed and cannot be deleted. "
+                "Use the correction/amendment workflow to document a change instead."
+            ),
+        )
+    db.delete(record)
+    db.commit()
+    return {"assessmentId": assessment_id, "status": "deleted"}
 @router.post("/rnica/{assessment_id}/lock")
 def lock_rnica_assessment(
     assessment_id: str,

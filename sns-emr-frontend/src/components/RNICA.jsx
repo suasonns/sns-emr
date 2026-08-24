@@ -34,6 +34,7 @@ import {
   getRnicaAssessmentByPatient,
   updateRnicaAssessment,
   lockRnicaAssessment,
+  deleteRnicaAssessment,
   getRnicaIntelligence,
   viewRnicaSectionPoc,
   addRnicaSectionPocProblem,
@@ -875,6 +876,7 @@ const api = {
   updateRNICAAssessment: (assessmentId, formData) =>
     updateRnicaAssessment(assessmentId, formData),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
+  deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
     assessmentId ? getRnicaIntelligence(assessmentId) : null,
 };
@@ -9455,10 +9457,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const routes = useMemo(() => {
     const orderedRoutes = workspacePilot ? PILOT_ROUTES : LEGACY_ROUTES;
-    return isOngoing ? orderedRoutes.filter((route) => route.key !== "sfv") : orderedRoutes;
-  }, [isOngoing, workspacePilot]);
+    // SFV (Symptom Follow-Up Visit) is always its own separate visit -- HOPE
+    // requires it to occur within 2 calendar days of the RN Initial
+    // Comprehensive Assessment as a distinct documented visit, never filled
+    // out inside the RNICA itself (initial or ongoing/recert).
+    return orderedRoutes.filter((route) => route.key !== "sfv");
+  }, [workspacePilot]);
   const sidebarConfigItems = useMemo(() => {
-    const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
+    const items = SIDEBAR_CONFIG.filter((item) => item.key !== "sfv");
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing]);
 
@@ -9732,6 +9738,61 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setSaveStatus(null);
   }, []);
 
+  // Auto-derive all HOPE J2051 A-H Symptom Impact ratings from the
+  // clinical sections elsewhere in this same RNICA where each symptom is
+  // already assessed -- the RN shouldn't have to re-check something that
+  // was already documented. Each value only fills in while the Symptom
+  // Impact field is still blank, so a deliberate manual entry in Symptom
+  // Impact (which may legitimately differ) is never overwritten.
+  //   A. Pain              <- Pain Assessment: painSeverityCategory (0-3)
+  //   B. Shortness of Breath <- Respiratory: sobSeverity (None-Severe)
+  //   C. Anxiety           <- Neuro/Mental Status: symptomsDemeanor checklist
+  //   D. Nausea            <- Gastrointestinal: nausea (None-Severe)
+  //   E. Vomiting          <- Gastrointestinal: vomiting (None-Severe)
+  //   F. Diarrhea          <- Gastrointestinal: diarrhea (None-Severe)
+  //   G. Constipation      <- Gastrointestinal: constipation (None-Severe)
+  //   H. Agitation         <- Neuro/Mental Status: symptomsDemeanor checklist
+  useEffect(() => {
+    const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
+    const painSeverity = formData.pain?.painSeverityCategory;
+    const demeanor = formData.neurological?.symptomsDemeanor || [];
+    // symptomsDemeanor is a presence checklist, not a graded scale -- a
+    // checked box only tells us the symptom is present, so it's mapped to
+    // "1 - Mild" as a conservative starting point the RN can still adjust.
+    const derived = {
+      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : undefined,
+      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity],
+      anxiety: demeanor.includes("Anxiety") ? "1" : undefined,
+      nausea: severityMap[formData.gastrointestinal?.nausea],
+      vomiting: severityMap[formData.gastrointestinal?.vomiting],
+      diarrhea: severityMap[formData.gastrointestinal?.diarrhea],
+      constipation: severityMap[formData.gastrointestinal?.constipation],
+      agitation: demeanor.includes("Agitation") ? "1" : undefined,
+    };
+
+    setFormData((prev) => {
+      const current = prev.symptomImpact || {};
+      let next = current;
+      let changed = false;
+      for (const key of Object.keys(derived)) {
+        if (!current[key] && derived[key] !== undefined) {
+          next = { ...next, [key]: derived[key] };
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return { ...prev, symptomImpact: next };
+    });
+  }, [
+    formData.pain?.painSeverityCategory,
+    formData.respiratory?.sobSeverity,
+    formData.neurological?.symptomsDemeanor,
+    formData.gastrointestinal?.nausea,
+    formData.gastrointestinal?.vomiting,
+    formData.gastrointestinal?.diarrhea,
+    formData.gastrointestinal?.constipation,
+  ]);
+
   const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert Assessment" : "Initial Comprehensive RN Assessment";
 
   // Save / Update
@@ -9803,6 +9864,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       setSaving(false);
     }
   }, [assessmentId, formData, markPersisted, mode, finalizationReadiness, refreshFinalizationReadiness, refreshIntelligence, setActiveSection]);
+
+  // Delete — only reachable for an in-progress DRAFT (never signed).
+  // Once locked, the backend rejects deletion at 423 so a permanent
+  // clinical record can never be removed outright, only amended.
+  const handleDelete = useCallback(async () => {
+    if (!assessmentId) return;
+    const confirmed = window.confirm(
+      "Delete this RN ICA assessment? This cannot be undone. Only unsigned drafts can be deleted."
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    setPageError("");
+    try {
+      await api.deleteRNICAAssessment(assessmentId);
+      const pid = resolvedPatientId || patientId;
+      clearActivePatientId();
+      if (pid) {
+        navigate(`/portal?patientId=${pid}`);
+      } else {
+        navigate("/portal");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      setPageError(err instanceof Error ? err.message : "Unable to delete RN ICA assessment.");
+    } finally {
+      setSaving(false);
+    }
+  }, [assessmentId, resolvedPatientId, patientId, navigate]);
 
   // Section completion tracker
   const completedSections = useMemo(() => {
@@ -10369,6 +10458,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         </div>
       </div>
 
+      {/* Spacer so page content isn't hidden behind the fixed footer below */}
+      <div style={styles.footerSpacer} />
+
       {/* ── Footer ── */}
       <div style={styles.footer}>
         <div style={{ display: "flex", gap: 8 }}>
@@ -10383,6 +10475,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               styles={styles}
               onClick={() => setActionCenterOpen(true)}
             />
+          )}
+          {assessmentId && !locked && (
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, color: COLORS.error || "#dc2626", borderColor: COLORS.error || "#dc2626" }}
+              onClick={handleDelete}
+              disabled={saving}
+              title="Permanently delete this draft assessment (only available before it is signed)"
+            >
+              Delete
+            </button>
           )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

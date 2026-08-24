@@ -221,7 +221,11 @@ export function getRnicaStyles(COLORS) {
     btnPrimary: { padding: "8px 14px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
     btnSecondary: { padding: "8px 14px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
     btnDanger: { padding: "8px 14px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#FFFFFF", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
-    footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
+    // Fixed to the viewport (not sticky-in-flow) because `page` lets the
+    // document itself scroll rather than an inner container — Save/Lock
+    // must stay reachable no matter how far the RN has scrolled.
+    footer: { position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.08)" },
+    footerSpacer: { height: 64 },
     table: { width: "100%", borderCollapse: "collapse", fontSize: 11.5 },
     th: { padding: "6px 10px", textAlign: "left", fontWeight: 700, fontSize: 10, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
     td: { padding: "6px 10px", borderBottom: `1px solid ${COLORS.border}` },

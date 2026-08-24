@@ -66,6 +66,13 @@ export async function lockRnicaAssessment(assessmentId: string) {
   return unwrap(api.post(`/visits/rnica/${assessmentId}/lock`), "RN ICA lock failed");
 }
 
+// Only DRAFT (never signed) assessments can be deleted — the backend
+// rejects deleting a locked/signed record with 423 so a permanent
+// clinical record can never be removed outright, only amended.
+export async function deleteRnicaAssessment(assessmentId: string) {
+  return unwrap(api.delete(`/visits/rnica/${assessmentId}`), "RN ICA delete failed");
+}
+
 export async function getRnicaIntelligence(assessmentId: string) {
   return unwrap(api.get(`/visits/rnica/${assessmentId}/intelligence`), "RN ICA intelligence failed");
 }
