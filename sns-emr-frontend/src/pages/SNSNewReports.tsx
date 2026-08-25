@@ -193,7 +193,7 @@ function ReportShell({ label }: { label: NewReportLabel }) {
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" }, gap: 1.25, mt: 2 }}>
         {[
-          ["Status", "Live"],
+          ["Status", "Navigation only"],
           ["Route Label", label],
           ["Frame ID", meta.frameId],
         ].map(([title, value]) => (
@@ -203,6 +203,9 @@ function ReportShell({ label }: { label: NewReportLabel }) {
           </Box>
         ))}
       </Box>
+      <Typography sx={{ fontSize: 12, color: "#64748b", mt: 2 }}>
+        Structured report content is not available yet for this route. This shell now honestly preserves only the report label, domain, and design reference.
+      </Typography>
     </Paper>
   );
 }
@@ -226,7 +229,7 @@ function LegacyReportShell({ label }: { label: LegacyReportLabel }) {
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" }, gap: 1.25, mt: 2 }}>
         {[
-          ["Status", "Live"],
+          ["Status", "Navigation only"],
           ["Route Label", label],
           ["Domain", domain],
         ].map(([title, value]) => (
@@ -236,6 +239,9 @@ function LegacyReportShell({ label }: { label: LegacyReportLabel }) {
           </Box>
         ))}
       </Box>
+      <Typography sx={{ fontSize: 12, color: "#64748b", mt: 2 }}>
+        This legacy report route does not currently render a real data-backed report. The old “Live” label has been removed to avoid implying otherwise.
+      </Typography>
     </Paper>
   );
 }

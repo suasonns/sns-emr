@@ -1,11 +1,35 @@
-import { useEffect, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import PortalShell from "../components/PortalShell";
-import SNSNewReports from "./SNSNewReports";
 
+import {
+  fetchCensusWorkspace,
+  type CensusPatientRow,
+  type CensusWorkspaceResponse,
+} from "../api/census";
+import {
+  fetchClinicalAlerts,
+  fetchTenantDashboard,
+  type ClinicalAlertsResponse,
+  type DashboardIncidentItem,
+  type DashboardNoteFlagItem,
+  type DashboardOrderItem,
+  type DashboardPatientBlocker,
+  type DashboardTaskItem,
+  type TenantDashboardResponse,
+} from "../api/dashboard";
+import { listIdgSessions, type IDGSessionSummary } from "../api/idgWorkspace";
 import { getCurrentUser } from "../api/session";
-import BillingDashboard from "./BillingDashboard";
+import { listStaff, type StaffRecord } from "../api/staff";
+import PortalShell from "../components/PortalShell";
 import { canAccessBilling } from "../utils/featureAccess";
+import BillingDashboard from "./BillingDashboard";
+import SNSNewReports from "./SNSNewReports";
 
 const C = {
   navy: "#1f4a78",
@@ -42,7 +66,7 @@ const SECTION_TO_DOMAIN: Record<string, string> = {
   scheduling: "Analytics Directory",
   billing: "Analytics Directory",
   staff: "Analytics Directory",
-  qapi: "Analytics Directory",
+  qapi: "QAPI",
   compliance: "Analytics Directory",
   settings: "Administrative",
   "my-profile": "Administrative",
@@ -57,12 +81,12 @@ const SECTION_TO_DOMAIN: Record<string, string> = {
   "communication-log": "Analytics Directory",
 };
 
-function resolveDomainFromSection(section: string | null | undefined, fallback: string) {
-  if (!section) return fallback;
-  return SECTION_TO_DOMAIN[section] ?? fallback;
-}
-
-const cardStyle: CSSProperties = { backgroundColor: C.white, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", padding: 24 };
+const cardStyle: CSSProperties = {
+  backgroundColor: C.white,
+  borderRadius: 12,
+  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  padding: 24,
+};
 const pageShellStyle: CSSProperties = { width: "min(1180px, 100%)", margin: "0 auto", boxSizing: "border-box" };
 const responsiveFourGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, alignItems: "start" };
 const responsiveThreeGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, alignItems: "start" };
@@ -79,6 +103,57 @@ const thStyle: CSSProperties = {
   verticalAlign: "top",
 };
 const tdStyle: CSSProperties = { padding: "12px 8px", fontSize: 13, color: C.gray600, whiteSpace: "normal", verticalAlign: "top", overflowWrap: "anywhere" };
+
+type SourceErrors = Partial<Record<"census" | "dashboard" | "alerts" | "staff" | "idg", string>>;
+
+type AnalyticsDataState = {
+  alerts: ClinicalAlertsResponse | null;
+  census: CensusWorkspaceResponse | null;
+  dashboard: TenantDashboardResponse | null;
+  errors: SourceErrors;
+  idgSessions: IDGSessionSummary[] | null;
+  loading: boolean;
+  staff: StaffRecord[] | null;
+};
+
+type AnalyticsViewModel = {
+  activePatients: CensusPatientRow[];
+  activeStaff: StaffRecord[];
+  admissionsThisMonth: number;
+  avgAge: number | null;
+  avgDaysOnService: number | null;
+  blockedPatients: DashboardPatientBlocker[];
+  censusError: string | null;
+  censusRows: CensusPatientRow[];
+  clinicalStaffCount: number;
+  dashboardError: string | null;
+  dischargesThisMonth: number;
+  flaggedNotes: DashboardNoteFlagItem[];
+  idgError: string | null;
+  idgSessions: IDGSessionSummary[];
+  loading: boolean;
+  medicationOrderCount: number;
+  openIncidents: DashboardIncidentItem[];
+  openTasks: DashboardTaskItem[];
+  orderRows: DashboardOrderItem[];
+  payerMix: Array<{ label: string; value: number }>;
+  patientNameById: Map<string, string>;
+  recentAdmissions: CensusPatientRow[];
+  recentAlerts: ClinicalAlertsResponse["alerts"];
+  recentVisitActivity: CensusPatientRow[];
+  sourceWarnings: string[];
+  staffError: string | null;
+  staffRoleMix: Array<{ label: string; value: number }>;
+  topDiagnoses: Array<{ label: string; value: number }>;
+  topOrderCategories: Array<{ label: string; value: number }>;
+  totalOrders: number;
+  unsignedOrders: DashboardOrderItem[];
+};
+
+function resolveDomainFromSection(section: string | null | undefined, fallback: string) {
+  if (!section) return fallback;
+  return SECTION_TO_DOMAIN[section] ?? fallback;
+}
 
 function badge(text: string, bg: string, color: string) {
   return <span style={{ padding: "3px 10px", borderRadius: 99, fontSize: 11, fontWeight: 600, backgroundColor: bg, color }}>{text}</span>;
@@ -116,6 +191,276 @@ function SearchIcon({ size = 16, color = C.gray400 }: { size?: number; color?: s
       <circle cx="11" cy="11" r="8" />
       <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
+  );
+}
+
+function toDate(value: string | Date | null | undefined): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatDate(value: string | Date | null | undefined) {
+  const date = toDate(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(date);
+}
+
+function formatDateTime(value: string | Date | null | undefined) {
+  const date = toDate(value);
+  if (!date) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function daysBetweenNow(value: string | Date | null | undefined) {
+  const date = toDate(value);
+  if (!date) return null;
+  const diff = Date.now() - date.getTime();
+  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+}
+
+function isSameMonth(value: string | Date | null | undefined, now: Date) {
+  const date = toDate(value);
+  return !!date && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+}
+
+function average(values: number[]) {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function ageFromDob(value: string | null | undefined) {
+  const dob = toDate(value);
+  if (!dob) return null;
+  const now = new Date();
+  let age = now.getFullYear() - dob.getFullYear();
+  const monthDelta = now.getMonth() - dob.getMonth();
+  if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dob.getDate())) {
+    age -= 1;
+  }
+  return age >= 0 ? age : null;
+}
+
+function humanize(value: string | null | undefined) {
+  const text = (value ?? "").toString().trim();
+  if (!text) return "—";
+  return text
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+function pluralize(value: number, singular: string, plural = `${singular}s`) {
+  return `${value.toLocaleString()} ${value === 1 ? singular : plural}`;
+}
+
+function countBy(items: Array<string | null | undefined>) {
+  const counts = new Map<string, number>();
+  items.forEach((item) => {
+    const key = (item ?? "").trim();
+    if (!key) return;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  return [...counts.entries()]
+    .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+    .map(([label, value]) => ({ label, value }));
+}
+
+function isActivePatient(row: CensusPatientRow) {
+  const bucket = (row.census_bucket ?? "").toLowerCase();
+  if (bucket) return bucket === "active";
+  const patientStatus = (row.patient_status ?? "").toLowerCase();
+  const admissionStatus = (row.admission_status ?? "").toLowerCase();
+  return !["discharged", "deceased", "revoked"].includes(patientStatus) && !["discharged", "deceased", "revoked"].includes(admissionStatus);
+}
+
+function priorityColors(priority: string) {
+  const normalized = priority.toLowerCase();
+  if (normalized === "critical") return { bg: C.redLight, color: C.red };
+  if (normalized === "high") return { bg: C.amberLight, color: C.amberDark };
+  return { bg: C.blueLight, color: C.blue };
+}
+
+function buildViewModel(state: AnalyticsDataState): AnalyticsViewModel {
+  const now = new Date();
+  const censusRows = state.census?.patients ?? [];
+  const activePatients = censusRows.filter(isActivePatient);
+  const patientNameById = new Map(censusRows.map((row) => [row.patient_id, row.full_name]));
+  const dashboardPayload = state.dashboard?.dashboard;
+  const openTasks = dashboardPayload?.open_tasks ?? [];
+  const openIncidents = dashboardPayload?.pending_incidents ?? [];
+  const flaggedNotes = dashboardPayload?.flagged_notes ?? [];
+  const blockedPatients = dashboardPayload?.blocked_patients ?? [];
+  const unsignedOrders = dashboardPayload?.unsigned_orders ?? [];
+  const orderRows = dashboardPayload?.all_orders ?? [];
+  const alerts = state.alerts?.alerts ?? [];
+  const activeStaff = state.staff ?? [];
+  const staffRoleMix = countBy(activeStaff.map((member) => member.role)).slice(0, 6);
+  const payerMix = countBy(activePatients.map((row) => row.payer_name)).slice(0, 5);
+  const topDiagnoses = countBy(activePatients.map((row) => row.primary_diagnosis)).slice(0, 5);
+  const topOrderCategories = countBy(orderRows.map((row) => row.order_category)).slice(0, 5);
+  const recentAdmissions = [...censusRows]
+    .filter((row) => !!toDate(row.admission_at))
+    .sort((a, b) => (toDate(b.admission_at)?.getTime() ?? 0) - (toDate(a.admission_at)?.getTime() ?? 0))
+    .slice(0, 6);
+  const recentVisitActivity = [...activePatients]
+    .filter((row) => !!toDate(row.last_visit_at))
+    .sort((a, b) => (toDate(b.last_visit_at)?.getTime() ?? 0) - (toDate(a.last_visit_at)?.getTime() ?? 0))
+    .slice(0, 8);
+  const admissionsThisMonth = censusRows.filter((row) => isSameMonth(row.admission_at, now)).length;
+  const dischargesThisMonth = censusRows.filter((row) => isSameMonth(row.discharge_date, now)).length;
+  const avgDaysOnService = average(activePatients.map((row) => daysBetweenNow(row.admission_at)).filter((value): value is number => value !== null));
+  const avgAge = average(activePatients.map((row) => ageFromDob(row.date_of_birth)).filter((value): value is number => value !== null));
+  const medicationOrderCount = orderRows.filter((row) => /med/i.test(row.order_category ?? "") || /med/i.test(row.order_text ?? "")).length;
+  const clinicalStaffCount = activeStaff.filter((member) => member.staff_type === "C").length;
+  const sourceWarnings = Object.values(state.errors).filter((value): value is string => !!value);
+
+  return {
+    activePatients,
+    activeStaff,
+    admissionsThisMonth,
+    avgAge,
+    avgDaysOnService,
+    blockedPatients,
+    censusError: state.errors.census ?? null,
+    censusRows,
+    clinicalStaffCount,
+    dashboardError: state.errors.dashboard ?? null,
+    dischargesThisMonth,
+    flaggedNotes,
+    idgError: state.errors.idg ?? null,
+    idgSessions: state.idgSessions ?? [],
+    loading: state.loading,
+    medicationOrderCount,
+    openIncidents,
+    openTasks,
+    orderRows,
+    payerMix,
+    patientNameById,
+    recentAdmissions,
+    recentAlerts: alerts.filter((alert) => alert.status === "Open").slice(0, 6),
+    recentVisitActivity,
+    sourceWarnings,
+    staffError: state.errors.staff ?? null,
+    staffRoleMix,
+    topDiagnoses,
+    topOrderCategories,
+    totalOrders: orderRows.length,
+    unsignedOrders,
+  };
+}
+
+function EmptyNotice({ title, description }: { title: string; description: string }) {
+  return (
+    <div style={{ ...cardStyle, border: `1px dashed ${C.gray200}`, boxShadow: "none" }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.gray800 }}>{title}</div>
+      <div style={{ marginTop: 8, fontSize: 13, color: C.slate500 }}>{description}</div>
+    </div>
+  );
+}
+
+function InlineInfoList({ rows }: { rows: Array<[string, string]> }) {
+  return (
+    <div style={cardStyle}>
+      {rows.map(([label, value], index) => (
+        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "10px 0", borderBottom: index < rows.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
+          <span style={{ fontSize: 13, color: C.gray600 }}>{label}</span>
+          <strong style={{ fontSize: 13, color: C.navy }}>{value}</strong>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function StatusSummary({ warnings }: { warnings: string[] }) {
+  if (!warnings.length) return null;
+  return (
+    <div style={{ ...cardStyle, padding: 16, borderLeft: `4px solid ${C.amber}`, backgroundColor: "#fffdf7" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, color: C.amberDark, textTransform: "uppercase", letterSpacing: 0.5 }}>Source notice</div>
+      <div style={{ marginTop: 8, fontSize: 13, color: C.gray600 }}>
+        Some widgets are showing “not available yet” because one or more live data sources could not be loaded for this user.
+      </div>
+    </div>
+  );
+}
+
+function TableSection({
+  title,
+  headers,
+  rows,
+  emptyMessage,
+}: {
+  title: string;
+  headers: string[];
+  rows: Array<Array<ReactNode>>;
+  emptyMessage: string;
+}) {
+  return (
+    <div style={cardStyle}>
+      <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>{title}</div>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <thead>
+          <tr>{headers.map((header) => <th key={header} style={thStyle}>{header}</th>)}</tr>
+        </thead>
+        <tbody>
+          {rows.length ? rows.map((row, rowIndex) => (
+            <tr key={`${title}-${rowIndex}`} style={{ borderBottom: `1px solid ${C.gray100}` }}>
+              {row.map((cell, cellIndex) => <td key={cellIndex} style={tdStyle}>{cell}</td>)}
+            </tr>
+          )) : (
+            <tr>
+              <td colSpan={headers.length} style={{ ...tdStyle, color: C.slate500 }}>{emptyMessage}</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function MetricListCard({ title, items }: { title: string; items: Array<{ label: string; value: number }> }) {
+  return (
+    <div style={cardStyle}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: C.gray800, marginBottom: 16 }}>{title}</div>
+      {items.length ? items.map((item, index) => (
+        <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: index < items.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
+          <span style={{ fontSize: 13, color: C.gray600 }}>{item.label}</span>
+          <strong style={{ color: C.navy }}>{item.value.toLocaleString()}</strong>
+        </div>
+      )) : <div style={{ fontSize: 13, color: C.slate500 }}>No live rows available.</div>}
+    </div>
+  );
+}
+
+function SubNav({ tabs, activeTab, onTabChange }: { tabs: string[]; activeTab: string; onTabChange: (tab: string) => void }) {
+  return (
+    <div style={{ padding: "12px 24px", display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {tabs.map((tab) => (
+        <button
+          key={tab}
+          onClick={() => onTabChange(tab)}
+          style={{
+            padding: "6px 14px",
+            borderRadius: 20,
+            border: `1px solid ${activeTab === tab ? C.teal : C.slate200}`,
+            backgroundColor: activeTab === tab ? C.teal : C.white,
+            color: activeTab === tab ? C.white : C.gray600,
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "'Inter', sans-serif",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {tab}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -187,8 +532,8 @@ export function Navbar() {
   );
 }
 
-export function WelcomeBanner({ title }: { title: string }) {
-  const workspaceName = getCurrentUser()?.tenant_name ?? "Love & Faith Hospice Services Inc.";
+export function WelcomeBanner({ title, syncedLabel }: { title: string; syncedLabel: string }) {
+  const workspaceName = getCurrentUser()?.tenant_name ?? "Love & Faith Hospice Services";
   return (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, backgroundColor: C.white, padding: "24px 24px", borderBottom: `1px solid ${C.gray200}` }}>
       <div>
@@ -205,35 +550,8 @@ export function WelcomeBanner({ title }: { title: string }) {
           <circle cx="12" cy="12" r="10" />
           <polyline points="12 6 12 12 16 14" />
         </svg>
-        Last synced: Today at 08:30 AM
+        Last loaded: {syncedLabel}
       </div>
-    </div>
-  );
-}
-
-function SubNav({ tabs, activeTab, onTabChange }: { tabs: string[]; activeTab: string; onTabChange: (tab: string) => void }) {
-  return (
-    <div style={{ padding: "12px 24px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-      {tabs.map((tab) => (
-        <button
-          key={tab}
-          onClick={() => onTabChange(tab)}
-          style={{
-            padding: "6px 14px",
-            borderRadius: 20,
-            border: `1px solid ${activeTab === tab ? C.teal : C.slate200}`,
-            backgroundColor: activeTab === tab ? C.teal : C.white,
-            color: activeTab === tab ? C.white : C.gray600,
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "'Inter', sans-serif",
-            whiteSpace: "nowrap",
-          }}
-        >
-          {tab}
-        </button>
-      ))}
     </div>
   );
 }
@@ -256,7 +574,7 @@ export function Footer() {
       </div>
       <div style={{ backgroundColor: C.gray900, padding: "20px 24px", textAlign: "center" }}>
         <div style={{ fontSize: 13, fontWeight: 400, fontFamily: "'Inter', sans-serif", color: C.gray400, marginBottom: 8 }}>
-          Secure Portal | © 2024-2025 | All Rights Reserved
+          Secure Portal | All Rights Reserved
         </div>
         <div style={{ fontSize: 11, fontWeight: 400, fontFamily: "'Inter', sans-serif", color: C.gray500 }}>
           Unauthorized access to this EMR dashboard is strictly prohibited. Activity is logged and monitored in compliance with federal healthcare data safety laws (HIPAA/HITECH).
@@ -473,9 +791,9 @@ function ReportsDirectory({
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
             {[
-              ["Report Status", "Live"],
+              ["Directory Status", "Navigation only"],
               ["Source Section", selectedDomain || "—"],
-              ["Update Mode", "Interactive"],
+              ["Structured Report", "Not available yet"],
               ["Action", "Open section"],
             ].map(([label, value]) => (
               <div key={label} style={{ border: `1px solid ${C.gray200}`, borderRadius: 10, padding: 14, backgroundColor: "#fafcff" }}>
@@ -490,372 +808,199 @@ function ReportsDirectory({
   );
 }
 
-function CommandCenter({ onNavigate }: { onNavigate: (domain: string) => void }) {
-  const alerts = [
-    { text: "Recertification due for 3 patients in 48 hours", priority: "Critical", bg: C.redLight, color: C.red },
-    { text: "QAPI incident report pending review (Fall Incident #204)", priority: "High", bg: C.amberLight, color: C.amberDark },
-    { text: "Staff credential renewal: 2 expiring in next 15 days", priority: "Medium", bg: C.blueLight, color: C.blue },
-  ];
-
+function CommandCenter({ analytics, onNavigate }: { analytics: AnalyticsViewModel; onNavigate: (domain: string) => void }) {
   return (
     <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <StatusSummary warnings={analytics.sourceWarnings} />
       <div style={responsiveThreeGrid}>
         <div onClick={() => onNavigate("Clinical")} style={{ ...cardStyle, borderTop: `3px solid ${C.teal}`, cursor: "pointer", padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.gray800, marginBottom: 8 }}>Clinical</div>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>47 Active Patients</div>
-          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Patient census, recertification tracking, IDG notes, care quality metrics</div>
+          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>{pluralize(analytics.activePatients.length, "active patient")}</div>
+          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Live census rows from /audit-dashboard/census.</div>
         </div>
         <div onClick={() => onNavigate("QAPI")} style={{ ...cardStyle, borderTop: `3px solid ${C.blue}`, cursor: "pointer", padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.gray800, marginBottom: 8 }}>QAPI</div>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>94.2% QAPI Score</div>
-          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Quality measures, HOPE/HIS tracking, clinical tracking, staff resources</div>
+          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>{pluralize(analytics.openIncidents.length, "open incident")}</div>
+          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Live incident and alert counts from /api/dashboard/tenant and /api/dashboard/clinical-alerts.</div>
         </div>
         <div onClick={() => onNavigate("Administrative")} style={{ ...cardStyle, borderTop: `3px solid ${C.amber}`, cursor: "pointer", padding: 20 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: C.gray800, marginBottom: 8 }}>Administrative</div>
-          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>38 Staff Active</div>
-          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Census, HR, orders, NPI lookup, vendor management, ALIRTS</div>
+          <div style={{ fontSize: 28, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>{pluralize(analytics.activeStaff.length, "active staff member")}</div>
+          <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>Live staff roster rows from /staff.</div>
         </div>
       </div>
       <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800 }}>Cross-Domain Insights</div>
       <div style={responsiveTwoGrid}>
-        <div style={cardStyle}>
-          <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-            <div style={{ position: "relative", width: 100, height: 100 }}>
-              <svg width="100" height="100" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="40" fill="none" stroke={C.gray200} strokeWidth="10" />
-                <circle cx="50" cy="50" r="40" fill="none" stroke={C.teal} strokeWidth="10" strokeDasharray={`${0.913 * 251.3} ${251.3}`} strokeLinecap="round" transform="rotate(-90 50 50)" />
-              </svg>
-              <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", textAlign: "center" }}>
-                <div style={{ fontSize: 22, fontWeight: 800, fontFamily: "'Inter', sans-serif", color: C.navy }}>91.3%</div>
-                <div style={{ fontSize: 9, color: C.slate500 }}>Overall Health</div>
-              </div>
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 12 }}>Domain Breakdown</div>
-              {[
-                { name: "Clinical Compliance", score: "94%", color: C.green },
-                { name: "Quality Assessment", score: "92%", color: C.teal },
-                { name: "Operations Efficiency", score: "88%", color: C.amber },
-              ].map((s) => (
-                <div key={s.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0" }}>
-                  <span style={{ fontSize: 13, color: C.gray600 }}>{s.name}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: s.color }}>{s.score}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+        <InlineInfoList
+          rows={[
+            ["Open workflow tasks", analytics.openTasks.length.toLocaleString()],
+            ["Open clinical alerts", analytics.recentAlerts.length.toLocaleString()],
+            ["Orders awaiting signature", analytics.unsignedOrders.length.toLocaleString()],
+            ["IDG sessions on file", analytics.idgSessions.length.toLocaleString()],
+          ]}
+        />
         <div style={cardStyle}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
             <span style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800 }}>Key Performance Alerts</span>
-            <span style={{ fontSize: 12, color: C.slate500 }}>3 Alerts Pending</span>
+            <span style={{ fontSize: 12, color: C.slate500 }}>{pluralize(analytics.recentAlerts.length, "open alert")}</span>
           </div>
-          {alerts.map((a, i) => (
-            <div key={a.text} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: i < alerts.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
-              <span style={{ fontSize: 13, color: C.gray600, flex: 1 }}>{a.text}</span>
-              {badge(a.priority, a.bg, a.color)}
-            </div>
-          ))}
+          {analytics.recentAlerts.length ? analytics.recentAlerts.slice(0, 5).map((alert, index) => {
+            const colors = priorityColors(alert.priority);
+            return (
+              <div key={alert.alert_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: index < Math.min(analytics.recentAlerts.length, 5) - 1 ? `1px solid ${C.gray100}` : "none" }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, color: C.gray600 }}>{alert.description}</div>
+                  <div style={{ fontSize: 11, color: C.slate500, marginTop: 4 }}>{alert.patient_name} • {formatDateTime(alert.generated)}</div>
+                </div>
+                {badge(alert.priority, colors.bg, colors.color)}
+              </div>
+            );
+          }) : (
+            <div style={{ fontSize: 13, color: C.slate500 }}>No live alerts are open for this workspace.</div>
+          )}
         </div>
+      </div>
+      <EmptyNotice title="Composite scores are not available yet" description="This page no longer shows fabricated cross-domain health percentages or QAPI scorecards. Only live queue, census, alert, and roster counts are shown." />
+    </div>
+  );
+}
+
+function ClinicalTab({ analytics }: { analytics: AnalyticsViewModel }) {
+  const [activeTab, setActiveTab] = useState("Overview");
+  const tabs = ["Overview", "Visit Management", "Compliance & Documentation", "Recertification Tracker", "Clinical Reference", "Bereavement Tracking"];
+
+  const overviewRows = analytics.activePatients.slice(0, 8).map((row) => ([
+    <strong key={`${row.patient_id}-name`} style={{ color: C.gray800 }}>{row.full_name}</strong>,
+    row.mrn || "—",
+    formatDate(row.admission_at),
+    humanize(row.admission_status || row.patient_status),
+    row.primary_diagnosis || "—",
+    row.payer_name || "—",
+    daysBetweenNow(row.admission_at) !== null ? `${daysBetweenNow(row.admission_at)} days` : "—",
+  ]));
+
+  if (activeTab === "Visit Management") {
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <TableSection
+          title="Recent Patient Visit Activity"
+          headers={["Patient", "MRN", "Last Visit", "Last Visiting Clinician", "Payer", "Status"]}
+          rows={analytics.recentVisitActivity.map((row) => ([
+            <strong key={`${row.patient_id}-patient`} style={{ color: C.gray800 }}>{row.full_name}</strong>,
+            row.mrn || "—",
+            formatDateTime(row.last_visit_at),
+            row.attending_physician || "—",
+            row.payer_name || "—",
+            humanize(row.census_bucket),
+          ]))}
+          emptyMessage={analytics.censusError ? "Unable to load live census activity." : "No recent visit timestamps are available in the live census feed."}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab === "Compliance & Documentation") {
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <TableSection
+          title="Open Clinical Workflow Queue"
+          headers={["Task Type", "Patient", "Status", "Due", "Linked Record"]}
+          rows={analytics.openTasks.map((task) => ([
+            humanize(task.task_type),
+            analytics.patientNameById.get(task.patient_id) ?? task.patient_id,
+            badge(humanize(task.status), C.amberLight, C.amberDark),
+            task.due_at ? formatDateTime(task.due_at) : task.due_date ? formatDate(task.due_date) : "—",
+            task.clinical_note_id ?? task.incident_id ?? "—",
+          ]))}
+          emptyMessage={analytics.dashboardError ? "Unable to load the live compliance queue." : "No live compliance tasks are currently open."}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab === "Recertification Tracker") {
+    return (
+      <div style={{ padding: "24px 24px 40px" }}>
+        <EmptyNotice title="Structured recertification tracker is not available yet" description="Patient-level physician and compliance records exist, but this page does not have a tenant-wide recertification aggregate endpoint yet, so the old fabricated due-date table has been removed." />
+      </div>
+    );
+  }
+
+  if (activeTab === "Clinical Reference") {
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <MetricListCard title="Top Diagnoses in Active Census" items={analytics.topDiagnoses} />
+        <MetricListCard title="Physician Order Categories" items={analytics.topOrderCategories} />
+      </div>
+    );
+  }
+
+  if (activeTab === "Bereavement Tracking") {
+    return (
+      <div style={{ padding: "24px 24px 40px" }}>
+        <EmptyNotice title="Tenant-wide bereavement reporting is not available yet" description="The backend currently exposes bereavement aggregation per patient chart, not as a tenant-wide analytics report, so the fabricated bereavement names and risk rows were removed." />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+      <SubNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <div style={responsiveFourGrid}>
+        {kpiCard("ACTIVE CENSUS", pluralize(analytics.activePatients.length, "patient"), analytics.censusError ? "Live census unavailable" : "Live rows from tenant census", C.teal)}
+        {kpiCard("OPEN WORKFLOW TASKS", pluralize(analytics.openTasks.length, "task"), "Live compliance queue", C.blue)}
+        {kpiCard("OPEN INCIDENTS", pluralize(analytics.openIncidents.length, "incident"), "Pending incident review", C.amber)}
+        {kpiCard("UNSIGNED ORDERS", pluralize(analytics.unsignedOrders.length, "order"), "Awaiting signature", C.green)}
+      </div>
+      <TableSection title="Patient Census Summary" headers={["Patient", "MRN", "Admission Date", "Current Status", "Primary Dx", "Payer", "Days on Service"]} rows={overviewRows} emptyMessage={analytics.censusError ? "Unable to load live census rows." : "No active patients are available."} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <EmptyNotice title="Recertification alert queue is not available yet" description="The old patient-specific due dates and physician names were fabricated. This card stays empty until a real tenant-level recertification feed is exposed." />
+        <TableSection
+          title="IDG Meeting Schedule"
+          headers={["Meeting Date", "Patient Count", "Status"]}
+          rows={analytics.idgSessions.slice(0, 6).map((session) => ([formatDateTime(session.meeting_date), session.patient_count.toLocaleString(), badge("Live session", C.greenLight, C.greenDark)]))}
+          emptyMessage={analytics.idgError ? "Unable to load IDG sessions for this user." : "No IDG sessions are scheduled yet."}
+        />
       </div>
     </div>
   );
 }
 
-function ClinicalTab() {
-  const [activeTab, setActiveTab] = useState("Overview");
-  const tabs = ["Overview", "Visit Management", "Compliance & Documentation", "Recertification Tracker", "Clinical Reference", "Bereavement Tracking"];
-
-  const patientRows = [
-    ["Robert Taylor", "847-194", "Oct 12, 2024", "RHC", "End-Stage COPD", "Dr. L. Vance", "1st Period", "93"],
-    ["Evelyn Martinez", "522-385", "Nov 02, 2024", "CHC", "Alzheimer's Dementia", "Dr. A. Cole", "2nd Period", "72"],
-    ["Thomas Wilson", "411-930", "Jan 08, 2025", "GIP", "Congestive Heart Failure", "Dr. L. Vance", "1st Period", "15"],
-  ];
-
-  const render = () => {
-    if (activeTab === "Visit Management") {
-      const visits = [
-        ["Jan 20, 2025", "Robert Taylor", "847-194", "SN Visit", "Sarah Jenkins, RN", "1h 15m", "Completed"],
-        ["Jan 20, 2025", "Evelyn Martinez", "522-385", "Aide Visit", "Elena Rostova, CHHA", "45m", "Completed"],
-        ["Jan 18, 2025", "Thomas Wilson", "411-930", "SN Visit", "Sarah Jenkins, RN", "0m", "Missed"],
-      ];
-      return (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>All Visits Log</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Visit Date", "Patient", "MRN", "Visit Type", "Clinician", "Duration", "Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {visits.map((r) => (
-                <tr key={r.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {r.map((cell, idx) => <td key={idx} style={{ ...tdStyle, fontWeight: idx === 1 ? 600 : 400, color: idx === 1 ? C.gray800 : C.gray600 }}>{cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (activeTab === "Compliance & Documentation") {
-      const consents = [
-        ["Thomas Wilson", "411-930", "Jan 12, 2025", "Election of Benefits", "8 days", "Marcus Brody, RN", "Critical"],
-        ["James Fitzpatrick", "729-183", "Jan 15, 2025", "HIPAA Authorization", "5 days", "Sarah Jenkins, RN", "High"],
-      ];
-      return (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Missing Consents Tracker</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "MRN", "Admission Date", "Missing Doc", "Days", "Assigned To", "Priority"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {consents.map((r) => (
-                <tr key={r.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {r.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 6 ? badge(cell, cell === "Critical" ? C.redLight : C.amberLight, cell === "Critical" ? C.red : C.amberDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (activeTab === "Recertification Tracker") {
-      const recerts = [
-        ["Thomas Wilson", "411-930", "1st Period", "Nov 10, 2024", "Jan 25, 2025", "2 days", "Complete", "Signed"],
-        ["James Fitzpatrick", "729-183", "1st Period", "Nov 15, 2024", "Jan 28, 2025", "5 days", "Scheduled", "Signed"],
-      ];
-      return (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Recertification List</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "MRN", "Period", "Start", "End", "Days Left", "F2F", "Order"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {recerts.map((r) => (
-                <tr key={r.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {r.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 6 ? badge(cell, cell === "Complete" ? C.greenLight : C.amberLight, cell === "Complete" ? C.greenDark : C.amberDark) : idx === 7 ? badge(cell, C.greenLight, C.greenDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (activeTab === "Bereavement Tracking") {
-      const rows = [
-        ["Mary Taylor", "Robert Taylor", "Oct 12, 2024", "Low", "Alisha Patel, LCSW"],
-        ["John Chen", "Margaret Chen", "Dec 18, 2024", "High", "Sarah Jenkins, RN"],
-      ];
-      return (
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Bereavement Risk Assessment</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Contact", "Deceased", "Date of Death", "Risk", "Counselor"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {r.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 3 ? badge(cell, cell === "High" ? C.redLight : C.greenLight, cell === "High" ? C.red : C.greenDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-
-    if (activeTab === "Clinical Reference") {
-      const icdRows = [
-        ["C34.9", "Lung Cancer", "18", "24.0%", "45 Days"],
-        ["F03.9", "Dementia / Alzheimer's", "14", "18.0%", "125 Days"],
-        ["I50.9", "Heart Failure (CHF)", "11", "15.0%", "92 Days"],
-      ];
-      const medsRows = [
-        ["Morphine", "18"],
-        ["Lorazepam", "16"],
-        ["Haldol", "13"],
-        ["Atropine", "12"],
-      ];
-      return (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Commonly Used ICD-10 Codes</div>
-            <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-              <thead><tr>{["ICD-10 Code", "Disease Category", "Patient Count", "% of Census", "Avg LOS"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-              <tbody>
-                {icdRows.map((row) => (
-                  <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                    {row.map((cell, idx) => <td key={idx} style={{ ...tdStyle, fontWeight: idx === 0 ? 700 : 400, color: idx === 0 ? C.gray800 : C.gray600 }}>{cell}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Commonly Used Medications</div>
-            {medsRows.map((row, idx) => (
-              <div key={row[0]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < medsRows.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
-                <span style={{ fontSize: 13, color: C.gray600 }}>{row[0]}</span>
-                <strong style={{ color: C.navy }}>{row[1]}</strong>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <div style={responsiveFourGrid}>
-          {kpiCard("ACTIVE CENSUS", "47 Patients", "Target: 42", C.teal)}
-          {kpiCard("AVG LENGTH OF STAY", "92.4 Days", "Median: 68 Days", C.blue)}
-          {kpiCard("RECERTIFICATIONS DUE", "8 Patients", "3 within 48 hrs", C.amber)}
-          {kpiCard("CLINICAL QA SCORE", "96.1%", "Target: 95%", C.green)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Patient Census Summary</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient Name", "MRN", "Admission Date", "Level of Care", "Primary Dx", "Attending MD", "Cert Period", "Days on Service"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {patientRows.map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={{ ...tdStyle, fontWeight: idx === 0 ? 600 : 400, color: idx === 0 ? C.gray800 : C.gray600 }}>{cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Recertification Alert Queue</div>
-            {[
-              ["Thomas Wilson", "Congestive Heart Failure", "2 Days Left", C.redLight, C.red],
-              ["James Fitzpatrick", "Renal Failure", "5 Days Left", C.amberLight, C.amberDark],
-              ["Margaret Chen", "Lung Adenocarcinoma", "8 Days Left", C.greenLight, C.greenDark],
-            ].map((row) => (
-              <div key={row.join("-")} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: `1px solid ${C.gray100}` }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.gray800 }}>{row[0]}</div>
-                  <div style={{ fontSize: 11, color: C.slate500 }}>{row[1]}</div>
-                </div>
-                {badge(row[2], row[3] as string, row[4] as string)}
-              </div>
-            ))}
-          </div>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>IDG Review Schedule</div>
-            {[
-              ["IDG Team A Weekly", "Jan 22, 2025 at 09:00 AM • 16 Patients", "Active"],
-              ["IDG Team B Weekly", "Jan 23, 2025 at 01:00 PM • 14 Patients", "Pending Prep"],
-              ["IDG Monthly Compliance Review", "Jan 28, 2025 at 10:00 AM • 8 Patients", "Scheduled"],
-            ].map((row, idx) => (
-              <div key={row.join("-")} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: idx < 2 ? `1px solid ${C.gray100}` : "none" }}>
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.gray800 }}>{row[0]}</div>
-                  <div style={{ fontSize: 11, color: C.slate500 }}>{row[1]}</div>
-                </div>
-                {badge(row[2], row[2] === "Active" ? C.greenLight : row[2] === "Scheduled" ? C.blueLight : C.amberLight, row[2] === "Active" ? C.greenDark : row[2] === "Scheduled" ? C.blue : C.amberDark)}
-              </div>
-            ))}
-          </div>
-        </div>
-      </>
-    );
-  };
-
-  return (
-    <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-      <SubNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-      {render()}
-    </div>
-  );
-}
-
-function QAPITab() {
+function QAPITab({ analytics }: { analytics: AnalyticsViewModel }) {
   const [activeTab, setActiveTab] = useState("Overview");
   const tabs = ["Overview", "Quality Measures", "HOPE/HIS Tracking", "Clinical Tracking", "Staff & Resources"];
 
   if (activeTab === "Quality Measures") {
     return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("COMFORTABLE DYING MEASURE", "89.2%", "National avg: 86.4%", C.teal)}
-          {kpiCard("UNWANTED HOSPITALIZATION", "4.1%", "Target: <5.0%", C.blue)}
-          {kpiCard("INFECTION CONTROL RATE", "97.3%", "1 active case", C.amber)}
-          {kpiCard("CENSUS INTEGRITY SCORE", "99.1%", "0 discrepancies", C.green)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Census Integrity Report</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Check Type", "Last Run", "Checked", "Discrepancies", "Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Admission Verification", "Today 08:00 AM", "142", "0", "Clear"],
-                ["LOC Accuracy Validation", "Jan 19, 2025", "140", "1", "Issues"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 4 ? badge(cell, cell === "Issues" ? C.redLight : C.greenLight, cell === "Issues" ? C.red : C.greenDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ padding: "24px 24px 40px" }}>
+        <EmptyNotice title="Structured quality-measure scoring is not available yet" description="No real tenant-level endpoint currently provides comfortable-dying, hospitalization, infection-control, or census-integrity percentages for this page, so the fabricated percentages were removed." />
       </div>
     );
   }
 
   if (activeTab === "HOPE/HIS Tracking") {
     return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("HOPE SUBMISSIONS (MTD)", "38 Records", "100% timely", C.teal)}
-          {kpiCard("HIS ACCURACY RATE", "98.7%", "Target: 95%", C.blue)}
-          {kpiCard("HQRP COMPLIANCE", "96.2%", "All measures met", C.green)}
-          {kpiCard("PENDING SUBMISSIONS", "3 Records", "1 past due", C.amber)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>HOPE/HIS Submission Tracking</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "Assessment Type", "Assess Date", "Submit Date", "Timeliness", "QA Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Robert Taylor", "Admission Assessment", "Jan 12, 2025", "Jan 15, 2025", "On Time", "Approved"],
-                ["Margaret Chen", "Admission Assessment", "Jan 03, 2025", "Jan 08, 2025", "Late", "Needs Review"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 4 ? badge(cell, cell === "On Time" ? C.greenLight : C.redLight, cell === "On Time" ? C.greenDark : C.red) : idx === 5 ? badge(cell, cell === "Approved" ? C.greenLight : C.amberLight, cell === "Approved" ? C.greenDark : C.amberDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ padding: "24px 24px 40px" }}>
+        <EmptyNotice title="Tenant-wide HOPE/HIS reporting is not available yet" description="Patient-level HOPE and compliance records exist in chart workflows, but this analytics page does not yet have a real tenant-wide submission tracker endpoint." />
       </div>
     );
   }
 
   if (activeTab === "Clinical Tracking") {
     return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("ACTIVE WOUNDS", "14 Patients", "3 new this month", C.teal)}
-          {kpiCard("ANTIBIOTICS W/O CARE PLAN", "2 Patients", "Action required", C.red)}
-          {kpiCard("EMAR COMPLIANCE", "94.8%", "Target: 95%", C.amber)}
-          {kpiCard("AVG ACUITY SCORE", "3.2 / 5.0", "High acuity: 8 patients", C.blue)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Patient Acuity Level Report</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "Acuity", "LOC", "Primary Dx", "Symptom Burden"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Thomas Wilson", "5/5", "GIP", "Lung Cancer", "High"],
-                ["Robert Taylor", "4/5", "RHC", "Heart Failure", "High"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 1 ? <span style={{ padding: "2px 8px", borderRadius: 4, backgroundColor: C.redLight, color: C.red, fontWeight: 700, fontSize: 11 }}>{cell}</span> : idx === 4 ? badge(cell, cell === "High" ? C.redLight : C.greenLight, cell === "High" ? C.red : C.greenDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div style={{ padding: "24px 24px 40px" }}>
+        <TableSection
+          title="Documentation Flags Requiring Review"
+          headers={["Patient", "Discipline", "Visit Type", "Red Flags", "Needs Clarification"]}
+          rows={analytics.flaggedNotes.map((note) => ([
+            analytics.patientNameById.get(note.patient_id) ?? note.patient_id,
+            humanize(note.discipline),
+            humanize(note.visit_type),
+            note.red_flags.length ? note.red_flags.join(", ") : "—",
+            note.needs_clarification.length ? note.needs_clarification.join(", ") : "—",
+          ]))}
+          emptyMessage={analytics.dashboardError ? "Unable to load live note flags." : "No live note flags are currently open."}
+        />
       </div>
     );
   }
@@ -864,26 +1009,14 @@ function QAPITab() {
     return (
       <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
         <div style={responsiveFourGrid}>
-          {kpiCard("STAFF UTILIZATION RATE", "87.3%", "vs target threshold", C.teal)}
-          {kpiCard("AVG PRODUCTIVITY", "6.2 Visits/Day", "vs target threshold", C.blue)}
-          {kpiCard("VOLUNTEER HOURS (MTD)", "142 Hours", "vs target threshold", C.amber)}
-          {kpiCard("NON-COVERED COMPLIANCE", "96.7%", "vs target threshold", C.green)}
+          {kpiCard("ACTIVE STAFF", pluralize(analytics.activeStaff.length, "person"), "Live roster count", C.teal)}
+          {kpiCard("CLINICAL STAFF", pluralize(analytics.clinicalStaffCount, "person"), "staff_type = C", C.blue)}
+          {kpiCard("ROLE TYPES", analytics.staffRoleMix.length.toLocaleString(), "Distinct active roles", C.amber)}
+          {kpiCard("OPEN ALERTS", pluralize(analytics.recentAlerts.length, "alert"), "Live alert queue", C.green)}
         </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Staff Utilization Report</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Staff", "Scheduled", "Actual", "Utilization", "Overtime"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Sarah Jenkins, RN", "160 hrs", "168 hrs", "105%", "+8 hrs"],
-                ["Marcus Brody, RN", "160 hrs", "160 hrs", "100%", "0 hrs"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 4 ? <span style={{ color: cell.startsWith("+") ? C.red : C.green, fontWeight: 600 }}>{cell}</span> : idx === 3 ? <strong>{cell}</strong> : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+          <MetricListCard title="Active Staff by Role" items={analytics.staffRoleMix} />
+          <EmptyNotice title="Utilization and productivity metrics are not available yet" description="The old staff utilization percentages, volunteer hours, and overtime rows were fabricated. The live staff roster exists, but no real productivity/utilization aggregate model backs those metrics yet." />
         </div>
       </div>
     );
@@ -893,76 +1026,182 @@ function QAPITab() {
     <div style={{ padding: "24px 24px 40px" }}>
       <SubNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
       <div style={{ ...responsiveFourGrid, padding: "0 0 24px" }}>
-        {kpiCard("OVERALL QAPI SCORE", "94.2%", "Target: 90%", C.teal)}
-        {kpiCard("OPEN INCIDENTS", "3 Active", "1 high severity", C.red)}
-        {kpiCard("SURVEY RESPONSE RATE", "87.3%", "+5.2% vs last quarter", C.blue)}
-        {kpiCard("CORRECTIVE ACTIONS", "2 Open", "1 overdue", C.amber)}
+        {kpiCard("OPEN ALERTS", pluralize(analytics.recentAlerts.length, "alert"), "Clinical alerts feed", C.teal)}
+        {kpiCard("OPEN INCIDENTS", pluralize(analytics.openIncidents.length, "incident"), "Pending incident review", C.red)}
+        {kpiCard("FLAGGED NOTES", pluralize(analytics.flaggedNotes.length, "note"), "Validation review queue", C.blue)}
+        {kpiCard("IDG BLOCKERS", pluralize(analytics.blockedPatients.length, "patient"), "Readiness blockers", C.amber)}
       </div>
-      {activeTab === "Overview" ? (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1fr", gap: 20 }}>
-            <div style={cardStyle}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Customer Survey Results</div>
-              {[
-                ["Overall Care", "4.8 / 5.0"],
-                ["Pain Management", "4.6 / 5.0"],
-                ["Communication", "4.7 / 5.0"],
-                ["Spiritual Support", "4.5 / 5.0"],
-              ].map((row, idx) => (
-                <div key={row[0]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < 3 ? `1px solid ${C.gray100}` : "none" }}>
-                  <span style={{ fontSize: 13, color: C.gray600 }}>{row[0]}</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{row[1]}</span>
+      <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1fr", gap: 20 }}>
+        <TableSection
+          title="Recent Incident Reports"
+          headers={["Type", "Patient", "Incident Date", "Severity"]}
+          rows={analytics.openIncidents.slice(0, 8).map((incident) => ([
+            humanize(incident.incident_type),
+            analytics.patientNameById.get(incident.patient_id) ?? incident.patient_id,
+            formatDate(incident.incident_date),
+            badge(humanize(incident.incident_severity), ...(incident.incident_severity || "").toLowerCase() === "high" ? [C.redLight, C.red] : [C.amberLight, C.amberDark]),
+          ]))}
+          emptyMessage={analytics.dashboardError ? "Unable to load live incident rows." : "No pending incidents are currently open."}
+        />
+        <div style={cardStyle}>
+          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Live Alert Queue</div>
+          {analytics.recentAlerts.length ? analytics.recentAlerts.map((alert, index) => {
+            const colors = priorityColors(alert.priority);
+            return (
+              <div key={alert.alert_id} style={{ padding: "12px 0", borderBottom: index < analytics.recentAlerts.length - 1 ? `1px solid ${C.gray100}` : "none" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.gray800 }}>{alert.alert_type}</div>
+                  {badge(alert.priority, colors.bg, colors.color)}
                 </div>
-              ))}
-            </div>
-            <div style={cardStyle}>
-              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Recent Incident Reports</div>
-              <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-                <thead><tr>{["ID", "Type", "Patient", "Date", "Severity", "Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-                <tbody>
-                  {[
-                    ["INC-204", "Fall", "Evelyn Martinez", "Jan 18, 2025", "Moderate", "Under Review"],
-                    ["INC-203", "Medication Error", "Robert Taylor", "Jan 15, 2025", "Low", "Resolved"],
-                    ["INC-202", "Skin Breakdown", "Dorothy Henderson", "Jan 12, 2025", "High", "Corrective Action"],
-                  ].map((row) => (
-                    <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                      {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 4 ? badge(cell, cell === "Moderate" ? C.amberLight : cell === "High" ? C.redLight : C.greenLight, cell === "Moderate" ? C.amberDark : cell === "High" ? C.red : C.greenDark) : idx === 5 ? badge(cell, cell === "Resolved" ? C.greenLight : cell === "Corrective Action" ? C.blueLight : C.amberLight, cell === "Resolved" ? C.greenDark : cell === "Corrective Action" ? C.blue : C.amberDark) : cell}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div style={cardStyle}>
-            <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>QAPI Performance Improvement Projects (PIPs)</div>
-            {[
-              ["Fall Prevention Initiative", "Reducing patient falls in GIP/RHC settings via targeted risk assessments and environmental modifications", 75, C.teal],
-              ["IDG Documentation Audit", "Streamlining interdisciplinary notes alignment to meet 100% compliance for MAC fiscal reviews", 40, C.amber],
-              ["Bereavement Outreach Escalation", "Implementing post-discharge customer feedback cycles to address caregiver satisfaction targets", 90, C.green],
-            ].map((row, idx) => (
-              <div key={row[0]} style={{ padding: 20, borderRadius: 8, border: `1px solid ${C.gray200}`, marginBottom: idx < 2 ? 16 : 0 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: C.navy }}>{row[0]}</div>
-                    <div style={{ fontSize: 12, color: C.slate500, marginTop: 4 }}>{row[1]}</div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16, minWidth: 300 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 11, fontWeight: 600, color: C.slate500, marginBottom: 4 }}>Project Progress</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ flex: 1, height: 8, backgroundColor: C.gray200, borderRadius: 4 }}>
-                          <div style={{ height: 8, backgroundColor: row[3] as string, borderRadius: 4, width: `${row[2]}%` }} />
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: row[3] as string }}>{row[2]}%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <div style={{ fontSize: 12, color: C.slate500, marginTop: 6 }}>{alert.patient_name} • {alert.description}</div>
               </div>
-            ))}
-          </div>
-        </>
-      ) : null}
+            );
+          }) : <div style={{ fontSize: 13, color: C.slate500 }}>No live alerts are open.</div>}
+        </div>
+      </div>
+      <div style={{ marginTop: 20 }}>
+        <EmptyNotice title="Survey scores and PIP progress are not available yet" description="This page no longer shows fabricated CAHPS ratings or project progress percentages. Real incident, alert, and documentation-review queues are shown above instead." />
+      </div>
+    </div>
+  );
+}
+
+function AdministrativeTab({ analytics }: { analytics: AnalyticsViewModel }) {
+  const [activeTab, setActiveTab] = useState("Overview");
+  const tabs = ["Overview", "Census & Demographics", "Service Operations", "Orders & Rx", "Staffing & HR"];
+
+  if (activeTab === "Census & Demographics") {
+    const topPayer = analytics.payerMix[0];
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={responsiveFourGrid}>
+          {kpiCard("ACTIVE CENSUS", pluralize(analytics.activePatients.length, "patient"), "Live census feed", C.teal)}
+          {kpiCard("AVERAGE AGE", analytics.avgAge !== null ? `${analytics.avgAge.toFixed(1)} yrs` : "—", analytics.avgAge !== null ? "Calculated from DOB on live census" : "DOB not available", C.blue)}
+          {kpiCard("AVG DAYS ON SERVICE", analytics.avgDaysOnService !== null ? `${analytics.avgDaysOnService.toFixed(1)} days` : "—", analytics.avgDaysOnService !== null ? "Calculated from admission dates" : "Admission dates not available", C.amber)}
+          {kpiCard("TOP PAYER", topPayer ? topPayer.label : "—", topPayer ? `${topPayer.value.toLocaleString()} active patients` : "No payer data available", C.green)}
+        </div>
+        <TableSection
+          title="Active Patient Demographics"
+          headers={["Patient", "MRN", "DOB / Age", "Primary Dx", "Payer", "Days on Service"]}
+          rows={analytics.activePatients.slice(0, 10).map((row) => ([
+            <strong key={`${row.patient_id}-full-name`} style={{ color: C.gray800 }}>{row.full_name}</strong>,
+            row.mrn || "—",
+            `${formatDate(row.date_of_birth)}${ageFromDob(row.date_of_birth) !== null ? ` / ${ageFromDob(row.date_of_birth)} yrs` : ""}`,
+            row.primary_diagnosis || "—",
+            row.payer_name || "—",
+            daysBetweenNow(row.admission_at) !== null ? `${daysBetweenNow(row.admission_at)} days` : "—",
+          ]))}
+          emptyMessage={analytics.censusError ? "Unable to load live census demographics." : "No active patients are available."}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab === "Service Operations") {
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <TableSection
+          title="Recent Service Activity"
+          headers={["Patient", "MRN", "Last Visit", "Last Visiting Clinician", "Current Bucket"]}
+          rows={analytics.recentVisitActivity.map((row) => ([
+            row.full_name,
+            row.mrn || "—",
+            formatDateTime(row.last_visit_at),
+            row.attending_physician || "—",
+            humanize(row.census_bucket),
+          ]))}
+          emptyMessage={analytics.censusError ? "Unable to load live service activity." : "No recent visit activity is available."}
+        />
+        <EmptyNotice title="Place-of-service and discipline breakdowns are not available yet" description="The old visit totals, discipline percentages, and place-of-service percentages were fabricated. The live census feed only exposes each patient's most recent visit timestamp, which is shown above." />
+      </div>
+    );
+  }
+
+  if (activeTab === "Orders & Rx") {
+    const dmeOrders = analytics.orderRows.filter((row) => /dme|equipment/i.test(row.order_category ?? "") || /dme|bed|walker|wheelchair|oxygen/i.test(row.order_text ?? ""));
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={responsiveFourGrid}>
+          {kpiCard("TRACKED ORDERS", pluralize(analytics.totalOrders, "order"), "Live physician order feed", C.teal)}
+          {kpiCard("MEDICATION ORDERS", pluralize(analytics.medicationOrderCount, "order"), "Category/text contains medication terms", C.blue)}
+          {kpiCard("DME-RELATED ORDERS", pluralize(dmeOrders.length, "order"), "Detected from live order categories/text", C.green)}
+          {kpiCard("PENDING SIGNATURES", pluralize(analytics.unsignedOrders.length, "order"), "Awaiting provider signature", C.amber)}
+        </div>
+        <TableSection
+          title="Medication & DME Orders Summary"
+          headers={["Ordered", "Patient", "Category", "Description", "Ordered By", "Status"]}
+          rows={analytics.orderRows.slice(0, 10).map((row) => ([
+            formatDateTime(row.ordered_at),
+            row.patient_name,
+            badge(humanize(row.order_category), C.tealLight, C.tealDark),
+            row.order_text || "—",
+            `${row.ordered_by_provider_name || "—"}${row.ordered_by_provider_role ? ` (${humanize(row.ordered_by_provider_role)})` : ""}`,
+            badge(row.signed_at ? "Signed" : humanize(row.status), row.signed_at ? C.greenLight : C.amberLight, row.signed_at ? C.greenDark : C.amberDark),
+          ]))}
+          emptyMessage={analytics.dashboardError ? "Unable to load live physician orders." : "No physician orders are currently available."}
+        />
+      </div>
+    );
+  }
+
+  if (activeTab === "Staffing & HR") {
+    const adminCount = analytics.activeStaff.filter((member) => member.staff_type === "A").length;
+    const contractedCount = analytics.activeStaff.filter((member) => member.staff_type === "X" || member.staff_type === "Y").length;
+    return (
+      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={responsiveFourGrid}>
+          {kpiCard("ACTIVE STAFF", pluralize(analytics.activeStaff.length, "person"), "Live roster feed", C.teal)}
+          {kpiCard("CLINICAL STAFF", pluralize(analytics.clinicalStaffCount, "person"), "staff_type = C", C.blue)}
+          {kpiCard("ADMINISTRATIVE STAFF", pluralize(adminCount, "person"), "staff_type = A", C.amber)}
+          {kpiCard("CONTRACT / REFERRAL", pluralize(contractedCount, "person"), "staff_type = X or Y", C.green)}
+        </div>
+        <TableSection
+          title="Active Staff Roster"
+          headers={["Staff", "Role", "Job Title", "Discipline", "Email"]}
+          rows={analytics.activeStaff.slice(0, 10).map((member) => ([
+            <strong key={`${member.id}-staff`} style={{ color: C.gray800 }}>{member.full_name}</strong>,
+            humanize(member.role),
+            member.job_title || "—",
+            member.discipline || "—",
+            member.email,
+          ]))}
+          emptyMessage={analytics.staffError ? "Unable to load the live staff roster." : "No active staff rows are available."}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: "24px 24px 40px" }}>
+      <SubNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
+      <div style={responsiveFourGrid}>
+        {kpiCard("ACTIVE CENSUS", pluralize(analytics.activePatients.length, "patient"), "Live census feed", C.teal)}
+        {kpiCard("ADMISSIONS (MTD)", pluralize(analytics.admissionsThisMonth, "admission"), "Derived from live admission dates", C.green)}
+        {kpiCard("DISCHARGES (MTD)", pluralize(analytics.dischargesThisMonth, "discharge"), "Derived from live discharge dates", C.amber)}
+        {kpiCard("ACTIVE STAFF", pluralize(analytics.activeStaff.length, "staff member"), "Live staff roster", C.blue)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+        <TableSection
+          title="Recent Admissions"
+          headers={["Patient", "MRN", "Admit Date", "Status", "Payer"]}
+          rows={analytics.recentAdmissions.map((row) => ([
+            row.full_name,
+            row.mrn || "—",
+            formatDate(row.admission_at),
+            badge(humanize(row.admission_status || row.patient_status), C.blueLight, C.blue),
+            row.payer_name || "—",
+          ]))}
+          emptyMessage={analytics.censusError ? "Unable to load live admissions data." : "No admissions are available in the current census feed."}
+        />
+        <InlineInfoList
+          rows={[
+            ["Pending physician orders", analytics.unsignedOrders.length.toLocaleString()],
+            ["Open workflow tasks", analytics.openTasks.length.toLocaleString()],
+            ["Open incident reviews", analytics.openIncidents.length.toLocaleString()],
+            ["Flagged note reviews", analytics.flaggedNotes.length.toLocaleString()],
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -987,25 +1226,74 @@ export default function SNSAnalytics({ defaultDomain = "Analytics Directory" }: 
   const [activeDomain, setActiveDomain] = useState(() => resolveDomainFromSection(section, defaultDomain));
   const [activeReport, setActiveReport] = useState<string | null>(null);
   const currentUser = getCurrentUser();
-  const workspaceName = currentUser?.tenant_name ?? "Love & Faith Hospice Services Inc.";
+  const workspaceName = currentUser?.tenant_name ?? "Love & Faith Hospice Services";
+  const [dataState, setDataState] = useState<AnalyticsDataState>({
+    alerts: null,
+    census: null,
+    dashboard: null,
+    errors: {},
+    idgSessions: null,
+    loading: true,
+    staff: null,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    setDataState((previous) => ({ ...previous, loading: true, errors: {} }));
+
+    Promise.allSettled([
+      fetchCensusWorkspace(),
+      fetchTenantDashboard(),
+      fetchClinicalAlerts(),
+      listStaff({ status: "active" }),
+      listIdgSessions(),
+    ]).then((results) => {
+      if (!mounted) return;
+      const [censusResult, dashboardResult, alertsResult, staffResult, idgResult] = results;
+      const errors: SourceErrors = {};
+      if (censusResult.status === "rejected") errors.census = "Live census workspace unavailable.";
+      if (dashboardResult.status === "rejected") errors.dashboard = "Live dashboard queue unavailable.";
+      if (alertsResult.status === "rejected") errors.alerts = "Live clinical alerts unavailable.";
+      if (staffResult.status === "rejected") errors.staff = "Live staff roster unavailable.";
+      if (idgResult.status === "rejected") errors.idg = "Live IDG sessions unavailable.";
+      setDataState({
+        alerts: alertsResult.status === "fulfilled" ? alertsResult.value : null,
+        census: censusResult.status === "fulfilled" ? censusResult.value : null,
+        dashboard: dashboardResult.status === "fulfilled" ? dashboardResult.value : null,
+        errors,
+        idgSessions: idgResult.status === "fulfilled" ? idgResult.value : null,
+        loading: false,
+        staff: staffResult.status === "fulfilled" ? staffResult.value : null,
+      });
+    });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     setActiveDomain(resolveDomainFromSection(section, defaultDomain));
     setActiveReport(null);
   }, [defaultDomain, section]);
 
+  const analytics = useMemo(() => buildViewModel(dataState), [dataState]);
+  const syncedLabel = useMemo(() => formatDateTime(new Date()), []);
+
   const renderDomain = () => {
     switch (activeDomain) {
       case "Reports Directory":
+      case "Analytics Directory":
         return <ReportsDirectory onOpenSection={setActiveDomain} onOpenReport={setActiveReport} />;
       case "Command Center":
-        return <CommandCenter onNavigate={setActiveDomain} />;
+        return <CommandCenter analytics={analytics} onNavigate={setActiveDomain} />;
       case "Clinical":
-        return <ClinicalTab />;
+        return <ClinicalTab analytics={analytics} />;
       case "QAPI":
-        return <QAPITab />;
+        return <QAPITab analytics={analytics} />;
       case "Administrative":
-        return <AdministrativeTab />;
+        return <AdministrativeTab analytics={analytics} />;
       case "Financial":
         return <FinancialTab />;
       default:
@@ -1016,7 +1304,7 @@ export default function SNSAnalytics({ defaultDomain = "Analytics Directory" }: 
   return (
     <PortalShell activeTab="Analytics">
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        <WelcomeBanner title={activeDomain === "Reports Directory" || activeDomain === "Analytics Directory" ? "Analytics Directory" : activeDomain === "Command Center" ? "Analytics Command Center" : `${activeDomain} Analytics`} />
+        <WelcomeBanner title={activeDomain === "Reports Directory" || activeDomain === "Analytics Directory" ? "Analytics Directory" : activeDomain === "Command Center" ? "Analytics Command Center" : `${activeDomain} Analytics`} syncedLabel={syncedLabel} />
         {activeDomain !== "Reports Directory" && activeDomain !== "Analytics Directory" ? (
           <div style={{ width: "100%", boxSizing: "border-box" }}>
             <button
@@ -1045,143 +1333,5 @@ export default function SNSAnalytics({ defaultDomain = "Analytics Directory" }: 
         {activeReport ? <SNSNewReports activeReport={activeReport} /> : <div style={pageShellStyle}>{renderDomain()}</div>}
       </div>
     </PortalShell>
-  );
-}
-
-function AdministrativeTab() {
-  const [activeTab, setActiveTab] = useState("Overview");
-  const tabs = ["Overview", "Census & Demographics", "Service Operations", "Orders & Rx", "Staffing & HR"];
-
-  if (activeTab === "Census & Demographics") {
-    return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("AVERAGE DAILY CENSUS", "45.3 Patients", "Target: 42", C.teal)}
-          {kpiCard("AVERAGE LOS", "92.4 Days", "National avg: 71 days", C.blue)}
-          {kpiCard("MEDIAN LOS", "68 Days", "Median benchmark", C.amber)}
-          {kpiCard("ACTIVE PAYER MIX", "Medicare 78%", "Medicaid 12%, Private 10%", C.green)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Patient Profile Summary</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "MRN", "Age/Sex", "Primary Dx", "LOC", "Payer", "Days on Svc"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Robert Taylor", "847-194", "78 / M", "COPD", "ROUTINE", "MEDICARE", "70 Days"],
-                ["Evelyn Martinez", "522-385", "84 / F", "Dementia", "ROUTINE", "MEDICAID", "108 Days"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={{ ...tdStyle, fontWeight: idx === 0 ? 600 : 400, color: idx === 0 ? C.gray800 : C.gray600 }}>{cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
-  if (activeTab === "Service Operations") {
-    return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("TOTAL VISITS (MTD)", "342 Visits", "By 38 active staff", C.teal)}
-          {kpiCard("VISITS BY DISCIPLINE", "RN 45%", "LVN 20%, MSW 15%", C.blue)}
-          {kpiCard("PLACE OF SERVICE", "Home 82%", "Facility 14%, Inpatient 4%", C.amber)}
-          {kpiCard("DAILY SUMMARY ACTIVE", "47 Patients", "23 visits scheduled today", C.green)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Visits By Discipline</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Discipline", "Total Visits", "% of Total", "Avg Duration", "Billable Rate"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Skilled Nursing (RN)", "154", "45%", "1h 15m", "100%"],
-                ["Hospice Aide (CHHA)", "68", "20%", "45m", "100%"],
-                ["Social Work (MSW)", "51", "15%", "1h 00m", "100%"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 0 ? <strong style={{ color: C.gray800 }}>{cell}</strong> : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
-  if (activeTab === "Orders & Rx") {
-    return (
-      <div style={{ padding: "24px 24px 40px", display: "flex", flexDirection: "column", gap: 24 }}>
-        <div style={responsiveFourGrid}>
-          {kpiCard("ACTIVE MEDICATION ORDERS", "312 Orders", "24 unique medications", C.teal)}
-          {kpiCard("DME ORDERS ACTIVE", "48 Items", "8 pending delivery", C.blue)}
-          {kpiCard("SIGNED ORDERS RATE", "97.2%", "Target: 95%", C.green)}
-          {kpiCard("PENDING SIGNATURES", "6 Orders", "2 past 72hrs", C.amber)}
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Medication & DME Orders Summary</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Order Date", "Patient", "Order Type", "Description", "Prescriber", "Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Jan 24, 2025", "Robert Taylor", "Medication", "Morphine Sulfate", "Dr. J. Vance", "Active"],
-                ["Jan 24, 2025", "Evelyn Martinez", "DME", "Hospital Bed Full Electric", "Dr. A. Sterling", "Active"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 2 ? badge(cell, C.tealLight, C.tealDark) : idx === 5 ? badge(cell, C.greenLight, C.greenDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: "24px 24px 40px" }}>
-      <SubNav tabs={tabs} activeTab={activeTab} onTabChange={setActiveTab} />
-      <div style={responsiveFourGrid}>
-        {kpiCard("ACTIVE CENSUS", "47 Patients", "Target: 42", C.teal)}
-        {kpiCard("ADMISSIONS (MTD)", "8 New", "+3 vs last month", C.green)}
-        {kpiCard("DISCHARGES (MTD)", "5 Patients", "3 deceased, 2 revocation", C.amber)}
-        {kpiCard("AVG LENGTH OF STAY", "92.4 Days", "Median: 68 days", C.blue)}
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Recent Admissions</div>
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
-            <thead><tr>{["Patient", "MRN", "Admit Date", "Source", "LOC", "Status"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
-            <tbody>
-              {[
-                ["Robert Taylor", "847-194", "Oct 12, 2024", "Hospital", "RHC", "Active"],
-                ["Evelyn Martinez", "522-385", "Nov 02, 2024", "Physician", "CHC", "Active"],
-                ["Thomas Wilson", "411-930", "Jan 08, 2025", "Referral", "GIP", "Pending"],
-              ].map((row) => (
-                <tr key={row.join("-")} style={{ borderBottom: `1px solid ${C.gray100}` }}>
-                  {row.map((cell, idx) => <td key={idx} style={tdStyle}>{idx === 4 ? badge(cell, C.blueLight, C.blue) : idx === 5 ? badge(cell, cell === "Active" ? C.greenLight : C.amberLight, cell === "Active" ? C.greenDark : C.amberDark) : cell}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div style={cardStyle}>
-          <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Inter', sans-serif", color: C.gray800, marginBottom: 16 }}>Operational Snapshot</div>
-          {[
-            ["Pending Physician Orders", "12"],
-            ["Unsigned Hospice Certs", "4"],
-            ["Open HR Compliance Tasks", "6"],
-            ["Medicare Pending Follow-Up", "9"],
-          ].map((row, idx) => (
-            <div key={row[0]} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: idx < 3 ? `1px solid ${C.gray100}` : "none" }}>
-              <span style={{ fontSize: 13, color: C.gray600 }}>{row[0]}</span>
-              <strong style={{ color: C.navy }}>{row[1]}</strong>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
