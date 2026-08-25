@@ -56,6 +56,7 @@ from app.api.routes.plan_of_care import router as poc_router
 from app.api.routes.rnica_poc import router as rnica_poc_router
 from app.api.routes.admission_action_center import router as admission_action_center_router
 from app.api.patient_allergies import router as patient_allergies_router
+from app.api.patient_issues import router as patient_issues_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -171,6 +172,7 @@ def register_routers(app: FastAPI) -> None:
         rnica_poc_router,
         admission_action_center_router,
         patient_charts_router,
+        patient_issues_router,
 
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
         tasks_router,

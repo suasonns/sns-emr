@@ -23,6 +23,7 @@ import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
 import DischargePlanningBoard from './DischargePlanningBoard';
+import IssuesOutcomesBoard from './IssuesOutcomesBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -822,6 +823,8 @@ const PatientChart = () => {
       case 'hope-discharge':
       case 'decline-of-status':
         return <ComplianceHopeBoard patientId={resolvedPatientId} activeSection={activeSection} onNavigateToSection={navigateChart} />;
+      case 'issues':
+        return <IssuesOutcomesBoard patientId={resolvedPatientId} />;
       case 'discharge':
         return <DischargePlanningBoard patientId={resolvedPatientId} />;
       default:
