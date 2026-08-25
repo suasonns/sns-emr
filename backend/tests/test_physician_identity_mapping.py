@@ -276,6 +276,20 @@ class TestLinkageLifecycle:
                 linked_by_user_id=TEST_USER_ID, reason="Cross-tenant physician attempt",
             )
 
+        # conftest's db_session cleanup is scoped to the canonical test
+        # tenant and never deletes rows from `tenants` at all, so the
+        # ad-hoc "Other Tenant" row created above would otherwise leak
+        # forever (found accumulating in the dev DB during an audit on
+        # 2026-08-25). Physician cascade-deletes with its tenant, so just
+        # remove the tenant row itself.
+        db_session.query(Physician).filter(Physician.tenant_id == other_tenant_id).delete(
+            synchronize_session=False
+        )
+        db_session.query(Tenant).filter(Tenant.id == other_tenant_id).delete(
+            synchronize_session=False
+        )
+        db_session.commit()
+
     def test_audit_events_recorded_for_link_unlink_and_blocked_access(self, db_session):
         md_user = _make_provider_user(db_session, "MEDICAL_DIRECTOR")
         physician = _make_physician(db_session)

@@ -140,3 +140,34 @@ def test_provisioning_authentication_authorization_and_password_flows(
         "/auth/login",
         json={"email": dpcs_email, "password": new_password},
     ).status_code == 200
+
+    # This test provisions two throwaway "SNS Development Agency"/"SNS
+    # Development Platform" tenants at fresh uuid4 ids via
+    # provision_development_logins(). Nothing else in the suite (or the
+    # app) ever cleans those up, so every run of this test permanently
+    # leaked a tenant pair (traced 2026-08-25 after a dev-DB audit found
+    # 200+ accumulated junk tenants). Delete what this test created. The
+    # login/change-password flow above also writes audit_logs rows that
+    # reference these users, so those must go first.
+    from sqlalchemy import text as _text
+
+    test_user_ids = [
+        row.id
+        for row in db_session.query(User.id).filter(
+            User.tenant_id.in_([tenant_id, platform_tenant_id])
+        )
+    ]
+    if test_user_ids:
+        # audit_logs.created_by has a DB-level FK to users.id that isn't
+        # mapped on the AuditLog model, so delete via raw SQL.
+        db_session.execute(
+            _text("DELETE FROM audit_logs WHERE created_by = ANY(:ids)"),
+            {"ids": test_user_ids},
+        )
+    db_session.query(User).filter(
+        User.tenant_id.in_([tenant_id, platform_tenant_id])
+    ).delete(synchronize_session=False)
+    db_session.query(Tenant).filter(
+        Tenant.id.in_([tenant_id, platform_tenant_id])
+    ).delete(synchronize_session=False)
+    db_session.commit()
