@@ -45,6 +45,8 @@ from app.billing.services.noe_penalty_service import (
     compute_noe_penalty,
 )
 from app.billing.services.billing_readiness_service import check_patient_billing_readiness
+from app.billing.models.election_addendum_request import ElectionAddendumRequest
+from app.billing.services.election_addendum_service import compute_addendum_compliance
 
 
 class BillingEngineError(RuntimeError):
@@ -681,6 +683,31 @@ def generate_patient_billing(
             claim_lines = apply_noe_penalty_to_claim_lines(claim_lines, noe_penalty)
             noe_penalty_reason = noe_penalty.reason
 
+    # Election Statement Addendum timeliness (42 CFR 418.24(b)): a late or
+    # still-outstanding addendum past its 5-day/72-hour furnishing deadline
+    # is a real Condition of Participation exposure -- surface it as a risk
+    # the same way a late NOE is, using only real, already-logged request/
+    # delivery dates (never fabricated or assumed).
+    addendum_gap_reasons: list[str] = []
+    if noe_info and noe_info.get("election_date"):
+        addendum_requests = (
+            db.query(ElectionAddendumRequest)
+            .filter(ElectionAddendumRequest.patient_id == patient_id)
+            .all()
+        )
+        if addendum_requests:
+            discharge_or_death = get_date_of_death(patient)
+            for addendum_request in addendum_requests:
+                addendum_result = compute_addendum_compliance(
+                    election_date=noe_info["election_date"],
+                    requested_date=addendum_request.requested_date,
+                    delivered_date=addendum_request.delivered_date,
+                    discharge_or_death_date=discharge_or_death,
+                    not_required_reason=addendum_request.not_required_reason,
+                )
+                if addendum_result.is_late:
+                    addendum_gap_reasons.append(addendum_result.reason)
+
     # Service Intensity Add-on (SIA): for a patient who died during this
     # billing cycle, CMS pays an additional per-visit add-on for real
     # RN/MSW direct-care minutes on RHC days in the last 7 days of life
@@ -801,6 +828,13 @@ def generate_patient_billing(
         risk_score += 75
         status = _derive_status(risk_score)
 
+    # A late/outstanding Election Statement Addendum is a real Condition of
+    # Participation exposure (not just a data gap) -- surface it at the
+    # same severity as the other billing-integrity risks above.
+    if addendum_gap_reasons:
+        risk_score += 75
+        status = _derive_status(risk_score)
+
     snapshot_payload = {
         "patient_id": patient_id,
         "billing_cycle_id": billing_cycle_id,
@@ -819,6 +853,7 @@ def generate_patient_billing(
         "noe_penalty_reason": noe_penalty_reason,
         "sia_rate_gap_reason": sia_rate_gap_reason,
         "loc_documentation_gap_reasons": loc_doc_gap_result.reasons,
+        "election_addendum_gap_reasons": addendum_gap_reasons,
         "sia_schedule": (
             {
                 "date_of_death": str(sia_schedule["date_of_death"]),

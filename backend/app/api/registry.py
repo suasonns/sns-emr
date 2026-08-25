@@ -38,6 +38,8 @@ from app.api import (
 )
 from app.api.agency_profile import router as agency_profile_router
 from app.api.hospice_cap import router as hospice_cap_router
+from app.api.noe import router as noe_router
+from app.api.election_addendum import router as election_addendum_router
 
 # PHYSICIAN IDENTITY MAPPING / SHARED PATIENT-CONTACT-DECISION-MAKER RECORDS
 from app.api.physician_identity import router as physician_identity_router
@@ -190,6 +192,8 @@ def register_routers(app: FastAPI) -> None:
         staff.router,
         agency_profile_router,
         hospice_cap_router,
+        noe_router,
+        election_addendum_router,
         vendors.router,
         soc_orders_router,
         admission_router,

@@ -11,7 +11,6 @@ from sqlalchemy import text
 
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.services.noe_pdf import fill_noe_pdf
 from app.models.benefit_period import BenefitPeriod
 from app.models.patient import Patient
 from app.billing.models.noe_edi_submission import NoeEdiSubmission
@@ -310,6 +309,14 @@ def generate_noe_pdf(
     }
 
     try:
+        # Imported lazily: app.services.noe_pdf does not exist yet in this
+        # codebase (this endpoint predates the electronic NOE/NOTR work and
+        # was never reachable -- its router wasn't registered). Keeping the
+        # import lazy lets the rest of this module (real NOTR tracking +
+        # electronic 837I generation, registered this segment) load and
+        # work even though the paper-PDF path is still unimplemented.
+        from app.services.noe_pdf import fill_noe_pdf
+
         pdf_bytes = fill_noe_pdf(data)
     except Exception as e:
         logger.exception("NOE PDF generation failed")
