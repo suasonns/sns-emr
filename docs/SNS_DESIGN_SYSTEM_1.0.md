@@ -38,6 +38,9 @@ clinical-workflow, and documentation standard for:
 - Referrals
 - QAPI
 - HR and personnel compliance
+- **Biller's Dashboard / External Billing Services portal** (billing-department-facing,
+  cross-agency views — see `docs/design/biller-dashboard-figma/README.md` for its page-specific
+  layout/content reference; this document's tokens govern its visual implementation)
 
 The existing Facesheet (`sns-emr-frontend/src/charts/PatientFacesheet.jsx`)
 is the visual reference implementation. RNICA will be the first pilot
