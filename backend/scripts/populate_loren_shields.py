@@ -5,6 +5,17 @@ and RNICA assessment using his real HospiceMD RN Comprehensive Nursing
 Assessment (visit 5/22/2024 by Romel Suason, RN) plus supporting Kaiser
 Permanente chart-export demographics.
 
+SUPERSEDED: patient_id 3885a918-7c8b-4d6d-af3a-577cc898ebdb no longer
+exists (Loren Shields' canonical record is now patient_id
+c4410e1f-8ca7-4635-900e-9883e8aca122, same tenant). Also,
+HEART_FAILURE_CRITERIA_ANSWERS below uses "yes"/"unknown" strings, which
+do not match the real boolean True/False/None convention the eligibility
+engine (_compare's EQUALS operator) and RNICA.jsx's LcdTernaryButtons
+actually use -- "yes" == True is False in Python, so running this script
+as-is would silently fail to satisfy any LCD criterion. Kept for
+historical reference only; see scripts/backfill_loren_lcd_eligibility.py
+for the corrected, currently-applicable backfill against the live record.
+
 Run with: python scripts/populate_loren_shields.py
 """
 from datetime import date, datetime, timezone
