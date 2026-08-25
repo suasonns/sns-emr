@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_
 from sqlalchemy.orm import Session, aliased
 
+from app.billing.security import require_automated_billing
+from app.core.database import get_db
 from app.core.security import get_current_user
-from app.db_request_dependency import get_db_tenant_with_request_state
+from app.core.tenant_scope import resolve_billing_scope_tenant_id
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
 from app.models.patient_facesheet import PatientFaceSheet
@@ -35,7 +38,10 @@ def list_visits_notes(
         description="Only return notes with no signed_by/finalized_at -- documentation gaps that block billing.",
     ),
     limit: int = Query(200, le=1000),
-    db: Session = Depends(get_db_tenant_with_request_state),
+    tenant_id: UUID | None = Query(
+        None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."
+    ),
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     """
@@ -45,6 +51,9 @@ def list_visits_notes(
     to the visits that feed billing -- without exposing raw clinical note
     content (``content`` / ``raw_transcript`` are never returned here).
     """
+    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    require_automated_billing(db, scoped_tenant_id)
+
     Author = aliased(User)
     Countersigner = aliased(User)
 
@@ -80,7 +89,7 @@ def list_visits_notes(
         .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
         .outerjoin(Author, Author.id == ClinicalNote.author_id)
         .outerjoin(Countersigner, Countersigner.id == ClinicalNote.countersigned_by)
-        .filter(ClinicalNote.tenant_id == user.tenant_id)
+        .filter(ClinicalNote.tenant_id == scoped_tenant_id)
     )
 
     if patient_id:
@@ -140,7 +149,7 @@ def list_visits_notes(
         )
 
     return {
-        "tenant_id": str(user.tenant_id),
+        "tenant_id": scoped_tenant_id,
         "count": len(results),
         "visits_notes": results,
     }

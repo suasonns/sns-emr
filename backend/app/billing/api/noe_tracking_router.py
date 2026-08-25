@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from datetime import date
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.billing.security import require_automated_billing
 from app.billing.services.noe_penalty_service import compute_noe_penalty
+from app.core.database import get_db
 from app.core.security import get_current_user
-from app.db_request_dependency import get_db_tenant_with_request_state
+from app.core.tenant_scope import resolve_billing_scope_tenant_id
 from app.models.benefit_period import BenefitPeriod
 from app.models.patient import Patient
 from app.models.patient_facesheet import PatientFaceSheet
@@ -29,7 +32,10 @@ def list_noe_tracking(
         False, description="Only include periods where the NOE has not been filed yet."
     ),
     limit: int = Query(200, le=1000),
-    db: Session = Depends(get_db_tenant_with_request_state),
+    tenant_id: UUID | None = Query(
+        None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."
+    ),
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     """
@@ -43,12 +49,15 @@ def list_noe_tracking(
     applies to the election effective date, which only exists on
     period_number=1 (RECERT periods do not re-trigger a new NOE).
     """
+    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    require_automated_billing(db, scoped_tenant_id)
+
     today = date.today()
 
     query = (
         db.query(BenefitPeriod)
         .filter(
-            BenefitPeriod.tenant_id == user.tenant_id,
+            BenefitPeriod.tenant_id == scoped_tenant_id,
             BenefitPeriod.benefit_type == "INITIAL",
         )
         .order_by(BenefitPeriod.election_date.desc())
@@ -113,7 +122,7 @@ def list_noe_tracking(
     unfiled_count = sum(1 for r in results if not r["noe_filed"])
 
     return {
-        "tenant_id": str(user.tenant_id),
+        "tenant_id": scoped_tenant_id,
         "count": len(results),
         "late_count": late_count,
         "unfiled_count": unfiled_count,

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.billing.security import require_automated_billing
+from app.core.database import get_db
 from app.core.security import get_current_user
-from app.db_request_dependency import get_db_tenant_with_request_state
+from app.core.tenant_scope import resolve_billing_scope_tenant_id
 from app.models.benefit_period import BenefitPeriod
 from app.models.certification import Certification
 from app.models.f2f_encounter import F2FEncounter
@@ -66,7 +70,10 @@ def list_poc_certification_status(
         True, description="Only include each patient's current (is_current=true) benefit period."
     ),
     limit: int = Query(200, le=1000),
-    db: Session = Depends(get_db_tenant_with_request_state),
+    tenant_id: UUID | None = Query(
+        None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."
+    ),
+    db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     """
@@ -78,7 +85,10 @@ def list_poc_certification_status(
     submitted for that benefit period. No fabricated/derived documents;
     every field here traces to a real persisted row.
     """
-    bp_query = db.query(BenefitPeriod).filter(BenefitPeriod.tenant_id == user.tenant_id)
+    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    require_automated_billing(db, scoped_tenant_id)
+
+    bp_query = db.query(BenefitPeriod).filter(BenefitPeriod.tenant_id == scoped_tenant_id)
     if patient_id:
         bp_query = bp_query.filter(BenefitPeriod.patient_id == patient_id)
     if current_period_only:
@@ -102,7 +112,7 @@ def list_poc_certification_status(
 
     pocs_by_patient = {}
     if patient_ids:
-        for poc in db.query(PlanOfCare).filter(PlanOfCare.patient_id.in_(patient_ids), PlanOfCare.tenant_id == user.tenant_id).order_by(PlanOfCare.created_at.desc()).all():
+        for poc in db.query(PlanOfCare).filter(PlanOfCare.patient_id.in_(patient_ids), PlanOfCare.tenant_id == scoped_tenant_id).order_by(PlanOfCare.created_at.desc()).all():
             pocs_by_patient.setdefault(poc.patient_id, []).append(poc)
 
     results = []
@@ -110,14 +120,14 @@ def list_poc_certification_status(
         patient = patients_by_id.get(bp.patient_id)
         facesheet = facesheets_by_patient.get(bp.patient_id)
 
-        cert = _latest_certification(db, user.tenant_id, bp.id)
+        cert = _latest_certification(db, scoped_tenant_id, bp.id)
 
         poc_candidates = pocs_by_patient.get(bp.patient_id, [])
         poc = poc_candidates[0] if poc_candidates else None
         poc_version = poc.current_version if poc else None
-        poc_approval = _latest_poc_approval(db, user.tenant_id, poc_version.id if poc_version else None)
+        poc_approval = _latest_poc_approval(db, scoped_tenant_id, poc_version.id if poc_version else None)
 
-        f2f = _latest_f2f(db, user.tenant_id, bp.id) if bp.benefit_type == "RECERT" else None
+        f2f = _latest_f2f(db, scoped_tenant_id, bp.id) if bp.benefit_type == "RECERT" else None
 
         results.append(
             {
@@ -189,7 +199,7 @@ def list_poc_certification_status(
         )
 
     return {
-        "tenant_id": str(user.tenant_id),
+        "tenant_id": scoped_tenant_id,
         "count": len(results),
         "poc_certification_status": results,
     }

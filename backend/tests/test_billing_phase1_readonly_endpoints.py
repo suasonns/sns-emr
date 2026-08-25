@@ -41,6 +41,30 @@ class _FakeUser:
     tenant_id: uuid.UUID
 
 
+@pytest.fixture(autouse=True)
+def _billing_enabled_test_tenant(db_session, tenant):
+    """
+    The 3 Phase 1 routers under test now gate on ``require_automated_billing``
+    (mirroring every other billing-surface endpoint), which requires
+    ``tenants.billing_enabled`` plus an EIN + PTAN on file
+    (ck_tenant_billing_requires_operating_authority). Ensure the shared test
+    tenant satisfies that gate for the duration of these tests.
+    """
+    from sqlalchemy import text
+
+    db_session.execute(
+        text(
+            "UPDATE tenants SET billing_enabled = true, "
+            "ein = COALESCE(ein, '123456789'), "
+            "ptan = COALESCE(ptan, 'P1234567') "
+            "WHERE id = :tenant_id"
+        ),
+        {"tenant_id": uuid.UUID(str(tenant.id))},
+    )
+    db_session.commit()
+    yield
+
+
 _MRN_SUFFIX = uuid.uuid4().hex[:8]
 
 
@@ -266,6 +290,7 @@ def test_list_visits_notes_returns_finalized_and_draft(db_session, tenant):
         patient_id=str(patient.id),
         unsigned_only=False,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -292,6 +317,7 @@ def test_list_visits_notes_unsigned_only_filter(db_session, tenant):
         patient_id=str(patient.id),
         unsigned_only=True,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -316,6 +342,7 @@ def test_poc_certification_status_billing_ready_initial_period(db_session, tenan
         patient_id=str(patient.id),
         current_period_only=True,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -339,6 +366,7 @@ def test_poc_certification_status_recert_requires_f2f(db_session, tenant):
         patient_id=str(patient.id),
         current_period_only=True,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -364,6 +392,7 @@ def test_poc_certification_status_recert_requires_f2f(db_session, tenant):
         patient_id=str(patient.id),
         current_period_only=True,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -395,6 +424,7 @@ def test_noe_tracking_flags_late_filing(db_session, tenant):
         late_only=False,
         unfiled_only=False,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -423,6 +453,7 @@ def test_noe_tracking_exempt_when_exception_reason_present(db_session, tenant):
         late_only=False,
         unfiled_only=False,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
@@ -446,6 +477,7 @@ def test_noe_tracking_unfiled_only_filter(db_session, tenant):
         late_only=False,
         unfiled_only=True,
         limit=1000,
+        tenant_id=None,
         db=db_session,
         user=_FakeUser(tenant_id=uuid.UUID(str(tenant.id))),
     )
