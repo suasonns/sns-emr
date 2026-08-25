@@ -454,6 +454,188 @@ export function fetchPatientComplianceDetail(
 }
 
 // =========================================================
+// CLAIMS MANAGEMENT
+// =========================================================
+
+export type ClaimRow = {
+  claim_id: string;
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  payer_name: string | null;
+  service_date: string | null;
+  total_charge: number | null;
+  total_units: number | null;
+  status: string | null;
+  claim_control_number: string | null;
+  last_status_reason: string | null;
+  created_at: string | null;
+  days_in_status: number | null;
+};
+
+export type ClaimsResponse = {
+  tenant_id: string;
+  count: number;
+  total_claims: number;
+  submitted_count: number;
+  accepted_count: number;
+  denied_count: number;
+  lifecycle: { draft: number; submitted: number; accepted: number; paid: number; denied: number };
+  claims: ClaimRow[];
+};
+
+export function fetchClaims(
+  tenantId?: string | null,
+  params?: { status?: string; payer_name?: string; limit?: number }
+): Promise<ClaimsResponse> {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  if (params?.payer_name) search.set("payer_name", params.payer_name);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/claims${query ? `?${query}` : ""}`;
+  return fetchJson<ClaimsResponse>(withTenantId(base, tenantId));
+}
+
+// =========================================================
+// DENIALS & APPEALS
+// =========================================================
+
+export type DenialRow = {
+  denial_id: string;
+  claim_id: string;
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  payer_name: string | null;
+  denial_date: string | null;
+  carc_code: string | null;
+  reason_description: string | null;
+  denied_amount: number | null;
+  status: string | null;
+  appeal_status_label: string | null;
+  appeal_deadline: string | null;
+  days_elapsed: number | null;
+};
+
+export type DenialsResponse = {
+  tenant_id: string;
+  count: number;
+  total_denials: number;
+  appeals_filed: number;
+  appeal_rate: number | null;
+  overturn_rate: number | null;
+  avg_resolution_days: number | null;
+  reason_breakdown: { reason: string; count: number; percent: number }[];
+  denials: DenialRow[];
+};
+
+export function fetchDenials(
+  tenantId?: string | null,
+  params?: { reason?: string; payer_name?: string; status?: string; limit?: number }
+): Promise<DenialsResponse> {
+  const search = new URLSearchParams();
+  if (params?.reason) search.set("reason", params.reason);
+  if (params?.payer_name) search.set("payer_name", params.payer_name);
+  if (params?.status) search.set("status", params.status);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/denials${query ? `?${query}` : ""}`;
+  return fetchJson<DenialsResponse>(withTenantId(base, tenantId));
+}
+
+// =========================================================
+// ELIGIBILITY VERIFICATION
+// =========================================================
+
+export type EligibilityRosterRow = {
+  insurance_id: string;
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  payer_name: string | null;
+  subscriber_id: string | null;
+  eligibility_status: string | null;
+  verified_at: string | null;
+  next_verification_due: string | null;
+};
+
+export type EligibilityRosterResponse = {
+  tenant_id: string;
+  count: number;
+  total_active: number;
+  eligible_count: number;
+  pending_count: number;
+  inactive_count: number;
+  roster: EligibilityRosterRow[];
+  upcoming_reverifications: {
+    insurance_id: string;
+    mrn: string | null;
+    patient_name: string | null;
+    next_verification_due: string | null;
+    days_until_due: number;
+  }[];
+};
+
+export function fetchEligibilityRoster(
+  tenantId?: string | null,
+  params?: { payer_name?: string; status?: string; limit?: number }
+): Promise<EligibilityRosterResponse> {
+  const search = new URLSearchParams();
+  if (params?.payer_name) search.set("payer_name", params.payer_name);
+  if (params?.status) search.set("status", params.status);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/eligibility-roster${query ? `?${query}` : ""}`;
+  return fetchJson<EligibilityRosterResponse>(withTenantId(base, tenantId));
+}
+
+// =========================================================
+// PAYMENT POSTING
+// =========================================================
+
+export type RemittanceRow = {
+  era_id: string;
+  payer_name: string | null;
+  received_at: string | null;
+  claim_count: number | null;
+  total_paid_amount: number | null;
+  status: string | null;
+  file_name: string | null;
+};
+
+export type RemittancesResponse = {
+  tenant_id: string;
+  count: number;
+  total_payments_mtd: number;
+  era_received_count: number;
+  posted_count: number;
+  pending_manual_match_count: number;
+  payer_breakdown: { payer_name: string; total_paid: number }[];
+  unmatched_payments: {
+    payment_id: string;
+    claim_control_number: string | null;
+    patient_name: string | null;
+    paid_amount: number | null;
+    match_status: string | null;
+  }[];
+  remittances: RemittanceRow[];
+};
+
+export function fetchRemittances(
+  tenantId?: string | null,
+  params?: { payer_name?: string; status?: string; limit?: number }
+): Promise<RemittancesResponse> {
+  const search = new URLSearchParams();
+  if (params?.payer_name) search.set("payer_name", params.payer_name);
+  if (params?.status) search.set("status", params.status);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/remittances${query ? `?${query}` : ""}`;
+  return fetchJson<RemittancesResponse>(withTenantId(base, tenantId));
+}
+
+// =========================================================
 // SIDEBAR ALERTS
 // =========================================================
 

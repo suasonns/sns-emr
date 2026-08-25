@@ -27,6 +27,10 @@ import VisitsNotesPage from "./pages/billing/VisitsNotesPage";
 import PocCertificationPage from "./pages/billing/PocCertificationPage";
 import NoeTrackingPage from "./pages/billing/NoeTrackingPage";
 import ComingSoonPage from "./pages/billing/ComingSoonPage";
+import ClaimsManagementPage from "./pages/billing/ClaimsManagementPage";
+import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
+import EligibilityVerificationPage from "./pages/billing/EligibilityVerificationPage";
+import PaymentPostingPage from "./pages/billing/PaymentPostingPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
@@ -61,10 +65,10 @@ export default function App() {
           <Route path="visits-notes" element={<VisitsNotesPage />} />
           <Route path="poc-certification" element={<PocCertificationPage />} />
           <Route path="noe-tracking" element={<NoeTrackingPage />} />
-          <Route path="claims" element={<ComingSoonPage title="Claims" />} />
-          <Route path="denials" element={<ComingSoonPage title="Denials & Appeals" />} />
-          <Route path="eligibility" element={<ComingSoonPage title="Eligibility" />} />
-          <Route path="payment-posting" element={<ComingSoonPage title="Payment Posting" />} />
+          <Route path="claims" element={<ClaimsManagementPage />} />
+          <Route path="denials" element={<DenialsAppealsPage />} />
+          <Route path="eligibility" element={<EligibilityVerificationPage />} />
+          <Route path="payment-posting" element={<PaymentPostingPage />} />
           <Route path="reports" element={<ComingSoonPage title="Reports" />} />
         </Route>
         <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />

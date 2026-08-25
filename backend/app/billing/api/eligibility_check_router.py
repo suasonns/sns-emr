@@ -1,20 +1,30 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-from uuid import uuid4
+from datetime import date, datetime, timedelta, timezone
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.security import get_current_user
+from app.core.database import get_db
+from app.core.tenant_scope import resolve_billing_scope_tenant_id
+from app.billing.security import require_automated_billing
 from app.db_request_dependency import get_db_tenant_with_request_state
+from app.models.patient import Patient
+from app.models.patient_facesheet import PatientFaceSheet
 from app.models.patient_insurance import PatientInsurance
 from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
 
 router = APIRouter(prefix="/billing", tags=["Billing Eligibility"])
 
 VALID_RESULT_STATUSES = {"ACTIVE", "INACTIVE", "UNKNOWN", "ERROR"}
+
+
+def _patient_name(first_name: str | None, middle_name: str | None, last_name: str | None) -> str | None:
+    parts = [p for p in (first_name, middle_name, last_name) if p]
+    return " ".join(parts) if parts else None
 
 
 class EligibilityCheckCreate(BaseModel):
@@ -133,4 +143,118 @@ def record_eligibility_check(
             if insurance.next_verification_due
             else None
         ),
+    }
+
+
+@router.get("/eligibility-roster")
+def list_eligibility_roster(
+    payer_name: str | None = None,
+    status: str | None = None,
+    limit: int = Query(200, le=1000),
+    tenant_id: UUID | None = Query(
+        None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."
+    ),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Tenant-scoped, read-only roster of real ``patient_insurances`` rows for
+    the Eligibility Verification page: coverage status table plus the
+    summary counts and "upcoming reverifications" panel it needs. There is
+    no automated 270/271 clearinghouse feed in this system yet (see
+    app.billing.models.payer_eligibility_check.PayerEligibilityCheck) --
+    every eligibility_status here comes from a real, previously-recorded
+    PayerEligibilityCheck (manual or, in the future, batch).
+    """
+    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    require_automated_billing(db, scoped_tenant_id)
+
+    base_query = (
+        db.query(
+            PatientInsurance.id.label("insurance_id"),
+            PatientInsurance.patient_id.label("patient_id"),
+            PatientInsurance.payer_name.label("payer_name"),
+            PatientInsurance.subscriber_id.label("subscriber_id"),
+            PatientInsurance.eligibility_status.label("eligibility_status"),
+            PatientInsurance.verified_at.label("verified_at"),
+            PatientInsurance.next_verification_due.label("next_verification_due"),
+            Patient.mrn.label("mrn"),
+            PatientFaceSheet.first_name.label("patient_first_name"),
+            PatientFaceSheet.middle_name.label("patient_middle_name"),
+            PatientFaceSheet.last_name.label("patient_last_name"),
+        )
+        .join(Patient, Patient.id == PatientInsurance.patient_id)
+        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
+        .filter(
+            PatientInsurance.tenant_id == scoped_tenant_id,
+            PatientInsurance.is_active.is_(True),
+        )
+    )
+
+    all_statuses = [
+        r.eligibility_status for r in base_query.with_entities(PatientInsurance.eligibility_status).all()
+    ]
+    total_active = len(all_statuses)
+    eligible_count = sum(1 for s in all_statuses if str(s or "").upper() == "ACTIVE")
+    inactive_count = sum(1 for s in all_statuses if str(s or "").upper() == "INACTIVE")
+    pending_count = sum(1 for s in all_statuses if str(s or "").upper() in {"UNKNOWN", "ERROR"})
+
+    query = base_query
+    if payer_name:
+        query = query.filter(PatientInsurance.payer_name.ilike(f"%{payer_name}%"))
+    if status:
+        query = query.filter(PatientInsurance.eligibility_status == status.upper())
+
+    rows = (
+        query.order_by(PatientInsurance.next_verification_due.asc().nullslast())
+        .limit(limit)
+        .all()
+    )
+
+    results = []
+    for r in rows:
+        results.append(
+            {
+                "insurance_id": str(r.insurance_id),
+                "patient_id": str(r.patient_id),
+                "patient_name": _patient_name(
+                    r.patient_first_name, r.patient_middle_name, r.patient_last_name
+                ),
+                "mrn": r.mrn,
+                "payer_name": r.payer_name,
+                "subscriber_id": r.subscriber_id,
+                "eligibility_status": r.eligibility_status,
+                "verified_at": r.verified_at.isoformat() if r.verified_at else None,
+                "next_verification_due": (
+                    r.next_verification_due.isoformat() if r.next_verification_due else None
+                ),
+            }
+        )
+
+    today = date.today()
+    upcoming_cutoff = today + timedelta(days=7)
+    upcoming = [
+        {
+            "insurance_id": r["insurance_id"],
+            "mrn": r["mrn"],
+            "patient_name": r["patient_name"],
+            "next_verification_due": r["next_verification_due"],
+            "days_until_due": (
+                date.fromisoformat(r["next_verification_due"]) - today
+            ).days,
+        }
+        for r in results
+        if r["next_verification_due"]
+        and today <= date.fromisoformat(r["next_verification_due"]) <= upcoming_cutoff
+    ]
+
+    return {
+        "tenant_id": scoped_tenant_id,
+        "count": len(results),
+        "total_active": total_active,
+        "eligible_count": eligible_count,
+        "pending_count": pending_count,
+        "inactive_count": inactive_count,
+        "roster": results,
+        "upcoming_reverifications": upcoming,
     }
