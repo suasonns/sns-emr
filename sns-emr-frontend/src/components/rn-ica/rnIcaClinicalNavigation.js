@@ -1,3 +1,5 @@
+import { RNICA_BODY_SYSTEM_MODULES } from "../../config/bodySystems";
+
 export const RNICA_ASSESSMENT_MODULES = [
   { key: "demographics", label: "Patient Demographics", formSection: "demographics", regulator: "HOPE", hope: ["A1110", "A1005", "A1010"] },
   { key: "caregiverAssessment", label: "Caregiver Assessment", formSection: "demographics", completionPath: "pcg", validationPrefix: "demographics.pcg", regulator: "CDPH" },
@@ -7,16 +9,7 @@ export const RNICA_ASSESSMENT_MODULES = [
   { key: "symptomImpact", label: "Symptom Impact", formSection: "symptomImpact", regulator: "HOPE", hope: ["J2051"] },
   { key: "diagnoses", label: "Diagnoses", formSection: "diagnoses", regulator: "HOPE", hope: ["I0010", "J0050"] },
   { key: "performanceStatus", label: "Performance Status", formSection: "performanceStatus", regulator: "HOPE", hope: ["M1190"] },
-  { key: "neurological", label: "Neurological", formSection: "neurological", regulator: "HOPE", hope: ["N0500", "N0510", "N0520"] },
-  { key: "cardiovascular", label: "Cardiovascular", formSection: "cardiovascular" },
-  { key: "respiratory", label: "Respiratory", formSection: "respiratory" },
-  { key: "infection", label: "Infection", formSection: "infection" },
-  { key: "gastrointestinal", label: "Gastrointestinal", formSection: "gastrointestinal" },
-  { key: "nutrition", label: "Nutrition", formSection: "nutrition" },
-  { key: "endocrine", label: "Endocrine", formSection: "endocrine" },
-  { key: "genitourinary", label: "Genitourinary", formSection: "genitourinary" },
-  { key: "musculoskeletal", label: "Musculoskeletal", formSection: "musculoskeletal" },
-  { key: "skin", label: "Integumentary - Skin", formSection: "skin", regulator: "HOPE", hope: ["M1190"] },
+  ...RNICA_BODY_SYSTEM_MODULES,
   { key: "imminentDeath", label: "Imminent Death", formSection: "imminentDeath", regulator: "HOPE", hope: ["J0050"] },
   { key: "sfv", label: "SFV", formSection: "sfv", regulator: "HOPE", hope: ["J2050", "J2052", "J2053"] },
   { key: "safety", label: "Safety", formSection: "safety" },

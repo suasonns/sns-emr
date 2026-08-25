@@ -19,6 +19,10 @@ import React, { useState, useCallback, useMemo, useEffect, useContext, useRef } 
 import { useNavigate } from "react-router-dom";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
+import {
+  RNICA_BODY_SYSTEM_MODULES,
+  RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
+} from "../config/bodySystems";
 import AdmissionActionCenterDrawer, {
   AdmissionActionCenterButton,
 } from "./AdmissionActionCenterDrawer";
@@ -143,10 +147,8 @@ const AssessmentModeContext = React.createContext("ica");
 
 const NAV_SECTIONS = [
   "Patient Demographics", "Vitals", "Pain Assessment", "Symptom Impact",
-  "Diagnoses", "Performance Status", "Neurological", "Cardiovascular",
-  "Respiratory", "Infection", "Gastrointestinal", "Nutrition",
-  "Endocrine", "Genitourinary",
-  "Musculoskeletal", "Integumentary - Skin", "Imminent Death", "SFV",
+  "Diagnoses", "Performance Status", ...RNICA_BODY_SYSTEM_MODULES.map((module) => module.label),
+  "Imminent Death", "SFV",
   "Safety", "Psychosocial", "Spiritual", "Bereavement",
   "Personal Care", "Teaching Needs", "Admissions Order",
   "Referrals", "Finalization",
@@ -159,16 +161,7 @@ const LEGACY_ROUTES = [
   { key: "symptomImpact",     nav: "Symptom Impact",        formSection: "symptomImpact" },
   { key: "diagnoses",         nav: "Diagnoses",             formSection: "diagnoses" },
   { key: "performanceStatus", nav: "Performance Status",    formSection: "performanceStatus" },
-  { key: "neurological",      nav: "Neurological",          formSection: "neurological" },
-  { key: "cardiovascular",    nav: "Cardiovascular",        formSection: "cardiovascular" },
-  { key: "respiratory",       nav: "Respiratory",           formSection: "respiratory" },
-  { key: "infection",         nav: "Infection",             formSection: "infection" },
-  { key: "gastrointestinal",  nav: "Gastrointestinal",      formSection: "gastrointestinal" },
-  { key: "nutrition",         nav: "Nutrition",             formSection: "nutrition" },
-  { key: "endocrine",         nav: "Endocrine",             formSection: "endocrine" },
-  { key: "genitourinary",     nav: "Genitourinary",         formSection: "genitourinary" },
-  { key: "musculoskeletal",   nav: "Musculoskeletal",       formSection: "musculoskeletal" },
-  { key: "skin",              nav: "Integumentary - Skin",  formSection: "skin" },
+  ...RNICA_BODY_SYSTEM_MODULES.map((module) => ({ key: module.key, nav: module.label, formSection: module.formSection })),
   { key: "imminentDeath",     nav: "Imminent Death",        formSection: "imminentDeath" },
   { key: "sfv",               nav: "SFV",                   formSection: "sfv" },
   { key: "safety",            nav: "Safety",                formSection: "safety" },
@@ -198,16 +191,7 @@ const SIDEBAR_CONFIG = [
   { key: "symptomImpact",     label: "Symptom Impact",        icon: "📊", hope: ["J2051"],                  color: "red" },
   { key: "diagnoses",         label: "Diagnoses",             icon: "🔬", hope: ["I0010","J0050"],          color: "green" },
   { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: ["M1190"],                  color: "green" },
-  { key: "neurological",      label: "Neurological",          icon: "🧠", hope: ["N0500","N0510","N0520"],  color: "green", sfv: true },
-  { key: "cardiovascular",    label: "Cardiovascular",        icon: "❤️", hope: [],                      color: null },
-  { key: "respiratory",       label: "Respiratory",           icon: "🫁", hope: [],                         color: null, sfv: true },
-  { key: "infection",         label: "Infection",             icon: "🦠", hope: [],                         color: null },
-  { key: "gastrointestinal",  label: "Gastrointestinal",      icon: "🍽️", hope: [],                   color: null, sfv: true },
-  { key: "nutrition",         label: "Nutrition",             icon: "🥗", hope: [],                         color: null },
-  { key: "endocrine",         label: "Endocrine",             icon: "🔄", hope: [],                         color: null },
-  { key: "genitourinary",     label: "Genitourinary",         icon: "💧", hope: [],                         color: null },
-  { key: "musculoskeletal",   label: "Musculoskeletal",       icon: "🦴", hope: [],                         color: null },
-  { key: "skin",              label: "Integumentary - Skin",  icon: "🩹", hope: ["M1190"],                  color: "green" },
+  ...RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
   { key: "safety",            label: "Safety",                icon: "🛡️", hope: [],                   color: null },

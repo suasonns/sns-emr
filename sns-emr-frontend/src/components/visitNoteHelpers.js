@@ -1,3 +1,5 @@
+import { VISIT_NOTE_BODY_SYSTEM_DEFINITIONS } from "../config/bodySystems";
+
 export const SEVERITY_OPTIONS = [
   { value: "NONE", label: "None (0)", rank: 0 },
   { value: "MILD", label: "Mild (1-3)", rank: 1 },
@@ -94,157 +96,7 @@ export const ASSISTANCE_LEVEL_OPTIONS = [
   { value: "TOTAL", label: "Total assist" },
 ];
 
-export const BODY_SYSTEM_DEFINITIONS = [
-  {
-    key: "neuro_mental_sensory",
-    label: "Neuro/Mental/Sensory",
-    sectionId: "neuro",
-    findings: [
-      ["anxiety", "Anxiety"],
-      ["agitation", "Agitation"],
-      ["confusion", "Confusion"],
-      ["cognitive_change", "Cognitive change"],
-      ["speech_communication_change", "Speech/communication change"],
-    ],
-  },
-  {
-    key: "cardiovascular",
-    label: "Cardiovascular",
-    sectionId: "cardiovascular",
-    findings: [
-      ["arrhythmia", "Arrhythmia"],
-      ["edema", "Edema"],
-      ["chest_discomfort", "Chest discomfort"],
-    ],
-  },
-  {
-    key: "respiratory",
-    label: "Respiratory",
-    sectionId: "respiratory",
-    findings: [
-      ["dyspnea", "Dyspnea"],
-      ["cough", "Cough"],
-      ["abnormal_breath_sounds", "Abnormal breath sounds"],
-    ],
-  },
-  {
-    key: "immunological_infection",
-    label: "Immunological/Infection",
-    sectionId: "immunological",
-    findings: [
-      ["fever", "Fever"],
-      ["signs_of_infection", "Signs of infection"],
-      ["isolation_precautions", "Isolation precautions"],
-    ],
-  },
-  {
-    key: "gi_digestive",
-    label: "GI/Digestive",
-    sectionId: "gi",
-    findings: [
-      ["nausea", "Nausea"],
-      ["vomiting", "Vomiting"],
-      ["constipation", "Constipation"],
-      ["diarrhea", "Diarrhea"],
-      ["incontinence", "Incontinence"],
-    ],
-  },
-  {
-    key: "nutrition",
-    label: "Nutrition",
-    sectionId: "nutrition",
-    findings: [
-      ["appetite_decline", "Appetite decline"],
-      ["meal_refusal", "Meal refusal"],
-      ["dysphagia", "Dysphagia"],
-      ["artificial_feeding", "Artificial feeding"],
-    ],
-  },
-  {
-    key: "endocrine",
-    label: "Endocrine",
-    sectionId: "endocrine",
-    findings: [
-      ["glucose_instability", "Glucose instability"],
-      ["polyuria", "Polyuria"],
-      ["polydipsia", "Polydipsia"],
-    ],
-  },
-  {
-    key: "gu_reproductive",
-    label: "GU/Reproductive",
-    sectionId: "gu",
-    findings: [
-      ["urgency", "Urgency"],
-      ["retention", "Retention"],
-      ["dysuria", "Dysuria"],
-    ],
-  },
-  {
-    key: "sleep_rest",
-    label: "Sleep/Rest",
-    sectionId: "sleep-rest",
-    findings: [
-      ["insomnia", "Insomnia"],
-      ["somnolence", "Somnolence / increased sleeping"],
-    ],
-  },
-  {
-    key: "musculoskeletal",
-    label: "Musculoskeletal",
-    sectionId: "musculoskeletal",
-    findings: [
-      ["weakness", "Weakness"],
-      ["stiffness", "Stiffness"],
-      ["contracture", "Contracture"],
-    ],
-  },
-  {
-    key: "integumentary_skin",
-    label: "Integumentary/Skin",
-    sectionId: "skin",
-    findings: [
-      ["rash", "Rash"],
-      ["wound", "Wound"],
-      ["ulcer_pressure_injury", "Ulcer / pressure injury"],
-    ],
-  },
-  {
-    key: "mobility",
-    label: "Mobility",
-    sectionId: "mobility",
-    findings: [
-      ["bedbound", "Bedbound / non-ambulatory"],
-      ["endurance_decline", "Endurance decline"],
-    ],
-  },
-  {
-    key: "adl_assessment",
-    label: "ADL",
-    sectionId: "adl",
-    findings: [],
-  },
-  {
-    key: "fall_incidence",
-    label: "Fall/Incident",
-    sectionId: "falls-safety",
-    findings: [
-      ["fall_reported", "Fall reported"],
-      ["injury_reported", "Injury reported"],
-      ["near_fall", "Near fall"],
-    ],
-  },
-  {
-    key: "safety_issues",
-    label: "Safety",
-    sectionId: "falls-safety",
-    findings: [
-      ["medication_safety", "Medication safety concern"],
-      ["transfer_safety", "Transfer safety concern"],
-      ["environmental_hazard", "Environmental hazard"],
-    ],
-  },
-];
+export const BODY_SYSTEM_DEFINITIONS = VISIT_NOTE_BODY_SYSTEM_DEFINITIONS;
 
 export const BODY_SYSTEM_LOOKUP = Object.fromEntries(BODY_SYSTEM_DEFINITIONS.map((definition) => [definition.key, definition]));
 export const BODY_SYSTEM_FINDING_LABELS = BODY_SYSTEM_DEFINITIONS.reduce((accumulator, definition) => {
@@ -255,59 +107,89 @@ export const BODY_SYSTEM_FINDING_LABELS = BODY_SYSTEM_DEFINITIONS.reduce((accumu
 }, {});
 
 export const VISIT_NOTE_SECTION_ITEMS = [
-  { id: "top", label: "Top" },
-  { id: "pain", label: "Pain" },
+  { id: "top", label: "Visit Details" },
+  { id: "since-last", label: "Since Last Visit" },
   { id: "vitals", label: "Vitals" },
-  { id: "function", label: "Function" },
+  { id: "pain", label: "Pain" },
   { id: "nutrition", label: "Nutrition" },
   { id: "neuro", label: "Neuro" },
   { id: "cardiovascular", label: "Cardiovascular" },
   { id: "respiratory", label: "Respiratory" },
+  { id: "immunological", label: "Infection" },
   { id: "gi", label: "GI" },
+  { id: "endocrine", label: "Endocrine" },
   { id: "gu", label: "GU" },
+  { id: "sleep-rest", label: "Sleep / Rest" },
+  { id: "musculoskeletal", label: "Musculoskeletal" },
   { id: "skin", label: "Skin" },
+  { id: "function", label: "Function / Decline" },
   { id: "mobility", label: "Mobility" },
   { id: "adl", label: "ADL" },
-  { id: "falls-safety", label: "Falls/Safety" },
-  { id: "rn-supervision", label: "RN Supervision" },
-  { id: "care-provided", label: "Care Provided" },
-  { id: "checklist", label: "Checklist" },
+  { id: "falls-safety", label: "Falls / Safety" },
   { id: "narrative", label: "Narrative" },
+  { id: "care-provided", label: "Care Provided" },
+  { id: "checklist", label: "Visit Checklist" },
+  { id: "rn-supervision", label: "RN Supervision" },
+  { id: "death-disposal", label: "After-Death" },
 ];
+
+const VISIT_NOTE_SECTION_ORDER = Object.fromEntries(VISIT_NOTE_SECTION_ITEMS.map((item, index) => [item.id, index]));
 
 // Discipline-specific nav item not part of the canonical full-body (RN)
 // order above — SC/MSW visits substitute a "Symptoms" section for the
 // full body-system review, so it is inserted at render time rather than
 // baked into the master ordering the spec defines for RN visit notes.
 export const VISIT_NOTE_SYMPTOMS_SECTION_ITEM = { id: "symptoms", label: "Symptoms" };
+export const VISIT_NOTE_CONTINUOUS_CARE_SECTION_ITEM = { id: "continuous-care-log", label: "Continuous Care Log" };
+export const VISIT_NOTE_BODY_SYSTEM_CARD_DEFINITIONS = BODY_SYSTEM_DEFINITIONS
+  .filter((definition) => !["nutrition", "mobility", "adl_assessment", "fall_incidence", "safety_issues"].includes(definition.key))
+  .sort((left, right) => (VISIT_NOTE_SECTION_ORDER[left.sectionId] ?? Number.MAX_SAFE_INTEGER) - (VISIT_NOTE_SECTION_ORDER[right.sectionId] ?? Number.MAX_SAFE_INTEGER));
+
+const VISIT_NOTE_SECTION_LOOKUP = Object.fromEntries(VISIT_NOTE_SECTION_ITEMS.map((item) => [item.id, item]));
+
+function pickVisitNoteSections(ids) {
+  return ids
+    .map((id) => {
+      if (id === "symptoms") return VISIT_NOTE_SYMPTOMS_SECTION_ITEM;
+      if (id === "continuous-care-log") return VISIT_NOTE_CONTINUOUS_CARE_SECTION_ITEM;
+      return VISIT_NOTE_SECTION_LOOKUP[id];
+    })
+    .filter(Boolean);
+}
 
 // Computes the sticky nav items that actually exist on the page for the
 // current visit note context, in the spec-required RN order. SC/MSW visits
 // get a compact Symptoms-based nav instead of the full body-system list.
-export function buildVisitNoteNavItems({ isFullBody, isSpiritualVisit, isMswVisit, isContinuousCare, showSupervision }) {
+export function buildVisitNoteNavItems({ isFullBody, isSpiritualVisit, isMswVisit, isContinuousCare, showSupervision, isDeathVisit }) {
+  const sharedLeadingItems = ["top", "since-last"];
   if (isContinuousCare) {
-    return [
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "top"),
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "narrative"),
-    ].filter(Boolean);
+    return pickVisitNoteSections([
+      ...sharedLeadingItems,
+      "continuous-care-log",
+      ...(isDeathVisit ? ["death-disposal"] : []),
+      "narrative",
+    ]);
   }
   if (isSpiritualVisit || isMswVisit) {
-    return [
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "top"),
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "pain"),
-      VISIT_NOTE_SYMPTOMS_SECTION_ITEM,
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "care-provided"),
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "narrative"),
-    ].filter(Boolean);
+    return pickVisitNoteSections([
+      ...sharedLeadingItems,
+      "pain",
+      "symptoms",
+      "narrative",
+      "care-provided",
+      ...(isDeathVisit ? ["death-disposal"] : []),
+    ]);
   }
   if (!isFullBody) {
-    return [
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "top"),
-      VISIT_NOTE_SECTION_ITEMS.find((item) => item.id === "narrative"),
-    ].filter(Boolean);
+    return pickVisitNoteSections([
+      ...sharedLeadingItems,
+      ...(isDeathVisit ? ["death-disposal"] : []),
+      "narrative",
+    ]);
   }
   return VISIT_NOTE_SECTION_ITEMS.filter((item) => {
     if (item.id === "rn-supervision") return showSupervision;
+    if (item.id === "death-disposal") return isDeathVisit;
     return true;
   });
 }
@@ -611,7 +493,7 @@ function getSnapshotMetricGroups(content, previousMeta = undefined) {
         { key: "bmi", deltaFormatter: (delta) => `${delta > 0 ? "+" : ""}${delta}` }
       ),
     ],
-    systems: BODY_SYSTEM_DEFINITIONS.filter((definition) => !["nutrition", "mobility", "adl_assessment", "fall_incidence", "safety_issues"].includes(definition.key))
+    systems: VISIT_NOTE_BODY_SYSTEM_CARD_DEFINITIONS
       .map((definition) => buildMetric(
         definition.label,
         definition.sectionId,

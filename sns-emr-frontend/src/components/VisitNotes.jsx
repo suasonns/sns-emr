@@ -17,7 +17,7 @@ import {
   ADL_ACTIVITIES,
   AMBULATORY_STATUS_OPTIONS,
   ASSISTANCE_LEVEL_OPTIONS,
-  BODY_SYSTEM_DEFINITIONS,
+  VISIT_NOTE_BODY_SYSTEM_CARD_DEFINITIONS,
   BODY_SYSTEM_LOOKUP,
   CONCERN_OPTIONS,
   FAST_OPTIONS,
@@ -319,22 +319,51 @@ function ValidationErrorSummary({ errors, onJump, COLORS }) {
 }
 
 function StickySectionNav({ items, activeSectionId, onJump, COLORS, compact }) {
+  const narrativeButton = (
+    <button
+      type="button"
+      onClick={() => onJump("narrative")}
+      style={{
+        borderRadius: 999,
+        border: `1px solid ${COLORS.accent || COLORS.primary || "#0f766e"}`,
+        background: "rgba(13,148,136,0.14)",
+        color: COLORS.accent || COLORS.primary || "#0f766e",
+        padding: "6px 12px",
+        fontSize: 11.5,
+        fontWeight: 800,
+        cursor: "pointer",
+        whiteSpace: "nowrap",
+      }}
+    >
+      Jump to Narrative
+    </button>
+  );
+
   if (compact) {
     return (
       <div style={{ position: "sticky", top: 12, zIndex: 4, marginBottom: 8 }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center", padding: 10, borderRadius: 10, border: `1px solid ${COLORS.border || "#334155"}`, background: COLORS.card }}>
-          <label style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.gray }}>Jump</label>
-          <select
-            value={activeSectionId}
-            onChange={(event) => onJump(event.target.value)}
-            style={{ flex: 1, minHeight: 34, borderRadius: 8, border: `1px solid ${COLORS.border || "#334155"}`, background: "transparent", color: COLORS.dark }}
-          >
-            {items.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+        <div style={{ display: "grid", gap: 8, padding: 10, borderRadius: 10, border: `1px solid ${COLORS.border || "#334155"}`, background: COLORS.card, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <div>
+              <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: COLORS.gray }}>Visit note navigation</div>
+              <div style={{ fontSize: 12, color: COLORS.dark }}>Jump between sections without losing your place.</div>
+            </div>
+            {narrativeButton}
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <label style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.gray }}>Section</label>
+            <select
+              value={activeSectionId}
+              onChange={(event) => onJump(event.target.value)}
+              style={{ flex: 1, minHeight: 34, borderRadius: 8, border: `1px solid ${COLORS.border || "#334155"}`, background: "transparent", color: COLORS.dark }}
+            >
+              {items.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
     );
@@ -342,29 +371,38 @@ function StickySectionNav({ items, activeSectionId, onJump, COLORS, compact }) {
 
   return (
     <div style={{ position: "sticky", top: 12, zIndex: 4, marginBottom: 8 }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, padding: 10, borderRadius: 10, border: `1px solid ${COLORS.border || "#334155"}`, background: COLORS.card }}>
-        {items.map((item) => {
-          const active = item.id === activeSectionId;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onJump(item.id)}
-              style={{
-                borderRadius: 999,
-                border: `1px solid ${active ? COLORS.accent || COLORS.primary || "#0f766e" : COLORS.border || "#334155"}`,
-                background: active ? "rgba(13,148,136,0.14)" : "transparent",
-                color: active ? COLORS.accent || COLORS.primary || "#0f766e" : COLORS.dark,
-                padding: "6px 10px",
-                fontSize: 11.5,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {item.label}
-            </button>
-          );
-        })}
+      <div style={{ display: "grid", gap: 10, padding: 10, borderRadius: 10, border: `1px solid ${COLORS.border || "#334155"}`, background: COLORS.card, boxShadow: "0 10px 24px rgba(15, 23, 42, 0.08)" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color: COLORS.gray }}>Visit note navigation</div>
+            <div style={{ fontSize: 12, color: COLORS.dark }}>{items.length} sections in documented order.</div>
+          </div>
+          {narrativeButton}
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {items.map((item) => {
+            const active = item.id === activeSectionId;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onJump(item.id)}
+                style={{
+                  borderRadius: 999,
+                  border: `1px solid ${active ? COLORS.accent || COLORS.primary || "#0f766e" : COLORS.border || "#334155"}`,
+                  background: active ? "rgba(13,148,136,0.14)" : "transparent",
+                  color: active ? COLORS.accent || COLORS.primary || "#0f766e" : COLORS.dark,
+                  padding: "6px 10px",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -391,14 +429,14 @@ function FloatingNarrativeButton({ onJump, COLORS }) {
         boxShadow: "0 10px 20px rgba(15, 23, 42, 0.22)",
       }}
     >
-      Narrative
+      Jump to Narrative
     </button>
   );
 }
 
 function Section({ anchorId, children }) {
   return (
-    <section id={anchorId} style={{ scrollMarginTop: 98 }}>
+    <section id={anchorId} style={{ scrollMarginTop: 120 }}>
       {children}
     </section>
   );
@@ -667,10 +705,9 @@ function NutritionCard({ content, comparisons, onContentChange, disabled, styles
 
 function BodySystemsCard({ content, comparisonsBySection, onContentChange, disabled, styles, COLORS, onJump, buildAnchor }) {
   const setSystem = (systemKey, nextValue) => onContentChange((current) => ({ ...current, signs_symptoms: { ...current.signs_symptoms, [systemKey]: nextValue } }));
-  const systems = BODY_SYSTEM_DEFINITIONS.filter((definition) => !["nutrition", "mobility", "adl_assessment", "fall_incidence", "safety_issues"].includes(definition.key));
   return (
     <Card title="Signs and Symptoms / Body Systems" subtitle="Structured findings are centralized by body system while preserving the existing severity and free-text observations." styles={styles}>
-      {systems.map((definition) => (
+      {VISIT_NOTE_BODY_SYSTEM_CARD_DEFINITIONS.map((definition) => (
         <Section key={definition.key} anchorId={buildAnchor(definition.sectionId)}>
           <ComparisonGrid items={comparisonsBySection[definition.sectionId] || []} styles={styles} COLORS={COLORS} onJump={onJump} />
           <BodySystemFields systemKey={definition.key} value={content.signs_symptoms[definition.key]} onChange={setSystem} disabled={disabled} styles={styles} COLORS={COLORS} />
@@ -1027,9 +1064,16 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
   const comparisonState = useMemo(() => buildVisitNoteComparisonState(content, comparableHistory), [content, comparableHistory]);
   const showSupervision = supervisoryContext.visible;
   const navItems = useMemo(
-    () => buildVisitNoteNavItems({ isFullBody, isSpiritualVisit, isMswVisit, isContinuousCare: isCC, showSupervision }),
-    [isFullBody, isSpiritualVisit, isMswVisit, isCC, showSupervision]
+    () => buildVisitNoteNavItems({ isFullBody, isSpiritualVisit, isMswVisit, isContinuousCare: isCC, showSupervision, isDeathVisit }),
+    [isFullBody, isSpiritualVisit, isMswVisit, isCC, showSupervision, isDeathVisit]
   );
+
+  useEffect(() => {
+    if (!navItems.length) return;
+    if (!navItems.some((item) => item.id === activeSectionId)) {
+      setActiveSectionId(navItems[0].id);
+    }
+  }, [activeSectionId, navItems]);
 
   useEffect(() => {
     const sections = navItems
@@ -1115,7 +1159,21 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
       </Section>
 
       {isCC ? (
-        <ContinuousCareLogSection visitId={visitId} discipline={discipline} enteredBy={content.entered_by} styles={styles} COLORS={COLORS} disabled={isFinalized} />
+        <>
+          <Section anchorId={anchor("continuous-care-log")}>
+            <ContinuousCareLogSection visitId={visitId} discipline={discipline} enteredBy={content.entered_by} styles={styles} COLORS={COLORS} disabled={isFinalized} />
+          </Section>
+          {isDeathVisit ? (
+            <Section anchorId={anchor("death-disposal")}>
+              <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
+          <Section anchorId={anchor("narrative")}>
+            <Card title="Narrative" styles={styles}>
+              <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
+            </Card>
+          </Section>
+        </>
       ) : isSpiritualVisit ? (
         <>
           <Section anchorId={anchor("pain")}>
@@ -1126,9 +1184,21 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
             <SymptomsCard title="Spiritual Symptoms" value={content.spiritual_symptoms} onChange={(nextValue) => setContent((current) => ({ ...current, spiritual_symptoms: nextValue }))} disabled={isFinalized} styles={styles} />
           </Section>
 
+          <Section anchorId={anchor("narrative")}>
+            <Card title="Narrative" styles={styles}>
+              <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
+            </Card>
+          </Section>
+
           <Section anchorId={anchor("care-provided")}>
             <CareProvidedCard value={content.care_provided} onChange={(nextValue) => setContent((current) => ({ ...current, care_provided: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
           </Section>
+
+          {isDeathVisit ? (
+            <Section anchorId={anchor("death-disposal")}>
+              <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
         </>
       ) : isMswVisit ? (
         <>
@@ -1140,22 +1210,30 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
             <SymptomsCard title="Psychosocial Symptoms" value={content.psychosocial_symptoms} onChange={(nextValue) => setContent((current) => ({ ...current, psychosocial_symptoms: nextValue }))} disabled={isFinalized} styles={styles} />
           </Section>
 
+          <Section anchorId={anchor("narrative")}>
+            <Card title="Narrative" styles={styles}>
+              <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
+            </Card>
+          </Section>
+
           <Section anchorId={anchor("care-provided")}>
             <CareProvidedCard value={content.care_provided} onChange={(nextValue) => setContent((current) => ({ ...current, care_provided: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
           </Section>
+
+          {isDeathVisit ? (
+            <Section anchorId={anchor("death-disposal")}>
+              <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
         </>
       ) : isFullBody ? (
         <>
-          <Section anchorId={anchor("pain")}>
-            <PainCard pain={content.pain} comparisons={comparisonState.groups.pain} onChange={(nextValue) => setContent((current) => ({ ...current, pain: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} />
-          </Section>
-
           <Section anchorId={anchor("vitals")}>
             <VitalsMeasurementsCard vitals={content.vitals} comparisons={comparisonState.groups.vitals} onChange={(nextValue) => setContent((current) => ({ ...current, vitals: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} />
           </Section>
 
-          <Section anchorId={anchor("function")}>
-            <FunctionalDeclineCard content={content} comparisons={comparisonState.groups.function} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} buildAnchor={anchor} />
+          <Section anchorId={anchor("pain")}>
+            <PainCard pain={content.pain} comparisons={comparisonState.groups.pain} onChange={(nextValue) => setContent((current) => ({ ...current, pain: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} />
           </Section>
 
           <Section anchorId={anchor("nutrition")}>
@@ -1164,15 +1242,19 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
 
           <BodySystemsCard content={content} comparisonsBySection={comparisonState.sectionMap} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} buildAnchor={anchor} />
 
+          <Section anchorId={anchor("function")}>
+            <FunctionalDeclineCard content={content} comparisons={comparisonState.groups.function} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} buildAnchor={anchor} />
+          </Section>
+
           <Section anchorId={anchor("falls-safety")}>
             <FallSafetyCard content={content} comparisons={comparisonState.groups.fallsSafety} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} onJump={scrollToSection} />
           </Section>
 
-          {showSupervision ? (
-            <Section anchorId={anchor("rn-supervision")}>
-              <RNReviewCard content={content} supervisoryContext={supervisoryContext} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} />
-            </Section>
-          ) : null}
+          <Section anchorId={anchor("narrative")}>
+            <Card title="Narrative" styles={styles}>
+              <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
+            </Card>
+          </Section>
 
           <Section anchorId={anchor("care-provided")}>
             <CareProvidedCard value={content.care_provided} onChange={(nextValue) => setContent((current) => ({ ...current, care_provided: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
@@ -1181,20 +1263,38 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
           <Section anchorId={anchor("checklist")}>
             <VisitChecklistCard checklist={content.visit_checklist} onChange={(nextValue) => setContent((current) => ({ ...current, visit_checklist: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
           </Section>
+
+          {showSupervision ? (
+            <Section anchorId={anchor("rn-supervision")}>
+              <RNReviewCard content={content} supervisoryContext={supervisoryContext} onContentChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
+
+          {isDeathVisit ? (
+            <Section anchorId={anchor("death-disposal")}>
+              <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
         </>
       ) : (
         <div style={styles.infoBox}>This Form Type only requires a narrative. The full clinical body is hidden to match the standard workflow.</div>
       )}
 
-      {isDeathVisit ? (
-        <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
-      ) : null}
+      {!isCC && !isSpiritualVisit && !isMswVisit && !isFullBody ? (
+        <>
+          {isDeathVisit ? (
+            <Section anchorId={anchor("death-disposal")}>
+              <DeathDisposalCard value={content.death_disposal} onChange={(nextValue) => setContent((current) => ({ ...current, death_disposal: nextValue }))} disabled={isFinalized} styles={styles} COLORS={COLORS} />
+            </Section>
+          ) : null}
 
-      <Section anchorId={anchor("narrative")}>
-        <Card title="Narrative" styles={styles}>
-          <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
-        </Card>
-      </Section>
+          <Section anchorId={anchor("narrative")}>
+            <Card title="Narrative" styles={styles}>
+              <FormTextarea label="Narrative" value={content.narrative} onChange={(nextValue) => setContent((current) => ({ ...current, narrative: nextValue }))} disabled={isFinalized} styles={styles} rows={6} />
+            </Card>
+          </Section>
+        </>
+      ) : null}
 
       {!isFinalized ? (
         <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildVisitNoteComparisonState,
+  buildVisitNoteNavItems,
   createEmptySupervisoryReview,
   validateSupervisoryReview,
   VISIT_NOTE_SECTION_ITEMS,
@@ -141,26 +142,54 @@ describe("validateSupervisoryReview", () => {
 });
 
 describe("VISIT_NOTE_SECTION_ITEMS", () => {
-  it("keeps RN supervision and narrative anchors in the required navigation order", () => {
+  it("lists every full-body visit-note anchor in clinical navigation order", () => {
     expect(VISIT_NOTE_SECTION_ITEMS.map((item) => item.id)).toEqual([
       "top",
-      "pain",
+      "since-last",
       "vitals",
-      "function",
+      "pain",
       "nutrition",
       "neuro",
       "cardiovascular",
       "respiratory",
+      "immunological",
       "gi",
+      "endocrine",
       "gu",
+      "sleep-rest",
+      "musculoskeletal",
       "skin",
+      "function",
       "mobility",
       "adl",
       "falls-safety",
-      "rn-supervision",
+      "narrative",
       "care-provided",
       "checklist",
-      "narrative",
+      "rn-supervision",
+      "death-disposal",
     ]);
+  });
+});
+
+describe("buildVisitNoteNavItems", () => {
+  it("includes conditional visit-note sections only when they render", () => {
+    expect(buildVisitNoteNavItems({
+      isFullBody: true,
+      isSpiritualVisit: false,
+      isMswVisit: false,
+      isContinuousCare: false,
+      showSupervision: false,
+      isDeathVisit: false,
+    }).map((item) => item.id)).not.toContain("rn-supervision");
+
+    expect(buildVisitNoteNavItems({
+      isFullBody: true,
+      isSpiritualVisit: false,
+      isMswVisit: false,
+      isContinuousCare: false,
+      showSupervision: true,
+      isDeathVisit: true,
+    }).map((item) => item.id)).toEqual(expect.arrayContaining(["rn-supervision", "death-disposal", "immunological", "sleep-rest", "musculoskeletal"]));
   });
 });
