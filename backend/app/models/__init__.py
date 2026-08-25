@@ -189,6 +189,7 @@ from app.billing.models.denial import Denial
 from app.billing.models.appeal import Appeal
 from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
 from app.billing.models.hospice_cap_record import HospiceCapRecord
+from app.billing.models.noe_edi_submission import NoeEdiSubmission
 
 # ---------------------------------------------------------
 # ✅ POC PHYSICIAN APPROVAL TRACKING

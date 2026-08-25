@@ -94,6 +94,18 @@ class Patient(Base):
     discharge_contact_provided = Column(Boolean, nullable=True)
     discharge_referral_provided = Column(Boolean, nullable=True)
 
+    # Real-world NOTR (Notice of Termination/Revocation, 837 TOB 8XB)
+    # filing date for this patient's discharge/revocation. Used to compute
+    # CMS's late-NOTR compliance flag -- see
+    # app/billing/services/notr_penalty_service.py. Not meaningful for a
+    # death discharge (no NOTR required).
+    notr_submitted_date = Column(Date, nullable=True)
+
+    # Free-text note when a CMS-recognized exception waives the late-NOTR
+    # penalty. Presence of a non-null value suppresses the penalty even
+    # if filed late.
+    notr_exception_reason = Column(String(255), nullable=True)
+
     # ---------------------------------------------------------
     # SOC / admission
     # ---------------------------------------------------------
