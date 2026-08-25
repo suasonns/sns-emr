@@ -22,6 +22,7 @@ from app.billing.services.sia_service import (
     get_date_of_death,
 )
 from app.billing.services.loc_segment_service import build_loc_segments, build_loc_summary
+from app.billing.services.loc_documentation_gap_service import compute_loc_documentation_gaps
 from app.billing.services.pos_to_loc_service import (
     DateRangeEvent,
     build_loc_timeline,
@@ -189,6 +190,40 @@ def _load_total_minutes_for_cycle(
     ).scalar_one()
 
     return int(result or 0)
+
+
+def _load_visit_minutes_by_date(
+    db: Session,
+    patient_id: str,
+    start_date: date,
+    end_date: date,
+) -> dict[date, int]:
+    """
+    Real documented direct-care minutes per calendar date, from actual
+    visit_minutes rows -- used to check the CHC 8-hour/day minimum
+    against what is really on file (never a computed/assumed figure).
+    """
+    sql = text(
+        """
+        SELECT v.visit_datetime::date AS visit_date, COALESCE(SUM(vm.minutes), 0) AS total_minutes
+        FROM visit_minutes vm
+        JOIN visits v ON v.id = vm.visit_id
+        WHERE v.patient_id::text = :patient_id
+          AND v.visit_datetime::date BETWEEN :start_date AND :end_date
+        GROUP BY v.visit_datetime::date
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {
+            "patient_id": patient_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).all()
+
+    return {row.visit_date: int(row.total_minutes or 0) for row in rows}
 
 
 def _upsert_billing_summary(
@@ -583,6 +618,19 @@ def generate_patient_billing(
     )
     unit_summary = summarize_units(total_minutes)
 
+    chc_minutes_by_date = _load_visit_minutes_by_date(
+        db=db,
+        patient_id=patient_id,
+        start_date=cycle.start_date,
+        end_date=cycle.end_date,
+    )
+    loc_doc_gap_result = compute_loc_documentation_gaps(
+        gip_events=gip_events,
+        respite_events=respite_events,
+        continuous_events=continuous_events,
+        chc_minutes_by_date=chc_minutes_by_date,
+    )
+
     # ---------------------------------------------------------
     # RISK / STATUS
     # ---------------------------------------------------------
@@ -745,6 +793,14 @@ def generate_patient_billing(
         risk_score += 75
         status = _derive_status(risk_score)
 
+    # GIP/Respite/CHC documentation gaps are a real audit-supportability
+    # exposure (missing physician/caregiver justification, or a CHC day
+    # under the CMS 8-hour direct-care minimum) -- surface it at the same
+    # severity as the other billing-integrity risks above.
+    if loc_doc_gap_result.has_gaps:
+        risk_score += 75
+        status = _derive_status(risk_score)
+
     snapshot_payload = {
         "patient_id": patient_id,
         "billing_cycle_id": billing_cycle_id,
@@ -762,6 +818,7 @@ def generate_patient_billing(
         "benefit_periods_in_cycle": active_hospice_coverage.get("benefit_periods_in_cycle", []),
         "noe_penalty_reason": noe_penalty_reason,
         "sia_rate_gap_reason": sia_rate_gap_reason,
+        "loc_documentation_gap_reasons": loc_doc_gap_result.reasons,
         "sia_schedule": (
             {
                 "date_of_death": str(sia_schedule["date_of_death"]),
