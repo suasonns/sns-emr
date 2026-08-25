@@ -271,6 +271,152 @@ export function fetchBillableAgencies(): Promise<{ agencies: BillableAgency[] }>
   return fetchJson<{ agencies: BillableAgency[] }>("/billing/agencies");
 }
 
+// =========================================================
+// PHASE 1 BILLING READ-ONLY PAGES (Visits & Notes / POC & Cert / NOE)
+// =========================================================
+
+export type VisitNoteRow = {
+  note_id: string;
+  patient_id: string | null;
+  patient_name: string | null;
+  mrn: string | null;
+  visit_id: string | null;
+  visit_datetime: string | null;
+  visit_type: string | null;
+  visit_status: string | null;
+  note_type: string | null;
+  discipline: string | null;
+  status: string | null;
+  encounter_date: string | null;
+  entered_at: string | null;
+  author_name: string | null;
+  signed_by: string | null;
+  signed_at: string | null;
+  finalized_at: string | null;
+  requires_countersign: boolean;
+  countersigned_by: string | null;
+  countersigner_name: string | null;
+  countersigned_at: string | null;
+  is_late_entry: boolean;
+  documentation_complete: boolean;
+};
+
+export type VisitsNotesResponse = {
+  tenant_id: string;
+  count: number;
+  visits_notes: VisitNoteRow[];
+};
+
+export function fetchVisitsNotes(
+  tenantId?: string | null,
+  params?: { unsigned_only?: boolean; status?: string; limit?: number }
+): Promise<VisitsNotesResponse> {
+  const search = new URLSearchParams();
+  if (params?.unsigned_only) search.set("unsigned_only", "true");
+  if (params?.status) search.set("status", params.status);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/visits-notes${query ? `?${query}` : ""}`;
+  return fetchJson<VisitsNotesResponse>(withTenantId(base, tenantId));
+}
+
+export type PocCertificationRow = {
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  benefit_period: {
+    id: string;
+    benefit_type: string;
+    period_number: number;
+    start_date: string | null;
+    end_date: string | null;
+    is_current: boolean;
+    noe_submitted_date: string | null;
+    noe_exception_reason: string | null;
+  };
+  certification: {
+    id: string;
+    cert_type: string;
+    status: string;
+    signed_at: string | null;
+    effective_date: string | null;
+    expires_at: string | null;
+    signed_by_role: string | null;
+  } | null;
+  plan_of_care: {
+    id: string;
+    status: string;
+    current_version_number: number | null;
+    physician_approval_status: string | null;
+    physician_approval_date: string | null;
+    physician_name: string | null;
+  } | null;
+  f2f_encounter: {
+    id: string;
+    encounter_date: string | null;
+    status: string;
+    performed_by_role: string | null;
+    attested_at: string | null;
+  } | null;
+  billing_ready: boolean;
+};
+
+export type PocCertificationResponse = {
+  tenant_id: string;
+  count: number;
+  poc_certification_status: PocCertificationRow[];
+};
+
+export function fetchPocCertificationStatus(
+  tenantId?: string | null,
+  params?: { current_period_only?: boolean; limit?: number }
+): Promise<PocCertificationResponse> {
+  const search = new URLSearchParams();
+  if (params?.current_period_only === false) search.set("current_period_only", "false");
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/poc-certification-status${query ? `?${query}` : ""}`;
+  return fetchJson<PocCertificationResponse>(withTenantId(base, tenantId));
+}
+
+export type NoeTrackingRow = {
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  benefit_period_id: string;
+  election_date: string | null;
+  noe_submitted_date: string | null;
+  noe_exception_reason: string | null;
+  noe_filed: boolean;
+  is_late: boolean;
+  is_exempt: boolean;
+  non_covered_start: string | null;
+  non_covered_end: string | null;
+  non_covered_days: number | null;
+  penalty_reason: string | null;
+};
+
+export type NoeTrackingResponse = {
+  tenant_id: string;
+  count: number;
+  late_count: number;
+  unfiled_count: number;
+  noe_tracking: NoeTrackingRow[];
+};
+
+export function fetchNoeTracking(
+  tenantId?: string | null,
+  params?: { late_only?: boolean; unfiled_only?: boolean; limit?: number }
+): Promise<NoeTrackingResponse> {
+  const search = new URLSearchParams();
+  if (params?.late_only) search.set("late_only", "true");
+  if (params?.unfiled_only) search.set("unfiled_only", "true");
+  if (params?.limit) search.set("limit", String(params.limit));
+  const query = search.toString();
+  const base = `/billing/noe-tracking${query ? `?${query}` : ""}`;
+  return fetchJson<NoeTrackingResponse>(withTenantId(base, tenantId));
+}
+
 export function fetchPatientComplianceDetail(
   patientId: string
 ): Promise<PatientComplianceDetailResponse> {
