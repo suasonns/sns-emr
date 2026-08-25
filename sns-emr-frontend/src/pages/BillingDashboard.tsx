@@ -185,14 +185,6 @@ function TabChip({
   );
 }
 
-const sampleRows = [
-  ["Robert Henderson", "98341", "Medicare Part A", "01/15/2026", "$4,500", "$0", "Paid", "Dual Eligibility Overlap"],
-  ["Helen Chambers", "19481", "Blue Cross", "01/15/2026", "$4,200", "$2,100", "Processing", "Duplicate Claim Paid"],
-  ["Arthur Pendleton", "90018", "UnitedHealthcare", "01/10/2026", "$850", "$0", "Review", "Patient Deductible Met"],
-  ["Gloria Mitchell", "33120", "Medicare Part A", "01/02/2026", "$18,240", "$0", "Action Required", "MSP Primary Payer Shift"],
-  ["Walter Higgins", "64821", "Aetna HMO", "01/01/2026", "$6,720", "$0", "Processing Refund", "Rate Retroactive Correction"],
-] as const;
-
 export default function BillingDashboard() {
   const [lifecycle, setLifecycle] = useState<ClaimLifecycleResponse | null>(null);
   const [rows, setRows] = useState<BillingQueueRow[]>([]);
@@ -263,7 +255,15 @@ export default function BillingDashboard() {
         setLifecycle(null);
       }
 
-      setRows([]);
+      try {
+        const queueRes = await api.get<BillingQueueRow[]>("/billing/queue", {
+          params: { tenant_id: selectedAgencyId },
+        });
+        setRows(queueRes.data ?? []);
+      } catch (queueErr) {
+        console.error("Billing queue load error:", queueErr);
+        setRows([]);
+      }
     } catch (err) {
       console.error("Billing dashboard load error:", err);
       setError("Failed to load billing dashboard.");
@@ -323,6 +323,14 @@ export default function BillingDashboard() {
       filteredClaims: filteredRows.length,
       filteredCharge: filteredRows.reduce((sum, row) => sum + (typeof row.total_charge === "number" ? row.total_charge : 0), 0),
       filteredDenied: filteredRows.filter((r) => r.status.toUpperCase() === "DENIED").length,
+      uncollectedCharge: filteredRows
+        .filter((r) => r.status.toUpperCase() !== "PAID")
+        .reduce((sum, row) => sum + (typeof row.total_charge === "number" ? row.total_charge : 0), 0),
+      deniedCharge: filteredRows
+        .filter((r) => r.status.toUpperCase() === "DENIED")
+        .reduce((sum, row) => sum + (typeof row.total_charge === "number" ? row.total_charge : 0), 0),
+      pendingCount: filteredRows.filter((r) => r.status.toUpperCase() === "READY").length,
+      sentCount: filteredRows.filter((r) => r.status.toUpperCase() === "SENT").length,
     }),
     [rows, filteredRows]
   );
@@ -461,10 +469,20 @@ export default function BillingDashboard() {
       </SectionCard>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(4, minmax(0, 1fr))" }, gap: 1.5 }}>
-        <MetricCard label="Total Uncollected Revenue" value="$342,800" note="+8.3% vs prior" color={C.red} />
-        <MetricCard label="Missing Documentation" value="$156,200" note="36 claims" color={C.amber} />
-        <MetricCard label="Pending Authorization" value="$98,400" note="12 claims" color={C.blue} />
-        <MetricCard label="Coding / Diagnosis Issues" value="$52,100" note="9 claims" color={C.green} />
+        <MetricCard
+          label="Total Uncollected Revenue"
+          value={`$${summary.uncollectedCharge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          note={`${filteredRows.filter((r) => r.status.toUpperCase() !== "PAID").length} claims`}
+          color={C.red}
+        />
+        <MetricCard
+          label="Denied Claims"
+          value={`$${summary.deniedCharge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          note={`${summary.filteredDenied} claims`}
+          color={C.amber}
+        />
+        <MetricCard label="Pending Submission" value={String(summary.pendingCount)} note="Draft / ready to bill" color={C.blue} />
+        <MetricCard label="Awaiting Payer Response" value={String(summary.sentCount)} note="Submitted, not yet adjudicated" color={C.green} />
       </Box>
 
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1.25fr 0.75fr" }, gap: 2 }}>
@@ -483,33 +501,49 @@ export default function BillingDashboard() {
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 900 }}>
               <thead>
                 <tr style={{ textAlign: "left", color: C.slate500, fontSize: 11, textTransform: "uppercase" }}>
-                  {["Patient", "MRN", "Payer", "Service Dates", "Expected Amt", "Reason Unbilled", "Assigned To", "Days", "Actions"].map((h) => (
+                  {["Patient", "MRN", "Payer", "Service Date", "Charge", "Status", "Reason", "Actions"].map((h) => (
                     <th key={h} style={{ padding: "10px 8px", borderBottom: `1px solid ${C.gray200}` }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sampleRows.map((row, idx) => (
-                  <tr key={row[0]} style={{ borderBottom: `1px solid ${C.gray100}`, fontSize: 12 }}>
-                    <td style={{ padding: "10px 8px", fontWeight: 700, color: C.gray800 }}>{row[0]}</td>
-                    <td style={{ padding: "10px 8px" }}>MRN-{idx + 1}</td>
-                    <td style={{ padding: "10px 8px" }}>{row[2]}</td>
-                    <td style={{ padding: "10px 8px" }}>{row[3]}</td>
-                    <td style={{ padding: "10px 8px", fontWeight: 700 }}>{row[4]}</td>
-                    <td style={{ padding: "10px 8px", color: row[7].includes("Missing") ? C.red : C.amber }}>{row[7]}</td>
-                    <td style={{ padding: "10px 8px" }}>{["Maria Santos, RN", "Billing QA Team", "Dr. James (MD)", "Sunrise Intake", "Billing QA Team"][idx]}</td>
-                    <td style={{ padding: "10px 8px" }}>{[28, 35, 44, 12, 62][idx]}</td>
-                    <td style={{ padding: "10px 8px" }}>
-                      <Button size="small" variant="contained" onClick={() => setSelectedClaim({ patient_id: rows[0]?.patient_id ?? "demo", billing_cycle_id: rows[0]?.billing_cycle_id ?? "demo" })}>
-                        Review
-                      </Button>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "20px 8px", textAlign: "center", color: C.slate500, fontSize: 12 }}>
+                      No claims found for this agency.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filteredRows.map((row) => (
+                    <tr key={row.claim_id ?? `${row.patient_id}-${row.billing_cycle_id}`} style={{ borderBottom: `1px solid ${C.gray100}`, fontSize: 12 }}>
+                      <td style={{ padding: "10px 8px", fontWeight: 700, color: C.gray800 }}>{row.patient_name || row.patient_id}</td>
+                      <td style={{ padding: "10px 8px" }}>{row.patient_mrn || "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>{row.payer_name || "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>{row.service_date || "—"}</td>
+                      <td style={{ padding: "10px 8px", fontWeight: 700 }}>
+                        {typeof row.total_charge === "number"
+                          ? `$${row.total_charge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : "—"}
+                      </td>
+                      <td style={{ padding: "10px 8px", color: row.status.toUpperCase() === "DENIED" ? C.red : C.amber }}>{row.status}</td>
+                      <td style={{ padding: "10px 8px" }}>{row.last_status_reason || "—"}</td>
+                      <td style={{ padding: "10px 8px" }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => setSelectedClaim({ patient_id: row.patient_id, billing_cycle_id: row.billing_cycle_id })}
+                        >
+                          Review
+                        </Button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </Box>
         </SectionCard>
+
 
         <Box sx={{ display: "grid", gap: 2 }}>
           <SectionCard title="Billing Issues & Inquiries">
