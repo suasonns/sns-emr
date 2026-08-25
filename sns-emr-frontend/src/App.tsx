@@ -21,7 +21,7 @@ import MyProfilePage from "./pages/MyProfilePage";
 import IDGWorkspacePage from "./pages/IDGWorkspacePage";
 import OwnerDashboard from "./owner/OwnerDashboard";
 import TenantDashboard from "./tenant/TenantDashboard";
-import BillingDashboard from "./pages/BillingDashboard";
+import BillingOverviewPage from "./pages/billing/BillingOverviewPage";
 import BillerShell from "./components/billing/BillerShell";
 import VisitsNotesPage from "./pages/billing/VisitsNotesPage";
 import PocCertificationPage from "./pages/billing/PocCertificationPage";
@@ -55,7 +55,7 @@ export default function App() {
           }
         >
           <Route index element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard" element={<BillingDashboard />} />
+          <Route path="dashboard" element={<BillingOverviewPage />} />
           <Route path="readiness" element={<Navigate to="/billing/dashboard" replace />} />
           <Route path="settings" element={<ComingSoonPage title="Settings" />} />
           <Route path="visits-notes" element={<VisitsNotesPage />} />

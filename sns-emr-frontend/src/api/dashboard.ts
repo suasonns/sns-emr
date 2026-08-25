@@ -417,6 +417,34 @@ export function fetchNoeTracking(
   return fetchJson<NoeTrackingResponse>(withTenantId(base, tenantId));
 }
 
+export type BillingReadinessPatientRow = {
+  patient_id: string;
+  mrn: string | null;
+  period_number: number | null;
+  ready: boolean;
+  blockers: string[];
+  warnings: string[];
+};
+
+export type TenantBillingReadinessReport = {
+  tenant_id: string;
+  service_date: string;
+  total_patients: number;
+  ready_count: number;
+  not_ready_count: number;
+  patients: BillingReadinessPatientRow[];
+};
+
+export function fetchTenantBillingReadinessReport(
+  tenantId?: string | null,
+  serviceDate?: string
+): Promise<TenantBillingReadinessReport> {
+  const search = new URLSearchParams();
+  search.set("service_date", serviceDate || new Date().toISOString().slice(0, 10));
+  const base = `/billing/readiness-report?${search.toString()}`;
+  return fetchJson<TenantBillingReadinessReport>(withTenantId(base, tenantId));
+}
+
 export function fetchPatientComplianceDetail(
   patientId: string
 ): Promise<PatientComplianceDetailResponse> {

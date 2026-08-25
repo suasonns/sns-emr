@@ -121,6 +121,23 @@ the actual screenshots in this folder, using new shared components
 (Claims, Denials & Appeals, Eligibility, Payment Posting, Reports) can be built consistently
 once their backend data exists, instead of drifting again.
 
+**Dashboard page also rebuilt (2026-08-24)**: `/billing/dashboard` previously rendered the
+older, unrelated `pages/BillingDashboard.tsx` (a 14-tab report browser used by `/analytics`,
+predating this Figma work). That component is untouched and still serves `/analytics`; a new
+`pages/billing/BillingOverviewPage.tsx` now serves `/billing/dashboard` instead, matching
+`11-full-sidebar-dashboard-visits-poc.png`'s Dashboard panel: 4 metric cards (Total Patients /
+Ready to Bill / Blockers Outstanding / Clean Claim Rate, the last computed from real
+accepted/denied claim-lifecycle counts), a "Blocker Breakdown by Unresolved Flag" panel (client
+categorizes the real per-patient blocker strings from `/billing/readiness-report` using the
+same category prefixes as `billing_readiness_service.categorize_blocker`), and an "Active
+Billing Batch Lifecycle Stages" 4-card row mapped directly from the real claim-lifecycle
+ready/sent/accepted/paid counts. **One deviation**: the mockup's "Readiness Compared by
+Associated Agency" panel is a cross-agency comparison table, but that data is only exposed by
+an owner-only endpoint (`GET /api/dashboard/billing-readiness`) — a billing-role user viewing
+one agency at a time has no legitimate access to every other agency's readiness numbers. That
+panel was replaced with a "Claims Lifecycle Snapshot" for the selected agency instead of
+fabricating cross-agency numbers or exposing data outside the current tenant scope.
+
 ## Known open items (do not silently resolve — ask the user)
 
 1. ~~Sidebar nav: "Billing Readiness" vs. "Settings" as the 10th item~~ — **resolved 2026-08-24**:
