@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Box, Chip, CircularProgress, Paper, Typography } from "@mui/material";
+import { Alert, Box, Button, Chip, CircularProgress, Paper, TextField, Typography } from "@mui/material";
 import ReceiptLongOutlinedIcon from "@mui/icons-material/ReceiptLongOutlined";
 import GavelOutlinedIcon from "@mui/icons-material/GavelOutlined";
 import VerifiedUserOutlinedIcon from "@mui/icons-material/VerifiedUserOutlined";
 import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import FactCheckOutlinedIcon from "@mui/icons-material/FactCheckOutlined";
+import GppMaybeOutlinedIcon from "@mui/icons-material/GppMaybeOutlined";
 
 import {
   fetchClaims,
@@ -18,9 +19,186 @@ import {
   type RemittancesResponse,
   type TenantBillingReadinessReport,
 } from "../../api/dashboard";
+import {
+  fetchHospiceCapRecord,
+  upsertHospiceCapRecord,
+  type HospiceCapRecord,
+} from "../../api/hospiceCap";
 import { useAgency } from "../../components/billing/AgencyContext";
 import PageHeader from "../../components/billing/PageHeader";
 import HipaaBanner from "../../components/billing/HipaaBanner";
+
+// Cap year = the starting calendar year of the Nov 1 - Oct 31 hospice cap
+// accounting year (42 CFR 418.309). Nov/Dec of year Y belong to cap year Y;
+// Jan-Oct of year Y belong to cap year Y-1.
+function currentCapYear(): number {
+  const now = new Date();
+  const year = now.getFullYear();
+  return now.getMonth() >= 10 ? year : year - 1;
+}
+
+function HospiceCapCard({ tenantId }: { tenantId: string | null | undefined }) {
+  const capYear = useMemo(() => currentCapYear(), []);
+  const [record, setRecord] = useState<HospiceCapRecord | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [beneficiaryCount, setBeneficiaryCount] = useState("");
+  const [grossCollected, setGrossCollected] = useState("");
+  const [sourceNote, setSourceNote] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
+    fetchHospiceCapRecord(capYear, tenantId)
+      .then((r) => {
+        if (!isMounted) return;
+        setRecord(r);
+        setBeneficiaryCount(r.beneficiary_count ?? "");
+        setGrossCollected(r.gross_reimbursement_collected ?? "");
+        setSourceNote(r.source_note ?? "");
+      })
+      .catch((err) => {
+        if (isMounted) setError(err?.message || "Unable to load hospice cap data.");
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [tenantId, capYear]);
+
+  const handleSave = async () => {
+    if (!tenantId) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await upsertHospiceCapRecord(
+        capYear,
+        {
+          cap_year: capYear,
+          beneficiary_count: beneficiaryCount,
+          gross_reimbursement_collected: grossCollected,
+          source_note: sourceNote || undefined,
+        },
+        tenantId
+      );
+      setRecord(saved);
+      setEditing(false);
+    } catch (err: any) {
+      setError(err?.message || "Unable to save hospice cap data.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const usage = record?.cap_usage;
+
+  return (
+    <Paper variant="outlined" sx={{ bgcolor: "#0f1b2d", borderColor: "#1f3a5c", borderRadius: 2, p: 2 }}>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 1.5 }}>
+        <GppMaybeOutlinedIcon sx={{ fontSize: 20, color: "#14b8a6" }} />
+        <Typography sx={{ fontSize: 14, fontWeight: 800, color: "#fff" }}>
+          Hospice Aggregate Cap ({capYear})
+        </Typography>
+      </Box>
+
+      {loading ? (
+        <CircularProgress size={18} />
+      ) : editing ? (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+          <TextField
+            label="Beneficiary count (NGS/PS&R report)"
+            size="small"
+            value={beneficiaryCount}
+            onChange={(e) => setBeneficiaryCount(e.target.value)}
+            sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+          />
+          <TextField
+            label="Gross reimbursement collected"
+            size="small"
+            value={grossCollected}
+            onChange={(e) => setGrossCollected(e.target.value)}
+            sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+          />
+          <TextField
+            label="Source note (e.g. NGS PS&R report date)"
+            size="small"
+            value={sourceNote}
+            onChange={(e) => setSourceNote(e.target.value)}
+            sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+          />
+          <Box sx={{ display: "flex", gap: 1 }}>
+            <Button size="small" variant="contained" disabled={saving} onClick={handleSave}>
+              Save
+            </Button>
+            <Button size="small" onClick={() => setEditing(false)} disabled={saving} sx={{ color: "#7f97b3" }}>
+              Cancel
+            </Button>
+          </Box>
+        </Box>
+      ) : usage ? (
+        <>
+          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1, mb: 1.5 }}>
+            <Chip
+              label={`Allowed: $${usage.allowed_amount}`}
+              size="small"
+              sx={{ fontSize: 11.5, fontWeight: 700, bgcolor: "#0b1626", color: "#e2e8f0", border: "1px solid #1f3a5c" }}
+            />
+            <Chip
+              label={`Collected: $${usage.gross_reimbursement_collected}`}
+              size="small"
+              sx={{ fontSize: 11.5, fontWeight: 700, bgcolor: "#0b1626", color: "#e2e8f0", border: "1px solid #1f3a5c" }}
+            />
+            <Chip
+              label={usage.is_over_cap ? `Over cap: $${usage.over_cap_amount}` : `Available: $${usage.available_amount}`}
+              size="small"
+              sx={{
+                fontSize: 11.5,
+                fontWeight: 700,
+                bgcolor: "#0b1626",
+                color: usage.is_over_cap ? "#f87171" : "#4ade80",
+                border: "1px solid #1f3a5c",
+              }}
+            />
+          </Box>
+          <Typography sx={{ fontSize: 11.5, color: "#7f97b3", mb: 1 }}>
+            Beneficiary count and collected amount are biller-entered from the agency's NGS PS&R cap report --
+            {record?.source_note ? ` ${record.source_note}.` : " no source note on file."}
+          </Typography>
+          <Button size="small" onClick={() => setEditing(true)} sx={{ color: "#14b8a6" }}>
+            Update figures
+          </Button>
+        </>
+      ) : (
+        <>
+          <Typography sx={{ fontSize: 12.5, color: "#7f97b3", mb: 1 }}>
+            {record?.cap_error
+              ? record.cap_error
+              : "Not configured yet. This app cannot compute the aggregate cap on its own -- it needs the agency's real, cross-provider beneficiary count and collected reimbursement from the NGS PS&R cap report."}
+          </Typography>
+          <Button size="small" variant="outlined" onClick={() => setEditing(true)} sx={{ color: "#14b8a6", borderColor: "#14b8a6" }}>
+            Log cap data
+          </Button>
+        </>
+      )}
+
+      {error ? (
+        <Alert severity="error" sx={{ mt: 1.5, fontSize: 12 }}>
+          {error}
+        </Alert>
+      ) : null}
+    </Paper>
+  );
+}
+
 
 type SnapshotCard = {
   key: string;
@@ -207,6 +385,7 @@ export default function ReportsPage() {
               </Paper>
             );
           })}
+          <HospiceCapCard tenantId={selectedAgencyId} />
         </Box>
       )}
     </Box>
