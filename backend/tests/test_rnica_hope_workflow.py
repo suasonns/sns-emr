@@ -308,6 +308,55 @@ def test_hope_update_status_finds_huv1_and_huv2_windows(client, db_session, rn_h
     assert body["huv2"]["assessment"]["assessmentId"] == str(huv2.id)
     assert body["huv1"]["window"]["start"] == "2026-02-07"
     assert body["huv2"]["window"]["end"] == "2026-03-03"
+    assert body["huv1"]["reason"] is None
+    assert body["huv2"]["reason"] is None
+
+
+@pytest.mark.integration
+def test_hope_update_status_surfaces_real_reason_when_no_record_exists(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    election_date = datetime(2026, 2, 1, 8, 0, tzinfo=timezone.utc)
+    patient = _make_patient(db_session, tenant_id)
+    _make_admission(db_session, patient, tenant_id, election_date)
+
+    resp = client.get(f"/visits/rnica/hope-update-status/{patient.id}", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["huv1"]["assessment"] is None
+    assert body["huv1"]["reason"] == "No RN ICA Update Assessment has been locked for this admission yet."
+    assert body["huv2"]["assessment"] is None
+    assert body["huv2"]["reason"] == "No RN ICA Update Assessment has been locked for this admission yet."
+
+
+@pytest.mark.integration
+def test_hope_update_status_surfaces_out_of_window_reason(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    election_date = datetime(2026, 2, 1, 8, 0, tzinfo=timezone.utc)
+    patient = _make_patient(db_session, tenant_id)
+    admission = _make_admission(db_session, patient, tenant_id, election_date)
+
+    # Locked update assessment exists, but completed on day 40 -- outside
+    # both the HUV1 (6-15) and HUV2 (16-30) windows -- so the real
+    # validate_huv_visit_completion() failure message should surface
+    # instead of a generic "not found" string.
+    _make_assessment(
+        db_session,
+        patient,
+        admission,
+        tenant_id,
+        assessment_type="UPDATE",
+        locked=True,
+        locked_at=election_date + timedelta(days=40),
+        form_data=_complete_form_data(visitMeta={"discipline": "RN", "visitDate": "2026-03-13"}),
+    )
+
+    resp = client.get(f"/visits/rnica/hope-update-status/{patient.id}", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["huv1"]["assessment"] is None
+    assert "days 6 and 15" in body["huv1"]["reason"]
+    assert body["huv2"]["assessment"] is None
+    assert "days 16 and 30" in body["huv2"]["reason"]
 
 
 @pytest.mark.integration

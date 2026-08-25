@@ -1465,7 +1465,7 @@ export default function ComplianceHopeBoard({
                     <div style={styles.muted}>
                       {hopeUpdateStatus?.huv1?.assessment
                         ? `Assessment locked ${formatDate(hopeUpdateStatus.huv1.assessment.lockedAt || hopeUpdateStatus.huv1.assessment.updatedAt)}.`
-                        : "Backend Phase B window checked, but no locked Update Assessment falls in days 6–15 yet."}
+                        : hopeUpdateStatus?.huv1?.reason || "Backend Phase B window checked, but no locked Update Assessment falls in days 6–15 yet."}
                     </div>
                   </div>
 
@@ -1476,7 +1476,7 @@ export default function ComplianceHopeBoard({
                     <div style={styles.muted}>
                       {hopeUpdateStatus?.huv2?.assessment
                         ? `Assessment locked ${formatDate(hopeUpdateStatus.huv2.assessment.lockedAt || hopeUpdateStatus.huv2.assessment.updatedAt)}.`
-                        : "Backend Phase B window checked, but no locked Update Assessment falls in days 16–30 yet."}
+                        : hopeUpdateStatus?.huv2?.reason || "Backend Phase B window checked, but no locked Update Assessment falls in days 16–30 yet."}
                     </div>
                   </div>
                 </div>

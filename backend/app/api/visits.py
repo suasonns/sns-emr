@@ -219,10 +219,16 @@ def _window_bounds(election_datetime: datetime, start_day: int, end_day: int) ->
     }
 
 
-def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, huv_task_type: str) -> bool:
+def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, huv_task_type: str) -> tuple[bool, str | None]:
+    """Returns (matched, mismatch_reason). mismatch_reason is the real
+    validate_huv_visit_completion() error (e.g. "HUV1 must be completed on
+    or between days 6 and 15") when a locked update assessment exists but
+    falls outside the required HUV window, so callers can surface the real
+    reason a HUV wasn't counted instead of a generic "no update yet".
+    """
     completed_at = _assessment_completed_datetime(record)
     if completed_at is None:
-        return False
+        return False, None
     discipline = str((((record.form_data or {}).get("visitMeta") or {}).get("discipline")) or "RN")
     try:
         validate_huv_visit_completion(
@@ -231,9 +237,9 @@ def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, hu
             discipline=discipline,
             task_type_name=huv_task_type,
         )
-        return True
-    except ValueError:
-        return False
+        return True, None
+    except ValueError as exc:
+        return False, str(exc)
 
 
 def _flatten_rnica_primary_diagnosis(form_data: dict) -> str | None:
@@ -1000,8 +1006,8 @@ def get_hope_update_status(
         "patientId": str(patient_uuid),
         "admissionId": str(current_admission.id) if current_admission else None,
         "electionDate": election_datetime.date().isoformat() if election_datetime else None,
-        "huv1": {"window": _window_bounds(election_datetime, 6, 15) if election_datetime else None, "assessment": None},
-        "huv2": {"window": _window_bounds(election_datetime, 16, 30) if election_datetime else None, "assessment": None},
+        "huv1": {"window": _window_bounds(election_datetime, 6, 15) if election_datetime else None, "assessment": None, "reason": None},
+        "huv2": {"window": _window_bounds(election_datetime, 16, 30) if election_datetime else None, "assessment": None, "reason": None},
     }
     if election_datetime is None or current_admission is None:
         return response
@@ -1017,12 +1023,30 @@ def get_hope_update_status(
         .order_by(RnicaAssessment.locked_at.asc(), RnicaAssessment.created_at.asc())
         .all()
     )
+    # Track the real reason the closest candidate assessment didn't count
+    # toward each HUV (e.g. locked outside the required day-6-15/16-30
+    # window) so the UI can show *why* instead of a generic "not found".
+    huv1_reason: str | None = None
+    huv2_reason: str | None = None
     for record in records:
-        if response["huv1"]["assessment"] is None and _matches_huv_window(record, election_datetime, TASK_TYPE_HUV1):
-            response["huv1"]["assessment"] = _serialize_rnica_assessment(record)
-            continue
-        if response["huv2"]["assessment"] is None and _matches_huv_window(record, election_datetime, TASK_TYPE_HUV2):
-            response["huv2"]["assessment"] = _serialize_rnica_assessment(record)
+        if response["huv1"]["assessment"] is None:
+            matched, reason = _matches_huv_window(record, election_datetime, TASK_TYPE_HUV1)
+            if matched:
+                response["huv1"]["assessment"] = _serialize_rnica_assessment(record)
+                continue
+            if reason and huv1_reason is None:
+                huv1_reason = reason
+        if response["huv2"]["assessment"] is None:
+            matched, reason = _matches_huv_window(record, election_datetime, TASK_TYPE_HUV2)
+            if matched:
+                response["huv2"]["assessment"] = _serialize_rnica_assessment(record)
+            elif reason and huv2_reason is None:
+                huv2_reason = reason
+
+    if response["huv1"]["assessment"] is None:
+        response["huv1"]["reason"] = huv1_reason or "No RN ICA Update Assessment has been locked for this admission yet."
+    if response["huv2"]["assessment"] is None:
+        response["huv2"]["reason"] = huv2_reason or "No RN ICA Update Assessment has been locked for this admission yet."
     return response
 @router.put("/rnica/{assessment_id}")
 def update_rnica_assessment(
