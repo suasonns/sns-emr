@@ -28,6 +28,7 @@ from app.services.poc_engine import generate_poc_suggestions
 from app.services.poc_review_gate import enforce_poc_review_gate
 from app.services.task_auto_complete_engine import auto_complete_tasks_from_note
 from app.services.task_engine import process_tasks_for_note
+from app.services.evidence.harvest_service import harvest_from_source, extract_narrative_text
 from app.domain.clinical.rn_ica_keys import (
     RN_ICA_ACCEPTED_KEYS,
     RN_ICA_CANONICAL_FORM_KEY,
@@ -1014,6 +1015,42 @@ def save_clinical_note(
 # FINALIZE SIGN
 # =========================================================
 
+def _harvest_evidence_from_note(db: Session, *, note: ClinicalNote) -> None:
+    """Best-effort AI Evidence Harvester hook for a just-finalized note.
+
+    Covers RN/LVN/NP/MD/SC/MSW/LCSW/BSW (all disciplines routed through
+    ClinicalNote). Never allowed to affect note finalization -- any
+    failure here is caught and logged, not raised.
+    """
+
+    try:
+        if not note.patient_id or not note.tenant_id:
+            return
+
+        narrative_text = extract_narrative_text(note.content)
+        if not narrative_text:
+            return
+
+        harvest_from_source(
+            db,
+            tenant_id=note.tenant_id,
+            patient_id=note.patient_id,
+            source_type="CLINICAL_NOTE",
+            source_record_id=note.id,
+            visit_id=note.visit_id,
+            discipline=note.discipline,
+            note_type=note.note_type,
+            recorded_by_user_id=note.author_id,
+            recorded_at=note.finalized_at or note.entered_at,
+            text=narrative_text,
+        )
+    except Exception:
+        logger.exception(
+            "evidence_harvester: hook failed for note_id=%s (note finalization unaffected)",
+            str(getattr(note, "id", None)),
+        )
+
+
 def finalize_clinical_note(
     db: Session,
     *,
@@ -1095,6 +1132,8 @@ def finalize_clinical_note(
         db.add(note)
         db.commit()
         db.refresh(note)
+
+        _harvest_evidence_from_note(db, note=note)
 
         return note, validation_result
 
