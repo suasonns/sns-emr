@@ -100,6 +100,9 @@ from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
 from app.api.billing_835 import router as billing_835_router
 from app.billing.api.eligibility_check_router import router as eligibility_check_router
+from app.billing.api.visits_notes_router import router as visits_notes_router
+from app.billing.api.poc_certification_router import router as poc_certification_router
+from app.billing.api.noe_tracking_router import router as noe_tracking_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -208,8 +211,9 @@ def register_routers(app: FastAPI) -> None:
         billing_router,
         billing_835_router,
         eligibility_check_router,
-
-        order_templates_router,
+        visits_notes_router,
+        poc_certification_router,
+        noe_tracking_router,
         patient_orders_router,
         fax_router,
         lab_catalog_router,
