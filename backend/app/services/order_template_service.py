@@ -96,6 +96,8 @@ def add_template_item(db: Session, template_id: uuid.UUID, item: dict, created_b
         vendor=item.get("vendor"),
         administered_by=item.get("administered_by"),
         special_instruction=item.get("special_instruction"),
+        start_date=item.get("start_date"),
+        stop_date=item.get("stop_date"),
         sort_order=item.get("sort_order", next_sort),
         created_by=created_by,
     )
@@ -133,6 +135,8 @@ def _format_order_text(item: OrderTemplateItem) -> str:
         item.payer and f"Payer: {item.payer}",
         item.vendor and f"Vendor: {item.vendor}",
         item.administered_by and f"Administered by: {item.administered_by}",
+        item.start_date and f"Start Date: {item.start_date.isoformat()}",
+        item.stop_date and f"Stop Date: {item.stop_date.isoformat()}",
         item.special_instruction and f"Instructions: {item.special_instruction}",
     ]
     return " — ".join(p.strip() for p in parts if p and p.strip())

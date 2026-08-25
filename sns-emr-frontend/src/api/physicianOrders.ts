@@ -30,6 +30,10 @@ export type PhysicianOrderRecord = {
   cancelled_at: string | null;
   cancel_reason: string | null;
   created_at: string | null;
+  visit_frequency_discipline: string | null;
+  visit_frequency_per_week: number | null;
+  visit_frequency_prn_count: number | null;
+  visit_frequency_superseded_at: string | null;
 };
 
 export type PhysicianOrderCreate = {
@@ -46,6 +50,9 @@ export type PhysicianOrderCreate = {
     normalized_value: string | null;
     normalization_method: string;
   } | null;
+  visit_frequency_discipline?: string | null;
+  visit_frequency_per_week?: number | null;
+  visit_frequency_prn_count?: number | null;
 };
 
 export async function listPhysicianOrders(

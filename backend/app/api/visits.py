@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Optional, List, Set, Generator, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, Security, status, Query
 from pydantic import (
     BaseModel,
     Field,
@@ -27,10 +27,13 @@ from app.models.enums import (
     TaskRegulatoryBasis,)
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
+from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
 from app.models.user import User
 from app.models.visit import Visit
+from app.billing.models.visit_minutes import VisitMinutes
+from app.billing.services.unit_service import calculate_units
 from app.models.med_reconciliation import MedReconciliationItem
 from app.models.sfv_requirement import SFVRequirement
 from app.models.admission import Admission
@@ -41,6 +44,7 @@ from app.models.rnica_assessment import RnicaAssessment
 from app.services import rnica_poc_adapter
 from app.services.rnica_finalization_service import evaluate_finalization_readiness
 from app.services import rnica_amendment_service
+from app.services.eligibility.engine import detect_lcd_config
 from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_data
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
@@ -63,7 +67,11 @@ from app.services.visit_compliance_guards import (
 from app.services.hope_phase_b_engine import (
     complete_sfv_requirement_from_visit,
     process_huv_finalize,
-    process_initial_rn_ica_finalize,)
+    process_initial_rn_ica_finalize,
+    TASK_TYPE_HUV1,
+    TASK_TYPE_HUV2,
+    validate_huv_visit_completion,)
+from app.services import rnica_hope_workflow_service
 from app.services.clinical_reasoning_engine import ClinicalReasoningEngine
 from app.services.reasoning_result_to_recommendation_service import (
     ReasoningResultToRecommendationService,)
@@ -74,7 +82,160 @@ from app.services.task_service import (
     create_abuse_neglect_exploitation_task,
     create_spiritual_care_suicide_risk_escalation_task,
     create_suicide_risk_escalation_task,)
+from app.core.roles import normalize_role, role_matches
 logger = logging.getLogger(__name__)
+RNICA_ADMISSION_TYPE = "RNICA"
+RNICA_UPDATE_TYPE = "UPDATE"
+RNICA_RECERT_TYPE = "RECERT"
+
+
+def _normalize_rnica_assessment_type(
+    assessment_subtype: Optional[str] = None,
+    assessment_type: Optional[str] = None,
+    *,
+    default: str = RNICA_ADMISSION_TYPE,
+) -> str:
+    if assessment_type is not None and str(assessment_type).strip():
+        normalized = str(assessment_type).strip().upper()
+    elif assessment_subtype is not None and str(assessment_subtype).strip():
+        subtype = str(assessment_subtype).strip().lower()
+        normalized = {
+            "update": RNICA_UPDATE_TYPE,
+            "recert": RNICA_RECERT_TYPE,
+            "admission": RNICA_ADMISSION_TYPE,
+            "ica": RNICA_ADMISSION_TYPE,
+            "rnica": RNICA_ADMISSION_TYPE,
+        }.get(subtype, subtype.upper())
+    else:
+        normalized = default
+
+    if normalized not in {RNICA_ADMISSION_TYPE, RNICA_UPDATE_TYPE, RNICA_RECERT_TYPE}:
+        raise HTTPException(
+            status_code=422,
+            detail="assessmentSubtype/assessmentType must be one of admission, update, or recert",
+        )
+    return normalized
+
+
+def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool = True) -> dict:
+    workflow = rnica_hope_workflow_service.current_metadata(record)
+    payload = {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
+        "status": record.status,
+        "locked": record.locked,
+        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        "admissionId": str(record.admission_id) if record.admission_id else None,
+        "hopeWorkflow": workflow,
+    }
+    if include_form_data:
+        form_data = dict(record.form_data or {})
+        finalization = dict(form_data.get("finalization") or {})
+        finalization["hopeSubmissionNumber"] = workflow["submissionNumber"] or ""
+        finalization["hopeAlreadySubmitted"] = bool(workflow["alreadySubmitted"])
+        form_data["finalization"] = finalization
+        payload["formData"] = form_data
+    return payload
+
+
+def _assessment_visit_date_from_form_data(form_data: dict | None, *, fallback_datetime: datetime | None = None) -> str | None:
+    visit_meta = (form_data or {}).get("visitMeta") or {}
+    visit_date = str(visit_meta.get("visitDate") or "").strip()
+    if visit_date:
+        return visit_date[:10]
+    if fallback_datetime:
+        return fallback_datetime.date().isoformat()
+    return None
+
+
+def _serialize_msw_ica_assessment(record: MswIcaAssessment, include_form_data: bool = True) -> dict:
+    payload = {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "assessmentType": record.assessment_type or "MSWICA",
+        "status": record.status,
+        "locked": record.locked,
+        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        "visitDate": _assessment_visit_date_from_form_data(record.form_data or {}, fallback_datetime=record.created_at),
+    }
+    if include_form_data:
+        payload["formData"] = merge_msw_ica_form_data(record.form_data or {})
+    return payload
+
+
+def _serialize_scica_assessment(record: ScicaAssessment, include_form_data: bool = True) -> dict:
+    payload = {
+        "assessmentId": str(record.id),
+        "patientId": str(record.patient_id),
+        "assessmentType": record.assessment_type or "SCICA",
+        "status": record.status,
+        "locked": record.locked,
+        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
+        "createdAt": record.created_at.isoformat() if record.created_at else None,
+        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        "visitDate": _assessment_visit_date_from_form_data(record.form_data or {}, fallback_datetime=record.created_at),
+    }
+    if include_form_data:
+        payload["formData"] = merge_scica_form_data(record.form_data or {})
+    return payload
+
+
+def _get_current_admission_for_patient(db: Session, patient_uuid, tenant_id):
+    return (
+        db.query(Admission)
+        .filter(
+            Admission.patient_id == patient_uuid,
+            Admission.tenant_id == tenant_id,
+            Admission.status == "ADMITTED",
+        )
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+
+
+def _assessment_completed_datetime(record: RnicaAssessment) -> datetime | None:
+    form_data = record.form_data or {}
+    visit_meta = form_data.get("visitMeta") or {}
+    visit_date = str(visit_meta.get("visitDate") or "").strip()
+    if visit_date:
+        try:
+            return datetime.fromisoformat(f"{visit_date[:10]}T00:00:00+00:00")
+        except ValueError:
+            pass
+    if record.locked_at:
+        return record.locked_at
+    return record.updated_at or record.created_at
+
+
+def _window_bounds(election_datetime: datetime, start_day: int, end_day: int) -> dict:
+    return {
+        "start": (election_datetime + timedelta(days=start_day)).date().isoformat(),
+        "end": (election_datetime + timedelta(days=end_day)).date().isoformat(),
+    }
+
+
+def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, huv_task_type: str) -> bool:
+    completed_at = _assessment_completed_datetime(record)
+    if completed_at is None:
+        return False
+    discipline = str((((record.form_data or {}).get("visitMeta") or {}).get("discipline")) or "RN")
+    try:
+        validate_huv_visit_completion(
+            election_datetime=election_datetime,
+            completed_visit_datetime=completed_at,
+            discipline=discipline,
+            task_type_name=huv_task_type,
+        )
+        return True
+    except ValueError:
+        return False
+
+
 def _flatten_rnica_primary_diagnosis(form_data: dict) -> str | None:
     primary = ((form_data or {}).get("diagnoses") or {}).get("primaryDiagnosis") or {}
     icd10 = str(primary.get("icd10") or "").strip()
@@ -121,6 +282,34 @@ def _build_rnica_secondary_summary(form_data: dict) -> str | None:
             "Comorbidities:\n" + "\n".join(f"- {item}" for item in comorbidities)
         )
     return "\n\n".join(sections) if sections else None
+
+
+def _normalize_rnica_lcd_detection(form_data: dict | None) -> dict:
+    normalized = dict(form_data or {})
+    diagnoses = dict(normalized.get("diagnoses") or {})
+    primary = dict(diagnoses.get("primaryDiagnosis") or {})
+    detected = detect_lcd_config(
+        {
+            "primary_diagnosis_code": primary.get("icd10"),
+            "primary_diagnosis_description": primary.get("description"),
+        }
+    )
+    disease = str((detected or {}).get("disease") or "").strip().upper()
+    if not disease:
+        return normalized
+
+    nds_eligibility = dict(diagnoses.get("ndsEligibility") or {})
+    previous = str(nds_eligibility.get("detectedDisease") or "").strip().upper()
+    if previous and previous != disease:
+        for bucket_key in ("criteriaAnswers", "criteriaFacts"):
+            bucket = dict(nds_eligibility.get(bucket_key) or {})
+            if previous in bucket and disease not in bucket:
+                bucket[disease] = bucket[previous]
+                nds_eligibility[bucket_key] = bucket
+    nds_eligibility["detectedDisease"] = disease
+    diagnoses["ndsEligibility"] = nds_eligibility
+    normalized["diagnoses"] = diagnoses
+    return normalized
 def _build_rnica_allergy_summary(form_data: dict) -> tuple[bool | None, str | None]:
     allergies = _flatten_rnica_list_items(
         ((form_data or {}).get("infection") or {}).get("allergies")
@@ -572,7 +761,7 @@ def save_rnica_assessment(
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),):
     patient_id_raw = (payload or {}).get("patientId")
-    form_data = (payload or {}).get("formData") or {}
+    form_data = _normalize_rnica_lcd_detection((payload or {}).get("formData") or {})
     # "update" / "recert" saves come from the *ongoing* RN visit workflow
     # (change-in-condition update or a due recertification) which reuses
     # this same table for storage, but is a distinct kind of visit from the
@@ -580,6 +769,7 @@ def save_rnica_assessment(
     # save (no assessmentSubtype) is subject to the "once per admission"
     # rule below.
     assessment_subtype = (payload or {}).get("assessmentSubtype")
+    normalized_assessment_type = _normalize_rnica_assessment_type(assessment_subtype)
     if not patient_id_raw:
         raise HTTPException(status_code=422, detail="patientId is required")
     try:
@@ -587,17 +777,8 @@ def save_rnica_assessment(
     except (TypeError, ValueError):
         raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
     patient = get_authorized_patient(db, patient_uuid, current_user)
-    current_admission = (
-        db.query(Admission)
-        .filter(
-            Admission.patient_id == patient_uuid,
-            Admission.tenant_id == patient.tenant_id,
-            Admission.status == "ADMITTED",
-        )
-        .order_by(Admission.created_at.desc())
-        .first()
-    )
-    if not assessment_subtype:
+    current_admission = _get_current_admission_for_patient(db, patient_uuid, patient.tenant_id)
+    if normalized_assessment_type == RNICA_ADMISSION_TYPE:
         # RN ICA (initial comprehensive assessment) is a one-time document
         # per admission episode. If this admission already has one locked,
         # refuse to start another -- staff should be documenting an
@@ -630,10 +811,11 @@ def save_rnica_assessment(
         tenant_id=getattr(patient, "tenant_id", None),
         admission_id=current_admission.id if current_admission else None,
         form_data=form_data,
-        assessment_type="RNICA",
+        assessment_type=normalized_assessment_type,
         status="DRAFT",
         locked=False,
     )
+    rnica_hope_workflow_service.sync_submission_fields_from_form_data(assessment, form_data)
     db.add(assessment)
     db.commit()
     db.refresh(assessment)
@@ -643,7 +825,11 @@ def save_rnica_assessment(
         patient_id=patient_uuid,
         form_data=form_data,
     )
-    return {"assessmentId": str(assessment.id), "status": "saved"}
+    return {
+        "assessmentId": str(assessment.id),
+        "status": "saved",
+        "assessmentType": normalized_assessment_type,
+    }
 @router.get("/rnica/admission-status/{patient_id}")
 def get_rnica_admission_status(
     patient_id: str,
@@ -702,16 +888,92 @@ def get_rnica_assessment(
         raise HTTPException(status_code=404, detail="Assessment not found")
     get_authorized_patient(db, record.patient_id, current_user)
     return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": record.form_data or {},
-        "locked": record.locked,
-        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        **_serialize_rnica_assessment(record),
     }
 @router.get("/rnica/by-patient/{patient_id}")
 def get_rnica_assessment_by_patient(
+    patient_id: str,
+    assessmentSubtype: Optional[str] = Query(default=None),
+    assessmentType: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    normalized_assessment_type = _normalize_rnica_assessment_type(
+        assessmentSubtype,
+        assessmentType,
+        default=RNICA_ADMISSION_TYPE,
+    )
+    current_admission = _get_current_admission_for_patient(
+        db,
+        patient_uuid,
+        getattr(patient, "tenant_id", None),
+    )
+    records = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient_uuid,
+            RnicaAssessment.assessment_type == normalized_assessment_type,
+        )
+        .order_by(RnicaAssessment.created_at.desc())
+        .all()
+    )
+    if current_admission is not None:
+        records = [item for item in records if item.admission_id == current_admission.id]
+    record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
+    if not record:
+        return {"assessmentId": None, "assessmentType": normalized_assessment_type}
+    return _serialize_rnica_assessment(record)
+
+
+@router.get("/rnica/by-patient/{patient_id}/records")
+def list_rnica_assessments_by_patient(
+    patient_id: str,
+    assessmentSubtype: Optional[str] = Query(default=None),
+    assessmentType: Optional[str] = Query(default=None),
+    lockedOnly: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    normalized_assessment_type = _normalize_rnica_assessment_type(
+        assessmentSubtype,
+        assessmentType,
+        default=RNICA_ADMISSION_TYPE,
+    )
+    current_admission = _get_current_admission_for_patient(
+        db,
+        patient_uuid,
+        getattr(patient, "tenant_id", None),
+    )
+    query = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient_uuid,
+            RnicaAssessment.assessment_type == normalized_assessment_type,
+        )
+        .order_by(RnicaAssessment.created_at.desc())
+    )
+    if lockedOnly:
+        query = query.filter(RnicaAssessment.locked.is_(True))
+    records = query.all()
+    if current_admission is not None:
+        records = [item for item in records if item.admission_id == current_admission.id]
+    return {
+        "patientId": str(patient_uuid),
+        "assessmentType": normalized_assessment_type,
+        "assessments": [_serialize_rnica_assessment(record) for record in records],
+    }
+
+
+@router.get("/rnica/hope-update-status/{patient_id}")
+def get_hope_update_status(
     patient_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),):
@@ -719,25 +981,49 @@ def get_rnica_assessment_by_patient(
         patient_uuid = uuid.UUID(patient_id)
     except ValueError:
         raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
-    get_authorized_patient(db, patient_uuid, current_user)
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    current_admission = _get_current_admission_for_patient(
+        db,
+        patient_uuid,
+        getattr(patient, "tenant_id", None),
+    )
+    election_datetime = None
+    if current_admission is not None:
+        election_datetime = (
+            current_admission.election_signed_at
+            or current_admission.soc_date
+            or current_admission.effective_date
+            or current_admission.admission_date
+        )
+
+    response = {
+        "patientId": str(patient_uuid),
+        "admissionId": str(current_admission.id) if current_admission else None,
+        "electionDate": election_datetime.date().isoformat() if election_datetime else None,
+        "huv1": {"window": _window_bounds(election_datetime, 6, 15) if election_datetime else None, "assessment": None},
+        "huv2": {"window": _window_bounds(election_datetime, 16, 30) if election_datetime else None, "assessment": None},
+    }
+    if election_datetime is None or current_admission is None:
+        return response
+
     records = (
         db.query(RnicaAssessment)
-        .filter(RnicaAssessment.patient_id == patient_uuid)
-        .order_by(RnicaAssessment.created_at.desc())
+        .filter(
+            RnicaAssessment.patient_id == patient_uuid,
+            RnicaAssessment.assessment_type == RNICA_UPDATE_TYPE,
+            RnicaAssessment.locked.is_(True),
+            RnicaAssessment.admission_id == current_admission.id,
+        )
+        .order_by(RnicaAssessment.locked_at.asc(), RnicaAssessment.created_at.asc())
         .all()
     )
-    record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
-    if not record:
-        return {"assessmentId": None}
-    return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": record.form_data or {},
-        "locked": record.locked,
-        "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
-    }
+    for record in records:
+        if response["huv1"]["assessment"] is None and _matches_huv_window(record, election_datetime, TASK_TYPE_HUV1):
+            response["huv1"]["assessment"] = _serialize_rnica_assessment(record)
+            continue
+        if response["huv2"]["assessment"] is None and _matches_huv_window(record, election_datetime, TASK_TYPE_HUV2):
+            response["huv2"]["assessment"] = _serialize_rnica_assessment(record)
+    return response
 @router.put("/rnica/{assessment_id}")
 def update_rnica_assessment(
     assessment_id: str,
@@ -767,9 +1053,10 @@ def update_rnica_assessment(
                 "to request a traceable addendum instead of modifying signed content."
             ),
         )
-    form_data = (payload or {}).get("formData") or record.form_data or {}
+    form_data = _normalize_rnica_lcd_detection((payload or {}).get("formData") or record.form_data or {})
     record.form_data = form_data
     record.status = "DRAFT"
+    rnica_hope_workflow_service.sync_submission_fields_from_form_data(record, form_data)
     db.commit()
     patient = (
         db.query(Patient)
@@ -786,6 +1073,7 @@ def update_rnica_assessment(
         "assessmentId": str(record.id),
         "status": "updated",
         "locked": record.locked,
+        "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
     }
 @router.delete("/rnica/{assessment_id}")
 def delete_rnica_assessment(
@@ -814,7 +1102,11 @@ def delete_rnica_assessment(
         )
     db.delete(record)
     db.commit()
-    return {"assessmentId": assessment_id, "status": "deleted"}
+    return {
+        "assessmentId": assessment_id,
+        "status": "deleted",
+        "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
+    }
 @router.post("/rnica/{assessment_id}/lock")
 def lock_rnica_assessment(
     assessment_id: str,
@@ -838,6 +1130,7 @@ def lock_rnica_assessment(
             "status": "locked",
             "locked": True,
             "lockedAt": record.locked_at.isoformat() if record.locked_at else None,
+            "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
         }
     # SECTION 12 — the backend re-checks the *same* readiness rules the
     # Final Review Dashboard shows (see rnica_finalization_service /
@@ -867,6 +1160,7 @@ def lock_rnica_assessment(
     record.locked = True
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
+    rnica_hope_workflow_service.sync_submission_fields_from_form_data(record, record.form_data or {})
     db.commit()
     # POC changes remain strictly clinician-initiated. Locking RN ICA must
     # only validate, sign/lock, and preserve assessment data — it must NOT
@@ -895,7 +1189,235 @@ def lock_rnica_assessment(
         "status": "locked",
         "locked": True,
         "lockedAt": record.locked_at.isoformat(),
+        "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
     }
+
+
+class HopeExportBatchRequest(BaseModel):
+    batch_id: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("batch_id")
+    @classmethod
+    def _validate_batch_id(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class HopeSubmissionPatchRequest(BaseModel):
+    hopeSubmissionNumber: Optional[str] = Field(default=None, max_length=128)
+    hopeAlreadySubmitted: bool = Field(default=False)
+
+    @field_validator("hopeSubmissionNumber")
+    @classmethod
+    def _validate_submission_number(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
+
+
+class HopeInactivationPatchRequest(BaseModel):
+    inactivated: bool
+
+
+class HopeUnlockRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+    @field_validator("reason")
+    @classmethod
+    def _validate_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("reason must not be blank")
+        return cleaned
+
+
+def _load_rnica_assessment_or_404(db: Session, assessment_id: str) -> RnicaAssessment:
+    try:
+        assessment_uuid = uuid.UUID(assessment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_uuid).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+    return record
+
+
+def _apply_hope_workflow_mutation(
+    *,
+    db: Session,
+    record: RnicaAssessment,
+    current_user: CurrentUser,
+    action: str,
+    mutation,
+) -> dict[str, Any]:
+    get_authorized_patient(db, record.patient_id, current_user)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    try:
+        metadata = mutation()
+        db.flush()
+        _safe_log_event(
+            db=db,
+            user_id=user_id,
+            action=action,
+            entity_type="rnica_assessment",
+            entity_id=record.id,
+            metadata={
+                "patientId": str(record.patient_id),
+                "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
+                "hopeWorkflow": metadata,
+            },
+        )
+        db.commit()
+        db.refresh(record)
+    except rnica_hope_workflow_service.HopeWorkflowError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception("HOPE workflow mutation failed", extra={"assessment_id": str(record.id), "action": action})
+        raise HTTPException(status_code=500, detail=f"HOPE workflow update failed: {exc}") from exc
+    return {
+        "assessmentId": str(record.id),
+        "hopeWorkflow": _serialize_rnica_assessment(record, include_form_data=False)["hopeWorkflow"],
+    }
+
+
+@router.get("/rnica/{assessment_id}/hope-workflow")
+def get_rnica_hope_workflow(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    get_authorized_patient(db, record.patient_id, current_user)
+    return {
+        "assessmentId": str(record.id),
+        "hopeWorkflow": _serialize_rnica_assessment(record, include_form_data=False)["hopeWorkflow"],
+    }
+
+
+@router.post("/rnica/{assessment_id}/hope-workflow/close")
+def close_rnica_hope_workflow(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_CLOSED",
+        mutation=lambda: rnica_hope_workflow_service.apply_close(record, user_id=user_id),
+    )
+
+
+@router.post("/rnica/{assessment_id}/hope-workflow/ready")
+def mark_rnica_hope_ready_to_export(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_READY_TO_EXPORT",
+        mutation=lambda: rnica_hope_workflow_service.apply_ready_to_export(record, user_id=user_id),
+    )
+
+
+@router.post("/rnica/{assessment_id}/hope-workflow/export")
+def export_rnica_hope_to_batch(
+    assessment_id: str,
+    payload: HopeExportBatchRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_EXPORTED_TO_BATCH",
+        mutation=lambda: rnica_hope_workflow_service.apply_export_to_batch(
+            record,
+            user_id=user_id,
+            batch_id=payload.batch_id,
+        ),
+    )
+
+
+@router.patch("/rnica/{assessment_id}/hope-submission")
+def patch_rnica_hope_submission(
+    assessment_id: str,
+    payload: HopeSubmissionPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_SUBMISSION_UPDATED",
+        mutation=lambda: rnica_hope_workflow_service.apply_submission_update(
+            record,
+            user_id=user_id,
+            submission_number=payload.hopeSubmissionNumber,
+            already_submitted=payload.hopeAlreadySubmitted,
+        ),
+    )
+
+
+@router.patch("/rnica/{assessment_id}/hope-inactivation")
+def patch_rnica_hope_inactivation(
+    assessment_id: str,
+    payload: HopeInactivationPatchRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_INACTIVATION_UPDATED",
+        mutation=lambda: rnica_hope_workflow_service.apply_inactivation(
+            record,
+            user_id=user_id,
+            inactivated=payload.inactivated,
+        ),
+    )
+
+
+@router.post("/rnica/{assessment_id}/hope-workflow/unlock")
+def unlock_rnica_hope_workflow(
+    assessment_id: str,
+    payload: HopeUnlockRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    record = _load_rnica_assessment_or_404(db, assessment_id)
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    return _apply_hope_workflow_mutation(
+        db=db,
+        record=record,
+        current_user=current_user,
+        action="RNICA_HOPE_UNLOCKED",
+        mutation=lambda: rnica_hope_workflow_service.apply_unlock(
+            record,
+            user_id=user_id,
+            reason=payload.reason,
+        ),
+    )
+
+
 class RnicaAmendmentRequest(BaseModel):
     section_reference: Optional[str] = None
     amendment_category: str = Field(..., min_length=1)
@@ -1133,14 +1655,7 @@ def get_msw_ica_assessment(
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
     get_authorized_patient(db, record.patient_id, current_user)
-    return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": merge_msw_ica_form_data(record.form_data or {}),
-        "locked": record.locked,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
-    }
+    return _serialize_msw_ica_assessment(record)
 @router.get("/msw-ica/by-patient/{patient_id}")
 def get_msw_ica_assessment_by_patient(
     patient_id: str,
@@ -1160,13 +1675,31 @@ def get_msw_ica_assessment_by_patient(
     record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
     if not record:
         return {"assessmentId": None}
+    return _serialize_msw_ica_assessment(record)
+
+
+@router.get("/msw-ica/by-patient/{patient_id}/records")
+def list_msw_ica_assessments_by_patient(
+    patient_id: str,
+    lockedOnly: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    get_authorized_patient(db, patient_uuid, current_user)
+    query = (
+        db.query(MswIcaAssessment)
+        .filter(MswIcaAssessment.patient_id == patient_uuid)
+        .order_by(MswIcaAssessment.created_at.desc())
+    )
+    if lockedOnly:
+        query = query.filter(MswIcaAssessment.locked.is_(True))
+    records = query.all()
     return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": merge_msw_ica_form_data(record.form_data or {}),
-        "locked": record.locked,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        "patientId": str(patient_uuid),
+        "assessments": [_serialize_msw_ica_assessment(record, include_form_data=False) for record in records],
     }
 @router.put("/msw-ica/{assessment_id}")
 def update_msw_ica_assessment(
@@ -1284,14 +1817,7 @@ def get_scica_assessment(
     if not record:
         raise HTTPException(status_code=404, detail="Assessment not found")
     get_authorized_patient(db, record.patient_id, current_user)
-    return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": merge_scica_form_data(record.form_data or {}),
-        "locked": record.locked,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
-    }
+    return _serialize_scica_assessment(record)
 @router.get("/scica/by-patient/{patient_id}")
 def get_scica_assessment_by_patient(
     patient_id: str,
@@ -1311,13 +1837,31 @@ def get_scica_assessment_by_patient(
     record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
     if not record:
         return {"assessmentId": None}
+    return _serialize_scica_assessment(record)
+
+
+@router.get("/scica/by-patient/{patient_id}/records")
+def list_scica_assessments_by_patient(
+    patient_id: str,
+    lockedOnly: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    get_authorized_patient(db, patient_uuid, current_user)
+    query = (
+        db.query(ScicaAssessment)
+        .filter(ScicaAssessment.patient_id == patient_uuid)
+        .order_by(ScicaAssessment.created_at.desc())
+    )
+    if lockedOnly:
+        query = query.filter(ScicaAssessment.locked.is_(True))
+    records = query.all()
     return {
-        "assessmentId": str(record.id),
-        "patientId": str(record.patient_id),
-        "formData": merge_scica_form_data(record.form_data or {}),
-        "locked": record.locked,
-        "createdAt": record.created_at.isoformat() if record.created_at else None,
-        "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
+        "patientId": str(patient_uuid),
+        "assessments": [_serialize_scica_assessment(record, include_form_data=False) for record in records],
     }
 @router.put("/scica/{assessment_id}")
 def update_scica_assessment(
@@ -1645,6 +2189,56 @@ VISIT_NOTE_BODY_SYSTEM_KEYS = {
     "adl_assessment",
     "fall_incidence",
     "safety_issues",}
+VISIT_NOTE_BODY_SYSTEM_FINDING_KEYS = {
+    "anxiety",
+    "agitation",
+    "confusion",
+    "cognitive_change",
+    "speech_communication_change",
+    "arrhythmia",
+    "edema",
+    "chest_discomfort",
+    "dyspnea",
+    "cough",
+    "abnormal_breath_sounds",
+    "fever",
+    "signs_of_infection",
+    "isolation_precautions",
+    "nausea",
+    "vomiting",
+    "constipation",
+    "diarrhea",
+    "incontinence",
+    "appetite_decline",
+    "meal_refusal",
+    "dysphagia",
+    "artificial_feeding",
+    "glucose_instability",
+    "polyuria",
+    "polydipsia",
+    "urgency",
+    "retention",
+    "dysuria",
+    "insomnia",
+    "somnolence",
+    "weakness",
+    "stiffness",
+    "contracture",
+    "rash",
+    "wound",
+    "ulcer_pressure_injury",
+    "bedbound",
+    "endurance_decline",
+    "fall_reported",
+    "injury_reported",
+    "near_fall",
+    "medication_safety",
+    "transfer_safety",
+    "environmental_hazard",
+}
+VISIT_NOTE_SUPERVISORY_RESPONSE_CHOICES = {"YES", "NO", "UNABLE", "NA"}
+VISIT_NOTE_SUPERVISORY_CONCERN_CHOICES = {"YES", "NO", "UNABLE"}
+VISIT_NOTE_SUPERVISION_TYPE_CHOICES = {"PRESENT", "NOT_PRESENT"}
 class VisitNotePainRequest(BaseModel):
     controlled: Optional[str] = Field(None, description="Y, N, UNABLE, or N/A")
     pain_level: Optional[int] = Field(None, ge=0, le=10)
@@ -1679,7 +2273,9 @@ class VisitNoteBodySystemRequest(BaseModel):
     other_symptom: Optional[str] = None
     assessed_no_issues: bool = False
     other_observation: Optional[str] = None
+    selected_findings: List[str] = Field(default_factory=list)
     # Nutrition-specific
+    oral_intake: Optional[str] = None
     diet: Optional[str] = None
     diet_specify: Optional[str] = None
     # GU-Reproductive-specific
@@ -1688,10 +2284,25 @@ class VisitNoteBodySystemRequest(BaseModel):
     # Mobility-specific
     ambulatory_status: Optional[str] = None
   # AMBULATORY / NON_AMBULATORY
+    assistive_device: Optional[str] = None
+    assistance_level: Optional[str] = None
     endurance: Optional[str] = None
+    bedbound_status: Optional[str] = None
     # ADL Assessment-specific (0-3 dependence scale x 6 activities)
     adl_scores: Optional[Dict[str, int]] = None
     adl_total_score: Optional[int] = None
+    @field_validator("selected_findings")
+    @classmethod
+    def _validate_selected_findings(cls, value: List[str]):
+        normalized: list[str] = []
+        for item in value or []:
+            cleaned = str(item or "").strip()
+            if not cleaned:
+                continue
+            if cleaned not in VISIT_NOTE_BODY_SYSTEM_FINDING_KEYS:
+                raise ValueError(f"Unknown structured finding: {cleaned}")
+            normalized.append(cleaned)
+        return normalized
 class VisitNoteCareProvidedRequest(BaseModel):
     physical_comfort_support: bool = False
     structural_functional_activity_support: bool = False
@@ -1714,6 +2325,109 @@ class VisitNoteChecklistRequest(BaseModel):
     foley_cath_last_changed: Optional[str] = None
     gi_tube_checked: Optional[bool] = None
     next_visit_confirmed: Optional[bool] = None
+class VisitNoteFunctionalDeclineRequest(BaseModel):
+    kps: Optional[int] = Field(None, ge=0, le=100)
+    pps: Optional[int] = Field(None, ge=0, le=100)
+    fast: Optional[str] = None
+    nyha: Optional[str] = None
+class VisitNoteNarcoticDisposalItemRequest(BaseModel):
+    drug_name: Optional[str] = None
+    quantity: Optional[str] = None
+    disposal_method: Optional[str] = None
+class VisitNoteDeathDisposalRequest(BaseModel):
+    """
+    Structured After-Death Visit + Medication/Narcotic Disposal section.
+    Reference fields per HospiceMD's standalone "Report of Death and
+    Disposal of Controlled Drugs" form -- captured here as part of the
+    visit note itself (RN or LVN) instead of a disconnected standalone
+    page, per the confirmed spec (see visit_notes_scheduling_spec.md
+    section 2).
+    """
+    hospice_received_call_at: Optional[str] = None
+    pronounced_death_at: Optional[str] = None
+    # FACILITY_STAFF / FAMILY_PCG / HOSPICE_STAFF / PHYSICIAN / PARAMEDIC_AMBULANCE
+    pronounced_by: Optional[str] = None
+    pronounced_by_name: Optional[str] = None
+    # Any of: VITAL_SIGNS_ABSENT, TACTILE_VERBAL_PUPIL_RESPONSE_ABSENT
+    evidenced_by: List[str] = Field(default_factory=list)
+    mortuary_notified_at: Optional[str] = None
+    mortuary_name: Optional[str] = None
+    physician_idg_notified_at: Optional[str] = None
+    family_instructed_on_narcotic_disposal: bool = False
+    narcotics: List[VisitNoteNarcoticDisposalItemRequest] = Field(default_factory=list)
+    witnessed_or_stated_by: Optional[str] = None
+class VisitNoteSupervisoryAuditRequest(BaseModel):
+    created_at: Optional[str] = None
+    created_by_user_id: Optional[str] = None
+    updated_at: Optional[str] = None
+    updated_by_user_id: Optional[str] = None
+    finalized_at: Optional[str] = None
+    finalized_by_user_id: Optional[str] = None
+class VisitNoteSupervisorySubformRequest(BaseModel):
+    assigned_staff_user_id: Optional[str] = None
+    assigned_staff_name: Optional[str] = None
+    supervision_type: Optional[str] = None
+    observation_datetime: Optional[str] = None
+    rn_supervisor_name: Optional[str] = None
+    services_meet_patient_needs: Optional[str] = None
+    follows_care_plan: Optional[str] = None
+    demonstrates_competency: Optional[str] = None
+    communication_appropriate: Optional[str] = None
+    infection_control_safety: Optional[str] = None
+    patient_family_concerns: Optional[str] = None
+    concern_details: Optional[str] = None
+    corrective_action_required: Optional[str] = None
+    corrective_action_details: Optional[str] = None
+    notification_documented: Optional[str] = None
+    person_notified: Optional[str] = None
+    notification_datetime: Optional[str] = None
+    follow_up_required: Optional[str] = None
+    follow_up_due_date: Optional[str] = None
+    supervisor_comments: Optional[str] = None
+    ordered_interventions_completed: Optional[str] = None
+    documentation_consistent: Optional[str] = None
+    audit: Optional[VisitNoteSupervisoryAuditRequest] = None
+    @field_validator(
+        "services_meet_patient_needs",
+        "follows_care_plan",
+        "demonstrates_competency",
+        "communication_appropriate",
+        "infection_control_safety",
+        "ordered_interventions_completed",
+        "documentation_consistent",
+        "corrective_action_required",
+        "notification_documented",
+        "follow_up_required",
+    )
+    @classmethod
+    def _validate_supervisory_response_choice(cls, value: Optional[str]):
+        if value is None:
+            return value
+        normalized = str(value).strip().upper()
+        if normalized not in VISIT_NOTE_SUPERVISORY_RESPONSE_CHOICES:
+            raise ValueError(f"Unsupported supervisory response: {value}")
+        return normalized
+    @field_validator("patient_family_concerns")
+    @classmethod
+    def _validate_supervisory_concern_choice(cls, value: Optional[str]):
+        if value is None:
+            return value
+        normalized = str(value).strip().upper()
+        if normalized not in VISIT_NOTE_SUPERVISORY_CONCERN_CHOICES:
+            raise ValueError(f"Unsupported concern response: {value}")
+        return normalized
+    @field_validator("supervision_type")
+    @classmethod
+    def _validate_supervision_type(cls, value: Optional[str]):
+        if value is None:
+            return value
+        normalized = str(value).strip().upper()
+        if normalized not in VISIT_NOTE_SUPERVISION_TYPE_CHOICES:
+            raise ValueError(f"Unsupported supervision type: {value}")
+        return normalized
+class VisitNoteSupervisoryReviewRequest(BaseModel):
+    hha: Optional[VisitNoteSupervisorySubformRequest] = None
+    lvn_lpn: Optional[VisitNoteSupervisorySubformRequest] = None
 class VisitNoteContentRequest(BaseModel):
     """
     Full content payload for the RN/LVN Visit Notes module. The Visit
@@ -1741,11 +2455,14 @@ class VisitNoteContentRequest(BaseModel):
     # ---- Clinical body ----
     pain: Optional[VisitNotePainRequest] = None
     vitals: Optional[VisitNoteVitalsRequest] = None
+    functional_decline: Optional[VisitNoteFunctionalDeclineRequest] = None
     signs_symptoms: Dict[str, VisitNoteBodySystemRequest] = Field(default_factory=dict)
+    supervisory_review: Optional[VisitNoteSupervisoryReviewRequest] = None
     care_provided: Optional[VisitNoteCareProvidedRequest] = None
     visit_checklist: Optional[VisitNoteChecklistRequest] = None
     # ---- Death Visit only ----
     death_disposal_notes: Optional[str] = None
+    death_disposal: Optional[VisitNoteDeathDisposalRequest] = None
     # ---- Always present ----
     narrative: Optional[str] = None
     @field_validator("signs_symptoms")
@@ -1781,6 +2498,21 @@ class VisitMutationResponse(BaseModel):
         default_factory=list,
         description="Tasks completed as a result of this action",
     )
+
+
+class FinalizeVisitPayload(BaseModel):
+    """
+    Optional real clock-time capture at finalization time.
+
+    When both are provided, they are written to Visit.start_time/end_time
+    (columns that previously existed in the schema but were never written
+    by any code path) and used to upsert a real VisitMinutes row, which is
+    what billing_engine.generate_patient_billing() sums to compute billable
+    units. Omitting both preserves today's behavior exactly.
+    """
+
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
     new_status: Optional[str] = None
     communications_log_id: Optional[str] = None
 class VisitReopenRequest(BaseModel):
@@ -2224,66 +2956,38 @@ def _is_chha_supervision_due(
     *,
     patient: Patient,
     now: datetime,) -> bool:
-    if not _patient_has_active_staff(patient, "CHHA"):
-        return False
-    if _get_patient_refusal_flag(patient, "CHHA"):
-        return False
-    last_visit = _last_rn_supervisory_visit_for_target(
+    assignments = _supervisory_assignment_rows(
         db,
         tenant_id=patient.tenant_id,
         patient_id=patient.id,
-        target="CHHA",
+        disciplines={"CHHA", "AIDE"},
     )
-    if last_visit is None:
-        return True
-    last_finalized_at = (
-        getattr(last_visit, "finalized_at", None)
-        or getattr(last_visit, "created_at", None)
-    )
-    if last_finalized_at is None:
-        return True
-    if last_finalized_at.tzinfo is None:
-        last_finalized_at = last_finalized_at.replace(tzinfo=timezone.utc)
-    return now >= (last_finalized_at + timedelta(days=14))
+    return bool(assignments)
 def _is_lvn_supervision_due(
     db: Session,
     *,
     patient: Patient,
     now: datetime,) -> bool:
-    if not _patient_has_active_staff(patient, "LVN"):
-        return False
-    if _get_patient_refusal_flag(patient, "LVN"):
-        return False
-    last_visit = _last_rn_supervisory_visit_for_target(
+    assignments = _supervisory_assignment_rows(
         db,
         tenant_id=patient.tenant_id,
         patient_id=patient.id,
-        target="LVN",
+        disciplines={"LVN", "LPN"},
     )
-    if last_visit is None:
-        return True
-    last_finalized_at = (
-        getattr(last_visit, "finalized_at", None)
-        or getattr(last_visit, "created_at", None)
-    )
-    if last_finalized_at is None:
-        return True
-    if last_finalized_at.tzinfo is None:
-        last_finalized_at = last_finalized_at.replace(tzinfo=timezone.utc)
-    return (
-        last_finalized_at.year != now.year
-        or last_finalized_at.month != now.month
-    )
+    return bool(assignments)
 def _determine_supervisory_context(
     db: Session,
     *,
     patient: Patient,
     normalized_visit_type: str,
     validated_form_type: str,
-    now: datetime,) -> tuple[bool, list[str]]:
-    if normalized_visit_type != "RN":
-        return False, []
-    if validated_form_type != VisitFormType.ROUTINE_VISIT.value:
+    now: datetime,
+    documenting_role: str | None,
+) -> tuple[bool, list[str]]:
+    if not _session_allows_rn_supervisory_review(
+        role=documenting_role,
+        form_type=validated_form_type,
+    ):
         return False, []
     targets: list[str] = []
     if _is_chha_supervision_due(
@@ -2620,15 +3324,7 @@ def _enforce_rn_supervisory_requirement(
         return
     if not getattr(visit, "is_supervisory", False):
         return
-    details = getattr(visit, "details", None) or {}
-    if not isinstance(details, dict):
-        details = {}
-    targets = details.get("supervisory_targets", [])
-    if not isinstance(targets, list) or not targets:
-        raise HTTPException(
-            status_code=422,
-            detail="Supervisory RN visit is missing supervisory_targets context",
-        )
+    return
 # =========================================================
 # PHASE B / HOPE HELPERS
 # =========================================================
@@ -3192,6 +3888,7 @@ def create_visit(
         normalized_visit_type=normalized,
         validated_form_type=validated_form_type,
         now=now,
+        documenting_role=getattr(current_user, "role", None),
     )
     # =========================================================
     # INIT VISIT
@@ -3327,6 +4024,8 @@ def create_visit(
                 "attached_forms": attached_forms,
                 "resolved_by": resolved_by,
                 "form_type": resolved_form_type,
+                "supervisory_targets": supervisory_targets,
+                "supervisory_assignment_source": "patient_assignments" if supervisory_targets else None,
             },
             is_primary_form=True,
             parent_form_id=None,
@@ -3930,8 +4629,29 @@ def delete_cc_hourly_narrative_entry(
 # =========================================================
 # VISIT NOTES (RN / LVN)
 # =========================================================
-def _visit_note_to_dict(visit: Visit, note: ClinicalNote) -> dict:
+def _visit_note_to_dict(
+    visit: Visit,
+    note: ClinicalNote,
+    *,
+    db: Session | None = None,
+    current_user: CurrentUser | None = None,
+) -> dict:
     module_payload = note.module_payload or {}
+    comparable_history = (
+        _visit_note_comparable_history(db, visit=visit, primary_note=note)
+        if db is not None
+        else []
+    )
+    supervisory_context = (
+        _visit_note_supervisory_context(
+            db,
+            visit=visit,
+            primary_note=note,
+            role=getattr(current_user, "role", None),
+        )
+        if db is not None
+        else {"visible": False, "can_edit": False, "hha": {"applicable": False, "assignments": []}, "lvn_lpn": {"applicable": False, "assignments": []}}
+    )
     return {
         "visit_id": str(visit.id),
         "patient_id": str(visit.patient_id),
@@ -3946,6 +4666,11 @@ def _visit_note_to_dict(visit: Visit, note: ClinicalNote) -> dict:
         "created_at": note.created_at,
         "updated_at": note.updated_at,
         "content": note.content or {},
+        "comparable_history": comparable_history,
+        "supervisory_context": supervisory_context,
+        "permissions": {
+            "can_edit_supervisory_review": bool(supervisory_context.get("can_edit")),
+        },
     }
 @router.get("/{visit_id}/visit-note")
 def get_visit_note(
@@ -3981,7 +4706,7 @@ def get_visit_note(
             status_code=404,
             detail="No clinical note found for this visit",
         )
-    return _visit_note_to_dict(visit, primary_note)
+    return _visit_note_to_dict(visit, primary_note, db=db, current_user=current_user)
 @router.put("/{visit_id}/visit-note")
 def update_visit_note(
     visit_id: uuid.UUID,
@@ -4040,6 +4765,7 @@ def update_visit_note(
     )
     try:
         content_dict = payload.model_dump(exclude={"form_type"})
+        existing_content = dict(primary_note.content or {})
         content_dict["form_type"] = validated_form_type.value if validated_form_type else None
         # Non-Assess/Routine form types collapse the documentation body
         # down to a narrative-only note in the legacy workflow -- clear any
@@ -4053,17 +4779,79 @@ def update_visit_note(
         if not is_full_body:
             content_dict["pain"] = None
             content_dict["vitals"] = None
+            content_dict["functional_decline"] = None
             content_dict["signs_symptoms"] = {}
+            content_dict["supervisory_review"] = None
             content_dict["care_provided"] = None
             content_dict["visit_checklist"] = None
         now = datetime.now(timezone.utc)
+        incoming_supervisory = content_dict.get("supervisory_review")
+        existing_supervisory = existing_content.get("supervisory_review")
+        incoming_supervisory_has_data = _is_started_supervisory_subform((incoming_supervisory or {}).get("hha")) or _is_started_supervisory_subform((incoming_supervisory or {}).get("lvn_lpn"))
+        existing_supervisory_has_data = _is_started_supervisory_subform((existing_supervisory or {}).get("hha")) or _is_started_supervisory_subform((existing_supervisory or {}).get("lvn_lpn"))
+        session_allows_supervisory_review = _session_allows_rn_supervisory_review(
+            role=getattr(current_user, "role", None),
+            form_type=validated_form_type.value if validated_form_type else getattr(visit, "form_type", None),
+        )
+        if not session_allows_supervisory_review and incoming_supervisory_has_data:
+            status_code = 403 if not _is_rn_documenting_role(getattr(current_user, "role", None)) else 422
+            raise HTTPException(
+                status_code=status_code,
+                detail=(
+                    "RN Supervisory Review only applies when the logged-in documenting user role is RN."
+                    if status_code == 403
+                    else "RN Supervisory Review only applies to full-body RN visit notes."
+                ),
+            )
+        can_edit_supervisory = _can_edit_rn_supervisory_review(getattr(current_user, "role", None))
+        if (
+            session_allows_supervisory_review
+            and incoming_supervisory != existing_supervisory
+            and (incoming_supervisory_has_data or existing_supervisory_has_data)
+            and not can_edit_supervisory
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="RN Supervisory Review may only be completed by a logged-in RN documenting the visit.",
+            )
+        if session_allows_supervisory_review and (incoming_supervisory_has_data or existing_supervisory_has_data):
+            content_dict = _refresh_supervisory_review_audits(
+                content_dict,
+                user_id=user_id,
+                now=now,
+                finalizing=False,
+            )
+        elif not incoming_supervisory_has_data and existing_supervisory_has_data:
+            content_dict["supervisory_review"] = existing_supervisory
+        elif not incoming_supervisory_has_data:
+            content_dict["supervisory_review"] = None
         primary_note.content = content_dict
         primary_note.updated_at = now
         primary_note.updated_by_user_id = user_id
+        updated_visit_datetime = _visit_note_datetime_from_content(
+            content_dict,
+            fallback=getattr(visit, "visit_datetime", None) or now,
+        )
+        if updated_visit_datetime is not None:
+            visit.visit_datetime = updated_visit_datetime
         if validated_form_type is not None:
             visit.form_type = validated_form_type.value
             module_payload = dict(primary_note.module_payload or {})
             module_payload["form_type"] = validated_form_type.value
+            supervisory_context = _visit_note_supervisory_context(
+                db,
+                visit=visit,
+                primary_note=primary_note,
+                role=getattr(current_user, "role", None),
+            )
+            supervisory_targets = []
+            if (supervisory_context.get("hha") or {}).get("applicable"):
+                supervisory_targets.append("HHA")
+            if (supervisory_context.get("lvn_lpn") or {}).get("applicable"):
+                supervisory_targets.append("LVN_LPN")
+            module_payload["supervisory_targets"] = supervisory_targets
+            module_payload["supervisory_assignment_source"] = "patient_assignments" if supervisory_targets else None
+            visit.is_supervisory = bool(supervisory_targets)
             primary_note.module_payload = module_payload
         if payload.care_level:
             primary_note.care_level_snapshot = _normalize_level_of_care(payload.care_level)
@@ -4106,7 +4894,453 @@ def update_visit_note(
             status_code=500,
             detail=f"Visit note update failed: {exc}",
         )
-    return _visit_note_to_dict(visit, primary_note)
+    return _visit_note_to_dict(visit, primary_note, db=db, current_user=current_user)
+
+
+def _narrative_preview(value, max_len: int = 200) -> Optional[str]:
+    """
+    Safely build a short preview string from a narrative field that may be
+    stored as a plain string OR (as with MSW ICA / SC ICA form_data) as a
+    dict such as {"notes": "..."} / {"note": "..."}. Slicing a dict directly
+    (e.g. narrative[:200]) raises KeyError(slice(...)), which previously
+    crashed this endpoint for any patient with a dict-shaped narrative.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, dict):
+        text = (
+            value.get("notes")
+            or value.get("note")
+            or value.get("text")
+            or value.get("narrative")
+            or ""
+        )
+        if not isinstance(text, str):
+            text = str(text) if text else ""
+    else:
+        text = str(value)
+    if not text:
+        return None
+    return text[:max_len]
+
+
+def _visit_note_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _visit_note_has_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) > 0
+    return True
+
+
+def _visit_note_datetime_from_content(
+    content: dict | None,
+    *,
+    fallback: datetime | None = None,
+) -> datetime | None:
+    payload = content or {}
+    visit_date = _visit_note_text(payload.get("visit_date"))
+    if not visit_date:
+        return fallback
+    time_in = _visit_note_text(payload.get("time_in")) or "00:00"
+    candidate = f"{visit_date[:10]}T{time_in[:5]}:00"
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        try:
+            parsed = datetime.fromisoformat(f"{visit_date[:10]}T00:00:00")
+        except ValueError:
+            return fallback
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _visit_note_content_snapshot(content: dict | None) -> dict:
+    payload = content or {}
+    return {
+        "visit_date": payload.get("visit_date"),
+        "time_in": payload.get("time_in"),
+        "pain": dict(payload.get("pain") or {}),
+        "vitals": dict(payload.get("vitals") or {}),
+        "functional_decline": dict(payload.get("functional_decline") or {}),
+        "signs_symptoms": dict(payload.get("signs_symptoms") or {}),
+    }
+
+
+def _visit_note_comparable_history(
+    db: Session,
+    *,
+    visit: Visit,
+    primary_note: ClinicalNote,
+) -> list[dict]:
+    rows = (
+        db.query(Visit, ClinicalNote)
+        .join(
+            ClinicalNote,
+            (ClinicalNote.visit_id == Visit.id)
+            & ClinicalNote.is_primary_form.is_(True),
+        )
+        .filter(
+            Visit.patient_id == visit.patient_id,
+            Visit.id != visit.id,
+            Visit.deleted_at.is_(None),
+            Visit.visit_discipline == visit.visit_discipline,
+            Visit.form_type.in_(list(VISIT_NOTE_FULL_BODY_FORM_TYPES)),
+            Visit.status == "FINALIZED",
+        )
+        .order_by(Visit.visit_datetime.desc(), Visit.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    history: list[dict] = []
+    for prior_visit, prior_note in rows:
+        history.append(
+            {
+                "visit_id": str(prior_visit.id),
+                "note_id": str(prior_note.id),
+                "discipline": prior_visit.visit_discipline,
+                "form_type": (prior_note.module_payload or {}).get("form_type") or prior_visit.form_type,
+                "visit_datetime": _visit_note_datetime_from_content(
+                    prior_note.content or {},
+                    fallback=getattr(prior_visit, "visit_datetime", None),
+                ),
+                "visit_date": _visit_note_text((prior_note.content or {}).get("visit_date")) or (
+                    prior_visit.visit_datetime.date().isoformat()
+                    if getattr(prior_visit, "visit_datetime", None)
+                    else None
+                ),
+                "content_snapshot": _visit_note_content_snapshot(prior_note.content or {}),
+            }
+        )
+    return history
+
+
+def _is_rn_documenting_role(role: str | None) -> bool:
+    return role_matches(role, {"RN"}, allow_clinical_admin=False)
+
+
+def _session_allows_rn_supervisory_review(
+    *,
+    role: str | None,
+    form_type: str | None = None,
+) -> bool:
+    resolved_form_type = str(form_type or "").upper()
+    return _is_rn_documenting_role(role) and resolved_form_type in VISIT_NOTE_FULL_BODY_FORM_TYPES
+
+
+def _can_edit_rn_supervisory_review(role: str | None) -> bool:
+    return _is_rn_documenting_role(role)
+
+
+def _is_started_supervisory_subform(form: dict | None) -> bool:
+    for key, value in (form or {}).items():
+        if key == "audit":
+            continue
+        if _visit_note_has_value(value):
+            return True
+    return False
+
+
+def _supervisory_assignment_rows(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    disciplines: set[str],
+) -> list[dict]:
+    rows = (
+        db.query(PatientAssignment, User)
+        .join(User, User.id == PatientAssignment.user_id)
+        .filter(
+            PatientAssignment.tenant_id == tenant_id,
+            PatientAssignment.patient_id == patient_id,
+            PatientAssignment.active.is_(True),
+            PatientAssignment.status == "ASSIGNED",
+        )
+        .order_by(
+            PatientAssignment.is_primary.desc(),
+            PatientAssignment.assigned_at.desc(),
+        )
+        .all()
+    )
+    items: list[dict] = []
+    seen_user_ids: set[str] = set()
+    for assignment, user in rows:
+        discipline_value = str(getattr(assignment.discipline, "value", assignment.discipline) or "").upper()
+        if discipline_value not in disciplines:
+            continue
+        user_id = str(user.id)
+        if user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user_id)
+        items.append(
+            {
+                "user_id": user_id,
+                "name": user.display_name or user.full_name or user.email,
+                "discipline": discipline_value,
+                "is_primary": bool(getattr(assignment, "is_primary", False)),
+                "assigned_at": assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            }
+        )
+    return items
+
+
+def _last_completed_supervisory_review(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    target_key: str,
+    current_visit_id: uuid.UUID | None = None,
+) -> dict | None:
+    rows = (
+        db.query(Visit, ClinicalNote)
+        .join(
+            ClinicalNote,
+            (ClinicalNote.visit_id == Visit.id)
+            & ClinicalNote.is_primary_form.is_(True),
+        )
+        .filter(
+            Visit.tenant_id == tenant_id,
+            Visit.patient_id == patient_id,
+            Visit.visit_discipline == "RN",
+            Visit.deleted_at.is_(None),
+            Visit.status == "FINALIZED",
+        )
+        .order_by(Visit.finalized_at.desc(), Visit.visit_datetime.desc(), Visit.created_at.desc())
+        .all()
+    )
+    for prior_visit, prior_note in rows:
+        if current_visit_id and prior_visit.id == current_visit_id:
+            continue
+        review = ((prior_note.content or {}).get("supervisory_review") or {}).get(target_key) or {}
+        if not _is_started_supervisory_subform(review):
+            continue
+        finalized_at = (
+            (((review.get("audit") or {}).get("finalized_at")) or None)
+            or (prior_note.finalized_at.isoformat() if prior_note.finalized_at else None)
+            or (prior_visit.finalized_at.isoformat() if prior_visit.finalized_at else None)
+        )
+        return {
+            "visit_id": str(prior_visit.id),
+            "visit_date": _visit_note_text((prior_note.content or {}).get("visit_date")) or (
+                prior_visit.visit_datetime.date().isoformat()
+                if getattr(prior_visit, "visit_datetime", None)
+                else None
+            ),
+            "finalized_at": finalized_at,
+            "form_type": (prior_note.module_payload or {}).get("form_type") or prior_visit.form_type,
+        }
+    return None
+
+
+def _visit_note_supervisory_context(
+    db: Session,
+    *,
+    visit: Visit,
+    primary_note: ClinicalNote,
+    role: str | None,
+) -> dict:
+    saved_review = (primary_note.content or {}).get("supervisory_review") or {}
+    has_saved_review = _is_started_supervisory_subform(saved_review.get("hha")) or _is_started_supervisory_subform(saved_review.get("lvn_lpn"))
+    resolved_form_type = str(
+        (primary_note.module_payload or {}).get("form_type")
+        or getattr(visit, "form_type", "")
+        or ""
+    ).upper()
+    session_allows_supervisory_review = _session_allows_rn_supervisory_review(
+        role=role,
+        form_type=resolved_form_type,
+    )
+    hha_assignments = _supervisory_assignment_rows(
+        db,
+        tenant_id=visit.tenant_id,
+        patient_id=visit.patient_id,
+        disciplines={"CHHA", "AIDE"},
+    ) if session_allows_supervisory_review else []
+    lvn_assignments = _supervisory_assignment_rows(
+        db,
+        tenant_id=visit.tenant_id,
+        patient_id=visit.patient_id,
+        disciplines={"LVN", "LPN"},
+    ) if session_allows_supervisory_review else []
+    hha_last = _last_completed_supervisory_review(
+        db,
+        tenant_id=visit.tenant_id,
+        patient_id=visit.patient_id,
+        target_key="hha",
+        current_visit_id=visit.id,
+    ) if session_allows_supervisory_review and hha_assignments else None
+    lvn_last = _last_completed_supervisory_review(
+        db,
+        tenant_id=visit.tenant_id,
+        patient_id=visit.patient_id,
+        target_key="lvn_lpn",
+        current_visit_id=visit.id,
+    ) if session_allows_supervisory_review and lvn_assignments else None
+    return {
+        "visible": bool(session_allows_supervisory_review),
+        "can_edit": bool(session_allows_supervisory_review and _can_edit_rn_supervisory_review(role)),
+        "session_allows_supervisory_review": session_allows_supervisory_review,
+        "has_saved_review": has_saved_review,
+        "derivation_note": (
+            "Applicability derived from active patient assignments; validated cadence or due-date calculation source is unavailable."
+        ),
+        "hha": {
+            "applicable": bool(session_allows_supervisory_review and hha_assignments),
+            "service_status": "Documented active patient assignment" if hha_assignments else "No active HHA assignment documented",
+            "assignments": hha_assignments,
+            "last_completed": hha_last,
+            "next_due": None,
+            "status_label": "Due-date calculation unavailable" if hha_assignments else "Not applicable",
+        },
+        "lvn_lpn": {
+            "applicable": bool(session_allows_supervisory_review and lvn_assignments),
+            "service_status": "Documented active patient assignment" if lvn_assignments else "No active LVN/LPN assignment documented",
+            "assignments": lvn_assignments,
+            "last_completed": lvn_last,
+            "next_due": None,
+            "status_label": "Due-date calculation unavailable" if lvn_assignments else "Not applicable",
+        },
+    }
+
+
+def _apply_supervisory_audit(
+    review: dict | None,
+    *,
+    user_id: uuid.UUID,
+    now: datetime,
+    finalizing: bool = False,
+) -> dict | None:
+    if not isinstance(review, dict):
+        return review
+    updated = dict(review)
+    audit = dict(updated.get("audit") or {})
+    if _is_started_supervisory_subform(updated):
+        if not audit.get("created_at"):
+            audit["created_at"] = now.isoformat()
+            audit["created_by_user_id"] = str(user_id)
+        audit["updated_at"] = now.isoformat()
+        audit["updated_by_user_id"] = str(user_id)
+        if finalizing:
+            audit["finalized_at"] = now.isoformat()
+            audit["finalized_by_user_id"] = str(user_id)
+    updated["audit"] = audit
+    return updated
+
+
+def _refresh_supervisory_review_audits(
+    content: dict,
+    *,
+    user_id: uuid.UUID,
+    now: datetime,
+    finalizing: bool = False,
+) -> dict:
+    updated = dict(content or {})
+    review = dict(updated.get("supervisory_review") or {})
+    review["hha"] = _apply_supervisory_audit(review.get("hha"), user_id=user_id, now=now, finalizing=finalizing)
+    review["lvn_lpn"] = _apply_supervisory_audit(review.get("lvn_lpn"), user_id=user_id, now=now, finalizing=finalizing)
+    updated["supervisory_review"] = review
+    return updated
+
+
+def _validate_supervisory_subform(
+    form: dict | None,
+    *,
+    label: str,
+    applicable: bool,
+    allowed_staff_ids: set[str],
+    question_keys: list[str],
+) -> list[str]:
+    if not applicable or not _is_started_supervisory_subform(form):
+        return []
+    payload = form or {}
+    errors: list[str] = []
+    assigned_staff = _visit_note_text(payload.get("assigned_staff_user_id"))
+    if not assigned_staff:
+        errors.append(f"{label}: assigned staff is required.")
+    elif assigned_staff not in allowed_staff_ids:
+        errors.append(f"{label}: assigned staff must be an active patient assignment.")
+    if _visit_note_text(payload.get("supervision_type")) not in VISIT_NOTE_SUPERVISION_TYPE_CHOICES:
+        errors.append(f"{label}: supervision type is required.")
+    if not _visit_note_text(payload.get("observation_datetime")):
+        errors.append(f"{label}: observation date/time is required.")
+    if not _visit_note_text(payload.get("rn_supervisor_name")):
+        errors.append(f"{label}: RN supervisor is required.")
+    for field_name in question_keys:
+        response = _visit_note_text(payload.get(field_name))
+        if response not in VISIT_NOTE_SUPERVISORY_RESPONSE_CHOICES:
+            errors.append(f"{label}: {field_name} is required.")
+        if response == "NO" and not _visit_note_text(payload.get("concern_details")):
+            errors.append(f"{label}: concern details are required when a finding is marked No.")
+    if _visit_note_text(payload.get("patient_family_concerns")) == "YES" and not _visit_note_text(payload.get("concern_details")):
+        errors.append(f"{label}: concern details are required when patient/family concerns are documented.")
+    if _visit_note_text(payload.get("corrective_action_required")) == "YES" and not _visit_note_text(payload.get("corrective_action_details")):
+        errors.append(f"{label}: corrective action details are required when corrective action is required.")
+    if _visit_note_text(payload.get("notification_documented")) == "YES":
+        if not _visit_note_text(payload.get("person_notified")):
+            errors.append(f"{label}: person notified is required when a notification is documented.")
+        if not _visit_note_text(payload.get("notification_datetime")):
+            errors.append(f"{label}: notification date/time is required when a notification is documented.")
+    if _visit_note_text(payload.get("follow_up_required")) == "YES" and not _visit_note_text(payload.get("follow_up_due_date")):
+        errors.append(f"{label}: follow-up due date is required when follow-up is required.")
+    return errors
+
+
+def _validate_visit_note_supervisory_review(
+    content: dict | None,
+    *,
+    supervisory_context: dict,
+    role: str | None,
+) -> list[str]:
+    review = (content or {}).get("supervisory_review") or {}
+    has_any_review = _is_started_supervisory_subform(review.get("hha")) or _is_started_supervisory_subform(review.get("lvn_lpn"))
+    if has_any_review and not bool(supervisory_context.get("session_allows_supervisory_review")):
+        return ["RN Supervisory Review only applies when the logged-in documenting user role is RN."]
+    if has_any_review and not _can_edit_rn_supervisory_review(role):
+        return ["RN Supervisory Review may only be completed by a logged-in RN documenting the visit."]
+    return [
+        *_validate_supervisory_subform(
+            review.get("hha"),
+            label="HHA supervision",
+            applicable=bool((supervisory_context.get("hha") or {}).get("applicable")),
+            allowed_staff_ids={row["user_id"] for row in (supervisory_context.get("hha") or {}).get("assignments") or []},
+            question_keys=[
+                "services_meet_patient_needs",
+                "follows_care_plan",
+                "demonstrates_competency",
+                "communication_appropriate",
+                "infection_control_safety",
+            ],
+        ),
+        *_validate_supervisory_subform(
+            review.get("lvn_lpn"),
+            label="LVN/LPN supervision",
+            applicable=bool((supervisory_context.get("lvn_lpn") or {}).get("applicable")),
+            allowed_staff_ids={row["user_id"] for row in (supervisory_context.get("lvn_lpn") or {}).get("assignments") or []},
+            question_keys=[
+                "services_meet_patient_needs",
+                "follows_care_plan",
+                "ordered_interventions_completed",
+                "documentation_consistent",
+                "demonstrates_competency",
+                "communication_appropriate",
+                "infection_control_safety",
+            ],
+        ),
+    ]
+
+
 @router.get("/patient/{patient_id}/visit-notes")
 def list_visit_notes_for_patient(
     patient_id: uuid.UUID,
@@ -4163,7 +5397,7 @@ def list_visit_notes_for_patient(
                     "care_level": content.get("care_level"),
                     "visit_date": v.visit_datetime,
                     "status": note.status if note else v.status,
-                    "narrative_preview": (narrative[:200] if narrative else None),
+                    "narrative_preview": _narrative_preview(narrative),
                     "created_at": note.created_at if note else v.created_at,
                 }
             )
@@ -4190,7 +5424,7 @@ def list_visit_notes_for_patient(
                 "care_level": visit_meta.get("careLevel"),
                 "visit_date": a.created_at,
                 "status": a.status,
-                "narrative_preview": (narrative[:200] if narrative else None),
+                "narrative_preview": _narrative_preview(narrative),
                 "created_at": a.created_at,
             }
         )
@@ -4217,7 +5451,7 @@ def list_visit_notes_for_patient(
                 "care_level": visit_meta.get("careLevel"),
                 "visit_date": a.created_at,
                 "status": a.status,
-                "narrative_preview": (narrative[:200] if narrative else None),
+                "narrative_preview": _narrative_preview(narrative),
                 "created_at": a.created_at,
             }
         )
@@ -4521,11 +5755,72 @@ def _run_clinical_reasoning_for_visit(
 # =========================================================
 # FINALIZE VISIT
 # =========================================================
+
+
+def _upsert_visit_minutes(
+    db: Session,
+    visit: Visit,
+    payload: FinalizeVisitPayload,
+    actor_id,
+) -> None:
+    """
+    Writes real start/end clock times captured at finalization and derives
+    a real VisitMinutes row from them (15-minute unit rounding, matching
+    billing_engine's existing unit_service.calculate_units). No-ops if
+    times were not provided — finalization behavior is unchanged for
+    callers that don't send them.
+    """
+    if payload.start_time is None or payload.end_time is None:
+        return
+
+    if payload.end_time <= payload.start_time:
+        raise HTTPException(
+            status_code=422,
+            detail="end_time must be after start_time",
+        )
+
+    visit.start_time = payload.start_time
+    visit.end_time = payload.end_time
+
+    total_minutes = int((payload.end_time - payload.start_time).total_seconds() // 60)
+    units = calculate_units(total_minutes)
+
+    service_date = visit.visit_date or payload.start_time.date()
+
+    existing = (
+        db.query(VisitMinutes)
+        .filter(VisitMinutes.visit_id == visit.id)
+        .one_or_none()
+    )
+
+    if existing:
+        existing.discipline = visit.visit_discipline or existing.discipline
+        existing.service_date = service_date
+        existing.minutes = total_minutes
+        existing.units = units
+        existing.status = "FINALIZED"
+    else:
+        db.add(
+            VisitMinutes(
+                id=uuid.uuid4(),
+                tenant_id=visit.tenant_id,
+                visit_id=visit.id,
+                discipline=visit.visit_discipline or "UNKNOWN",
+                service_date=service_date,
+                minutes=total_minutes,
+                units=units,
+                status="FINALIZED",
+                created_by=str(actor_id) if actor_id else None,
+            )
+        )
+
+
 @router.post("/{visit_id}/finalize", response_model=VisitMutationResponse)
 def finalize_visit(
     visit_id: uuid.UUID,
     request: Request,
     response: Response,
+    payload: FinalizeVisitPayload = Body(default=FinalizeVisitPayload()),
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),):
     request_id = _get_request_id(request, response)
@@ -4605,6 +5900,7 @@ def finalize_visit(
                 visit.finalized_by = user_id
             if hasattr(visit, "updated_at"):
                 visit.updated_at = now
+            _upsert_visit_minutes(db, visit, payload, user_id)
             db.flush()
             _safe_log_event(
                 db=db,
@@ -4677,6 +5973,43 @@ def finalize_visit(
             status_code=422,
             detail="Visit must contain at least one valid clinical form",
         )
+    primary_visit_note = next(
+        (note for note in notes if bool(getattr(note, "is_primary_form", False))),
+        primary_notes[0],
+    )
+    if (
+        discipline in VISIT_NOTE_DISCIPLINES
+        and str(form_type or "").upper() in VISIT_NOTE_FULL_BODY_FORM_TYPES
+        and primary_visit_note is not None
+    ):
+        supervisory_context = _visit_note_supervisory_context(
+            db,
+            visit=visit,
+            primary_note=primary_visit_note,
+            role=getattr(current_user, "role", None),
+        )
+        if bool(supervisory_context.get("session_allows_supervisory_review")):
+            supervisory_errors = _validate_visit_note_supervisory_review(
+                primary_visit_note.content or {},
+                supervisory_context=supervisory_context,
+                role=getattr(current_user, "role", None),
+            )
+            if supervisory_errors:
+                raise HTTPException(
+                    status_code=422,
+                    detail={
+                        "code": "RN_SUPERVISORY_REVIEW_INVALID",
+                        "message": "RN Supervisory Review is incomplete or unauthorized.",
+                        "errors": supervisory_errors,
+                    },
+                )
+            if _is_started_supervisory_subform(((primary_visit_note.content or {}).get("supervisory_review") or {}).get("hha")) or _is_started_supervisory_subform(((primary_visit_note.content or {}).get("supervisory_review") or {}).get("lvn_lpn")):
+                primary_visit_note.content = _refresh_supervisory_review_audits(
+                    dict(primary_visit_note.content or {}),
+                    user_id=user_id,
+                    now=now,
+                    finalizing=True,
+                )
     _enforce_rn_supervisory_requirement(
         visit=visit,
         patient=patient,
@@ -4727,6 +6060,15 @@ def finalize_visit(
             visit.finalized_by = user_id
         if hasattr(visit, "updated_at"):
             visit.updated_at = now
+        _upsert_visit_minutes(db, visit, payload, user_id)
+        for note in notes:
+            note.status = "FINALIZED"
+            note.finalized_at = now
+            note.finalized_by = user_id
+            note.signed_at = now
+            note.signed_by = user_id
+            note.updated_at = now
+            note.updated_by_user_id = user_id
         db.flush()
         _safe_log_event(
             db=db,

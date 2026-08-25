@@ -7,6 +7,20 @@ function getErrorMessage(error: unknown, fallback: string) {
     if (typeof detail === "string" && detail.trim()) {
       return detail;
     }
+    if (detail && typeof detail === "object") {
+      const message =
+        "message" in detail && typeof detail.message === "string"
+          ? detail.message
+          : "detail" in detail && typeof detail.detail === "string"
+            ? detail.detail
+            : "";
+      const errors =
+        "errors" in detail && Array.isArray(detail.errors)
+          ? detail.errors.filter((item: unknown) => typeof item === "string").join(", ")
+          : "";
+      const combined = [message, errors].filter(Boolean).join(": ");
+      if (combined) return combined;
+    }
     if (Array.isArray(detail) && detail.length > 0) {
       return detail
         .map((item) => {
@@ -118,12 +132,17 @@ export type VisitNoteBodySystem = {
   other_symptom?: string | null;
   assessed_no_issues?: boolean;
   other_observation?: string | null;
+  selected_findings?: string[] | null;
+  oral_intake?: string | null;
   diet?: string | null;
   diet_specify?: string | null;
   incontinent?: string | null;
   last_bm?: string | null;
   ambulatory_status?: string | null;
+  assistive_device?: string | null;
+  assistance_level?: string | null;
   endurance?: string | null;
+  bedbound_status?: string | null;
   adl_scores?: Record<string, number> | null;
   adl_total_score?: number | null;
 };
@@ -174,6 +193,113 @@ export type VisitNoteChecklist = {
   next_visit_confirmed?: boolean | null;
 };
 
+export type VisitNoteFunctionalDecline = {
+  kps?: number | null;
+  pps?: number | null;
+  fast?: string | null;
+  nyha?: string | null;
+};
+
+export type VisitNoteSupervisoryAudit = {
+  created_at?: string | null;
+  created_by_user_id?: string | null;
+  updated_at?: string | null;
+  updated_by_user_id?: string | null;
+  finalized_at?: string | null;
+  finalized_by_user_id?: string | null;
+};
+
+export type VisitNoteSupervisorySubform = {
+  assigned_staff_user_id?: string | null;
+  assigned_staff_name?: string | null;
+  supervision_type?: string | null;
+  observation_datetime?: string | null;
+  rn_supervisor_name?: string | null;
+  services_meet_patient_needs?: string | null;
+  follows_care_plan?: string | null;
+  demonstrates_competency?: string | null;
+  communication_appropriate?: string | null;
+  infection_control_safety?: string | null;
+  patient_family_concerns?: string | null;
+  concern_details?: string | null;
+  corrective_action_required?: string | null;
+  corrective_action_details?: string | null;
+  notification_documented?: string | null;
+  person_notified?: string | null;
+  notification_datetime?: string | null;
+  follow_up_required?: string | null;
+  follow_up_due_date?: string | null;
+  supervisor_comments?: string | null;
+  ordered_interventions_completed?: string | null;
+  documentation_consistent?: string | null;
+  audit?: VisitNoteSupervisoryAudit | null;
+};
+
+export type VisitNoteSupervisoryReview = {
+  hha?: VisitNoteSupervisorySubform | null;
+  lvn_lpn?: VisitNoteSupervisorySubform | null;
+};
+
+export type VisitNoteComparableEntry = {
+  visit_id: string;
+  note_id: string;
+  discipline: string;
+  form_type: string | null;
+  visit_datetime: string | null;
+  visit_date: string | null;
+  content_snapshot: Partial<VisitNoteContent>;
+};
+
+export type VisitNoteSupervisoryAssignment = {
+  user_id: string;
+  name: string;
+  discipline: string;
+  is_primary: boolean;
+  assigned_at: string | null;
+};
+
+export type VisitNoteSupervisoryContext = {
+  visible: boolean;
+  can_edit: boolean;
+  derivation_note?: string | null;
+  hha: {
+    applicable: boolean;
+    service_status: string;
+    assignments: VisitNoteSupervisoryAssignment[];
+    last_completed?: { visit_id: string; visit_date: string | null; finalized_at: string | null; form_type: string | null } | null;
+    next_due?: string | null;
+    status_label: string;
+  };
+  lvn_lpn: {
+    applicable: boolean;
+    service_status: string;
+    assignments: VisitNoteSupervisoryAssignment[];
+    last_completed?: { visit_id: string; visit_date: string | null; finalized_at: string | null; form_type: string | null } | null;
+    next_due?: string | null;
+    status_label: string;
+  };
+};
+
+export type VisitNoteNarcoticDisposalItem = {
+  drug_name?: string | null;
+  quantity?: string | null;
+  disposal_method?: string | null;
+};
+
+export type VisitNoteDeathDisposal = {
+  hospice_received_call_at?: string | null;
+  pronounced_death_at?: string | null;
+  pronounced_by?: string | null;
+  pronounced_by_name?: string | null;
+  evidenced_by?: string[];
+  mortuary_notified_at?: string | null;
+  mortuary_name?: string | null;
+  physician_idg_notified_at?: string | null;
+  family_instructed_on_narcotic_disposal?: boolean;
+  narcotics?: VisitNoteNarcoticDisposalItem[];
+  witnessed_or_stated_by?: string | null;
+};
+
 export type VisitNoteContent = {
   correction?: boolean;
   type_of_visit?: string | null;
@@ -189,11 +315,14 @@ export type VisitNoteContent = {
 
   pain?: VisitNotePain | null;
   vitals?: VisitNoteVitals | null;
+  functional_decline?: VisitNoteFunctionalDecline | null;
   signs_symptoms?: Partial<Record<VisitNoteBodySystemKey, VisitNoteBodySystem>>;
+  supervisory_review?: VisitNoteSupervisoryReview | null;
   care_provided?: VisitNoteCareProvided | null;
   visit_checklist?: VisitNoteChecklist | null;
 
   death_disposal_notes?: string | null;
+  death_disposal?: VisitNoteDeathDisposal | null;
   narrative?: string | null;
 };
 
@@ -211,6 +340,11 @@ export type VisitNoteRecord = {
   created_at: string;
   updated_at: string;
   content: VisitNoteContent;
+  comparable_history?: VisitNoteComparableEntry[];
+  supervisory_context?: VisitNoteSupervisoryContext;
+  permissions?: {
+    can_edit_supervisory_review?: boolean;
+  };
 };
 
 export type VisitNoteTimelineEntry = {

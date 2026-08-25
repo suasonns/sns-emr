@@ -49,6 +49,8 @@ class TemplateItemCreate(BaseModel):
     vendor: str | None = None
     administered_by: str | None = None
     special_instruction: str | None = None
+    start_date: date | None = None
+    stop_date: date | None = None
     sort_order: int | None = None
 
 
@@ -82,6 +84,8 @@ def _serialize_item(item: OrderTemplateItem) -> dict:
         "vendor": item.vendor,
         "administered_by": item.administered_by,
         "special_instruction": item.special_instruction,
+        "start_date": item.start_date.isoformat() if item.start_date else None,
+        "stop_date": item.stop_date.isoformat() if item.stop_date else None,
         "sort_order": item.sort_order,
     }
 

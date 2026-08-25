@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
@@ -24,6 +24,35 @@ class AdmitPatientRequest(BaseModel):
         default=False,
         description="Acknowledges HIGH/CRITICAL documentation guidance.",
     )
+
+
+# CMS HOPE A2115 "Reason for Discharge" — official numeric codes.
+DISCHARGE_REASON_CODES: Dict[str, str] = {
+    "1": "Expired",
+    "2": "Revoked",
+    "3": "No longer terminally ill",
+    "4": "Moved out of hospice service area",
+    "5": "Transferred to another hospice",
+    "6": "Discharged for cause",
+}
+
+
+class DischargePlanningUpdate(BaseModel):
+    discharge_projected_date: Optional[datetime] = None
+    discharge_comments: Optional[str] = None
+    discharge_plan_reviewed: Optional[bool] = None
+    discharge_notified: Optional[bool] = None
+    discharge_explained: Optional[bool] = None
+    discharge_readmission_explained: Optional[bool] = None
+    discharge_medication_instruction: Optional[bool] = None
+    discharge_contact_provided: Optional[bool] = None
+    discharge_referral_provided: Optional[bool] = None
+
+
+class DischargeFinalizeRequest(BaseModel):
+    discharge_date: date
+    reason_code: str = Field(..., description="CMS A2115 Reason for Discharge code (1-6)")
+    notes: Optional[str] = None
 
 
 def enforce_admission_requirements(db: Session, patient_id: str, tenant_id: str) -> None:
@@ -316,6 +345,271 @@ def admit_patient(
             "admission_id": str(admission_ctx["id"]),
             "status": "ACTIVE",
             "soc_date": soc_datetime.isoformat(),
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise
+
+
+def _serialize_discharge_state(patient_row, admission_row) -> Dict[str, Any]:
+    return {
+        "patient_status": patient_row["status"],
+        "admission_id": str(admission_row["id"]) if admission_row else None,
+        "admission_status": admission_row["status"] if admission_row else None,
+        "discharged": patient_row["status"] == "DISCHARGED",
+        "discharge_date": patient_row["discharge_date"].isoformat() if patient_row["discharge_date"] else None,
+        "discharge_reason": patient_row["discharge_reason"],
+        "discharge_initiated_by": patient_row["discharge_initiated_by"],
+        "discharge_projected_date": patient_row["discharge_projected_date"].isoformat() if patient_row["discharge_projected_date"] else None,
+        "discharge_comments": patient_row["discharge_comments"],
+        "checklist": {
+            "plan_reviewed": patient_row["discharge_plan_reviewed"],
+            "notified": patient_row["discharge_notified"],
+            "explained": patient_row["discharge_explained"],
+            "readmission_explained": patient_row["discharge_readmission_explained"],
+            "medication_instruction": patient_row["discharge_medication_instruction"],
+            "contact_provided": patient_row["discharge_contact_provided"],
+            "referral_provided": patient_row["discharge_referral_provided"],
+        },
+        "reason_codes": DISCHARGE_REASON_CODES,
+    }
+
+
+@router.get("/{patient_id}/discharge")
+def get_discharge_planning(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    tenant_id = current_user.tenant_id
+
+    patient_row = (
+        db.execute(
+            text(
+                """
+                SELECT status, discharge_date, discharge_reason, discharge_initiated_by,
+                       discharge_projected_date, discharge_comments, discharge_plan_reviewed,
+                       discharge_notified, discharge_explained, discharge_readmission_explained,
+                       discharge_medication_instruction, discharge_contact_provided,
+                       discharge_referral_provided
+                FROM patients
+                WHERE id = :pid AND tenant_id = :tenant_id
+                """
+            ),
+            {"pid": patient_id, "tenant_id": tenant_id},
+        )
+        .mappings()
+        .first()
+    )
+
+    if not patient_row:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    admission_row = (
+        db.execute(
+            text(
+                """
+                SELECT id, status
+                FROM admissions
+                WHERE patient_id = :pid AND tenant_id = :tenant_id
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"pid": patient_id, "tenant_id": tenant_id},
+        )
+        .mappings()
+        .first()
+    )
+
+    return {
+        "patient_id": patient_id,
+        **_serialize_discharge_state(patient_row, admission_row),
+    }
+
+
+@router.put("/{patient_id}/discharge")
+def update_discharge_planning(
+    patient_id: str,
+    payload: DischargePlanningUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    tenant_id = current_user.tenant_id
+
+    patient_row = (
+        db.execute(
+            text("SELECT status FROM patients WHERE id = :pid AND tenant_id = :tenant_id"),
+            {"pid": patient_id, "tenant_id": tenant_id},
+        )
+        .mappings()
+        .first()
+    )
+
+    if not patient_row:
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    if patient_row["status"] == "DISCHARGED":
+        raise HTTPException(
+            status_code=409,
+            detail="Patient is already discharged; discharge planning checklist is locked.",
+        )
+
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="No discharge planning fields supplied.")
+
+    set_clauses = ", ".join(f"{field} = :{field}" for field in data)
+    params = {**data, "pid": patient_id, "tenant_id": tenant_id}
+
+    db.execute(
+        text(f"UPDATE patients SET {set_clauses} WHERE id = :pid AND tenant_id = :tenant_id"),
+        params,
+    )
+
+    audit = AuditLog()
+    audit.tenant_id = tenant_id
+    audit.user_id = current_user.id
+    audit.action = "DISCHARGE_PLANNING_UPDATED"
+    audit.entity_type = "PATIENT"
+    audit.entity_id = patient_id
+    audit.created_at = datetime.now(timezone.utc)
+    audit.details = {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in data.items()}
+    audit.changes = audit.details
+    db.add(audit)
+    db.commit()
+
+    return get_discharge_planning(patient_id, db, current_user)
+
+
+@router.post("/{patient_id}/discharge/finalize", status_code=status.HTTP_200_OK)
+def finalize_patient_discharge(
+    patient_id: str,
+    payload: DischargeFinalizeRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    if payload.reason_code not in DISCHARGE_REASON_CODES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"reason_code must be one of {sorted(DISCHARGE_REASON_CODES.keys())}",
+        )
+
+    tenant_id = current_user.tenant_id
+    user_id = current_user.id
+
+    try:
+        with db.begin():
+            patient_row = (
+                db.execute(
+                    text("SELECT status FROM patients WHERE id = :pid AND tenant_id = :tenant_id"),
+                    {"pid": patient_id, "tenant_id": tenant_id},
+                )
+                .mappings()
+                .first()
+            )
+
+            if not patient_row:
+                raise HTTPException(status_code=404, detail="Patient not found")
+
+            if patient_row["status"] == "DISCHARGED":
+                raise HTTPException(status_code=409, detail="Patient is already discharged.")
+
+            admission_row = (
+                db.execute(
+                    text(
+                        """
+                        SELECT id, status
+                        FROM admissions
+                        WHERE patient_id = :pid AND tenant_id = :tenant_id
+                          AND status = 'ACTIVE'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"pid": patient_id, "tenant_id": tenant_id},
+                )
+                .mappings()
+                .first()
+            )
+
+            if not admission_row:
+                raise HTTPException(
+                    status_code=409,
+                    detail="No active admission found to discharge.",
+                )
+
+            reason_label = f"{payload.reason_code} - {DISCHARGE_REASON_CODES[payload.reason_code]}"
+            discharged_at = datetime.combine(payload.discharge_date, datetime.min.time()).replace(tzinfo=timezone.utc)
+
+            db.execute(
+                text(
+                    """
+                    UPDATE admissions
+                    SET status = 'DISCHARGED',
+                        discharged_at = :discharged_at,
+                        discharge_reason = :reason
+                    WHERE id = :admission_id
+                      AND patient_id = :pid
+                      AND tenant_id = :tenant_id
+                    """
+                ),
+                {
+                    "discharged_at": discharged_at,
+                    "reason": reason_label,
+                    "admission_id": admission_row["id"],
+                    "pid": patient_id,
+                    "tenant_id": tenant_id,
+                },
+            )
+
+            db.execute(
+                text(
+                    """
+                    UPDATE patients
+                    SET status = 'DISCHARGED',
+                        discharge_date = :discharge_date,
+                        discharge_reason = :reason,
+                        discharge_initiated_by = :user_id,
+                        discharge_comments = COALESCE(:notes, discharge_comments)
+                    WHERE id = :pid
+                      AND tenant_id = :tenant_id
+                    """
+                ),
+                {
+                    "discharge_date": payload.discharge_date,
+                    "reason": reason_label,
+                    "user_id": str(user_id),
+                    "notes": payload.notes,
+                    "pid": patient_id,
+                    "tenant_id": tenant_id,
+                },
+            )
+
+            audit = AuditLog()
+            audit.tenant_id = tenant_id
+            audit.user_id = user_id
+            audit.action = "PATIENT_DISCHARGED"
+            audit.entity_type = "PATIENT"
+            audit.entity_id = patient_id
+            audit.created_at = datetime.now(timezone.utc)
+            audit.details = {
+                "admission_id": str(admission_row["id"]),
+                "discharge_date": payload.discharge_date.isoformat(),
+                "reason_code": payload.reason_code,
+                "reason_label": reason_label,
+            }
+            audit.changes = audit.details
+            db.add(audit)
+
+        return {
+            "patient_id": patient_id,
+            "admission_id": str(admission_row["id"]),
+            "status": "DISCHARGED",
+            "discharge_date": payload.discharge_date.isoformat(),
+            "discharge_reason": reason_label,
         }
 
     except HTTPException:

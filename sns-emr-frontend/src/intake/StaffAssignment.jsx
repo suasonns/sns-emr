@@ -1,7 +1,73 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useThemeMode } from '../theme/theme';
 import { getChartColors } from '../theme/chartColors';
 import { defaultPatient } from './ConsentNotifications';
+import { getActivePatientId } from '../utils/activePatient';
+import { getCurrentUser } from '../api/session';
+import { listStaff } from '../api/staff';
+import {
+  assignPatientStaff,
+  deactivatePatientAssignment,
+  listPatientAssignments,
+} from '../api/patientAssignments';
+import { formatRoleLabel } from '../utils/roleLabel';
+
+const CLINICAL_ADMIN_ROLES = new Set(['ADMINISTRATOR', 'DPCS', 'DPCS_ADMINISTRATOR']);
+
+const DISCIPLINE_GROUPS = [
+  { key: 'providers', label: 'MD / NP / DO', disciplines: ['MEDICAL_DIRECTOR', 'ATTENDING_PHYSICIAN', 'MD', 'DO', 'NP', 'PA'] },
+  { key: 'case-manager', label: 'Case Manager (RN or LVN)', disciplines: ['CASE_MANAGER'] },
+  { key: 'rn', label: 'RN', disciplines: ['RN'] },
+  { key: 'msw', label: 'MSW', disciplines: ['MSW', 'SW', 'BSW', 'LCSW'] },
+  { key: 'sc', label: 'Spiritual Care (SC)', disciplines: ['SC', 'CHAPLAIN'] },
+  { key: 'ha', label: 'HHA / CHHA', disciplines: ['CHHA', 'AIDE'] },
+  { key: 'lvn', label: 'LVN / LPN', disciplines: ['LVN', 'LPN'] },
+];
+
+const DISCIPLINE_LABELS = {
+  MEDICAL_DIRECTOR: 'Medical Director',
+  ATTENDING_PHYSICIAN: 'Attending Physician',
+  MD: 'MD',
+  DO: 'DO',
+  NP: 'NP',
+  PA: 'PA',
+  CASE_MANAGER: 'Case Manager',
+  RN: 'RN',
+  MSW: 'MSW',
+  SW: 'Social Worker',
+  BSW: 'BSW',
+  LCSW: 'LCSW',
+  SC: 'Spiritual Counselor',
+  CHAPLAIN: 'Chaplain',
+  CHHA: 'CHHA / HHA',
+  AIDE: 'Aide',
+  LVN: 'LVN',
+  LPN: 'LPN',
+};
+
+const ROLE_ALIASES = {
+  ADMIN: 'ADMINISTRATOR',
+  CLINICAL_ADMIN: 'ADMINISTRATOR',
+  DPCS_ADMIN: 'DPCS',
+  DPCS_DESIGNEE: 'DPCS',
+  SUPER_ADMIN: 'ADMINISTRATOR',
+  SUPERVISOR: 'CLINICAL_SUPERVISOR',
+  MSW: 'SW',
+  LCSW: 'SW',
+  LPN: 'LVN',
+  MD: 'ATTENDING_PHYSICIAN',
+};
+
+const PROFILE_DISCIPLINE_ALIASES = {
+  ADMN: null,
+  HA: 'CHHA',
+  HHA: 'CHHA',
+  VOL: null,
+};
+
+const ASSIGNABLE_DISCIPLINES = new Set(
+  DISCIPLINE_GROUPS.flatMap((group) => group.disciplines),
+);
 
 const cardStyle = (colors) => ({
   backgroundColor: colors.card,
@@ -17,19 +83,28 @@ const Badge = ({ children, variant = 'green', colors }) => {
     red: { bg: colors.redBg, color: colors.red },
     amber: { bg: colors.amberBg, color: colors.amber },
     teal: { bg: colors.tealBg, color: colors.teal },
+    muted: { bg: colors.border, color: colors.label },
   };
-  const v = map[variant] || map.teal;
+  const tone = map[variant] || map.teal;
   return (
     <span style={{
-      display: 'inline-block', padding: '2px 10px', borderRadius: 4,
-      fontSize: 11, fontWeight: 600, backgroundColor: v.bg, color: v.color,
-    }}>{children}</span>
+      display: 'inline-block',
+      padding: '2px 10px',
+      borderRadius: 4,
+      fontSize: 11,
+      fontWeight: 600,
+      backgroundColor: tone.bg,
+      color: tone.color,
+    }}
+    >
+      {children}
+    </span>
   );
 };
 
 const PatientBanner = ({ patient, colors }) => (
   <div style={{ backgroundColor: colors.card, borderRadius: 8, padding: '16px 24px', marginBottom: 24 }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
       <div>
         <div style={{ color: colors.white, fontSize: 20, fontWeight: 700, marginBottom: 4 }}>
           {patient.lastName}, {patient.firstName}
@@ -43,339 +118,550 @@ const PatientBanner = ({ patient, colors }) => (
   </div>
 );
 
-const disciplines = [
-  {
-    key: 'md', label: 'MD / NP / DO', staff: [
-      { name: 'Dr. Angela Reyes', role: 'Attending Physician', primary: true, assigned: true, caseload: 18, phone: '(555) 201-3344', email: 'a.reyes@snshospice.org' },
-    ]
-  },
-  {
-    key: 'cm', label: 'Case Manager (CM)', staff: [
-      { name: 'Marcus Whitfield, RN', role: 'RN Case Manager', primary: true, assigned: true, caseload: 12, phone: '(555) 201-3401', email: 'm.whitfield@snshospice.org' },
-    ]
-  },
-  {
-    key: 'rn', label: 'RN', staff: [
-      { name: 'Marcus Whitfield, RN', role: 'Primary RN', primary: true, assigned: true, caseload: 12, phone: '(555) 201-3401', email: 'm.whitfield@snshospice.org' },
-      { name: 'Diane Coleman, RN', role: 'Backup RN', primary: false, assigned: true, caseload: 15, phone: '(555) 201-3410', email: 'd.coleman@snshospice.org' },
-    ]
-  },
-  {
-    key: 'lvn', label: 'LVN', staff: [
-      { name: 'Priya Nandakumar, LVN', role: 'LVN', primary: true, assigned: true, caseload: 20, phone: '(555) 201-3422', email: 'p.nandakumar@snshospice.org' },
-    ]
-  },
-  {
-    key: 'ha', label: 'Home Health Aide (HA)', staff: [
-      { name: 'Renee Ortiz, HHA', role: 'Home Health Aide', primary: true, assigned: true, caseload: 9, phone: '(555) 201-3455', email: 'r.ortiz@snshospice.org' },
-    ]
-  },
-  {
-    key: 'msw', label: 'MSW / BSW / LCSW', staff: [
-      { name: 'Jonathan Blake, LCSW', role: 'Medical Social Worker', primary: true, assigned: true, caseload: 24, phone: '(555) 201-3480', email: 'j.blake@snshospice.org' },
-    ]
-  },
-  {
-    key: 'sc', label: 'Spiritual Care (SC)', staff: [
-      { name: 'Rev. Thomas Grady', role: 'Chaplain', primary: true, assigned: true, caseload: 30, phone: '(555) 201-3502', email: 't.grady@snshospice.org' },
-    ]
-  },
-  {
-    key: 'bc', label: 'Bereavement Counselor (BC)', staff: [
-      { name: 'Unassigned', role: 'Bereavement Counselor', primary: false, assigned: false, caseload: null, phone: null, email: null },
-    ]
-  },
-  {
-    key: 'vol', label: 'Volunteer (VOL)', staff: [
-      { name: 'Unassigned', role: 'Volunteer', primary: false, assigned: false, caseload: null, phone: null, email: null },
-    ]
-  },
-  {
-    key: 'pt', label: 'PT / ST / OT / MT / NU / MFT', staff: [
-      { name: 'Unassigned', role: 'Therapy Services', primary: false, assigned: false, caseload: null, phone: null, email: null },
-    ]
-  },
-];
+function cleanToken(value) {
+  return String(value || '').trim().toUpperCase().replace(/-/g, '_');
+}
 
-// Candidate roster available for reassignment, grouped by discipline.
-const staffRoster = {
-  md: [
-    { name: 'Dr. Angela Reyes', role: 'Attending Physician', caseload: 18, phone: '(555) 201-3344', email: 'a.reyes@snshospice.org' },
-    { name: 'Dr. Samuel Okafor', role: 'Attending Physician', caseload: 14, phone: '(555) 201-3350', email: 's.okafor@snshospice.org' },
-  ],
-  cm: [
-    { name: 'Marcus Whitfield, RN', role: 'RN Case Manager', caseload: 12, phone: '(555) 201-3401', email: 'm.whitfield@snshospice.org' },
-    { name: 'Diane Coleman, RN', role: 'RN Case Manager', caseload: 15, phone: '(555) 201-3410', email: 'd.coleman@snshospice.org' },
-  ],
-  rn: [
-    { name: 'Marcus Whitfield, RN', role: 'RN', caseload: 12, phone: '(555) 201-3401', email: 'm.whitfield@snshospice.org' },
-    { name: 'Diane Coleman, RN', role: 'RN', caseload: 15, phone: '(555) 201-3410', email: 'd.coleman@snshospice.org' },
-    { name: 'Felicia Ann Marsh, RN', role: 'RN', caseload: 11, phone: '(555) 201-3417', email: 'f.marsh@snshospice.org' },
-  ],
-  lvn: [
-    { name: 'Priya Nandakumar, LVN', role: 'LVN', caseload: 20, phone: '(555) 201-3422', email: 'p.nandakumar@snshospice.org' },
-    { name: 'Carlos Medina, LVN', role: 'LVN', caseload: 17, phone: '(555) 201-3428', email: 'c.medina@snshospice.org' },
-  ],
-  ha: [
-    { name: 'Renee Ortiz, HHA', role: 'Home Health Aide', caseload: 9, phone: '(555) 201-3455', email: 'r.ortiz@snshospice.org' },
-    { name: 'Wanda Price, HHA', role: 'Home Health Aide', caseload: 13, phone: '(555) 201-3461', email: 'w.price@snshospice.org' },
-  ],
-  msw: [
-    { name: 'Jonathan Blake, LCSW', role: 'Medical Social Worker', caseload: 24, phone: '(555) 201-3480', email: 'j.blake@snshospice.org' },
-    { name: 'Nina Alvarez, MSW', role: 'Medical Social Worker', caseload: 19, phone: '(555) 201-3487', email: 'n.alvarez@snshospice.org' },
-  ],
-  sc: [
-    { name: 'Rev. Thomas Grady', role: 'Chaplain', caseload: 30, phone: '(555) 201-3502', email: 't.grady@snshospice.org' },
-    { name: 'Rev. Linda Osei', role: 'Chaplain', caseload: 22, phone: '(555) 201-3509', email: 'l.osei@snshospice.org' },
-  ],
-  bc: [
-    { name: 'Karen Byrd, LCSW', role: 'Bereavement Counselor', caseload: 27, phone: '(555) 201-3520', email: 'k.byrd@snshospice.org' },
-  ],
-  vol: [
-    { name: 'Michael Turner', role: 'Volunteer', caseload: 8, phone: '(555) 201-3540', email: 'm.turner@volunteers.org' },
-  ],
-  pt: [
-    { name: 'Alicia Fenwick, PT', role: 'Physical Therapist', caseload: 10, phone: '(555) 201-3560', email: 'a.fenwick@snshospice.org' },
-  ],
-};
+function normalizeRoleToken(value) {
+  const token = cleanToken(value);
+  return ROLE_ALIASES[token] || token;
+}
 
-const StaffCard = ({ member, colors, onReplace, roster }) => {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const alternates = (roster || []).filter((r) => r.name !== member.name);
+function getAssignableDisciplinesForStaff(staff) {
+  const tokens = new Set([cleanToken(staff?.role), normalizeRoleToken(staff?.role)]);
+  const profileToken = PROFILE_DISCIPLINE_ALIASES[cleanToken(staff?.discipline)] ?? cleanToken(staff?.discipline);
+  if (profileToken) tokens.add(profileToken);
 
+  const assignable = new Set();
+  tokens.forEach((token) => {
+    if (token && ASSIGNABLE_DISCIPLINES.has(token)) {
+      assignable.add(token);
+    }
+  });
+
+  switch (cleanToken(staff?.role)) {
+    case 'CHHA':
+      assignable.add('CHHA');
+      break;
+    case 'SW':
+      assignable.add('SW');
+      break;
+    case 'SC':
+      assignable.add('SC');
+      break;
+    case 'RN':
+      assignable.add('RN');
+      break;
+    case 'LVN':
+      assignable.add('LVN');
+      break;
+    case 'LPN':
+      assignable.add('LPN');
+      break;
+    default:
+      break;
+  }
+
+  // Case Manager is not its own clinical credential — it's an assignable
+  // administrative role the agency designates to one of its RN or LVN/LPN
+  // staff. Anyone whose real discipline is RN or LVN/LPN is eligible to be
+  // picked as Case Manager; the agency decides who for a given patient.
+  if (assignable.has('RN') || assignable.has('LVN') || assignable.has('LPN')) {
+    assignable.add('CASE_MANAGER');
+  }
+
+  return assignable;
+}
+
+// Prefer the staff member's real job title / clinical discipline for display
+// (e.g. "CEO" / "LVN") over their internal system access role (e.g.
+// "DPCS_ADMINISTRATOR"), which controls login permissions but is not a job
+// title or clinical credential and should never be shown to represent one.
+function staffDisplayLabel(staff) {
+  const jobTitle = staff?.job_title && String(staff.job_title).trim();
+  const discipline = staff?.discipline && String(staff.discipline).trim();
+  if (jobTitle && discipline) return `${discipline} • ${jobTitle}`;
+  if (discipline) return discipline;
+  if (jobTitle) return jobTitle;
+  return formatRoleLabel(staff?.role);
+}
+
+function assignmentStaffDisplayLabel(assignment) {
+  const jobTitle = assignment?.staff_job_title && String(assignment.staff_job_title).trim();
+  const discipline = assignment?.staff_discipline && String(assignment.staff_discipline).trim();
+  if (jobTitle && discipline) return `${discipline} • ${jobTitle}`;
+  if (discipline) return discipline;
+  if (jobTitle) return jobTitle;
+  return assignment?.staff_role ? formatRoleLabel(assignment.staff_role) : '';
+}
+
+function formatDateTime(value) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+function emptyDraft(group) {
+  return {
+    discipline: group.disciplines[0],
+    userId: '',
+    serviceArea: '',
+    note: '',
+  };
+}
+
+const AssignmentRow = ({
+  assignment,
+  colors,
+  canManageAssignments,
+  onDeactivate,
+  onPrepareReassign,
+  deactivatingAssignmentId,
+}) => {
+  const isHistorical = !assignment.active;
+  const staffLabel = assignment.staff_name || assignment.staff_full_name || 'Unknown staff';
   return (
     <div style={{
-      backgroundColor: colors.bg, borderRadius: 8,
-      border: `1px solid ${colors.border}`, marginBottom: 8, overflow: 'hidden',
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 18,
-            backgroundColor: member.assigned ? colors.tealBg : colors.border,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: member.assigned ? colors.teal : colors.label, fontWeight: 700, fontSize: 13,
-          }}>
-            {member.assigned ? member.name.split(' ').map((p) => p[0]).slice(0, 2).join('') : '—'}
+      backgroundColor: colors.bg,
+      borderRadius: 8,
+      border: `1px solid ${colors.border}`,
+      marginBottom: 8,
+      overflow: 'hidden',
+      opacity: isHistorical ? 0.78 : 1,
+    }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'flex-start', padding: '12px 16px', flexWrap: 'wrap' }}>
+        <div style={{ display: 'grid', gap: 6, minWidth: 260 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ color: colors.white, fontSize: 14, fontWeight: 700 }}>{staffLabel}</span>
+            <Badge variant={assignment.active ? 'green' : 'amber'} colors={colors}>{assignment.status}</Badge>
+            {assignment.is_primary ? <Badge variant="teal" colors={colors}>Primary</Badge> : null}
           </div>
-          <div>
-            <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
-              {member.name}
-              {member.primary && <Badge variant="teal" colors={colors}>Primary</Badge>}
-            </div>
-            <div style={{ color: colors.label, fontSize: 12 }}>{member.role}</div>
+          <div style={{ color: colors.label, fontSize: 12 }}>
+            {DISCIPLINE_LABELS[assignment.discipline] || assignment.discipline}
+            {assignmentStaffDisplayLabel(assignment) ? ` • ${assignmentStaffDisplayLabel(assignment)}` : ''}
           </div>
+          <div style={{ color: colors.label, fontSize: 12 }}>
+            Assigned {formatDateTime(assignment.assigned_at)}
+            {assignment.assigned_by_name ? ` by ${assignment.assigned_by_name}` : ''}
+          </div>
+          {assignment.service_area ? (
+            <div style={{ color: colors.label, fontSize: 12 }}>Service area: {assignment.service_area}</div>
+          ) : null}
+          {assignment.note ? (
+            <div style={{ color: colors.label, fontSize: 12, lineHeight: 1.5 }}>Note: {assignment.note}</div>
+          ) : null}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
-          {member.assigned ? (
-            <>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase' }}>Caseload</div>
-                <div style={{ color: colors.white, fontSize: 13, fontWeight: 600 }}>{member.caseload}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase' }}>Phone</div>
-                <div style={{ color: colors.white, fontSize: 13 }}>{member.phone}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase' }}>Email</div>
-                <div style={{ color: colors.teal, fontSize: 12 }}>{member.email}</div>
-              </div>
-              <Badge variant="green" colors={colors}>Assigned</Badge>
-            </>
-          ) : (
-            <Badge variant="amber" colors={colors}>Not Assigned</Badge>
-          )}
-          {onReplace && (
-            <button
-              onClick={() => setPickerOpen((v) => !v)}
-              style={{
-                padding: '6px 14px', backgroundColor: 'transparent', color: colors.teal,
-                border: `1px solid ${colors.teal}`, borderRadius: 6, fontSize: 12,
-                fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", whiteSpace: 'nowrap',
-              }}
-            >
-              {member.assigned ? 'Reassign' : 'Assign'}
-            </button>
-          )}
+        <div style={{ display: 'grid', gap: 8, justifyItems: 'end', minWidth: 200 }}>
+          <div style={{ color: colors.teal, fontSize: 12 }}>{assignment.staff_full_name || assignment.staff_name || ''}</div>
+          {canManageAssignments && assignment.active ? (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => onPrepareReassign(assignment.discipline)}
+                style={{
+                  padding: '6px 14px',
+                  backgroundColor: 'transparent',
+                  color: colors.teal,
+                  border: `1px solid ${colors.teal}`,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                Reassign
+              </button>
+              <button
+                type="button"
+                disabled={deactivatingAssignmentId === assignment.id}
+                onClick={() => onDeactivate(assignment)}
+                style={{
+                  padding: '6px 14px',
+                  backgroundColor: 'transparent',
+                  color: colors.red,
+                  border: `1px solid ${colors.red}`,
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: deactivatingAssignmentId === assignment.id ? 'not-allowed' : 'pointer',
+                  opacity: deactivatingAssignmentId === assignment.id ? 0.6 : 1,
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {deactivatingAssignmentId === assignment.id ? 'Deactivating…' : 'Deactivate'}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
-
-      {pickerOpen && (
-        <div style={{ padding: '10px 16px 14px', borderTop: `1px solid ${colors.border}` }}>
-          <div style={{ color: colors.label, fontSize: 11, textTransform: 'uppercase', marginBottom: 8 }}>
-            Select reassignment
-          </div>
-          {alternates.length === 0 && (
-            <div style={{ color: colors.label, fontSize: 12 }}>No other staff available for this discipline.</div>
-          )}
-          {alternates.map((candidate) => (
-            <div
-              key={candidate.name}
-              onClick={() => { onReplace(candidate); setPickerOpen(false); }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 6, cursor: 'pointer', marginBottom: 4,
-                backgroundColor: colors.card,
-              }}
-            >
-              <div>
-                <span style={{ color: colors.white, fontSize: 13, fontWeight: 600 }}>{candidate.name}</span>
-                <span style={{ color: colors.label, fontSize: 12, marginLeft: 8 }}>Caseload: {candidate.caseload}</span>
-              </div>
-              <span style={{ color: colors.teal, fontSize: 12, fontWeight: 600 }}>Select</span>
-            </div>
-          ))}
-          {member.assigned && (
-            <div
-              onClick={() => { onReplace(null); setPickerOpen(false); }}
-              style={{ color: colors.red, fontSize: 12, fontWeight: 600, cursor: 'pointer', marginTop: 4 }}
-            >
-              Unassign this staff member
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 };
 
-const AddStaffControl = ({ disciplineKey, colors, onAddStaff, existingNames }) => {
-  const [open, setOpen] = useState(false);
-  const candidates = (staffRoster[disciplineKey] || []).filter((c) => !existingNames.includes(c.name));
+const DisciplineSection = ({
+  group,
+  rows,
+  colors,
+  expanded,
+  onToggle,
+  canManageAssignments,
+  draft,
+  onDraftChange,
+  onAssign,
+  onDeactivate,
+  onPrepareReassign,
+  deactivatingAssignmentId,
+  savingGroupKey,
+  roster,
+}) => {
+  const activeRows = rows.filter((row) => row.active);
+  const historicalRows = rows.filter((row) => !row.active);
+  const selectedDiscipline = draft.discipline || group.disciplines[0];
+  const matchingStaff = roster
+    .filter((staff) => getAssignableDisciplinesForStaff(staff).has(selectedDiscipline))
+    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''));
+  const existingAssignment = activeRows.find((row) => row.discipline === selectedDiscipline);
+  const saveBusy = savingGroupKey === group.key;
+
+  const inputStyle = {
+    backgroundColor: colors.card,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 6,
+    padding: '8px 12px',
+    color: colors.white,
+    fontSize: 13,
+    fontFamily: "'Inter', sans-serif",
+    outline: 'none',
+    width: '100%',
+  };
 
   return (
-    <div style={{ marginTop: 4 }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          padding: '8px 16px', backgroundColor: 'transparent', color: colors.teal,
-          border: `1px dashed ${colors.teal}`, borderRadius: 6, fontSize: 12.5,
-          fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", width: '100%',
-        }}
+    <div style={{ marginBottom: 16, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      <div
+        onClick={onToggle}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', backgroundColor: colors.card, cursor: 'pointer' }}
       >
-        + Assign Another Staff
-      </button>
-      {open && (
-        <div style={{ marginTop: 8, backgroundColor: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '10px 12px' }}>
-          {candidates.length === 0 && (
-            <div style={{ color: colors.label, fontSize: 12 }}>No additional staff available for this discipline.</div>
-          )}
-          {candidates.map((candidate) => (
-            <div
-              key={candidate.name}
-              onClick={() => { onAddStaff(candidate); setOpen(false); }}
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                padding: '8px 12px', borderRadius: 6, cursor: 'pointer', marginBottom: 4,
-                backgroundColor: colors.card,
-              }}
-            >
-              <div>
-                <span style={{ color: colors.white, fontSize: 13, fontWeight: 600 }}>{candidate.name}</span>
-                <span style={{ color: colors.label, fontSize: 12, marginLeft: 8 }}>Caseload: {candidate.caseload}</span>
-              </div>
-              <span style={{ color: colors.teal, fontSize: 12, fontWeight: 600 }}>Add</span>
-            </div>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ color: colors.white, fontSize: 14, fontWeight: 700 }}>{group.label}</span>
+          <Badge variant={activeRows.length ? 'green' : 'amber'} colors={colors}>
+            {activeRows.length ? `${activeRows.length} Active` : 'Unassigned'}
+          </Badge>
+          {historicalRows.length ? <Badge variant="muted" colors={colors}>{historicalRows.length} Historical</Badge> : null}
         </div>
-      )}
+        <span style={{ color: colors.label, fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
+      </div>
+
+      {expanded ? (
+        <div style={{ padding: '12px 20px 16px', backgroundColor: colors.bg }}>
+          {activeRows.length ? activeRows.map((assignment) => (
+            <AssignmentRow
+              key={assignment.id}
+              assignment={assignment}
+              colors={colors}
+              canManageAssignments={canManageAssignments}
+              onDeactivate={onDeactivate}
+              onPrepareReassign={onPrepareReassign}
+              deactivatingAssignmentId={deactivatingAssignmentId}
+            />
+          )) : (
+            <div style={{ color: colors.label, fontSize: 12, marginBottom: canManageAssignments ? 12 : 0 }}>
+              No active assignment documented for this discipline group.
+            </div>
+          )}
+
+          {historicalRows.length ? (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ color: colors.label, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 8 }}>
+                Historical assignments
+              </div>
+              {historicalRows.map((assignment) => (
+                <AssignmentRow
+                  key={assignment.id}
+                  assignment={assignment}
+                  colors={colors}
+                  canManageAssignments={false}
+                  onDeactivate={onDeactivate}
+                  onPrepareReassign={onPrepareReassign}
+                  deactivatingAssignmentId={deactivatingAssignmentId}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          {canManageAssignments ? (
+            <div style={{ marginTop: 12, backgroundColor: colors.card, border: `1px solid ${colors.border}`, borderRadius: 8, padding: 16 }}>
+              <div style={{ color: colors.white, fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
+                {existingAssignment ? 'Reassign staff' : 'Assign staff'}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+                <label style={{ color: colors.label, fontSize: 12 }}>
+                  Discipline
+                  <select
+                    value={selectedDiscipline}
+                    onChange={(event) => {
+                      const nextDiscipline = event.target.value;
+                      const nextStaffStillMatches = roster.some(
+                        (staff) => staff.id === draft.userId && getAssignableDisciplinesForStaff(staff).has(nextDiscipline),
+                      );
+                      onDraftChange(group.key, {
+                        discipline: nextDiscipline,
+                        userId: nextStaffStillMatches ? draft.userId : '',
+                      });
+                    }}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                  >
+                    {group.disciplines.map((discipline) => (
+                      <option key={discipline} value={discipline}>
+                        {DISCIPLINE_LABELS[discipline] || discipline}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ color: colors.label, fontSize: 12 }}>
+                  Staff member
+                  <select
+                    value={draft.userId}
+                    onChange={(event) => onDraftChange(group.key, { userId: event.target.value })}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                  >
+                    <option value="">— Select staff —</option>
+                    {matchingStaff.map((staff) => (
+                      <option key={staff.id} value={staff.id}>
+                        {staff.full_name} • {staffDisplayLabel(staff)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ color: colors.label, fontSize: 12 }}>
+                  Service area
+                  <input
+                    value={draft.serviceArea}
+                    onChange={(event) => onDraftChange(group.key, { serviceArea: event.target.value })}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    placeholder="Optional"
+                  />
+                </label>
+                <label style={{ color: colors.label, fontSize: 12 }}>
+                  Note
+                  <input
+                    value={draft.note}
+                    onChange={(event) => onDraftChange(group.key, { note: event.target.value })}
+                    style={{ ...inputStyle, marginTop: 6 }}
+                    placeholder="Optional"
+                  />
+                </label>
+              </div>
+              {matchingStaff.length === 0 ? (
+                <div style={{ color: colors.label, fontSize: 12, marginTop: 10 }}>
+                  No active staff roster entries match {DISCIPLINE_LABELS[selectedDiscipline] || selectedDiscipline}.
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <button
+                  type="button"
+                  disabled={!draft.userId || saveBusy}
+                  onClick={() => onAssign(group.key)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: colors.teal,
+                    color: colors.bg,
+                    border: 'none',
+                    borderRadius: 6,
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: !draft.userId || saveBusy ? 'not-allowed' : 'pointer',
+                    opacity: !draft.userId || saveBusy ? 0.6 : 1,
+                    fontFamily: "'Inter', sans-serif",
+                  }}
+                >
+                  {saveBusy ? 'Saving…' : existingAssignment ? 'Reassign staff' : 'Assign staff'}
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 };
-
-const DisciplineSection = ({ discipline, colors, expanded, onToggle, onReplaceStaff, onAddStaff }) => (
-  <div style={{ marginBottom: 16, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
-    <div
-      onClick={onToggle}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '14px 20px', backgroundColor: colors.card, cursor: 'pointer',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ color: colors.white, fontSize: 14, fontWeight: 700 }}>{discipline.label}</span>
-        <Badge variant={discipline.staff.some((s) => s.assigned) ? 'green' : 'amber'} colors={colors}>
-          {discipline.staff.filter((s) => s.assigned).length}/{discipline.staff.length} Assigned
-        </Badge>
-      </div>
-      <span style={{ color: colors.label, fontSize: 14 }}>{expanded ? '▾' : '▸'}</span>
-    </div>
-    {expanded && (
-      <div style={{ padding: '12px 20px 16px', backgroundColor: colors.bg }}>
-        {discipline.staff.map((member, i) => (
-          <StaffCard
-            key={i}
-            member={member}
-            colors={colors}
-            roster={staffRoster[discipline.key]}
-            onReplace={(candidate) => onReplaceStaff(discipline.key, i, candidate)}
-          />
-        ))}
-        <AddStaffControl
-          disciplineKey={discipline.key}
-          colors={colors}
-          onAddStaff={(candidate) => onAddStaff(discipline.key, candidate)}
-          existingNames={discipline.staff.filter((s) => s.assigned).map((s) => s.name)}
-        />
-      </div>
-    )}
-  </div>
-);
 
 const StaffAssignment = ({ patient = defaultPatient }) => {
   const { mode } = useThemeMode();
   const colors = getChartColors(mode);
+  const patientId = getActivePatientId() || '';
+  const currentUser = getCurrentUser();
+  const canManageAssignments = CLINICAL_ADMIN_ROLES.has(normalizeRoleToken(currentUser?.role));
+
   const [filter, setFilter] = useState('all');
-  const [expandedKeys, setExpandedKeys] = useState(() => new Set(['md', 'cm', 'rn']));
-  const [disciplineState, setDisciplineState] = useState(disciplines);
+  const [showHistory, setShowHistory] = useState(false);
+  const [expandedKeys, setExpandedKeys] = useState(() => new Set(['providers', 'case-manager', 'rn', 'ha', 'lvn']));
+  const [assignments, setAssignments] = useState([]);
+  const [roster, setRoster] = useState([]);
+  const [drafts, setDrafts] = useState(() => (
+    DISCIPLINE_GROUPS.reduce((acc, group) => ({ ...acc, [group.key]: emptyDraft(group) }), {})
+  ));
+  const [loading, setLoading] = useState(true);
+  const [rosterLoading, setRosterLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [savingGroupKey, setSavingGroupKey] = useState('');
+  const [deactivatingAssignmentId, setDeactivatingAssignmentId] = useState('');
+
+  const loadAssignments = useCallback(() => {
+    if (!patientId) {
+      setAssignments([]);
+      setLoading(false);
+      return Promise.resolve();
+    }
+
+    setLoading(true);
+    setError('');
+    return listPatientAssignments(patientId, { include_inactive: showHistory })
+      .then((result) => {
+        setAssignments(result?.assignments || []);
+      })
+      .catch((err) => {
+        setAssignments([]);
+        setError(err instanceof Error ? err.message : 'Failed to load staff assignments');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [patientId, showHistory]);
+
+  useEffect(() => {
+    loadAssignments();
+  }, [loadAssignments]);
+
+  useEffect(() => {
+    setRosterLoading(true);
+    listStaff({ status: 'active' })
+      .then((result) => {
+        setRoster(result || []);
+      })
+      .catch((err) => {
+        setRoster([]);
+        setError((previous) => previous || (err instanceof Error ? err.message : 'Failed to load staff roster'));
+      })
+      .finally(() => {
+        setRosterLoading(false);
+      });
+  }, []);
+
+  const groupedAssignments = useMemo(() => (
+    DISCIPLINE_GROUPS.map((group) => ({
+      ...group,
+      rows: assignments.filter((assignment) => group.disciplines.includes(assignment.discipline)),
+    }))
+  ), [assignments]);
+
+  const filteredGroups = useMemo(() => {
+    if (filter === 'assigned') {
+      return groupedAssignments.filter((group) => group.rows.some((row) => row.active));
+    }
+    if (filter === 'unassigned') {
+      return groupedAssignments.filter((group) => !group.rows.some((row) => row.active));
+    }
+    return groupedAssignments;
+  }, [filter, groupedAssignments]);
 
   const toggleExpanded = (key) => {
-    setExpandedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key); else next.add(key);
+    setExpandedKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
 
-  const handleReplaceStaff = (disciplineKey, staffIndex, candidate) => {
-    setDisciplineState((prev) => prev.map((d) => {
-      if (d.key !== disciplineKey) return d;
-      const staff = [...d.staff];
-      const current = staff[staffIndex];
-      staff[staffIndex] = candidate
-        ? { ...candidate, primary: current.primary, assigned: true }
-        : { name: 'Unassigned', role: current.role, primary: false, assigned: false, caseload: null, phone: null, email: null };
-      return { ...d, staff };
+  const updateDraft = (groupKey, patch) => {
+    setDrafts((previous) => ({
+      ...previous,
+      [groupKey]: {
+        ...(previous[groupKey] || emptyDraft(DISCIPLINE_GROUPS.find((group) => group.key === groupKey) || DISCIPLINE_GROUPS[0])),
+        ...patch,
+      },
     }));
   };
 
-  const handleAddStaff = (disciplineKey, candidate) => {
-    setDisciplineState((prev) => prev.map((d) => {
-      if (d.key !== disciplineKey) return d;
-      const hasAssignedAlready = d.staff.some((s) => s.assigned);
-      const newMember = { ...candidate, primary: !hasAssignedAlready, assigned: true };
-      const staff = d.staff.some((s) => !s.assigned)
-        // fill the first empty "Unassigned" slot if one exists
-        ? d.staff.map((s) => (!s.assigned ? newMember : s))
-        : [...d.staff, newMember];
-      return { ...d, staff };
-    }));
+  const resetDraft = (groupKey) => {
+    const group = DISCIPLINE_GROUPS.find((item) => item.key === groupKey);
+    if (!group) return;
+    setDrafts((previous) => ({ ...previous, [groupKey]: emptyDraft(group) }));
   };
 
-  const filteredDisciplines = filter === 'all'
-    ? disciplineState
-    : filter === 'assigned'
-      ? disciplineState.filter((d) => d.staff.some((s) => s.assigned))
-      : disciplineState.filter((d) => d.staff.some((s) => !s.assigned));
+  const handleAssign = async (groupKey) => {
+    const group = DISCIPLINE_GROUPS.find((item) => item.key === groupKey);
+    const draft = drafts[groupKey];
+    if (!group || !draft?.userId || !patientId) return;
+
+    setSavingGroupKey(groupKey);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await assignPatientStaff({
+        patient_id: patientId,
+        discipline: draft.discipline,
+        user_id: draft.userId,
+        service_area: draft.serviceArea || null,
+        note: draft.note || null,
+      });
+      resetDraft(groupKey);
+      await loadAssignments();
+      setSuccessMessage(`${DISCIPLINE_LABELS[draft.discipline] || draft.discipline} assignment saved.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save assignment');
+    } finally {
+      setSavingGroupKey('');
+    }
+  };
+
+  const handleDeactivate = async (assignment) => {
+    setDeactivatingAssignmentId(assignment.id);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await deactivatePatientAssignment(assignment.id);
+      await loadAssignments();
+      setSuccessMessage(`${assignment.staff_name || assignment.staff_full_name || 'Staff member'} deactivated.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to deactivate assignment');
+    } finally {
+      setDeactivatingAssignmentId('');
+    }
+  };
+
+  const handlePrepareReassign = (discipline) => {
+    const group = DISCIPLINE_GROUPS.find((item) => item.disciplines.includes(discipline));
+    if (!group) return;
+    setExpandedKeys((previous) => new Set(previous).add(group.key));
+    updateDraft(group.key, { discipline, userId: '' });
+  };
 
   const selectStyle = {
-    backgroundColor: colors.card, border: `1px solid ${colors.border}`,
-    borderRadius: 6, padding: '8px 12px', color: colors.white,
-    fontSize: 13, fontFamily: "'Inter', sans-serif", outline: 'none',
+    backgroundColor: colors.card,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 6,
+    padding: '8px 12px',
+    color: colors.white,
+    fontSize: 13,
+    fontFamily: "'Inter', sans-serif",
+    outline: 'none',
   };
+
+  if (!patientId) {
+    return (
+      <div style={{ flex: 1, backgroundColor: colors.bg, padding: 24, fontFamily: "'Inter', sans-serif" }}>
+        <PatientBanner patient={patient} colors={colors} />
+        <div style={cardStyle(colors)}>
+          <div style={{ color: colors.white, fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Staff Assignment</div>
+          <div style={{ color: colors.label, fontSize: 13 }}>No patient is currently selected.</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ flex: 1, backgroundColor: colors.bg, padding: 24, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
@@ -389,31 +675,74 @@ const StaffAssignment = ({ patient = defaultPatient }) => {
       <PatientBanner patient={patient} colors={colors} />
 
       <div style={cardStyle(colors)}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
           <div>
             <div style={{ color: colors.white, fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Staff Assignment</div>
             <div style={{ color: colors.label, fontSize: 13 }}>
-              Interdisciplinary team assignment by discipline for this patient's care.
+              Real patient assignments sourced from the backend care-team records.
             </div>
           </div>
-          <select value={filter} onChange={(e) => setFilter(e.target.value)} style={selectStyle}>
-            <option value="all">All Disciplines</option>
-            <option value="assigned">Assigned Only</option>
-            <option value="unassigned">Unassigned Only</option>
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <label style={{ color: colors.label, fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={showHistory}
+                onChange={(event) => setShowHistory(event.target.checked)}
+              />
+              Show history
+            </label>
+            <select value={filter} onChange={(event) => setFilter(event.target.value)} style={selectStyle}>
+              <option value="all">All Disciplines</option>
+              <option value="assigned">Assigned Only</option>
+              <option value="unassigned">Unassigned Only</option>
+            </select>
+          </div>
         </div>
 
-        {filteredDisciplines.map((d) => (
-          <DisciplineSection
-            key={d.key}
-            discipline={d}
-            colors={colors}
-            expanded={expandedKeys.has(d.key)}
-            onToggle={() => toggleExpanded(d.key)}
-            onReplaceStaff={handleReplaceStaff}
-            onAddStaff={handleAddStaff}
-          />
-        ))}
+        {error ? (
+          <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, backgroundColor: colors.redBg, color: colors.red, fontSize: 12.5 }}>
+            {error}
+          </div>
+        ) : null}
+        {successMessage ? (
+          <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, backgroundColor: colors.greenBg, color: colors.green, fontSize: 12.5 }}>
+            {successMessage}
+          </div>
+        ) : null}
+        {!canManageAssignments ? (
+          <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 8, backgroundColor: colors.tealBg, color: colors.teal, fontSize: 12.5 }}>
+            You can view the live care team here. Assignment changes require an Administrator or DPCS account.
+          </div>
+        ) : null}
+        {(loading || rosterLoading) ? (
+          <div style={{ color: colors.label, fontSize: 13 }}>
+            Loading staff assignments…
+          </div>
+        ) : filteredGroups.length ? (
+          filteredGroups.map((group) => (
+            <DisciplineSection
+              key={group.key}
+              group={group}
+              rows={group.rows}
+              colors={colors}
+              expanded={expandedKeys.has(group.key)}
+              onToggle={() => toggleExpanded(group.key)}
+              canManageAssignments={canManageAssignments}
+              draft={drafts[group.key] || emptyDraft(group)}
+              onDraftChange={updateDraft}
+              onAssign={handleAssign}
+              onDeactivate={handleDeactivate}
+              onPrepareReassign={handlePrepareReassign}
+              deactivatingAssignmentId={deactivatingAssignmentId}
+              savingGroupKey={savingGroupKey}
+              roster={roster}
+            />
+          ))
+        ) : (
+          <div style={{ color: colors.label, fontSize: 13 }}>
+            No discipline groups match the selected filter.
+          </div>
+        )}
       </div>
     </div>
   );

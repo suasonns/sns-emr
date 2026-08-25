@@ -11,6 +11,43 @@ type AssessmentPayload = {
   assessmentSubtype?: "update" | "recert";
 };
 
+type AssessmentQueryOptions = {
+  assessmentSubtype?: "update" | "recert";
+  assessmentType?: "RNICA" | "UPDATE" | "RECERT";
+};
+
+export type AssessmentRecordSummary = {
+  assessmentId: string;
+  patientId: string;
+  assessmentType: string;
+  status: string;
+  locked: boolean;
+  lockedAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+  visitDate?: string | null;
+};
+
+export type HopeWorkflowState = {
+  status: "OPEN" | "CLOSED" | "READY_TO_EXPORT" | "EXPORTED_TO_BATCH" | "SUBMITTED" | "INACTIVATED";
+  closedAt?: string | null;
+  readyAt?: string | null;
+  exportedToBatchAt?: string | null;
+  exportBatchId?: string | null;
+  submissionNumber?: string | null;
+  alreadySubmitted?: boolean;
+  submittedAt?: string | null;
+  inactivated?: boolean;
+  inactivatedAt?: string | null;
+  unlockedAt?: string | null;
+  unlockReason?: string | null;
+};
+
+type HopeWorkflowResponse = {
+  assessmentId: string;
+  hopeWorkflow: HopeWorkflowState;
+};
+
 function getErrorMessage(error: unknown, fallback: string) {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
@@ -63,6 +100,44 @@ export async function getRnicaAssessmentByPatient(patientId: string) {
   return unwrap(api.get(`/visits/rnica/by-patient/${patientId}`), "RN ICA lookup failed");
 }
 
+export async function getRnicaAssessmentByPatientType(patientId: string, options: AssessmentQueryOptions) {
+  return unwrap(
+    api.get(`/visits/rnica/by-patient/${patientId}`, { params: options }),
+    "RN ICA lookup failed"
+  );
+}
+
+export async function listRnicaAssessmentsByPatientType(
+  patientId: string,
+  options: AssessmentQueryOptions & { lockedOnly?: boolean } = {}
+) {
+  return unwrap(
+    api.get(`/visits/rnica/by-patient/${patientId}/records`, { params: options }),
+    "RN ICA history lookup failed"
+  );
+}
+
+export async function listMswIcaAssessmentsByPatient(patientId: string, options: { lockedOnly?: boolean } = {}) {
+  return unwrap(
+    api.get<{ patientId: string; assessments: AssessmentRecordSummary[] }>(`/visits/msw-ica/by-patient/${patientId}/records`, { params: options }),
+    "MSW ICA history lookup failed"
+  );
+}
+
+export async function listScicaAssessmentsByPatient(patientId: string, options: { lockedOnly?: boolean } = {}) {
+  return unwrap(
+    api.get<{ patientId: string; assessments: AssessmentRecordSummary[] }>(`/visits/scica/by-patient/${patientId}/records`, { params: options }),
+    "SCICA history lookup failed"
+  );
+}
+
+export async function fetchHopeUpdateStatus(patientId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/hope-update-status/${patientId}`),
+    "HOPE update status lookup failed"
+  );
+}
+
 // Authoritative (server-side) check for whether the patient's *current*
 // admission has already completed its one-time RN Initial Comprehensive
 // Assessment. Drives the initial-vs-ongoing (update/recert) mode switch
@@ -81,6 +156,58 @@ export async function updateRnicaAssessment(assessmentId: string, formData: Reco
 
 export async function lockRnicaAssessment(assessmentId: string) {
   return unwrap(api.post(`/visits/rnica/${assessmentId}/lock`), "RN ICA lock failed");
+}
+
+export async function getRnicaHopeWorkflow(assessmentId: string) {
+  return unwrap<HopeWorkflowResponse>(
+    api.get(`/visits/rnica/${assessmentId}/hope-workflow`),
+    "Unable to load HOPE workflow"
+  );
+}
+
+export async function closeRnicaHopeWorkflow(assessmentId: string) {
+  return unwrap<HopeWorkflowResponse>(
+    api.post(`/visits/rnica/${assessmentId}/hope-workflow/close`, {}),
+    "Unable to close HOPE report"
+  );
+}
+
+export async function readyRnicaHopeWorkflow(assessmentId: string) {
+  return unwrap<HopeWorkflowResponse>(
+    api.post(`/visits/rnica/${assessmentId}/hope-workflow/ready`, {}),
+    "Unable to mark HOPE report ready to export"
+  );
+}
+
+export async function exportRnicaHopeWorkflow(assessmentId: string, batchId?: string) {
+  return unwrap<HopeWorkflowResponse>(
+    api.post(`/visits/rnica/${assessmentId}/hope-workflow/export`, { batch_id: batchId ?? null }),
+    "Unable to export HOPE report to batch"
+  );
+}
+
+export async function patchRnicaHopeSubmission(
+  assessmentId: string,
+  payload: { hopeSubmissionNumber?: string | null; hopeAlreadySubmitted: boolean }
+) {
+  return unwrap<HopeWorkflowResponse>(
+    api.patch(`/visits/rnica/${assessmentId}/hope-submission`, payload),
+    "Unable to update HOPE submission tracking"
+  );
+}
+
+export async function patchRnicaHopeInactivation(assessmentId: string, inactivated: boolean) {
+  return unwrap<HopeWorkflowResponse>(
+    api.patch(`/visits/rnica/${assessmentId}/hope-inactivation`, { inactivated }),
+    "Unable to update HOPE inactivation"
+  );
+}
+
+export async function unlockRnicaHopeWorkflow(assessmentId: string, reason: string) {
+  return unwrap<HopeWorkflowResponse>(
+    api.post(`/visits/rnica/${assessmentId}/hope-workflow/unlock`, { reason }),
+    "Unable to unlock HOPE workflow"
+  );
 }
 
 // Only DRAFT (never signed) assessments can be deleted — the backend

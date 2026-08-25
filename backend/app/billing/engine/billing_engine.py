@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.billing.models.billing_cycle import BillingCycle
 from app.billing.models.billing_snapshot import BillingSnapshot
 from app.billing.models.billing_summary import BillingSummary
+from app.billing.models.claim import Claim
 from app.billing.models.loc_events import ContinuousCareEvent, GIPPeriod, RespitePeriod
 from app.billing.models.patient_pos import PatientPOS
 from app.billing.services.claim_segment_service import build_claim_lines
@@ -23,11 +24,19 @@ from app.billing.services.pos_to_loc_service import (
 from app.billing.services.revenue_service import (
     DEFAULT_RATE_SCHEDULE,
     build_revenue_summary,
+    build_revenue_summary_from_claim_lines,
 )
 from app.billing.services.unit_service import summarize_units
 from app.models.patient import Patient
+from app.models.tenant import Tenant
 from app.services.coverage_audit_logger import log_coverage_audit
+from app.services.election_day_service import get_election_anchor_date, get_initial_election_noe_info
 from app.services.payer_validation import PayerValidationError, validate_payer_for_claim
+from app.billing.services.noe_penalty_service import (
+    apply_noe_penalty_to_claim_lines,
+    compute_noe_penalty,
+)
+from app.billing.services.billing_readiness_service import check_patient_billing_readiness
 
 
 class BillingEngineError(RuntimeError):
@@ -43,6 +52,12 @@ def _normalize_rate_schedule(rate_schedule: dict | None) -> dict:
         normalized[key] = Decimal(str(value))
 
     return normalized
+
+
+def _load_tenant_cbsa(db: Session, tenant_id: str) -> str | None:
+    return db.execute(
+        select(Tenant.cbsa_code).where(Tenant.id == tenant_id)
+    ).scalar_one_or_none()
 
 
 def _load_billing_cycle(db: Session, billing_cycle_id: str) -> BillingCycle:
@@ -119,7 +134,7 @@ def _load_total_minutes_for_cycle(
         """
         SELECT COALESCE(SUM(vm.minutes), 0) AS total_minutes
         FROM visit_minutes vm
-        JOIN visits v ON v.id::text = vm.visit_id
+        JOIN visits v ON v.id = vm.visit_id
         WHERE v.patient_id::text = :patient_id
           AND v.visit_datetime::date BETWEEN :start_date AND :end_date
         """
@@ -139,6 +154,7 @@ def _load_total_minutes_for_cycle(
 
 def _upsert_billing_summary(
     db: Session,
+    tenant_id: str,
     patient_id: str,
     billing_cycle_id: str,
     total_units: int,
@@ -159,6 +175,7 @@ def _upsert_billing_summary(
 
     summary = BillingSummary(
         id=str(uuid4()),
+        tenant_id=tenant_id,
         patient_id=patient_id,
         billing_cycle_id=billing_cycle_id,
         total_units=total_units,
@@ -169,14 +186,68 @@ def _upsert_billing_summary(
     return summary
 
 
+def _upsert_claim(
+    db: Session,
+    tenant_id: str,
+    patient_id: str,
+    billing_cycle_id: str,
+    payer_name: str | None,
+    service_date,
+    total_charge,
+    total_units: int,
+    risk_score: int,
+) -> Claim:
+    """
+    Creates/refreshes the real claim record backing the Biller's Dashboard
+    claim-lifecycle counts and the Claims Management page. A claim already
+    past READY (SENT/ACCEPTED/DENIED/PAID) keeps its lifecycle status --
+    re-running billing generation only refreshes the billable amounts, it
+    never regresses a claim that has already been submitted.
+    """
+    existing = db.execute(
+        select(Claim)
+        .where(Claim.patient_id == patient_id)
+        .where(Claim.billing_cycle_id == billing_cycle_id)
+    ).scalar_one_or_none()
+
+    if existing:
+        existing.payer_name = payer_name
+        existing.service_date = service_date
+        existing.total_charge = total_charge
+        existing.total_units = total_units
+        existing.risk_score = risk_score
+        return existing
+
+    claim = Claim(
+        id=str(uuid4()),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        billing_cycle_id=billing_cycle_id,
+        payer_name=payer_name,
+        service_date=service_date,
+        total_charge=total_charge,
+        total_units=total_units,
+        risk_score=risk_score,
+        status="READY",
+    )
+    db.add(claim)
+    return claim
+
+
 def _insert_billing_snapshot(
     db: Session,
+    tenant_id: str,
     patient_id: str,
+    billing_cycle_id: str,
     snapshot_payload: dict,
+    snapshot_type: str = "BILLING",
 ) -> BillingSnapshot:
     snapshot = BillingSnapshot(
         id=str(uuid4()),
+        tenant_id=tenant_id,
         patient_id=patient_id,
+        billing_cycle_id=billing_cycle_id,
+        snapshot_type=snapshot_type,
         data=snapshot_payload,
     )
     db.add(snapshot)
@@ -205,75 +276,140 @@ def _load_active_hospice_coverage(
     - patient_payers: proves active hospice payer coverage overlapping the cycle
 
     This REPLACES the legacy patient_insurances lookup (schema drift).
+
+    IMPORTANT: coverage is valid whenever the patient has CONTINUOUS,
+    gapless hospice benefit-period coverage across the entire billing
+    cycle -- even when that coverage spans more than one benefit period
+    (e.g. a 60-day recertification boundary falls mid-month). Requiring a
+    single benefit_periods row to span the whole cycle was wrong: a real,
+    CMS-paid claim for this exact scenario (one calendar-month claim whose
+    DOS crossed a recert boundary) proves CMS pays monthly claims as long
+    as election/certification is unbroken across the billed range,
+    regardless of whether a recert happened mid-month.
     """
 
-    sql = text(
-        """
-        WITH cycle AS (
-            SELECT start_date, end_date
-            FROM billing_cycles
-            WHERE id = :billing_cycle_id
-        )
-        SELECT
-            -- payer identity
-            pp.id::text                 AS id,
-            CAST(:tenant_id AS text)    AS tenant_id,
-            pp.patient_id::text         AS patient_id,
-            pp.payer_type               AS payer_type,
-            pp.payer_name               AS payer_name,
+    cycle_row = db.execute(
+        text("SELECT start_date, end_date FROM billing_cycles WHERE id = :id"),
+        {"id": billing_cycle_id},
+    ).mappings().first()
 
-            -- downstream validation fields (stabilization defaults)
-            pp.subscriber_id            AS subscriber_id,
-            pp.subscriber_id_type       AS subscriber_id_type,
+    if not cycle_row:
+        raise BillingEngineError("Missing active HOSPICE coverage for patient billing")
 
+    cycle_start = cycle_row["start_date"]
+    cycle_end = cycle_row["end_date"]
 
-            -- normalize to legacy coverage shape
-            'HOSPICE'::text             AS coverage_scope,
-            1                           AS priority_order,
-
-            -- proof fields (useful for audits and debugging)
-            bp.period_number            AS period_number,
-            bp.benefit_type             AS benefit_type,
-            bp.election_date            AS election_date,
-            bp.start_date               AS bp_start_date,
-            bp.end_date                 AS bp_end_date,
-            pp.effective_start_date     AS payer_start_date,
-            pp.end_date                 AS payer_end_date,
-            pp.is_primary               AS is_primary
-        FROM cycle c
-        JOIN benefit_periods bp
-          ON bp.patient_id::text = :patient_id
-         AND bp.tenant_id::text = :tenant_id
-         AND bp.is_current IS TRUE
-         AND bp.election_date IS NOT NULL
-         AND bp.start_date <= c.start_date
-         AND (bp.end_date IS NULL OR bp.end_date >= c.end_date)
-         AND bp.benefit_type = 'HOSPICE'
-        JOIN patient_payers pp
-          ON pp.patient_id::text = :patient_id
-         AND pp.is_primary IS TRUE
-         AND pp.effective_start_date IS NOT NULL
-         AND pp.effective_start_date <= c.end_date
-         AND (pp.end_date IS NULL OR pp.end_date >= c.start_date)
-         AND pp.payer_type IN ('HOSPICE', 'MEDICARE_HOSPICE', 'MEDICARE')
-        ORDER BY pp.effective_start_date DESC
-        LIMIT 1
-        """
-    )
-
-    row = db.execute(
-        sql,
+    bp_rows = db.execute(
+        text(
+            """
+            SELECT period_number, benefit_type, election_date, start_date, end_date, is_current
+            FROM benefit_periods
+            WHERE patient_id::text = :patient_id
+              AND tenant_id::text = :tenant_id
+              AND election_date IS NOT NULL
+              AND start_date <= :cycle_end
+              AND (end_date IS NULL OR end_date >= :cycle_start)
+            ORDER BY start_date ASC
+            """
+        ),
         {
             "tenant_id": tenant_id,
             "patient_id": patient_id,
-            "billing_cycle_id": billing_cycle_id,
+            "cycle_start": cycle_start,
+            "cycle_end": cycle_end,
+        },
+    ).mappings().all()
+
+    if not bp_rows:
+        raise BillingEngineError("Missing active HOSPICE coverage for patient billing")
+
+    # Verify continuous, gapless benefit-period coverage across the whole
+    # cycle. Adjacent periods may touch (period N end_date == period N+1
+    # start_date, or be exactly one day apart) but must never leave a gap.
+    covered_through = None
+    for row in bp_rows:
+        if covered_through is None:
+            if row["start_date"] > cycle_start:
+                raise BillingEngineError(
+                    "Missing active HOSPICE coverage for patient billing"
+                )
+        else:
+            gap_days = (row["start_date"] - covered_through).days
+            if gap_days > 1:
+                raise BillingEngineError(
+                    "Missing active HOSPICE coverage for patient billing"
+                )
+        row_end = row["end_date"] if row["end_date"] is not None else date.max
+        if covered_through is None or row_end > covered_through:
+            covered_through = row_end
+
+    if covered_through < cycle_end:
+        raise BillingEngineError("Missing active HOSPICE coverage for patient billing")
+
+    latest_bp = bp_rows[-1]
+
+    payer_row = db.execute(
+        text(
+            """
+            SELECT
+                pp.id::text             AS id,
+                pp.patient_id::text     AS patient_id,
+                pp.payer_type           AS payer_type,
+                pp.payer_name           AS payer_name,
+                pp.subscriber_id        AS subscriber_id,
+                pp.subscriber_id_type   AS subscriber_id_type,
+                pp.effective_start_date AS payer_start_date,
+                pp.end_date             AS payer_end_date,
+                pp.is_primary           AS is_primary
+            FROM patient_payers pp
+            WHERE pp.patient_id::text = :patient_id
+              AND pp.is_primary IS TRUE
+              AND pp.effective_start_date IS NOT NULL
+              AND pp.effective_start_date <= :cycle_end
+              AND (pp.end_date IS NULL OR pp.end_date >= :cycle_start)
+              AND pp.payer_type IN ('HOSPICE', 'MEDICARE_HOSPICE', 'MEDICARE')
+            ORDER BY pp.effective_start_date DESC
+            LIMIT 1
+            """
+        ),
+        {
+            "patient_id": patient_id,
+            "cycle_start": cycle_start,
+            "cycle_end": cycle_end,
         },
     ).mappings().first()
 
-    if not row:
+    if not payer_row:
         raise BillingEngineError("Missing active HOSPICE coverage for patient billing")
 
-    return dict(row)
+    return {
+        "id": payer_row["id"],
+        "tenant_id": tenant_id,
+        "patient_id": payer_row["patient_id"],
+        "payer_type": payer_row["payer_type"],
+        "payer_name": payer_row["payer_name"],
+        "subscriber_id": payer_row["subscriber_id"],
+        "subscriber_id_type": payer_row["subscriber_id_type"],
+        "coverage_scope": "HOSPICE",
+        "priority_order": 1,
+        "period_number": latest_bp["period_number"],
+        "benefit_type": latest_bp["benefit_type"],
+        "election_date": latest_bp["election_date"],
+        "bp_start_date": latest_bp["start_date"],
+        "bp_end_date": latest_bp["end_date"],
+        "payer_start_date": payer_row["payer_start_date"],
+        "payer_end_date": payer_row["payer_end_date"],
+        "is_primary": payer_row["is_primary"],
+        "benefit_periods_in_cycle": [
+            {
+                "period_number": r["period_number"],
+                "benefit_type": r["benefit_type"],
+                "start_date": str(r["start_date"]),
+                "end_date": str(r["end_date"]) if r["end_date"] else None,
+            }
+            for r in bp_rows
+        ],
+    }
 
 def generate_patient_billing(
     db: Session,
@@ -296,6 +432,24 @@ def generate_patient_billing(
     patient = _load_patient(db, patient_id)
     cycle = _load_billing_cycle(db, billing_cycle_id)
     rate_schedule = _normalize_rate_schedule(rate_schedule)
+
+    # ---------------------------------------------------------
+    # BILLING READINESS GATE -- refuse to generate a claim for a chart
+    # that is not yet documentation-complete (missing signed CTI, F2F,
+    # Plan of Care, NOE, or an unresolved payer/MSP sequence). This is a
+    # hard gate, not a warning: a claim generated from an incomplete
+    # chart is a real compliance and revenue-recoupment risk.
+    # ---------------------------------------------------------
+    readiness = check_patient_billing_readiness(
+        db,
+        tenant_id=str(patient.tenant_id),
+        patient_id=patient_id,
+        service_date=cycle.start_date,
+    )
+    if not readiness.ready:
+        raise BillingEngineError(
+            "Patient is not ready to be billed: " + "; ".join(readiness.blockers)
+        )
 
     # ---------------------------------------------------------
     # COVERAGE / PAYER VALIDATION
@@ -404,15 +558,71 @@ def generate_patient_billing(
     # ---------------------------------------------------------
     # CLAIM LINES / REVENUE
     # ---------------------------------------------------------
+    tenant_cbsa_code = _load_tenant_cbsa(db, str(patient.tenant_id))
+    election_anchor_date = get_election_anchor_date(
+        db,
+        tenant_id=str(patient.tenant_id),
+        patient_id=patient_id,
+    )
+
     claim_lines = build_claim_lines(
         loc_segments=loc_segments,
         rate_schedule=rate_schedule,
+        cbsa_code=tenant_cbsa_code,
+        election_anchor_date=election_anchor_date,
     )
 
-    revenue_summary = build_revenue_summary(
-        loc_summary=loc_summary,
-        rate_schedule=rate_schedule,
+    # Late-NOE penalty (42 CFR 418.24(b)): if the real NOE filing date is
+    # more than 5 calendar days after the real election date, the days
+    # from election through the day before filing are non-covered. This
+    # can zero out real revenue the same way a CMS rate gap can -- apply
+    # it here so the snapshot/claim export reflects the true billable
+    # amount, not the pre-penalty estimate.
+    noe_penalty_reason = None
+    noe_info = get_initial_election_noe_info(
+        db,
+        tenant_id=str(patient.tenant_id),
+        patient_id=patient_id,
     )
+    if noe_info and noe_info.get("election_date"):
+        noe_penalty = compute_noe_penalty(
+            election_date=noe_info["election_date"],
+            noe_submitted_date=noe_info.get("noe_submitted_date"),
+            exception_reason=noe_info.get("noe_exception_reason"),
+        )
+        if noe_penalty.is_late and not noe_penalty.is_exempt:
+            claim_lines = apply_noe_penalty_to_claim_lines(claim_lines, noe_penalty)
+            noe_penalty_reason = noe_penalty.reason
+
+    # If any real, CMS-rate-priced claim line was produced (i.e. the tenant
+    # has a CBSA on file), the revenue summary is derived directly from
+    # those (already tier/FY-split) claim lines so the dollar total always
+    # matches what the 837I would actually bill. Otherwise, fall back to
+    # the legacy flat rate_schedule summary (unchanged behavior for tenants
+    # without a CBSA configured yet).
+    if tenant_cbsa_code:
+        revenue_summary = build_revenue_summary_from_claim_lines(claim_lines)
+    else:
+        revenue_summary = build_revenue_summary(
+            loc_summary=loc_summary,
+            rate_schedule=rate_schedule,
+        )
+
+    # A rate gap (e.g. this tenant is CMS-rate-enabled but a fiscal year or
+    # CBSA wage index isn't populated yet for some part of this cycle)
+    # means the dollar total above is a real under-count, not just a risk
+    # heuristic -- surface it the same way other high-severity billing
+    # risks are surfaced, so it isn't silently missed.
+    if revenue_summary.get("has_rate_gaps"):
+        risk_score += 75
+        status = _derive_status(risk_score)
+
+    # A late-NOE penalty is a real, CMS-enforced revenue reduction (not a
+    # data gap) -- still surface it at the same severity so a biller sees
+    # why the total dropped instead of assuming a system error.
+    if noe_penalty_reason:
+        risk_score += 75
+        status = _derive_status(risk_score)
 
     snapshot_payload = {
         "patient_id": patient_id,
@@ -428,7 +638,14 @@ def generate_patient_billing(
             "payer_name": active_hospice_coverage.get("payer_name"),
             "subscriber_id_type": active_hospice_coverage.get("subscriber_id_type"),
         },
+        "benefit_periods_in_cycle": active_hospice_coverage.get("benefit_periods_in_cycle", []),
+        "noe_penalty_reason": noe_penalty_reason,
         "rate_schedule_used": {key: str(value) for key, value in rate_schedule.items()},
+        "cms_rate_metadata": {
+            "cbsa_code": tenant_cbsa_code,
+            "election_anchor_date": str(election_anchor_date) if election_anchor_date else None,
+            "real_cms_rates_applied": bool(tenant_cbsa_code),
+        },
         "pos_timeline": [
             {
                 "date": str(row["date"]),
@@ -470,6 +687,7 @@ def generate_patient_billing(
     try:
         summary = _upsert_billing_summary(
             db=db,
+            tenant_id=str(patient.tenant_id),
             patient_id=patient_id,
             billing_cycle_id=billing_cycle_id,
             total_units=unit_summary["total_units"],
@@ -477,9 +695,23 @@ def generate_patient_billing(
             status=status,
         )
 
+        _upsert_claim(
+            db=db,
+            tenant_id=str(patient.tenant_id),
+            patient_id=patient_id,
+            billing_cycle_id=billing_cycle_id,
+            payer_name=active_hospice_coverage.get("payer_name"),
+            service_date=cycle.start_date,
+            total_charge=revenue_summary.get("total_estimated_amount") or 0,
+            total_units=unit_summary["total_units"],
+            risk_score=risk_score,
+        )
+
         _insert_billing_snapshot(
             db=db,
+            tenant_id=str(patient.tenant_id),
             patient_id=patient_id,
+            billing_cycle_id=billing_cycle_id,
             snapshot_payload=snapshot_payload,
         )
 
@@ -538,7 +770,7 @@ def generate_patient_billing(
         pass
 
     return {
-        "billing_summary_id": summary.id,
+        "billing_summary_id": str(summary.id),
         "patient_id": patient_id,
         "billing_cycle_id": billing_cycle_id,
         "status": status,
@@ -549,6 +781,7 @@ def generate_patient_billing(
         "loc_segments": snapshot_payload["loc_segments"],
         "claim_lines": claim_lines,
         "revenue_summary": revenue_summary,
+        "cms_rate_metadata": snapshot_payload["cms_rate_metadata"],
         "payer_validation": {
             "payer_type": active_hospice_coverage.get("payer_type"),
             "payer_name": active_hospice_coverage.get("payer_name"),

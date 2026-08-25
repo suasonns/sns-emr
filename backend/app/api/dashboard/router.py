@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.patient_access import get_authorized_patient
@@ -12,16 +12,18 @@ from app.core.role_guards import require_owner
 from app.core.roles import access_scope_for_role
 from app.core.security import get_current_user
 from app.core.database import get_db
+from app.core.tenant_scope import resolve_billing_scope_tenant_id
 from app.db_request_dependency import get_db_tenant_with_request_state
 from app.models.tenant import Tenant
 from app.services.dashboard_service import (
+    count_claim_lifecycle,
     get_billing_dashboard,
     get_clinical_alerts_dashboard,
     get_clinical_compliance_dashboard,
+    get_denials_appeals_summary,
     get_owner_dashboard,
     get_patient_compliance_detail,
 )
-from app.billing.store import count_lifecycle
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
@@ -34,18 +36,13 @@ def _require_tenant_dashboard_access(user) -> None:
         )
 
 
-def _require_billing_feature_access(db: Session, user) -> None:
-    if access_scope_for_role(getattr(user, "role", None)) == "platform":
-        raise HTTPException(
-            status_code=403,
-            detail="Billing is not available to platform accounts",
-        )
-    if not getattr(user, "tenant_id", None):
+def _require_billing_feature_access(db: Session, tenant_id) -> None:
+    if not tenant_id:
         raise HTTPException(
             status_code=400,
             detail="Tenant context required for billing dashboard",
         )
-    tenant = db.get(Tenant, user.tenant_id)
+    tenant = db.get(Tenant, tenant_id)
     if not getattr(tenant, "billing_enabled", False):
         raise HTTPException(
             status_code=403,
@@ -55,20 +52,55 @@ def _require_billing_feature_access(db: Session, user) -> None:
 
 @router.get("/billing")
 def billing_dashboard(
+    tenant_id: UUID | None = Query(None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."),
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
-    _require_billing_feature_access(db, user)
-    return get_billing_dashboard(db=db, tenant_id=user.tenant_id)
+    if access_scope_for_role(getattr(user, "role", None)) == "platform":
+        raise HTTPException(
+            status_code=403,
+            detail="Billing is not available to platform accounts",
+        )
+    scoped_tenant_id = resolve_billing_scope_tenant_id(db, user, tenant_id)
+    _require_billing_feature_access(db, scoped_tenant_id)
+    return get_billing_dashboard(db=db, tenant_id=scoped_tenant_id)
 
 
 @router.get("/claim-lifecycle")
 def claim_lifecycle(
+    tenant_id: UUID | None = Query(None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."),
     db: Session = Depends(get_db_tenant_with_request_state),
     user=Depends(get_current_user),
 ):
-    _require_billing_feature_access(db, user)
-    return count_lifecycle(str(user.tenant_id))
+    if access_scope_for_role(getattr(user, "role", None)) == "platform":
+        raise HTTPException(
+            status_code=403,
+            detail="Billing is not available to platform accounts",
+        )
+    scoped_tenant_id = resolve_billing_scope_tenant_id(db, user, tenant_id)
+    _require_billing_feature_access(db, scoped_tenant_id)
+    return count_claim_lifecycle(db, scoped_tenant_id)
+
+
+@router.get("/denials-appeals")
+def denials_appeals(
+    tenant_id: UUID | None = Query(None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."),
+    db: Session = Depends(get_db_tenant_with_request_state),
+    user=Depends(get_current_user),
+):
+    """
+    Real Denials & Appeals summary, shared by the Biller's Dashboard and
+    the owner's Tenant Analytics financials/billing mirror (see
+    app.services.dashboard_service.get_denials_appeals_summary).
+    """
+    if access_scope_for_role(getattr(user, "role", None)) == "platform":
+        raise HTTPException(
+            status_code=403,
+            detail="Billing is not available to platform accounts",
+        )
+    scoped_tenant_id = resolve_billing_scope_tenant_id(db, user, tenant_id)
+    _require_billing_feature_access(db, scoped_tenant_id)
+    return get_denials_appeals_summary(db, scoped_tenant_id)
 
 
 @router.get("/tenant")
@@ -115,8 +147,9 @@ def clinical_alerts_dashboard(
 
 @router.get("/owner")
 def owner_dashboard(
+    tenant_id: UUID | None = Query(None, description="Optional single tenant to scope the dashboard to. Omit for the platform-wide view."),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
     require_owner(user)
-    return get_owner_dashboard(db=db)
+    return get_owner_dashboard(db=db, tenant_id=tenant_id)

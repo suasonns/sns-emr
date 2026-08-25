@@ -76,3 +76,9 @@ db_checkpoints/
 
 # Visit audio recordings (contain PHI, stored on disk not git)
 storage/visit_recordings/
+
+# Generated EDI export artifacts (created at runtime, not source)
+app/billing/exports/
+
+# Ad-hoc debug/scratch dumps
+kessler_*.txt

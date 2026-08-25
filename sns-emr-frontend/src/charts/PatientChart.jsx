@@ -9,15 +9,18 @@ import NursingAssessmentBoard from '../intake/NursingAssessmentBoard';
 import PsychosocialAssessmentBoard from '../intake/PsychosocialAssessmentBoard';
 import SpiritualAssessmentBoard from '../intake/SpiritualAssessmentBoard';
 import { OrdersHubCard, MedicationOrdersCard, MasterPocReviewCard, CHHAPocCard, CHHAVisitNoteCard, getRnicaColors, getRnicaStyles } from '../components/RNICA';
-import { getRnicaAssessmentByPatient } from '../api/icaAssessments';
+import {
+  getRnicaAssessmentByPatient,
+} from '../api/icaAssessments';
 import PhysicianOrdersBoard from './PhysicianOrdersBoard';
 import CertificationsBoard from './CertificationsBoard';
 import F2FBoard from './F2FBoard';
 import VisitNoteBoard from '../components/VisitNotes';
-import { fetchPatientSummary } from '../api/patientCharts';
+import { fetchAssessmentHistory, fetchPatientSummary } from '../api/patientCharts';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
+import DischargePlanningBoard from './DischargePlanningBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -43,6 +46,7 @@ const PatientChart = () => {
   const [activeSection, setActiveSection] = useState('facesheet');
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [assessmentHistorySelection, setAssessmentHistorySelection] = useState(null);
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia('(max-width: 1200px)').matches);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigationDialogRef = useRef(null);
@@ -105,6 +109,7 @@ const PatientChart = () => {
   useEffect(() => {
     if (!resolvedPatientId) {
       setSummary(null);
+      setAssessmentHistorySelection(null);
       setLoading(false);
       return;
     }
@@ -345,47 +350,166 @@ const PatientChart = () => {
     </div>
   );
 
-  const AssessmentBoard = () => (
-    <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
-        {[
-          {
-            title: 'RN Assessment',
-            status: 'Updated',
-            tone: 'teal',
-            items: ['Pain and symptom review complete', 'Care goals and teaching reviewed', 'Medication reconciliation signed'],
-          },
-          {
-            title: 'Psychosocial Assessment',
-            status: 'Due',
-            tone: 'amber',
-            items: ['Caregiver stress screening', 'Support system assessment', 'Coping and adjustment review'],
-          },
-          {
-            title: 'Spiritual Assessment',
-            status: 'Complete',
-            tone: 'green',
-            items: ['Spiritual needs identified', 'Chaplain and family support plan', 'Faith preference noted'],
-          },
-        ].map((section) => (
-          <div key={section.title} style={{ ...boardCard, minHeight: 190 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <div style={boardHeader}>{section.title}</div>
-              <span style={{ ...badge(section.tone, 'status'), fontSize: 8.5 }}>{section.status}</span>
+  const AssessmentBoard = () => {
+    const [history, setHistory] = useState([]);
+    const [historyLoading, setHistoryLoading] = useState(true);
+    const [historyError, setHistoryError] = useState('');
+
+    useEffect(() => {
+      if (!resolvedPatientId) {
+        setHistory([]);
+        setHistoryLoading(false);
+        setHistoryError('');
+        return undefined;
+      }
+      let mounted = true;
+      setHistoryLoading(true);
+      setHistoryError('');
+      fetchAssessmentHistory(resolvedPatientId, { sort_order: 'asc', limit: 500 })
+        .then((result) => {
+          if (!mounted) return;
+          const items = (result?.items || []).map((item) => {
+            const disciplineTone = item.discipline === 'RN' ? 'teal' : item.discipline === 'MSW' ? 'amber' : 'green';
+            let assessmentLabel = item.assessment_type;
+            if (item.discipline === 'RN' && item.assessment_type === 'RNICA') assessmentLabel = 'RNICA Admission';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV1') assessmentLabel = 'RN Update - HUV1';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV2') assessmentLabel = 'RN Update - HUV2';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE') assessmentLabel = 'RN Update';
+            else if (item.discipline === 'RN' && item.assessment_type === 'RECERT') assessmentLabel = 'RN Re-Cert';
+            else if (item.discipline === 'RN' && item.assessment_type === 'RN_RECERT_LEGACY') assessmentLabel = 'RN Re-Cert (Legacy)';
+            else if (item.discipline === 'MSW') assessmentLabel = 'MSW ICA';
+            else if (item.discipline === 'SC') assessmentLabel = 'SC ICA';
+            return {
+              ...item,
+              disciplineLabel: item.discipline === 'RN' ? 'Nursing' : item.discipline === 'MSW' ? 'Psychosocial' : 'Spiritual',
+              disciplineTone,
+              assessmentLabel,
+              openSection: item.record_url_hint?.section,
+              selectedAssessmentId: item.record_url_hint?.assessment_id,
+            };
+          });
+          setHistory(items);
+        })
+        .catch((error) => {
+          if (!mounted) return;
+          setHistory([]);
+          setHistoryError(error?.message || 'Unable to load assessment audit history.');
+        })
+        .finally(() => {
+          if (mounted) setHistoryLoading(false);
+        });
+      return () => {
+        mounted = false;
+      };
+    }, [resolvedPatientId]);
+
+    const formatHistoryDate = (value) => {
+      if (!value) return '—';
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return '—';
+      return parsed.toLocaleDateString([], { month: '2-digit', day: '2-digit', year: 'numeric' });
+    };
+
+    const statusTone = (status) => {
+      const normalized = String(status || '').toUpperCase();
+      if (normalized === 'LOCKED') return 'green';
+      if (normalized === 'DRAFT' || normalized === 'IN_PROGRESS' || normalized === 'PENDING') return 'amber';
+      if (normalized === 'AMENDED') return 'red';
+      return 'teal';
+    };
+
+    return (
+      <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ ...boardCard, padding: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', marginBottom: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={boardHeader}>Assessment history audit index</div>
+              <div style={{ color: colors.muted, fontSize: 12.5, lineHeight: 1.5 }}>
+                Combined chronological view across nursing, psychosocial, and spiritual assessment records for audit review.
+              </div>
             </div>
-            <div style={{ display: 'grid', gap: 7 }}>
-              {section.items.map((item) => (
-                <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: colors.text, fontSize: 12.5, lineHeight: 1.4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: colors.accent, display: 'inline-block', marginTop: 6 }} />
-                  <span>{item}</span>
-                </div>
-              ))}
-            </div>
+            <div style={{ ...badge('teal', 'status'), fontSize: 9 }}>{history.length} record{history.length === 1 ? '' : 's'}</div>
           </div>
-        ))}
+
+          {historyLoading ? (
+            <div style={{ color: colors.muted, fontSize: 13 }}>Loading assessment audit history…</div>
+          ) : historyError ? (
+            <div style={{ color: '#d64d57', fontSize: 13 }}>{historyError}</div>
+          ) : history.length === 0 ? (
+            <div style={{ color: colors.muted, fontSize: 13 }}>No assessment records are on file for this patient yet.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 960 }}>
+                <thead>
+                  <tr>
+                    {['Discipline', 'Assessment', 'Status', 'Visit Date', 'Locked Date', 'Locked By', 'Action'].map((label) => (
+                      <th
+                        key={label}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          fontSize: 11,
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.7,
+                          color: colors.muted,
+                          borderBottom: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((item) => (
+                    <tr key={`${item.discipline}-${item.record_id}`}>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}` }}>
+                        <span style={{ ...badge(item.disciplineTone, 'status'), fontSize: 8.5 }}>{item.disciplineLabel}</span>
+                      </td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}`, color: colors.text }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>{item.assessmentLabel}</div>
+                        <div style={{ color: colors.muted, fontSize: 11.5, marginTop: 4 }}>{item.record_id}</div>
+                      </td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}` }}>
+                        <span style={{ ...badge(statusTone(item.status), 'status'), fontSize: 8.5 }}>{String(item.status || 'DRAFT').replaceAll('_', ' ')}</span>
+                      </td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}`, color: colors.text, fontSize: 12.5 }}>{formatHistoryDate(item.visit_date || item.created_at)}</td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}`, color: colors.text, fontSize: 12.5 }}>{formatHistoryDate(item.locked_at)}</td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}`, color: colors.muted, fontSize: 12.5 }}>—</td>
+                      <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}` }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssessmentHistorySelection({
+                              section: item.openSection,
+                              assessmentId: item.selectedAssessmentId,
+                            });
+                            navigateChart(item.openSection);
+                          }}
+                          style={{
+                            borderRadius: 999,
+                            padding: '8px 12px',
+                            border: `1px solid ${colors.border}`,
+                            backgroundColor: colors.panel,
+                            color: colors.accent,
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Open record
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const TxMedsBoard = () => (
     <div style={{ flex: 1, minWidth: 0, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
@@ -552,11 +676,11 @@ const PatientChart = () => {
       case 'demographics':
         return <IntakeBoard />;
       case 'nursing-assessment':
-        return <NursingAssessmentBoard patientId={resolvedPatientId} onNavigateToSection={navigateChart} />
+        return <NursingAssessmentBoard patientId={resolvedPatientId} onNavigateToSection={navigateChart} selectedAssessmentId={activeSection === 'nursing-assessment' ? assessmentHistorySelection?.assessmentId : null} />
       case 'psychosocial-assessment':
-        return <PsychosocialAssessmentBoard patientId={resolvedPatientId} />;
+        return <PsychosocialAssessmentBoard patientId={resolvedPatientId} selectedAssessmentId={activeSection === 'psychosocial-assessment' ? assessmentHistorySelection?.assessmentId : null} />;
       case 'spiritual-assessment':
-        return <SpiritualAssessmentBoard patientId={resolvedPatientId} />;
+        return <SpiritualAssessmentBoard patientId={resolvedPatientId} selectedAssessmentId={activeSection === 'spiritual-assessment' ? assessmentHistorySelection?.assessmentId : null} />;
       case 'pain-assessment':
         return <NursingAssessmentBoard patientId={resolvedPatientId} />;
       case 'assessments':
@@ -623,6 +747,8 @@ const PatientChart = () => {
       case 'hope-discharge':
       case 'decline-of-status':
         return <ComplianceHopeBoard patientId={resolvedPatientId} activeSection={activeSection} onNavigateToSection={navigateChart} />;
+      case 'discharge':
+        return <DischargePlanningBoard patientId={resolvedPatientId} />;
       default:
         return (
           <div style={{

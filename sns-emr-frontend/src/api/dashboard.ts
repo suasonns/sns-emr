@@ -228,12 +228,18 @@ async function fetchJson<T>(url: string): Promise<T> {
 // DASHBOARD CALLS
 // =========================================================
 
+function withTenantId(url: string, tenantId?: string | null): string {
+  if (!tenantId) return url;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}tenant_id=${encodeURIComponent(tenantId)}`;
+}
+
 export function fetchTenantDashboard(): Promise<TenantDashboardResponse> {
   return fetchJson<TenantDashboardResponse>("/api/dashboard/tenant");
 }
 
-export function fetchOwnerDashboard(): Promise<OwnerDashboardResponse> {
-  return fetchJson<OwnerDashboardResponse>("/api/dashboard/owner");
+export function fetchOwnerDashboard(tenantId?: string | null): Promise<OwnerDashboardResponse> {
+  return fetchJson<OwnerDashboardResponse>(withTenantId("/api/dashboard/owner", tenantId));
 }
 
 export function fetchClinicalComplianceDashboard(): Promise<ClinicalComplianceDashboardResponse> {
@@ -244,12 +250,25 @@ export function fetchClinicalAlerts(): Promise<ClinicalAlertsResponse> {
   return fetchJson<ClinicalAlertsResponse>("/api/dashboard/clinical-alerts");
 }
 
-export function fetchBillingDashboard(): Promise<BillingDashboardResponse> {
-  return fetchJson<BillingDashboardResponse>("/api/dashboard/billing");
+export function fetchBillingDashboard(tenantId?: string | null): Promise<BillingDashboardResponse> {
+  return fetchJson<BillingDashboardResponse>(withTenantId("/api/dashboard/billing", tenantId));
 }
 
-export function fetchClaimLifecycle(): Promise<ClaimLifecycleResponse> {
-  return fetchJson<ClaimLifecycleResponse>("/api/dashboard/claim-lifecycle");
+export function fetchClaimLifecycle(tenantId?: string | null): Promise<ClaimLifecycleResponse> {
+  return fetchJson<ClaimLifecycleResponse>(withTenantId("/api/dashboard/claim-lifecycle", tenantId));
+}
+
+export type BillableAgency = {
+  tenant_id: string;
+  legal_name: string;
+  display_name: string;
+  tenant_type: string;
+  status: string;
+  billing_enabled: boolean;
+};
+
+export function fetchBillableAgencies(): Promise<{ agencies: BillableAgency[] }> {
+  return fetchJson<{ agencies: BillableAgency[] }>("/billing/agencies");
 }
 
 export function fetchPatientComplianceDetail(
@@ -309,13 +328,20 @@ export async function fetchSidebarAlertCounts(
   }
 
   if (normalized === "BILLER" || normalized === "BILLING") {
-    const data = await fetchBillingDashboard();
-
-    return {
-      tasks: data.claims_pending_payment ?? 0,
-      incidents: data.denied_claims ?? 0,
-      blockers: data.denied_claims ?? 0,
-    };
+    // A billing-department account without a selected agency tenant has
+    // no single tenant to summarize (they may serve many agencies) -- the
+    // sidebar badge is best-effort only, so treat that as "nothing to
+    // show yet" rather than surfacing an error.
+    try {
+      const data = await fetchBillingDashboard();
+      return {
+        tasks: data.claims_pending_payment ?? 0,
+        incidents: data.denied_claims ?? 0,
+        blockers: data.denied_claims ?? 0,
+      };
+    } catch {
+      return { tasks: 0, incidents: 0, blockers: 0 };
+    }
   }
 
   return {

@@ -94,3 +94,55 @@ def build_revenue_summary(
         "rows": revenue_rows,
         "total_estimated_amount": to_money(total),
     }
+
+
+def build_revenue_summary_from_claim_lines(claim_lines: list[dict]) -> dict:
+    """
+    Real-CMS-rate revenue summary, built directly from the (already
+    tier/FY-split) claim lines produced by claim_segment_service, so the
+    dollar total always matches what would actually be billed on the 837I.
+
+    Falls back gracefully: if claim_lines carry no real rate info (legacy
+    $0.00 path), this still produces a correct $0.00 total.
+
+    If any claim line carries a `rate_gap_reason` (a period this tenant's
+    CMS-rate configuration couldn't price, e.g. a fiscal year or CBSA wage
+    index not yet on file), it is surfaced in both the row and a top-level
+    `has_rate_gaps` flag -- this total should NOT be treated as the real
+    billable amount until those gaps are resolved.
+    """
+    revenue_rows = []
+    total = Decimal("0.00")
+    has_rate_gaps = False
+
+    for line in claim_lines:
+        loc = line["loc"]
+        days = line["days"]
+        rate = Decimal(str(line["rate"]))
+        amount = rate * Decimal(days)
+        total += amount
+
+        rate_gap_reason = line.get("rate_gap_reason")
+        if rate_gap_reason:
+            has_rate_gaps = True
+
+        revenue_rows.append(
+            {
+                "loc": loc,
+                "days": days,
+                "revenue_code": line.get("revenue_code") or LOC_TO_REVENUE_CODE.get(loc),
+                "rate": to_money(rate),
+                "amount": to_money(amount),
+                "from_date": line.get("from_date"),
+                "to_date": line.get("to_date"),
+                "fiscal_year": line.get("fiscal_year"),
+                "rhc_day_tier": line.get("rhc_day_tier"),
+                "rate_gap_reason": rate_gap_reason,
+            }
+        )
+
+    return {
+        "rows": revenue_rows,
+        "total_estimated_amount": to_money(total),
+        "has_rate_gaps": has_rate_gaps,
+    }

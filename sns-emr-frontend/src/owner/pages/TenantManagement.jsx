@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { COLORS, S } from '../design';
-import { fetchOwnerTenants, createOwnerTenant } from '../../api/ownerAdmin';
+import { fetchOwnerTenants, createOwnerTenant, setOwnerTenantStatus } from '../../api/ownerAdmin';
 
 const STATUS_COLOR = {
   ACTIVE: COLORS.green,
@@ -108,6 +108,8 @@ export default function TenantManagement() {
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [statusBusy, setStatusBusy] = useState(false);
+  const [statusError, setStatusError] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -115,7 +117,10 @@ export default function TenantManagement() {
     try {
       const data = await fetchOwnerTenants();
       setTenants(data.tenants || []);
-      setSelected((prev) => prev ?? (data.tenants?.[0] ?? null));
+      setSelected((prev) => {
+        if (!prev) return data.tenants?.[0] ?? null;
+        return data.tenants?.find((t) => t.tenant_id === prev.tenant_id) ?? data.tenants?.[0] ?? null;
+      });
     } catch (err) {
       setError(err?.message || 'Failed to load tenants');
     } finally {
@@ -126,6 +131,24 @@ export default function TenantManagement() {
   useEffect(() => {
     load();
   }, []);
+
+  const changeStatus = async (tenant, status) => {
+    if (!tenant) return;
+    const verb = status === 'SUSPENDED' ? 'suspend' : status === 'ACTIVE' ? 'reactivate' : 'deactivate';
+    if (!window.confirm(`Are you sure you want to ${verb} "${tenant.display_name}"? This changes their platform access immediately.`)) {
+      return;
+    }
+    setStatusBusy(true);
+    setStatusError('');
+    try {
+      await setOwnerTenantStatus(tenant.tenant_id, status);
+      await load();
+    } catch (err) {
+      setStatusError(err?.message || `Failed to ${verb} tenant`);
+    } finally {
+      setStatusBusy(false);
+    }
+  };
 
   const active = tenants.filter((t) => t.status === 'ACTIVE').length;
   const suspended = tenants.filter((t) => t.status === 'SUSPENDED').length;
@@ -227,6 +250,46 @@ export default function TenantManagement() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: COLORS.white }}>{d.value}</span>
                 </div>
               ))}
+
+              {statusError && (
+                <div style={{ background: COLORS.red + '22', border: `1px solid ${COLORS.red}44`, borderRadius: 8, padding: '8px 10px', margin: '4px 0 12px', color: COLORS.red, fontSize: 12 }}>
+                  {statusError}
+                </div>
+              )}
+
+              <h4 style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, margin: '16px 0 12px' }}>Access Control</h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {selected.status !== 'ACTIVE' && (
+                  <button
+                    type="button"
+                    style={S.btn(COLORS.green)}
+                    disabled={statusBusy}
+                    onClick={() => changeStatus(selected, 'ACTIVE')}
+                  >
+                    {statusBusy ? 'Working…' : 'Reactivate Tenant'}
+                  </button>
+                )}
+                {selected.status !== 'SUSPENDED' && (
+                  <button
+                    type="button"
+                    style={S.btn(COLORS.red)}
+                    disabled={statusBusy}
+                    onClick={() => changeStatus(selected, 'SUSPENDED')}
+                  >
+                    {statusBusy ? 'Working…' : 'Suspend Access'}
+                  </button>
+                )}
+                {selected.status !== 'INACTIVE' && (
+                  <button
+                    type="button"
+                    style={{ ...S.btn(COLORS.border), color: COLORS.white }}
+                    disabled={statusBusy}
+                    onClick={() => changeStatus(selected, 'INACTIVE')}
+                  >
+                    {statusBusy ? 'Working…' : 'Mark Inactive'}
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             <p style={{ color: COLORS.muted, fontSize: 13 }}>No tenant selected.</p>

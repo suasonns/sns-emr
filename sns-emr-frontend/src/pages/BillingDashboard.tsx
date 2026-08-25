@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Alert, Box, Button, Chip, CircularProgress, MenuItem, Paper, TextField, Typography } from "@mui/material";
 
 import api from "../api/client";
-import { fetchBillingDashboard, fetchClaimLifecycle } from "../api/dashboard";
+import { fetchBillingDashboard, fetchClaimLifecycle, fetchBillableAgencies, type BillableAgency } from "../api/dashboard";
 import BillingAuditHistoryPanel from "../components/BillingAuditHistoryPanel";
 
 type ClaimLifecycleResponse = {
@@ -196,7 +196,16 @@ const sampleRows = [
 export default function BillingDashboard() {
   const [lifecycle, setLifecycle] = useState<ClaimLifecycleResponse | null>(null);
   const [rows, setRows] = useState<BillingQueueRow[]>([]);
-  const [tenants, setTenants] = useState<TenantOption[]>([]);
+  const [agencies, setAgencies] = useState<BillableAgency[]>([]);
+  const [selectedAgencyId, setSelectedAgencyId] = useState<string>("");
+  const [agenciesError, setAgenciesError] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<{
+    total_patients: number;
+    ready_count: number;
+    not_ready_count: number;
+    patients: Array<{ patient_id: string; ready: boolean; blockers: string[]; warnings: string[] }>;
+  } | null>(null);
+  const [readinessLoading, setReadinessLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -206,12 +215,43 @@ export default function BillingDashboard() {
   const [activeView, setActiveView] = useState<BillingView>("uncollected-unbilled");
   const [selectedClaim, setSelectedClaim] = useState<{ patient_id: string; billing_cycle_id: string } | null>(null);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    fetchBillableAgencies()
+      .then((res) => {
+        if (!isMounted) return;
+        const list = res?.agencies ?? [];
+        setAgencies(list);
+        if (list.length > 0) {
+          setSelectedAgencyId((current) => current || list[0].tenant_id);
+        }
+      })
+      .catch((err) => {
+        if (isMounted) {
+          setAgenciesError(err?.message || "Unable to load agency list.");
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const loadDashboard = async () => {
+    if (!selectedAgencyId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      const [billingRes, lifecycleRes] = await Promise.allSettled([fetchBillingDashboard(), fetchClaimLifecycle()]);
+      const [billingRes, lifecycleRes] = await Promise.allSettled([
+        fetchBillingDashboard(selectedAgencyId),
+        fetchClaimLifecycle(selectedAgencyId),
+      ]);
 
       if (billingRes.status !== "fulfilled") {
         throw billingRes.reason;
@@ -224,7 +264,6 @@ export default function BillingDashboard() {
       }
 
       setRows([]);
-      setTenants([]);
     } catch (err) {
       console.error("Billing dashboard load error:", err);
       setError("Failed to load billing dashboard.");
@@ -235,7 +274,31 @@ export default function BillingDashboard() {
 
   useEffect(() => {
     void loadDashboard();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId]);
+
+  const loadReadiness = async () => {
+    if (!selectedAgencyId) return;
+
+    try {
+      setReadinessLoading(true);
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await api.get("/billing/readiness-report", {
+        params: { service_date: today, tenant_id: selectedAgencyId },
+      });
+      setReadiness(res.data);
+    } catch (err) {
+      console.error("Billing readiness load error:", err);
+      setReadiness(null);
+    } finally {
+      setReadinessLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadReadiness();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId]);
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
@@ -286,7 +349,11 @@ export default function BillingDashboard() {
     }
   };
 
-  const activeTenantName = useMemo(() => tenants[0]?.display_name ?? tenants[0]?.legal_name ?? "Sunrise Hospice Care (San Francisco, CA)", [tenants]);
+  const selectedAgency = useMemo(
+    () => agencies.find((agency) => agency.tenant_id === selectedAgencyId) ?? null,
+    [agencies, selectedAgencyId]
+  );
+  const activeTenantName = selectedAgency?.display_name ?? selectedAgency?.legal_name ?? "Select an agency";
 
   const billingPeriod = "Jan 1 - Jan 31, 2026";
   const payerFilter = "All Payers";
@@ -372,20 +439,6 @@ export default function BillingDashboard() {
             <MenuItem value="ACCEPTED">Accepted</MenuItem>
             <MenuItem value="PAID">Paid</MenuItem>
             <MenuItem value="DENIED">Denied</MenuItem>
-          </TextField>
-          <TextField
-            size="small"
-            label="Tenant"
-            select
-            value={tenantFilter}
-            onChange={(e) => setTenantFilter(e.target.value)}
-          >
-            <MenuItem value="ALL">All Tenants</MenuItem>
-            {tenants.map((tenant) => (
-              <MenuItem key={tenant.tenant_id} value={tenant.tenant_id}>
-                {tenant.display_name || tenant.legal_name || tenant.tenant_id}
-              </MenuItem>
-            ))}
           </TextField>
         </Box>
       </SectionCard>
@@ -758,8 +811,27 @@ export default function BillingDashboard() {
             </Typography>
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap", mt: 0.7 }}>
               <Typography variant="body2" color="text.secondary" sx={{ fontFamily: "'Inter', sans-serif" }}>
-                Active Agency Workspace:
+                Agency:
               </Typography>
+              <TextField
+                size="small"
+                select
+                value={selectedAgencyId}
+                onChange={(e) => setSelectedAgencyId(e.target.value)}
+                sx={{ minWidth: 260 }}
+              >
+                {agencies.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No agencies available
+                  </MenuItem>
+                ) : (
+                  agencies.map((agency) => (
+                    <MenuItem key={agency.tenant_id} value={agency.tenant_id}>
+                      {agency.display_name || agency.legal_name}
+                    </MenuItem>
+                  ))
+                )}
+              </TextField>
               <Chip label={activeTenantName} size="small" sx={{ background: C.tealLight, color: C.tealDark, fontWeight: 700, height: 24, fontFamily: "'Inter', sans-serif" }} />
             </Box>
           </Box>
@@ -775,15 +847,65 @@ export default function BillingDashboard() {
           ))}
         </Box>
 
+        {agenciesError ? <Alert severity="warning">{agenciesError}</Alert> : null}
         {error ? <Alert severity="error">{error}</Alert> : null}
         {successMessage ? <Alert severity="success">{successMessage}</Alert> : null}
 
-        {loading ? (
-          <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
-            <CircularProgress />
-          </Box>
+        {!selectedAgencyId ? (
+          <Alert severity="info">Select an agency above to view its billing data. Nothing outside the selected agency is shown.</Alert>
         ) : (
-          renderView()
+          <>
+            <SectionCard
+              title="Ready to Bill"
+              action={
+                readinessLoading ? (
+                  <CircularProgress size={16} />
+                ) : (
+                  <Chip
+                    label={readiness ? `${readiness.ready_count}/${readiness.total_patients} ready` : "—"}
+                    size="small"
+                    sx={{ fontWeight: 700 }}
+                  />
+                )
+              }
+            >
+              {readiness && readiness.not_ready_count > 0 ? (
+                <Alert severity="warning" sx={{ mb: 1.5 }}>
+                  {readiness.not_ready_count} patient{readiness.not_ready_count === 1 ? "" : "s"} in this agency
+                  {" "}have an incomplete chart and cannot be billed until it's resolved.
+                </Alert>
+              ) : readiness ? (
+                <Alert severity="success" sx={{ mb: 1.5 }}>
+                  All active patients in this agency are ready to bill.
+                </Alert>
+              ) : null}
+
+              {readiness && readiness.patients.some((p) => !p.ready) ? (
+                <Box sx={{ display: "grid", gap: 1 }}>
+                  {readiness.patients
+                    .filter((p) => !p.ready)
+                    .map((p) => (
+                      <Box key={p.patient_id} sx={{ p: 1, border: `1px solid ${C.gray200}`, borderRadius: 1.5 }}>
+                        <Typography sx={{ fontSize: 12, fontWeight: 700, color: C.gray800 }}>Patient {p.patient_id}</Typography>
+                        {p.blockers.map((b, idx) => (
+                          <Typography key={idx} sx={{ fontSize: 12, color: C.red }}>
+                            • {b}
+                          </Typography>
+                        ))}
+                      </Box>
+                    ))}
+                </Box>
+              ) : null}
+            </SectionCard>
+
+            {loading ? (
+              <Box sx={{ py: 8, display: "flex", justifyContent: "center" }}>
+                <CircularProgress />
+              </Box>
+            ) : (
+              renderView()
+            )}
+          </>
         )}
       </Box>
   );

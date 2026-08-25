@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 import json
 import logging
 import base64
@@ -11,6 +11,8 @@ from sqlalchemy import text
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
 from app.services.noe_pdf import fill_noe_pdf
+from app.models.benefit_period import BenefitPeriod
+from app.billing.services.noe_penalty_service import compute_noe_penalty
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,23 @@ class NOEPdfResponse(BaseModel):
     file_name: str
     content_type: str
     pdf_base64: str
+
+
+class NOESubmissionUpdate(BaseModel):
+    noe_submitted_date: date | None = None
+    noe_exception_reason: str | None = None
+
+
+class NOEPenaltyResponse(BaseModel):
+    election_date: str | None
+    noe_submitted_date: str | None
+    noe_exception_reason: str | None
+    is_late: bool
+    is_exempt: bool
+    non_covered_start: str | None
+    non_covered_end: str | None
+    non_covered_days: int
+    reason: str | None
 
 
 # ---------------------------------------------------------------------
@@ -258,4 +277,119 @@ def generate_noe_pdf(
         "file_name": f"NOE_{patient_id}.pdf",
         "content_type": "application/pdf",
         "pdf_base64": base64.b64encode(pdf_bytes).decode("utf-8"),
+    }
+
+
+def _get_initial_benefit_period(db: Session, patient_id: str) -> BenefitPeriod:
+    bp = db.execute(
+        text(
+            """
+            SELECT id FROM benefit_periods
+            WHERE patient_id::text = :pid AND period_number = 1
+            ORDER BY start_date ASC
+            LIMIT 1
+            """
+        ),
+        {"pid": patient_id},
+    ).mappings().first()
+
+    if not bp:
+        raise HTTPException(
+            status_code=404,
+            detail="No INITIAL (period_number=1) benefit period on file for this patient.",
+        )
+
+    row = db.get(BenefitPeriod, bp["id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="Benefit period not found")
+    return row
+
+
+@router.patch(
+    "/{patient_id}/noe/submission",
+    response_model=NOEPenaltyResponse,
+    summary="Record the real NOE filing date (or a CMS exception) for the patient's initial election",
+    operation_id="UpdateNoeSubmission",
+)
+def update_noe_submission(
+    patient_id: str,
+    payload: NOESubmissionUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Records the real date the NOE was filed with the MAC (or a documented
+    CMS exception waiving the late-filing penalty) against the patient's
+    INITIAL benefit period. This is the single source of truth the billing
+    engine uses (noe_penalty_service.compute_noe_penalty) to determine
+    whether any RHC/GIP/CHC/Respite days must be zeroed out as non-covered
+    under 42 CFR 418.24(b). Never fabricate a submission date here -- only
+    record what actually happened.
+    """
+    user_id = current_user.get("id") if isinstance(current_user, dict) else None
+
+    bp = _get_initial_benefit_period(db, patient_id)
+
+    bp.noe_submitted_date = payload.noe_submitted_date
+    bp.noe_exception_reason = payload.noe_exception_reason
+    db.add(bp)
+    db.commit()
+    db.refresh(bp)
+
+    safe_log_noe_event(
+        db,
+        patient_id,
+        user_id,
+        "SUBMISSION_RECORDED",
+        [f"noe_submitted_date={payload.noe_submitted_date}"] if payload.noe_submitted_date else [],
+    )
+
+    penalty = compute_noe_penalty(
+        election_date=bp.election_date,
+        noe_submitted_date=bp.noe_submitted_date,
+        exception_reason=bp.noe_exception_reason,
+    )
+
+    return {
+        "election_date": bp.election_date.isoformat() if bp.election_date else None,
+        "noe_submitted_date": bp.noe_submitted_date.isoformat() if bp.noe_submitted_date else None,
+        "noe_exception_reason": bp.noe_exception_reason,
+        "is_late": penalty.is_late,
+        "is_exempt": penalty.is_exempt,
+        "non_covered_start": penalty.non_covered_start.isoformat() if penalty.non_covered_start else None,
+        "non_covered_end": penalty.non_covered_end.isoformat() if penalty.non_covered_end else None,
+        "non_covered_days": penalty.non_covered_days,
+        "reason": penalty.reason,
+    }
+
+
+@router.get(
+    "/{patient_id}/noe/submission",
+    response_model=NOEPenaltyResponse,
+    summary="Preview the current NOE filing status and any late-filing penalty",
+    operation_id="GetNoeSubmission",
+)
+def get_noe_submission(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    bp = _get_initial_benefit_period(db, patient_id)
+
+    penalty = compute_noe_penalty(
+        election_date=bp.election_date,
+        noe_submitted_date=bp.noe_submitted_date,
+        exception_reason=bp.noe_exception_reason,
+    )
+
+    return {
+        "election_date": bp.election_date.isoformat() if bp.election_date else None,
+        "noe_submitted_date": bp.noe_submitted_date.isoformat() if bp.noe_submitted_date else None,
+        "noe_exception_reason": bp.noe_exception_reason,
+        "is_late": penalty.is_late,
+        "is_exempt": penalty.is_exempt,
+        "non_covered_start": penalty.non_covered_start.isoformat() if penalty.non_covered_start else None,
+        "non_covered_end": penalty.non_covered_end.isoformat() if penalty.non_covered_end else None,
+        "non_covered_days": penalty.non_covered_days,
+        "reason": penalty.reason,
     }

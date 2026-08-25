@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -149,6 +149,20 @@ class PhysicianOrder(BaseModel):
     expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
     expiration_type = Column(String(32), nullable=True)
     expired_at = Column(DateTime(timezone=True), nullable=True)
+
+    # --- Structured visit-frequency order fields (2026-08-23) ---
+    # Optional, additive fields for OTHER-category orders that specify a
+    # discipline's visit cadence (e.g. "SN 2x/week + 3 PRN", "Aide 3x/week").
+    # Populated alongside the existing free-text order_text (never replacing
+    # it) so the supervisory-visit scheduling engine can compute due dates
+    # without parsing free text. See visit_notes_scheduling_spec.md section 5.
+    # RN | LVN | CHHA | MSW | SC | OTHER — discipline this frequency applies to.
+    visit_frequency_discipline = Column(String(16), nullable=True, index=True)
+    visit_frequency_per_week = Column(Integer, nullable=True)
+    visit_frequency_prn_count = Column(Integer, nullable=True)
+    # Set when a newer frequency order for the same patient+discipline is
+    # created — the scheduling engine only considers non-superseded orders.
+    visit_frequency_superseded_at = Column(DateTime(timezone=True), nullable=True)
 
     patient = relationship("Patient", back_populates="physician_orders")
 

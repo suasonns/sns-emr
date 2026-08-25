@@ -78,6 +78,11 @@ class OrderCreate(BaseModel):
     # strict MD/NP/PA contract is enforced solely on
     # ordered_by_provider_role, regardless of what this contains.
     ordered_by_provider_role_source: dict | None = None
+    # Structured visit-frequency fields — optional, OTHER-category only.
+    # See visit_notes_scheduling_spec.md section 5.
+    visit_frequency_discipline: str | None = None
+    visit_frequency_per_week: int | None = None
+    visit_frequency_prn_count: int | None = None
 
 
 class OrderSubmit(BaseModel):
@@ -165,6 +170,10 @@ def _serialize(order: PhysicianOrder, name_map: dict | None = None) -> dict:
         "expires_at": order.expires_at.isoformat() if order.expires_at else None,
         "expiration_type": order.expiration_type,
         "expired_at": order.expired_at.isoformat() if order.expired_at else None,
+        "visit_frequency_discipline": order.visit_frequency_discipline,
+        "visit_frequency_per_week": order.visit_frequency_per_week,
+        "visit_frequency_prn_count": order.visit_frequency_prn_count,
+        "visit_frequency_superseded_at": order.visit_frequency_superseded_at.isoformat() if order.visit_frequency_superseded_at else None,
         "cancelled_at": order.cancelled_at.isoformat() if order.cancelled_at else None,
         "cancelled_by_name": name_map.get(order.cancelled_by),
         "cancel_reason": order.cancel_reason,
@@ -267,6 +276,9 @@ def create_order(
             priority=payload.priority,
             urgency_reason=payload.urgency_reason,
             ordered_by_provider_role_source=payload.ordered_by_provider_role_source,
+            visit_frequency_discipline=payload.visit_frequency_discipline,
+            visit_frequency_per_week=payload.visit_frequency_per_week,
+            visit_frequency_prn_count=payload.visit_frequency_prn_count,
         )
     except svc.PhysicianOrderError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

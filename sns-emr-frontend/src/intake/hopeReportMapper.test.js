@@ -105,6 +105,24 @@ describe("mapRnIcaToHopeReport — F2000/F2100/F2200/F3000 asked-status", () => 
       const report = mapRnIcaToHopeReport(formData);
       expect(responseCode(report, "F2000")).toBe(status);
     });
+
+    describe("mapRnIcaToHopeReport — HUV metadata", () => {
+      it("maps A0250 to the HUV1 reason-for-record code", () => {
+        const report = mapRnIcaToHopeReport(baseFormData(), basePatient(), {}, { timepoint: "HUV1" });
+        expect(findItem(report, "A0250").entries[0].value).toBe("2 - HOPE Update Visit 1 (HUV1)");
+      });
+
+      it("adds Z0350 and omits Section F for HUV2 rendering", () => {
+        const report = mapRnIcaToHopeReport(
+          baseFormData({ finalization: { signatureDate: "2026-01-20" } }),
+          basePatient(),
+          {},
+          { timepoint: "HUV2", assessmentMeta: { lockedAt: "2026-01-20T12:00:00Z" } }
+        );
+        expect(findItem(report, "Z0350").entries[0].value).toBe("01/20/2026");
+        expect(report.sections.some((section) => section.title === "Section F - Preferences")).toBe(false);
+      });
+    });
   });
 
   describe("F2100 (life-sustaining treatment asked)", () => {
@@ -799,4 +817,3 @@ describe("getHopeAdmissionStatus — SECTION 7 HOPE Admission harvest/completion
     expect(status).not.toHaveProperty("generated");
   });
 });
-

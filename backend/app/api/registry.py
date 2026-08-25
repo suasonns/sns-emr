@@ -70,6 +70,7 @@ from app.api.task_scheduling import router as task_scheduling_router
 
 # WORKFLOW
 from app.api.patient_assignments import router as patient_assignments_router
+from app.api.supervisory_schedule import router as supervisory_schedule_router
 from app.api.soc_orders import router as soc_orders_router
 from app.api.admission import router as admission_router
 from app.api.admissions import router as admissions_router
@@ -94,10 +95,11 @@ from app.api.external_substances import router as external_substances_router
 # BILLING
 from app.billing.api.billing_queue_router import router as billing_queue_router
 from app.billing.api.tenant_router import router as tenant_router
-from app.billing.api.export_router import router as export_router
 from app.billing.api.claim_status_router import router as claim_status_router
 from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
+from app.api.billing_835 import router as billing_835_router
+from app.billing.api.eligibility_check_router import router as eligibility_check_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -192,6 +194,7 @@ def register_routers(app: FastAPI) -> None:
         task_scheduling_router,
 
         patient_assignments_router,
+        supervisory_schedule_router,
         eligibility_router,
         rules_router,
         regulatory_router,
@@ -200,10 +203,11 @@ def register_routers(app: FastAPI) -> None:
         external_substances_router,
         billing_queue_router,
         tenant_router,
-        export_router,
         claim_status_router,
         audit_router,
         billing_router,
+        billing_835_router,
+        eligibility_check_router,
 
         order_templates_router,
         patient_orders_router,

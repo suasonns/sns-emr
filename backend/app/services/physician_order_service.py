@@ -60,6 +60,11 @@ VALID_PROVIDER_ROLES = {"MD", "NP", "PA"}
 VALID_ORDER_CATEGORIES = {"MEDICATION", "DME", "SUPPLY", "LAB", "TREATMENT", "DIET", "OTHER"}
 VALID_PRIORITIES = {"ROUTINE", "URGENT", "STAT"}
 
+# Disciplines a structured visit-frequency OTHER order can specify. CHHA is
+# the home-health-aide discipline (distinct from LVN/LPN); SC/MSW map to the
+# same aliasing used by form_resolution_service.py.
+VALID_VISIT_FREQUENCY_DISCIPLINES = {"RN", "LVN", "LPN", "CHHA", "MSW", "SC"}
+
 # Roles that may independently verify/enter a clinically-complete order
 # without a separate review checkpoint (a real prescriber authenticating
 # their own order, or an RN who has verified a complete verbal order per
@@ -317,6 +322,9 @@ def create_draft(
     priority: str = "ROUTINE",
     urgency_reason: Optional[str] = None,
     ordered_by_provider_role_source: Optional[dict] = None,
+    visit_frequency_discipline: Optional[str] = None,
+    visit_frequency_per_week: Optional[int] = None,
+    visit_frequency_prn_count: Optional[int] = None,
 ) -> PhysicianOrder:
     source_type = (source_type or "WRITTEN").strip().upper()
     if source_type not in VALID_SOURCE_TYPES:
@@ -341,6 +349,24 @@ def create_draft(
     if priority in ("STAT", "URGENT") and not urgency_reason:
         raise PhysicianOrderError("urgency_reason is required when priority is STAT or URGENT")
 
+    # Structured visit-frequency fields — optional, only meaningful for
+    # OTHER-category orders. Validated but never required, since most OTHER
+    # orders (diet instructions, volunteer declines, etc.) aren't frequency
+    # orders at all. See visit_notes_scheduling_spec.md section 5.
+    freq_discipline = (visit_frequency_discipline or "").strip().upper() or None
+    if freq_discipline and freq_discipline not in VALID_VISIT_FREQUENCY_DISCIPLINES:
+        raise PhysicianOrderError(
+            f"visit_frequency_discipline must be one of {sorted(VALID_VISIT_FREQUENCY_DISCIPLINES)}"
+        )
+    if freq_discipline and order_category != "OTHER":
+        raise PhysicianOrderError("visit_frequency_discipline is only valid for OTHER-category orders")
+    for field_name, field_value in (
+        ("visit_frequency_per_week", visit_frequency_per_week),
+        ("visit_frequency_prn_count", visit_frequency_prn_count),
+    ):
+        if field_value is not None and (not isinstance(field_value, int) or field_value < 0):
+            raise PhysicianOrderError(f"{field_name} must be a non-negative integer")
+
     order = PhysicianOrder(
         tenant_id=tenant_id,
         patient_id=patient_id,
@@ -356,10 +382,31 @@ def create_draft(
         created_by=created_by,
         priority=priority,
         urgency_reason=urgency_reason,
+        visit_frequency_discipline=freq_discipline,
+        visit_frequency_per_week=visit_frequency_per_week,
+        visit_frequency_prn_count=visit_frequency_prn_count,
     )
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    # Auto-supersede any prior, still-active frequency order for the same
+    # patient + discipline — a new "SN 3x/week" order replaces the old
+    # "SN 2x/week" rather than both being counted by the scheduling engine.
+    if freq_discipline:
+        (
+            db.query(PhysicianOrder)
+            .filter(
+                PhysicianOrder.tenant_id == tenant_id,
+                PhysicianOrder.patient_id == patient_id,
+                PhysicianOrder.id != order.id,
+                PhysicianOrder.visit_frequency_discipline == freq_discipline,
+                PhysicianOrder.visit_frequency_superseded_at.is_(None),
+                PhysicianOrder.status != "CANCELLED",
+            )
+            .update({"visit_frequency_superseded_at": datetime.now(timezone.utc)}, synchronize_session=False)
+        )
+        db.commit()
 
     extra_metadata = None
     if isinstance(ordered_by_provider_role_source, dict) and ordered_by_provider_role_source:

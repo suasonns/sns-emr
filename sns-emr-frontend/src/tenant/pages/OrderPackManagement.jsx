@@ -33,6 +33,12 @@ const ORDER_TYPE_TO_VENDOR_TYPE = {
   OTHER: 'Other',
 };
 
+// Order types whose real HospiceMD form has no drug-specific fields at all
+// (no Strength/Dosage/Route/Frequency/Indication/Quantity) -- confirmed via
+// real screenshots for Lab, Treatment, Other, and Supplies. DME and Diet keep
+// the fuller field set (also confirmed via screenshot).
+const MINIMAL_ORDER_TYPES = new Set(['LAB', 'TREATMENT', 'OTHER', 'SUPPLY']);
+
 const inputStyle = {
   width: '100%',
   padding: '8px 10px',
@@ -61,6 +67,8 @@ const EMPTY_ITEM = {
   vendor: '',
   administered_by: '',
   special_instruction: '',
+  start_date: '',
+  stop_date: '',
 };
 
 export default function OrderPackManagement() {
@@ -357,7 +365,7 @@ export default function OrderPackManagement() {
                           <input style={inputStyle} value={itemForm.order_text} onChange={(e) => setItemForm((f) => ({ ...f, order_text: e.target.value }))} placeholder="e.g. Hospital Bed Full Electric" />
                         )}
                       </div>
-                      {itemForm.order_type !== 'OTHER' && (
+                      {!MINIMAL_ORDER_TYPES.has(itemForm.order_type) && (
                         <>
                           <div style={fieldGroup}>
                             <label style={labelStyle}>Strength</label>
@@ -379,12 +387,12 @@ export default function OrderPackManagement() {
                             <label style={labelStyle}>Indication</label>
                             <input style={inputStyle} value={itemForm.indication} onChange={(e) => setItemForm((f) => ({ ...f, indication: e.target.value }))} placeholder="e.g. Pain / air hunger" />
                           </div>
+                          <div style={fieldGroup}>
+                            <label style={labelStyle}>Quantity</label>
+                            <input style={inputStyle} value={itemForm.quantity} onChange={(e) => setItemForm((f) => ({ ...f, quantity: e.target.value }))} />
+                          </div>
                         </>
                       )}
-                      <div style={fieldGroup}>
-                        <label style={labelStyle}>Quantity</label>
-                        <input style={inputStyle} value={itemForm.quantity} onChange={(e) => setItemForm((f) => ({ ...f, quantity: e.target.value }))} />
-                      </div>
                       <div style={fieldGroup}>
                         <label style={labelStyle}>Payer</label>
                         <select style={inputStyle} value={itemForm.payer} onChange={(e) => setItemForm((f) => ({ ...f, payer: e.target.value }))}>
@@ -412,6 +420,14 @@ export default function OrderPackManagement() {
                       <div style={fieldGroup}>
                         <label style={labelStyle}>Administered By</label>
                         <input style={inputStyle} value={itemForm.administered_by} onChange={(e) => setItemForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Hospice Nurse Only" />
+                      </div>
+                      <div style={fieldGroup}>
+                        <label style={labelStyle}>Start Date</label>
+                        <input type="date" style={inputStyle} value={itemForm.start_date} onChange={(e) => setItemForm((f) => ({ ...f, start_date: e.target.value }))} />
+                      </div>
+                      <div style={fieldGroup}>
+                        <label style={labelStyle}>Stop Date</label>
+                        <input type="date" style={inputStyle} value={itemForm.stop_date} onChange={(e) => setItemForm((f) => ({ ...f, stop_date: e.target.value }))} />
                       </div>
                     </div>
                     <div style={fieldGroup}>

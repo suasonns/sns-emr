@@ -121,6 +121,23 @@ def db_session():
     )
     session.commit()
 
+    # A handful of tables own tenant-scoped data (patient_payers, etc.)
+    # WITHOUT a tenant_id column of their own -- the tenant_id-scoped sweep
+    # below can't target them at all, so a leftover row from an earlier
+    # test/run survives indefinitely and can block deleting its parent
+    # (e.g. a stale patient_payers row blocks deleting its patient, which
+    # then collides with a fresh test trying to reuse that MRN). Clean
+    # these explicitly first, scoped through their tenant-scoped parent.
+    for _sql in (
+        "DELETE FROM patient_payers WHERE patient_id IN "
+        "(SELECT id FROM patients WHERE tenant_id = :tenant_id)",
+    ):
+        try:
+            session.execute(text(_sql), {"tenant_id": uuid.UUID(tenant_id)})
+        except Exception:
+            session.rollback()
+    session.commit()
+
     # Delete child rows before parents; the generated schema enforces the FKs
     # that the old hand-built database did not. sorted_tables can't fully
     # topologically order everything (see the physicians<->users cycle

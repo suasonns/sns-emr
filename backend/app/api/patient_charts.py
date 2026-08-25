@@ -16,17 +16,16 @@ from app.models.patient_facesheet import PatientFaceSheet
 from app.models.certification import Certification
 from app.models.f2f_encounter import F2FEncounter
 from app.models.task import Task
-from app.models.user import User
 from app.models.communications_log import CommunicationsLog
 from app.models.incident_report import IncidentReport
 from app.models.clinical_note import ClinicalNote
-from app.models.patient_assignment import PatientAssignment
 from app.models.enums import Discipline, TaskStatus, TaskType
 from app.services.bereavement_aggregation_engine import (
     BereavementAggregationEngine,
     BereavementNoteInput,
 )
 from app.services.eligibility.engine import evaluate_hospice_eligibility
+from app.services.patient_assignment_service import list_patient_assignments
 
 
 router = APIRouter(prefix="/patient-charts", tags=["patient-charts"])
@@ -174,24 +173,22 @@ def get_patient_chart_summary(
 
     visit_rows = _load_visit_rows(db, patient.id, limit=8, ascending=False)
 
-    assignment_rows = (
-        db.query(PatientAssignment, User.full_name.label("staff_name"))
-        .join(User, User.id == PatientAssignment.user_id)
-        .filter(PatientAssignment.patient_id == patient.id)
-        .filter(PatientAssignment.active.is_(True))
-        .order_by(PatientAssignment.is_primary.desc(), PatientAssignment.assigned_at.desc())
-        .all()
+    assignment_rows = list_patient_assignments(
+        db,
+        tenant_id=patient.tenant_id,
+        patient_id=patient.id,
+        include_inactive=False,
     )
 
     return {
         "patient": _base_patient(db, patient),
         "care_team": [
             {
-                "discipline": row.PatientAssignment.discipline.value if hasattr(row.PatientAssignment.discipline, "value") else str(row.PatientAssignment.discipline),
-                "staff_name": row.staff_name,
-                "primary": bool(row.PatientAssignment.is_primary),
-                "status": row.PatientAssignment.status,
-                "service_area": row.PatientAssignment.service_area,
+                "discipline": row["discipline"],
+                "staff_name": row["staff_name"],
+                "primary": bool(row["is_primary"]),
+                "status": row["status"],
+                "service_area": row["service_area"],
             }
             for row in assignment_rows
         ],
@@ -538,12 +535,11 @@ def get_patient_volunteer_schedule(
 
     visit_rows = _load_visit_rows(db, patient.id, ascending=True)
 
-    assignment_rows = (
-        db.query(PatientAssignment, User.full_name.label("staff_name"))
-        .join(User, User.id == PatientAssignment.user_id)
-        .filter(PatientAssignment.patient_id == patient.id)
-        .order_by(PatientAssignment.assigned_at.desc())
-        .all()
+    assignment_rows = list_patient_assignments(
+        db,
+        tenant_id=patient.tenant_id,
+        patient_id=patient.id,
+        include_inactive=True,
     )
 
     task_rows = (
@@ -570,13 +566,13 @@ def get_patient_volunteer_schedule(
         ],
         "assignments": [
             {
-                "id": str(row.PatientAssignment.id),
-                "discipline": row.PatientAssignment.discipline.value if hasattr(row.PatientAssignment.discipline, "value") else str(row.PatientAssignment.discipline),
-                "staff_name": row.staff_name,
-                "primary": bool(row.PatientAssignment.is_primary),
-                "service_area": row.PatientAssignment.service_area,
-                "status": row.PatientAssignment.status,
-                "assigned_at": _serialize_datetime(row.PatientAssignment.assigned_at),
+                "id": row["id"],
+                "discipline": row["discipline"],
+                "staff_name": row["staff_name"],
+                "primary": bool(row["is_primary"]),
+                "service_area": row["service_area"],
+                "status": row["status"],
+                "assigned_at": row["assigned_at"],
             }
             for row in assignment_rows
         ],

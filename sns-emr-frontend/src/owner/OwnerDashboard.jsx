@@ -12,6 +12,7 @@ import {
 } from './pages';
 import { logout } from '../api/auth';
 import { fetchOwnerDashboard } from '../api/dashboard';
+import { fetchOwnerTenants } from '../api/ownerAdmin';
 import { getCurrentUser } from '../api/session';
 import { hasRouteAccess } from '../utils/authorization';
 import { useThemeMode } from '../theme/theme';
@@ -44,6 +45,8 @@ export default function OwnerDashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [tenantOptions, setTenantOptions] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('');
 
   const currentUser = getCurrentUser();
   const { mode, toggleMode } = useThemeMode();
@@ -59,11 +62,30 @@ export default function OwnerDashboard() {
   useEffect(() => {
     let isMounted = true;
 
+    fetchOwnerTenants()
+      .then((res) => {
+        if (isMounted) {
+          setTenantOptions(res?.tenants ?? []);
+        }
+      })
+      .catch(() => {
+        // Tenant selector is a convenience filter; failing to load it
+        // should never block the platform-wide dashboard view.
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
     const loadDashboard = async () => {
       try {
         setLoading(true);
         setError('');
-        const nextData = await fetchOwnerDashboard();
+        const nextData = await fetchOwnerDashboard(selectedTenantId || null);
         if (isMounted) {
           setDashboardData(nextData);
         }
@@ -82,7 +104,7 @@ export default function OwnerDashboard() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [selectedTenantId]);
 
   const summaryCards = useMemo(() => {
     const metrics = Array.isArray(dashboardData?.metrics) ? dashboardData.metrics.slice(0, 4) : [];
@@ -98,7 +120,7 @@ export default function OwnerDashboard() {
   const retryLoad = () => {
     setError('');
     setLoading(true);
-    fetchOwnerDashboard()
+    fetchOwnerDashboard(selectedTenantId || null)
       .then((nextData) => {
         setDashboardData(nextData);
       })
@@ -260,6 +282,47 @@ export default function OwnerDashboard() {
       </div>
 
       <div style={S.main}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <div>
+            <label
+              htmlFor="owner-tenant-selector"
+              style={{ display: 'block', fontSize: 11, fontWeight: 700, color: COLORS.muted, marginBottom: 4 }}
+            >
+              Viewing
+            </label>
+            <select
+              id="owner-tenant-selector"
+              value={selectedTenantId}
+              onChange={(event) => setSelectedTenantId(event.target.value)}
+              style={{
+                minWidth: 260,
+                borderRadius: 8,
+                border: `1px solid ${COLORS.border}`,
+                background: COLORS.cardSoft,
+                color: COLORS.white,
+                padding: '8px 12px',
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              <option value="">All tenants (platform-wide)</option>
+              {tenantOptions.map((tenant) => (
+                <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                  {tenant.display_name || tenant.legal_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         {summaryCards.length > 0 && (
           <div style={S.statsRow} aria-live="polite">
             {summaryCards.map((stat, index) => (

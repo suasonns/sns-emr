@@ -180,6 +180,14 @@ from app.models.payer import Payer
 from app.billing.models.authorization import Authorization
 from app.billing.models.contract import Contract
 from app.billing.models.claim_export_log import ClaimExportLog
+from app.billing.models.claim_edi_batch import ClaimEdiBatch
+from app.billing.models.claim import Claim
+from app.billing.models.remittance_advice import RemittanceAdvice
+from app.billing.models.payment import Payment
+from app.billing.models.payment_adjustment import PaymentAdjustment
+from app.billing.models.denial import Denial
+from app.billing.models.appeal import Appeal
+from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
 
 # ---------------------------------------------------------
 # ✅ POC PHYSICIAN APPROVAL TRACKING

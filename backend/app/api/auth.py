@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -15,6 +15,13 @@ from app.core.roles import access_scope_for_role
 from app.core.security import create_access_token, hash_password, verify_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User
+from app.services.audit_logger import log_event
+
+
+def _client_ip(request: Request | None) -> str | None:
+    if request is None or request.client is None:
+        return None
+    return request.client.host
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -69,13 +76,17 @@ def _user_payload(user: User, tenant: Tenant | None = None) -> dict[str, object]
 
 
 @router.post("/login")
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
+    ip = _client_ip(request)
     query = db.query(User).filter(func.lower(User.email) == payload.email.lower())
     if payload.tenant_id:
         query = query.filter(User.tenant_id == payload.tenant_id)
     candidates = query.filter(User.active.is_(True)).all()
 
     if not candidates:
+        # No account at all for this email (in this tenant, if narrowed) --
+        # nothing to attribute the failed attempt to (audit_logs.tenant_id
+        # is a required FK), so this case is intentionally not persisted.
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # The same email can exist as separate accounts in more than one
@@ -90,6 +101,22 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     ]
 
     if not matches:
+        # Email matched one or more real accounts but the password was
+        # wrong for all of them -- log the failed attempt against each
+        # candidate's tenant so a compromised-password / brute-force
+        # pattern shows up per-agency in the owner audit trail.
+        for candidate in candidates:
+            log_event(
+                user_id=str(candidate.id),
+                tenant_id=str(candidate.tenant_id),
+                role=str(candidate.role),
+                action="LOGIN_FAILED",
+                entity_type="auth",
+                entity_id=str(candidate.id),
+                ip=ip,
+                metadata={"email": payload.email},
+                db=db,
+            )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     if payload.tenant_id:
@@ -100,11 +127,35 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
         # its password differs from whatever was typed on the first call.
         user = matches[0]
         tenant = db.get(Tenant, user.tenant_id)
+        if tenant is not None and tenant.status != "ACTIVE":
+            log_event(
+                user_id=str(user.id),
+                tenant_id=str(user.tenant_id),
+                role=str(user.role),
+                action="LOGIN_FAILED",
+                entity_type="auth",
+                entity_id=str(user.id),
+                ip=ip,
+                metadata={"email": user.email, "reason": "tenant_not_active", "tenant_status": tenant.status},
+                db=db,
+            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This agency's platform access is currently suspended")
         token = create_access_token(
             user_id=user.id,
             role=str(user.role),
             tenant_id=user.tenant_id,
             email=user.email,
+        )
+        log_event(
+            user_id=str(user.id),
+            tenant_id=str(user.tenant_id),
+            role=str(user.role),
+            action="LOGIN_SUCCESS",
+            entity_type="auth",
+            entity_id=str(user.id),
+            ip=ip,
+            metadata={"email": user.email, "agency_selected": True},
+            db=db,
         )
         return {
             "access_token": token,
@@ -149,11 +200,37 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = matches[0]
     tenant = db.get(Tenant, user.tenant_id)
 
+    if tenant is not None and tenant.status != "ACTIVE":
+        log_event(
+            user_id=str(user.id),
+            tenant_id=str(user.tenant_id),
+            role=str(user.role),
+            action="LOGIN_FAILED",
+            entity_type="auth",
+            entity_id=str(user.id),
+            ip=ip,
+            metadata={"email": user.email, "reason": "tenant_not_active", "tenant_status": tenant.status},
+            db=db,
+        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This agency's platform access is currently suspended")
+
     token = create_access_token(
         user_id=user.id,
         role=str(user.role),
         tenant_id=user.tenant_id,
         email=user.email,
+    )
+
+    log_event(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=str(user.role),
+        action="LOGIN_SUCCESS",
+        entity_type="auth",
+        entity_id=str(user.id),
+        ip=ip,
+        metadata={"email": user.email, "agency_selected": False},
+        db=db,
     )
 
     return {
@@ -169,6 +246,8 @@ def me(current_user: CurrentUser = Depends(get_current_user), db: Session = Depe
     if user is None or not getattr(user, "active", True):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is not active")
     tenant = db.get(Tenant, user.tenant_id)
+    if tenant is not None and tenant.status != "ACTIVE":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This agency's platform access is currently suspended")
     return _user_payload(user, tenant)
 
 
@@ -242,6 +321,7 @@ def linked_agencies(current_user: CurrentUser = Depends(get_current_user), db: S
 @router.post("/switch-agency")
 def switch_agency(
     payload: SwitchAgencyRequest,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -276,6 +356,17 @@ def switch_agency(
         role=str(target.role),
         tenant_id=target.tenant_id,
         email=target.email,
+    )
+    log_event(
+        user_id=str(target.id),
+        tenant_id=str(target.tenant_id),
+        role=str(target.role),
+        action="SWITCH_AGENCY",
+        entity_type="auth",
+        entity_id=str(target.id),
+        ip=_client_ip(request),
+        metadata={"from_user_id": str(user.id), "from_tenant_id": str(user.tenant_id)},
+        db=db,
     )
     return {
         "access_token": token,
@@ -312,7 +403,7 @@ def validate_set_password_token(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/set-password")
-def set_password(payload: SetPasswordRequest, db: Session = Depends(get_db)):
+def set_password(payload: SetPasswordRequest, request: Request, db: Session = Depends(get_db)):
     """Public endpoint backing the "set your password" link sent to new
     hires / issued on a password reset. No current password required —
     possession of the (single-use, expiring, unguessable) token is the
@@ -335,12 +426,24 @@ def set_password(payload: SetPasswordRequest, db: Session = Depends(get_db)):
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
 
+    log_event(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=str(user.role),
+        action="PASSWORD_SET_VIA_RESET_LINK",
+        entity_type="auth",
+        entity_id=str(user.id),
+        ip=_client_ip(request),
+        db=db,
+    )
+
     return {"status": "ok"}
 
 
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
+    request: Request,
     current_user: CurrentUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -359,5 +462,16 @@ def change_password(
     user.password_reset_expires_at = None
     user.updated_at = datetime.now(timezone.utc)
     db.commit()
+
+    log_event(
+        user_id=str(user.id),
+        tenant_id=str(user.tenant_id),
+        role=str(user.role),
+        action="CHANGE_PASSWORD",
+        entity_type="auth",
+        entity_id=str(user.id),
+        ip=_client_ip(request),
+        db=db,
+    )
 
     return {"status": "ok"}

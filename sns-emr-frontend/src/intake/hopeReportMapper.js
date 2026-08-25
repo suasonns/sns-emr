@@ -36,6 +36,13 @@ const addDays = (value, days) => {
   return date.toISOString().slice(0, 10);
 };
 
+const RECORD_REASON_BY_TIMEPOINT = {
+  ADMISSION: "1 - Admission (ADM)",
+  HUV1: "2 - HOPE Update Visit 1 (HUV1)",
+  HUV2: "3 - HOPE Update Visit 2 (HUV2)",
+  DISCHARGE: "99 - Discharge (DC)",
+};
+
 const boolCode = (value, yesCode = "1", yesDescription = "Yes", noCode = "0", noDescription = "No") => ({
   code: value ? yesCode : noCode,
   description: value ? yesDescription : noDescription,
@@ -452,7 +459,10 @@ function hasStructuredHopeComorbidities(diagnoses = {}) {
   return HOPE_COMORBIDITY_ITEMS.some((item) => Boolean(hope[item.key])) || Boolean(hope.other);
 }
 
-export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}) {
+export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}, options = {}) {
+  const timepoint = String(options.timepoint || "ADMISSION").toUpperCase();
+  const isDischarge = timepoint === "DISCHARGE";
+  const discharge = options.discharge || {};
   const demographics = formData.demographics || {};
   const livingSituation = demographics.livingSituation || {};
   const advancedCarePlanning = demographics.advancedCarePlanning || {};
@@ -465,6 +475,8 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const spiritual = formData.spiritual || {};
   const medications = formData.medications || {};
   const finalization = formData.finalization || {};
+  const assessmentMeta = options.assessmentMeta || {};
+  const completionDate = finalization.signatureDate || assessmentMeta.lockedAt || assessmentMeta.updatedAt || assessmentMeta.createdAt || "";
   const imminentDeath = formData.imminentDeath || {};
   const name = splitPatientName(patient);
   const agencyInfo = {
@@ -535,20 +547,21 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasOtherMedicalCondition).description }] },
       ];
 
-  return {
-    agency: agencyInfo,
-    patientName: name.display,
-    sfvStatus,
-    legacyReviewRequired,
-    sections: [
+  const sections = [
       {
         title: "Section A - Administrative Information",
         items: [
           { code: "A0050", label: "Type of Record", entries: [{ label: "Code + description", value: "1 - Add new record" }] },
           { code: "A0100", label: "Facility Provider Numbers", entries: [{ label: "A. NPI", value: agencyInfo.npi }, { label: "B. CCN", value: agencyInfo.ccn }, { label: "C. Facility ID", value: agencyInfo.facilityId }] },
           { code: "A0215", label: "Site of Service at Admission", entries: [{ label: "Code + description", value: `${siteOfService.code} - ${siteOfService.description}` }] },
-          { code: "A0220", label: "Admission Date", entries: [{ label: "Date", value: formatDate(patient.socDate || formData.admissionsOrder?.levelOfCare?.effectiveDate || finalization.signatureDate) }] },
-          { code: "A0250", label: "Reason for Record", entries: [{ label: "Code + description", value: "1 - Admission (ADM)" }] },
+          { code: "A0220", label: "Admission Date", entries: [{ label: "Date", value: formatDate(patient.socDate || formData.admissionsOrder?.levelOfCare?.effectiveDate || completionDate) }] },
+          { code: "A0250", label: "Reason for Record", entries: [{ label: "Code + description", value: RECORD_REASON_BY_TIMEPOINT[timepoint] || RECORD_REASON_BY_TIMEPOINT.ADMISSION }] },
+          ...(isDischarge
+            ? [
+                { code: "A0270", label: "Discharge Date", entries: [{ label: "Date", value: formatDate(discharge.dischargeDate) }] },
+                { code: "A2115", label: "Reason for Discharge", entries: [{ label: "Code + description", value: discharge.reasonCode ? `${discharge.reasonCode} - ${discharge.reasonLabel || ""}` : PLACEHOLDER }] },
+              ]
+            : []),
           { code: "A0500", label: "Legal Name of Patient", entries: [{ label: "A. First", value: name.first }, { label: "B. MI", value: name.middleInitial }, { label: "C. Last", value: name.last }] },
           { code: "A0550", label: "Patient Zip Code", entries: [{ label: "ZIP", value: valueText(demographics.address?.zip) }] },
           { code: "A0600", label: "Social Security and Medicare Numbers", entries: [{ label: "A. SSN", value: valueText(patient.ssn) }, { label: "B. Medicare / MBI", value: valueText(patient.medicareNumber) }] },
@@ -625,10 +638,21 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       {
         title: "Z0500 - Signature of Person Verifying Record Completion",
         items: [
-          { code: "Z0500", label: "Attestation", entries: [{ label: "Attestation", value: finalization.signatureCertification ? "I certify this HOPE report reflects the RN initial comprehensive assessment." : PLACEHOLDER }, { label: "Clinician Signature", value: valueText(finalization.clinicianSignature) }, { label: "Date", value: formatDate(finalization.signatureDate) }, { label: "Submission / Confirmation Number", value: valueText(finalization.hopeSubmissionNumber) }, { label: "Already submitted / no tracking", value: boolCode(Boolean(finalization.hopeAlreadySubmitted)).description }] },
+          ...(timepoint === "HUV1" || timepoint === "HUV2"
+            ? [{ code: "Z0350", label: "Date Assessment Completed", entries: [{ label: "Date", value: formatDate(completionDate) }] }]
+            : []),
+          { code: "Z0500", label: "Attestation", entries: [{ label: "Attestation", value: finalization.signatureCertification ? "I certify this HOPE report reflects the signed assessment record." : PLACEHOLDER }, { label: "Clinician Signature", value: valueText(finalization.clinicianSignature) }, { label: "Date", value: formatDate(finalization.signatureDate || completionDate) }, { label: "Submission / Confirmation Number", value: valueText(finalization.hopeSubmissionNumber) }, { label: "Already submitted / no tracking", value: boolCode(Boolean(finalization.hopeAlreadySubmitted)).description }] },
         ],
       },
-    ],
+  ];
+  return {
+    agency: agencyInfo,
+    patientName: name.display,
+    sfvStatus,
+    legacyReviewRequired,
+    sections: sections
+      .filter((section) => !(timepoint === "HUV1" || timepoint === "HUV2") || section.title !== "Section F - Preferences")
+      .filter((section) => !isDischarge || section.title === "Section A - Administrative Information" || section.title === "Z0500 - Signature of Person Verifying Record Completion"),
   };
 }
 

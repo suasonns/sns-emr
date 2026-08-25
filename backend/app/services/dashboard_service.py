@@ -470,32 +470,56 @@ def get_clinical_alerts_dashboard(
 
 def get_owner_dashboard(
     db: Session,
+    *,
+    tenant_id: UUID | str | None = None,
 ) -> dict[str, Any]:
     """
     System-wide owner dashboard.
 
-    Safe for staged rollout even if payments / claim_status are not ready yet.
+    Owner's Dashboard is platform-operations scope only (tenants, tasks,
+    incidents, clinical activity) -- billing/revenue metrics (payments,
+    denials, MRR/ARR) belong to the separate Biller's Dashboard and are
+    intentionally excluded here.
+
+    When ``tenant_id`` is provided (the owner picked a single tenant from
+    the dashboard's tenant dropdown), every metric, tenant row, and recent
+    incident below is scoped to just that one tenant instead of the
+    platform-wide aggregate.
     """
 
-    total_tenants = _safe_scalar(db, text("SELECT COUNT(*) FROM tenants")) or 0
-    total_tasks = _safe_scalar(db, text("SELECT COUNT(*) FROM tasks")) or 0
-    total_incidents = _safe_scalar(db, text("SELECT COUNT(*) FROM incident_reports")) or 0
-    total_notes = _safe_scalar(db, text("SELECT COUNT(*) FROM clinical_notes")) or 0
+    scoped = str(tenant_id) if tenant_id else None
 
-    total_payments = _safe_scalar(db, text("SELECT COUNT(*) FROM payments")) or 0
-    total_denials = (
-        _safe_scalar(
-            db,
-            text(
-                """
-                SELECT COUNT(*)
-                FROM payments
-                WHERE is_denied = TRUE
-                """
-            ),
+    if scoped:
+        total_tenants = 1
+        total_tasks = (
+            _safe_scalar(
+                db,
+                text("SELECT COUNT(*) FROM tasks WHERE tenant_id = :tenant_id"),
+                {"tenant_id": scoped},
+            )
+            or 0
         )
-        or 0
-    )
+        total_incidents = (
+            _safe_scalar(
+                db,
+                text("SELECT COUNT(*) FROM incident_reports WHERE tenant_id = :tenant_id"),
+                {"tenant_id": scoped},
+            )
+            or 0
+        )
+        total_notes = (
+            _safe_scalar(
+                db,
+                text("SELECT COUNT(*) FROM clinical_notes WHERE tenant_id = :tenant_id"),
+                {"tenant_id": scoped},
+            )
+            or 0
+        )
+    else:
+        total_tenants = _safe_scalar(db, text("SELECT COUNT(*) FROM tenants")) or 0
+        total_tasks = _safe_scalar(db, text("SELECT COUNT(*) FROM tasks")) or 0
+        total_incidents = _safe_scalar(db, text("SELECT COUNT(*) FROM incident_reports")) or 0
+        total_notes = _safe_scalar(db, text("SELECT COUNT(*) FROM clinical_notes")) or 0
 
     tenant_rows = (
         db.execute(
@@ -505,9 +529,11 @@ def get_owner_dashboard(
                     t.id::text AS tenant_id,
                     COALESCE(t.display_name, t.legal_name, t.id::text) AS tenant_name
                 FROM tenants t
+                WHERE (:tenant_id IS NULL OR t.id = :tenant_id)
                 ORDER BY tenant_name
                 """
-            )
+            ),
+            {"tenant_id": scoped},
         )
         .mappings()
         .all()
@@ -516,7 +542,7 @@ def get_owner_dashboard(
     tenant_summary: list[dict[str, Any]] = []
 
     for row in tenant_rows:
-        tenant_id = row["tenant_id"]
+        row_tenant_id = row["tenant_id"]
 
         open_tasks = (
             _safe_scalar(
@@ -529,7 +555,7 @@ def get_owner_dashboard(
                       AND status IN ('PENDING', 'PENDING', 'OVERDUE')
                     """
                 ),
-                {"tenant_id": tenant_id},
+                {"tenant_id": row_tenant_id},
             )
             or 0
         )
@@ -544,7 +570,7 @@ def get_owner_dashboard(
                     WHERE tenant_id = :tenant_id
                     """
                 ),
-                {"tenant_id": tenant_id},
+                {"tenant_id": row_tenant_id},
             )
             or 0
         )
@@ -553,7 +579,7 @@ def get_owner_dashboard(
 
         tenant_summary.append(
             {
-                "tenant_id": tenant_id,
+                "tenant_id": row_tenant_id,
                 "tenant_name": row["tenant_name"],
                 "open_tasks": open_tasks,
                 "incidents": incidents,
@@ -561,8 +587,11 @@ def get_owner_dashboard(
             }
         )
 
+    recent_incidents_query = db.query(IncidentReport)
+    if scoped:
+        recent_incidents_query = recent_incidents_query.filter(IncidentReport.tenant_id == scoped)
     recent_incidents = (
-        db.query(IncidentReport)
+        recent_incidents_query
         .order_by(getattr(IncidentReport, "created_at").desc())
         .limit(10)
         .all()
@@ -574,17 +603,135 @@ def get_owner_dashboard(
             {"key": "tasks", "label": "Active Tasks", "value": total_tasks},
             {"key": "incidents", "label": "System Incidents", "value": total_incidents},
             {"key": "notes", "label": "Clinical Notes", "value": total_notes},
-            {"key": "payments", "label": "Payments Posted", "value": total_payments},
-            {"key": "denials", "label": "Denied Claims", "value": total_denials},
         ],
         "total_tenants": total_tenants,
         "active_tasks": total_tasks,
         "system_incidents": total_incidents,
         "clinical_notes": total_notes,
-        "payments_posted": total_payments,
-        "denied_claims": total_denials,
         "tenant_summary": tenant_summary,
         "recent_incidents": [asdict(_map_incident(item)) for item in recent_incidents],
+    }
+
+
+def count_claim_lifecycle(db: Session, tenant_id: UUID | str) -> dict[str, int]:
+    """
+    Real claim-lifecycle status counts for the given tenant, replacing the
+    old app.billing.store in-memory mock. Backed by the persisted `claims`
+    table (see app.billing.models.claim.Claim).
+    """
+    rows = db.execute(
+        text(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM claims
+            WHERE tenant_id = :tenant_id
+            GROUP BY status
+            """
+        ),
+        {"tenant_id": str(tenant_id)},
+    ).mappings().all()
+
+    counts = {"ready": 0, "sent": 0, "accepted": 0, "paid": 0, "denied": 0}
+    for row in rows:
+        key = str(row["status"] or "").lower()
+        if key in counts:
+            counts[key] = row["count"]
+
+    return counts
+
+
+def get_denials_appeals_summary(db: Session, tenant_id: UUID | str) -> dict[str, Any]:
+    """
+    Real Denials & Appeals summary backed by the `denials` and `appeals`
+    tables (see app.billing.models.denial.Denial / appeal.Appeal),
+    populated by app.services.payment_service.post_payments_from_835.
+
+    Shared by the Biller's Dashboard and the owner's Tenant Analytics
+    financials/billing mirror -- both surfaces show the same real
+    denial/appeal outcome metrics, per the agreed Phase 4 scope.
+    """
+    counts_by_status = {
+        str(row["status"] or "").upper(): row["count"]
+        for row in db.execute(
+            text(
+                """
+                SELECT status, COUNT(*) AS count
+                FROM denials
+                WHERE tenant_id = :tenant_id
+                GROUP BY status
+                """
+            ),
+            {"tenant_id": str(tenant_id)},
+        ).mappings().all()
+    }
+
+    amounts = db.execute(
+        text(
+            """
+            SELECT
+                COALESCE(SUM(denied_amount), 0) AS total_denied_amount,
+                COALESCE(SUM(denied_amount) FILTER (WHERE status = 'OPEN'), 0) AS open_denied_amount
+            FROM denials
+            WHERE tenant_id = :tenant_id
+            """
+        ),
+        {"tenant_id": str(tenant_id)},
+    ).mappings().first() or {}
+
+    recovered_amount = (
+        _safe_scalar(
+            db,
+            text(
+                """
+                SELECT COALESCE(SUM(a.outcome_amount), 0)
+                FROM appeals a
+                JOIN denials d ON d.id = a.denial_id
+                WHERE d.tenant_id = :tenant_id
+                  AND a.status = 'APPROVED'
+                """
+            ),
+            {"tenant_id": str(tenant_id)},
+        )
+        or 0
+    )
+
+    top_denial_codes = db.execute(
+        text(
+            """
+            SELECT
+                carc_code,
+                MAX(reason_description) AS reason_description,
+                COUNT(*) AS case_count,
+                COALESCE(SUM(denied_amount), 0) AS total_amount
+            FROM denials
+            WHERE tenant_id = :tenant_id
+              AND carc_code IS NOT NULL
+            GROUP BY carc_code
+            ORDER BY case_count DESC
+            LIMIT 5
+            """
+        ),
+        {"tenant_id": str(tenant_id)},
+    ).mappings().all()
+
+    return {
+        "open_denials": counts_by_status.get("OPEN", 0),
+        "appealed_denials": counts_by_status.get("APPEALED", 0),
+        "overturned_denials": counts_by_status.get("OVERTURNED", 0),
+        "upheld_denials": counts_by_status.get("UPHELD", 0),
+        "written_off_denials": counts_by_status.get("WRITTEN_OFF", 0),
+        "total_denied_amount": float(amounts.get("total_denied_amount") or 0),
+        "open_denied_amount": float(amounts.get("open_denied_amount") or 0),
+        "total_recovered_amount": float(recovered_amount),
+        "top_denial_codes": [
+            {
+                "carc_code": row["carc_code"],
+                "reason_description": row["reason_description"],
+                "case_count": row["case_count"],
+                "total_amount": float(row["total_amount"] or 0),
+            }
+            for row in top_denial_codes
+        ],
     }
 
 
@@ -594,11 +741,9 @@ def get_billing_dashboard(
     tenant_id: UUID,
 ) -> dict[str, Any]:
     """
-    Billing dashboard with 835-aware metrics.
-
-    Safe for staged rollout:
-    - If `payments` table does not exist yet → returns 0 metrics
-    - If `claim_status` table does not exist yet → returns 0 pending payment count
+    Billing dashboard with real payment-posting metrics, backed by the
+    `payments` table (app.billing.models.payment.Payment) populated by
+    835 remittance posting (see app.services.payment_service).
     """
 
     payments_received = (
@@ -609,7 +754,7 @@ def get_billing_dashboard(
                 SELECT COUNT(*)
                 FROM payments
                 WHERE tenant_id = :tenant_id
-                  AND COALESCE(total_paid, 0) > 0
+                  AND COALESCE(paid_amount, 0) > 0
                 """
             ),
             {"tenant_id": str(tenant_id)},
@@ -623,9 +768,9 @@ def get_billing_dashboard(
             text(
                 """
                 SELECT COUNT(*)
-                FROM payments
+                FROM claims
                 WHERE tenant_id = :tenant_id
-                  AND is_denied = TRUE
+                  AND status = 'DENIED'
                 """
             ),
             {"tenant_id": str(tenant_id)},
@@ -639,7 +784,7 @@ def get_billing_dashboard(
             text(
                 """
                 SELECT COUNT(*)
-                FROM claim_status
+                FROM claims
                 WHERE tenant_id = :tenant_id
                   AND status IN ('SENT', 'ACCEPTED')
                 """

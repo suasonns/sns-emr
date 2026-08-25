@@ -202,6 +202,41 @@ export type VolunteerSchedulingResponse = {
   }>;
 };
 
+export type AssessmentHistoryResponse = {
+  patient_id: string;
+  items: Array<{
+    record_id: string;
+    source_table: string;
+    discipline: string;
+    assessment_type: string;
+    phase_hint: string | null;
+    visit_date: string | null;
+    status: string;
+    locked: boolean;
+    locked_at: string | null;
+    locked_by: string | null;
+    created_at: string | null;
+    updated_at: string | null;
+    record_url_hint: {
+      section: string;
+      assessment_id: string;
+      source_table?: string;
+    };
+  }>;
+  total: number;
+  limit: number;
+  offset: number;
+  sort_order: "asc" | "desc";
+  filters: {
+    discipline: string | null;
+    assessment_type: string | null;
+    status: string | null;
+    from_date: string | null;
+    to_date: string | null;
+  };
+};
+
+
 export async function fetchPatientSummary(patientId: string) {
   const response = await api.get<PatientSummaryResponse>(`/patient-charts/${patientId}/summary`);
   return response.data;
@@ -234,5 +269,69 @@ export async function fetchCompliance(patientId: string) {
 
 export async function fetchVolunteerScheduling(patientId: string) {
   const response = await api.get<VolunteerSchedulingResponse>(`/patient-charts/${patientId}/volunteer-scheduling`);
+  return response.data;
+}
+
+export async function fetchAssessmentHistory(
+  patientId: string,
+  params?: Partial<AssessmentHistoryResponse["filters"]> & { limit?: number; offset?: number; sort_order?: "asc" | "desc" }
+) {
+  const response = await api.get<AssessmentHistoryResponse>(`/patients/${patientId}/assessment-history`, { params });
+  return response.data;
+}
+
+export type DischargeChecklist = {
+  plan_reviewed: boolean | null;
+  notified: boolean | null;
+  explained: boolean | null;
+  readmission_explained: boolean | null;
+  medication_instruction: boolean | null;
+  contact_provided: boolean | null;
+  referral_provided: boolean | null;
+};
+
+export type DischargeState = {
+  patient_id: string;
+  patient_status: string;
+  admission_id: string | null;
+  admission_status: string | null;
+  discharged: boolean;
+  discharge_date: string | null;
+  discharge_reason: string | null;
+  discharge_initiated_by: string | null;
+  discharge_projected_date: string | null;
+  discharge_comments: string | null;
+  checklist: DischargeChecklist;
+  reason_codes: Record<string, string>;
+};
+
+export async function fetchDischargePlanning(patientId: string) {
+  const response = await api.get<DischargeState>(`/patients/${patientId}/discharge`);
+  return response.data;
+}
+
+export async function updateDischargePlanning(
+  patientId: string,
+  payload: Partial<{
+    discharge_projected_date: string | null;
+    discharge_comments: string | null;
+    discharge_plan_reviewed: boolean;
+    discharge_notified: boolean;
+    discharge_explained: boolean;
+    discharge_readmission_explained: boolean;
+    discharge_medication_instruction: boolean;
+    discharge_contact_provided: boolean;
+    discharge_referral_provided: boolean;
+  }>
+) {
+  const response = await api.put<DischargeState>(`/patients/${patientId}/discharge`, payload);
+  return response.data;
+}
+
+export async function finalizePatientDischarge(
+  patientId: string,
+  payload: { discharge_date: string; reason_code: string; notes?: string }
+) {
+  const response = await api.post(`/patients/${patientId}/discharge/finalize`, payload);
   return response.data;
 }

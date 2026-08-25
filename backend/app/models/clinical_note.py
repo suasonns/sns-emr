@@ -15,6 +15,7 @@ from sqlalchemy import (
     event,
     text,
     Index,
+    select,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
@@ -332,7 +333,11 @@ def before_update(mapper, connection, target):
         target.content = {}
 
     if target.finalized_at:
-        raise ValueError("Cannot modify finalized note")
+        existing_finalized_at = connection.execute(
+            select(ClinicalNote.finalized_at).where(ClinicalNote.id == target.id)
+        ).scalar_one_or_none()
+        if existing_finalized_at:
+            raise ValueError("Cannot modify finalized note")
 
     if (target.countersigned_by and not target.countersigned_at) or \
        (target.countersigned_at and not target.countersigned_by):

@@ -110,6 +110,19 @@ class Tenant(BaseModel):
     )
 
     # ---------------------------------------------------------
+    # ✅ CBSA CODE (REQUIRED FOR REAL CMS WAGE-INDEX RATE LOOKUPS)
+    # ---------------------------------------------------------
+    # Core Based Statistical Area code for the tenant's primary service
+    # location, per the CMS hospice wage index tables. Used to look up the
+    # real, published wage index for computing wage-adjusted per-diem rates.
+    # Nullable: agencies without this configured fall back to $0.00 rates
+    # (safer than guessing) rather than an invented default.
+    cbsa_code = Column(
+        String(10),
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
     # ENTERPRISE CONSTRAINTS
     # ---------------------------------------------------------
 

@@ -32,6 +32,7 @@ import {
   saveRnicaAssessment,
   getRnicaAssessment,
   getRnicaAssessmentByPatient,
+  getRnicaAssessmentByPatientType,
   updateRnicaAssessment,
   lockRnicaAssessment,
   deleteRnicaAssessment,
@@ -89,6 +90,7 @@ import {
 import { getCurrentUser } from "../api/session";
 import { fetchFacesheet, fetchPerformanceHistory } from "../api/facesheet";
 import { listVendors } from "../api/vendors";
+import { listStaff } from "../api/staff";
 import { COLORS as SNS_COLORS, S as SNS_S } from "../tenant/design";
 import PatientContextSidebar from "./PatientContextSidebar";
 import NumericPainScale from "../assessments/pain/NumericPainScale";
@@ -245,6 +247,9 @@ const FORM_REGISTRY = [
   "psychosocial", "spiritual", "bereavement", "personalCare", "teachingNeeds",
   "admissionsOrder", "referrals", "finalization",
 ];
+
+const UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"]);
+const UPDATE_HIDDEN_SIDEBAR_KEYS = new Set(["advancedCarePlanning", "admissionsOrder", "sfv"]);
 
 // ════════════════════════════════════════════════════════════════
 // SECTION 9 — DME per-item status tracker.
@@ -890,7 +895,10 @@ const api = {
       assessmentSubtype ? { patientId, formData, assessmentSubtype } : { patientId, formData }
     ),
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
-  getRNICAAssessmentByPatient: (patientId) => getRnicaAssessmentByPatient(patientId),
+  getRNICAAssessmentByPatient: (patientId, assessmentSubtype = undefined) =>
+    assessmentSubtype
+      ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
+      : getRnicaAssessmentByPatient(patientId),
   updateRNICAAssessment: (assessmentId, formData) =>
     updateRnicaAssessment(assessmentId, formData),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
@@ -908,6 +916,7 @@ function validateRNICA(formData, mode = "ica") {
   const errors = {};
   const warnings = {};
   const includeHopeRequirements = mode !== "ongoing";
+  const requireAdmissionOrders = mode === "ica";
 
   // Demographics ? required fields
   if (!formData.demographics.firstName) errors["demographics.firstName"] = "First name is required";
@@ -1042,12 +1051,12 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   // Admissions Order ? Level of Care required
-  if (!formData.admissionsOrder.levelOfCare.level) {
+  if (requireAdmissionOrders && !formData.admissionsOrder.levelOfCare.level) {
     errors["admissionsOrder.levelOfCare"] = "Level of Care is required for admission";
   }
 
   // Admissions Order ? T.O. Verification
-  if (!formData.admissionsOrder.toVerification.verbalOrderReadBack) {
+  if (requireAdmissionOrders && !formData.admissionsOrder.toVerification.verbalOrderReadBack) {
     errors["admissionsOrder.toVerification"] = "Verbal order read-back verification required";
   }
 
@@ -6374,6 +6383,33 @@ const ORDER_TYPE_TO_VENDOR_TYPE = {
   OTHER: "Other",
 };
 
+// Order types whose real HospiceMD form has no drug-specific fields at all
+// (no Strength/Dosage/Route/Frequency/Indication/Quantity) -- confirmed via
+// real screenshots for Lab, Treatment, Other, and Supplies. DME and Diet keep
+// the fuller field set (also confirmed via screenshot) and only gained
+// Start Date/Stop Date, which every order type has in the real form.
+const MINIMAL_ORDER_TYPES = new Set(["LAB", "TREATMENT", "OTHER", "SUPPLY"]);
+
+// Common Orders quick-picks for the Lab tab — each is a single, independently
+// selectable test (by CPT code, so labels stay in sync with the catalog).
+// These are NOT bundled combos — e.g. CBC, CMP, and BMP are each their own
+// button since providers often order just one, not all together.
+const LAB_QUICK_PICKS = [
+  { label: "UA", cpts: ["81003"] },
+  { label: "UA with C&S", cpts: ["87088"] },
+  { label: "CBC", cpts: ["85025"] },
+  { label: "CMP", cpts: ["80053"] },
+  { label: "BMP", cpts: ["80048"] },
+  { label: "Liver Panel", cpts: ["80076"] },
+  { label: "TSH", cpts: ["84443"] },
+  { label: "Free T4", cpts: ["84439"] },
+  { label: "Free T3", cpts: ["84481"] },
+  { label: "BNP", cpts: ["83880"] },
+  { label: "PT/INR", cpts: ["85610"] },
+  { label: "A1C", cpts: ["83036"] },
+];
+
+
 const ohInput = {
   width: "100%",
   padding: "10px 12px",
@@ -6390,6 +6426,19 @@ const ohLabel = { fontSize: 11, fontWeight: 600, color: SNS_COLORS.dim, textTran
 const ohFormGroup = { marginBottom: 10 };
 const ohBtnPrimary = { ...SNS_S.btn(SNS_COLORS.teal) };
 const ohBtnSecondary = { ...SNS_S.btnOutline, padding: "6px 12px", fontSize: 12 };
+
+// Roles/disciplines eligible to be an ordering provider — same set used by
+// StaffAssignment.jsx's "MD / NP / DO" provider group, so the Ordering
+// Provider dropdown here lists the same staff (e.g. Stephen Pine, Tejon Woods).
+const ORDERING_PROVIDER_ROLES = new Set(["MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "MD", "DO", "NP", "PA"]);
+
+function providerRoleCode(staffMember) {
+  const disc = (staffMember?.discipline || staffMember?.role || "").toUpperCase();
+  if (disc.includes("NP")) return "NP";
+  if (disc.includes("PA")) return "PA";
+  return "MD";
+}
+
 const ohTabBtn = (active) => ({
   padding: "8px 16px",
   borderRadius: 8,
@@ -6425,16 +6474,26 @@ export function OrdersHubCard({ patientId }) {
     order_text: "", strength: "", dosage: "", route: "", frequency: "",
     indication: "", quantity: "", payer: "", vendor: "", administered_by: "",
     special_instruction: "",
+    start_date: new Date().toISOString().slice(0, 10), stop_date: "",
     source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
     prescriber_authenticated: false, phone_readback_confirmed: false,
+    visit_frequency_discipline: "", visit_frequency_per_week: "", visit_frequency_prn_count: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
   const [labCatalog, setLabCatalog] = useState(null);
   const [selectedLabTests, setSelectedLabTests] = useState([]);
+  const [labSearch, setLabSearch] = useState("");
 
   const [vendorOptions, setVendorOptions] = useState([]);
+  const [providerOptions, setProviderOptions] = useState([]);
+
+  useEffect(() => {
+    listStaff({ status: "active" })
+      .then((list) => setProviderOptions((list || []).filter((s) => ORDERING_PROVIDER_ROLES.has((s.discipline || s.role || "").toUpperCase()))))
+      .catch((err) => console.error("Failed to load providers:", err));
+  }, []);
 
   const [faxOpen, setFaxOpen] = useState(false);
   const [faxForm, setFaxForm] = useState({ recipient_name: "", recipient_fax_number: "" });
@@ -6527,21 +6586,62 @@ export function OrdersHubCard({ patientId }) {
     );
   };
 
+  const findLabTest = useCallback(
+    (cpt) => {
+      for (const cat of labCatalog?.categories || []) {
+        const found = cat.tests.find((t) => t.cpt === cpt);
+        if (found) return found;
+      }
+      return null;
+    },
+    [labCatalog]
+  );
+
+  const toggleLabQuickPick = (pick) => {
+    const tests = pick.cpts.map(findLabTest).filter(Boolean);
+    if (!tests.length) return;
+    const allSelected = tests.every((test) => selectedLabTests.some((t) => t.cpt === test.cpt));
+    setSelectedLabTests((prev) =>
+      allSelected
+        ? prev.filter((t) => !tests.some((test) => test.cpt === t.cpt))
+        : [...prev, ...tests.filter((test) => !prev.some((t) => t.cpt === test.cpt))]
+    );
+  };
+
+  const labSearchHasNoMatches = useMemo(() => {
+    if (!labCatalog || !labSearch.trim()) return false;
+    const query = labSearch.trim().toLowerCase();
+    return !labCatalog.categories?.some((cat) =>
+      cat.tests.some((test) => test.name.toLowerCase().includes(query) || test.cpt.toLowerCase().includes(query))
+    );
+  }, [labCatalog, labSearch]);
+
   const handleAddOrder = async () => {
-    const orderText = activeType === "LAB"
-      ? selectedLabTests.map((t) => `${t.name} (CPT ${t.cpt})`).join("; ")
-      : [
-          form.order_text,
-          form.strength && `Strength: ${form.strength}`,
-          form.dosage && `Dosage/Qty: ${form.dosage}`,
-          form.route && `Route: ${form.route}`,
-          form.frequency && `Frequency: ${form.frequency}`,
-          form.indication && `Indication: ${form.indication}`,
-          form.payer && `Payer: ${form.payer}`,
-          form.vendor && `Vendor: ${form.vendor}`,
-          form.administered_by && `Administered by: ${form.administered_by}`,
-          form.special_instruction && `Instructions: ${form.special_instruction}`,
-        ].filter(Boolean).join(" — ");
+    const freqDiscipline = activeType === "OTHER" ? form.visit_frequency_discipline : "";
+    const freqPerWeek = freqDiscipline && form.visit_frequency_per_week !== "" ? parseInt(form.visit_frequency_per_week, 10) : null;
+    const freqPrnCount = freqDiscipline && form.visit_frequency_prn_count !== "" ? parseInt(form.visit_frequency_prn_count, 10) : null;
+    const freqSummaryParts = [];
+    if (freqDiscipline) {
+      if (freqPerWeek) freqSummaryParts.push(`${freqPerWeek}x/week`);
+      if (freqPrnCount) freqSummaryParts.push(`PRN x${freqPrnCount}`);
+    }
+    const orderText = [
+      activeType === "LAB"
+        ? selectedLabTests.map((t) => `${t.name} (CPT ${t.cpt})`).join("; ")
+        : form.order_text,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.strength && `Strength: ${form.strength}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.dosage && `Dosage/Qty: ${form.dosage}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.route && `Route: ${form.route}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.frequency && `Frequency: ${form.frequency}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.indication && `Indication: ${form.indication}`,
+      freqDiscipline && `Visit Frequency: ${freqDiscipline} ${freqSummaryParts.join(", ")}`.trim(),
+      form.payer && `Payer: ${form.payer}`,
+      form.vendor && `Vendor: ${form.vendor}`,
+      form.administered_by && `Administered by: ${form.administered_by}`,
+      form.start_date && `Start Date: ${form.start_date}`,
+      form.stop_date && `Stop Date: ${form.stop_date}`,
+      form.special_instruction && `Instructions: ${form.special_instruction}`,
+    ].filter(Boolean).join(" — ");
 
     if (!orderText.trim()) {
       setSubmitError(activeType === "LAB" ? "Select at least one lab test." : "Order text is required.");
@@ -6567,13 +6667,18 @@ export function OrdersHubCard({ patientId }) {
         prescriber_authenticated: form.prescriber_authenticated,
         phone_readback_confirmed: form.phone_readback_confirmed,
         ordered_at: new Date().toISOString(),
+        visit_frequency_discipline: freqDiscipline || null,
+        visit_frequency_per_week: freqPerWeek,
+        visit_frequency_prn_count: freqPrnCount,
       });
       await submitPhysicianOrder(draft.id);
       setForm({
         order_text: "", strength: "", dosage: "", route: "", frequency: "", indication: "",
         quantity: "", payer: "", vendor: "", administered_by: "", special_instruction: "",
+        start_date: new Date().toISOString().slice(0, 10), stop_date: "",
         source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
         prescriber_authenticated: false, phone_readback_confirmed: false,
+        visit_frequency_discipline: "", visit_frequency_per_week: "", visit_frequency_prn_count: "",
       });
       setSelectedLabTests([]);
       reload();
@@ -6668,8 +6773,17 @@ export function OrdersHubCard({ patientId }) {
               <input
                 style={ohInput}
                 value={importAttestation.ordered_by_provider_name}
-                onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_name: e.target.value }))}
-                placeholder="Dr. Jane Smith"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const match = providerOptions.find((p) => p.full_name === name);
+                  setImportAttestation((f) => ({
+                    ...f,
+                    ordered_by_provider_name: name,
+                    ordered_by_provider_role: match ? providerRoleCode(match) : f.ordered_by_provider_role,
+                  }));
+                }}
+                list="oh-provider-options"
+                placeholder={providerOptions.length ? "Select or type a provider…" : "Dr. Jane Smith"}
               />
               <select style={ohInput} value={importAttestation.ordered_by_provider_role} onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_role: e.target.value }))}>
                 <option value="MD">MD</option>
@@ -6719,23 +6833,76 @@ export function OrdersHubCard({ patientId }) {
           <div>
             <div style={ohLabel}>Lab Tests (select all that apply)</div>
             {!labCatalog && <div style={{ fontSize: 12.5, color: SNS_COLORS.dim }}>Loading catalog…</div>}
-            {labCatalog?.categories?.map((cat) => (
-              <div key={cat.category} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: SNS_COLORS.muted, marginBottom: 4 }}>{cat.category}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                  {cat.tests.map((test) => (
-                    <label key={test.cpt + test.name} style={{ fontSize: 12, color: SNS_COLORS.white, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedLabTests.some((t) => t.cpt === test.cpt)}
-                        onChange={() => toggleLabTest(test)}
-                      />
-                      {test.name} <span style={{ color: SNS_COLORS.dim }}>(CPT {test.cpt})</span>
-                    </label>
-                  ))}
+            {labCatalog ? (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ ...ohLabel, marginBottom: 6 }}>Common Orders</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {LAB_QUICK_PICKS.map((pick) => {
+                    const tests = pick.cpts.map(findLabTest).filter(Boolean);
+                    const active = tests.length > 0 && tests.every((test) => selectedLabTests.some((t) => t.cpt === test.cpt));
+                    return (
+                      <button
+                        key={pick.label}
+                        type="button"
+                        onClick={() => toggleLabQuickPick(pick)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${active ? SNS_COLORS.teal : SNS_COLORS.border}`,
+                          background: active ? SNS_COLORS.teal : "transparent",
+                          color: active ? SNS_COLORS.bg : SNS_COLORS.white,
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {pick.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+            ) : null}
+            {labCatalog ? (
+              <input
+                style={{ ...ohInput, marginBottom: 12, maxWidth: 320 }}
+                value={labSearch}
+                onChange={(e) => setLabSearch(e.target.value)}
+                placeholder="Search by test name or CPT code…"
+              />
+            ) : null}
+            {selectedLabTests.length > 0 && (
+              <div style={{ fontSize: 11.5, color: SNS_COLORS.teal, marginBottom: 8 }}>
+                {selectedLabTests.length} test{selectedLabTests.length === 1 ? "" : "s"} selected: {selectedLabTests.map((t) => t.name).join(", ")}
+              </div>
+            )}
+            {labCatalog?.categories?.map((cat) => {
+              const query = labSearch.trim().toLowerCase();
+              const visibleTests = query
+                ? cat.tests.filter((test) => test.name.toLowerCase().includes(query) || test.cpt.toLowerCase().includes(query))
+                : cat.tests;
+              if (!visibleTests.length) return null;
+              return (
+                <div key={cat.category} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: SNS_COLORS.muted, marginBottom: 4 }}>{cat.category}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                    {visibleTests.map((test) => (
+                      <label key={test.cpt + test.name} style={{ fontSize: 12, color: SNS_COLORS.white, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedLabTests.some((t) => t.cpt === test.cpt)}
+                          onChange={() => toggleLabTest(test)}
+                        />
+                        {test.name} <span style={{ color: SNS_COLORS.dim }}>(CPT {test.cpt})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {labCatalog && labSearchHasNoMatches ? (
+              <div style={{ fontSize: 12, color: SNS_COLORS.dim }}>No lab tests match "{labSearch}".</div>
+            ) : null}
             {labCatalog?.clinical_notes && Object.values(labCatalog.clinical_notes).map((note, i) => (
               <div key={i} style={{ fontSize: 11.5, color: SNS_COLORS.orange, marginTop: 8, fontStyle: "italic" }}>{note}</div>
             ))}
@@ -6760,7 +6927,7 @@ export function OrdersHubCard({ patientId }) {
                 <input style={ohInput} value={form.order_text} onChange={(e) => setForm((f) => ({ ...f, order_text: e.target.value }))} placeholder="e.g. Hospital Bed Full Electric" />
               )}
             </div>
-            {activeType !== "OTHER" && (
+            {!MINIMAL_ORDER_TYPES.has(activeType) && (
               <>
                 <div style={ohFormGroup}>
                   <label style={ohLabel}>Strength</label>
@@ -6815,8 +6982,98 @@ export function OrdersHubCard({ patientId }) {
               <label style={ohLabel}>Administered By</label>
               <input style={ohInput} value={form.administered_by} onChange={(e) => setForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Hospice Nurse Only" />
             </div>
+            {activeType === "OTHER" && (
+              <>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Visit Frequency — Discipline</label>
+                  <select
+                    style={ohInput}
+                    value={form.visit_frequency_discipline}
+                    onChange={(e) => setForm((f) => ({ ...f, visit_frequency_discipline: e.target.value }))}
+                  >
+                    <option value="">— Not a frequency order —</option>
+                    <option value="RN">RN (Skilled Nursing)</option>
+                    <option value="LVN">LVN/LPN</option>
+                    <option value="CHHA">CHHA (Home Health Aide)</option>
+                    <option value="MSW">MSW (Social Work)</option>
+                    <option value="SC">Chaplain / Spiritual Care</option>
+                  </select>
+                  <div style={{ fontSize: 10.5, color: SNS_COLORS.dim, marginTop: 3 }}>
+                    Set this to record a structured "visits per week" order the scheduling engine can track. Leave blank for a non-frequency Other order.
+                  </div>
+                </div>
+                {form.visit_frequency_discipline && (
+                  <>
+                    <div style={ohFormGroup}>
+                      <label style={ohLabel}>Visits per Week</label>
+                      <input
+                        type="number"
+                        min="0"
+                        style={ohInput}
+                        value={form.visit_frequency_per_week}
+                        onChange={(e) => setForm((f) => ({ ...f, visit_frequency_per_week: e.target.value }))}
+                        placeholder="e.g. 2"
+                      />
+                    </div>
+                    <div style={ohFormGroup}>
+                      <label style={ohLabel}>PRN Visits (count)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        style={ohInput}
+                        value={form.visit_frequency_prn_count}
+                        onChange={(e) => setForm((f) => ({ ...f, visit_frequency_prn_count: e.target.value }))}
+                        placeholder="e.g. 1"
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
+        {activeType === "LAB" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Payer</label>
+              <select style={ohInput} value={form.payer} onChange={(e) => setForm((f) => ({ ...f, payer: e.target.value }))}>
+                <option value="">—</option>
+                <option value="Hospice">Hospice covered</option>
+                <option value="Insurance">Insurance non-covered</option>
+                <option value="Patient">Patient non-covered</option>
+              </select>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Vendor</label>
+              <input
+                style={ohInput}
+                value={form.vendor}
+                onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+                list="oh-vendor-options"
+                placeholder={vendorOptions.length ? "Select or type a vendor…" : "No vendors on file — type a name"}
+              />
+              <datalist id="oh-vendor-options">
+                {vendorOptions.map((v) => (
+                  <option key={v.id} value={v.name} />
+                ))}
+              </datalist>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Administered By</label>
+              <input style={ohInput} value={form.administered_by} onChange={(e) => setForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Outside Lab" />
+            </div>
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
+          <div style={ohFormGroup}>
+            <label style={ohLabel}>Start Date</label>
+            <input type="date" style={ohInput} value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+          </div>
+          <div style={ohFormGroup}>
+            <label style={ohLabel}>Stop Date</label>
+            <input type="date" style={ohInput} value={form.stop_date} onChange={(e) => setForm((f) => ({ ...f, stop_date: e.target.value }))} />
+          </div>
+        </div>
         <div style={ohFormGroup}>
           <label style={ohLabel}>Special Instruction</label>
           <textarea style={ohTextarea} value={form.special_instruction} onChange={(e) => setForm((f) => ({ ...f, special_instruction: e.target.value }))} />
@@ -6829,7 +7086,26 @@ export function OrdersHubCard({ patientId }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <div style={ohFormGroup}>
               <label style={ohLabel}>Ordering Provider Name</label>
-              <input style={ohInput} value={form.ordered_by_provider_name} onChange={(e) => setForm((f) => ({ ...f, ordered_by_provider_name: e.target.value }))} placeholder="Dr. Jane Smith" />
+              <input
+                style={ohInput}
+                value={form.ordered_by_provider_name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const match = providerOptions.find((p) => p.full_name === name);
+                  setForm((f) => ({
+                    ...f,
+                    ordered_by_provider_name: name,
+                    ordered_by_provider_role: match ? providerRoleCode(match) : f.ordered_by_provider_role,
+                  }));
+                }}
+                list="oh-provider-options"
+                placeholder={providerOptions.length ? "Select or type a provider…" : "Dr. Jane Smith"}
+              />
+              <datalist id="oh-provider-options">
+                {providerOptions.map((p) => (
+                  <option key={p.id} value={p.full_name} />
+                ))}
+              </datalist>
             </div>
             <div style={ohFormGroup}>
               <label style={ohLabel}>Provider Role</label>
@@ -7436,11 +7712,11 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
 
-function renderDemographics(data, update, COLORS, styles, moduleKey = "all") {
+function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiProfile = {}) {
   const u = (path, val) => update("demographics", path, val);
   const showPatient = moduleKey === "all" || moduleKey === "demographics";
   const showCaregiver = moduleKey === "all" || moduleKey === "caregiverAssessment";
-  const showPlanning = moduleKey === "all" || moduleKey === "advancedCarePlanning";
+  const showPlanning = (moduleKey === "all" || moduleKey === "advancedCarePlanning") && !uiProfile.hideAdvancedCarePlanning;
   return (
     <>
       <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>
@@ -7691,9 +7967,15 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
+  const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
+    ? (cards || []).map((card) => ({
+        ...card,
+        fields: (card.fields || []).filter((field) => !["concernsAskedStatus", "concernsDiscussedDate"].includes(field.path)),
+      }))
+    : cards;
 
   // Every clinical assessment section where an RN finding can turn into a
   // Plan of Care problem gets Add/View/Update/Resolve POC controls on each
@@ -7761,7 +8043,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
       <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
-        {cards.map((card, ci) => {
+        {resolvedCards.map((card, ci) => {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
@@ -9453,6 +9735,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
+  const isUpdateAssessment = isOngoing && assessmentType === "update";
+  const assessmentUiProfile = useMemo(() => ({
+    hideAdvancedCarePlanning: isUpdateAssessment,
+    hideAdmissionsOrder: isUpdateAssessment,
+    hideSpiritualHopeFields: isUpdateAssessment,
+  }), [isUpdateAssessment]);
   const autosavePatientId = resolvedPatientId || patientId || "";
   // Admission Action Center (Phase A) — global drawer, reachable from every
   // section via the persistent footer button. No draft loss / navigation:
@@ -9479,12 +9767,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     // requires it to occur within 2 calendar days of the RN Initial
     // Comprehensive Assessment as a distinct documented visit, never filled
     // out inside the RNICA itself (initial or ongoing/recert).
-    return orderedRoutes.filter((route) => route.key !== "sfv");
-  }, [workspacePilot]);
+    return orderedRoutes.filter((route) => {
+      if (route.key === "sfv") return false;
+      if (assessmentUiProfile.hideAdmissionsOrder && UPDATE_HIDDEN_ROUTE_KEYS.has(route.key)) return false;
+      return true;
+    });
+  }, [assessmentUiProfile.hideAdmissionsOrder, workspacePilot]);
   const sidebarConfigItems = useMemo(() => {
-    const items = SIDEBAR_CONFIG.filter((item) => item.key !== "sfv");
+    const items = SIDEBAR_CONFIG.filter((item) => {
+      if (item.key === "sfv") return false;
+      if (isUpdateAssessment && UPDATE_HIDDEN_SIDEBAR_KEYS.has(item.key)) return false;
+      return true;
+    });
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
-  }, [isOngoing]);
+  }, [isOngoing, isUpdateAssessment]);
 
   // Default every section to collapsed on load so the RN sees one page of
   // short, tap-to-open rows instead of all 28 sections expanded at once
@@ -9694,7 +9990,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     let mounted = true;
     const loadAssessment = existingAssessmentId
       ? api.getRNICAAssessment(existingAssessmentId)
-      : api.getRNICAAssessmentByPatient(activePatientId);
+      : api.getRNICAAssessmentByPatient(activePatientId, isOngoing ? assessmentType : undefined);
 
     loadAssessment
       .then((data) => {
@@ -9702,6 +9998,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         if (!data?.assessmentId) {
           setAssessmentId(null);
           setLocked(false);
+          setLockedAt(null);
+          setFormData(JSON.parse(JSON.stringify(INITIAL_FORM)));
           setIntelligence(null);
           setIntelligenceError("");
           return null;
@@ -9729,7 +10027,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     return () => {
       mounted = false;
     };
-  }, [existingAssessmentId, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+  }, [assessmentType, existingAssessmentId, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
 
   useEffect(() => {
     if (assessmentId) {
@@ -9739,8 +10037,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
   // Auto-validate on change
   useEffect(() => {
-    setValidation(validateRNICA(formData, mode));
-  }, [formData, mode]);
+    setValidation(validateRNICA(formData, mode, assessmentType));
+  }, [assessmentType, formData, mode]);
 
   useEffect(() => {
     onFormDataChange?.(formData);
@@ -9818,7 +10116,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // mode="ica". mode="ongoing" is a distinct follow-up encounter (not the
   // RNICA itself) and keeps its own label.
   const saveButtonLabel = isOngoing
-    ? "Update Recert Assessment"
+    ? (assessmentType === "recert" ? "Recertification Assessment" : "Update Assessment")
     : "Initial Comprehensive RN Assessment";
 
   // Save / Update
@@ -9854,7 +10152,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // Lock
   const handleLock = useCallback(async () => {
     if (!assessmentId) return;
-    const v = validateRNICA(formData, mode);
+    const v = validateRNICA(formData, mode, assessmentType);
     if (!v.isValid) {
       alert("Cannot lock: there are validation errors. Please complete all required fields.");
       return;
@@ -10028,9 +10326,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         {open && (
           <div style={{ padding: 16, contentVisibility: "auto", containIntrinsicSize: "600px" }}>
             {isDemo
-              ? renderDemographics(formData.demographics, updateField, COLORS, styles)
+              ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -10043,7 +10341,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const sectionData = formData[route.formSection];
     const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
     const content = isDemographicsModule
-      ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key)
+      ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key, assessmentUiProfile)
       : config && sectionData
         ? renderGenericSection(
             route.formSection,
@@ -10059,6 +10357,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             locked,
             true,
             onNavigateToSection,
+            assessmentUiProfile,
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 

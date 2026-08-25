@@ -29,6 +29,7 @@ from app.models.task import Task
 from app.models.visit import Visit
 from app.models.patient_diagnosis import PatientDiagnosis
 from app.billing.models.patient_pos import PatientPOS
+from app.models.patient_payer import PatientPayer
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.rn_recert_assessment import RNRecertAssessment
 
@@ -66,6 +67,10 @@ from app.services.contact_sync_service import (
     get_patient_contacts,
 )
 from app.services.hnp_parser_service import build_hnp_summary
+from app.services.assessment_history_service import (
+    AssessmentHistoryFilters,
+    list_patient_assessment_history,
+)
 from enum import Enum
 
 from datetime import datetime
@@ -2438,7 +2443,182 @@ def update_patient_pos_history(
     db.refresh(entry)
 
     return _serialize_pos_history_entry(entry)
-    
+
+
+# =========================================================
+# PATIENT PAYER / INSURANCE (REAL — previously no write path existed
+# anywhere in the app; billing engine depends on this table)
+# =========================================================
+
+class PatientPayerCreate(BaseModel):
+    payer_name: str
+    payer_type: str
+    subscriber_id: str | None = None
+    subscriber_id_type: str | None = None
+    facility_name: str | None = None
+    effective_start_date: date | None = None
+    end_date: date | None = None
+    is_primary: bool = True
+
+
+class PatientPayerUpdate(BaseModel):
+    payer_name: str | None = None
+    payer_type: str | None = None
+    subscriber_id: str | None = None
+    subscriber_id_type: str | None = None
+    facility_name: str | None = None
+    effective_start_date: date | None = None
+    end_date: date | None = None
+    is_primary: bool | None = None
+
+
+def _serialize_patient_payer(entry: PatientPayer) -> dict:
+    return {
+        "id": str(entry.id),
+        "patient_id": str(entry.patient_id),
+        "payer_name": entry.payer_name,
+        "payer_type": entry.payer_type,
+        "subscriber_id": entry.subscriber_id,
+        "subscriber_id_type": entry.subscriber_id_type,
+        "facility_name": entry.facility_name,
+        "effective_start_date": str(entry.effective_start_date) if entry.effective_start_date else None,
+        "end_date": str(entry.end_date) if entry.end_date else None,
+        "is_primary": entry.is_primary,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+@router.get("/{patient_id}/payers")
+def list_patient_payers(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entries = (
+        db.query(PatientPayer)
+        .filter(PatientPayer.patient_id == patient.id)
+        .order_by(
+            PatientPayer.is_primary.desc().nullslast(),
+            PatientPayer.effective_start_date.desc(),
+        )
+        .all()
+    )
+
+    return [_serialize_patient_payer(entry) for entry in entries]
+
+
+@router.post("/{patient_id}/payers")
+def create_patient_payer(
+    patient_id: uuid.UUID,
+    payload: PatientPayerCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    if (
+        payload.end_date
+        and payload.effective_start_date
+        and payload.end_date < payload.effective_start_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after effective_start_date",
+        )
+
+    actor_uuid = uuid.UUID(str(user.user_id)) if getattr(user, "user_id", None) else None
+
+    if payload.is_primary:
+        # Only one primary payer per patient at a time — mirrors real
+        # coordination-of-benefits behavior, avoids ambiguous claims.
+        db.query(PatientPayer).filter(
+            PatientPayer.patient_id == patient.id,
+            PatientPayer.is_primary.is_(True),
+        ).update({"is_primary": False}, synchronize_session=False)
+
+    entry = PatientPayer(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        payer_name=payload.payer_name,
+        payer_type=payload.payer_type,
+        subscriber_id=payload.subscriber_id,
+        subscriber_id_type=payload.subscriber_id_type,
+        facility_name=payload.facility_name,
+        effective_start_date=payload.effective_start_date,
+        end_date=payload.end_date,
+        is_primary=payload.is_primary,
+        created_by=actor_uuid,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_patient_payer(entry)
+
+
+@router.put("/{patient_id}/payers/{payer_id}")
+def update_patient_payer(
+    patient_id: uuid.UUID,
+    payer_id: uuid.UUID,
+    payload: PatientPayerUpdate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entry = (
+        db.query(PatientPayer)
+        .filter(
+            PatientPayer.id == payer_id,
+            PatientPayer.patient_id == patient.id,
+        )
+        .first()
+    )
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Payer not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    start_date_value = data.get("effective_start_date", entry.effective_start_date)
+    end_date_value = data.get("end_date", entry.end_date)
+
+    if end_date_value and start_date_value and end_date_value < start_date_value:
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after effective_start_date",
+        )
+
+    if data.get("is_primary"):
+        db.query(PatientPayer).filter(
+            PatientPayer.patient_id == patient.id,
+            PatientPayer.id != entry.id,
+            PatientPayer.is_primary.is_(True),
+        ).update({"is_primary": False}, synchronize_session=False)
+
+    for field in (
+        "payer_name",
+        "payer_type",
+        "subscriber_id",
+        "subscriber_id_type",
+        "facility_name",
+        "effective_start_date",
+        "end_date",
+        "is_primary",
+    ):
+        if field in data:
+            setattr(entry, field, data[field])
+
+    entry.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_patient_payer(entry)
+
+
 # =========================================================
 # UPDATE PATIENT ✅ RESTORED
 # =========================================================
@@ -2952,10 +3132,100 @@ def _num(value):
     """Best-effort numeric coercion; returns None for blank/non-numeric values."""
     if value is None or value == "":
         return None
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        if cleaned.endswith("%"):
+            cleaned = cleaned[:-1].strip()
+        value = cleaned
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _adl_summary(form_data):
+    adl = ((form_data.get("musculoskeletal") or {}).get("adl")) or {}
+    adl_scores = [_num(v) for v in adl.values()]
+    adl_scores = [v for v in adl_scores if v is not None]
+    return {
+        "adl_scores": adl_scores,
+        "adl_score": sum(adl_scores) if adl_scores else None,
+        "adl_dependency_count": sum(1 for v in adl_scores if v >= 3) if adl_scores else None,
+    }
+
+
+def _calculate_bmi(vitals):
+    saved_bmi = _num((vitals or {}).get("bmi"))
+    if saved_bmi is not None:
+        return saved_bmi
+    height = _num((vitals or {}).get("height"))
+    weight = _num((vitals or {}).get("weight"))
+    if height is None or weight is None or height <= 0:
+        return None
+    return round((703 * weight / (height * height)), 1)
+
+
+def _nyha_numeric(value):
+    mapping = {"I": 1, "II": 2, "III": 3, "IV": 4}
+    return mapping.get(str(value or "").strip().upper())
+
+
+def _fast_numeric(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    scale = {
+        "1": 1.0,
+        "2": 2.0,
+        "3": 3.0,
+        "4": 4.0,
+        "5": 5.0,
+        "6a": 6.1,
+        "6b": 6.2,
+        "6c": 6.3,
+        "6d": 6.4,
+        "6e": 6.5,
+        "7a": 7.1,
+        "7b": 7.2,
+        "7c": 7.3,
+        "7d": 7.4,
+        "7e": 7.5,
+        "7f": 7.6,
+    }
+    return scale.get(raw)
+
+
+def _rnica_trend_point(row: RnicaAssessment) -> dict:
+    fd = row.form_data or {}
+    perf = fd.get("performanceStatus") or {}
+    vitals = fd.get("vitals") or {}
+    pain = fd.get("pain") or {}
+    adl_summary = _adl_summary(fd)
+    visit_meta = fd.get("visitMeta") or {}
+    visit_date = str(visit_meta.get("visitDate") or "").strip()
+    plotted_date = row.locked_at or row.updated_at or row.created_at
+    if visit_date:
+        try:
+            plotted_date = datetime.fromisoformat(f"{visit_date[:10]}T00:00:00+00:00")
+        except ValueError:
+            pass
+    return {
+        "id": str(row.id),
+        "assessment_type": "ADMISSION" if (row.assessment_type or "RNICA") == "RNICA" else (row.assessment_type or "RNICA"),
+        "status": row.status,
+        "date": plotted_date,
+        "pps": _num(perf.get("pps")),
+        "kps": _num(perf.get("kps")),
+        "pain_level": _num((pain.get("painIntensity") or {}).get("current")) or _num(pain.get("painSeverityCategory")),
+        "adl_score": adl_summary["adl_score"],
+        "adl_dependency_count": adl_summary["adl_dependency_count"],
+        "bmi": _calculate_bmi(vitals),
+        "mac": _num(vitals.get("mac")),
+        "nyha": _nyha_numeric(perf.get("nyha")),
+        "nyha_label": perf.get("nyha") or None,
+        "fast": _fast_numeric(perf.get("fast")),
+        "fast_label": perf.get("fast") or None,
+    }
 
 
 @router.get("/{patient_id}/performance-history")
@@ -2986,12 +3256,7 @@ def get_patient_performance_history(
     for row in rnica_rows:
         fd = row.form_data or {}
         perf = fd.get("performanceStatus") or {}
-        adl = ((fd.get("musculoskeletal") or {}).get("adl")) or {}
-        adl_scores = [_num(v) for v in adl.values()]
-        adl_scores = [v for v in adl_scores if v is not None]
-        adl_dependency_count = (
-            sum(1 for v in adl_scores if v >= 3) if adl_scores else None
-        )
+        adl_summary = _adl_summary(fd)
         history.append({
             "id": str(row.id),
             "source": row.assessment_type or "RNICA",
@@ -3001,7 +3266,7 @@ def get_patient_performance_history(
             "kps": _num(perf.get("kps")),
             "fast_stage": perf.get("fast") or None,
             "weight": _num((fd.get("vitals") or {}).get("weight")),
-            "adl_dependency_count": adl_dependency_count,
+            "adl_dependency_count": adl_summary["adl_dependency_count"],
         })
 
     recert_rows = (
@@ -3028,3 +3293,92 @@ def get_patient_performance_history(
 
     history.sort(key=lambda h: h["date"] or datetime.min)
     return {"history": history}
+
+
+@router.get("/{patient_id}/decline-of-status-trend")
+def get_patient_decline_of_status_trend(
+    patient_id: uuid.UUID,
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must be on or before to_date")
+    patient = get_authorized_patient(db, patient_id, user)
+    tenant_id = getattr(patient, "tenant_id", None)
+    rows = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient.id,
+            (RnicaAssessment.tenant_id == tenant_id) | (RnicaAssessment.tenant_id.is_(None)),
+            RnicaAssessment.locked.is_(True),
+            RnicaAssessment.assessment_type.in_(["RNICA", "UPDATE"]),
+        )
+        .order_by(RnicaAssessment.locked_at.asc(), RnicaAssessment.created_at.asc())
+        .all()
+    )
+    trend = [_rnica_trend_point(row) for row in rows]
+    trend.sort(key=lambda item: item["date"] or datetime.min)
+    available_dates = [item["date"].date().isoformat() for item in trend if item.get("date")]
+    if from_date or to_date:
+        filtered_trend = []
+        for item in trend:
+            item_date = item.get("date")
+            if item_date is None:
+                continue
+            point_date = item_date.date() if hasattr(item_date, "date") else None
+            if point_date is None:
+                continue
+            if from_date and point_date < from_date:
+                continue
+            if to_date and point_date > to_date:
+                continue
+            filtered_trend.append(item)
+        trend = filtered_trend
+
+    return {
+        "trend": trend,
+        "applied_from_date": from_date.isoformat() if from_date else None,
+        "applied_to_date": to_date.isoformat() if to_date else None,
+        "available_from_date": min(available_dates) if available_dates else None,
+        "available_to_date": max(available_dates) if available_dates else None,
+    }
+
+
+@router.get("/{patient_id}/assessment-history")
+def get_patient_assessment_history(
+    patient_id: uuid.UUID,
+    discipline: str | None = Query(default=None),
+    assessment_type: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    sort_order: str = Query(default="asc", pattern="^(asc|desc)$"),
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must be on or before to_date")
+    patient = get_authorized_patient(db, patient_id, user)
+    tenant_id = getattr(patient, "tenant_id", None)
+    return {
+        "patient_id": str(patient.id),
+        **list_patient_assessment_history(
+            db,
+            patient_id=patient.id,
+            tenant_id=tenant_id,
+            filters=AssessmentHistoryFilters(
+                discipline=discipline,
+                assessment_type=assessment_type,
+                status=status_filter,
+                from_date=from_date,
+                to_date=to_date,
+                limit=limit,
+                offset=offset,
+                sort_order=sort_order,
+            ),
+        ),
+    }
