@@ -17,6 +17,8 @@ import CertificationsBoard from './CertificationsBoard';
 import F2FBoard from './F2FBoard';
 import VisitNoteBoard from '../components/VisitNotes';
 import { fetchAssessmentHistory, fetchPatientSummary } from '../api/patientCharts';
+import { fetchFacesheet } from '../api/facesheet';
+import { listMedications } from '../api/medications';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
@@ -137,6 +139,63 @@ const PatientChart = () => {
   const [idgAssessmentId, setIdgAssessmentId] = useState(null);
   const [idgAssessmentLoading, setIdgAssessmentLoading] = useState(false);
 
+  const [facesheetData, setFacesheetData] = useState(null);
+  const [facesheetLoading, setFacesheetLoading] = useState(false);
+
+  useEffect(() => {
+    if (!resolvedPatientId) {
+      setFacesheetData(null);
+      return;
+    }
+    let mounted = true;
+    setFacesheetLoading(true);
+    fetchFacesheet(resolvedPatientId)
+      .then((result) => {
+        if (mounted) setFacesheetData(result);
+      })
+      .catch(() => {
+        if (mounted) setFacesheetData(null);
+      })
+      .finally(() => {
+        if (mounted) setFacesheetLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedPatientId]);
+
+  const [medicationRecords, setMedicationRecords] = useState([]);
+  const [medicationsLoading, setMedicationsLoading] = useState(false);
+  const [medicationsError, setMedicationsError] = useState('');
+
+  useEffect(() => {
+    if (!resolvedPatientId) {
+      setMedicationRecords([]);
+      return;
+    }
+    let mounted = true;
+    setMedicationsLoading(true);
+    listMedications(resolvedPatientId)
+      .then((result) => {
+        if (mounted) {
+          setMedicationRecords(Array.isArray(result) ? result : []);
+          setMedicationsError('');
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setMedicationRecords([]);
+          setMedicationsError('Unable to load medications right now.');
+        }
+      })
+      .finally(() => {
+        if (mounted) setMedicationsLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedPatientId]);
+
   useEffect(() => {
     if (!resolvedPatientId) {
       setIdgAssessmentId(null);
@@ -179,26 +238,41 @@ const PatientChart = () => {
 
   const intakePatient = useMemo(() => {
     const patientData = summary?.patient ?? {};
+    const identity = facesheetData?.identity ?? {};
+    const insurance = facesheetData?.insurance ?? {};
+    const levelOfCare = facesheetData?.level_of_care ?? {};
+    const serviceDates = facesheetData?.service_dates ?? {};
     const fullName = (patientData.full_name || patientData.name || '').trim();
     const nameParts = fullName.split(/\s+/).filter(Boolean);
-    const lastName = nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0];
-    const firstName = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : '';
+    const lastName = identity.last_name || (nameParts.length > 1 ? nameParts[nameParts.length - 1] : nameParts[0]);
+    const firstName = identity.first_name || (nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : '');
+    const dob = identity.dob || null;
+    const age = dob
+      ? Math.floor((Date.now() - new Date(dob).getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+      : null;
+    const socDate = serviceDates.soc_date || patientData.soc_date || patientData.hospice_election_date;
 
     return {
       firstName: firstName || 'Patient',
       lastName: lastName || patientData.mrn || 'Unknown',
-      mrn: patientData.mrn || '—',
-      dob: patientData.dob || '—',
-      age: patientData.age || '—',
-      sex: patientData.sex || '—',
-      payer: patientData.payer || '—',
-      status: patientData.status || 'ACTIVE',
-      socDate: patientData.soc_date
-        ? new Date(patientData.soc_date).toLocaleDateString()
-        : (patientData.hospice_election_date || '—'),
-      benefitPeriod: patientData.benefit_period || '—',
+      mrn: patientData.mrn || facesheetData?.mrn || '—',
+      dob: dob ? new Date(dob).toLocaleDateString() : '—',
+      age: age !== null && !Number.isNaN(age) ? age : '—',
+      sex: identity.gender || '—',
+      payer: insurance.primary_payer || '—',
+      status: patientData.admission_status || patientData.status || 'ACTIVE',
+      socDate: socDate ? new Date(socDate).toLocaleDateString() : '—',
+      levelOfCare: levelOfCare.current_level_of_care || '—',
+      levelOfCareEffective: levelOfCare.loc_effective_date
+        ? new Date(levelOfCare.loc_effective_date).toLocaleDateString()
+        : null,
+      hasResponsibleParty: Boolean(facesheetData?.contacts?.responsible_party?.name),
+      hasEmergencyContact: Boolean(facesheetData?.contacts?.emergency_contact?.name),
+      hasAttendingPhysician: Boolean(facesheetData?.physicians?.attending?.name),
+      hasInsurance: Boolean(insurance.primary_payer),
+      hasAllergiesDocumented: facesheetData?.clinical?.has_allergies !== null && facesheetData?.clinical?.has_allergies !== undefined,
     };
-  }, [summary]);
+  }, [summary, facesheetData]);
 
   const boardCard = {
     backgroundColor: colors.panel,
@@ -245,13 +319,20 @@ const PatientChart = () => {
       { label: 'Primary MD', value: patient.primaryMD, tone: 'teal' },
     ];
 
-    const disciplineSummary = [
-      { label: 'RN', detail: 'Care plan review • 3 days ago', status: 'Synced' },
-      { label: 'LVN', detail: 'Skilled nursing due • Thu 9:00 AM', status: 'Scheduled' },
-      { label: 'MSW', detail: 'Psychosocial check-in • Fri 10:30 AM', status: 'Confirmed' },
-      { label: 'SC', detail: 'Spiritual care follow-up • Sat 2:00 PM', status: 'Scheduled' },
-      { label: 'CHHA', detail: 'Aide support • Tue/Thu', status: 'Planned' },
-    ];
+    const carePlanFacts = [
+      `Primary diagnosis: ${patient.primaryDx}`,
+      summary?.patient?.hospice_election_date
+        ? `Hospice election date: ${new Date(summary.patient.hospice_election_date).toLocaleDateString()}`
+        : null,
+      summary?.patient?.admission_status
+        ? `Admission status: ${summary.patient.admission_status}`
+        : null,
+      patient.recentComms && patient.recentComms !== 'No recent communication'
+        ? `Recent communication: ${patient.recentComms}`
+        : null,
+    ].filter(Boolean);
+
+    const disciplineSummary = summary?.care_team ?? [];
 
     return (
       <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
@@ -261,7 +342,7 @@ const PatientChart = () => {
               <div style={{ color: colors.muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>Patient Status</div>
               <div style={{ color: colors.text, fontSize: 20, fontWeight: 700 }}>{patient.name}</div>
             </div>
-            <div style={{ ...badge('green', 'status'), fontSize: 8.5 }}>Active census</div>
+            <div style={{ ...badge('green', 'status'), fontSize: 8.5 }}>{patient.status}</div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
             {metrics.map((metric) => (
@@ -273,31 +354,86 @@ const PatientChart = () => {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
           <div style={{ ...boardCard, minHeight: 170 }}>
             <div style={boardHeader}>Current care plan</div>
-            <div style={{ display: 'grid', gap: 7 }}>
-              {[
-                'Primary diagnosis: Senile degeneration of brain (G31.1)',
-                'Admissions and benefit period reviewed; active hospice care remains in place.',
-                'Symptom burden monitored with current interdisciplinary team assignments.',
-                'Recent communication indicates caregiver support remains stable and engaged.',
-              ].map((item) => (
-                <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: colors.text, fontSize: 12.5, lineHeight: 1.4 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: colors.accent, display: 'inline-block', marginTop: 6 }} />
-                  <span>{item}</span>
+            {carePlanFacts.length > 0 ? (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {carePlanFacts.map((item) => (
+                  <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: colors.text, fontSize: 12.5, lineHeight: 1.4 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: colors.accent, display: 'inline-block', marginTop: 6 }} />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>No care plan details recorded yet.</div>
+            )}
+          </div>
+
+          <div style={{ ...boardCard, minHeight: 170 }}>
+            <div style={boardHeader}>Discipline coverage</div>
+            {disciplineSummary.length > 0 ? (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {disciplineSummary.map((item) => (
+                  <div key={`${item.discipline}-${item.staff_name}`} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${colors.border}`, paddingBottom: 5 }}>
+                    <div>
+                      <div style={{ color: colors.text, fontSize: 12.5, fontWeight: 700 }}>{item.discipline || '—'}</div>
+                      <div style={{ color: colors.muted, fontSize: 10.5 }}>{item.staff_name || 'Not assigned'}{item.service_area ? ` • ${item.service_area}` : ''}</div>
+                    </div>
+                    <span style={{ ...badge(item.status === 'ACTIVE' ? 'green' : 'amber', 'status'), fontSize: 8.5 }}>{item.status || 'Unknown'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>No care team members assigned yet.</div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const IntakeBoard = () => {
+    const overviewFields = [
+      ['Admission status', intakePatient.status],
+      ['Level of care', intakePatient.levelOfCare],
+      ['Payer', intakePatient.payer],
+      ['SOC date', intakePatient.socDate],
+      ['DOB', intakePatient.dob],
+      ['Age / sex', `${intakePatient.age} / ${intakePatient.sex}`],
+    ];
+
+    const checklistItems = [
+      { label: 'Insurance verification completed', done: intakePatient.hasInsurance },
+      { label: 'Primary physician assignment confirmed', done: intakePatient.hasAttendingPhysician },
+      { label: 'Responsible party on file', done: intakePatient.hasResponsibleParty },
+      { label: 'Emergency contact on file', done: intakePatient.hasEmergencyContact },
+      { label: 'Allergy status documented', done: intakePatient.hasAllergiesDocumented },
+    ];
+
+    return (
+      <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+        {facesheetLoading && (
+          <div style={{ color: colors.muted, fontSize: 12.5, marginBottom: 8 }}>Loading facesheet data…</div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+          <div style={{ ...boardCard, minHeight: 170 }}>
+            <div style={boardHeader}>Intake & admission overview</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              {overviewFields.map(([label, value]) => (
+                <div key={label} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
+                  <div style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</div>
+                  <div style={{ color: colors.text, fontSize: 12.5, fontWeight: 600, marginTop: 4 }}>{value}</div>
                 </div>
               ))}
             </div>
           </div>
 
           <div style={{ ...boardCard, minHeight: 170 }}>
-            <div style={boardHeader}>Discipline coverage</div>
+            <div style={boardHeader}>Admission checklist</div>
             <div style={{ display: 'grid', gap: 7 }}>
-              {disciplineSummary.map((item) => (
-                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${colors.border}`, paddingBottom: 5 }}>
-                  <div>
-                    <div style={{ color: colors.text, fontSize: 12.5, fontWeight: 700 }}>{item.label}</div>
-                    <div style={{ color: colors.muted, fontSize: 10.5 }}>{item.detail}</div>
-                  </div>
-                  <span style={{ ...badge(item.status === 'Synced' ? 'teal' : item.status === 'Confirmed' ? 'green' : 'amber', 'status'), fontSize: 8.5 }}>{item.status}</span>
+              {checklistItems.map((item) => (
+                <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.text, fontSize: 12.5 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: item.done ? colors.accent : '#94a3b8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{item.done ? '✓' : '·'}</span>
+                  <span>{item.label}</span>
                 </div>
               ))}
             </div>
@@ -306,49 +442,6 @@ const PatientChart = () => {
       </div>
     );
   };
-
-  const IntakeBoard = () => (
-    <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-        <div style={{ ...boardCard, minHeight: 170 }}>
-          <div style={boardHeader}>Intake & admission overview</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            {[
-              ['Referral source', 'Physician / Family referral'],
-              ['Admission status', 'Active hospice enrollment'],
-              ['Benefit period', '01/15/2026 – 07/14/2026'],
-              ['Payer', 'Medicare / Medi-Cal'],
-              ['SOC date', '01/15/2026'],
-              ['Level of care', 'Routine home care'],
-            ].map(([label, value]) => (
-              <div key={label} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
-                <div style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</div>
-                <div style={{ color: colors.text, fontSize: 12.5, fontWeight: 600, marginTop: 4 }}>{value}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ ...boardCard, minHeight: 170 }}>
-          <div style={boardHeader}>Admission checklist</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              'Consent and Medicare / hospice notice reviewed',
-              'Patient demographics verified',
-              'Primary physician assignment confirmed',
-              'Insurance verification completed',
-              'Initial nursing assessment pending sign-off',
-            ].map((item, index) => (
-              <div key={item} style={{ display: 'flex', alignItems: 'center', gap: 8, color: colors.text, fontSize: 12.5 }}>
-                <span style={{ width: 14, height: 14, borderRadius: 4, backgroundColor: index < 4 ? colors.accent : '#94a3b8', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 10 }}>{index < 4 ? '✓' : '·'}</span>
-                <span>{item}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
   const AssessmentBoard = () => {
     const [history, setHistory] = useState([]);
@@ -511,51 +604,55 @@ const PatientChart = () => {
     );
   };
 
-  const TxMedsBoard = () => (
-    <div style={{ flex: 1, minWidth: 0, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
-        <div style={{ ...boardCard }}>
-          <div style={boardHeader}>Current medications & treatments</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['Morphine Sulfate', 'PRN • 5 mg', 'Last updated 08/15'],
-              ['Atropine eye drops', 'Daily • 1 drop', 'Active'],
-              ['Oxygen therapy', 'As needed', 'Review with MD'],
-              ['Pain management regimen', 'Per hospice policy', 'Reviewed'],
-            ].map(([name, dose, status]) => (
-              <div key={name} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
-                <div>
-                  <div style={{ color: colors.text, fontWeight: 700, fontSize: 12.5 }}>{name}</div>
-                  <div style={{ color: colors.muted, fontSize: 10.5 }}>{dose}</div>
-                </div>
-                <span style={{ ...badge('teal', 'status'), fontSize: 8.5 }}>{status}</span>
+  const TxMedsBoard = () => {
+    const dmeVendor = facesheetData?.vendors?.dme;
+    return (
+      <div style={{ flex: 1, minWidth: 0, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10 }}>
+          <div style={{ ...boardCard }}>
+            <div style={boardHeader}>Current medications & treatments</div>
+            {medicationsLoading && (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>Loading medications…</div>
+            )}
+            {!medicationsLoading && medicationsError && (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>{medicationsError}</div>
+            )}
+            {!medicationsLoading && !medicationsError && medicationRecords.length === 0 && (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>No medications on file for this patient.</div>
+            )}
+            {!medicationsLoading && !medicationsError && medicationRecords.length > 0 && (
+              <div style={{ display: 'grid', gap: 7 }}>
+                {medicationRecords.map((med) => (
+                  <div key={med.medication_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
+                    <div>
+                      <div style={{ color: colors.text, fontWeight: 700, fontSize: 12.5 }}>{med.medication_name}</div>
+                      <div style={{ color: colors.muted, fontSize: 10.5 }}>{med.dosage} • {med.route} • {med.frequency}</div>
+                    </div>
+                    <span style={{ ...badge(med.status === 'active' ? 'teal' : 'amber', 'status'), fontSize: 8.5 }}>{med.status === 'active' ? 'Active' : 'Discontinued'}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        </div>
 
-        <div style={{ ...boardCard }}>
-          <div style={boardHeader}>DME / supplies</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['Hospital bed', 'Delivered', 'Ready'],
-              ['Oxygen concentrator', 'Ordered', 'Pending'],
-              ['Incontinence supplies', 'On hand', 'Available'],
-              ['Wheelchair', 'Reviewed', 'Ready'],
-            ].map(([item, status, state]) => (
-              <div key={item} style={{ borderBottom: `1px solid ${colors.border}`, paddingBottom: 5 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ color: colors.text, fontWeight: 700, fontSize: 12.5 }}>{item}</div>
-                  <span style={{ ...badge(status === 'Delivered' ? 'green' : status === 'Ordered' ? 'amber' : 'teal', 'status'), fontSize: 8.5 }}>{status}</span>
-                </div>
-                <div style={{ color: colors.muted, fontSize: 10.5, marginTop: 3 }}>{state}</div>
+          <div style={{ ...boardCard }}>
+            <div style={boardHeader}>DME vendor</div>
+            {dmeVendor?.name ? (
+              <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8, backgroundColor: mode === 'light' ? '#f8fbfb' : '#111827' }}>
+                <div style={{ color: colors.text, fontWeight: 700, fontSize: 12.5 }}>{dmeVendor.name}</div>
+                <div style={{ color: colors.muted, fontSize: 10.5, marginTop: 3 }}>{dmeVendor.phone || 'No phone on file'}</div>
               </div>
-            ))}
+            ) : (
+              <div style={{ color: colors.muted, fontSize: 12.5 }}>No DME vendor on file for this patient.</div>
+            )}
+            <div style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
+              Structured DME/supply order tracking (delivery status per item) is not available yet.
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const IDGBoard = () => (
     <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
@@ -578,35 +675,15 @@ const PatientChart = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         <div style={{ ...boardCard }}>
           <div style={boardHeader}>IDG meeting summary</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['RN', 'Symptom burden and care plan status reviewed'],
-              ['MSW', 'Family support and resource concerns addressed'],
-              ['SC', 'Spiritual care plan discussed and updated'],
-              ['Chaplain / volunteer', 'Community support and bereavement planning addressed'],
-            ].map(([disc, note]) => (
-              <div key={disc} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8 }}>
-                <div style={{ color: colors.text, fontWeight: 700, marginBottom: 4, fontSize: 12.5 }}>{disc}</div>
-                <div style={{ color: colors.muted, fontSize: 11.5 }}>{note}</div>
-              </div>
-            ))}
+          <div style={{ color: colors.muted, fontSize: 12.5 }}>
+            Per-discipline IDG meeting notes are not wired to a structured backend record yet. Use the Master Plan of Care review above for the current documented plan.
           </div>
         </div>
 
         <div style={{ ...boardCard }}>
           <div style={boardHeader}>Care coordination actions</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              'Follow-up with family on medication review.',
-              'Confirm aide hours and home support schedule.',
-              'Review psychosocial risk factors with MSW.',
-              'Coordinate with physician on PRN medication plan.',
-            ].map((item) => (
-              <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: colors.text, fontSize: 12.5 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: colors.accent, display: 'inline-block', marginTop: 6 }} />
-                <span>{item}</span>
-              </div>
-            ))}
+          <div style={{ color: colors.muted, fontSize: 12.5 }}>
+            Structured care coordination action tracking is not available yet.
           </div>
         </div>
       </div>
@@ -615,37 +692,35 @@ const PatientChart = () => {
 
   const POCBoard = () => (
     <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+      {idgAssessmentLoading && (
+        <div style={{ color: colors.muted, fontSize: 11.5, marginBottom: 10 }}>Loading plan of care…</div>
+      )}
+      {!idgAssessmentLoading && idgAssessmentId && (
+        <div style={{ ...boardCard, marginBottom: 10 }}>
+          <div style={boardHeader}>Master plan of care review</div>
+          <MasterPocReviewCard
+            assessmentId={idgAssessmentId}
+            styles={getRnicaStyles(getRnicaColors(mode))}
+            COLORS={getRnicaColors(mode)}
+          />
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
         <div style={{ ...boardCard }}>
           <div style={boardHeader}>Plan of care goals</div>
-          <div style={{ display: 'grid', gap: 7 }}>
-            {[
-              ['Symptom management', 'Maintain comfort and minimize pain burden through medication management and RN follow-up.'],
-              ['Psychosocial support', 'Support caregiver coping and ensure access to psychosocial interventions and resources.'],
-              ['Spiritual care', 'Honor faith preferences and provide chaplaincy support aligned with patient/family goals.'],
-            ].map(([goal, detail]) => (
-              <div key={goal} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 8 }}>
-                <div style={{ color: colors.text, fontWeight: 700, marginBottom: 4, fontSize: 12.5 }}>{goal}</div>
-                <div style={{ color: colors.muted, fontSize: 11.5, lineHeight: 1.5 }}>{detail}</div>
-              </div>
-            ))}
+          <div style={{ color: colors.muted, fontSize: 12.5 }}>
+            {idgAssessmentId
+              ? 'Structured POC goal tracking (separate from the Master Plan of Care review above) is not available yet.'
+              : 'No plan of care on file for this patient yet.'}
           </div>
         </div>
 
         <div style={{ ...boardCard }}>
           <div style={boardHeader}>POC status</div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            {[
-              ['Status', 'Active'],
-              ['Updated', '08/15/2026'],
-              ['Reviewed by', 'RN Case Manager'],
-              ['Next review', '09/05/2026'],
-            ].map(([label, value]) => (
-              <div key={label} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${colors.border}`, paddingBottom: 5 }}>
-                <span style={{ color: colors.muted, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.8 }}>{label}</span>
-                <span style={{ color: colors.text, fontSize: 12.5, fontWeight: 600 }}>{value}</span>
-              </div>
-            ))}
+          <div style={{ color: colors.muted, fontSize: 12.5 }}>
+            {idgAssessmentId
+              ? 'See the Master Plan of Care review above for current status and last review details.'
+              : 'No plan of care on file for this patient yet.'}
           </div>
         </div>
       </div>
