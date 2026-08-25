@@ -28,8 +28,8 @@ import { getCurrentUser } from "../api/session";
 import { listStaff, type StaffRecord } from "../api/staff";
 import PortalShell from "../components/PortalShell";
 import { canAccessBilling } from "../utils/featureAccess";
-import BillingDashboard from "./BillingDashboard";
 import SNSNewReports from "./SNSNewReports";
+import TenantBillingOutcomes from "./TenantBillingOutcomes";
 
 const C = {
   navy: "#1f4a78",
@@ -1217,7 +1217,7 @@ function FinancialTab() {
     );
   }
 
-  return <BillingDashboard />;
+  return <TenantBillingOutcomes />;
 }
 
 export default function SNSAnalytics({ defaultDomain = "Analytics Directory" }: { defaultDomain?: string }) {

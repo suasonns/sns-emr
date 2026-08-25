@@ -140,6 +140,25 @@ export type BillingDashboardResponse = {
   billing_holds: Array<Record<string, unknown>>;
 };
 
+export type BillingQueueRow = {
+  claim_id?: string;
+  billing_cycle_id: string;
+  patient_id: string;
+  patient_name?: string | null;
+  patient_mrn?: string | null;
+  payer_name?: string | null;
+  tenant_name?: string | null;
+  tenant_id?: string | null;
+  total_charge?: number | null;
+  total_units?: number | null;
+  risk_score?: number | null;
+  status: string;
+  service_date?: string | null;
+  claim_control_number?: string | null;
+  exported_at?: string | null;
+  last_status_reason?: string | null;
+};
+
 export type ClaimLifecycleResponse = {
   metrics: DashboardMetric[];
   ready: number;
@@ -254,8 +273,37 @@ export function fetchBillingDashboard(tenantId?: string | null): Promise<Billing
   return fetchJson<BillingDashboardResponse>(withTenantId("/api/dashboard/billing", tenantId));
 }
 
+export function fetchBillingQueue(tenantId?: string | null): Promise<BillingQueueRow[]> {
+  return fetchJson<BillingQueueRow[]>(withTenantId("/billing/queue", tenantId));
+}
+
 export function fetchClaimLifecycle(tenantId?: string | null): Promise<ClaimLifecycleResponse> {
   return fetchJson<ClaimLifecycleResponse>(withTenantId("/api/dashboard/claim-lifecycle", tenantId));
+}
+
+export type DenialsAppealsSummaryResponse = {
+  open_denials: number;
+  appealed_denials: number;
+  overturned_denials: number;
+  upheld_denials: number;
+  written_off_denials: number;
+  total_denied_amount: number;
+  open_denied_amount: number;
+  total_recovered_amount: number;
+  top_denial_codes: {
+    carc_code: string | null;
+    reason_description: string | null;
+    case_count: number;
+    total_amount: number;
+  }[];
+};
+
+export function fetchDenialsAppealsSummary(
+  tenantId?: string | null
+): Promise<DenialsAppealsSummaryResponse> {
+  return fetchJson<DenialsAppealsSummaryResponse>(
+    withTenantId("/api/dashboard/denials-appeals", tenantId)
+  );
 }
 
 export type BillableAgency = {
