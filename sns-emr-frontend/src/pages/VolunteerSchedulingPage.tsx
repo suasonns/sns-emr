@@ -36,13 +36,6 @@ const modules = [
   ["Staff Contact List", "Direct secure messaging and emergency contact directory.", C.green],
 ] as const;
 
-const visits = [
-  ["09:00 AM", "George Henderson", "Routine Visit", "Sarah Jenkins, RN", "Completed", C.greenLight, C.green],
-  ["11:30 AM", "Mary Albright", "Routine Visit", "Mina Patel, LVN", "In Progress", C.amberLight, C.amber],
-  ["02:00 PM", "Harold Finch", "Palliative Care", "Marcus Brody, RN", "Scheduled", C.blueLight, C.blue],
-  ["04:30 PM", "Eleanor Vance", "Admission", "Maria Santos, RN", "Scheduled", C.blueLight, C.blue],
-];
-
 function Pill({ text, bg, fg }: { text: string; bg: string; fg: string }) {
   return <span style={{ padding: "4px 10px", borderRadius: 999, backgroundColor: bg, color: fg, fontSize: portalTypography.chip, fontWeight: 700 }}>{text}</span>;
 }
@@ -79,7 +72,7 @@ export default function VolunteerSchedulingPage() {
                 </span>
               </div>
             </div>
-            <div style={{ fontSize: portalTypography.subtitle, color: C.slate500 }}>Last synced: Today at 08:30 AM</div>
+            <div style={{ fontSize: portalTypography.subtitle, color: C.slate500 }}>Agency-wide live visit preview unavailable</div>
           </div>
 
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 16, marginTop: 18 }}>
@@ -91,26 +84,17 @@ export default function VolunteerSchedulingPage() {
           <div style={{ marginTop: 18, backgroundColor: C.white, borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", overflow: "hidden" }}>
             <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ fontSize: portalTypography.subtitle, fontWeight: 800, color: C.gray800 }}>Today's Scheduled Visits Preview</div>
-              <div style={{ fontSize: portalTypography.small, color: C.slate500 }}>Wednesday, Feb 12</div>
+              <Pill text="Unavailable" bg={C.gray100} fg={C.gray600} />
             </div>
             <div style={{ padding: 18 }}>
-              {visits.map(([time, patient, type, clinician, status, bg, fg]) => (
-                <div key={`${time}-${patient}`} style={{ display: "grid", gridTemplateColumns: "120px 1.2fr 1fr 1.4fr 120px", alignItems: "center", gap: 14, padding: "12px 0", borderBottom: `1px solid ${C.gray100}` }}>
-                  <div>
-                    <div style={{ fontSize: portalTypography.subtitle, fontWeight: 800, color: C.gray800 }}>{time}</div>
-                    <div style={{ fontSize: portalTypography.chip, color: C.slate500, marginTop: 4 }}>{type}</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: portalTypography.subtitle, fontWeight: 700, color: C.gray800 }}>{patient}</div>
-                    <div style={{ fontSize: portalTypography.chip, color: C.slate500, marginTop: 4 }}>Scheduled patient</div>
-                  </div>
-                  <div style={{ fontSize: portalTypography.small, color: C.gray600 }}>{type}</div>
-                  <div style={{ fontSize: portalTypography.small, color: C.gray600 }}>{clinician}</div>
-                  <div style={{ justifySelf: "end" }}>
-                    <Pill text={status} bg={bg as string} fg={fg as string} />
-                  </div>
+              <div style={{ border: `1px dashed ${C.gray200}`, borderRadius: 12, background: "#f8fafc", padding: 24, textAlign: "center" }}>
+                <div style={{ fontSize: portalTypography.subtitle, fontWeight: 800, color: C.gray800 }}>No live tenant-wide visit list</div>
+                <div style={{ marginTop: 8, fontSize: portalTypography.small, color: C.slate500, lineHeight: 1.6 }}>
+                  Agency-wide volunteer visit scheduling is not wired to a live backend yet.
+                  <br />
+                  Open a patient chart to review real volunteer visits and assignments from the existing patient summary APIs.
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         </div>
