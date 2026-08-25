@@ -62,15 +62,11 @@ External Billing Audit
 HIPAA Audit Active
 ```
 
-**IMPORTANT discrepancy vs. what was actually built** (`BillerShell.tsx`), found 2026-08-24:
-the currently-implemented sidebar has a **"Billing Readiness"** nav item and **no "Settings"**
-item — this doesn't match this reference. The most complete/authoritative screenshot
-(`11-full-sidebar-dashboard-visits-poc.png`) shows `Dashboard` doubling as the billing-readiness
-overview (its stat cards are Total Patients / Ready to Bill / Blockers Outstanding / Clean Claim
-Rate — i.e. readiness data), with `Settings` as the 10th item instead. This needs to be resolved:
-either (a) match this screenshot exactly (drop "Billing Readiness", add "Settings"), or (b) the
-user confirms the earlier "Billing Readiness" nav item is still wanted and Settings should be
-added as an 11th item. **Ask before changing** — do not silently guess.
+**RESOLVED 2026-08-24**: user decided to keep **both**. `BillerShell.tsx` nav keeps the existing
+"Billing Readiness" item (still routes to `/billing/dashboard` today, pending a real dedicated
+readiness page) and adds `Settings` as an 11th item, backed by a `ComingSoonPage` placeholder route
+(`/billing/settings`) since there is no real settings backend yet. This intentionally does not
+match the 10-item Figma screenshot exactly — that is an approved deviation, not an oversight.
 
 Also note: the sidebar footer in this design reads "External Billing Audit / HIPAA Audit Active"
 with no user avatar/sign-out control shown. The current implementation intentionally adds a user
@@ -105,18 +101,36 @@ that is a deliberate, approved deviation from this screenshot, not an oversight.
   Approaching Deadline / Late-Missed); a right-side "5-Day Filing Rules" panel with a 3-step
   timeline callout (Day 0 Admission → Days 1-4 compile → Day 5 deadline) and a compliance-rate
   progress bar; table columns are Patient ID / Admit Date / Due Date / Filed Date / Status /
-  Remaining (Days). This does not fully match the currently-implemented NOE Tracking page (which
-  uses Election Date/NOE Submitted/Non-Covered Days columns tied to the real
-  `noe_penalty_service.py` calculation) — the backend's actual data model uses `election_date`
-  and the 42 CFR 418.24(b) 5-calendar-day rule, so some relabeling (not a full rebuild) is likely
-  the right reconciliation once the team decides how literally to follow this mockup.
+  Remaining (Days). **Implemented 2026-08-24**: `NoeTrackingPage.tsx` now shows this layout —
+  the table's "Election Date" and "Due Date" columns are derived from the real
+  `election_date` field plus the true 42 CFR 418.24(b) 5-calendar-day rule (not the mockup's
+  "Admit Date" framing, since the backend's actual filing clock starts at election, not
+  admission); `noe_submitted_date` maps to "Filed Date"; a computed `remaining` days value
+  drives Approaching/Overdue/Filed/Late/Exempt/Data-gap status chips honestly rather than
+  fabricating the mockup's exact bucket boundaries.
+
+## Rebuild pass (2026-08-24) — corrected drift from an ad hoc self-designed shell
+
+The first implementation pass of `BillerShell.tsx` and its 3 real-data pages diverged
+significantly from this Figma reference (plain nav with no icons, light page background
+instead of dark navy throughout, no page-header action buttons, no metric-card rows, generic
+table layouts). This was flagged and corrected: the shell and all 3 pages
+(`VisitsNotesPage.tsx`, `PocCertificationPage.tsx`, `NoeTrackingPage.tsx`) were rebuilt against
+the actual screenshots in this folder, using new shared components
+(`components/billing/PageHeader.tsx`, `MetricCardRow.tsx`, `HipaaBanner.tsx`) so future pages
+(Claims, Denials & Appeals, Eligibility, Payment Posting, Reports) can be built consistently
+once their backend data exists, instead of drifting again.
 
 ## Known open items (do not silently resolve — ask the user)
 
-1. Sidebar nav: "Billing Readiness" vs. "Settings" as the 10th item (see above).
-2. Page-level "Export ..." / "Sync Clearinghouse" action buttons are not yet implemented on any
-   of the 3 currently-real-data pages (Visits & Notes, POC & Certifications, NOE Tracking).
-3. NOE Tracking page: add the approaching-deadline alert banner, the 4-metric layout, and the
-   "5-Day Filing Rules" side panel to match `05-noe-tracking.png`.
-4. HIPAA banner exact copy/color is inconsistent across the Figma screenshots themselves; pick one
-   canonical version rather than matching per-page inconsistently.
+1. ~~Sidebar nav: "Billing Readiness" vs. "Settings" as the 10th item~~ — **resolved 2026-08-24**:
+   user chose to keep both (11 items total), see above.
+2. ~~Page-level "Export Audit Logs" / "Sync Clearinghouse" action buttons~~ — **resolved
+   2026-08-24**: added via the shared `PageHeader` component to all 3 real-data pages, default
+   behavior (no backend for these two actions yet, so they are currently inert — no onClick
+   handler is wired until an export/sync endpoint exists).
+3. ~~NOE Tracking page layout (alert banner, 4-metric layout, 5-Day Filing Rules panel)~~ —
+   **resolved 2026-08-24**, see above.
+4. HIPAA banner exact copy/color is inconsistent across the Figma screenshots themselves — we
+   standardized on the amber "MINIMUM DATA PRINCIPLE ACCESS" left-border variant (shared
+   `HipaaBanner.tsx` component) as canonical across all billing pages.

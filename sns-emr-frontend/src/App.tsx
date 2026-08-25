@@ -57,6 +57,7 @@ export default function App() {
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<BillingDashboard />} />
           <Route path="readiness" element={<Navigate to="/billing/dashboard" replace />} />
+          <Route path="settings" element={<ComingSoonPage title="Settings" />} />
           <Route path="visits-notes" element={<VisitsNotesPage />} />
           <Route path="poc-certification" element={<PocCertificationPage />} />
           <Route path="noe-tracking" element={<NoeTrackingPage />} />
