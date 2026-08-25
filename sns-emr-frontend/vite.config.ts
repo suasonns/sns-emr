@@ -30,6 +30,10 @@ process.env.VITE_BUILD_COMMIT = BUILD_COMMIT;
 export default defineConfig({
   root: frontendRoot,
   plugins: [react()],
+  test: {
+    environment: "jsdom",
+    setupFiles: "./src/test/setupTests.js",
+  },
   resolve: {
     preserveSymlinks: true,
   },
