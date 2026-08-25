@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Iterator, Optional
 from uuid import UUID, UUID as UUIDType
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -22,6 +22,7 @@ from app.models.document_idg_resolution import DocumentIDGResolution
 from app.services.document_flagger import evaluate_document_flags
 from app.services.audit_events import audit_event
 from app.services.document_notifications import create_document_notifications
+from app.services.evidence.document_harvest_job import run_document_intelligence
 from app.services.document_storage import (
     DocumentObject,
     DocumentObjectNotFound,
@@ -55,6 +56,13 @@ class DocumentOut(BaseModel):
     uploaded_at: datetime
     uploaded_by: Optional[str]
     is_flagged: bool
+    flag_tier: Optional[str] = None
+    ai_document_type_guess: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    ai_key_findings: Optional[list] = None
+    ai_needs_manual_review: Optional[bool] = None
+    has_extracted_text: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -70,6 +78,7 @@ class DocumentListResponse(BaseModel):
 
 
 def _serialize(doc: DocumentRecord) -> dict[str, Any]:
+    extracted_values = doc.extracted_values or {}
     return {
         "id": str(doc.id),
         "patient_id": str(doc.patient_id),
@@ -79,6 +88,13 @@ def _serialize(doc: DocumentRecord) -> dict[str, Any]:
         "uploaded_at": doc.uploaded_at,
         "uploaded_by": str(doc.uploaded_by) if doc.uploaded_by else None,
         "is_flagged": bool(doc.is_flagged),
+        "flag_tier": doc.flag_tier,
+        "ai_document_type_guess": extracted_values.get("ai_document_type_guess"),
+        "ai_summary": extracted_values.get("ai_summary"),
+        "ai_confidence": extracted_values.get("ai_confidence"),
+        "ai_key_findings": extracted_values.get("ai_key_findings"),
+        "ai_needs_manual_review": extracted_values.get("ai_needs_manual_review"),
+        "has_extracted_text": bool(doc.document_text),
     }
 
 
@@ -114,6 +130,7 @@ def _get_owned_document(
     response_model=DocumentUploadResponse,
 )
 async def upload_document(
+    background_tasks: BackgroundTasks,
     patient_id: UUID = Form(...),
     document_type: str = Form(...),
     source: str = Form("EXTERNAL"),
@@ -248,6 +265,7 @@ async def upload_document(
         ) from exc
 
     db.refresh(doc)
+    background_tasks.add_task(run_document_intelligence, document_id=doc.id)
     return {
         **_serialize(doc),
         "document_id": str(doc.id),

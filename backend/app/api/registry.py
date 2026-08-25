@@ -57,6 +57,12 @@ from app.api.routes.rnica_poc import router as rnica_poc_router
 from app.api.routes.admission_action_center import router as admission_action_center_router
 from app.api.patient_allergies import router as patient_allergies_router
 from app.api.patient_issues import router as patient_issues_router
+from app.api.referrals import router as referrals_router
+from app.api.bereavement import router as bereavement_router
+from app.api.bereavement_poc import router as bereavement_poc_router
+from app.api.post_death_bereavement import router as post_death_bereavement_router
+from app.api.bereavement_letters import router as bereavement_letters_router
+from app.api.bereavement_support import router as bereavement_support_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -173,6 +179,12 @@ def register_routers(app: FastAPI) -> None:
         admission_action_center_router,
         patient_charts_router,
         patient_issues_router,
+        referrals_router,
+        bereavement_router,
+        bereavement_poc_router,
+        post_death_bereavement_router,
+        bereavement_letters_router,
+        bereavement_support_router,
 
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
         tasks_router,

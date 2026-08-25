@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   DashboardOverview,
   PatientCensus,
+  Referrals,
   Clinical,
   Analytics,
   HelpSupport,
@@ -29,7 +30,7 @@ function getTenantNav(currentUser) {
   const normalizedRole = normalizeRole(currentUser?.role);
   const canViewAgencySettings = ADMIN_SETTING_ROLES.some((role) => normalizedRole.includes(role));
 
-  const items = ['Dashboard', 'Patient Census', 'Clinical', 'Insights', 'Help & Support'];
+  const items = ['Dashboard', 'Patient Census', 'Referrals', 'Clinical', 'Insights', 'Help & Support'];
   if (canViewAgencySettings) {
     items.push('Agency Settings');
   }
@@ -42,7 +43,7 @@ function getTenantPages(currentUser) {
   const normalizedRole = normalizeRole(currentUser?.role);
   const canViewAgencySettings = ADMIN_SETTING_ROLES.some((role) => normalizedRole.includes(role));
 
-  const pages = [DashboardOverview, PatientCensus, Clinical, Analytics, HelpSupport];
+  const pages = [DashboardOverview, PatientCensus, Referrals, Clinical, Analytics, HelpSupport];
   if (canViewAgencySettings) {
     pages.push(AgencySettings);
   }
@@ -90,6 +91,15 @@ export default function TenantDashboard() {
       active = false;
     };
   }, [isRestricted]);
+
+  const refreshCensus = () => {
+    fetchCensusWorkspace()
+      .then((censusResponse) => setCensus(censusResponse))
+      .catch(() => {
+        // Non-fatal: the newly created patient is still reachable directly
+        // via chart navigation even if the census list refresh fails.
+      });
+  };
 
   if (isRestricted) {
     return (
@@ -177,7 +187,7 @@ export default function TenantDashboard() {
 
       <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
         {error ? <div style={{ ...S.card, color: COLORS.red }}>{error}</div> : null}
-        <ActivePage workspace={workspace} census={census} loading={loading} />
+        <ActivePage workspace={workspace} census={census} loading={loading} onPatientCreated={refreshCensus} />
       </div>
     </div>
   );

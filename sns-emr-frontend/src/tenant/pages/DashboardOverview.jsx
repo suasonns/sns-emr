@@ -1,5 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { COLORS, S } from '../design';
+import { fetchBereavementLetterAlerts } from '../../api/bereavementLetters';
 
 function metricValue(metrics, key) {
   return metrics?.find((metric) => metric.key === key)?.value ?? 0;
@@ -43,6 +45,120 @@ function ComplianceWidgetCard({ widget }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function BereavementLetterAlertsWidget() {
+  const navigate = useNavigate();
+  const [alerts, setAlerts] = useState(null);
+  const [alertsError, setAlertsError] = useState('');
+  const [alertsLoading, setAlertsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    fetchBereavementLetterAlerts(7)
+      .then((data) => {
+        if (active) setAlerts(data);
+      })
+      .catch((requestError) => {
+        if (active) {
+          setAlertsError(
+            requestError instanceof Error ? requestError.message : 'Bereavement letter alerts failed to load',
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setAlertsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (alertsLoading) {
+    return (
+      <div style={{ marginTop: 24 }}>
+        <div style={S.card}>
+          <div style={{ color: COLORS.muted, fontSize: 13 }}>Loading bereavement letter alerts...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (alertsError) {
+    return null;
+  }
+
+  const overdue = alerts?.overdue ?? [];
+  const dueSoon = alerts?.due_soon ?? [];
+  if (overdue.length === 0 && dueSoon.length === 0) {
+    return null;
+  }
+
+  const rows = [
+    ...overdue.map((entry) => ({ ...entry, tone: 'overdue' })),
+    ...dueSoon.map((entry) => ({ ...entry, tone: 'due_soon' })),
+  ].slice(0, 8);
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={S.card}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: 0 }}>
+            {'\u{1F397}'} Bereavement Letter Alerts
+          </h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {overdue.length > 0 && (
+              <span style={{ ...S.badge('rgba(239,68,68,0.12)', COLORS.red), fontSize: 11 }}>
+                {overdue.length} overdue
+              </span>
+            )}
+            {dueSoon.length > 0 && (
+              <span style={{ ...S.badge('rgba(249,115,22,0.12)', COLORS.orange), fontSize: 11 }}>
+                {dueSoon.length} due within 7 days
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {rows.map((entry) => (
+            <div
+              key={`${entry.tracker_id}-${entry.item_key}`}
+              onClick={() => navigate(`/chart/${encodeURIComponent(entry.patient_id)}`)}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '1.4fr 1fr 0.8fr 0.8fr',
+                gap: 12,
+                alignItems: 'center',
+                borderBottom: `1px solid ${COLORS.border}`,
+                paddingBottom: 10,
+                cursor: 'pointer',
+              }}
+            >
+              <div>
+                <div style={{ color: COLORS.textPrimary, fontWeight: 600 }}>{entry.patient_name || 'Unnamed patient'}</div>
+                <div style={{ color: COLORS.dim, fontSize: 11 }}>{entry.label}</div>
+              </div>
+              <div style={{ color: COLORS.muted, fontSize: 12 }}>Due {entry.due_date}</div>
+              <span
+                style={{
+                  ...S.badge(
+                    entry.tone === 'overdue' ? 'rgba(239,68,68,0.12)' : 'rgba(249,115,22,0.12)',
+                    entry.tone === 'overdue' ? COLORS.red : COLORS.orange,
+                  ),
+                  width: 'fit-content',
+                }}
+              >
+                {entry.tone === 'overdue' ? `${entry.days_overdue}d overdue` : `Due in ${entry.days_until_due}d`}
+              </span>
+              <span style={{ ...S.badge('rgba(148,163,184,0.12)', COLORS.muted), width: 'fit-content', fontSize: 11 }}>
+                {entry.risk_level || 'N/A'} risk
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -115,6 +231,8 @@ export default function DashboardOverview({ workspace, census, loading }) {
           </div>
         </div>
       )}
+
+      <BereavementLetterAlertsWidget />
 
       <div style={{ marginTop: 24 }}>
         <div style={S.card}>

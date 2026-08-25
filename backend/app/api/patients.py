@@ -1047,18 +1047,20 @@ class ReferralFaceSheetCreate(BaseModel):
     special_instructions: str | None = None
 
 
-@router.post("/from-referral")
-def create_patient_from_referral(
+def build_patient_from_referral_payload(
+    db: Session,
+    *,
+    tenant_id,
+    user_id,
     payload: ReferralFaceSheetCreate,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    tenant_id = _tenant_id_uuid(user)
-    user_id = getattr(user, "user_id", None)
+) -> dict:
+    """Convert accepted referral-intake data into a full Patient record.
 
-    if not user_id:
-        raise HTTPException(500, "Invalid user identity")
-
+    Shared by the direct-create endpoint (POST /patients/from-referral) and
+    the referral review-queue accept action (POST /referrals/{id}/accept) so
+    both paths create the exact same Patient + PatientFaceSheet +
+    PatientDiagnosis + Admission bundle from the same field set.
+    """
     first_name, middle_name, last_name = _normalize_name_parts(
         first_name=payload.first_name,
         middle_name=payload.middle_name,
@@ -1189,6 +1191,22 @@ def create_patient_from_referral(
         "referral_source": payload.referral_source,
         "referral_date": payload.referral_date,
     }
+
+
+@router.post("/from-referral")
+def create_patient_from_referral(
+    payload: ReferralFaceSheetCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+    user_id = getattr(user, "user_id", None)
+
+    if not user_id:
+        raise HTTPException(500, "Invalid user identity")
+
+    return build_patient_from_referral_payload(db, tenant_id=tenant_id, user_id=user_id, payload=payload)
+
 
 
 class HnpImportRequest(BaseModel):

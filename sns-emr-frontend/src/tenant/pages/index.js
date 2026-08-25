@@ -1,5 +1,6 @@
 export { default as DashboardOverview } from './DashboardOverview';
 export { default as PatientCensus } from './PatientCensus';
+export { default as Referrals } from './Referrals';
 export { default as Admissions } from './Admissions';
 export { default as Clinical } from './Clinical';
 export { default as Scheduling } from './Scheduling';

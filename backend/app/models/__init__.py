@@ -48,6 +48,12 @@ from app.models.medication import Medication
 from app.models.patient_allergy import PatientAllergy
 from app.models.patient_issue import PatientIssue
 from app.models.admission import Admission
+from app.models.referral import Referral
+from app.models.bereavement_assessment import BereavementAssessment
+from app.models.bereavement_poc import BereavementPOC
+from app.models.post_death_bereavement_assessment import PostDeathBereavementAssessment
+from app.models.bereavement_letter_tracker import BereavementLetterTracker
+from app.models.bereavement_communication_note import BereavementCommunicationNote
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
 
 # ---------------------------------------------------------

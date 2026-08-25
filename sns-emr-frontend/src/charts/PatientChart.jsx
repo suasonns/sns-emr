@@ -24,6 +24,11 @@ import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
 import DischargePlanningBoard from './DischargePlanningBoard';
 import IssuesOutcomesBoard from './IssuesOutcomesBoard';
+import BereavementBoard from './BereavementBoard';
+import BereavementPOCBoard from './BereavementPOCBoard';
+import PostDeathBereavementBoard from './PostDeathBereavementBoard';
+import BereavementLettersBoard from './BereavementLettersBoard';
+import BereavementSupportBoard from './BereavementSupportBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -827,6 +832,16 @@ const PatientChart = () => {
         return <IssuesOutcomesBoard patientId={resolvedPatientId} />;
       case 'discharge':
         return <DischargePlanningBoard patientId={resolvedPatientId} />;
+      case 'bereavement':
+        return <BereavementBoard patientId={resolvedPatientId} />;
+      case 'bereavement-poc':
+        return <BereavementPOCBoard patientId={resolvedPatientId} />;
+      case 'bereavement-post-death':
+        return <PostDeathBereavementBoard patientId={resolvedPatientId} />;
+      case 'bereavement-letters':
+        return <BereavementLettersBoard patientId={resolvedPatientId} />;
+      case 'bereavement-support':
+        return <BereavementSupportBoard patientId={resolvedPatientId} />;
       default:
         return (
           <div style={{

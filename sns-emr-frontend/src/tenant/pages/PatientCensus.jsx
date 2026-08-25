@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COLORS, S } from '../design';
 import { setActivePatientId } from '../../utils/activePatient';
+import ReferralIntakeModal from './ReferralIntakeModal';
 
 function formatCareLevel(value) {
   if (!value) return 'Routine';
@@ -35,6 +36,8 @@ export default function PatientCensus({ census, loading }) {
   const navigate = useNavigate();
   const patientRows = Array.isArray(census?.patients) ? census.patients : [];
   const [selectedPatientId, setSelectedPatientId] = useState(patientRows[0]?.patient_id || null);
+  const [showIntakeModal, setShowIntakeModal] = useState(false);
+  const [referralSubmittedMessage, setReferralSubmittedMessage] = useState('');
 
   useEffect(() => {
     if (!patientRows.length) {
@@ -59,14 +62,28 @@ export default function PatientCensus({ census, loading }) {
     navigate(`/chart/${encodeURIComponent(patientId)}`);
   };
 
+  const handleReferralCreated = () => {
+    setShowIntakeModal(false);
+    setReferralSubmittedMessage('Referral submitted for review. It will appear on the Referrals queue until accepted or declined.');
+  };
+
   return (
     <div>
+      {showIntakeModal ? (
+        <ReferralIntakeModal onClose={() => setShowIntakeModal(false)} onCreated={handleReferralCreated} />
+      ) : null}
+      {referralSubmittedMessage ? (
+        <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, background: 'rgba(20,184,166,0.12)', color: COLORS.teal, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{referralSubmittedMessage}</span>
+          <button type="button" style={{ ...S.btnOutline, padding: '4px 10px' }} onClick={() => setReferralSubmittedMessage('')}>Dismiss</button>
+        </div>
+      ) : null}
       <div style={S.header}>
         <div>
           <h1 style={S.pageTitle}>Patient Census</h1>
           <p style={S.pageSubtitle}>Complete active patient registry with care plans and clinical status</p>
         </div>
-        <button style={S.btn(COLORS.teal)}>Add New Patient</button>
+        <button style={S.btn(COLORS.teal)} onClick={() => setShowIntakeModal(true)}>Add New Patient</button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }}>
