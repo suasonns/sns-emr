@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Any
@@ -12,6 +13,9 @@ from app.models.task import Task
 from app.models.enums import TaskType, TaskStatus, TaskRegulatoryBasis
 from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.chha_visit_task_result import CHHAVisitTaskResult
+from app.services.evidence.harvest_service import harvest_from_source
+
+logger = logging.getLogger("sns_emr")
 
 
 def upsert_chha_outcome(
@@ -256,5 +260,28 @@ def upsert_chha_outcome(
                 task.reference_id = visit.id
 
             db.add(task)
+
+    # ------------------------------
+    # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service docstring)
+    # ------------------------------
+    try:
+        harvest_from_source(
+            db=db,
+            tenant_id=outcome.tenant_id,
+            patient_id=outcome.patient_id,
+            source_type="CHHA_VISIT_OUTCOME",
+            source_record_id=outcome.id,
+            visit_id=outcome.visit_id,
+            discipline="CHHA",
+            recorded_at=now,
+            text=outcome.exception_narrative or "",
+            recorded_by_user_id=user_id,
+            commit=False,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to harvest CHHA visit outcome into AI evidence registry",
+            extra={"chha_visit_outcome_id": str(outcome.id)},
+        )
 
     return outcome

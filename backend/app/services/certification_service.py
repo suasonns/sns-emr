@@ -37,6 +37,7 @@ authority-separation fix already applied to Physician Orders.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -47,11 +48,14 @@ from app.core.roles import normalize_role, role_matches
 from app.models.benefit_period import BenefitPeriod
 from app.models.certification import Certification, CertificationStatusEvent
 from app.services.audit_logger import log_event
+from app.services.evidence.harvest_service import harvest_from_source
 from app.services.recert_f2f_enforcement import (
     bp_index_date_derived,
     complete_task_with_evidence,
     require_f2f_completed_for_bp3_plus,
 )
+
+logger = logging.getLogger("sns_emr")
 
 
 class CertificationError(HTTPException):
@@ -385,6 +389,40 @@ def sign_certification(
         evidence=f"Signed by {cert.signed_by_role}",
     )
     db.commit()
+
+    # ------------------------------
+    # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service
+    # docstring). Called standalone AFTER our own commits above, so a
+    # harvesting failure can never affect CTI signing.
+    # ------------------------------
+    try:
+        narrative_text = "\n".join(
+            filter(
+                None,
+                [
+                    (cert.physician_narrative or "").strip(),
+                    (cert.supporting_evidence or "").strip(),
+                    (cert.clinical_decline_indicators or "").strip(),
+                ],
+            )
+        )
+        harvest_from_source(
+            db=db,
+            tenant_id=cert.tenant_id,
+            patient_id=cert.patient_id,
+            source_type="CERTIFICATION",
+            source_record_id=cert.id,
+            recorded_at=cert.signed_at,
+            text=narrative_text,
+            discipline="MD",
+            recorded_by_user_id=cert.signed_by_user_id,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to harvest certification into AI evidence registry",
+            extra={"certification_id": str(cert.id)},
+        )
+
     return cert
 
 

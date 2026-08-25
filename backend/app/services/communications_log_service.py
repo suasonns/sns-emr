@@ -12,6 +12,7 @@ from app.services.idg_intelligence_service import create_or_update_from_communic
 from app.services.hospitalization_prevention_service import (
     create_or_update_family_concern_from_source,
 )
+from app.services.evidence.harvest_service import harvest_from_source
 
 logger = logging.getLogger(__name__)
 
@@ -124,6 +125,30 @@ def create_communications_log_entry(
             },
         )
 
+
+    # ------------------------------
+    # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service docstring)
+    # ------------------------------
+    try:
+        harvest_from_source(
+            db=db,
+            tenant_id=commlog.tenant_id,
+            patient_id=commlog.patient_id,
+            source_type="COMMUNICATION_LOG",
+            source_record_id=commlog.id,
+            communication_log_id=commlog.id,
+            recorded_at=commlog.event_time,
+            text=commlog.summary,
+            recorded_by_user_id=user_id,
+            commit=False,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to harvest communication log into AI evidence registry",
+            extra={
+                "communication_log_id": str(commlog.id)
+            },
+        )
 
     db.commit()
     db.refresh(commlog)

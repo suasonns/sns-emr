@@ -30,6 +30,7 @@ administrative rank is not clinical attestation authority.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -39,10 +40,13 @@ from sqlalchemy.orm import Session
 from app.core.roles import normalize_role, role_matches
 from app.models.f2f_encounter import F2FEncounter, F2FEncounterStatusEvent
 from app.services.audit_logger import log_event
+from app.services.evidence.harvest_service import harvest_from_source
 from app.services.recert_f2f_enforcement import (
     complete_task_with_evidence,
     validate_f2f_window,
 )
+
+logger = logging.getLogger("sns_emr")
 
 
 class F2FError(HTTPException):
@@ -271,4 +275,37 @@ def finalize_f2f(
         evidence=f"Finalized by {normalize_role(finalized_by_role)}",
     )
     db.commit()
+
+    # ------------------------------
+    # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service
+    # docstring). Called standalone AFTER our own commits above, so a
+    # harvesting failure can never affect F2F finalization.
+    # ------------------------------
+    try:
+        narrative_text = "\n".join(
+            filter(
+                None,
+                [
+                    (f2f.summary or "").strip(),
+                    (f2f.clinical_decline_summary or "").strip(),
+                ],
+            )
+        )
+        harvest_from_source(
+            db=db,
+            tenant_id=f2f.tenant_id,
+            patient_id=f2f.patient_id,
+            source_type="F2F_ENCOUNTER",
+            source_record_id=f2f.id,
+            recorded_at=f2f.finalized_at or datetime.now(timezone.utc),
+            text=narrative_text,
+            discipline=f2f.performed_by_role,
+            recorded_by_user_id=f2f.performed_by_user_id,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to harvest F2F encounter into AI evidence registry",
+            extra={"f2f_encounter_id": str(f2f.id)},
+        )
+
     return f2f

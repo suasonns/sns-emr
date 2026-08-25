@@ -47,12 +47,24 @@ def harvest_from_source(
     note_type: str | None = None,
     recorded_by_user_id: UUID | None = None,
     recorded_by_name: str | None = None,
+    commit: bool = True,
 ) -> PatientEvidenceRecord | None:
     """Harvest one piece of documentation into the evidence registry.
 
     Returns the created PatientEvidenceRecord, or None if harvesting could
     not even preserve the evidence record (e.g. a DB error) -- this is
     logged, never raised.
+
+    `commit`: True (default) when called standalone, after the caller has
+    already committed its own record (e.g. finalize_clinical_note) -- this
+    function performs its own isolated commit/rollback via a SAVEPOINT.
+    Pass `commit=False` when called from *inside* a larger unit of work
+    that has not committed yet (e.g. mid-request-handler service
+    functions) -- the SAVEPOINT still isolates a harvesting failure from
+    the rest of the pending transaction (only the harvester's own nested
+    work is rolled back on error, via the `with db.begin_nested()` context
+    manager), but the final commit is left to the caller so the evidence
+    record lands atomically with the source record it was harvested from.
     """
 
     cleaned_text = (text or "").strip()
@@ -86,10 +98,12 @@ def harvest_from_source(
                 note_type=note_type,
             )
 
-        db.commit()
+        if commit:
+            db.commit()
         return evidence_record
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         logger.exception(
             "evidence_harvester: failed to harvest source_type=%s source_record_id=%s "
             "patient_id=%s -- clinical documentation itself is unaffected",
