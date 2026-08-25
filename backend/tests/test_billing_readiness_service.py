@@ -16,6 +16,8 @@ import pytest
 from app.billing.services.billing_readiness_service import (
     check_patient_billing_readiness,
     build_tenant_billing_readiness_report,
+    build_cross_agency_billing_readiness_report,
+    categorize_blocker,
 )
 from app.models.admission import Admission
 from app.models.benefit_period import BenefitPeriod
@@ -533,3 +535,90 @@ def test_tenant_report_aggregates_ready_and_not_ready_patients(db_session, tenan
     for row in report["patients"]:
         for blocker in row["blockers"]:
             assert isinstance(blocker, str)
+
+
+# ---------------------------------------------------------------------
+# categorize_blocker
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "blocker,expected_category",
+    [
+        ("Patient status is 'DISCHARGED', not ACTIVE.", "Patient Not Active"),
+        (
+            "No benefit period covers the service date 2026-03-15.",
+            "Missing Benefit Period",
+        ),
+        (
+            "Hospice election statement is not signed.",
+            "Missing Election Statement",
+        ),
+        (
+            "Notice of Election (NOE) has not been filed and no CMS "
+            "exception is documented -- Medicare will return the claim.",
+            "Missing NOE Filing",
+        ),
+        (
+            "Certification of Terminal Illness (CTI/Recert) is not signed "
+            "and finalized for this benefit period.",
+            "Missing Certification",
+        ),
+        (
+            "Required face-to-face encounter is not attested for this "
+            "benefit period.",
+            "Missing F2F Documentation",
+        ),
+        (
+            "Plan of Care is not active with a physician signature on file.",
+            "Missing POC Physician Signature",
+        ),
+        (
+            "Payer sequence is ambiguous: multiple active MSP payers.",
+            "Payer/MSP Sequencing Issue",
+        ),
+        ("Patient not found for this tenant.", "Patient Not Found"),
+        ("Some future blocker text nobody mapped yet.", "Other"),
+    ],
+)
+def test_categorize_blocker(blocker, expected_category):
+    assert categorize_blocker(blocker) == expected_category
+
+
+# ---------------------------------------------------------------------
+# build_cross_agency_billing_readiness_report
+# ---------------------------------------------------------------------
+
+
+def test_cross_agency_report_includes_agency_and_blocker_breakdown(db_session, tenant):
+    ready_patient = _fully_ready_patient(db_session, tenant.id, mrn="MRN-CROSS-READY")
+
+    not_ready_patient = _make_patient(db_session, tenant.id, mrn="MRN-CROSS-NOT-READY")
+    _make_benefit_period(db_session, tenant.id, not_ready_patient)
+    # Deliberately incomplete: no certification / POC / payer, so this
+    # patient contributes at least a "Missing Certification" and
+    # "Missing POC Physician Signature" blocker.
+
+    report = build_cross_agency_billing_readiness_report(
+        db_session,
+        service_date=SERVICE_DATE,
+    )
+
+    assert report["total_agencies"] >= 1
+    agency_ids = {a["tenant_id"] for a in report["agencies"]}
+    assert tenant.id in agency_ids
+
+    this_agency = next(a for a in report["agencies"] if a["tenant_id"] == tenant.id)
+    assert this_agency["billing_enabled"] in (True, False)
+    if this_agency["billing_enabled"]:
+        assert this_agency["ready_count"] >= 1
+        assert this_agency["not_ready_count"] >= 1
+
+        categories = {b["category"] for b in report["blocker_breakdown"]}
+        assert "Missing Certification" in categories
+        assert "Missing POC Physician Signature" in categories
+
+    # Every category in the breakdown must be a known/stable label.
+    for entry in report["blocker_breakdown"]:
+        assert isinstance(entry["category"], str)
+        assert entry["count"] >= 1

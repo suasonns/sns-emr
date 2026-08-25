@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -15,6 +16,9 @@ from app.core.database import get_db
 from app.core.tenant_scope import resolve_billing_scope_tenant_id
 from app.db_request_dependency import get_db_tenant_with_request_state
 from app.models.tenant import Tenant
+from app.billing.services.billing_readiness_service import (
+    build_cross_agency_billing_readiness_report,
+)
 from app.services.dashboard_service import (
     count_claim_lifecycle,
     get_billing_dashboard,
@@ -153,3 +157,21 @@ def owner_dashboard(
 ):
     require_owner(user)
     return get_owner_dashboard(db=db, tenant_id=tenant_id)
+
+
+@router.get("/billing-readiness")
+def cross_agency_billing_readiness(
+    service_date: date | None = Query(None, description="Service date to evaluate readiness for. Defaults to today."),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Platform-wide Billing Readiness aggregation across every billable
+    agency, with a Blocker Breakdown categorizing why patients aren't
+    ready (see app.billing.services.billing_readiness_service). Owner-only:
+    this is the cross-agency rollup, not a single agency's billing data.
+    """
+    require_owner(user)
+    return build_cross_agency_billing_readiness_report(
+        db, service_date=service_date or date.today()
+    )

@@ -40,11 +40,43 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.billing.services.msp_validation_service import resolve_payer_sequence
+from app.core.tenant_scope import list_billable_agency_tenants
 
 # A recert benefit period is period_number >= this value the very first
 # time an F2F encounter is required (3rd benefit period onward per
 # 42 CFR 418.22(a)(4)).
 F2F_REQUIRED_FROM_PERIOD_NUMBER = 3
+
+# Named blocker categories, matched against the start of each raw blocker
+# string produced by check_patient_billing_readiness(). Used to roll up
+# per-patient blockers into a "Blocker Breakdown" the owner/biller can
+# scan across every agency at once, without changing the underlying
+# blocker text (which stays intact for the per-patient detail view).
+BLOCKER_CATEGORY_PREFIXES: list[tuple[str, str]] = [
+    ("Patient status is", "Patient Not Active"),
+    ("No benefit period covers", "Missing Benefit Period"),
+    ("Hospice election statement is not signed", "Missing Election Statement"),
+    ("Notice of Election (NOE) has not been filed", "Missing NOE Filing"),
+    ("Certification of Terminal Illness", "Missing Certification"),
+    ("Required face-to-face encounter", "Missing F2F Documentation"),
+    ("Plan of Care is not active", "Missing POC Physician Signature"),
+    ("Payer sequence is ambiguous", "Payer/MSP Sequencing Issue"),
+    ("Patient not found", "Patient Not Found"),
+]
+
+
+def categorize_blocker(blocker: str) -> str:
+    """
+    Maps a raw blocker string to a stable, named category for the Blocker
+    Breakdown view. Falls back to "Other" for any blocker text that
+    doesn't match a known prefix (e.g. a future blocker added to
+    check_patient_billing_readiness that this list hasn't been updated
+    for yet) -- never silently drops a blocker.
+    """
+    for prefix, category in BLOCKER_CATEGORY_PREFIXES:
+        if blocker.startswith(prefix):
+            return category
+    return "Other"
 
 
 @dataclass(frozen=True)
@@ -339,4 +371,92 @@ def build_tenant_billing_readiness_report(
         "ready_count": ready_count,
         "not_ready_count": len(results) - ready_count,
         "patients": results,
+    }
+
+
+def build_cross_agency_billing_readiness_report(
+    db: Session,
+    *,
+    service_date: date,
+) -> dict:
+    """
+    Aggregates check_patient_billing_readiness() across every billable
+    agency tenant (see app.core.tenant_scope.list_billable_agency_tenants),
+    for the owner's platform-wide Billing Readiness view and the Tenant
+    Analytics financials/billing mirror.
+
+    Adds a "Blocker Breakdown" -- the same raw per-patient blocker
+    strings from build_tenant_billing_readiness_report(), rolled up into
+    named categories (see categorize_blocker) and counted across all
+    agencies, so a platform owner or biller can see e.g. "14 patients
+    across 3 agencies are missing F2F Documentation" without reading
+    every patient row.
+
+    Agencies with billing_enabled=False are still real tenants but have
+    no billing data of their own to check; they're included in the
+    per-agency breakdown with zero counts rather than silently omitted,
+    so the report accounts for every agency in the system.
+    """
+    agencies = [
+        a for a in list_billable_agency_tenants(db) if a.get("status") != "ARCHIVED"
+    ]
+
+    blocker_breakdown: dict[str, int] = {}
+    agency_reports: list[dict] = []
+    total_patients = 0
+    total_ready = 0
+
+    for agency in agencies:
+        tenant_id = agency["tenant_id"]
+
+        if not agency.get("billing_enabled"):
+            agency_reports.append(
+                {
+                    "tenant_id": tenant_id,
+                    "tenant_name": agency["display_name"],
+                    "billing_enabled": False,
+                    "total_patients": 0,
+                    "ready_count": 0,
+                    "not_ready_count": 0,
+                }
+            )
+            continue
+
+        report = build_tenant_billing_readiness_report(
+            db, tenant_id=tenant_id, service_date=service_date
+        )
+
+        for patient in report["patients"]:
+            for blocker in patient["blockers"]:
+                category = categorize_blocker(blocker)
+                blocker_breakdown[category] = blocker_breakdown.get(category, 0) + 1
+
+        total_patients += report["total_patients"]
+        total_ready += report["ready_count"]
+
+        agency_reports.append(
+            {
+                "tenant_id": tenant_id,
+                "tenant_name": agency["display_name"],
+                "billing_enabled": True,
+                "total_patients": report["total_patients"],
+                "ready_count": report["ready_count"],
+                "not_ready_count": report["not_ready_count"],
+                "patients": report["patients"],
+            }
+        )
+
+    return {
+        "service_date": service_date.isoformat(),
+        "total_agencies": len(agencies),
+        "total_patients": total_patients,
+        "ready_count": total_ready,
+        "not_ready_count": total_patients - total_ready,
+        "blocker_breakdown": [
+            {"category": category, "count": count}
+            for category, count in sorted(
+                blocker_breakdown.items(), key=lambda kv: kv[1], reverse=True
+            )
+        ],
+        "agencies": agency_reports,
     }
