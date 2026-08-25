@@ -31,6 +31,7 @@ import ClaimsManagementPage from "./pages/billing/ClaimsManagementPage";
 import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
 import EligibilityVerificationPage from "./pages/billing/EligibilityVerificationPage";
 import PaymentPostingPage from "./pages/billing/PaymentPostingPage";
+import ReportsPage from "./pages/billing/ReportsPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
@@ -69,7 +70,7 @@ export default function App() {
           <Route path="denials" element={<DenialsAppealsPage />} />
           <Route path="eligibility" element={<EligibilityVerificationPage />} />
           <Route path="payment-posting" element={<PaymentPostingPage />} />
-          <Route path="reports" element={<ComingSoonPage title="Reports" />} />
+          <Route path="reports" element={<ReportsPage />} />
         </Route>
         <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />
         <Route path="/tenant" element={tenantRoute(<TenantDashboard />)} />
