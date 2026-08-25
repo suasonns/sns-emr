@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
+import { fetchDocumentBlobUrl, listPatientDocuments, uploadDocument } from '../api/documents';
 import { createPosHistory, fetchFacesheet, fetchPerformanceHistory, fetchPosHistory, saveFacesheet, updatePosHistory } from '../api/facesheet';
 import { addPatientAllergy as addAllergy, listPatientAllergies as fetchAllergies, removePatientAllergy as removeAllergy } from '../api/medications';
 import { listPhysicians } from '../api/physicians';
@@ -1195,18 +1196,170 @@ const InsuranceCard = ({ colors, draft, update }) => (
   </div>
 );
 
-const DocumentPlaceholder = ({ colors, title, buttonLabel }) => (
-  <div style={{ minWidth: 0 }}>
-    <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
-    <div style={{ border: `1px dashed ${colors.border}`, borderRadius: 8, padding: 16, textAlign: 'center', margin: '8px 0 12px' }}>
-      <span style={{ color: colors.label, fontSize: 12 }}>Document upload is not wired to this facesheet endpoint yet.</span><br />
-      <button type="button" disabled style={{ marginTop: 8, padding: '6px 16px', backgroundColor: colors.border, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'not-allowed' }}>{buttonLabel}</button>
-    </div>
-    <div style={{ color: colors.label, fontSize: 11 }}>Use the save button above to persist the authorization fields on this page.</div>
-  </div>
-);
+const formatDocumentTimestamp = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
+};
 
-const AuthEligibility = ({ colors, draft, update }) => {
+const formatDocumentSize = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentType }) => {
+  const [documents, setDocuments] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState('');
+  const [error, setError] = useState('');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [pickerKey, setPickerKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDocuments = async () => {
+      if (!patientId) {
+        setDocuments([]);
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+      try {
+        const response = await listPatientDocuments(patientId, documentType);
+        if (!cancelled) {
+          setDocuments(Array.isArray(response?.documents) ? response.documents : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.response?.data?.detail || 'Unable to load documents for this section.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDocuments();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, documentType]);
+
+  const handleUpload = async () => {
+    if (!patientId || !selectedFile || uploading) return;
+
+    setUploading(true);
+    setError('');
+    setUploadMessage('');
+    try {
+      const response = await uploadDocument(patientId, documentType, selectedFile);
+      const refreshed = await listPatientDocuments(patientId, documentType);
+      setDocuments(Array.isArray(refreshed?.documents) ? refreshed.documents : []);
+      setSelectedFile(null);
+      setPickerKey((value) => value + 1);
+      setUploadMessage(
+        `Uploaded ${response.file_name || 'document'}${response.size_bytes ? ` (${formatDocumentSize(response.size_bytes)})` : ''}.`,
+      );
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to upload this document.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleView = async (documentId) => {
+    if (!documentId || downloadingId) return;
+
+    setDownloadingId(documentId);
+    setError('');
+    try {
+      const blobUrl = await fetchDocumentBlobUrl(documentId);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to open this document.');
+    } finally {
+      setDownloadingId('');
+    }
+  };
+
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 12, margin: '8px 0 12px', backgroundColor: colors.bg }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <label
+            htmlFor={`${documentType}-upload`}
+            style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, color: colors.white, backgroundColor: colors.card, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            {buttonLabel}
+          </label>
+          <input
+            key={pickerKey}
+            id={`${documentType}-upload`}
+            type="file"
+            onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+            style={{ display: 'none' }}
+          />
+          <div style={{ color: colors.label, fontSize: 11, flex: 1, minWidth: 0 }}>
+            {selectedFile ? `${selectedFile.name}${selectedFile.size ? ` (${formatDocumentSize(selectedFile.size)})` : ''}` : 'No file selected'}
+          </div>
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={!selectedFile || uploading}
+            style={{ padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: !selectedFile || uploading ? colors.border : colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: !selectedFile || uploading ? 'not-allowed' : 'pointer' }}
+          >
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+        {uploadMessage ? <div style={{ color: colors.green, fontSize: 11, marginBottom: 8 }}>{uploadMessage}</div> : null}
+        {error ? <div style={{ color: colors.red, fontSize: 11, marginBottom: 8 }}>{error}</div> : null}
+        {loading ? (
+          <div style={{ color: colors.label, fontSize: 11 }}>Loading documents…</div>
+        ) : documents.length ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {documents.map((doc) => (
+              <div key={doc.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', backgroundColor: colors.card }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {doc.file_name || 'Untitled document'}
+                    </div>
+                    <div style={{ color: colors.label, fontSize: 10.5, marginTop: 3 }}>
+                      Uploaded {formatDocumentTimestamp(doc.uploaded_at)}
+                    </div>
+                  </div>
+                  {doc.is_flagged ? <Badge variant="amber" colors={colors}>FLAGGED</Badge> : null}
+                  <button
+                    type="button"
+                    onClick={() => handleView(doc.id)}
+                    disabled={downloadingId === doc.id}
+                    style={{ background: 'none', border: 'none', color: colors.teal, fontSize: 10.5, fontWeight: 600, cursor: downloadingId === doc.id ? 'wait' : 'pointer', padding: 0 }}
+                  >
+                    {downloadingId === doc.id ? 'Opening…' : 'View'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: colors.label, fontSize: 11 }}>No documents uploaded for this section yet.</div>
+        )}
+      </div>
+      <div style={{ color: colors.label, fontSize: 11 }}>Files are stored on the patient record and can be reopened from this facesheet.</div>
+    </div>
+  );
+};
+
+const AuthEligibility = ({ colors, draft, update, patientId }) => {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -1253,8 +1406,8 @@ const AuthEligibility = ({ colors, draft, update }) => {
             </div>
           </div>
           <div style={{ display: 'grid', gap: 12 }}>
-            <DocumentPlaceholder colors={colors} title="Authorization Documents" buttonLabel="Choose File" />
-            <DocumentPlaceholder colors={colors} title="Eligibility / Submission Documents" buttonLabel="Upload" />
+            <DocumentUploadWidget colors={colors} title="Authorization Documents" buttonLabel="Choose File" patientId={patientId} documentType="AUTHORIZATION" />
+            <DocumentUploadWidget colors={colors} title="Eligibility / Submission Documents" buttonLabel="Choose File" patientId={patientId} documentType="ELIGIBILITY_SUBMISSION" />
           </div>
         </div>
       ) : (
@@ -2452,7 +2605,7 @@ const PatientFacesheet = ({ patientId }) => {
         <div style={{ minWidth: 0 }}><InsuranceCard colors={colors} draft={draft} update={update} /></div>
       </div>
       <div style={{ marginBottom: 12 }}><DiagnosesAllergies colors={colors} draft={draft} update={update} facesheet={facesheet} allergyList={allergyList} allergyLoading={allergyLoading} allergyError={allergyError} allergySaving={allergySaving} onAddAllergy={handleAddAllergy} onRemoveAllergy={handleRemoveAllergy} /></div>
-      <div style={{ marginBottom: 12 }}><AuthEligibility colors={colors} draft={draft} update={update} /></div>
+      <div style={{ marginBottom: 12 }}><AuthEligibility colors={colors} draft={draft} update={update} patientId={patientId} /></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
         <div style={{ minWidth: 0 }}><PlaceOfService colors={colors} draft={draft} update={update} posHistory={posHistory} posHistoryLoading={posHistoryLoading} posHistoryError={posHistoryError} addStayOpen={addStayOpen} setAddStayOpen={setAddStayOpen} posForm={posForm} updatePosForm={updatePosForm} posHistorySaving={posHistorySaving} onAddStay={handleAddStay} /></div>
         <div style={{ minWidth: 0 }}><AuthorizedRep colors={colors} draft={draft} update={update} /></div>
