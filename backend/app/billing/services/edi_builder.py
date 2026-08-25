@@ -22,6 +22,7 @@ ALLOWED_HOSPICE_REV_CODES = {
     "0652",  # Continuous Home Care
     "0655",  # Inpatient Respite
     "0656",  # General Inpatient Care
+    "0551",  # Skilled Nursing (used for the Service Intensity Add-on, HCPCS G0299/G0300)
 }
 
 

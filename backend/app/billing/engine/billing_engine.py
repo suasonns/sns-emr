@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import uuid4
@@ -15,6 +15,12 @@ from app.billing.models.claim import Claim
 from app.billing.models.loc_events import ContinuousCareEvent, GIPPeriod, RespitePeriod
 from app.billing.models.patient_pos import PatientPOS
 from app.billing.services.claim_segment_service import build_claim_lines
+from app.billing.services.cms_rate_service import CmsRateError, fiscal_year_for_date
+from app.billing.services.sia_service import (
+    SIA_WINDOW_DAYS,
+    compute_sia_schedule,
+    get_date_of_death,
+)
 from app.billing.services.loc_segment_service import build_loc_segments, build_loc_summary
 from app.billing.services.pos_to_loc_service import (
     DateRangeEvent,
@@ -29,6 +35,7 @@ from app.billing.services.revenue_service import (
 from app.billing.services.unit_service import summarize_units
 from app.models.patient import Patient
 from app.models.tenant import Tenant
+from app.models.visit import Visit
 from app.services.coverage_audit_logger import log_coverage_audit
 from app.services.election_day_service import get_election_anchor_date, get_initial_election_noe_info
 from app.services.payer_validation import PayerValidationError, validate_payer_for_claim
@@ -120,6 +127,38 @@ def _load_range_events(
             end_date=row.end_date,
             reason=getattr(row, "reason", None),
         )
+        for row in rows
+    ]
+
+
+def _load_sia_visits(
+    db: Session,
+    patient_id: str,
+    start_date: date,
+    end_date: date,
+) -> list[dict]:
+    """
+    Real finalized-visit rows for the SIA last-7-days-of-life window, in the
+    shape sia_service.compute_sia_schedule() expects (visit_date,
+    visit_discipline, start_time, end_time, status).
+    """
+    stmt = (
+        select(Visit)
+        .where(Visit.patient_id == patient_id)
+        .where(Visit.visit_datetime.isnot(None))
+        .where(Visit.visit_datetime >= start_date)
+        .where(Visit.visit_datetime < end_date + timedelta(days=1))
+    )
+    rows = db.execute(stmt).scalars().all()
+
+    return [
+        {
+            "visit_date": row.visit_datetime.date() if row.visit_datetime else None,
+            "visit_discipline": row.visit_discipline,
+            "start_time": row.start_time,
+            "end_time": row.end_time,
+            "status": row.status,
+        }
         for row in rows
     ]
 
@@ -594,6 +633,81 @@ def generate_patient_billing(
             claim_lines = apply_noe_penalty_to_claim_lines(claim_lines, noe_penalty)
             noe_penalty_reason = noe_penalty.reason
 
+    # Service Intensity Add-on (SIA): for a patient who died during this
+    # billing cycle, CMS pays an additional per-visit add-on for real
+    # RN/MSW direct-care minutes on RHC days in the last 7 days of life
+    # (42 CFR 418.302). Requires real CMS wage-adjusted rates (cbsa_code)
+    # since the SIA hourly rate is derived from the CHC per-diem rate.
+    sia_schedule = None
+    sia_rate_gap_reason = None
+    date_of_death = get_date_of_death(patient)
+    if date_of_death and cycle.start_date <= date_of_death <= cycle.end_date and tenant_cbsa_code:
+        sia_window_start = date_of_death - timedelta(days=SIA_WINDOW_DAYS - 1)
+
+        sia_pos_records = _load_pos_records(
+            db=db, patient_id=patient_id, start_date=sia_window_start, end_date=date_of_death
+        )
+        sia_gip_events = _load_range_events(
+            GIPPeriod, db, patient_id, sia_window_start, date_of_death
+        )
+        sia_respite_events = _load_range_events(
+            RespitePeriod, db, patient_id, sia_window_start, date_of_death
+        )
+        sia_continuous_events = _load_range_events(
+            ContinuousCareEvent, db, patient_id, sia_window_start, date_of_death
+        )
+        sia_pos_timeline = build_pos_timeline(
+            pos_records=sia_pos_records, start_date=sia_window_start, end_date=date_of_death
+        )
+        sia_loc_timeline = build_loc_timeline(
+            pos_timeline=sia_pos_timeline,
+            gip_events=sia_gip_events,
+            respite_events=sia_respite_events,
+            continuous_events=sia_continuous_events,
+        )
+        loc_by_date = {row["date"]: row["loc"] for row in sia_loc_timeline}
+
+        sia_visits = _load_sia_visits(
+            db, patient_id, sia_window_start, date_of_death
+        )
+
+        try:
+            sia_schedule = compute_sia_schedule(
+                date_of_death=date_of_death,
+                loc_by_date=loc_by_date,
+                visits=sia_visits,
+                cbsa_code=tenant_cbsa_code,
+            )
+        except CmsRateError as exc:
+            sia_rate_gap_reason = str(exc)
+
+        if sia_schedule:
+            for day in sia_schedule["days"]:
+                if Decimal(day["amount"]) <= 0:
+                    continue
+                claim_lines.append(
+                    {
+                        "from_date": str(day["date"]),
+                        "to_date": str(day["date"]),
+                        "days": 1,
+                        "loc": "ROUTINE",
+                        "pos": None,
+                        "facility_name": None,
+                        # SIA is billed via HCPCS G0299 (RN)/G0300 (LPN) on
+                        # revenue code 0551; this combines RN+MSW minutes
+                        # into a single line since sia_service does not
+                        # currently split the amount by discipline.
+                        "revenue_code": "0551",
+                        "hcpcs_code": "G0299",
+                        "rate": day["amount"],
+                        "estimated_amount": day["amount"],
+                        "fiscal_year": fiscal_year_for_date(day["date"]),
+                        "rhc_day_tier": "SIA",
+                        "rate_gap_reason": None,
+                        "is_sia": True,
+                    }
+                )
+
     # If any real, CMS-rate-priced claim line was produced (i.e. the tenant
     # has a CBSA on file), the revenue summary is derived directly from
     # those (already tier/FY-split) claim lines so the dollar total always
@@ -624,6 +738,13 @@ def generate_patient_billing(
         risk_score += 75
         status = _derive_status(risk_score)
 
+    # A missing wage index/FY for the SIA lookback window means the SIA
+    # add-on (real, additional revenue for last-7-days-of-life RN/MSW care)
+    # couldn't be priced -- surface it, don't silently omit it.
+    if sia_rate_gap_reason:
+        risk_score += 75
+        status = _derive_status(risk_score)
+
     snapshot_payload = {
         "patient_id": patient_id,
         "billing_cycle_id": billing_cycle_id,
@@ -640,6 +761,19 @@ def generate_patient_billing(
         },
         "benefit_periods_in_cycle": active_hospice_coverage.get("benefit_periods_in_cycle", []),
         "noe_penalty_reason": noe_penalty_reason,
+        "sia_rate_gap_reason": sia_rate_gap_reason,
+        "sia_schedule": (
+            {
+                "date_of_death": str(sia_schedule["date_of_death"]),
+                "window_start": str(sia_schedule["window_start"]),
+                "days": [
+                    {**day, "date": str(day["date"])} for day in sia_schedule["days"]
+                ],
+                "total_amount": sia_schedule["total_amount"],
+            }
+            if sia_schedule
+            else None
+        ),
         "rate_schedule_used": {key: str(value) for key, value in rate_schedule.items()},
         "cms_rate_metadata": {
             "cbsa_code": tenant_cbsa_code,
