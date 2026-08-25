@@ -36,6 +36,7 @@ from app.api import (
     vendors,
     visit_recordings,
 )
+from app.api.agency_profile import router as agency_profile_router
 
 # PHYSICIAN IDENTITY MAPPING / SHARED PATIENT-CONTACT-DECISION-MAKER RECORDS
 from app.api.physician_identity import router as physician_identity_router
@@ -186,6 +187,7 @@ def register_routers(app: FastAPI) -> None:
         med_reconciliation.router,
         physicians.router,
         staff.router,
+        agency_profile_router,
         vendors.router,
         soc_orders_router,
         admission_router,
