@@ -13,6 +13,7 @@ PLATFORM_ALLOWED_PREFIXES = (
     "/auth",
     "/api/owner",
     "/api/dashboard/owner",
+    "/api/dashboard/billing-readiness",
     "/api/support",
     "/health",
     "/ready",

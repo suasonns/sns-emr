@@ -109,6 +109,152 @@ def _base_content(visit_date: str, *, pain_level: int = 2):
     }
 
 
+def _round_trip_content(visit_date: str, *, hha_user: User, lvn_user: User) -> dict:
+    return {
+        "correction": False,
+        "type_of_visit": "In-Person",
+        "visit_kind": "Scheduled",
+        "form_type": "ASSESS",
+        "care_level": "ROUTINE CARE",
+        "visit_date": visit_date,
+        "time_in": "09:00",
+        "time_out": "10:15",
+        "duration": "75",
+        "entered_by": "Test User",
+        "staff_assigned": "Primary RN",
+        "pain": {
+            "controlled": "Y",
+            "pain_level": 4,
+            "other_observation": "Pain improved after repositioning and scheduled morphine.",
+        },
+        "vitals": {
+            "temperature": "98.4",
+            "temperature_position": "ORAL",
+            "pulse": "78",
+            "respirations": "18",
+            "bp_systolic": "128",
+            "bp_diastolic": "74",
+            "bp_position": "SITTING",
+            "height": "68",
+            "weight": "142",
+            "mac": "24.0",
+            "bmi": "21.6",
+            "o2_sat": "95",
+            "o2_delivery": "ROOM_AIR",
+            "unable_to_assess": False,
+        },
+        "functional_decline": {
+            "kps": 50,
+            "pps": 40,
+            "fast": "6D",
+            "nyha": "III",
+        },
+        "signs_symptoms": {
+            "nutrition": {
+                "severity": "MODERATE",
+                "oral_intake": "REDUCED",
+                "diet": "MECHANICAL_SOFT",
+                "selected_findings": ["appetite_decline"],
+                "other_observation": "Taking small meals with protein shake supplement.",
+            },
+            "mobility": {
+                "severity": "MODERATE",
+                "ambulatory_status": "LIMITED",
+                "assistive_device": "WALKER",
+                "assistance_level": "ONE_PERSON",
+                "endurance": "LIMITED",
+                "bedbound_status": "NO",
+            },
+            "adl_assessment": {
+                "adl_total_score": 12,
+                "adl_scores": {
+                    "bathing": 2,
+                    "dressing": 2,
+                    "toileting": 2,
+                    "transferring": 2,
+                    "feeding": 2,
+                    "grooming": 2,
+                },
+            },
+            "fall_incidence": {"assessed_no_issues": True},
+            "safety_issues": {"assessed_no_issues": True},
+        },
+        "supervisory_review": {
+            "hha": {
+                "assigned_staff_user_id": str(hha_user.id),
+                "assigned_staff_name": hha_user.full_name,
+                "supervision_type": "PRESENT",
+                "observation_datetime": "2026-04-01T09:20",
+                "rn_supervisor_name": "Test User",
+                "services_meet_patient_needs": "YES",
+                "follows_care_plan": "YES",
+                "demonstrates_competency": "YES",
+                "communication_appropriate": "YES",
+                "infection_control_safety": "YES",
+                "patient_family_concerns": "YES",
+                "concern_details": "Family asked for an earlier bath schedule due to fatigue.",
+                "corrective_action_required": "YES",
+                "corrective_action_details": "Care plan updated and aide notified during visit.",
+                "notification_documented": "YES",
+                "person_notified": "Case manager",
+                "notification_datetime": "2026-04-01T10:05",
+                "follow_up_required": "YES",
+                "follow_up_due_date": "2026-04-03",
+                "supervisor_comments": "Observed safe transfer technique and appropriate communication.",
+            },
+            "lvn_lpn": {
+                "assigned_staff_user_id": str(lvn_user.id),
+                "assigned_staff_name": lvn_user.full_name,
+                "supervision_type": "PRESENT",
+                "observation_datetime": "2026-04-01T09:40",
+                "rn_supervisor_name": "Test User",
+                "services_meet_patient_needs": "YES",
+                "follows_care_plan": "YES",
+                "ordered_interventions_completed": "YES",
+                "documentation_consistent": "YES",
+                "demonstrates_competency": "YES",
+                "communication_appropriate": "YES",
+                "infection_control_safety": "YES",
+                "patient_family_concerns": "NO",
+                "corrective_action_required": "NO",
+                "notification_documented": "NO",
+                "follow_up_required": "NO",
+                "supervisor_comments": "Medication reconciliation reviewed with no discrepancies.",
+            },
+        },
+        "care_provided": {
+            "physical_comfort_support": True,
+            "structural_functional_activity_support": True,
+            "emotional_support": True,
+            "spiritual_support": False,
+            "safety_instructions": True,
+            "interpersonal_relationship_support": False,
+            "environmental_needs": True,
+            "self_determination_preference_needs": True,
+            "knowledge_related_needs": True,
+            "language_communication_related_needs": False,
+            "other_needs": True,
+            "other_needs_text": "Reinforced oxygen safety and medication schedule with caregiver.",
+        },
+        "visit_checklist": {
+            "updated_family_pcg": True,
+            "updated_cm_md": True,
+            "comfort_pack_med_checked": True,
+            "dme_inspected": True,
+            "foley_cath_checked": False,
+            "foley_cath_last_changed": None,
+            "gi_tube_checked": False,
+            "next_visit_confirmed": True,
+        },
+        "death_disposal_notes": None,
+        "death_disposal": None,
+        "narrative": (
+            "Skilled nursing visit completed. Patient alert, mild dyspnea with exertion, "
+            "pain controlled after routine interventions, caregiver education reinforced."
+        ),
+    }
+
+
 def _make_visit_note(
     db_session,
     patient,
@@ -168,6 +314,194 @@ def _make_visit_note(
     db_session.add(note)
     db_session.commit()
     return visit, note
+
+
+@pytest.mark.integration
+def test_rn_visit_note_api_round_trip_persists_full_content_and_finalization(client, db_session):
+    tenant_id = db_session.info["tenant_id"]
+    patient = _make_patient(db_session, tenant_id)
+    admission = _make_admission(db_session, patient, tenant_id)
+    _assign(db_session, tenant_id, patient.id, TEST_USER_ID, Discipline.RN, is_primary=True)
+    hha_user = _make_user(db_session, tenant_id, role="CHHA", full_name="Helpful Aide")
+    lvn_user = _make_user(db_session, tenant_id, role="LVN", full_name="Assigned LVN")
+    _assign(db_session, tenant_id, patient.id, hha_user.id, Discipline.CHHA, is_primary=True)
+    _assign(db_session, tenant_id, patient.id, lvn_user.id, Discipline.LVN)
+
+    create_response = client.post(
+        "/visits/",
+        headers=_headers("RN", tenant_id),
+        json={
+            "patient_id": str(patient.id),
+            "visit_type": "RN",
+            "service_type": "SN",
+            "form_type": "ASSESS",
+            "visit_schedule_type": "SCHEDULED",
+            "level_of_care": "ROUTINE_HOME_CARE",
+        },
+    )
+    assert create_response.status_code == 201, create_response.text
+    created = create_response.json()
+    visit_id = created["visit_id"]
+    assert created["visit_type"] == "RN"
+    assert created["form_type"] == "ASSESS"
+    assert created["primary_form"] == "RN_ASSESS"
+
+    payload = _round_trip_content("2026-04-01", hha_user=hha_user, lvn_user=lvn_user)
+    save_response = client.put(
+        f"/visits/{visit_id}/visit-note",
+        json=payload,
+        headers=_headers("RN", tenant_id),
+    )
+    assert save_response.status_code == 200, save_response.text
+    saved = save_response.json()
+    saved_content = saved["content"]
+
+    for field_name in (
+        "correction",
+        "type_of_visit",
+        "visit_kind",
+        "form_type",
+        "care_level",
+        "visit_date",
+        "time_in",
+        "time_out",
+        "duration",
+        "entered_by",
+        "staff_assigned",
+        "narrative",
+        "death_disposal_notes",
+        "death_disposal",
+    ):
+        assert saved_content[field_name] == payload[field_name]
+
+    for field_name in (
+        "pain",
+        "vitals",
+        "functional_decline",
+        "care_provided",
+        "visit_checklist",
+    ):
+        assert saved_content[field_name] == payload[field_name]
+
+    assert saved_content["signs_symptoms"]["nutrition"]["severity"] == "MODERATE"
+    assert saved_content["signs_symptoms"]["nutrition"]["oral_intake"] == "REDUCED"
+    assert saved_content["signs_symptoms"]["nutrition"]["diet"] == "MECHANICAL_SOFT"
+    assert saved_content["signs_symptoms"]["nutrition"]["selected_findings"] == ["appetite_decline"]
+    assert (
+        saved_content["signs_symptoms"]["nutrition"]["other_observation"]
+        == payload["signs_symptoms"]["nutrition"]["other_observation"]
+    )
+    assert saved_content["signs_symptoms"]["mobility"]["ambulatory_status"] == "LIMITED"
+    assert saved_content["signs_symptoms"]["mobility"]["assistive_device"] == "WALKER"
+    assert saved_content["signs_symptoms"]["mobility"]["assistance_level"] == "ONE_PERSON"
+    assert saved_content["signs_symptoms"]["mobility"]["endurance"] == "LIMITED"
+    assert saved_content["signs_symptoms"]["mobility"]["bedbound_status"] == "NO"
+    assert saved_content["signs_symptoms"]["adl_assessment"]["adl_total_score"] == 12
+    assert saved_content["signs_symptoms"]["adl_assessment"]["adl_scores"] == (
+        payload["signs_symptoms"]["adl_assessment"]["adl_scores"]
+    )
+    assert saved_content["signs_symptoms"]["fall_incidence"]["assessed_no_issues"] is True
+    assert saved_content["signs_symptoms"]["safety_issues"]["assessed_no_issues"] is True
+
+    for section_name in ("hha", "lvn_lpn"):
+        for field_name, value in payload["supervisory_review"][section_name].items():
+            assert saved_content["supervisory_review"][section_name][field_name] == value
+        audit = saved_content["supervisory_review"][section_name]["audit"]
+        assert audit["created_by_user_id"] == str(TEST_USER_ID)
+        assert audit["updated_by_user_id"] == str(TEST_USER_ID)
+        assert audit["created_at"]
+        assert audit["updated_at"]
+
+    primary_note = (
+        db_session.query(ClinicalNote)
+        .filter(
+            ClinicalNote.visit_id == uuid.UUID(visit_id),
+            ClinicalNote.is_primary_form.is_(True),
+        )
+        .one()
+    )
+    assert primary_note.content["vitals"]["bp_systolic"] == "128"
+    assert primary_note.content["signs_symptoms"]["nutrition"]["selected_findings"] == ["appetite_decline"]
+    assert primary_note.content["supervisory_review"]["hha"]["assigned_staff_name"] == "Helpful Aide"
+
+    get_response = client.get(f"/visits/{visit_id}/visit-note", headers=_headers("RN", tenant_id))
+    assert get_response.status_code == 200, get_response.text
+    reopened = get_response.json()
+    assert reopened["content"]["narrative"] == payload["narrative"]
+    assert reopened["content"]["care_provided"] == payload["care_provided"]
+    assert reopened["content"]["visit_checklist"] == payload["visit_checklist"]
+    assert reopened["content"]["supervisory_review"]["lvn_lpn"]["supervisor_comments"] == (
+        payload["supervisory_review"]["lvn_lpn"]["supervisor_comments"]
+    )
+
+    finalize_response = client.post(
+        f"/visits/{visit_id}/finalize",
+        headers=_headers("RN", tenant_id),
+    )
+    assert finalize_response.status_code == 200, finalize_response.text
+    assert finalize_response.json()["status"] == "finalized"
+
+    db_session.refresh(primary_note)
+    finalized_visit = db_session.get(Visit, uuid.UUID(visit_id))
+    assert finalized_visit is not None
+    assert finalized_visit.status == "FINALIZED"
+    assert primary_note.status == "FINALIZED"
+    assert primary_note.signed_by == TEST_USER_ID
+    assert primary_note.signed_at is not None
+    assert primary_note.finalized_by == TEST_USER_ID
+    assert primary_note.finalized_at is not None
+    assert primary_note.content["narrative"] == payload["narrative"]
+    assert (
+        primary_note.content["supervisory_review"]["hha"]["audit"]["finalized_by_user_id"]
+        == str(TEST_USER_ID)
+    )
+    assert (
+        primary_note.content["supervisory_review"]["lvn_lpn"]["audit"]["finalized_by_user_id"]
+        == str(TEST_USER_ID)
+    )
+
+    list_response = client.get(
+        f"/visits/patient/{patient.id}/visit-notes",
+        headers=_headers("RN", tenant_id),
+    )
+    assert list_response.status_code == 200, list_response.text
+    listed_row = next(
+        row
+        for row in list_response.json()
+        if row["source"] == "VISIT_NOTE" and row["visit_id"] == visit_id
+    )
+    assert listed_row["discipline"] == "RN"
+    assert listed_row["form_type"] == "ASSESS"
+    assert listed_row["status"] == "FINALIZED"
+    assert "Skilled nursing visit completed" in listed_row["narrative_preview"]
+
+    finalized_get = client.get(f"/visits/{visit_id}/visit-note", headers=_headers("RN", tenant_id))
+    assert finalized_get.status_code == 200, finalized_get.text
+    finalized_payload = finalized_get.json()
+    assert finalized_payload["finalized_by"] == str(TEST_USER_ID)
+    assert finalized_payload["finalized_at"] is not None
+    assert finalized_payload["content"]["pain"] == payload["pain"]
+    assert finalized_payload["content"]["vitals"] == payload["vitals"]
+
+
+@pytest.mark.integration
+def test_update_visit_note_rejects_unknown_body_system_key(client, db_session):
+    tenant_id = db_session.info["tenant_id"]
+    patient = _make_patient(db_session, tenant_id)
+    admission = _make_admission(db_session, patient, tenant_id)
+    _assign(db_session, tenant_id, patient.id, TEST_USER_ID, Discipline.RN, is_primary=True)
+    current_visit, _ = _make_visit_note(db_session, patient, admission, tenant_id=tenant_id, visit_date="2026-04-01", finalized=False)
+
+    invalid_payload = _base_content("2026-04-01")
+    invalid_payload["signs_symptoms"]["imaginary_system"] = {"severity": "MILD"}
+
+    response = client.put(
+        f"/visits/{current_visit.id}/visit-note",
+        json=invalid_payload,
+        headers=_headers("RN", tenant_id),
+    )
+    assert response.status_code == 422, response.text
+    assert "Unknown signs_symptoms system" in response.text
 
 
 @pytest.mark.integration
