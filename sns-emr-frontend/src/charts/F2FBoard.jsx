@@ -10,6 +10,22 @@ import { listF2FEncounters, createF2FEncounter, finalizeF2FEncounter } from "../
 // is the actual authority boundary.
 const F2F_PERFORMER_ROLES = ["MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN", "NP", "PA"];
 
+// F2F_PHYSICIAN_ATTESTOR_ROLES (server-enforced in f2f_service.py): only a
+// physician-level role may attest/finalize an NP- or PA-performed F2F
+// encounter (backend requires a non-null attestation_summary and 403s any
+// other caller). NP/PA performers must NEVER see or be able to submit their
+// own "Finalize" action for an encounter they performed — the backend
+// would reject it every time, so the UI must reflect that boundary rather
+// than let the user hit a guaranteed 422/403.
+const F2F_PHYSICIAN_ATTESTOR_ROLES = ["MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "HOSPICE_PHYSICIAN"];
+
+function canFinalizeEncounter(encounter, role) {
+  if (encounter.performed_by_role === "NP" || encounter.performed_by_role === "PA") {
+    return F2F_PHYSICIAN_ATTESTOR_ROLES.includes(role);
+  }
+  return F2F_PERFORMER_ROLES.includes(role);
+}
+
 const input = {
   width: "100%",
   padding: "10px 12px",
@@ -58,6 +74,10 @@ export default function F2FBoard({ patientId }) {
   const [busyId, setBusyId] = useState(null);
   const [formMessage, setFormMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Per-encounter attestation-summary drafts, keyed by encounter id, for
+  // the physician-attestation textarea shown when finalizing an NP/PA-
+  // performed F2F (backend requires this text; see F2F_PHYSICIAN_ATTESTOR_ROLES).
+  const [attestationDrafts, setAttestationDrafts] = useState({});
 
   const [form, setForm] = useState({
     benefit_period_id: "",
@@ -165,10 +185,21 @@ export default function F2FBoard({ patientId }) {
   };
 
   const handleFinalize = async (encounter) => {
+    const requiresAttestation = encounter.performed_by_role === "NP" || encounter.performed_by_role === "PA";
+    const attestationSummary = (attestationDrafts[encounter.id] || "").trim();
+    if (requiresAttestation && !attestationSummary) {
+      setError(`A physician attestation summary is required to finalize this ${encounter.performed_by_role}-performed F2F.`);
+      return;
+    }
     setBusyId(encounter.id);
     setError("");
     try {
-      await finalizeF2FEncounter(encounter.id);
+      await finalizeF2FEncounter(encounter.id, requiresAttestation ? attestationSummary : undefined);
+      setAttestationDrafts((prev) => {
+        const next = { ...prev };
+        delete next[encounter.id];
+        return next;
+      });
       reload();
     } catch (err) {
       console.error("Failed to finalize F2F encounter:", err);
@@ -364,10 +395,30 @@ export default function F2FBoard({ patientId }) {
               </div>
             )}
             {enc.summary && <div style={{ fontSize: 12, color: COLORS.dim }}>{enc.summary}</div>}
-            {enc.status === "DRAFT" && canPerform && (
-              <button style={S.btn(COLORS.green)} disabled={busyId === enc.id} onClick={() => handleFinalize(enc)}>
-                Finalize F2F
-              </button>
+            {enc.status === "DRAFT" && (enc.performed_by_role === "NP" || enc.performed_by_role === "PA") && (
+              <div style={{ fontSize: 11, color: COLORS.dim }}>
+                Requires physician-level review and attestation before finalization (Medical Director / Attending Physician / Hospice Physician).
+              </div>
+            )}
+            {enc.status === "DRAFT" && canFinalizeEncounter(enc, currentUser?.role) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {(enc.performed_by_role === "NP" || enc.performed_by_role === "PA") && (
+                  <div style={formGroup}>
+                    <label style={label}>Physician Attestation Summary (required)</label>
+                    <textarea
+                      style={textarea}
+                      value={attestationDrafts[enc.id] || ""}
+                      onChange={(e) =>
+                        setAttestationDrafts((prev) => ({ ...prev, [enc.id]: e.target.value }))
+                      }
+                      placeholder="Document physician review of the encounter and clinical justification for continued hospice eligibility…"
+                    />
+                  </div>
+                )}
+                <button style={S.btn(COLORS.green)} disabled={busyId === enc.id} onClick={() => handleFinalize(enc)}>
+                  Finalize F2F
+                </button>
+              </div>
             )}
           </div>
         ))}
