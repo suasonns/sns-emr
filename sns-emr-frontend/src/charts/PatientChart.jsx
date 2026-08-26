@@ -30,6 +30,7 @@ import PostDeathBereavementBoard from './PostDeathBereavementBoard';
 import BereavementLettersBoard from './BereavementLettersBoard';
 import BereavementSupportBoard from './BereavementSupportBoard';
 import DocumentsBoard from './DocumentsBoard';
+import CommunicationLogBoard from './CommunicationLogBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -847,6 +848,8 @@ const PatientChart = () => {
       case 'intake-docs':
       case 'other-files':
         return <DocumentsBoard patientId={resolvedPatientId} sectionKey={activeSection} />;
+      case 'comm-log':
+        return <CommunicationLogBoard patientId={resolvedPatientId} />;
       default:
         return (
           <div style={{

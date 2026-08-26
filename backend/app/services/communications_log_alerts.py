@@ -4,7 +4,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models.notification import Notification
+from app.services.notification_engine import create_notification
 
 
 def create_commlog_alerts(
@@ -28,13 +28,14 @@ def create_commlog_alerts(
     unique_user_ids = list(dict.fromkeys(user_ids))
 
     for user_id in unique_user_ids:
-        db.add(
-            Notification(
-                tenant_id=tenant_id,
-                user_id=user_id,
-                patient_id=patient_id,
-                source_type="COMMUNICATIONS_LOG",
-                source_id=commlog_id,
-                message=message,
-            )
+        create_notification(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            patient_id=patient_id,
+            title="New Communication Log Entry",
+            message=message,
+            notification_type="COMMUNICATION_LOG",
+            source_type="COMMUNICATIONS_LOG",
+            source_id=commlog_id,
         )
