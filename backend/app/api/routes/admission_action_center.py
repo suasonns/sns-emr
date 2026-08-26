@@ -143,6 +143,7 @@ def complete_action_center_request(
         result = service.complete_request(
             db,
             tenant_id=tenant_id,
+            patient_id=record.patient_id,
             request_id=request_uuid,
             user_id=_user_id(current_user),
             completion_evidence=payload.completion_evidence,
@@ -175,6 +176,7 @@ def cancel_action_center_request(
         result = service.cancel_request(
             db,
             tenant_id=tenant_id,
+            patient_id=record.patient_id,
             request_id=request_uuid,
             user_id=_user_id(current_user),
             cancellation_reason=payload.cancellation_reason,
@@ -206,6 +208,7 @@ def update_action_center_request_status(
         result = service.update_status(
             db,
             tenant_id=tenant_id,
+            patient_id=record.patient_id,
             request_id=request_uuid,
             user_id=_user_id(current_user),
             new_status=payload.status,
