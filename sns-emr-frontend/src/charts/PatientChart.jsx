@@ -31,6 +31,7 @@ import BereavementLettersBoard from './BereavementLettersBoard';
 import BereavementSupportBoard from './BereavementSupportBoard';
 import DocumentsBoard from './DocumentsBoard';
 import CommunicationLogBoard from './CommunicationLogBoard';
+import FaxesBoard from './FaxesBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -850,6 +851,8 @@ const PatientChart = () => {
         return <DocumentsBoard patientId={resolvedPatientId} sectionKey={activeSection} />;
       case 'comm-log':
         return <CommunicationLogBoard patientId={resolvedPatientId} />;
+      case 'faxes':
+        return <FaxesBoard patientId={resolvedPatientId} />;
       default:
         return (
           <div style={{
