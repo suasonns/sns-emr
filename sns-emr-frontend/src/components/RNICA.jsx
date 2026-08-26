@@ -85,6 +85,9 @@ import {
   approvePhysicianOrder,
   executePhysicianOrder,
   cancelPhysicianOrder,
+  ORDER_SIGNER_ROLES,
+  getPhysicianOrderStatusTone,
+  formatPhysicianOrderStatusLabel,
 } from "../api/physicianOrders";
 import { getCurrentUser } from "../api/session";
 import { fetchFacesheet, fetchPerformanceHistory } from "../api/facesheet";
@@ -6401,9 +6404,23 @@ const ohTabBtn = (active) => ({
   cursor: "pointer",
 });
 
+// Maps the backend-agnostic status tone (physicianOrders.ts) onto this
+// surface's local SNS design tokens. The tone→severity mapping itself lives
+// in physicianOrders.ts (shared with PhysicianOrdersBoard.jsx) so the two
+// order-status surfaces cannot silently drift out of sync.
+const OH_TONE_COLORS = {
+  neutral: SNS_COLORS.muted,
+  warning: SNS_COLORS.orange,
+  info: SNS_COLORS.blue,
+  success: SNS_COLORS.green,
+  danger: SNS_COLORS.red,
+};
+
 export function OrdersHubCard({ patientId }) {
   const currentUser = getCurrentUser();
-  const isMD = currentUser?.role === "MD";
+  // Any role the backend accepts as an order signer (not just legacy "MD")
+  // must see the Approve/Countersign actions -- see ORDER_SIGNER_ROLES.
+  const canSignOrders = ORDER_SIGNER_ROLES.includes(currentUser?.role);
 
   const [activeType, setActiveType] = useState("DME");
   const [orders, setOrders] = useState([]);
@@ -6884,10 +6901,10 @@ export function OrdersHubCard({ patientId }) {
                   <div style={{ fontSize: 13, color: SNS_COLORS.white, fontWeight: 600, maxWidth: "70%" }}>{o.order_text}</div>
                   <span style={{
                     fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 8px", textTransform: "uppercase",
-                    border: `1px solid ${o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange}`,
-                    color: o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange,
+                    border: `1px solid ${o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)]}`,
+                    color: o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)],
                   }}>
-                    {o.status === "EXECUTED" && o.awaiting_countersignature ? "Administered — Awaiting MD Countersignature" : o.status.replace(/_/g, " ")}
+                    {o.awaiting_countersignature ? "Administered — Awaiting Countersignature" : formatPhysicianOrderStatusLabel(o.status, o.status_label)}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: SNS_COLORS.dim }}>
@@ -6902,12 +6919,12 @@ export function OrdersHubCard({ patientId }) {
                       Administer Now (Verbal Order)
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && canSignOrders && (
                     <button type="button" style={ohBtnSecondary} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Approve &amp; Sign (MD)
+                      Approve &amp; Sign
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !canSignOrders && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
                     <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Awaiting Medical Director signature</span>
                   )}
                   {o.status === "APPROVED" && (
@@ -6915,15 +6932,15 @@ export function OrdersHubCard({ patientId }) {
                       Mark Executed
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && isMD && (
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && canSignOrders && (
                     <button type="button" style={{ ...ohBtnSecondary, borderColor: SNS_COLORS.blue, color: SNS_COLORS.blue }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Countersign (MD)
+                      Countersign
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && !isMD && (
-                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && !canSignOrders && (
+                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting countersignature</span>
                   )}
-                  {(o.status === "DRAFT" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
+                  {(o.status === "DRAFT" || o.status === "PENDING_CLINICAL_REVIEW" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
                     <button type="button" style={{ ...ohBtnSecondary, color: SNS_COLORS.red, borderColor: SNS_COLORS.red }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, (id) => cancelPhysicianOrder(id, "Cancelled from Orders Hub"))}>
                       Cancel
                     </button>

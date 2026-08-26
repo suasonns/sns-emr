@@ -12,6 +12,9 @@ import {
   approvePhysicianOrder,
   executePhysicianOrder,
   cancelPhysicianOrder,
+  ORDER_SIGNER_ROLES,
+  getPhysicianOrderStatusTone,
+  formatPhysicianOrderStatusLabel,
 } from "../api/physicianOrders";
 
 const MED_PREFIX = "MEDICATION::";
@@ -49,12 +52,16 @@ const poFormGroup = { marginBottom: 10 };
 const poBtnPrimary = { ...S.btn(COLORS.teal) };
 const poBtnSecondary = { ...S.btnOutline, padding: "6px 12px", fontSize: 12 };
 
-const STATUS_COLORS = {
-  DRAFT: COLORS.muted,
-  PENDING_HOSPICE_MD_APPROVAL: COLORS.orange,
-  APPROVED: COLORS.blue,
-  EXECUTED: COLORS.green,
-  CANCELLED: COLORS.red,
+// Maps the backend-agnostic status tone (see physicianOrders.ts) onto this
+// surface's local SNS design tokens. Keeping the tone→severity mapping in
+// physicianOrders.ts (shared with RNICA.jsx's OrdersHubCard) means the two
+// surfaces cannot silently drift out of sync as new statuses are added.
+const TONE_COLORS = {
+  neutral: COLORS.muted,
+  warning: COLORS.orange,
+  info: COLORS.blue,
+  success: COLORS.green,
+  danger: COLORS.red,
 };
 
 const SOURCE_TYPE_LABELS = {
@@ -67,8 +74,8 @@ function formatSourceType(sourceType) {
   return SOURCE_TYPE_LABELS[sourceType] || (sourceType || "").replace(/_/g, " ");
 }
 
-function StatusBadge({ status, awaitingCountersignature }) {
-  const color = awaitingCountersignature ? COLORS.orange : (STATUS_COLORS[status] || COLORS.muted);
+function StatusBadge({ status, statusLabel, awaitingCountersignature }) {
+  const color = awaitingCountersignature ? COLORS.orange : TONE_COLORS[getPhysicianOrderStatusTone(status)];
   return (
     <span
       style={{
@@ -82,14 +89,16 @@ function StatusBadge({ status, awaitingCountersignature }) {
         letterSpacing: 0.4,
       }}
     >
-      {awaitingCountersignature ? "Administered — Awaiting MD Countersignature" : (status || "").replace(/_/g, " ")}
+      {awaitingCountersignature ? "Administered — Awaiting Countersignature" : formatPhysicianOrderStatusLabel(status, statusLabel)}
     </span>
   );
 }
 
 export default function PhysicianOrdersBoard({ patientId, initialView = "history" }) {
   const currentUser = getCurrentUser();
-  const isMD = currentUser?.role === "MD";
+  // Any role the backend accepts as an order signer (not just legacy "MD")
+  // must see the Approve/Countersign actions -- see ORDER_SIGNER_ROLES.
+  const canSignOrders = ORDER_SIGNER_ROLES.includes(currentUser?.role);
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -523,7 +532,7 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                 <div style={{ fontSize: 13.5, color: COLORS.white, fontWeight: 600, maxWidth: "70%" }}>
                   {order.order_text}
                 </div>
-                <StatusBadge status={order.status} awaitingCountersignature={order.awaiting_countersignature} />
+                <StatusBadge status={order.status} statusLabel={order.status_label} awaitingCountersignature={order.awaiting_countersignature} />
               </div>
               <div style={{ fontSize: 11.5, color: COLORS.muted }}>
                 {order.ordered_by_provider_name} ({order.ordered_by_provider_role}) · {formatSourceType(order.source_type)} ·{" "}
@@ -548,16 +557,16 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                     Administer Now (Verbal Order)
                   </button>
                 )}
-                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && canSignOrders && (
                   <button
                     style={poBtnSecondary}
                     disabled={busyOrderId === order.id}
                     onClick={() => runAction(order.id, approvePhysicianOrder)}
                   >
-                    Approve &amp; Sign (MD)
+                    Approve &amp; Sign
                   </button>
                 )}
-                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(order.source_type === "VERBAL_PHONE" && order.phone_readback_confirmed) && (
+                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && !canSignOrders && !(order.source_type === "VERBAL_PHONE" && order.phone_readback_confirmed) && (
                   <span style={{ fontSize: 11, color: COLORS.orange }}>Awaiting Medical Director approval</span>
                 )}
                 {order.status === "APPROVED" && (
@@ -569,19 +578,19 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                     Mark Executed
                   </button>
                 )}
-                {order.status === "EXECUTED" && order.awaiting_countersignature && isMD && (
+                {order.status === "EXECUTED" && order.awaiting_countersignature && canSignOrders && (
                   <button
                     style={{ ...poBtnSecondary, borderColor: COLORS.blue, color: COLORS.blue }}
                     disabled={busyOrderId === order.id}
                     onClick={() => runAction(order.id, approvePhysicianOrder)}
                   >
-                    Countersign (MD)
+                    Countersign
                   </button>
                 )}
-                {order.status === "EXECUTED" && order.awaiting_countersignature && !isMD && (
-                  <span style={{ fontSize: 11, color: COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                {order.status === "EXECUTED" && order.awaiting_countersignature && !canSignOrders && (
+                  <span style={{ fontSize: 11, color: COLORS.orange }}>Administered — awaiting countersignature</span>
                 )}
-                {(order.status === "DRAFT" || order.status === "PENDING_HOSPICE_MD_APPROVAL" || order.status === "APPROVED") && (
+                {(order.status === "DRAFT" || order.status === "PENDING_CLINICAL_REVIEW" || order.status === "PENDING_HOSPICE_MD_APPROVAL" || order.status === "APPROVED") && (
                   <button
                     style={{ ...poBtnSecondary, color: COLORS.red, borderColor: COLORS.red }}
                     disabled={busyOrderId === order.id}

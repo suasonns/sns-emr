@@ -3,15 +3,70 @@ import { normalizeListResponse } from "./normalizeListResponse";
 
 export type PhysicianOrderStatus =
   | "DRAFT"
+  | "PENDING_CLINICAL_REVIEW"
   | "PENDING_HOSPICE_MD_APPROVAL"
   | "APPROVED"
   | "EXECUTED"
+  | "COMPLETED"
+  | "EXPIRED"
   | "CANCELLED";
+
+// Roles the backend accepts as order signers/countersigners (mirrors
+// backend/app/services/physician_order_service.py::ORDER_ALL_SIGNER_ROLES
+// = ORDER_PRIMARY_SIGNER_ROLES + ORDER_ALTERNATE_SIGNER_ROLES). Any UI gate
+// that decides whether to show the Approve/Countersign action must check
+// membership in this full list, not just the legacy "MD" role string, or
+// Medical Directors, Attending/Hospice Physicians, Medical Director
+// Designees, NPs, and PAs will never see the button despite the backend
+// accepting their signature.
+export const ORDER_SIGNER_ROLES = Object.freeze([
+  "MD",
+  "ATTENDING_PHYSICIAN",
+  "HOSPICE_PHYSICIAN",
+  "MEDICAL_DIRECTOR",
+  "MEDICAL_DIRECTOR_DESIGNEE",
+  "NP",
+  "PA",
+]);
+
+// Semantic severity for each physician-order status, independent of any
+// particular component's color palette. Every surface that renders a status
+// badge (PhysicianOrdersBoard.jsx, RNICA.jsx OrdersHubCard) should derive its
+// color from this single source of truth instead of re-deriving its own
+// per-status color map, so the two surfaces cannot silently drift out of
+// sync as new statuses are added.
+export type PhysicianOrderStatusTone = "neutral" | "warning" | "info" | "success" | "danger";
+
+const ORDER_STATUS_TONES: Record<string, PhysicianOrderStatusTone> = {
+  DRAFT: "neutral",
+  PENDING_CLINICAL_REVIEW: "warning",
+  PENDING_HOSPICE_MD_APPROVAL: "warning",
+  APPROVED: "info",
+  EXECUTED: "success",
+  COMPLETED: "success",
+  EXPIRED: "danger",
+  CANCELLED: "danger",
+};
+
+export function getPhysicianOrderStatusTone(
+  status?: string | null
+): PhysicianOrderStatusTone {
+  return ORDER_STATUS_TONES[status ?? ""] ?? "neutral";
+}
+
+export function formatPhysicianOrderStatusLabel(
+  status?: string | null,
+  statusLabel?: string | null
+): string {
+  if (statusLabel) return statusLabel;
+  return (status ?? "").replace(/_/g, " ");
+}
 
 export type PhysicianOrderRecord = {
   id: string;
   patient_id: string;
   status: PhysicianOrderStatus;
+  status_label?: string;
   order_text: string;
   order_category: string;
   source_type: "WRITTEN" | "VERBAL_PHONE" | "ELECTRONIC" | "IDG";
