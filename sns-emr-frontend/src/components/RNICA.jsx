@@ -9893,8 +9893,6 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     });
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing, isUpdateAssessment]);
-    return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
-  }, [isOngoing, isUpdateAssessment]);
 
   // Default every section to collapsed on load so the RN sees one page of
   // short, tap-to-open rows instead of all 28 sections expanded at once
