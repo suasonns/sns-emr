@@ -498,7 +498,23 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
     setMessage("");
     updateVisitNote(visitId, content)
       .then((record) => {
-        setContent({ ...DEFAULT_CONTENT, ...record.content });
+        // Mirror the defensive per-key merge used on initial load: the
+        // backend nulls out pain/vitals/care_provided/visit_checklist for
+        // non-full-body form types (see backend/app/api/visits.py), and a
+        // flat spread would let those nulls overwrite DEFAULT_CONTENT,
+        // crashing the UI (e.g. null.controlled) if the user then switches
+        // back to a full-body form type without reloading.
+        setContent((prev) => ({
+          ...DEFAULT_CONTENT,
+          ...record.content,
+          entered_by: record.content?.entered_by ?? prev.entered_by,
+          pain: { ...DEFAULT_CONTENT.pain, ...(record.content?.pain || {}) },
+          vitals: { ...DEFAULT_CONTENT.vitals, ...(record.content?.vitals || {}) },
+          care_provided: { ...DEFAULT_CONTENT.care_provided, ...(record.content?.care_provided || {}) },
+          visit_checklist: { ...DEFAULT_CONTENT.visit_checklist, ...(record.content?.visit_checklist || {}) },
+          signs_symptoms: record.content?.signs_symptoms || {},
+          form_type: record.form_type || record.content?.form_type || prev.form_type,
+        }));
         setMessage("Visit note saved.");
         onSaved?.();
       })
