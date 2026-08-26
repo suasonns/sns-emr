@@ -9,6 +9,13 @@ export type PatientDocument = {
   uploaded_at: string;
   uploaded_by: string | null;
   is_flagged: boolean;
+  flag_tier: string | null;
+  ai_document_type_guess: string | null;
+  ai_summary: string | null;
+  ai_confidence: number | null;
+  ai_key_findings: string[] | null;
+  ai_needs_manual_review: boolean | null;
+  has_extracted_text: boolean;
 };
 
 export type UploadDocumentResponse = PatientDocument & {

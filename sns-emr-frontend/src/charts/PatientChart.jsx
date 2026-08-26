@@ -29,6 +29,7 @@ import BereavementPOCBoard from './BereavementPOCBoard';
 import PostDeathBereavementBoard from './PostDeathBereavementBoard';
 import BereavementLettersBoard from './BereavementLettersBoard';
 import BereavementSupportBoard from './BereavementSupportBoard';
+import DocumentsBoard from './DocumentsBoard';
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -842,6 +843,10 @@ const PatientChart = () => {
         return <BereavementLettersBoard patientId={resolvedPatientId} />;
       case 'bereavement-support':
         return <BereavementSupportBoard patientId={resolvedPatientId} />;
+      case 'all-docs':
+      case 'intake-docs':
+      case 'other-files':
+        return <DocumentsBoard patientId={resolvedPatientId} sectionKey={activeSection} />;
       default:
         return (
           <div style={{
