@@ -50,22 +50,17 @@ export default function PatientContextSidebar({
   const topLevelNav = nav.filter((item) => item.key !== "assessment" && item.parent !== "assessment" && !["nursing-assessment", "spiritual-assessment", "psychosocial-assessment"].includes(item.key));
   const displayMrn = (mrn && !looksLikeUuid(mrn)) ? mrn : (patientId && !looksLikeUuid(patientId) ? patientId : "No MRN on file");
   const resolvedOverview = patientOverview || {
-    diagnosis: "Lung cancer (C34.90), CHF, COPD",
-    painSummary: "Pain controlled with symptom review; caregiver support needs ongoing",
-    primaryProvider: "Dr. James Olsen",
-    hnpStatus: "HNP updated 2 days ago",
-    lastVisit: "RN ICA — 3 days ago",
-    disciplineHistory: [
-      "History & Physical — admission summary",
-      "Nursing Assessment — clinical status and safety review",
-      "Spiritual Assessment — coping and chaplain support",
-      "Psychosocial Assessment — caregiver burden and support needs",
-      "Tx / Meds / DME / Supplies — active orders and equipment",
-      "IDG — interdisciplinary group review",
-      "Plan of Care (POC) — current goals and revisions",
-      "Documents — uploaded patient records and referrals",
-    ],
-    careTeam: ["RN", "MSW", "SC", "MD", "Chaplain", "Admin"],
+    // No hardcoded/mock patient identity data here: displaying a fake
+    // diagnosis, provider name, or care team when the caller doesn't
+    // supply a real patientOverview could be mistaken for genuine PHI in
+    // the UI. Every field is an explicit, neutral "not available" state.
+    diagnosis: "Not available",
+    painSummary: "Patient overview not available.",
+    primaryProvider: "—",
+    hnpStatus: "—",
+    lastVisit: "—",
+    disciplineHistory: [],
+    careTeam: [],
   };
 
   return (

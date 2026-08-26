@@ -10310,22 +10310,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   careTeam: patientSummary.care_team.map((item) => item.discipline),
                 }
               : {
-                  diagnosis: "Lung cancer (C34.90), CHF, COPD",
-                  painSummary: "Pain and symptom review ongoing; support needs and caregiver concerns require coordinated follow-up across the chart.",
-                  primaryProvider: "Dr. James Olsen",
-                  hnpStatus: "Updated 2 days ago",
-                  lastVisit: "3 days ago",
-                  disciplineHistory: [
-                    "History & Physical — admission summary",
-                    "Nursing Assessment — clinical status and safety review",
-                    "Spiritual Assessment — coping and chaplain support",
-                    "Psychosocial Assessment — caregiver burden and support needs",
-                    "Tx / Meds / DME / Supplies — active orders and equipment",
-                    "IDG — interdisciplinary group review",
-                    "Plan of Care (POC) — current goals and revisions",
-                    "Documents — uploaded patient records and external supporting files",
-                  ],
-                  careTeam: ["RN", "MSW", "SC", "MD", "Chaplain", "Admin"],
+                  // No hardcoded/mock patient identity data here: showing a
+                  // fake diagnosis, provider name, or care team while the
+                  // real patient summary hasn't loaded (or failed to load)
+                  // could be mistaken for genuine PHI. Every field below is
+                  // an explicit, neutral "not yet available" placeholder.
+                  diagnosis: resolvedPatientId ? "Loading…" : "No patient selected",
+                  painSummary: resolvedPatientId
+                    ? "Patient overview is loading."
+                    : "Select a patient to view the clinical overview.",
+                  primaryProvider: "—",
+                  hnpStatus: "—",
+                  lastVisit: "—",
+                  disciplineHistory: [],
+                  careTeam: [],
                 }
           }
           sections={sidebarConfigItems.map((item) => ({
