@@ -12,6 +12,7 @@ import {
   updateVisitNote,
   finalizeVisitNote,
   listVisitNotesForPatient,
+  listAssignableStaff,
 } from "../api/visitNotes";
 import {
   ADL_ACTIVITIES,
@@ -1329,23 +1330,62 @@ const VISIT_DISCIPLINE_DEFAULTS = {
 function AddNewVisitCard({ patientId, onCreated, styles, COLORS }) {
   const currentUser = getCurrentUser();
   const [discipline, setDiscipline] = useState("RN");
+  const [staffOptions, setStaffOptions] = useState([]);
+  const [staffId, setStaffId] = useState("");
+  const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [loadingStaff, setLoadingStaff] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+
+  // Every discipline's "Create Visit" now goes through a staff+date picker
+  // instead of silently defaulting to whoever clicked the button, so every
+  // visit is tracked against a real chosen clinician.
+  useEffect(() => {
+    if (!patientId || !discipline) return;
+    let cancelled = false;
+    setLoadingStaff(true);
+    listAssignableStaff(patientId, discipline)
+      .then((rows) => {
+        if (cancelled) return;
+        setStaffOptions(rows);
+        const self = rows.find((row) => row.user_id === currentUser?.id);
+        setStaffId(self ? self.user_id : rows[0]?.user_id || currentUser?.id || "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStaffOptions([]);
+          setStaffId(currentUser?.id || "");
+        }
+      })
+      .finally(() => { if (!cancelled) setLoadingStaff(false); });
+    return () => { cancelled = true; };
+  }, [patientId, discipline, currentUser?.id]);
+
+  const staffChoices = useMemo(() => {
+    const list = staffOptions.map((row) => ({ value: row.user_id, label: `${row.name}${row.is_primary ? " (Primary)" : ""}` }));
+    if (currentUser?.id && !list.some((item) => item.value === currentUser.id)) {
+      list.unshift({ value: currentUser.id, label: `${currentUser.full_name || currentUser.name || "Me"} (Myself)` });
+    }
+    return list;
+  }, [staffOptions, currentUser]);
 
   const handleCreate = () => {
     setCreating(true);
     setError("");
     const defaults = VISIT_DISCIPLINE_DEFAULTS[discipline] || VISIT_DISCIPLINE_DEFAULTS.RN;
+    const staffLabel = staffChoices.find((item) => item.value === staffId)?.label || currentUser?.full_name || currentUser?.name || "";
     createVisitNote({
       patient_id: patientId,
       visit_type: discipline,
       service_type: defaults.serviceType,
       form_type: defaults.formType,
       visit_schedule_type: "SCHEDULED",
+      assigned_staff_id: staffId || null,
+      visit_datetime: visitDate ? `${visitDate}T00:00:00` : null,
       clinical_note: {
         entered_by: currentUser?.full_name || currentUser?.name || "",
-        staff_assigned: currentUser?.full_name || currentUser?.name || "",
-        visit_date: new Date().toISOString().slice(0, 10),
+        staff_assigned: staffLabel,
+        visit_date: visitDate,
       },
     })
       .then((response) => onCreated(response.visit_id, discipline))
@@ -1358,8 +1398,18 @@ function AddNewVisitCard({ patientId, onCreated, styles, COLORS }) {
       {error ? <div style={{ color: COLORS.error || "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div> : null}
       <div style={styles.fieldsGrid}>
         <FormSelect label="Discipline" value={discipline} onChange={setDiscipline} options={["RN", "LVN", "SC", "MSW"]} styles={styles} />
+        <FormSelect
+          label="Staff Assigned"
+          value={staffId}
+          onChange={setStaffId}
+          options={staffChoices}
+          disabled={loadingStaff}
+          placeholder={loadingStaff ? "Loading staff…" : "— Select Staff —"}
+          styles={styles}
+        />
+        <FormInput label="Visit Date" type="date" value={visitDate} onChange={setVisitDate} styles={styles} COLORS={COLORS} />
       </div>
-      <button type="button" onClick={handleCreate} disabled={creating} style={{ ...styles.btnPrimary, opacity: creating ? 0.65 : 1, marginTop: 8 }}>
+      <button type="button" onClick={handleCreate} disabled={creating || !staffId} style={{ ...styles.btnPrimary, opacity: creating || !staffId ? 0.65 : 1, marginTop: 8 }}>
         {creating ? "Creating…" : "Start Visit Note"}
       </button>
     </Card>

@@ -31,6 +31,7 @@ from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
 from app.models.user import User
+from app.models.audit_log import AuditLog
 from app.models.visit import Visit
 from app.billing.models.visit_minutes import VisitMinutes
 from app.billing.services.unit_service import calculate_units
@@ -2048,6 +2049,22 @@ class VisitCreateRequest(BaseModel):
         description="Full ROS assessment structure including issues and POC",
     )
     # =========================================================
+    # STAFF + DATE ASSIGNMENT (visit tracking requirement)
+    # =========================================================
+    assigned_staff_id: Optional[uuid.UUID] = Field(
+        default=None,
+        description=(
+            "Which staff member is documenting/performing this visit. Defaults "
+            "to the creating user when omitted (e.g. legacy callers), but every "
+            "visit creation flow now surfaces a staff picker so a supervisor or "
+            "case manager can create a visit on behalf of the assigned clinician."
+        ),
+    )
+    visit_datetime: Optional[datetime] = Field(
+        default=None,
+        description="Scheduled/actual date-time of the visit. Defaults to now() when omitted.",
+    )
+    # =========================================================
     # ✅ VALIDATIONS (ENTERPRISE CRITICAL)
     # =========================================================
     @field_validator("visit_type", mode="before")
@@ -3904,6 +3921,25 @@ def create_visit(
             detail="Patient must have an active admitted admission before creating a SOC visit",
         )
     # =========================================================
+    # RESOLVE ASSIGNED STAFF + VISIT DATE/TIME
+    # (every visit is now created through a staff+date picker, so a
+    # supervisor/case manager can create the visit on behalf of the
+    # clinician who will actually document it, and for a scheduled date
+    # other than "right now")
+    # =========================================================
+    resolved_provider_id = user_id
+    if payload.assigned_staff_id:
+        assigned_user = db.query(User).filter(User.id == payload.assigned_staff_id).first()
+        if not assigned_user or assigned_user.tenant_id != patient.tenant_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Assigned staff member was not found in this tenant",
+            )
+        resolved_provider_id = assigned_user.id
+    resolved_visit_datetime = payload.visit_datetime or now
+    if resolved_visit_datetime.tzinfo is None:
+        resolved_visit_datetime = resolved_visit_datetime.replace(tzinfo=timezone.utc)
+    # =========================================================
     # SUPERVISORY CONTEXT
     # =========================================================
     is_supervisory, supervisory_targets = _determine_supervisory_context(
@@ -3922,12 +3958,12 @@ def create_visit(
         tenant_id=patient.tenant_id,
         admission_id=resolved_admission.id,
         patient_id=patient.id,
-        provider_id=user_id,
+        provider_id=resolved_provider_id,
         visit_type=normalized,
         visit_discipline=normalized,
         visit_mode="IN_PERSON",
         status="DRAFT",
-        visit_datetime=now,
+        visit_datetime=resolved_visit_datetime,
         acuity_state_at_visit=getattr(patient, "acuity_state", None),
         form_type=validated_form_type,
         is_supervisory=is_supervisory,
@@ -4413,6 +4449,79 @@ def upsert_chha_visit_outcome(
         "outcome_id": str(outcome.id),
         "request_id": request_id,
     }
+# =========================================================
+# STAFF + DATE PICKER (all disciplines) — assignable staff lookup
+# =========================================================
+# Maps the discipline code the "Create Visit" picker shows in the UI to
+# the set of PatientAssignment.discipline enum values that count as that
+# discipline, so RN/LVN/SC/MSW/CHHA all share one staff-lookup endpoint.
+CREATE_VISIT_DISCIPLINE_ASSIGNMENT_SETS: dict[str, set[str]] = {
+    "RN": {"RN"},
+    "LVN": {"LVN", "LPN"},
+    "SC": {"SC", "CHAPLAIN"},
+    "MSW": {"SW", "MSW", "BSW", "LCSW"},
+    "CHHA": {"CHHA", "AIDE"},
+}
+@router.get("/patient/{patient_id}/assignable-staff")
+def list_assignable_staff_for_patient(
+    patient_id: uuid.UUID,
+    discipline: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    """
+    Lists the staff members eligible to be picked as "Staff Assigned" when
+    creating a new visit for this patient/discipline (the staff+date picker
+    every discipline's "Create Visit" flow now goes through, so every visit
+    is tracked against a real chosen clinician instead of always defaulting
+    silently to whoever clicked the button).
+    """
+    patient = get_authorized_patient(db, patient_id, current_user)
+    discipline_key = (discipline or "").strip().upper()
+    assignment_disciplines = CREATE_VISIT_DISCIPLINE_ASSIGNMENT_SETS.get(discipline_key)
+    if not assignment_disciplines:
+        raise HTTPException(status_code=422, detail=f"Unknown discipline '{discipline}' for staff lookup")
+    staff = _supervisory_assignment_rows(
+        db,
+        tenant_id=patient.tenant_id,
+        patient_id=patient_id,
+        disciplines=assignment_disciplines,
+    )
+    return {"discipline": discipline_key, "staff": staff}
+@router.get("/{visit_id}/edit-history")
+def get_visit_edit_history(
+    visit_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),):
+    """
+    Read-only edit/audit trail for a single visit -- who touched it, what
+    action, and when. Backs "CHHA Notes History" (and any other discipline's
+    equivalent) so staff can see how many times a visit note has been
+    edited, by whom, and on what date/time, instead of only seeing the
+    latest saved state.
+    """
+    visit = db.query(Visit).filter(Visit.id == visit_id).first()
+    if not visit:
+        raise HTTPException(status_code=404, detail="Visit not found")
+    get_authorized_patient(db, visit.patient_id, current_user)
+    rows = (
+        db.query(AuditLog, User)
+        .outerjoin(User, User.id == AuditLog.user_id)
+        .filter(
+            AuditLog.entity_type == "visit",
+            AuditLog.entity_id == str(visit.id),
+        )
+        .order_by(AuditLog.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "action": log.action,
+            "user_id": str(log.user_id) if log.user_id else None,
+            "user_name": (user.display_name or user.full_name or user.email) if user else "Unknown",
+            "created_at": log.created_at,
+        }
+        for log, user in rows
+    ]
 @router.get("/patient/{patient_id}/aide")
 def list_aide_visits_for_patient(
     patient_id: uuid.UUID,

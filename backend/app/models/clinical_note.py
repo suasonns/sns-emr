@@ -171,7 +171,7 @@ class ClinicalNote(BaseModel):
     __table_args__ = (
 
         CheckConstraint(
-            "discipline IN ('RN','LVN','NP','MD','SC','MSW','LCSW','BSW')",
+            "discipline IN ('RN','LVN','NP','PA','MD','SC','MSW','LCSW','BSW','SW','CHAPLAIN','AIDE','CHHA','ADMINISTRATIVE')",
             name="ck_discipline_valid"
         ),
 

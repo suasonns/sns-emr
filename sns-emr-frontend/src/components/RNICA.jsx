@@ -62,6 +62,7 @@ import {
   getChhaVisitOutcome,
   upsertChhaVisitOutcome,
 } from "../api/chhaVisits";
+import { createVisitNote, listAssignableStaff } from "../api/visitNotes";
 import {
   listCcHourlyNarrativeEntries,
   createCcHourlyNarrativeEntry,
@@ -4289,6 +4290,13 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
   const [selectedVisitId, setSelectedVisitId] = useState("");
   const [selectedVisitMeta, setSelectedVisitMeta] = useState(null);
   const [note, setNote] = useState(DEFAULT_CHHA_VISIT_NOTE);
+  const [showCreateVisit, setShowCreateVisit] = useState(false);
+  const [newVisitStaffOptions, setNewVisitStaffOptions] = useState([]);
+  const [newVisitStaffId, setNewVisitStaffId] = useState("");
+  const [newVisitDate, setNewVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newVisitCareLevel, setNewVisitCareLevel] = useState("RC");
+  const [creatingVisit, setCreatingVisit] = useState(false);
+  const [createVisitError, setCreateVisitError] = useState("");
 
   const reloadPatientContext = useCallback(() => {
     setLoading(true);
@@ -4317,6 +4325,63 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
   useEffect(() => {
     reloadPatientContext();
   }, [reloadPatientContext]);
+
+  // "HA CC Visit" staff+date picker -- lets the CHHA section create its own
+  // visit (RN/LVN/SC/MSW already get this via Add New Visit) instead of
+  // requiring a visit to already exist via scheduling before a note can be
+  // attached. Care Level defaults to Continuous Care since that's the
+  // primary reason this flow was requested (hourly CC documentation), but
+  // Routine is also offered since CHHA still has routine visits too.
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    listAssignableStaff(patientId, "CHHA")
+      .then((rows) => {
+        if (cancelled) return;
+        setNewVisitStaffOptions(rows);
+        const currentUser = getCurrentUser();
+        const self = rows.find((row) => row.user_id === currentUser?.id);
+        setNewVisitStaffId(self ? self.user_id : rows[0]?.user_id || currentUser?.id || "");
+      })
+      .catch(() => { if (!cancelled) setNewVisitStaffOptions([]); });
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  const newVisitStaffChoices = useMemo(() => {
+    const list = newVisitStaffOptions.map((row) => ({ value: row.user_id, label: `${row.name}${row.is_primary ? " (Primary)" : ""}` }));
+    const currentUser = getCurrentUser();
+    if (currentUser?.id && !list.some((item) => item.value === currentUser.id)) {
+      list.unshift({ value: currentUser.id, label: `${currentUser.full_name || currentUser.name || "Me"} (Myself)` });
+    }
+    return list;
+  }, [newVisitStaffOptions]);
+
+  const handleCreateAideVisit = () => {
+    setCreatingVisit(true);
+    setCreateVisitError("");
+    const currentUser = getCurrentUser();
+    const staffLabel = newVisitStaffChoices.find((item) => item.value === newVisitStaffId)?.label || currentUser?.full_name || currentUser?.name || "";
+    createVisitNote({
+      patient_id: patientId,
+      visit_type: "CHHA",
+      level_of_care: newVisitCareLevel || null,
+      visit_schedule_type: "SCHEDULED",
+      assigned_staff_id: newVisitStaffId || null,
+      visit_datetime: newVisitDate ? `${newVisitDate}T00:00:00` : null,
+      clinical_note: {
+        entered_by: currentUser?.full_name || currentUser?.name || "",
+        staff_assigned: staffLabel,
+        visit_date: newVisitDate,
+      },
+    })
+      .then((response) => {
+        setShowCreateVisit(false);
+        reloadPatientContext();
+        setSelectedVisitId(response.visit_id);
+      })
+      .catch((err) => setCreateVisitError(err.message || "Unable to create this CHHA visit."))
+      .finally(() => setCreatingVisit(false));
+  };
 
   useEffect(() => {
     if (!selectedVisitId) {
@@ -4649,6 +4714,45 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                 label: `${v.visit_datetime ? new Date(v.visit_datetime).toLocaleString() : "Undated visit"} — ${v.status}${v.has_outcome ? " ✓ documented" : ""}`,
               }))}
             />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowCreateVisit((prev) => !prev)}
+          style={{ ...styles.btnSecondary, marginTop: 8 }}
+        >
+          {showCreateVisit ? "Cancel" : "+ New CHHA Visit"}
+        </button>
+        {showCreateVisit && (
+          <div style={{ ...styles.infoBox, marginTop: 8, maxWidth: 480 }}>
+            {createVisitError && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
+            <div style={styles.fieldsGrid}>
+              <FormSelect
+                label="Staff Assigned"
+                value={newVisitStaffId}
+                onChange={setNewVisitStaffId}
+                options={newVisitStaffChoices}
+                placeholder="— Select HA Staff —"
+              />
+              <FormInput label="Visit Date" type="date" value={newVisitDate} onChange={setNewVisitDate} />
+              <FormSelect
+                label="Care Level"
+                value={newVisitCareLevel}
+                onChange={setNewVisitCareLevel}
+                options={[
+                  { value: "RC", label: "Routine Home Care" },
+                  { value: "CC", label: "Continuous Care (Crisis)" },
+                ]}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateAideVisit}
+              disabled={creatingVisit || !newVisitStaffId}
+              style={{ ...styles.btnPrimary, opacity: creatingVisit || !newVisitStaffId ? 0.65 : 1, marginTop: 8 }}
+            >
+              {creatingVisit ? "Creating…" : "Create Visit"}
+            </button>
           </div>
         )}
         {visitLocked && (

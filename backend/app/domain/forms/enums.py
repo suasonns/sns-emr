@@ -27,6 +27,12 @@ class FormFamily(str, Enum):
     PSYCHOSOCIAL = "PSYCHOSOCIAL"
     SPIRITUAL = "SPIRITUAL"
     AIDE = "AIDE"
+    # AIDE/CHHA form packages are stored in the DB-backed form_registry table
+    # (and the static form_registry.py mirror) with NoteFormFamily.SUPPORT,
+    # not "AIDE" -- without this, resolving any AIDE form package (e.g.
+    # creating a CHHA visit) raised a 500 ValidationError since "SUPPORT"
+    # wasn't an accepted value here.
+    SUPPORT = "SUPPORT"
     ADMIN = "ADMIN"
 
 

@@ -363,13 +363,17 @@ export type VisitNoteTimelineEntry = {
 
 export type CreateVisitNotePayload = {
   patient_id: string;
-  visit_type: "RN" | "LVN";
+  visit_type: "RN" | "LVN" | "SC" | "MSW" | "CHHA";
   service_type?: string;
   form_type?: string | null;
   level_of_care?: string | null;
   visit_schedule_type?: string | null;
   event_type?: string | null;
   clinical_note?: Record<string, unknown> | null;
+  /** Staff member this visit is being created for/by — populated by the staff+date picker every "Create Visit" flow now goes through. Defaults server-side to the creating user when omitted. */
+  assigned_staff_id?: string | null;
+  /** Scheduled/actual visit date-time chosen in the staff+date picker. Defaults server-side to now() when omitted. */
+  visit_datetime?: string | null;
 };
 
 export type CreateVisitNoteResponse = {
@@ -391,6 +395,45 @@ export async function createVisitNote(
   payload: CreateVisitNotePayload
 ): Promise<CreateVisitNoteResponse> {
   return unwrap(api.post("/visits/", payload), "Unable to create this visit note");
+}
+
+export type AssignableStaffMember = {
+  user_id: string;
+  name: string;
+  discipline: string;
+  is_primary: boolean;
+  assigned_at: string | null;
+};
+
+export type CreateVisitDiscipline = "RN" | "LVN" | "SC" | "MSW" | "CHHA";
+
+/**
+ * Lists the staff assigned to this patient for the given discipline, so the
+ * "Create Visit" staff+date picker (used by every discipline) can offer a
+ * real dropdown instead of always silently defaulting to whoever clicked
+ * the button.
+ */
+export async function listAssignableStaff(
+  patientId: string,
+  discipline: CreateVisitDiscipline
+): Promise<AssignableStaffMember[]> {
+  const response = await unwrap<{ discipline: string; staff: AssignableStaffMember[] }>(
+    api.get(`/visits/patient/${patientId}/assignable-staff`, { params: { discipline } }),
+    "Unable to load assignable staff for this patient"
+  );
+  return response.staff || [];
+}
+
+export type VisitEditHistoryEntry = {
+  action: string;
+  user_id: string | null;
+  user_name: string;
+  created_at: string;
+};
+
+/** Read-only edit/audit trail for a single visit — who edited it, what action, and when. */
+export async function getVisitEditHistory(visitId: string): Promise<VisitEditHistoryEntry[]> {
+  return unwrap(api.get(`/visits/${visitId}/edit-history`), "Unable to load this visit's edit history");
 }
 
 /** Loads the Visit Details + full clinical content for an existing RN/LVN visit note. */
