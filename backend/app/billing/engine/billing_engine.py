@@ -228,6 +228,64 @@ def _load_visit_minutes_by_date(
     return {row.visit_date: int(row.total_minutes or 0) for row in rows}
 
 
+CHC_NURSING_DISCIPLINES = ("RN", "LVN", "LPN")
+CHC_AIDE_DISCIPLINES = ("AIDE", "CHHA")
+
+
+def _load_chc_discipline_minutes_by_date(
+    db: Session,
+    patient_id: str,
+    start_date: date,
+    end_date: date,
+) -> tuple[dict[date, int], dict[date, list[int]]]:
+    """
+    Real documented direct-care minutes per calendar date, split out so the
+    CHC "predominantly nursing" (>=50%) rule and the agency's 4-hour/shift
+    aide cap can both be checked against actual visit_minutes rows -- never
+    a computed/assumed figure.
+
+    Returns:
+        (nursing_minutes_by_date, aide_shift_minutes_by_date) where the
+        first is the RN/LVN/LPN total per day and the second is the list of
+        individual CHHA/AIDE visit ("shift") durations per day.
+    """
+    sql = text(
+        """
+        SELECT
+            v.visit_datetime::date AS visit_date,
+            v.visit_discipline AS discipline,
+            v.id AS visit_id,
+            COALESCE(SUM(vm.minutes), 0) AS visit_minutes
+        FROM visit_minutes vm
+        JOIN visits v ON v.id = vm.visit_id
+        WHERE v.patient_id::text = :patient_id
+          AND v.visit_datetime::date BETWEEN :start_date AND :end_date
+        GROUP BY v.visit_datetime::date, v.visit_discipline, v.id
+        """
+    )
+
+    rows = db.execute(
+        sql,
+        {
+            "patient_id": patient_id,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).all()
+
+    nursing_minutes_by_date: dict[date, int] = {}
+    aide_shift_minutes_by_date: dict[date, list[int]] = {}
+    for row in rows:
+        discipline = (row.discipline or "").upper()
+        minutes = int(row.visit_minutes or 0)
+        if discipline in CHC_NURSING_DISCIPLINES:
+            nursing_minutes_by_date[row.visit_date] = nursing_minutes_by_date.get(row.visit_date, 0) + minutes
+        elif discipline in CHC_AIDE_DISCIPLINES:
+            aide_shift_minutes_by_date.setdefault(row.visit_date, []).append(minutes)
+
+    return nursing_minutes_by_date, aide_shift_minutes_by_date
+
+
 def _upsert_billing_summary(
     db: Session,
     tenant_id: str,
@@ -626,11 +684,19 @@ def generate_patient_billing(
         start_date=cycle.start_date,
         end_date=cycle.end_date,
     )
+    chc_nursing_minutes_by_date, chc_aide_shift_minutes_by_date = _load_chc_discipline_minutes_by_date(
+        db=db,
+        patient_id=patient_id,
+        start_date=cycle.start_date,
+        end_date=cycle.end_date,
+    )
     loc_doc_gap_result = compute_loc_documentation_gaps(
         gip_events=gip_events,
         respite_events=respite_events,
         continuous_events=continuous_events,
         chc_minutes_by_date=chc_minutes_by_date,
+        chc_nursing_minutes_by_date=chc_nursing_minutes_by_date,
+        chc_aide_shift_minutes_by_date=chc_aide_shift_minutes_by_date,
     )
 
     # ---------------------------------------------------------

@@ -16,6 +16,17 @@ Real CMS rules this checks against:
     predominantly nursing care with a minimum of 8 hours of direct patient
     care in a 24-hour period; a CHC day without >=480 documented minutes
     of direct care is not CMS-supportable.
+  - CHC care must also be "predominantly nursing care" -- CGS/CMS guidance
+    (Medicare Benefit Policy Manual Ch. 9 40.2.1) requires at least 50% of
+    the total documented CHC minutes for the day to be RN/LPN/LVN minutes.
+    Aide/homemaker minutes may supplement but never make up the majority;
+    a day where aide minutes exceed nursing minutes must bill as routine
+    home care, not CHC, even if the 8-hour total is otherwise met.
+  - Agency policy caps hospice aide (CHHA) direct-care time at 4 hours per
+    shift/visit on a CHC day -- half of the 8-hour minimum -- so no single
+    aide shift can outweigh nursing hours. A visit with more than 240
+    documented aide minutes in one shift must be flagged, independent of
+    the daily aide/nursing totals.
 
 This module only reports gaps against real, already-captured data
 (GIPPeriod.reason / RespitePeriod.reason / actual visit_minutes rows) --
@@ -26,6 +37,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 CHC_MINIMUM_DIRECT_CARE_MINUTES_PER_DAY = 8 * 60
+CHC_MAX_AIDE_MINUTES_PER_SHIFT = 4 * 60
 
 
 @dataclass(frozen=True)
@@ -51,6 +63,8 @@ def compute_loc_documentation_gaps(
     respite_events,
     continuous_events,
     chc_minutes_by_date: dict[date, int],
+    chc_nursing_minutes_by_date: dict[date, int] | None = None,
+    chc_aide_shift_minutes_by_date: dict[date, list[int]] | None = None,
 ) -> LocDocumentationGapResult:
     """
     Args:
@@ -62,6 +76,14 @@ def compute_loc_documentation_gaps(
         chc_minutes_by_date: real total documented visit_minutes per
             calendar date for this patient/cycle (from visit_minutes
             rows), used to check the CHC 8-hour/day minimum.
+        chc_nursing_minutes_by_date: the subset of chc_minutes_by_date
+            documented by RN/LPN/LVN staff only, used to check the CMS
+            "predominantly nursing" (>=50%) requirement. Pass None when
+            the discipline breakdown isn't available yet -- the 50% check
+            is skipped rather than false-flagging on missing data.
+        chc_aide_shift_minutes_by_date: per-day list of individual CHHA/aide
+            visit ("shift") durations in minutes, used to check the agency's
+            4-hour/shift aide cap on CHC days. Pass None to skip this check.
     """
     reasons: list[str] = []
 
@@ -96,5 +118,26 @@ def compute_loc_documentation_gaps(
                     f"hours (CMS requires >= 8 hours/24-hour period); this day is not "
                     "audit-supportable as billed."
                 )
+
+            if chc_nursing_minutes_by_date is not None and minutes > 0:
+                nursing_minutes = chc_nursing_minutes_by_date.get(day, 0)
+                if nursing_minutes < minutes * 0.5:
+                    nursing_hours = nursing_minutes / 60
+                    total_hours = minutes / 60
+                    reasons.append(
+                        f"CHC day {day.isoformat()} has only {nursing_hours:.1f} of "
+                        f"{total_hours:.1f} documented hours provided by a nurse "
+                        "(CMS requires >= 50% of CHC care to be RN/LPN/LVN); this day "
+                        "must bill as routine home care, not CHC."
+                    )
+
+            if chc_aide_shift_minutes_by_date is not None:
+                for shift_minutes in chc_aide_shift_minutes_by_date.get(day, []):
+                    if shift_minutes > CHC_MAX_AIDE_MINUTES_PER_SHIFT:
+                        reasons.append(
+                            f"CHC day {day.isoformat()} has a hospice aide (CHHA) shift "
+                            f"documented at {shift_minutes / 60:.1f} hours, exceeding the "
+                            "4-hour-per-shift cap on aide time for a CHC day."
+                        )
 
     return LocDocumentationGapResult(has_gaps=bool(reasons), reasons=reasons)

@@ -86,3 +86,77 @@ def test_flags_chc_day_with_zero_documented_minutes():
     assert result.has_gaps is True
     assert any("CHC day 2026-05-11" in r for r in result.reasons)
     assert not any("CHC day 2026-05-10" in r for r in result.reasons)
+
+
+def test_flags_chc_day_below_50_percent_nursing():
+    continuous_events = [DateRangeEventLike(date(2026, 5, 10), date(2026, 5, 10), reason="Symptom crisis")]
+
+    result = compute_loc_documentation_gaps(
+        gip_events=[],
+        respite_events=[],
+        continuous_events=continuous_events,
+        chc_minutes_by_date={date(2026, 5, 10): 600},
+        chc_nursing_minutes_by_date={date(2026, 5, 10): 240},
+    )
+
+    assert result.has_gaps is True
+    assert any("provided by a nurse" in r for r in result.reasons)
+
+
+def test_no_nursing_gap_when_50_percent_met():
+    continuous_events = [DateRangeEventLike(date(2026, 5, 10), date(2026, 5, 10), reason="Symptom crisis")]
+
+    result = compute_loc_documentation_gaps(
+        gip_events=[],
+        respite_events=[],
+        continuous_events=continuous_events,
+        chc_minutes_by_date={date(2026, 5, 10): 600},
+        chc_nursing_minutes_by_date={date(2026, 5, 10): 480},
+    )
+
+    assert not any("provided by a nurse" in r for r in result.reasons)
+
+
+def test_nursing_check_skipped_when_breakdown_not_provided():
+    continuous_events = [DateRangeEventLike(date(2026, 5, 10), date(2026, 5, 10), reason="Symptom crisis")]
+
+    result = compute_loc_documentation_gaps(
+        gip_events=[],
+        respite_events=[],
+        continuous_events=continuous_events,
+        chc_minutes_by_date={date(2026, 5, 10): 600},
+    )
+
+    assert not any("provided by a nurse" in r for r in result.reasons)
+
+
+def test_flags_aide_shift_over_4_hour_cap():
+    continuous_events = [DateRangeEventLike(date(2026, 5, 10), date(2026, 5, 10), reason="Symptom crisis")]
+
+    result = compute_loc_documentation_gaps(
+        gip_events=[],
+        respite_events=[],
+        continuous_events=continuous_events,
+        chc_minutes_by_date={date(2026, 5, 10): 600},
+        chc_aide_shift_minutes_by_date={date(2026, 5, 10): [300]},
+    )
+
+    assert result.has_gaps is True
+    assert any("hospice aide (CHHA) shift" in r for r in result.reasons)
+
+
+def test_no_aide_gap_when_multiple_shifts_each_under_cap():
+    # Two separate aide shifts of 3 hours each (6 total) -- each individual
+    # shift is under the 4-hour cap, so this should not be flagged even
+    # though the combined daily total exceeds 4 hours.
+    continuous_events = [DateRangeEventLike(date(2026, 5, 10), date(2026, 5, 10), reason="Symptom crisis")]
+
+    result = compute_loc_documentation_gaps(
+        gip_events=[],
+        respite_events=[],
+        continuous_events=continuous_events,
+        chc_minutes_by_date={date(2026, 5, 10): 600},
+        chc_aide_shift_minutes_by_date={date(2026, 5, 10): [180, 180]},
+    )
+
+    assert not any("hospice aide (CHHA) shift" in r for r in result.reasons)
