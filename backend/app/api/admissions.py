@@ -36,6 +36,35 @@ DISCHARGE_REASON_CODES: Dict[str, str] = {
     "6": "Discharged for cause",
 }
 
+# Granular, operational discharge reasons staff actually pick day-to-day, each
+# mapped to the CMS HOPE A2115 code it reports as. This is what the finalize
+# dropdown shows; DISCHARGE_REASON_CODES remains the source of truth for the
+# official CMS code/label recorded on the HOPE Discharge record.
+GRANULAR_DISCHARGE_REASONS: Dict[str, Dict[str, str]] = {
+    "death": {"label": "Death", "cms_code": "1"},
+    "revocation_of_hospice": {"label": "Revocation of Hospice", "cms_code": "2"},
+    "patient_refused_service": {"label": "Patient Refused Service", "cms_code": "2"},
+    "declined_further_services": {"label": "Declined Further Services", "cms_code": "2"},
+    "status_improved": {"label": "Status Improved", "cms_code": "3"},
+    "symptoms_managed": {"label": "Symptoms Managed", "cms_code": "3"},
+    "prognosis_extended": {"label": "Prognosis Extended", "cms_code": "3"},
+    "patient_transfer_to_rehab": {"label": "Patient Transfer to Rehab/Outpatient Rehab Facility", "cms_code": "3"},
+    "transferred_to_homehealth_within_agency": {"label": "Transferred to Homehealth within Agency", "cms_code": "3"},
+    "transferred_to_palliative_care_within_agency": {"label": "Transferred to Palliative Care within Agency", "cms_code": "3"},
+    "moved_out_of_area": {"label": "Moved Out of Area", "cms_code": "4"},
+    "transferred_to_another_hospice": {"label": "Transferred to Another Hospice", "cms_code": "5"},
+    "administrative_discharge": {"label": "Administrative Discharge", "cms_code": "6"},
+    "change_in_payer": {"label": "Change in Payer", "cms_code": "6"},
+    "discharged_with_cause": {"label": "Discharged with Cause", "cms_code": "6"},
+    "discharged_f2f_not_done_timely": {"label": "Discharged Due to Face to Face Not Done Timely", "cms_code": "6"},
+    "hospitalized": {"label": "Hospitalized", "cms_code": "6"},
+    "no_longer_able_to_meet_needs": {"label": "No Longer Able to Meet Pt/Family/PCG Needs", "cms_code": "6"},
+    "non_compliant_with_treatment": {"label": "Non-Compliant with Treatment/POC", "cms_code": "6"},
+    "patient_goals_not_met": {"label": "Patient Goals Not Met", "cms_code": "6"},
+    "transfer_to_non_contracted_snf_or_hospital": {"label": "Transfer to Non-Contracted SNF or Hospital", "cms_code": "6"},
+    "unsafe_environment_for_staff": {"label": "Unsafe Environment for Staff", "cms_code": "6"},
+}
+
 
 class DischargePlanningUpdate(BaseModel):
     discharge_projected_date: Optional[datetime] = None
@@ -51,7 +80,10 @@ class DischargePlanningUpdate(BaseModel):
 
 class DischargeFinalizeRequest(BaseModel):
     discharge_date: date
-    reason_code: str = Field(..., description="CMS A2115 Reason for Discharge code (1-6)")
+    reason_code: str = Field(
+        ...,
+        description="Granular discharge reason key (see GRANULAR_DISCHARGE_REASONS); mapped internally to a CMS A2115 code (1-6)",
+    )
     notes: Optional[str] = None
 
 
@@ -373,7 +405,7 @@ def _serialize_discharge_state(patient_row, admission_row) -> Dict[str, Any]:
             "contact_provided": patient_row["discharge_contact_provided"],
             "referral_provided": patient_row["discharge_referral_provided"],
         },
-        "reason_codes": DISCHARGE_REASON_CODES,
+        "reason_codes": {key: v["label"] for key, v in GRANULAR_DISCHARGE_REASONS.items()},
     }
 
 
@@ -491,11 +523,13 @@ def finalize_patient_discharge(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ) -> Dict[str, Any]:
-    if payload.reason_code not in DISCHARGE_REASON_CODES:
+    granular_reason = GRANULAR_DISCHARGE_REASONS.get(payload.reason_code)
+    if granular_reason is None:
         raise HTTPException(
             status_code=422,
-            detail=f"reason_code must be one of {sorted(DISCHARGE_REASON_CODES.keys())}",
+            detail=f"reason_code must be one of {sorted(GRANULAR_DISCHARGE_REASONS.keys())}",
         )
+    cms_code = granular_reason["cms_code"]
 
     tenant_id = current_user.tenant_id
     user_id = current_user.id
@@ -541,7 +575,7 @@ def finalize_patient_discharge(
                     detail="No active admission found to discharge.",
                 )
 
-            reason_label = f"{payload.reason_code} - {DISCHARGE_REASON_CODES[payload.reason_code]}"
+            reason_label = f"{cms_code} - {DISCHARGE_REASON_CODES[cms_code]} — {granular_reason['label']}"
             discharged_at = datetime.combine(payload.discharge_date, datetime.min.time()).replace(tzinfo=timezone.utc)
 
             db.execute(
@@ -599,6 +633,7 @@ def finalize_patient_discharge(
                 "admission_id": str(admission_row["id"]),
                 "discharge_date": payload.discharge_date.isoformat(),
                 "reason_code": payload.reason_code,
+                "cms_a2115_code": cms_code,
                 "reason_label": reason_label,
             }
             audit.changes = audit.details

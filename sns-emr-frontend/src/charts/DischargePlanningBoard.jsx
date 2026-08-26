@@ -203,7 +203,7 @@ export default function DischargePlanningBoard({ patientId }) {
               <input type="date" style={input} required value={dischargeDate} onChange={(e) => setDischargeDate(e.target.value)} />
             </div>
             <div style={formGroup}>
-              <label style={label}>CMS HOPE A2115 — Reason for Discharge *</label>
+              <label style={label}>Reason for Discharge * (auto-maps to CMS HOPE A2115)</label>
               <select style={input} required value={reasonCode} onChange={(e) => setReasonCode(e.target.value)}>
                 <option value="">Select reason…</option>
                 {Object.entries(state?.reason_codes || {}).map(([code, description]) => (

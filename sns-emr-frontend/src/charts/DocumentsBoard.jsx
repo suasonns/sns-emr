@@ -171,6 +171,8 @@ export default function DocumentsBoard({ patientId, sectionKey = "all-docs" }) {
   const [message, setMessage] = useState("");
   const [uploading, setUploading] = useState(false);
   const [uploadType, setUploadType] = useState(config.defaultUploadType);
+  const [pendingPasswordFile, setPendingPasswordFile] = useState(null);
+  const [passwordInput, setPasswordInput] = useState("");
   const fileInputRef = useRef(null);
 
   const load = useCallback(async () => {
@@ -192,23 +194,50 @@ export default function DocumentsBoard({ patientId, sectionKey = "all-docs" }) {
     load();
   }, [load, config.defaultUploadType]);
 
-  const handleFileChosen = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file || !patientId) return;
-
+  const doUpload = async (file, password) => {
     setUploading(true);
     setError("");
     setMessage("");
     try {
-      const uploaded = await uploadDocument(patientId, uploadType, file, "EXTERNAL");
+      const uploaded = await uploadDocument(patientId, uploadType, file, "EXTERNAL", password);
       setDocuments((prev) => [uploaded, ...prev]);
       setMessage(`"${file.name}" uploaded. AI classification runs in the background and will appear shortly.`);
+      setPendingPasswordFile(null);
+      setPasswordInput("");
     } catch (err) {
-      setError(err?.response?.data?.detail || err?.message || "Unable to upload this file.");
+      const detail = err?.response?.data?.detail || err?.message || "Unable to upload this file.";
+      if (err?.response?.status === 422 && /password-protected/i.test(detail)) {
+        // Ask staff for the document's password instead of failing outright.
+        setPendingPasswordFile(file);
+        setError("");
+      } else if (err?.response?.status === 422 && /incorrect password/i.test(detail)) {
+        setPendingPasswordFile(file);
+        setError(detail);
+      } else {
+        setPendingPasswordFile(null);
+        setError(detail);
+      }
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleFileChosen = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !patientId) return;
+    await doUpload(file, undefined);
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!pendingPasswordFile) return;
+    await doUpload(pendingPasswordFile, passwordInput);
+  };
+
+  const handlePasswordCancel = () => {
+    setPendingPasswordFile(null);
+    setPasswordInput("");
+    setError("");
   };
 
   if (loading) {
@@ -235,6 +264,31 @@ export default function DocumentsBoard({ patientId, sectionKey = "all-docs" }) {
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
+        </div>
+      )}
+
+      {pendingPasswordFile && (
+        <div style={{ ...S.card, padding: 14, marginBottom: 16 }}>
+          <label style={{ color: COLORS.white, fontSize: 13, display: "block", marginBottom: 6 }}>
+            "{pendingPasswordFile.name}" is password-protected. Enter the password to upload it.
+          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <input
+              type="password"
+              style={{ ...input, maxWidth: 280 }}
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handlePasswordSubmit()}
+              placeholder="Document password"
+              autoFocus
+            />
+            <button type="button" style={S.btn(COLORS.teal)} disabled={uploading || !passwordInput} onClick={handlePasswordSubmit}>
+              {uploading ? "Uploading…" : "Unlock & Upload"}
+            </button>
+            <button type="button" style={S.btn(COLORS.dim)} disabled={uploading} onClick={handlePasswordCancel}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

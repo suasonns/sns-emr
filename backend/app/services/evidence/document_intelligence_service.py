@@ -15,18 +15,22 @@ Design contract (same as ai_extraction_service.py):
     - Inert/no-op if Azure OpenAI is not configured (reuses the same
       AZURE_OPENAI_* env vars as ai_extraction_service.py).
 
-Extraction strategy (v1):
+Extraction strategy:
     - text/plain            -> decode directly.
-    - application/pdf        -> pypdf text-layer extraction (per page).
+    - application/pdf        -> pypdf text-layer extraction, page by page.
+      Any individual pages with no extractable text (scanned/faxed pages
+      mixed into an otherwise text-based chart export) are OCR'd
+      individually via Azure Document Intelligence (prebuilt-read) when
+      AZURE_DOCINTEL_* is configured, and spliced back into the right
+      position -- this is NOT all-or-nothing at the whole-document level.
     - .docx                  -> python-docx paragraph text.
     - image/jpeg|png|tiff    -> no local OCR step; the raw image bytes are
       sent directly to the AI as a vision input, since the same call also
-      does classification/extraction (single round trip, no separate OCR
-      infra like Tesseract/Document Intelligence needed for v1).
-    - A PDF whose text layer is empty (scanned/image-only PDF) is flagged
-      `needs_manual_review=True` -- true OCR-of-scanned-PDF support is a
-      v2 item (would need pdf2image/poppler or Azure Document
-      Intelligence); v1 does not silently guess at such documents.
+      does classification/extraction (single round trip).
+    - If OCR is not configured (or the OCR call itself fails) and a page has
+      no text layer, that page contributes no text and the whole document is
+      flagged `needs_manual_review=True` so staff know extraction may be
+      incomplete -- it is never silently dropped without a signal.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ import base64
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any
@@ -45,6 +50,12 @@ logger = logging.getLogger("sns_emr")
 
 DEFAULT_TIMEOUT_SECONDS = 45.0
 MAX_SOURCE_TEXT_CHARS = 12000
+
+# Azure Document Intelligence (OCR) -- used only as a fallback for PDFs with
+# no extractable text layer (scanned/image-only documents).
+AZURE_DOCINTEL_API_VERSION = "2024-11-30"
+OCR_POLL_INTERVAL_SECONDS = 2.0
+OCR_POLL_MAX_ATTEMPTS = 30  # ~60s max wait for OCR to finish
 
 IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/tiff"}
 TEXT_LAYER_CONTENT_TYPES = {"application/pdf"}
@@ -63,7 +74,7 @@ SUPPORTED_CONTENT_TYPES = (
 @dataclass(frozen=True)
 class ExtractionResult:
     text: str
-    method: str  # "text_layer" | "docx" | "plain_text" | "vision" | "unsupported"
+    method: str  # "text_layer" | "ocr" | "docx" | "plain_text" | "vision" | "unsupported"
     needs_manual_review: bool = False
     image_base64: str | None = None  # populated only when method == "vision"
 
@@ -116,18 +127,163 @@ def _extract_pdf_text(file_bytes: bytes) -> ExtractionResult:
     from pypdf import PdfReader
 
     reader = PdfReader(BytesIO(file_bytes))
-    pages_text = []
-    for page in reader.pages:
-        page_text = page.extract_text() or ""
-        if page_text.strip():
-            pages_text.append(page_text.strip())
+    page_texts: list[str] = []
+    empty_page_indices: list[int] = []
+    for i, page in enumerate(reader.pages):
+        page_text = (page.extract_text() or "").strip()
+        page_texts.append(page_text)
+        if not page_text:
+            empty_page_indices.append(i)
 
-    joined = "\n\n".join(pages_text).strip()
+    if not empty_page_indices:
+        return ExtractionResult(text="\n\n".join(page_texts).strip(), method="text_layer")
+
+    # One or more pages have no extractable text layer -- these are
+    # scanned/faxed/image-only pages mixed into an otherwise-text PDF (very
+    # common for hospital chart exports). Rather than treating the whole
+    # document as one all-or-nothing case, OCR just the affected pages via
+    # Azure Document Intelligence and splice the results back in at the
+    # right position, so nothing silently goes missing.
+    ocr_page_texts = _ocr_pdf_pages_via_document_intelligence(file_bytes, empty_page_indices)
+    ocr_used = False
+    if ocr_page_texts:
+        ocr_used = True
+        for idx, text in ocr_page_texts.items():
+            if text:
+                page_texts[idx] = text
+
+    joined = "\n\n".join(t for t in page_texts if t).strip()
+    still_missing = [i for i in empty_page_indices if not page_texts[i]]
+
     if not joined:
-        # No extractable text layer -- likely a scanned/image-only PDF.
-        # v1 does not OCR these; flag for manual review rather than guess.
+        # Nothing usable at all (no text layer anywhere, and OCR unavailable
+        # or produced nothing) -- flag for manual review rather than guess.
         return ExtractionResult(text="", method="text_layer", needs_manual_review=True)
-    return ExtractionResult(text=joined, method="text_layer")
+
+    return ExtractionResult(
+        text=joined,
+        method="ocr" if ocr_used else "text_layer",
+        # Even with a partial OCR success, flag for review if any page
+        # still has no text (e.g. OCR failed on some or was unavailable) --
+        # staff should know the extracted text may be incomplete.
+        needs_manual_review=bool(still_missing),
+    )
+
+
+def _azure_docintel_config() -> dict[str, str] | None:
+    endpoint = os.getenv("AZURE_DOCINTEL_ENDPOINT")
+    api_key = os.getenv("AZURE_DOCINTEL_KEY")
+
+    if not (endpoint and api_key):
+        return None
+
+    return {"endpoint": endpoint.rstrip("/"), "api_key": api_key}
+
+
+def is_ocr_configured() -> bool:
+    return _azure_docintel_config() is not None
+
+
+def _ocr_pdf_pages_via_document_intelligence(
+    file_bytes: bytes, page_indices: list[int]
+) -> dict[int, str] | None:
+    """OCR only the given 0-based page indices of a PDF via Azure Document
+    Intelligence's prebuilt-read model, returning {original_page_index: text}.
+
+    Builds a small sub-PDF containing just those pages (preserving order) so
+    a single OCR call covers every affected page, then maps the per-page
+    results in the response back to the original page indices using each
+    page's character spans into the response's full `content` string.
+
+    Never raises -- returns None if OCR is not configured, or on any
+    submit/poll/parse/PDF-assembly failure.
+    """
+
+    config = _azure_docintel_config()
+    if config is None:
+        logger.info("document_intelligence: OCR fallback skipped (Azure Document Intelligence not configured)")
+        return None
+
+    try:
+        from pypdf import PdfReader, PdfWriter
+
+        reader = PdfReader(BytesIO(file_bytes))
+        writer = PdfWriter()
+        for idx in page_indices:
+            writer.add_page(reader.pages[idx])
+
+        sub_pdf_buffer = BytesIO()
+        writer.write(sub_pdf_buffer)
+        sub_pdf_bytes = sub_pdf_buffer.getvalue()
+    except Exception:
+        logger.exception("document_intelligence: failed to assemble sub-PDF of empty-text pages for OCR")
+        return None
+
+    analyze_url = (
+        f"{config['endpoint']}/documentintelligence/documentModels/prebuilt-read:analyze"
+        f"?api-version={AZURE_DOCINTEL_API_VERSION}"
+    )
+
+    try:
+        submit = httpx.post(
+            analyze_url,
+            headers={
+                "Ocp-Apim-Subscription-Key": config["api_key"],
+                "Content-Type": "application/pdf",
+            },
+            content=sub_pdf_bytes,
+            timeout=DEFAULT_TIMEOUT_SECONDS,
+        )
+        submit.raise_for_status()
+        operation_url = submit.headers.get("operation-location")
+        if not operation_url:
+            logger.warning("document_intelligence: OCR submit response missing operation-location header")
+            return None
+
+        analyze_result: dict[str, Any] | None = None
+        for _ in range(OCR_POLL_MAX_ATTEMPTS):
+            time.sleep(OCR_POLL_INTERVAL_SECONDS)
+            poll = httpx.get(
+                operation_url,
+                headers={"Ocp-Apim-Subscription-Key": config["api_key"]},
+                timeout=DEFAULT_TIMEOUT_SECONDS,
+            )
+            poll.raise_for_status()
+            body = poll.json()
+            status = body.get("status")
+            if status == "succeeded":
+                analyze_result = body.get("analyzeResult") or {}
+                break
+            if status == "failed":
+                logger.warning("document_intelligence: OCR analysis failed: %r", body.get("error"))
+                return None
+        else:
+            logger.warning("document_intelligence: OCR polling timed out waiting for result")
+            return None
+
+        if analyze_result is None:
+            return None
+
+        content = analyze_result.get("content") or ""
+        ocr_pages = analyze_result.get("pages") or []
+
+        result: dict[int, str] = {}
+        for ocr_page in ocr_pages:
+            sub_pdf_page_number = ocr_page.get("pageNumber")  # 1-based, in sub-PDF order
+            if not sub_pdf_page_number or sub_pdf_page_number < 1 or sub_pdf_page_number > len(page_indices):
+                continue
+            original_index = page_indices[sub_pdf_page_number - 1]
+
+            spans = ocr_page.get("spans") or []
+            page_text_parts = [content[s["offset"] : s["offset"] + s["length"]] for s in spans if "offset" in s]
+            page_text = "".join(page_text_parts).strip()
+            if page_text:
+                result[original_index] = page_text
+
+        return result or None
+    except Exception:
+        logger.exception("document_intelligence: OCR call failed")
+        return None
 
 
 def _extract_docx_text(file_bytes: bytes) -> ExtractionResult:

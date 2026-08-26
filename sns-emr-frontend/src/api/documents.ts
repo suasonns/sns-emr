@@ -29,12 +29,16 @@ export async function uploadDocument(
   documentType: string,
   file: File,
   source = 'EXTERNAL',
+  documentPassword?: string,
 ): Promise<UploadDocumentResponse> {
   const form = new FormData();
   form.append('patient_id', patientId);
   form.append('document_type', documentType);
   form.append('source', source);
   form.append('file', file, file.name);
+  if (documentPassword) {
+    form.append('document_password', documentPassword);
+  }
 
   const response = await api.post<UploadDocumentResponse>('/documents/', form, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -32,12 +32,15 @@ const ACTIVITY = [
   { title: 'MSW Evaluation Updated', sub: 'Sarah Cole MSW • 2 days ago' },
 ];
 
+const PAGE_SIZE = 25;
+
 export default function PatientCensus({ census, loading }) {
   const navigate = useNavigate();
   const patientRows = Array.isArray(census?.patients) ? census.patients : [];
   const [selectedPatientId, setSelectedPatientId] = useState(patientRows[0]?.patient_id || null);
   const [showIntakeModal, setShowIntakeModal] = useState(false);
   const [referralSubmittedMessage, setReferralSubmittedMessage] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     if (!patientRows.length) {
@@ -50,8 +53,18 @@ export default function PatientCensus({ census, loading }) {
     }
   }, [patientRows, selectedPatientId]);
 
-  const selectedPatient = patientRows.find((patient) => patient.patient_id === selectedPatientId) || patientRows[0] || null;
   const totalPatients = census?.patient_count ?? patientRows.length;
+  const totalPages = Math.max(1, Math.ceil(patientRows.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (page > totalPages) {
+      setPage(totalPages);
+    }
+  }, [page, totalPages]);
+
+  const pageStart = (page - 1) * PAGE_SIZE;
+  const pagedRows = patientRows.slice(pageStart, pageStart + PAGE_SIZE);
+  const selectedPatient = patientRows.find((patient) => patient.patient_id === selectedPatientId) || patientRows[0] || null;
 
   const handleOpenChart = (patient) => {
     const patientId = patient?.patient_id || patient?.id;
@@ -116,7 +129,9 @@ export default function PatientCensus({ census, loading }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, color: COLORS.white, margin: 0 }}>Active Registry</h3>
             <span style={{ fontSize: 12, fontWeight: 400, color: COLORS.dim }}>
-              {patientRows.length ? `Showing ${Math.min(patientRows.length, 12)} of ${totalPatients} Patients` : 'No active patients'}
+              {patientRows.length
+                ? `Showing ${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, patientRows.length)} of ${totalPatients} Patients`
+                : 'No active patients'}
             </span>
           </div>
 
@@ -135,7 +150,7 @@ export default function PatientCensus({ census, loading }) {
                 </tr>
               </thead>
               <tbody>
-                {patientRows.slice(0, 12).map((p, i) => {
+                {pagedRows.map((p, i) => {
                   const name = p.full_name || p.name;
                   const mrn = p.mrn || p.patient_id;
                   const dx = p.primary_diagnosis || p.dx || '—';
@@ -170,6 +185,43 @@ export default function PatientCensus({ census, loading }) {
               </tbody>
             </table>
           )}
+
+          {patientRows.length > PAGE_SIZE ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 16 }}>
+              <button
+                type="button"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                style={{ ...S.btnOutline, padding: '4px 10px', opacity: page === 1 ? 0.4 : 1, cursor: page === 1 ? 'default' : 'pointer' }}
+              >
+                Prev
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setPage(n)}
+                  style={{
+                    ...S.btnOutline,
+                    padding: '4px 10px',
+                    background: n === page ? COLORS.teal : 'transparent',
+                    color: n === page ? COLORS.white : undefined,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                type="button"
+                disabled={page === totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                style={{ ...S.btnOutline, padding: '4px 10px', opacity: page === totalPages ? 0.4 : 1, cursor: page === totalPages ? 'default' : 'pointer' }}
+              >
+                Next
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <div style={S.card}>

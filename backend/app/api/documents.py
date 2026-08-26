@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import Any, Dict, Iterator, Optional
 from uuid import UUID, UUID as UUIDType
 
@@ -124,6 +125,28 @@ def _get_owned_document(
 # Upload Document
 # ---------------------------------------------------------------------
 
+async def _read_upload_bounded(file: UploadFile, max_bytes: int) -> bytes:
+    """Read an UploadFile fully into memory, enforcing max_bytes as it goes.
+
+    Only used for content types (currently just PDF) that need the whole
+    file in memory before storage (e.g. to check/decrypt encryption) --
+    everything else keeps streaming straight to storage without buffering.
+    """
+
+    await file.seek(0)
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > max_bytes:
+            raise DocumentUploadTooLarge("Document exceeds maximum allowed size")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 @router.post(
     "/",
     status_code=status.HTTP_201_CREATED,
@@ -136,6 +159,7 @@ async def upload_document(
     source: str = Form("EXTERNAL"),
     extracted_values: Optional[str] = Form(None),
     document_text: Optional[str] = Form(None),
+    document_password: Optional[str] = Form(None),
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -174,12 +198,53 @@ async def upload_document(
         content_type=content_type,
     )
 
+    # A password-protected PDF can't be stored/extracted as-is downstream
+    # (pypdf/Document Intelligence would just fail silently on it later).
+    # Decrypt it up front, at upload time, and store the decrypted bytes --
+    # this way the password itself never needs to be persisted or threaded
+    # through to the background extraction job.
+    upload_source: Any = file.file
+    if content_type == "application/pdf":
+        try:
+            raw_bytes = await _read_upload_bounded(file, max_upload_bytes)
+        except DocumentUploadTooLarge as exc:
+            raise HTTPException(status_code=413, detail=str(exc)) from exc
+
+        try:
+            from pypdf import PdfReader, PdfWriter
+            from pypdf.errors import PdfReadError
+
+            reader = PdfReader(BytesIO(raw_bytes))
+            if reader.is_encrypted:
+                if not document_password:
+                    raise HTTPException(
+                        status_code=422,
+                        detail="This PDF is password-protected. Provide document_password to upload it.",
+                    )
+                decrypt_result = reader.decrypt(document_password)
+                if decrypt_result == 0:
+                    raise HTTPException(status_code=422, detail="Incorrect password for this PDF.")
+
+                writer = PdfWriter()
+                for page in reader.pages:
+                    writer.add_page(page)
+                decrypted_buffer = BytesIO()
+                writer.write(decrypted_buffer)
+                upload_source = BytesIO(decrypted_buffer.getvalue())
+            else:
+                upload_source = BytesIO(raw_bytes)
+        except HTTPException:
+            raise
+        except PdfReadError as exc:
+            raise HTTPException(status_code=422, detail="Uploaded PDF could not be read") from exc
+
     try:
-        await file.seek(0)
+        if upload_source is file.file:
+            await file.seek(0)
         size_bytes = await run_in_threadpool(
             storage.put,
             object_key,
-            file.file,
+            upload_source,
             content_type=content_type,
             max_bytes=max_upload_bytes,
         )

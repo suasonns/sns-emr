@@ -4,12 +4,14 @@ import os
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from urllib.parse import urlsplit, urlunsplit
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import event, text
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import sessionmaker
 
-from app.core.database import SessionLocal
+from app.core.database import DATABASE_URL, get_db
 from app.core.security import create_access_token
 from app.db.base import Base
 from app.main import fastapi_app
@@ -19,6 +21,133 @@ from app.models.tenant import Tenant
 from app.models.user import User
 
 TEST_USER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+
+
+# ---------------------------------------------------------------------
+# HARD DATABASE ISOLATION (do not weaken this)
+#
+# Incident 2026-08-26: this suite previously ran destructive, tenant-scoped
+# DELETE sweeps through app.core.database.SessionLocal -- the SAME session
+# the running dev app uses -- and the "test tenant id" it targeted defaulted
+# to the REAL Love & Faith Hospice tenant id. Every local test run wiped and
+# repopulated that tenant with synthetic fixtures, permanently destroying
+# real patient records (including hand-entered test H&P patients) with no
+# reliable backup.
+#
+# Fix: tests get their OWN engine/session bound to a database that is
+# PHYSICALLY SEPARATE from DATABASE_URL (see backend/_create_test_db.py,
+# which builds "sns_emr_test" from the current models/migrations). The
+# guard below refuses to run anything -- loudly, at collection time -- if
+# that isolation cannot be verified. A tenant-id mismatch alone is NOT
+# trusted as a safety mechanism anymore.
+# ---------------------------------------------------------------------
+
+
+def _derive_test_database_url() -> str:
+    override = os.getenv("TEST_DATABASE_URL")
+    if override:
+        return override
+    parts = urlsplit(DATABASE_URL)
+    if not parts.path.lstrip("/"):
+        raise RuntimeError(
+            "Cannot derive a test database URL: DATABASE_URL has no database name. "
+            "Set TEST_DATABASE_URL explicitly."
+        )
+    return urlunsplit(parts._replace(path="/sns_emr_test"))
+
+
+TEST_DATABASE_URL = _derive_test_database_url()
+
+_test_engine = create_engine(
+    TEST_DATABASE_URL,
+    future=True,
+    pool_pre_ping=True,
+    connect_args={"options": "-csearch_path=public -c TimeZone=UTC"},
+)
+
+TestSessionLocal = sessionmaker(
+    bind=_test_engine, autoflush=False, autocommit=False, expire_on_commit=False
+)
+
+
+def _assert_tests_are_isolated_from_dev_db() -> None:
+    dev_parts = urlsplit(DATABASE_URL)
+    dev_dbname = dev_parts.path.lstrip("/")
+
+    if TEST_DATABASE_URL == DATABASE_URL:
+        raise RuntimeError(
+            "REFUSING TO RUN TESTS: TEST_DATABASE_URL is identical to the "
+            "application's DATABASE_URL. Tests must run against a physically "
+            "separate database. See backend/_create_test_db.py."
+        )
+
+    with _test_engine.connect() as conn:
+        dbname = conn.execute(text("SELECT current_database()")).scalar()
+
+    if dbname == dev_dbname:
+        raise RuntimeError(
+            f"REFUSING TO RUN TESTS: the test engine is connected to '{dbname}', "
+            f"which is the SAME database name as the app's DATABASE_URL "
+            f"('{dev_dbname}'). Tests must never share a database with the app."
+        )
+    if "test" not in (dbname or "").lower():
+        raise RuntimeError(
+            f"REFUSING TO RUN TESTS: connected database '{dbname}' does not look "
+            "like a dedicated test database (expected a name containing 'test'). "
+            "Refusing to run destructive test fixtures against it."
+        )
+
+
+_assert_tests_are_isolated_from_dev_db()
+
+
+# ---------------------------------------------------------------------
+# Redirect EVERY SessionLocal() call, app-wide, to the isolated test engine.
+#
+# The codebase has ~15 separate ad-hoc "get_db"-style dependencies scattered
+# across app/ (db_tenant_dependency.py, tenant_routing_middleware.py,
+# api/audit_dashboard.py, api/visits.py, api/routes/forms.py, etc.), each
+# doing its own `from app.core.database import SessionLocal` and then
+# `SessionLocal()`. Overriding FastAPI's `Depends(get_db)` alone does NOT
+# reach any of these -- they bypass dependency_overrides entirely.
+#
+# All of them share the exact same `SessionLocal` sessionmaker OBJECT
+# (Python import binds a reference, not a copy), so reconfiguring that one
+# object's bind is the single choke point that redirects every one of them
+# to the isolated test database, with no way for a new ad-hoc dependency to
+# silently slip through.
+# ---------------------------------------------------------------------
+
+from app.core import database as _app_database  # noqa: E402
+
+_app_database.SessionLocal.configure(bind=_test_engine)
+_app_database.engine = _test_engine
+
+try:
+    from app.core import sync_db as _app_sync_db  # noqa: E402
+
+    _app_sync_db.SyncSessionLocal.configure(bind=_test_engine)
+    _app_sync_db.SYNC_ENGINE = _test_engine
+except Exception:
+    pass
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _route_app_db_dependency_to_test_database():
+    """Belt-and-suspenders: also override FastAPI's Depends(get_db) so the
+    `client` fixture's HTTP-level tests are explicit about using the test
+    session, on top of the sessionmaker-level redirect above."""
+
+    def _test_get_db():
+        db = TestSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    fastapi_app.dependency_overrides[get_db] = _test_get_db
+    yield
+    fastapi_app.dependency_overrides.pop(get_db, None)
 
 
 # ---------------------------------------------------------------------
@@ -57,7 +186,10 @@ def client():
 # ---------------------------------------------------------------------
 
 def _test_tenant_id() -> str:
-    return os.getenv("REAL_TENANT_ID", "01271980-0000-0000-0000-000005101977")
+    # Purely a synthetic id local to the isolated sns_emr_test database.
+    # This must NEVER match a real tenant id -- see the isolation guard
+    # above for why a tenant-id check alone is not trusted as a safeguard.
+    return os.getenv("REAL_TENANT_ID", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 
 def login_headers(client: TestClient, user_id: str, role: str) -> dict:
@@ -94,10 +226,12 @@ def db_session():
     """
     Test database session.
 
-    Explicitly bypasses tenant ORM enforcement.
-    This does NOT affect production behavior.
+    Bound to the isolated sns_emr_test database (see the isolation guard
+    at the top of this file) -- never the app's real DATABASE_URL/tenant.
+    Explicitly bypasses tenant ORM enforcement. This does NOT affect
+    production behavior.
     """
-    session = SessionLocal()
+    session = TestSessionLocal()
 
     tenant_id = _test_tenant_id()
 
