@@ -91,6 +91,9 @@ import {
   approvePhysicianOrder,
   executePhysicianOrder,
   cancelPhysicianOrder,
+  ORDER_SIGNER_ROLES,
+  getPhysicianOrderStatusTone,
+  formatPhysicianOrderStatusLabel,
 } from "../api/physicianOrders";
 import { getCurrentUser } from "../api/session";
 import { fetchFacesheet, fetchPerformanceHistory } from "../api/facesheet";
@@ -2002,7 +2005,7 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
       )}
 
       <FormTextarea
-        label="Clinical Narrative"
+        label="Diagnoses Narrative"
         value={narrative}
         onChange={handleNarrativeChange}
         rows={10}
@@ -6538,9 +6541,23 @@ const ohTabBtn = (active) => ({
   cursor: "pointer",
 });
 
+// Maps the backend-agnostic status tone (physicianOrders.ts) onto this
+// surface's local SNS design tokens. The tone→severity mapping itself lives
+// in physicianOrders.ts (shared with PhysicianOrdersBoard.jsx) so the two
+// order-status surfaces cannot silently drift out of sync.
+const OH_TONE_COLORS = {
+  neutral: SNS_COLORS.muted,
+  warning: SNS_COLORS.orange,
+  info: SNS_COLORS.blue,
+  success: SNS_COLORS.green,
+  danger: SNS_COLORS.red,
+};
+
 export function OrdersHubCard({ patientId }) {
   const currentUser = getCurrentUser();
-  const isMD = currentUser?.role === "MD";
+  // Any role the backend accepts as an order signer (not just legacy "MD")
+  // must see the Approve/Countersign actions -- see ORDER_SIGNER_ROLES.
+  const canSignOrders = ORDER_SIGNER_ROLES.includes(currentUser?.role);
 
   const [activeType, setActiveType] = useState("DME");
   const [orders, setOrders] = useState([]);
@@ -7248,10 +7265,10 @@ export function OrdersHubCard({ patientId }) {
                   <div style={{ fontSize: 13, color: SNS_COLORS.white, fontWeight: 600, maxWidth: "70%" }}>{o.order_text}</div>
                   <span style={{
                     fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 8px", textTransform: "uppercase",
-                    border: `1px solid ${o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange}`,
-                    color: o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange,
+                    border: `1px solid ${o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)]}`,
+                    color: o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)],
                   }}>
-                    {o.status === "EXECUTED" && o.awaiting_countersignature ? "Administered — Awaiting MD Countersignature" : o.status.replace(/_/g, " ")}
+                    {o.awaiting_countersignature ? "Administered — Awaiting Countersignature" : formatPhysicianOrderStatusLabel(o.status, o.status_label)}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: SNS_COLORS.dim }}>
@@ -7266,12 +7283,12 @@ export function OrdersHubCard({ patientId }) {
                       Administer Now (Verbal Order)
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && canSignOrders && (
                     <button type="button" style={ohBtnSecondary} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Approve &amp; Sign (MD)
+                      Approve &amp; Sign
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !canSignOrders && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
                     <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Awaiting Medical Director signature</span>
                   )}
                   {o.status === "APPROVED" && (
@@ -7279,15 +7296,15 @@ export function OrdersHubCard({ patientId }) {
                       Mark Executed
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && isMD && (
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && canSignOrders && (
                     <button type="button" style={{ ...ohBtnSecondary, borderColor: SNS_COLORS.blue, color: SNS_COLORS.blue }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Countersign (MD)
+                      Countersign
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && !isMD && (
-                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && !canSignOrders && (
+                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting countersignature</span>
                   )}
-                  {(o.status === "DRAFT" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
+                  {(o.status === "DRAFT" || o.status === "PENDING_CLINICAL_REVIEW" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
                     <button type="button" style={{ ...ohBtnSecondary, color: SNS_COLORS.red, borderColor: SNS_COLORS.red }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, (id) => cancelPhysicianOrder(id, "Cancelled from Orders Hub"))}>
                       Cancel
                     </button>
@@ -9149,7 +9166,7 @@ const SECTION_CONFIGS = {
   },
 
   skin: {
-    title: "Integumentary - Skin",
+    title: "Skin / Wounds",
     subtitle: "Integumentary assessment, Braden Scale, wound documentation (M1190)",
     cards: [
       { title: "Skin Assessment", hopeCode: "M1190", fields: [
@@ -9851,22 +9868,31 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const routes = useMemo(() => {
     const orderedRoutes = workspacePilot ? PILOT_ROUTES : LEGACY_ROUTES;
-    // SFV (Symptom Follow-Up Visit) is always its own separate visit -- HOPE
-    // requires it to occur within 2 calendar days of the RN Initial
-    // Comprehensive Assessment as a distinct documented visit, never filled
-    // out inside the RNICA itself (initial or ongoing/recert).
+    // SFV (Symptom Follow-Up Visit) is its own separate, distinctly
+    // documented visit that HOPE requires within 2 calendar days of the RN
+    // Initial Comprehensive Assessment -- it is never filled out inside an
+    // *ongoing/recert* RNICA visit. It IS part of the canonical 30-module
+    // initial-assessment navigation (module 20), so it must only be
+    // filtered when this is genuinely an ongoing-assessment visit, not
+    // unconditionally (see rnIcaClinicalNavigation.js's
+    // validateRnIcaClinicalNavigation, which checks the same explicit
+    // isOngoing flag rather than back-inferring it from route count).
     return orderedRoutes.filter((route) => {
-      if (route.key === "sfv") return false;
+      if (isOngoing && route.key === "sfv") return false;
       if (assessmentUiProfile.hideAdmissionsOrder && UPDATE_HIDDEN_ROUTE_KEYS.has(route.key)) return false;
       return true;
     });
-  }, [assessmentUiProfile.hideAdmissionsOrder, workspacePilot]);
+  }, [assessmentUiProfile.hideAdmissionsOrder, workspacePilot, isOngoing]);
   const sidebarConfigItems = useMemo(() => {
+    // Keep in lock-step with `routes` above: SFV is only excluded from
+    // sidebar/lookup metadata for genuinely-ongoing (recert) visits.
     const items = SIDEBAR_CONFIG.filter((item) => {
-      if (item.key === "sfv") return false;
+      if (isOngoing && item.key === "sfv") return false;
       if (isUpdateAssessment && UPDATE_HIDDEN_SIDEBAR_KEYS.has(item.key)) return false;
       return true;
     });
+    return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
+  }, [isOngoing, isUpdateAssessment]);
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing, isUpdateAssessment]);
 
@@ -10493,6 +10519,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           saving={saving}
           saveStatus={saveStatus}
           intelligence={intelligence}
+          isOngoingAssessment={isOngoing}
           renderWorkspaceSections={renderWorkspaceSections}
           visitRecorder={(
             <VisitRecorderCard
@@ -10672,22 +10699,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   careTeam: patientSummary.care_team.map((item) => item.discipline),
                 }
               : {
-                  diagnosis: "Lung cancer (C34.90), CHF, COPD",
-                  painSummary: "Pain and symptom review ongoing; support needs and caregiver concerns require coordinated follow-up across the chart.",
-                  primaryProvider: "Dr. James Olsen",
-                  hnpStatus: "Updated 2 days ago",
-                  lastVisit: "3 days ago",
-                  disciplineHistory: [
-                    "History & Physical — admission summary",
-                    "Nursing Assessment — clinical status and safety review",
-                    "Spiritual Assessment — coping and chaplain support",
-                    "Psychosocial Assessment — caregiver burden and support needs",
-                    "Tx / Meds / DME / Supplies — active orders and equipment",
-                    "IDG — interdisciplinary group review",
-                    "Plan of Care (POC) — current goals and revisions",
-                    "Documents — uploaded patient records and external supporting files",
-                  ],
-                  careTeam: ["RN", "MSW", "SC", "MD", "Chaplain", "Admin"],
+                  // No hardcoded/mock patient identity data here: showing a
+                  // fake diagnosis, provider name, or care team while the
+                  // real patient summary hasn't loaded (or failed to load)
+                  // could be mistaken for genuine PHI. Every field below is
+                  // an explicit, neutral "not yet available" placeholder.
+                  diagnosis: resolvedPatientId ? "Loading…" : "No patient selected",
+                  painSummary: resolvedPatientId
+                    ? "Patient overview is loading."
+                    : "Select a patient to view the clinical overview.",
+                  primaryProvider: "—",
+                  hnpStatus: "—",
+                  lastVisit: "—",
+                  disciplineHistory: [],
+                  careTeam: [],
                 }
           }
           sections={sidebarConfigItems.map((item) => ({

@@ -277,6 +277,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.complete_request(
                 db_session,
                 tenant_id=tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 completion_evidence="   ",
@@ -285,6 +286,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
         completed = svc.complete_request(
             db_session,
             tenant_id=tenant_id,
+            patient_id=patient.id,
             request_id=uuid.UUID(created["id"]),
             user_id=user_id,
             completion_evidence="Delivered and signed for by caregiver on 2026-08-30.",
@@ -313,6 +315,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.cancel_request(
                 db_session,
                 tenant_id=tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 cancellation_reason="",
@@ -321,6 +324,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
         canceled = svc.cancel_request(
             db_session,
             tenant_id=tenant_id,
+            patient_id=patient.id,
             request_id=uuid.UUID(created["id"]),
             user_id=user_id,
             cancellation_reason="Patient declined referral",
@@ -346,6 +350,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
         svc.complete_request(
             db_session,
             tenant_id=tenant_id,
+            patient_id=patient.id,
             request_id=uuid.UUID(created["id"]),
             user_id=user_id,
             completion_evidence="Delivered 2026-08-30, signed by patient.",
@@ -355,6 +360,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.update_status(
                 db_session,
                 tenant_id=tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 new_status="ACKNOWLEDGED",
@@ -363,6 +369,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.cancel_request(
                 db_session,
                 tenant_id=tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 cancellation_reason="Trying to cancel a completed request",
@@ -394,6 +401,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.update_status(
                 db_session,
                 tenant_id=other_tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 new_status="IN_PROGRESS",
@@ -402,10 +410,119 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             svc.complete_request(
                 db_session,
                 tenant_id=other_tenant_id,
+                patient_id=patient.id,
                 request_id=uuid.UUID(created["id"]),
                 user_id=user_id,
                 completion_evidence="Attempted cross-tenant completion",
             )
+
+    def test_same_tenant_cross_patient_mutation_denied(self, db_session):
+        """Item 3 / P0-3: a same-tenant user authorized for one patient's
+        assessment must not be able to mutate a *different* patient's
+        request just by supplying that request's id -- the service must
+        verify the loaded request actually belongs to the patient resolved
+        from the route, not just the tenant."""
+        from app.services import admission_action_center_service as svc
+
+        tenant_id = uuid.UUID(db_session.info["tenant_id"])
+        patient_a = _make_patient(db_session, tenant_id)
+        patient_b = _make_patient(db_session, tenant_id)
+        user_id = TEST_USER_ID
+
+        created = svc.create_request(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient_a.id,
+            user_id=user_id,
+            request_type="REFERRAL",
+            details="PT referral for patient A.",
+            type_details={"destination": "Physical therapy", "reason": "Mobility decline"},
+        )
+
+        # Same tenant, but the request belongs to patient A -- mutating it
+        # while "authorized" only for patient B must be denied as not found.
+        with pytest.raises(svc.AdmissionActionCenterError, match="not found"):
+            svc.update_status(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient_b.id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                new_status="SENT",
+            )
+        with pytest.raises(svc.AdmissionActionCenterError, match="not found"):
+            svc.complete_request(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient_b.id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                completion_evidence="Attempted cross-patient completion",
+            )
+        with pytest.raises(svc.AdmissionActionCenterError, match="not found"):
+            svc.cancel_request(
+                db_session,
+                tenant_id=tenant_id,
+                patient_id=patient_b.id,
+                request_id=uuid.UUID(created["id"]),
+                user_id=user_id,
+                cancellation_reason="Attempted cross-patient cancellation",
+            )
+
+        # Sanity check: the same mutation succeeds with the correct patient.
+        updated = svc.update_status(
+            db_session,
+            tenant_id=tenant_id,
+            patient_id=patient_a.id,
+            request_id=uuid.UUID(created["id"]),
+            user_id=user_id,
+            new_status="SENT",
+        )
+        assert updated["status"] == "SENT"
+
+    def test_same_tenant_cross_patient_mutation_denied_via_route(self, client, db_session, rn_headers):
+        """Route-level regression: authorizing via patient B's assessment
+        must not allow mutating patient A's Action Center request."""
+        tenant_id = db_session.info.get("tenant_id")
+        patient_a = _make_patient(db_session, tenant_id)
+        patient_b = _make_patient(db_session, tenant_id)
+        assessment_a = _make_rnica_assessment(db_session, patient_a, tenant_id)
+        assessment_b = _make_rnica_assessment(db_session, patient_b, tenant_id)
+
+        create_resp = client.post(
+            f"/visits/rnica/{assessment_a.id}/action-center",
+            json={
+                "request_type": "supply_order",
+                "details": "Wound care supplies for patient A.",
+                "type_details": {"item_description": "Foam dressing, box"},
+            },
+            headers=rn_headers,
+        )
+        assert create_resp.status_code == 201, create_resp.text
+        request_id = create_resp.json()["id"]
+
+        # Authorized via patient B's assessment, but targeting patient A's
+        # request id -- must be rejected (404), not mutated.
+        complete_resp = client.post(
+            f"/visits/rnica/{assessment_b.id}/action-center/{request_id}/complete",
+            json={"completion_evidence": "Attempted cross-patient completion via route"},
+            headers=rn_headers,
+        )
+        assert complete_resp.status_code == 404, complete_resp.text
+
+        cancel_resp = client.post(
+            f"/visits/rnica/{assessment_b.id}/action-center/{request_id}/cancel",
+            json={"cancellation_reason": "Attempted cross-patient cancellation via route"},
+            headers=rn_headers,
+        )
+        assert cancel_resp.status_code == 404, cancel_resp.text
+
+        status_resp = client.patch(
+            f"/visits/rnica/{assessment_b.id}/action-center/{request_id}/status",
+            json={"status": "sent"},
+            headers=rn_headers,
+        )
+        assert status_resp.status_code == 404, status_resp.text
 
     def test_audit_events_recorded_for_create_complete_and_cancel(self, db_session):
         from sqlalchemy import text
@@ -427,6 +544,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
         svc.complete_request(
             db_session,
             tenant_id=tenant_id,
+            patient_id=patient.id,
             request_id=uuid.UUID(created["id"]),
             user_id=user_id,
             completion_evidence="Delivered and set up 2026-08-30.",
@@ -444,6 +562,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
         svc.cancel_request(
             db_session,
             tenant_id=tenant_id,
+            patient_id=patient.id,
             request_id=uuid.UUID(cancel_target["id"]),
             user_id=user_id,
             cancellation_reason="Duplicate request",
@@ -451,7 +570,7 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
 
         rows = db_session.execute(
             text(
-                "SELECT entity_id, action FROM audit_logs WHERE entity_id IN (:a, :b) "
+                "SELECT entity_id, action, metadata FROM audit_logs WHERE entity_id IN (:a, :b) "
                 "AND action IN ("
                 "'ADMISSION_ACTION_REQUEST_CREATED', "
                 "'ADMISSION_ACTION_REQUEST_COMPLETED', "
@@ -461,8 +580,10 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             {"a": created["id"], "b": cancel_target["id"]},
         ).fetchall()
         actions_by_entity: dict[str, set[str]] = {}
-        for entity_id, action in rows:
+        metadata_by_action: dict[str, dict] = {}
+        for entity_id, action, metadata in rows:
             actions_by_entity.setdefault(str(entity_id), set()).add(action)
+            metadata_by_action[f"{entity_id}:{action}"] = metadata
 
         assert actions_by_entity[created["id"]] == {
             "ADMISSION_ACTION_REQUEST_CREATED",
@@ -472,3 +593,18 @@ class TestDmeSupplyReferralPhysicianContactWorkflow:
             "ADMISSION_ACTION_REQUEST_CREATED",
             "ADMISSION_ACTION_REQUEST_CANCELED",
         }
+
+        # P1-1: audit_event(meta=...) must actually persist to the
+        # `metadata` DB column (mapped attribute `event_metadata`), not be
+        # silently dropped by a stale "meta" column-name check.
+        created_meta = metadata_by_action[f"{created['id']}:ADMISSION_ACTION_REQUEST_CREATED"]
+        assert created_meta is not None
+        assert created_meta["requestType"] == "DME_ORDER"
+
+        completed_meta = metadata_by_action[f"{created['id']}:ADMISSION_ACTION_REQUEST_COMPLETED"]
+        assert completed_meta is not None
+        assert completed_meta["completionEvidence"] == "Delivered and set up 2026-08-30."
+
+        canceled_meta = metadata_by_action[f"{cancel_target['id']}:ADMISSION_ACTION_REQUEST_CANCELED"]
+        assert canceled_meta is not None
+        assert canceled_meta["cancellationReason"] == "Duplicate request"

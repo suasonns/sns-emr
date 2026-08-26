@@ -24,13 +24,19 @@ export async function login(email: string, password: string, tenantId?: string):
 
   const data = (await response.json()) as LoginResult;
 
-  if ("requires_agency_selection" in data && data.requires_agency_selection) {
+  if (isAgencySelectionRequired(data)) {
     return data;
   }
 
   setAccessToken(data.access_token);
   setCurrentUser(data.user);
   return data;
+}
+
+export function isAgencySelectionRequired(
+  data: LoginResult,
+): data is Extract<LoginResult, { requires_agency_selection: true }> {
+  return "requires_agency_selection" in data && data.requires_agency_selection === true;
 }
 
 export async function changePassword(currentPassword: string, newPassword: string) {

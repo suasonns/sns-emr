@@ -86,6 +86,26 @@ function narrativeLine(condition, text) {
   return condition ? text : null;
 }
 
+// RNICA.jsx's ADL fields (musculoskeletal.adl.{bathing,dressing,toileting,
+// transferring,eating,grooming}) store the literal 0–5 dependence-scale
+// code, not a human-readable word — restating the raw code in a narrative
+// ("bathing (3)") is not clinically legible. Map the shared 0–5 scale to a
+// plain-language description; per-field UI copy differs slightly ("Setup"
+// vs "Setup help only") but the underlying 0–5 CMS-aligned dependence
+// scale is identical across all six ADLs, so one shared map is correct.
+const ADL_DEPENDENCE_LABELS = {
+  "0": "Independent",
+  "1": "Setup/supervision only",
+  "2": "Supervision",
+  "3": "Limited assistance",
+  "4": "Extensive assistance",
+  "5": "Total dependence",
+};
+
+function formatAdlValue(value) {
+  return ADL_DEPENDENCE_LABELS[value] ?? value;
+}
+
 export function buildClinicalNarrative(formData = {}, patient = {}) {
   const lines = [];
   const dx = formData.diagnoses || {};
@@ -143,7 +163,7 @@ export function buildClinicalNarrative(formData = {}, patient = {}) {
   const adlEntries = Object.entries(adl).filter(([, v]) => hasDocumentedValue(v));
   lines.push(narrativeLine(
     adlEntries.length > 0,
-    `The assessment records ${adlEntries.map(([k, v]) => `${k} (${v})`).join(", ")}.`
+    `The assessment records ${adlEntries.map(([k, v]) => `${k} (${formatAdlValue(v)})`).join(", ")}.`
   ));
 
   // Cognitive status (BIMS) — only recorded items.
@@ -230,10 +250,16 @@ export function buildClinicalNarrative(formData = {}, patient = {}) {
   ));
 
   // Imminently-dying findings — only restated when explicitly charted.
+  // HOPE J0050 ("appearsThreeDaysOrLess") is captured as the literal CMS
+  // response code string "0"/"1"/"9" (see RNICA.jsx's imminentDeath field
+  // definition), never as "Yes"/"No" — comparing against "Yes" here would
+  // never match, silently dropping this narrative line even when J0050 is
+  // charted as "1" (Yes).
   const imminentIndicators = imminent.indicators || [];
+  const appearsImminent = imminent.appearsThreeDaysOrLess === "1";
   lines.push(narrativeLine(
-    imminent.appearsThreeDaysOrLess === "Yes" || imminentIndicators.length > 0,
-    `${imminent.appearsThreeDaysOrLess === "Yes" ? "The assessment documents that the patient appears to be within three days or less of death" : ""}${imminentIndicators.length ? `${imminent.appearsThreeDaysOrLess === "Yes" ? "; " : ""}documented indicators: ${imminentIndicators.join(", ")}` : ""}.`
+    appearsImminent || imminentIndicators.length > 0,
+    `${appearsImminent ? "The assessment documents that the patient appears to be within three days or less of death" : ""}${imminentIndicators.length ? `${appearsImminent ? "; " : ""}documented indicators: ${imminentIndicators.join(", ")}` : ""}.`
   ));
 
   // Documented comorbidities (restated verbatim; this is not a

@@ -201,7 +201,7 @@ const SHARED_BODY_SYSTEM_CONFIG = [
     },
     rnica: {
       key: "skin",
-      label: "Integumentary - Skin",
+      label: "Skin / Wounds",
       formSection: "skin",
       regulator: "HOPE",
       hope: ["M1190"],

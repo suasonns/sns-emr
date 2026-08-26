@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { login, type LoginAgencyOption } from "../api/auth";
+import { isAgencySelectionRequired, login, type LoginAgencyOption } from "../api/auth";
 import { canAccessPath, getDefaultRoute } from "../utils/authorization";
 
 export default function LoginPage() {
@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     try {
       const result = await login(loginEmail.trim(), loginPassword, tenantId);
-      if ("requires_agency_selection" in result && result.requires_agency_selection) {
+      if (isAgencySelectionRequired(result)) {
         // Password matched (or the person is identity-linked to) more
         // than one agency -- show a picker instead of guessing which one
         // was meant. Some of these agencies may use a different email

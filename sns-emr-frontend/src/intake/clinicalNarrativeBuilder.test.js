@@ -34,14 +34,17 @@ describe("buildClinicalNarrative — documented facts included", () => {
     expect(result.text).not.toContain("KPS");
   });
 
-  it("includes ADL dependence only from recorded ADL values", () => {
+  it("includes ADL dependence only from recorded ADL values, rendered as human-readable labels (not raw 0-5 codes)", () => {
+    // RNICA.jsx's ADL fields store the literal 0-5 dependence-scale code,
+    // never a word like "Dependent" — real stored values look like "5"/"3".
     const formData = {
-      musculoskeletal: { adl: { bathing: "Dependent", dressing: "Dependent", toileting: "" } },
+      musculoskeletal: { adl: { bathing: "5", dressing: "3", toileting: "" } },
     };
     const result = buildClinicalNarrative(formData, {});
-    expect(result.text).toContain("bathing (Dependent)");
-    expect(result.text).toContain("dressing (Dependent)");
+    expect(result.text).toContain("bathing (Total dependence)");
+    expect(result.text).toContain("dressing (Limited assistance)");
     expect(result.text).not.toContain("toileting");
+    expect(result.text).not.toContain("bathing (5)");
   });
 
   it("includes hospitalization/ER utilization only when recorded", () => {
@@ -57,6 +60,22 @@ describe("buildClinicalNarrative — documented facts included", () => {
     expect(result.text).toContain("Documented comorbidities: copd.");
     expect(result.text).not.toContain("diabetesMellitus");
     expect(result.text).not.toContain(", other");
+  });
+
+  it("restates HOPE J0050 imminent-death charting using its literal CMS response code (\"1\"), not a \"Yes\" string", () => {
+    // RNICA.jsx's imminentDeath.appearsThreeDaysOrLess radio field stores
+    // the literal CMS J0050 response code ("0"/"1"/"9"), never "Yes"/"No".
+    const formData = { imminentDeath: { appearsThreeDaysOrLess: "1", indicators: [] } };
+    const result = buildClinicalNarrative(formData, {});
+    expect(result.text).toContain("within three days or less of death");
+  });
+
+  it("does not restate J0050 imminent-death charting when documented as \"0\" (No) or \"9\" (Unable to determine)", () => {
+    const noResult = buildClinicalNarrative({ imminentDeath: { appearsThreeDaysOrLess: "0", indicators: [] } }, {});
+    expect(noResult.text).not.toContain("within three days or less of death");
+
+    const unableResult = buildClinicalNarrative({ imminentDeath: { appearsThreeDaysOrLess: "9", indicators: [] } }, {});
+    expect(unableResult.text).not.toContain("within three days or less of death");
   });
 });
 

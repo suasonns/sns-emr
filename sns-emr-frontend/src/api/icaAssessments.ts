@@ -413,7 +413,15 @@ export async function listRnicaActionCenterRequests(assessmentId: string) {
 
 export async function createRnicaActionCenterRequest(
   assessmentId: string,
-  payload: { request_type: string; details: string; source_section?: string },
+  payload: {
+    request_type: string;
+    details: string;
+    source_section?: string;
+    // Required per request_type: DME_ORDER/SUPPLY_ORDER -> item_description;
+    // REFERRAL -> destination, reason; PHYSICIAN_CONTACT -> physician_name,
+    // contact_method, reason. See admission_action_center_service.py.
+    type_details?: Record<string, string>;
+  },
 ) {
   return unwrap(
     api.post(`/visits/rnica/${assessmentId}/action-center`, payload),
@@ -429,6 +437,31 @@ export async function updateRnicaActionCenterRequestStatus(
   return unwrap(
     api.patch(`/visits/rnica/${assessmentId}/action-center/${requestId}/status`, payload),
     "Unable to update Admission Action Center request status",
+  );
+}
+
+// COMPLETED and CANCELED are terminal states the backend rejects via the
+// generic status PATCH above -- it requires dedicated endpoints that carry
+// mandatory completion evidence / a cancellation reason.
+export async function completeRnicaActionCenterRequest(
+  assessmentId: string,
+  requestId: string,
+  payload: { completion_evidence: string; note?: string },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/action-center/${requestId}/complete`, payload),
+    "Unable to complete Admission Action Center request",
+  );
+}
+
+export async function cancelRnicaActionCenterRequest(
+  assessmentId: string,
+  requestId: string,
+  payload: { cancellation_reason: string },
+) {
+  return unwrap(
+    api.post(`/visits/rnica/${assessmentId}/action-center/${requestId}/cancel`, payload),
+    "Unable to cancel Admission Action Center request",
   );
 }
 

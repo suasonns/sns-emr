@@ -49,8 +49,13 @@ def audit_event(
     # If your AuditLog table/model ever adds these later, this will auto-start writing them:
     if tenant_id is not None and "tenant_id" in model_cols:
         data["tenant_id"] = tenant_id
-    if meta is not None and "meta" in model_cols:
-        data["meta"] = meta
+    if meta is not None and "metadata" in model_cols:
+        # `metadata` is the DB column name; the mapped Python attribute is
+        # `event_metadata` (AuditLog.metadata is SQLAlchemy's reserved
+        # declarative MetaData descriptor, so the column is aliased). This
+        # previously checked/assigned "meta", which never matched any real
+        # column -- every caller's metadata was silently dropped.
+        data["event_metadata"] = meta
 
     # created_at is usually present; if not, DB default handles it
     if "created_at" in model_cols:

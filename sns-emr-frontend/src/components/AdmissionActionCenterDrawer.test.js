@@ -5,11 +5,12 @@ import {
 } from "./AdmissionActionCenterDrawer";
 
 describe("Admission Action Center (Phase A) request types", () => {
-  it("exposes exactly the five in-scope request types", () => {
+  it("exposes exactly the six in-scope request types", () => {
     const values = ACTION_CENTER_REQUEST_TYPES.map((t) => t.value);
     expect(values).toEqual([
       "MEDICATION_REQUEST",
       "PHYSICIAN_ORDER",
+      "PHYSICIAN_CONTACT",
       "DME_ORDER",
       "SUPPLY_ORDER",
       "REFERRAL",
@@ -32,14 +33,13 @@ describe("Admission Action Center (Phase A) request types", () => {
 });
 
 describe("Admission Action Center (Phase A) statuses", () => {
-  it("tracks exactly the linear REQUESTED -> COMPLETED lifecycle in order", () => {
+  it("tracks the linear non-terminal REQUESTED -> DELIVERED lifecycle in order; COMPLETED/CANCELED are terminal states handled by dedicated complete/cancel endpoints, not this generic status list", () => {
     expect(ACTION_CENTER_STATUSES).toEqual([
       "REQUESTED",
       "ORDERED",
       "SENT",
       "ACKNOWLEDGED",
       "DELIVERED",
-      "COMPLETED",
     ]);
   });
 

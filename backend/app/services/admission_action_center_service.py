@@ -194,10 +194,37 @@ def list_requests(db: Session, *, tenant_id, patient_id) -> list[dict]:
     return [_serialize(r) for r in records]
 
 
+def _load_request_for_patient(
+    db: Session,
+    *,
+    tenant_id,
+    request_id,
+    patient_id,
+) -> AdmissionActionRequest:
+    """Loads an AdmissionActionRequest scoped to both tenant and patient.
+
+    Route handlers authorize the caller against the *assessment*/patient
+    resolved from the URL, but request_id is an independent, guessable
+    identifier -- without this check a same-tenant user authorized for one
+    patient's assessment could mutate another patient's request merely by
+    supplying that request's id. Treated identically to "not found" (never
+    leaks existence of another patient's request) to match this module's
+    existing error conventions.
+    """
+    query = db.query(AdmissionActionRequest).filter(AdmissionActionRequest.id == request_id)
+    if tenant_id is not None:
+        query = query.filter(AdmissionActionRequest.tenant_id == tenant_id)
+    record = query.first()
+    if record is None or (patient_id is not None and str(record.patient_id) != str(patient_id)):
+        raise AdmissionActionCenterError("Admission action request not found")
+    return record
+
+
 def update_status(
     db: Session,
     *,
     tenant_id,
+    patient_id,
     request_id,
     user_id,
     new_status: str,
@@ -219,12 +246,9 @@ def update_status(
             "Use cancel_request(...) to record CANCELED with a cancellation_reason"
         )
 
-    query = db.query(AdmissionActionRequest).filter(AdmissionActionRequest.id == request_id)
-    if tenant_id is not None:
-        query = query.filter(AdmissionActionRequest.tenant_id == tenant_id)
-    record = query.first()
-    if record is None:
-        raise AdmissionActionCenterError("Admission action request not found")
+    record = _load_request_for_patient(
+        db, tenant_id=tenant_id, request_id=request_id, patient_id=patient_id
+    )
 
     if record.status in ("COMPLETED", "CANCELED"):
         raise AdmissionActionCenterError(
@@ -263,6 +287,7 @@ def complete_request(
     db: Session,
     *,
     tenant_id,
+    patient_id,
     request_id,
     user_id,
     completion_evidence: str,
@@ -279,12 +304,9 @@ def complete_request(
             "completion_evidence is required to mark a request COMPLETED"
         )
 
-    query = db.query(AdmissionActionRequest).filter(AdmissionActionRequest.id == request_id)
-    if tenant_id is not None:
-        query = query.filter(AdmissionActionRequest.tenant_id == tenant_id)
-    record = query.first()
-    if record is None:
-        raise AdmissionActionCenterError("Admission action request not found")
+    record = _load_request_for_patient(
+        db, tenant_id=tenant_id, request_id=request_id, patient_id=patient_id
+    )
 
     if record.status in ("COMPLETED", "CANCELED"):
         raise AdmissionActionCenterError(
@@ -326,6 +348,7 @@ def cancel_request(
     db: Session,
     *,
     tenant_id,
+    patient_id,
     request_id,
     user_id,
     cancellation_reason: str,
@@ -339,12 +362,9 @@ def cancel_request(
             "cancellation_reason is required to cancel a request"
         )
 
-    query = db.query(AdmissionActionRequest).filter(AdmissionActionRequest.id == request_id)
-    if tenant_id is not None:
-        query = query.filter(AdmissionActionRequest.tenant_id == tenant_id)
-    record = query.first()
-    if record is None:
-        raise AdmissionActionCenterError("Admission action request not found")
+    record = _load_request_for_patient(
+        db, tenant_id=tenant_id, request_id=request_id, patient_id=patient_id
+    )
 
     if record.status in ("COMPLETED", "CANCELED"):
         raise AdmissionActionCenterError(
