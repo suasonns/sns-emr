@@ -144,7 +144,7 @@ const NAV_SECTIONS = [
   "Diagnoses", "Performance Status", "Neurological", "Cardiovascular",
   "Respiratory", "Infection", "Gastrointestinal", "Nutrition",
   "Endocrine", "Genitourinary",
-  "Musculoskeletal", "Integumentary - Skin", "Imminent Death", "SFV",
+  "Musculoskeletal", "Skin / Wounds", "Imminent Death", "SFV",
   "Safety", "Psychosocial", "Spiritual", "Bereavement",
   "Personal Care", "Teaching Needs", "Admissions Order",
   "Referrals", "Finalization",
@@ -166,7 +166,7 @@ const LEGACY_ROUTES = [
   { key: "endocrine",         nav: "Endocrine",             formSection: "endocrine" },
   { key: "genitourinary",     nav: "Genitourinary",         formSection: "genitourinary" },
   { key: "musculoskeletal",   nav: "Musculoskeletal",       formSection: "musculoskeletal" },
-  { key: "skin",              nav: "Integumentary - Skin",  formSection: "skin" },
+  { key: "skin",              nav: "Skin / Wounds",         formSection: "skin" },
   { key: "imminentDeath",     nav: "Imminent Death",        formSection: "imminentDeath" },
   { key: "sfv",               nav: "SFV",                   formSection: "sfv" },
   { key: "safety",            nav: "Safety",                formSection: "safety" },
@@ -205,7 +205,7 @@ const SIDEBAR_CONFIG = [
   { key: "endocrine",         label: "Endocrine",             icon: "🔄", hope: [],                         color: null },
   { key: "genitourinary",     label: "Genitourinary",         icon: "💧", hope: [],                         color: null },
   { key: "musculoskeletal",   label: "Musculoskeletal",       icon: "🦴", hope: [],                         color: null },
-  { key: "skin",              label: "Integumentary - Skin",  icon: "🩹", hope: ["M1190"],                  color: "green" },
+  { key: "skin",              label: "Skin / Wounds",         icon: "🩹", hope: ["M1190"],                  color: "green" },
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
   { key: "safety",            label: "Safety",                icon: "🛡️", hope: [],                   color: null },
@@ -2008,7 +2008,7 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
       )}
 
       <FormTextarea
-        label="Clinical Narrative"
+        label="Diagnoses Narrative"
         value={narrative}
         onChange={handleNarrativeChange}
         rows={10}
@@ -8779,7 +8779,7 @@ const SECTION_CONFIGS = {
   },
 
   skin: {
-    title: "Integumentary - Skin",
+    title: "Skin / Wounds",
     subtitle: "Integumentary assessment, Braden Scale, wound documentation (M1190)",
     cards: [
       { title: "Skin Assessment", hopeCode: "M1190", fields: [
@@ -9475,14 +9475,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const routes = useMemo(() => {
     const orderedRoutes = workspacePilot ? PILOT_ROUTES : LEGACY_ROUTES;
-    // SFV (Symptom Follow-Up Visit) is always its own separate visit -- HOPE
-    // requires it to occur within 2 calendar days of the RN Initial
-    // Comprehensive Assessment as a distinct documented visit, never filled
-    // out inside the RNICA itself (initial or ongoing/recert).
-    return orderedRoutes.filter((route) => route.key !== "sfv");
-  }, [workspacePilot]);
+    // SFV (Symptom Follow-Up Visit) is its own separate, distinctly
+    // documented visit that HOPE requires within 2 calendar days of the RN
+    // Initial Comprehensive Assessment -- it is never filled out inside an
+    // *ongoing/recert* RNICA visit. It IS part of the canonical 30-module
+    // initial-assessment navigation (module 20), so it must only be
+    // filtered when this is genuinely an ongoing-assessment visit, not
+    // unconditionally (see rnIcaClinicalNavigation.js's
+    // validateRnIcaClinicalNavigation, which checks the same explicit
+    // isOngoing flag rather than back-inferring it from route count).
+    return isOngoing ? orderedRoutes.filter((route) => route.key !== "sfv") : orderedRoutes;
+  }, [workspacePilot, isOngoing]);
   const sidebarConfigItems = useMemo(() => {
-    const items = SIDEBAR_CONFIG.filter((item) => item.key !== "sfv");
+    // Keep in lock-step with `routes` above: SFV is only excluded from
+    // sidebar/lookup metadata for genuinely-ongoing (recert) visits.
+    const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
   }, [isOngoing]);
 
@@ -10106,6 +10113,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           saving={saving}
           saveStatus={saveStatus}
           intelligence={intelligence}
+          isOngoingAssessment={isOngoing}
           renderWorkspaceSections={renderWorkspaceSections}
           visitRecorder={(
             <VisitRecorderCard

@@ -16,7 +16,7 @@ export const RNICA_ASSESSMENT_MODULES = [
   { key: "endocrine", label: "Endocrine", formSection: "endocrine" },
   { key: "genitourinary", label: "Genitourinary", formSection: "genitourinary" },
   { key: "musculoskeletal", label: "Musculoskeletal", formSection: "musculoskeletal" },
-  { key: "skin", label: "Integumentary - Skin", formSection: "skin", regulator: "HOPE", hope: ["M1190"] },
+  { key: "skin", label: "Skin / Wounds", formSection: "skin", regulator: "HOPE", hope: ["M1190"] },
   { key: "imminentDeath", label: "Imminent Death", formSection: "imminentDeath", regulator: "HOPE", hope: ["J0050"] },
   { key: "sfv", label: "SFV", formSection: "sfv", regulator: "HOPE", hope: ["J2050", "J2052", "J2053"] },
   { key: "safety", label: "Safety", formSection: "safety" },
@@ -40,11 +40,15 @@ const EXPECTED_MODULE_KEYS = [
   "admissionsOrder", "ordersHub", "referrals", "finalization",
 ];
 
-export function validateRnIcaClinicalNavigation(routes, availableFormSections = []) {
+export function validateRnIcaClinicalNavigation(routes, availableFormSections = [], isOngoingAssessment = false) {
   const errors = [];
-  const sfvOmittedForOngoing = routes.length === RNICA_ASSESSMENT_MODULES.length - 1
-    && !routes.some((route) => route.key === "sfv");
-  const expectedKeys = sfvOmittedForOngoing
+  // SFV (Symptom Follow-Up Visit) only applies to the one-time RN Initial
+  // Comprehensive Assessment -- ongoing/recert visits never include it.
+  // This must be an explicit, caller-supplied flag (not inferred from
+  // routes.length): both modes can independently produce a 29- or
+  // 30-route list depending on other future module changes, and a
+  // route-count heuristic silently mismatches the actual mode.
+  const expectedKeys = isOngoingAssessment
     ? EXPECTED_MODULE_KEYS.filter((key) => key !== "sfv")
     : EXPECTED_MODULE_KEYS;
   const expected = expectedKeys.map((key) => RNICA_ASSESSMENT_MODULES.find((module) => module.key === key));
@@ -63,7 +67,7 @@ export function validateRnIcaClinicalNavigation(routes, availableFormSections = 
     if (route.key !== expectedKeys[index]) {
       errors.push(`RNICA module ${index + 1} must be ${expectedKeys[index] || "absent"}, received ${route.key}`);
     }
-    const expectedRegulator = sfvOmittedForOngoing && expected[index]?.regulator === "HOPE"
+    const expectedRegulator = isOngoingAssessment && expected[index]?.regulator === "HOPE"
       ? null
       : expected[index]?.regulator || null;
     if ((route.regulator || null) !== expectedRegulator) {

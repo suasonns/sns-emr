@@ -92,6 +92,7 @@ export default function RNICACommandWorkspace({
   onNext,
   onExitPilot,
   canLock,
+  isOngoingAssessment = false,
 }) {
   const [query, setQuery] = useState("");
   const [density, setDensity] = useState(storedDensity);
@@ -108,8 +109,8 @@ export default function RNICACommandWorkspace({
     .find((route) => key === (route.validationPrefix || route.formSection)
       || key.startsWith(`${route.validationPrefix || route.formSection}.`));
   const navigationAudit = useMemo(
-    () => validateRnIcaClinicalNavigation(routes, formSections),
-    [formSections, routes],
+    () => validateRnIcaClinicalNavigation(routes, formSections, isOngoingAssessment),
+    [formSections, routes, isOngoingAssessment],
   );
   if (import.meta.env.DEV && !navigationAudit.valid) {
     throw new Error(`Invalid RNICA clinical navigation: ${navigationAudit.errors.join("; ")}`);
