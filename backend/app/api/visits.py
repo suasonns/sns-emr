@@ -51,7 +51,11 @@ from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_d
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
-from app.services.evidence.harvest_service import list_pending_structured_findings, review_harvested_signal
+from app.services.evidence.harvest_service import (
+    list_pending_structured_findings,
+    review_harvested_signal,
+    review_harvested_signals_batch,
+)
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 from app.services.chha_outcome_service import upsert_chha_outcome
 from app.services.diagnosis_sync_service import sync_official_primary_diagnosis
@@ -1677,6 +1681,57 @@ def review_rnica_harvested_signal(
     except LookupError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"id": str(updated.id), "review_status": updated.review_status}
+
+
+class HarvestedSignalBatchReviewRequest(BaseModel):
+    signal_ids: list[str]
+    disposition: str
+    reason: str | None = None
+
+
+@router.post("/rnica/signals/batch-review")
+def batch_review_rnica_harvested_signals(
+    payload: HarvestedSignalBatchReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    if not payload.signal_ids:
+        raise HTTPException(status_code=422, detail="signal_ids must not be empty")
+
+    try:
+        signal_uuids = [uuid.UUID(sid) for sid in payload.signal_ids]
+    except ValueError:
+        raise HTTPException(status_code=422, detail="signal_ids must all be valid UUIDs") from None
+
+    # Every signal in the batch must belong to the same, currently-authorized
+    # patient -- load the rows first to authorize, then re-check every other
+    # row's patient_id matches before mutating anything, so one bulk call
+    # can never touch a different patient's (or tenant's) signals.
+    rows = db.query(PatientHarvestedSignal).filter(PatientHarvestedSignal.id.in_(signal_uuids)).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No matching signals found")
+
+    patient_ids = {row.patient_id for row in rows}
+    if len(patient_ids) > 1:
+        raise HTTPException(status_code=422, detail="All signals in a batch must belong to the same patient")
+
+    get_authorized_patient(db, rows[0].patient_id, current_user)
+    tenant_id = rows[0].tenant_id
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+
+    try:
+        result = review_harvested_signals_batch(
+            db,
+            signal_ids=signal_uuids,
+            tenant_id=tenant_id,
+            disposition=(payload.disposition or "").strip().upper(),
+            reviewed_by_user_id=user_id,
+            reason=payload.reason,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    return result
 
 
 @router.post("/msw-ica/save")

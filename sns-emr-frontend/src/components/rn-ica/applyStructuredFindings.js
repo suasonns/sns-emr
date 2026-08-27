@@ -213,3 +213,67 @@ export function applyStructuredFindings(formData, findings) {
 export function sectionsWithAppliedStructuredFields(appliedFields) {
   return new Set((appliedFields || []).map((f) => f.section));
 }
+
+/**
+ * Bulk "Apply All Non-Conflicting" -- runs applyStructuredFindings() once
+ * per pending signal (in the order given), but only KEEPS a signal's
+ * changes if that signal produced zero conflicts. A signal that produces
+ * even one conflict is left completely untouched (its writes are rolled
+ * back, not partially applied) and reported in `skippedSignals` for the
+ * RN to review individually -- this keeps the "never overwrite RN data"
+ * guarantee intact while letting a nurse clear an entire batch of clean,
+ * no-conflict findings in one click instead of clicking Apply N times.
+ *
+ * @param {object} formData - the full RNICA form state.
+ * @param {Array} signals - pending structured-findings signals, each with
+ *   `.id` and `.structured_findings` (as returned by
+ *   list_pending_structured_findings / GET .../intelligence).
+ * @returns {{
+ *   formData: object,
+ *   appliedSignalIds: string[],
+ *   skippedSignalIds: string[],
+ *   appliedFields: Array,
+ *   appliedFieldsBySignal: Record<string, Array>,
+ *   skippedConflicts: Array,
+ * }}
+ */
+export function applyAllNonConflicting(formData, signals) {
+  let next = formData;
+  const appliedSignalIds = [];
+  const skippedSignalIds = [];
+  const appliedFields = [];
+  const appliedFieldsBySignal = {};
+  const skippedConflicts = [];
+
+  for (const signal of signals || []) {
+    if (!signal || !signal.id) continue;
+    const { formData: candidate, appliedFields: candidateApplied, conflicts: candidateConflicts } =
+      applyStructuredFindings(next, signal.structured_findings || []);
+
+    if (candidateConflicts.length > 0) {
+      // Leave this signal's fields exactly as they were -- do not merge
+      // `candidate` into `next` -- and surface why for the RN.
+      skippedSignalIds.push(signal.id);
+      skippedConflicts.push(
+        ...candidateConflicts.map((c) => ({ ...c, signal_id: signal.id }))
+      );
+      continue;
+    }
+
+    next = candidate;
+    if (candidateApplied.length > 0) {
+      appliedSignalIds.push(signal.id);
+      appliedFieldsBySignal[signal.id] = candidateApplied;
+      appliedFields.push(...candidateApplied);
+    } else {
+      // Nothing to write (e.g. every finding was HISTORICAL/NEGATED and
+      // routed to reviewNeeded) -- still counts as "cleanly reviewed",
+      // not a conflict, so it's fine to mark applied/reviewed.
+      appliedSignalIds.push(signal.id);
+      appliedFieldsBySignal[signal.id] = [];
+    }
+  }
+
+  return { formData: next, appliedSignalIds, skippedSignalIds, appliedFields, appliedFieldsBySignal, skippedConflicts };
+}
+
