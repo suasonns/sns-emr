@@ -221,6 +221,24 @@ export async function getRnicaIntelligence(assessmentId: string) {
   return unwrap(api.get(`/visits/rnica/${assessmentId}/intelligence`), "RN ICA intelligence failed");
 }
 
+// Structured Findings application layer — records an RN's disposition of
+// one evidence-harvested signal that carries structured findings
+// (source_type: REFERRAL_HNP / uploaded document / transcript / etc). This
+// is deliberately a separate, minimal contract from the broader narrative
+// AI-signal review workflow: `disposition` is exactly "APPLIED" (the RN
+// used applyStructuredFindings() to populate blank RNICA field(s) from
+// this signal) or "DISMISSED" (the RN reviewed it and chose not to apply
+// it). The apply itself happens client-side against form state before this
+// call — this endpoint only records that review happened so the signal
+// drops out of the pending-review queue (review_status: NEW -> APPLIED |
+// DISMISSED).
+export async function reviewHarvestedSignal(signalId: string, disposition: "APPLIED" | "DISMISSED", reason?: string) {
+  return unwrap(
+    api.post(`/visits/rnica/signals/${signalId}/review`, { disposition, reason }),
+    "Unable to record structured finding review"
+  );
+}
+
 // SECTION 12 — Final Review Dashboard data source. Single source of truth
 // shared with the backend lock endpoint, so the UI's Lock button and the
 // server's lock gate can never disagree.

@@ -55,7 +55,10 @@ import {
   getRnicaSectionPocProblemHistory,
   linkExistingRnicaSectionPocProblem,
   mergeRnicaPocDuplicateProblems,
+  reviewHarvestedSignal,
 } from "../api/icaAssessments";
+import { applyStructuredFindings } from "./rn-ica/applyStructuredFindings";
+import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
   listAideVisitsForPatient,
@@ -1091,6 +1094,24 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   return { errors, warnings, isValid: Object.keys(errors).length === 0 };
+}
+
+// Structured Findings application layer — human-readable "destination
+// field(s)" description for a concept, e.g. "cardiovascular.chfPresent" or
+// "wounds[].location" — used only for RN-facing display in the Structured
+// Findings review panel, never to derive the actual write logic (that
+// still lives entirely in applyStructuredFindings.js against the same
+// CONCEPT_REGISTRY).
+function describeStructuredFindingDestinations(conceptCode) {
+  const concept = CONCEPT_REGISTRY[conceptCode];
+  if (!concept) return conceptCode;
+  const writes = concept.writes || [];
+  if (writes.length === 0 && concept.valueSlot) {
+    return `${concept.section}.${concept.valueSlot.path}`;
+  }
+  return writes
+    .map((w) => `${w.section || concept.section}.${w.path}`)
+    .join(", ");
 }
 
 
@@ -9876,6 +9897,105 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [finalizationReadiness, setFinalizationReadiness] = useState(null);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+
+  // --- Structured Findings application layer (dedicated, separate from ---
+  // --- the narrative AI-signal review workflow above) ---------------------
+  // `pendingStructuredSignals` mirrors intelligence.structured_findings_signals
+  // (harvested signals with review_status === "NEW" that carry validated
+  // StructuredFinding objects — from REFERRAL_HNP, uploaded documents,
+  // transcripts, etc). Kept as separate local state (rather than read
+  // directly off `intelligence`) so an Apply/Dismiss action can remove a
+  // signal from the visible list immediately, without waiting on a full
+  // intelligence refetch.
+  const [pendingStructuredSignals, setPendingStructuredSignals] = useState([]);
+  const [structuredFindingsBusyId, setStructuredFindingsBusyId] = useState(null);
+  const [structuredFindingsError, setStructuredFindingsError] = useState("");
+  // Provenance: every field ever populated by an applied structured finding,
+  // so the RN can always see why a control is populated (source type,
+  // excerpt, concept, confidence) — never silently overwritten again once
+  // recorded here.
+  const [structuredFieldProvenance, setStructuredFieldProvenance] = useState([]);
+  // Conflicts: fields where an existing (RN-entered) value differed from
+  // the AI-suggested value — the clinician value is never overwritten;
+  // these are surfaced for explicit RN review/resolution instead.
+  const [structuredFieldConflicts, setStructuredFieldConflicts] = useState([]);
+
+  useEffect(() => {
+    setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
+  }, [intelligence]);
+
+  const handleApplyStructuredSignal = useCallback(
+    async (signal) => {
+      setStructuredFindingsError("");
+      setStructuredFindingsBusyId(signal.id);
+      try {
+        const { formData: nextFormData, appliedFields, conflicts } = applyStructuredFindings(
+          formData,
+          signal.structured_findings || []
+        );
+        setFormData(nextFormData);
+
+        if (appliedFields.length > 0) {
+          const provenanceEntries = appliedFields.map((f) => ({
+            section: f.section,
+            path: f.path,
+            value: f.value,
+            concept_code: f.concept_code,
+            source_type: signal.source_type,
+            source_excerpt: signal.original_text_excerpt,
+            recorded_at: signal.recorded_at,
+            confidence: f.finding?.confidence,
+            signal_id: signal.id,
+          }));
+          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+        }
+        if (conflicts.length > 0) {
+          const conflictEntries = conflicts.map((c) => ({
+            section: c.section,
+            path: c.path,
+            existingValue: c.existingValue,
+            suggestedValue: c.suggestedValue,
+            concept_code: c.concept_code,
+            source_type: signal.source_type,
+            source_excerpt: signal.original_text_excerpt,
+            signal_id: signal.id,
+          }));
+          setStructuredFieldConflicts((prev) => [...prev, ...conflictEntries]);
+        }
+
+        const reasonParts = [];
+        if (appliedFields.length > 0) reasonParts.push(`applied ${appliedFields.length} field(s)`);
+        if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
+        await reviewHarvestedSignal(
+          signal.id,
+          "APPLIED",
+          reasonParts.length > 0 ? reasonParts.join("; ") : "No blank fields to populate"
+        );
+        setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
+      } catch (err) {
+        console.error("Apply structured finding error:", err);
+        setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply structured finding(s).");
+      } finally {
+        setStructuredFindingsBusyId(null);
+      }
+    },
+    [formData]
+  );
+
+  const handleDismissStructuredSignal = useCallback(async (signal) => {
+    setStructuredFindingsError("");
+    setStructuredFindingsBusyId(signal.id);
+    try {
+      await reviewHarvestedSignal(signal.id, "DISMISSED", "Reviewed — not applied by RN");
+      setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
+    } catch (err) {
+      console.error("Dismiss structured finding error:", err);
+      setStructuredFindingsError(err instanceof Error ? err.message : "Unable to dismiss structured finding(s).");
+    } finally {
+      setStructuredFindingsBusyId(null);
+    }
+  }, []);
+
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
   const isUpdateAssessment = isOngoing && assessmentType === "update";
@@ -10996,6 +11116,132 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
               {!intelligenceLoading && !intelligence && assessmentId && (
                 <div style={{ fontSize: 11, color: COLORS.gray }}>No intelligence available yet. Save the assessment to generate the clinical signal summary.</div>
+              )}
+            </div>
+
+            {/* ──────────────────────────────────────────────────────────
+                Structured Findings — dedicated application-layer panel.
+                Deliberately separate from the "RN ICA Intelligence" box
+                above (which is narrative/rule-based signal summary only).
+                Surfaces evidence-harvested StructuredFinding objects
+                (review_status === "NEW") pulled from H&P, referral
+                packets, uploaded documents, and speech-to-documentation
+                transcripts, and lets the RN Apply (populate blank RNICA
+                fields, preserving provenance, never overwriting existing
+                RN-entered data) or Dismiss (mark reviewed, not applied)
+                each one. Never auto-applies anything on its own.
+               ────────────────────────────────────────────────────────── */}
+            <div style={{ marginTop: 18, paddingTop: 12, borderTop: `1px solid ${COLORS.border}` }}>
+              <div style={{ fontSize: 12, color: COLORS.gray, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                Structured Findings — Pending Review
+              </div>
+
+              {structuredFindingsError && (
+                <div style={{ ...styles.warningBox, marginTop: 0, marginBottom: 8 }}>{structuredFindingsError}</div>
+              )}
+
+              {pendingStructuredSignals.length === 0 && (
+                <div style={{ fontSize: 11, color: COLORS.gray }}>
+                  No pending structured findings from H&amp;P, referral, uploaded documents, or transcripts.
+                </div>
+              )}
+
+              {pendingStructuredSignals.map((signal) => (
+                <div
+                  key={signal.id}
+                  style={{ marginBottom: 10, padding: 10, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}` }}
+                >
+                  <div style={{ fontSize: 10, color: COLORS.gray, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    {signal.source_type}{signal.recorded_at ? ` • ${new Date(signal.recorded_at).toLocaleDateString()}` : ""}
+                  </div>
+                  {signal.original_text_excerpt && (
+                    <div style={{ fontSize: 11, fontStyle: "italic", color: COLORS.dark, marginBottom: 6 }}>
+                      &ldquo;{signal.original_text_excerpt}&rdquo;
+                    </div>
+                  )}
+                  {(signal.structured_findings || []).map((finding, fIdx) => (
+                    <div key={`${finding.concept_code}-${fIdx}`} style={{ fontSize: 10, color: COLORS.gray, marginBottom: 2 }}>
+                      <strong style={{ color: COLORS.dark }}>{finding.concept_code}</strong>
+                      {" → "}{describeStructuredFindingDestinations(finding.concept_code)}
+                      {typeof finding.confidence === "number" ? ` (confidence ${Math.round(finding.confidence * 100)}%)` : ""}
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleApplyStructuredSignal(signal)}
+                      disabled={structuredFindingsBusyId === signal.id}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        border: "none",
+                        background: COLORS.teal,
+                        color: "#fff",
+                        cursor: structuredFindingsBusyId === signal.id ? "default" : "pointer",
+                        opacity: structuredFindingsBusyId === signal.id ? 0.6 : 1,
+                      }}
+                    >
+                      {structuredFindingsBusyId === signal.id ? "Applying…" : "Apply to RNICA"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDismissStructuredSignal(signal)}
+                      disabled={structuredFindingsBusyId === signal.id}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        border: `1px solid ${COLORS.border}`,
+                        background: "transparent",
+                        color: COLORS.gray,
+                        cursor: structuredFindingsBusyId === signal.id ? "default" : "pointer",
+                        opacity: structuredFindingsBusyId === signal.id ? 0.6 : 1,
+                      }}
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {structuredFieldProvenance.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.dark, marginBottom: 6 }}>
+                    Applied field provenance ({structuredFieldProvenance.length})
+                  </div>
+                  {structuredFieldProvenance.map((p, idx) => (
+                    <div key={`${p.signal_id}-${p.path}-${idx}`} style={{ fontSize: 10, color: COLORS.gray, marginBottom: 4 }}>
+                      <strong style={{ color: COLORS.dark }}>{p.section}.{p.path}</strong> = {JSON.stringify(p.value)}
+                      <div style={{ fontStyle: "italic" }}>
+                        from {p.source_type}{p.source_excerpt ? `: "${p.source_excerpt}"` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {structuredFieldConflicts.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                    Conflicts requiring RN review ({structuredFieldConflicts.length})
+                  </div>
+                  {structuredFieldConflicts.map((c, idx) => (
+                    <div
+                      key={`${c.signal_id}-${c.path}-${idx}`}
+                      style={{ fontSize: 10, color: COLORS.dark, marginBottom: 6, padding: 6, borderRadius: 6, background: COLORS.sfvTagBg, border: `1px solid ${COLORS.error}` }}
+                    >
+                      <strong>{c.section}.{c.path}</strong>
+                      <div>Current value: {JSON.stringify(c.existingValue)}</div>
+                      <div>AI-suggested value: {JSON.stringify(c.suggestedValue)}</div>
+                      <div style={{ fontStyle: "italic" }}>
+                        from {c.source_type}{c.source_excerpt ? `: "${c.source_excerpt}"` : ""}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>

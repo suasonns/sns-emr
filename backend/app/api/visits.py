@@ -42,6 +42,7 @@ from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.chha_visit_task_result import CHHAVisitTaskResult
 from app.models.cc_hourly_narrative_entry import CCHourlyNarrativeEntry
 from app.models.rnica_assessment import RnicaAssessment
+from app.models.patient_evidence import PatientHarvestedSignal
 from app.services import rnica_poc_adapter
 from app.services.rnica_finalization_service import evaluate_finalization_readiness
 from app.services import rnica_amendment_service
@@ -50,6 +51,7 @@ from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_d
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
+from app.services.evidence.harvest_service import list_pending_structured_findings, review_harvested_signal
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 from app.services.chha_outcome_service import upsert_chha_outcome
 from app.services.diagnosis_sync_service import sync_official_primary_diagnosis
@@ -1626,12 +1628,57 @@ def get_rnica_intelligence(
     get_authorized_patient(db, record.patient_id, current_user)
     patient_id = str(record.patient_id) if record.patient_id else None
     patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
+    structured_findings_signals = list_pending_structured_findings(db, record.patient_id) if record.patient_id else []
     intelligence = build_rnica_intelligence(
         record.form_data or {},
         patient_id=patient_id,
         patient_evidence=patient_evidence,
+        structured_findings_signals=structured_findings_signals,
     )
     return intelligence
+
+
+class HarvestedSignalReviewRequest(BaseModel):
+    disposition: str
+    reason: str | None = None
+
+
+@router.post("/rnica/signals/{signal_id}/review")
+def review_rnica_harvested_signal(
+    signal_id: str,
+    payload: HarvestedSignalReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        signal_uuid = uuid.UUID(signal_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="signal_id must be a valid UUID") from None
+
+    existing = db.query(PatientHarvestedSignal).filter(PatientHarvestedSignal.id == signal_uuid).first()
+    if not existing:
+        raise HTTPException(status_code=404, detail="Signal not found")
+    # Authorize against the signal's own patient -- this also enforces
+    # tenant scoping via get_authorized_patient's existing access checks.
+    get_authorized_patient(db, existing.patient_id, current_user)
+
+    user_id = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    try:
+        updated = review_harvested_signal(
+            db,
+            signal_id=signal_uuid,
+            tenant_id=existing.tenant_id,
+            disposition=(payload.disposition or "").strip().upper(),
+            reviewed_by_user_id=user_id,
+            reason=payload.reason,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    return {"id": str(updated.id), "review_status": updated.review_status}
+
+
 @router.post("/msw-ica/save")
 def save_msw_ica_assessment(
     payload: dict,

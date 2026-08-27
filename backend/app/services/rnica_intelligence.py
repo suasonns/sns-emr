@@ -173,7 +173,13 @@ def _collect_findings(form_data: dict[str, Any]) -> tuple[list[dict[str, Any]], 
     return findings, recommendations, evidence, missing
 
 
-def build_rnica_intelligence(form_data: dict[str, Any] | None, *, patient_id: str | None = None, patient_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+def build_rnica_intelligence(
+    form_data: dict[str, Any] | None,
+    *,
+    patient_id: str | None = None,
+    patient_evidence: dict[str, Any] | None = None,
+    structured_findings_signals: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     payload = form_data or {}
     findings, recommendations, evidence, missing = _collect_findings(payload)
 
@@ -207,4 +213,11 @@ def build_rnica_intelligence(form_data: dict[str, Any] | None, *, patient_id: st
             "sections": evidence,
             "patient_evidence": patient_evidence or {},
         },
+        # Evidence-derived structured findings (see
+        # app.services.evidence.structured_findings) awaiting RN review --
+        # each entry is one harvested signal carrying zero or more
+        # validated, concept-coded findings the RNICA structured-findings
+        # apply layer can offer to populate directly into blank RNICA
+        # fields. Never auto-applied; always requires an explicit RN action.
+        "structured_findings_signals": structured_findings_signals or [],
     }
