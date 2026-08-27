@@ -40,8 +40,16 @@ import { CONCEPT_REGISTRY } from "./structuredFindingRegistry.generated";
 function isBlank(value) {
   if (value === null || value === undefined) return true;
   if (value === "") return true;
-  if (value === false) return true;
   if (Array.isArray(value) && value.length === 0) return true;
+  // NOTE: `false` is intentionally NOT treated as blank. RNICA boolean
+  // presence fields (e.g. heartFailurePresent, contracturesPresent,
+  // skinConditionsPresent) default to `false`, and an RN who has actually
+  // examined the patient and left a box unchecked has made a real clinical
+  // assertion -- it must never be silently flipped to `true` by an AI
+  // suggestion. Every boolean-presence concept therefore always routes
+  // through the conflict path below for explicit RN confirmation, whether
+  // the field is untouched-default or RN-confirmed-false. Only a truly
+  // unset field (null/undefined/""/[]) is eligible for blank-only auto-apply.
   return false;
 }
 
