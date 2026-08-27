@@ -134,3 +134,56 @@ def test_batch_review_endpoint_rejects_empty_signal_ids(client, rn_headers):
         headers=rn_headers,
     )
     assert resp.status_code == 422
+
+
+def test_batch_review_endpoint_dismisses_multiple_signals(client, db_session, rn_headers):
+    """Backs the Bulk Review "Dismiss Selected" / "Dismiss All" actions, which
+    reuse this same generic batch-review endpoint with disposition=DISMISSED."""
+    patient = _make_patient(db_session)
+    evidence = _make_evidence_record(db_session, patient_id=patient.id)
+    signal_a = _make_signal(db_session, patient_id=patient.id, evidence_record_id=evidence.id)
+    signal_b = _make_signal(db_session, patient_id=patient.id, evidence_record_id=evidence.id)
+
+    resp = client.post(
+        "/visits/rnica/signals/batch-review",
+        json={
+            "signal_ids": [str(signal_a.id), str(signal_b.id)],
+            "disposition": "DISMISSED",
+            "reason": "Bulk dismissed by RN — reviewed, not applied (Dismiss All)",
+        },
+        headers=rn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert set(body["updated"]) == {str(signal_a.id), str(signal_b.id)}
+    assert body["not_found"] == []
+
+    db_session.refresh(signal_a)
+    db_session.refresh(signal_b)
+    assert signal_a.review_status == "DISMISSED"
+    assert signal_b.review_status == "DISMISSED"
+
+
+def test_batch_review_endpoint_dismisses_partial_selection(client, db_session, rn_headers):
+    """Dismiss Selected must only affect the chosen subset, leaving the
+    remaining pending signal untouched (review_status stays NEW)."""
+    patient = _make_patient(db_session)
+    evidence = _make_evidence_record(db_session, patient_id=patient.id)
+    signal_a = _make_signal(db_session, patient_id=patient.id, evidence_record_id=evidence.id)
+    signal_b = _make_signal(db_session, patient_id=patient.id, evidence_record_id=evidence.id)
+
+    resp = client.post(
+        "/visits/rnica/signals/batch-review",
+        json={"signal_ids": [str(signal_a.id)], "disposition": "DISMISSED"},
+        headers=rn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["updated"] == [str(signal_a.id)]
+
+    db_session.refresh(signal_a)
+    db_session.refresh(signal_b)
+    assert signal_a.review_status == "DISMISSED"
+    assert signal_b.review_status == "NEW"
