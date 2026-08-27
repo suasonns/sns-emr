@@ -63,6 +63,7 @@ def gather_patient_evidence(
     try:
         diagnosis_rows = db.execute(text(diagnosis_sql), {"patient_id": patient_id}).mappings().all()
     except Exception:
+        db.rollback()
         diagnosis_rows = []
 
     for row in diagnosis_rows:
@@ -81,7 +82,7 @@ def gather_patient_evidence(
             })
 
     note_sql = """
-        SELECT note_type, discipline, content, observed_data, patient_reported, caregiver_reported, assessment, plan_of_care_updates
+        SELECT note_type, discipline, content, plan_of_care_updates
         FROM clinical_notes
         WHERE patient_id = :patient_id
     """
@@ -94,6 +95,12 @@ def gather_patient_evidence(
     try:
         note_rows = db.execute(text(note_sql), params).mappings().all()
     except Exception:
+        # A failed statement leaves the session's transaction aborted for
+        # every subsequent query on this same request/session -- roll back
+        # so callers (e.g. list_pending_structured_findings, right after
+        # this in the /intelligence endpoint) don't inherit a poisoned
+        # transaction and fail with an unrelated-looking 500.
+        db.rollback()
         note_rows = []
 
     for row in note_rows:
@@ -102,10 +109,17 @@ def gather_patient_evidence(
             candidate = row.get(key)
             if candidate:
                 text_values.append(_flatten_json_text(candidate))
-        for key in ["observed_data", "patient_reported", "caregiver_reported", "assessment", "plan_of_care_updates"]:
-            candidate = row.get(key)
+        # observed_data / patient_reported / caregiver_reported / assessment
+        # are nested keys inside the `content` JSON column, not their own
+        # SQL columns -- only plan_of_care_updates is a real top-level column.
+        content_payload = row.get("content") if isinstance(row.get("content"), dict) else {}
+        for key in ["observed_data", "patient_reported", "caregiver_reported", "assessment"]:
+            candidate = content_payload.get(key)
             if candidate:
                 text_values.append(_flatten_json_text(candidate))
+        plan_updates = row.get("plan_of_care_updates")
+        if plan_updates:
+            text_values.append(_flatten_json_text(plan_updates))
         note_text = " ".join(part for part in text_values if part)
         if note_text:
             evidence_parts.append(note_text)
