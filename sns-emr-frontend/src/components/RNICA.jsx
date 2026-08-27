@@ -9,7 +9,7 @@
  *          neurological, cardiovascular, respiratory, infection, gastrointestinal,
  *          nutrition, endocrine, genitourinary, musculoskeletal, skin, imminentDeath,
  *          sfv, safety, psychosocial, spiritual, bereavement, personalCare,
- *          teachingNeeds, admissionsOrder, ordersHub, referrals, finalization
+ *          teachingNeeds, admissionsOrder, referrals, finalization
  *
  * Color System: HOPE = GREEN (#059669), SFV = RED (#DC2626), CMS = BLUE (#2563EB)
  * Accent: Teal (#0D9488)
@@ -19,17 +19,55 @@ import React, { useState, useCallback, useMemo, useEffect, useContext, useRef } 
 import { useNavigate } from "react-router-dom";
 import frontBody from "../assets/body-map/front.png";
 import backBody from "../assets/body-map/back.png";
+import {
+  RNICA_BODY_SYSTEM_MODULES,
+  RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
+} from "../config/bodySystems";
+import AdmissionActionCenterDrawer, {
+  AdmissionActionCenterButton,
+} from "./AdmissionActionCenterDrawer";
+import {
+  RNICA_ASSESSMENT_MODULES,
+  validateBodyMapRegions,
+} from "./rn-ica/rnIcaClinicalNavigation";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import {
   saveRnicaAssessment,
   getRnicaAssessment,
   getRnicaAssessmentByPatient,
+  getRnicaAssessmentByPatientType,
   updateRnicaAssessment,
   lockRnicaAssessment,
+  deleteRnicaAssessment,
   getRnicaIntelligence,
+  viewRnicaSectionPoc,
+  addRnicaSectionPocProblem,
+  updateRnicaSectionPocProblem,
+  resolveRnicaSectionPocProblem,
+  viewRnicaAllPoc,
+  deactivateRnicaSectionPocProblem,
+  getRnicaFinalizationReadiness,
+  requestRnicaCorrection,
+  listRnicaAmendments,
+  approveRnicaAmendment,
+  denyRnicaAmendment,
+  getRnicaSectionPocProblemHistory,
+  linkExistingRnicaSectionPocProblem,
+  mergeRnicaPocDuplicateProblems,
 } from "../api/icaAssessments";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
+import {
+  listAideVisitsForPatient,
+  getChhaVisitOutcome,
+  upsertChhaVisitOutcome,
+} from "../api/chhaVisits";
+import { createVisitNote, listAssignableStaff } from "../api/visitNotes";
+import {
+  listCcHourlyNarrativeEntries,
+  createCcHourlyNarrativeEntry,
+  deleteCcHourlyNarrativeEntry,
+} from "../api/ccHourlyNarrative";
 import {
   checkMedicationSafety,
   listMedications,
@@ -53,10 +91,14 @@ import {
   approvePhysicianOrder,
   executePhysicianOrder,
   cancelPhysicianOrder,
+  ORDER_SIGNER_ROLES,
+  getPhysicianOrderStatusTone,
+  formatPhysicianOrderStatusLabel,
 } from "../api/physicianOrders";
 import { getCurrentUser } from "../api/session";
-import { fetchPerformanceHistory } from "../api/facesheet";
+import { fetchFacesheet, fetchPerformanceHistory } from "../api/facesheet";
 import { listVendors } from "../api/vendors";
+import { listStaff } from "../api/staff";
 import { COLORS as SNS_COLORS, S as SNS_S } from "../tenant/design";
 import PatientContextSidebar from "./PatientContextSidebar";
 import NumericPainScale from "../assessments/pain/NumericPainScale";
@@ -66,120 +108,64 @@ import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
-import { getSfvStatus } from "../intake/hopeReportMapper";
+import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
+import {
+  buildClinicalNarrative,
+  DISEASE_TRAJECTORY_OPTIONS,
+  isLegacyDiseaseTrajectoryValue,
+  getDiseaseTrajectoryLabel,
+} from "../intake/clinicalNarrativeBuilder";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
 import VisitRecorderCard from "./VisitRecorderCard";
+import RNICACommandWorkspace from "./rn-ica/RNICACommandWorkspace";
+// getRnicaColors/getRnicaStyles live in ../theme/clinicalDesign — the single shared
+// design system used by every clinical page (RNICA, CHHA, MSW ICA, SC ICA, ...).
+// Re-exported here for backward compatibility with existing imports of this module.
+import { getRnicaColors, getRnicaStyles } from "../theme/clinicalDesign";
+export { getRnicaColors, getRnicaStyles };
 // ════════════════════════════════════════════════════════════════
 // 1. CONSTANTS & CONFIGURATION
 // ════════════════════════════════════════════════════════════════
 
 const API_BASE = "/visits/rnica";
 
-export function getRnicaColors(mode) {
-  if (mode === "light") {
-    return {
-      navy: "#1E3A5F",
-      hope: "#059669",
-      sfv: "#DC2626",
-      cms: "#2563EB",
-      teal: "#0D9488",
-      dark: "#0F172A",
-      gray: "#64748B",
-      border: "#D8E3E8",
-      bg: "#F8FAFC",
-      white: "#FFFFFF",
-      warning: "#F59E0B",
-      error: "#EF4444",
-      success: "#10B981",
-      pageBg: "#EEF3F8",
-      sidebarBg: "#F8FBFD",
-      sidebarItemColor: "#334155",
-      sidebarActiveColor: "#0F766E",
-      panelBg: "rgba(255,255,255,0.96)",
-      inputBg: "#FFFFFF",
-      hopeTagBg: "#ECFDF5",
-      sfvTagBg: "#FEF2F2",
-      cmsTagBg: "#EFF6FF",
-      infoBoxBg: "linear-gradient(135deg, #eef6ff, #eefaf8)",
-      warningBoxBg: "linear-gradient(135deg, #fffbeb, #fff7ed)",
-      successBoxBg: "linear-gradient(135deg, #ecfdf5, #f0fdf4)",
-      mapControlBg: "#F8FAFC",
-      mapControlBorder: "#E2E8F0",
-      mapChipBg: "#FFFFFF",
-      mapChipText: "#0F172A",
-      mapMuted: "#475569",
-      tealBg: "#CCFBF1",
-      amberTagBg: "#FFFBEB",
-    };
-  }
-  return {
-    navy: "#1E3A5F",
-    hope: "#34d399",
-    sfv: "#f87171",
-    cms: "#60a5fa",
-    teal: "#10b7a2",
-    dark: "#e2e8f0",
-    gray: "#94a3b8",
-    border: "#334155",
-    bg: "#0f172a",
-    white: "#1e293b",
-    warning: "#f59e0b",
-    error: "#f87171",
-    success: "#34d399",
-    pageBg: "#0f172a",
-    sidebarBg: "#0b1220",
-    sidebarItemColor: "#cbd5e1",
-    sidebarActiveColor: "#5eead4",
-    panelBg: "rgba(30, 41, 59, 0.9)",
-    inputBg: "#1e293b",
-    hopeTagBg: "rgba(52, 211, 153, 0.16)",
-    sfvTagBg: "rgba(248, 113, 113, 0.16)",
-    cmsTagBg: "rgba(96, 165, 250, 0.16)",
-    infoBoxBg: "linear-gradient(135deg, rgba(30,58,95,0.35), rgba(13,148,136,0.15))",
-    warningBoxBg: "linear-gradient(135deg, rgba(245,158,11,0.18), rgba(249,115,22,0.12))",
-    successBoxBg: "linear-gradient(135deg, rgba(16,185,129,0.18), rgba(52,211,153,0.12))",
-    mapControlBg: "#1e293b",
-    mapControlBorder: "#334155",
-    mapChipBg: "#0f172a",
-    mapChipText: "#e2e8f0",
-    mapMuted: "#94a3b8",
-    tealBg: "rgba(16, 183, 162, 0.18)",
-    amberTagBg: "rgba(245, 158, 11, 0.16)",
-  };
-}
+// HOPE J2051 A-H checklist for the right-panel SFV Status tracker — lets
+// the RN see at a glance which Symptom Impact items are still blank while
+// documenting manually (whether by hand in Symptom Impact, or auto-derived
+// from Pain/Respiratory/GI/Neuro elsewhere in the same RNICA).
+const SYMPTOM_IMPACT_CHECKLIST = [
+  { key: "pain", label: "A. Pain" },
+  { key: "shortnessOfBreath", label: "B. Shortness of Breath" },
+  { key: "anxiety", label: "C. Anxiety" },
+  { key: "nausea", label: "D. Nausea" },
+  { key: "vomiting", label: "E. Vomiting" },
+  { key: "diarrhea", label: "F. Diarrhea" },
+  { key: "constipation", label: "G. Constipation" },
+  { key: "agitation", label: "H. Agitation" },
+];
+const SYMPTOM_SEVERITY_LABEL = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
 
 const AssessmentModeContext = React.createContext("ica");
 
 const NAV_SECTIONS = [
   "Patient Demographics", "Vitals", "Pain Assessment", "Symptom Impact",
-  "Diagnoses", "Performance Status", "Neurological", "Cardiovascular",
-  "Respiratory", "Infection", "Gastrointestinal", "Nutrition",
-  "Endocrine", "Genitourinary",
-  "Musculoskeletal", "Skin / Wounds", "Imminent Death", "SFV",
+  "Diagnoses", "Performance Status", ...RNICA_BODY_SYSTEM_MODULES.map((module) => module.label),
+  "Imminent Death", "SFV",
   "Safety", "Psychosocial", "Spiritual", "Bereavement",
   "Personal Care", "Teaching Needs", "Admissions Order",
-  "Hospice Orders Hub", "Referrals", "Finalization",
+  "Referrals", "Finalization",
 ];
 
-const ROUTES = [
+const LEGACY_ROUTES = [
   { key: "demographics",      nav: "Patient Demographics",  formSection: "demographics" },
   { key: "vitals",            nav: "Vitals",                formSection: "vitals" },
   { key: "pain",              nav: "Pain Assessment",       formSection: "pain" },
   { key: "symptomImpact",     nav: "Symptom Impact",        formSection: "symptomImpact" },
   { key: "diagnoses",         nav: "Diagnoses",             formSection: "diagnoses" },
   { key: "performanceStatus", nav: "Performance Status",    formSection: "performanceStatus" },
-  { key: "neurological",      nav: "Neurological",          formSection: "neurological" },
-  { key: "cardiovascular",    nav: "Cardiovascular",        formSection: "cardiovascular" },
-  { key: "respiratory",       nav: "Respiratory",           formSection: "respiratory" },
-  { key: "infection",         nav: "Infection",             formSection: "infection" },
-  { key: "gastrointestinal",  nav: "Gastrointestinal",      formSection: "gastrointestinal" },
-  { key: "nutrition",         nav: "Nutrition",             formSection: "nutrition" },
-  { key: "endocrine",         nav: "Endocrine",             formSection: "endocrine" },
-  { key: "genitourinary",     nav: "Genitourinary",         formSection: "genitourinary" },
-  { key: "musculoskeletal",   nav: "Musculoskeletal",       formSection: "musculoskeletal" },
-  { key: "skin",              nav: "Skin / Wounds",         formSection: "skin" },
+  ...RNICA_BODY_SYSTEM_MODULES.map((module) => ({ key: module.key, nav: module.label, formSection: module.formSection })),
   { key: "imminentDeath",     nav: "Imminent Death",        formSection: "imminentDeath" },
   { key: "sfv",               nav: "SFV",                   formSection: "sfv" },
   { key: "safety",            nav: "Safety",                formSection: "safety" },
@@ -190,11 +176,14 @@ const ROUTES = [
   { key: "teachingNeeds",     nav: "Teaching Needs",        formSection: "teachingNeeds" },
   { key: "admissionsOrder",   nav: "Admissions Order",      formSection: "admissionsOrder",
     subFields: ["levelOfCare","visitFrequency","haAssignment","initialPocIdg","nonCoveredItems"] },
-  { key: "ordersHub",         nav: "Hospice Orders Hub",    formSection: "medications",
-    subViews: ["ordersList","orderEntry","medReconciliation","startedStoppedLog"] },
   { key: "referrals",         nav: "Referrals",             formSection: "referrals" },
   { key: "finalization",      nav: "Finalization",          formSection: "finalization" },
 ];
+
+const PILOT_ROUTES = RNICA_ASSESSMENT_MODULES.map((module) => ({
+  ...module,
+  nav: module.label,
+}));
 
 const SIDEBAR_CONFIG = [
   { key: "demographics",      label: "Patient Demographics",  icon: "👤", hope: ["A1110","A1005","A1010"], color: "green" },
@@ -206,16 +195,7 @@ const SIDEBAR_CONFIG = [
   { key: "symptomImpact",     label: "Symptom Impact",        icon: "📊", hope: ["J2051"],                  color: "red" },
   { key: "diagnoses",         label: "Diagnoses",             icon: "🔬", hope: ["I0010","J0050"],          color: "green" },
   { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: ["M1190"],                  color: "green" },
-  { key: "neurological",      label: "Neurological",          icon: "🧠", hope: ["N0500","N0510","N0520"],  color: "green", sfv: true },
-  { key: "cardiovascular",    label: "Cardiovascular",        icon: "❤️", hope: [],                      color: null },
-  { key: "respiratory",       label: "Respiratory",           icon: "🫁", hope: [],                         color: null, sfv: true },
-  { key: "infection",         label: "Infection",             icon: "🦠", hope: [],                         color: null },
-  { key: "gastrointestinal",  label: "Gastrointestinal",      icon: "🍽️", hope: [],                   color: null, sfv: true },
-  { key: "nutrition",         label: "Nutrition",             icon: "🥗", hope: [],                         color: null },
-  { key: "endocrine",         label: "Endocrine",             icon: "🔄", hope: [],                         color: null },
-  { key: "genitourinary",     label: "Genitourinary",         icon: "💧", hope: [],                         color: null },
-  { key: "musculoskeletal",   label: "Musculoskeletal",       icon: "🦴", hope: [],                         color: null },
-  { key: "skin",              label: "Skin / Wounds",         icon: "🩹", hope: ["M1190"],                  color: "green" },
+  ...RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
   { key: "safety",            label: "Safety",                icon: "🛡️", hope: [],                   color: null },
@@ -228,12 +208,24 @@ const SIDEBAR_CONFIG = [
   { key: "admissionsOrder",   label: "Admissions Order",      icon: "📝", hope: [],                         color: "blue",
     subFields: ["levelOfCare","visitFrequency","haAssignment","initialPocIdg","nonCoveredItems"],
     features: ["verbalOrderReadBack","locSelection","disciplineFrequency"] },
-  { key: "ordersHub",         label: "Hospice Orders Hub",    icon: "📋", hope: [],                         color: null,
-    orderCategories: ["Meds","DME","Supplies","Lab","Treatment","Diet","Other"],
-    features: ["eRx","phoneOrderReadBack","medReconciliation","compounding","startedStoppedLog"] },
   { key: "referrals",         label: "Referrals",             icon: "🔗", hope: [],                         color: null },
   { key: "finalization",      label: "Finalization",          icon: "✅",    hope: ["F2000","F2100","F2200"],   color: "green" },
 ];
+
+// Maps a Section 12 finalization readiness check key (see
+// rnica_finalization_service.py) to the RN ICA section the nurse should be
+// navigated to in order to resolve it. Checks without an obvious single
+// section (e.g. POC completeness, which spans every section's "Add to POC"
+// actions) are intentionally omitted here.
+const FINALIZATION_CHECK_SECTION_MAP = {
+  attestation: "finalization",
+  signature: "finalization",
+  narrativeReviewed: "diagnoses",
+  lcdBaseline: "diagnoses",
+  referralsReviewed: "referrals",
+  chhaPocCompleted: "admissionsOrder",
+};
+
 
 const FORM_REGISTRY = [
   "demographics", "vitals", "pain", "symptomImpact", "diagnoses",
@@ -241,7 +233,25 @@ const FORM_REGISTRY = [
   "infection", "gastrointestinal", "nutrition", "endocrine", "genitourinary",
   "musculoskeletal", "skin", "imminentDeath", "sfv", "safety",
   "psychosocial", "spiritual", "bereavement", "personalCare", "teachingNeeds",
-  "admissionsOrder", "ordersHub", "referrals", "finalization",
+  "admissionsOrder", "referrals", "finalization",
+];
+
+const UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"]);
+const UPDATE_HIDDEN_SIDEBAR_KEYS = new Set(["advancedCarePlanning", "admissionsOrder", "sfv"]);
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 9 — DME per-item status tracker.
+//
+// Per SNS_RNICA_MASTER_MAP_1.1.md SECTION 9, each DME item must carry
+// its own status (Has / Needs / Ordered / Delivered / Declined / N/A)
+// rather than a single flat "needed" checkbox, since a hospice must be
+// able to distinguish equipment the patient already has from equipment
+// that has been ordered but not yet delivered, or declined.
+// ════════════════════════════════════════════════════════════════
+const DME_ITEM_LIST = [
+  "Air mattress", "Bed", "Bedpan", "Egg crate", "Overbed table", "Cane",
+  "Walker", "Wheelchair", "Shower chair", "Geri-chair/recliner", "Hoyer lift",
+  "Urinal", "Commode", "Nebulizer", "Suction machine", "Oxygen concentrator", "E-tank", "Other",
 ];
 
 // Default education topics for Teaching Needs
@@ -254,52 +264,91 @@ const DEFAULT_EDUCATION_TOPICS = [
   "Signs and symptoms of approaching death", "Grief and bereavement resources",
 ];
 
-// Default visit frequency disciplines for Admissions Order
-const DEFAULT_VISIT_DISCIPLINES = [
-  { discipline: "SN", label: "Skilled Nursing", frequency: "", duration: "per Week", prnVisits: "" },
-  { discipline: "HA", label: "Home Aide", frequency: "", duration: "per Week", prnVisits: "" },
-  { discipline: "MSW", label: "Medical Social Worker", frequency: "", duration: "", prnVisits: "" },
-  { discipline: "SC", label: "Spiritual Counselor", frequency: "", duration: "", prnVisits: "" },
-  { discipline: "RN-SUP", label: "RN Supervisory", frequency: "", duration: "every 14 days", prnVisits: "" },
+// Every discipline that may need an ordered visit frequency — not just the
+// core hospice team. PT/OT/ST, dietitian, podiatry, chaplain/volunteer, etc.
+// can all be added as-needed via the "+ Add Discipline" control below; this
+// list is the full picklist, not a fixed set of rows.
+const VISIT_FREQUENCY_DISCIPLINE_OPTIONS = [
+  { value: "RN", label: "RN — Registered Nurse" },
+  { value: "RN-SUP", label: "RN — Supervisory Visit" },
+  { value: "LVN", label: "LVN/LPN — Licensed Vocational/Practical Nurse" },
+  { value: "HA", label: "HA — Home Health Aide" },
+  { value: "SC", label: "SC — Spiritual Counselor / Chaplain" },
+  { value: "MSW", label: "MSW — Medical Social Worker" },
+  { value: "BSW", label: "BSW — Bachelor Social Worker" },
+  { value: "LCSW", label: "LCSW — Licensed Clinical Social Worker" },
+  { value: "LSW", label: "LSW — Licensed Social Worker" },
+  { value: "VOL", label: "VOL — Volunteer" },
+  { value: "MD", label: "MD — Physician" },
+  { value: "DO", label: "DO — Osteopathic Physician" },
+  { value: "NP", label: "NP — Nurse Practitioner" },
+  { value: "SN", label: "SN — Skilled Nursing" },
+  { value: "PT", label: "PT — Physical Therapist" },
+  { value: "OT", label: "OT — Occupational Therapist" },
+  { value: "ST", label: "ST — Speech Therapist" },
+  { value: "Dietitian", label: "Dietitian" },
+  { value: "Podiatry", label: "Podiatry" },
+  { value: "Pharm.D", label: "Pharm.D — Pharmacist" },
+  { value: "BC", label: "BC — Bereavement Coordinator" },
 ];
 
-const BODY_MAP_REGIONS = {
-  front: [
-    { id: "head", label: "Head", x: 110, y: 32, r: 18 },
-    { id: "neck", label: "Neck", x: 110, y: 68, r: 12 },
-    { id: "shoulders", label: "Shoulders", x: 110, y: 102, r: 16 },
-    { id: "chest", label: "Chest", x: 110, y: 138, r: 18 },
-    { id: "abdomen", label: "Abdomen", x: 110, y: 188, r: 18 },
-    { id: "pelvis", label: "Pelvis", x: 110, y: 236, r: 16 },
-    { id: "right-arm", label: "R Arm", x: 52, y: 156, r: 16 },
-    { id: "left-arm", label: "L Arm", x: 168, y: 156, r: 16 },
-    { id: "right-leg", label: "R Leg", x: 88, y: 300, r: 18 },
-    { id: "left-leg", label: "L Leg", x: 132, y: 300, r: 18 },
-    { id: "right-foot", label: "R Foot", x: 88, y: 372, r: 14 },
-    { id: "left-foot", label: "L Foot", x: 132, y: 372, r: 14 },
-  ],
-  back: [
-    { id: "head", label: "Head", x: 110, y: 32, r: 18 },
-    { id: "neck", label: "Neck", x: 110, y: 68, r: 12 },
-    { id: "shoulders", label: "Shoulders", x: 110, y: 102, r: 16 },
-    { id: "upper-back", label: "Upper Back", x: 110, y: 138, r: 18 },
-    { id: "lower-back", label: "Lower Back", x: 110, y: 192, r: 18 },
-    { id: "buttocks", label: "Buttocks", x: 110, y: 238, r: 16 },
-    { id: "right-arm", label: "R Arm", x: 52, y: 156, r: 16 },
-    { id: "left-arm", label: "L Arm", x: 168, y: 156, r: 16 },
-    { id: "right-leg", label: "R Leg", x: 88, y: 300, r: 18 },
-    { id: "left-leg", label: "L Leg", x: 132, y: 300, r: 18 },
-    { id: "right-foot", label: "R Foot", x: 88, y: 372, r: 14 },
-    { id: "left-foot", label: "L Foot", x: 132, y: 372, r: 14 },
-  ],
-};
+const VISIT_FREQUENCY_COUNT_OPTIONS = Array.from({ length: 10 }, (_, i) => String(i + 1));
 
+const VISIT_FREQUENCY_PERIOD_OPTIONS = [
+  "As Needed", "Recert", "As needed and Recert", "One-time then PRN", "1 PRN",
+  "per Week", "per Week + 1 PRN Visits", "per Week +2 PRN Visits", "per Week +3 PRN Visits",
+  "per 2 Week + 1 PRN Visits", "per 2 Week +2 PRN Visits", "per 2 Week +3 PRN Visits",
+  "per Month", "per Month + 1 PRN Visits", "per Month +2 PRN Visits", "per Month +3 PRN Visits",
+  "every 14 days", "Declined", "Daily until further orders", "Face-to-Face",
+];
+
+// Default visit frequency rows for Admissions Order — the core hospice IDG
+// disciplines are pre-populated; any other discipline the patient needs
+// (PT/OT/ST, dietitian, podiatry, an upcoming F2F, etc.) is added on demand
+// via "+ Add Discipline" in DisciplineFrequencyOfVisitCard.
+const DEFAULT_VISIT_DISCIPLINES = [
+  { discipline: "SN", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "HA", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "MSW", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "SC", numberOfVisits: "", period: "", specify: "" },
+  { discipline: "RN-SUP", numberOfVisits: "", period: "", specify: "" },
+];
+
+// ─── Visit meta options (logistics/payroll tracking, shared across all ICA/visit forms) ───
+const CARE_LEVEL_OPTIONS = ["Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
+const CHHA_REASON_FOR_VISIT_OPTIONS = ["Follow-up", "Routine", "CC"];
 
 // ════════════════════════════════════════════════════════════════
 // 2. INITIAL_FORM — Complete State Shape (28 sections)
 // ════════════════════════════════════════════════════════════════
 
 const INITIAL_FORM = {
+  // ─── VISIT META — Logistics/payroll tracking (correction, type, reason, time in/out, staff, discipline, care level) ───
+  visitMeta: {
+    correction: false,
+    typeOfVisit: "",
+    visitKind: "",
+    visitKindSpecify: "",
+    reasonForVisit: "Initial Comprehensive Assessment",
+    visitDate: "",
+    timeIn: "",
+    timeOut: "",
+    duration: "",
+    enteredBy: "",
+    staffAssigned: "",
+    discipline: "RN",
+    careLevel: "",
+  },
   // ─── 1. DEMOGRAPHICS ───────────────────────────────
   demographics: {
     firstName: "", lastName: "", dob: "", gender: "",
@@ -339,6 +388,10 @@ const INITIAL_FORM = {
       hospitalizationPreferenceDate: "", decisionMaker: "",
       poaName: "", poaPhone: "",
       advanceDirectiveOnFile: false, polstOnFile: false,
+      // HOPE F2000/F2100/F2200 A: was the patient/responsible party asked? (0 No / 1 Yes-discussed / 2 Yes-refused)
+      // Distinct from the clinical preference fields above — CMS defines these
+      // items as "was asked", not the resulting clinical order.
+      cprPreferenceAskedStatus: "", lifeSustainingAskedStatus: "", hospitalizationAskedStatus: "",
     },
   },
 
@@ -359,8 +412,24 @@ const INITIAL_FORM = {
   // ─── 3. PAIN ───────────────────────────────────────
   pain: {
     verbalizesPain: "", uncomfortableBecauseOfPain: "",
-    neuropathicPain: false,
+    // HOPE J0915 official CMS response: "Does the patient have neuropathic
+    // pain?" (0 No / 1 Yes). Previously a plain boolean checkbox that was
+    // never exported to HOPE at all — the mapper incorrectly exported
+    // uncomfortableBecauseOfPain under the J0915 code instead. See
+    // checkpoint "HOPE J0900/J0915 Pain compliance remediation".
+    neuropathicPain: "",
     screeningDate: "",
+    // HOPE J0900.A / J0900.C / J0900.D official CMS responses. Distinct from
+    // verbalizesPain (which drives pain-scale tool selection, not the
+    // official "was the patient screened for pain?" HOPE answer),
+    // painIntensity.current (a raw numeric score, not the official 0/1/2/3/9
+    // severity category), and assessmentTool (an auto-derived UI tool
+    // selection based on communication status/age, not the clinician's
+    // explicit confirmation of which standardized CMS tool category was
+    // used). See checkpoint "HOPE J0900 compliance remediation".
+    screenedForPain: "",
+    painSeverityCategory: "",
+    standardizedPainToolType: "",
     comprehensiveAssessmentCompleted: false,
     comprehensiveAssessmentDate: "",
     assessmentTool: "",
@@ -390,12 +459,42 @@ const INITIAL_FORM = {
 
   // ─── 5. DIAGNOSES ──────────────────────────────────
   diagnoses: {
-    primaryDiagnosis: { icd10: "", description: "", onsetDate: "" },
+    primaryDiagnosis: { icd10: "", description: "", onsetDate: "", hopeDiagnosisCategory: "" },
     secondaryDiagnoses: [],
     comorbidities: [],
     terminalPrognosis: "",
     diseaseTrajectory: "",
     lcdEligibilityNarrative: "",
+    // SECTION 10 — Clinical Narrative & Disease Trajectory. Deliberately
+    // separate from lcdEligibilityNarrative (distinct purpose/field, never
+    // merged/read by the other). clinicalNarrative is populated either by
+    // manual RN typing or by an explicit "Build Draft from Documented
+    // Findings" click that runs the deterministic, non-AI
+    // buildClinicalNarrative() template renderer — it is never generated
+    // automatically and never silently overwrites existing text.
+    clinicalNarrative: "",
+    clinicalNarrativeReviewed: false,
+    // rnAddendum / clinicianClarification are pre-lock working fields
+    // only. Once the assessment is locked, every Section 10 field
+    // (including these two) becomes read-only in the UI — SNS EMR does
+    // not yet have a separate authenticated addendum record/endpoint,
+    // so this build intentionally does NOT fake one by keeping these
+    // fields editable-with-a-timestamp after lock (that would still be
+    // a silent mutation of already-authenticated documentation, not a
+    // distinct traceable addendum).
+    //
+    // Future documentation infrastructure: Authenticated post-lock
+    // addendum workflow — a separate record (parent assessment id,
+    // addendum text, author identifier/credentials, created date/time,
+    // reason/addendum type, authentication status) is the correct way
+    // to capture information added after the original entry is
+    // authenticated, and should be built as its own model/endpoint
+    // rather than as mutable fields on this JSONB blob.
+    rnAddendum: "",
+    clinicianClarification: "",
+    recentHospitalizations: "",
+    recentErVisits: "",
+    utilizationNotes: "",
     ndsEligibility: {
       detectedDisease: "",
       criteriaAnswers: {},
@@ -438,14 +537,28 @@ const INITIAL_FORM = {
   // ─── 7. NEUROLOGICAL ──────────────────────────────
   neurological: {
     consciousness: "",
-    orientation: { time: false, place: false, person: false, situation: false },
+    orientation: { time: false, place: false, person: false, situation: false, disoriented: false },
     communication: "", hearing: "", vision: "", balance: "",
     cognition: "", delirium: false, seizureHistory: false,
-    psychiatricHistory: "",
+    psychiatricHistory: "", psychiatricHistoryType: [],
     sensoryDeficits: [],
+    sensoryAids: [],
+    symptomsDemeanor: [],
+    // Motor deficit findings (e.g. hemiparesis/hemiplegia) extracted from
+    // H&P/referral/uploaded-document/transcript evidence by the shared
+    // StructuredFinding contract (app/services/evidence/structured_findings.py
+    // NEURO_HEMIPARESIS_*/NEURO_HEMIPLEGIA_* concepts). `paralysis` under
+    // musculoskeletal below is the matching cross-section write target for
+    // the same finding (a hemiparesis is both a neurological deficit and a
+    // musculoskeletal disability classification).
+    motorDeficit: false,
+    affectedSide: "",
+    deficitType: [],
     sleepRest: {
       sleepPattern: "", averageSleepHours: "",
-      sleepAids: [], restfulness: "", notes: "",
+      sleepAids: [], restfulness: "",
+      nighttimeSymptoms: [], response: "",
+      notes: "",
     },
     hopeItems: { n0500: "", n0510: "", n0520: "" },
     notes: "",
@@ -454,10 +567,23 @@ const INITIAL_FORM = {
   // ─── 8. CARDIOVASCULAR ────────────────────────────
   cardiovascular: {
     bpSymptoms: [],
+    pulseSites: [],
     pulseQuality: "",
     edema: { present: "", location: [], severity: "", pitting: "" },
     chestPain: { present: "", type: "", frequency: "" },
     peripheralCirculation: "", heartSounds: "", jvd: "",
+    skinColor: "", pacemaker: false, internalDefibrillator: false,
+    varicoseVeins: false, centralVenousLine: false,
+    coolExtremities: false, stasisUlcer: false,
+    // Objective heart-failure finding drafted from evidence text (H&P,
+    // referral, uploaded documents, or transcript) via the shared
+    // StructuredFinding contract's CV_HEART_FAILURE_* concepts. Deliberately
+    // separate from hopeComorbidities.heartFailure (HOPE I0600) below, which
+    // is auto-derived from a coded Primary/Secondary Diagnosis category --
+    // this field can be populated even before/without a coded diagnosis and
+    // is always draft/review-needed until clinician review.
+    heartFailurePresent: false,
+    heartFailureType: [],
     notes: "",
   },
 
@@ -465,12 +591,18 @@ const INITIAL_FORM = {
   respiratory: {
     sobSeverity: "", exertionLevel: "",
     shortnessOfBreathScreened: false, screeningDate: "",
-    treatmentInitiated: false, treatmentDate: "",
+    treatmentInitiated: false, treatmentDate: "", treatmentDeclined: false,
     lungSounds: [], respirations: [],
     coughType: "", sputumCharacter: "",
     oxygenTherapy: {
       inUse: false, type: "", litersPerMinute: "",
       hoursPerDay: "", satOnO2: "",
+      deliveryMode: "", onRoomAir: false,
+    },
+    ventilator: {
+      shortTermVentilator: false, longTermVentilator: false,
+      ventilatorTypeAndSettings: "",
+      tracheostomyType: "", tracheostomySize: "",
     },
     notes: "",
   },
@@ -478,17 +610,25 @@ const INITIAL_FORM = {
   // ─── 10. INFECTION ────────────────────────────────
   infection: {
     allergies: [],
+    allergyDetails: "",
     currentInfections: [],
+    antibioticResistantInfection: [],
     historyOfResistantInfections: [],
     immunosuppressed: false,
+    antibioticUse: false,
+    temperature: "",
+    recurrentInfection: false,
+    infectionHistory: "",
     precautions: [],
     notes: "",
   },
 
   // ─── 11. GASTROINTESTINAL ─────────────────────────
   gastrointestinal: {
-    nausea: "", vomiting: "", diarrhea: "", constipation: "",
-    bowelSounds: "", abdomen: "", bowelStatus: "", lastBM: "",
+    nausea: "", vomiting: "", vomitingOccurrences24h: "", diarrhea: "", constipation: "",
+    bowelSounds: "", abdomen: "", ascites: false, abdominalGirth: "",
+    stoolCharacter: [],
+    bowelStatus: "", bowelFrequency: "", reasonBowelRegimenNotInitiated: "", lastBM: "",
     continence: "",
     feedingTube: { present: false, type: "", site: "" },
     ostomy: { present: false, type: "", condition: "" },
@@ -502,14 +642,16 @@ const INITIAL_FORM = {
     swallowingIssues: [], oralMucosa: "",
     dentures: { upper: false, lower: false, condition: "" },
     nutritionalSupplements: "",
+    npoStatus: "", artificialFeeding: [], oralCavityFindings: [],
     notes: "",
   },
 
   // ─── 13. ENDOCRINE ────────────────────────────────
   endocrine: {
+    endocrineImpairment: [],
     thyroid: { assessment: "", notes: "" },
     diabetes: {
-      type: "", glucoseMonitoring: "",
+      type: "", dependency: "", glucoseMonitoring: "",
       lastHbA1c: "", lastHbA1cDate: "",
       insulinType: "", insulinDose: "",
       oralHypoglycemics: [],
@@ -523,11 +665,14 @@ const INITIAL_FORM = {
   // ─── 14. GENITOURINARY ────────────────────────────
   genitourinary: {
     urinaryStatus: "", frequency: "",
+    urineCharacteristics: [], urineColor: "",
     catheter: {
       present: false, type: "", size: "",
       insertionDate: "", lastChangeDate: "",
       condition: "", urineCharacteristics: [],
+      irrigation: { solution: "", frequency: "", duration: "" },
     },
+    catheterCare: "",
     urineOutput: "", twentyFourHourVolume: "",
     reproductive: { concerns: [], notes: "" },
     bladderManagement: [],
@@ -541,7 +686,19 @@ const INITIAL_FORM = {
     // (e.g. cardiovascular.edema.location). `contractures` itself stays the
     // existing None/Mild/Moderate/Severe severity radio.
     contracturesLocation: [],
+    // Presence-only flags written by MSK_CONTRACTURES_PRESENT /
+    // MSK_RIGIDITY_PRESENT (structured_findings.py) when evidence documents
+    // the finding without stating a severity. The `contractures`/`rigidity`
+    // severity radios above are only ever set by a distinct, explicit-
+    // severity concept (MSK_CONTRACTURES_SEVERITY_*/MSK_RIGIDITY_SEVERITY_*)
+    // so severity is never inferred/guessed from a presence-only mention.
+    contracturesPresent: false,
+    rigidityPresent: false,
     romLimitations: [],
+    // §5.10 Issues/Additional items not covered by the existing severity
+    // radios (weakness/rigidity/contractures) or paralysis/romLimitations.
+    musculoskeletalIssues: [],
+    strength: "", balance: "", painWithMovement: "",
     gait: "", assistiveDevices: [],
     fallHistory: { fallsLast90Days: "", fallInjuries: "" },
     mobility: {
@@ -566,6 +723,7 @@ const INITIAL_FORM = {
     pressureInjuryRisk: "",
     wounds: [],
     woundImpairment: "",
+    pressureReliefMeasures: [], repositioningPlan: "",
     notes: "",
   },
 
@@ -599,11 +757,19 @@ const INITIAL_FORM = {
     homeEnvironment: [],
     fallRiskAssessmentCompleted: false,
     fallRiskLevel: "",
+    transferSafetyLevel: "",
     firearmInHome: false,
     oxygenInUse: false, oxygenSafetyReviewed: false,
+    incidentOccurrenceReported: false,
+    incidentOccurrenceNotes: "",
     disasterLevel: "",
     disasterLevelOneConditions: [],
     disasterLevelTwoConditions: [],
+    disasterLevelThreeConditions: [],
+    dmeItems: DME_ITEM_LIST.map((item) => ({ item, status: "", specify: "" })),
+    supplies: {
+      existingCategories: [], neededCategories: [], otherSuppliesNotes: "",
+    },
     notes: "",
   },
 
@@ -617,6 +783,7 @@ const INITIAL_FORM = {
     psychosocialHistory: [],
     copingAssessment: "", copingNotes: "",
     interventionPlan: [],
+    socialWorkVisitNeeded: false,
     notes: "",
   },
 
@@ -629,6 +796,7 @@ const INITIAL_FORM = {
     spiritualConcerns: [],
     spiritualDistressRating: "",
     concernsDiscussed: false,
+    concernsAskedStatus: "", // HOPE F3000 A: 0 No / 1 Yes-discussed / 2 Yes-refused
     concernsDiscussedDate: "",
     chaplainNeeded: false,
     notes: "",
@@ -664,6 +832,8 @@ const INITIAL_FORM = {
     educationTopics: DEFAULT_EDUCATION_TOPICS.map((topic) => ({
       topic, taught: false, understood: false, returnDemo: false, na: false,
     })),
+    teachingTopics: [],
+    teachingTopicsOther: "",
     teachingMethods: [],
     patientFamilyResponse: "",
     followUpPlan: "",
@@ -690,16 +860,6 @@ const INITIAL_FORM = {
     },
   },
 
-  // ─── 26. ORDERS HUB (medications) ─────────────────
-  medications: {
-    scheduledOpioid: false, scheduledOpioidDate: "",
-    prnOpioid: false, prnOpioidDate: "",
-    bowelRegimen: false, bowelRegimenDate: "",
-    currentMedications: [],
-    orders: [],
-    medReconciliation: { completed: false, completedDate: "", completedBy: "" },
-  },
-
   // ─── 27. REFERRALS ────────────────────────────────
   referrals: {
     socialWork: { referred: false, reason: "", urgency: "" },
@@ -710,25 +870,14 @@ const INITIAL_FORM = {
     pharmacist: { referred: false, reason: "" },
     other: [],
     notes: "",
+    reviewed: false,
   },
 
   // ─── 28. FINALIZATION ─────────────────────────────
   finalization: {
     completedSections: [],
     incompleteCount: 0,
-    // Gap #3 — Response to Interventions (CDPH: assessment-to-assessment change baseline)
-    responseToInterventions: {
-      initialResponseSummary: "",
-      interventionEffectiveness: [],
-      baselineEstablished: false,
-      baselineDate: "",
-      progressNotes: "",
-    },
-    // Gap #4 — POC Auto-Generation (CDPH: every problem → Problem/Goal/Intervention/Discipline)
-    pocEntries: [],
-    pocDraft: { problem: "", goal: "", intervention: "", discipline: "" },
-    pocGenerationCompleted: false,
-    pocReviewedWithIdg: false,
+    clinicalNarrative: "",
     signatureCertification: false,
     clinicianSignature: "",
     signatureDate: "",
@@ -740,19 +889,35 @@ const INITIAL_FORM = {
   },
 };
 
+function normalizeLoadedRnicaFormData(loadedFormData) {
+  return {
+    ...loadedFormData,
+    finalization: {
+      ...INITIAL_FORM.finalization,
+      ...(loadedFormData?.finalization || {}),
+    },
+  };
+}
+
 // ════════════════════════════════════════════════════════════════
 // 3. API SERVICE — 4 Backend Endpoints
 // ════════════════════════════════════════════════════════════════
 
 // Delegates to the shared client so requests carry the auth token.
 const api = {
-  saveRNICAAssessment: (patientId, formData) =>
-    saveRnicaAssessment({ patientId, formData }),
+  saveRNICAAssessment: (patientId, formData, assessmentSubtype) =>
+    saveRnicaAssessment(
+      assessmentSubtype ? { patientId, formData, assessmentSubtype } : { patientId, formData }
+    ),
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
-  getRNICAAssessmentByPatient: (patientId) => getRnicaAssessmentByPatient(patientId),
+  getRNICAAssessmentByPatient: (patientId, assessmentSubtype = undefined) =>
+    assessmentSubtype
+      ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
+      : getRnicaAssessmentByPatient(patientId),
   updateRNICAAssessment: (assessmentId, formData) =>
     updateRnicaAssessment(assessmentId, formData),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
+  deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
     assessmentId ? getRnicaIntelligence(assessmentId) : null,
 };
@@ -766,6 +931,7 @@ function validateRNICA(formData, mode = "ica") {
   const errors = {};
   const warnings = {};
   const includeHopeRequirements = mode !== "ongoing";
+  const requireAdmissionOrders = mode === "ica";
 
   // Demographics ? required fields
   if (!formData.demographics.firstName) errors["demographics.firstName"] = "First name is required";
@@ -787,15 +953,24 @@ function validateRNICA(formData, mode = "ica") {
       warnings["demographics.race"] = "HOPE A1010: Race required";
     }
 
-    // Advanced Care Planning ? HOPE required
+    // Advanced Care Planning — HOPE required
+    if (!formData.demographics.advancedCarePlanning.cprPreferenceAskedStatus) {
+      errors["demographics.advancedCarePlanning.cprPreferenceAskedStatus"] = "F2000: Was patient/responsible party asked about CPR preference? is required";
+    }
     if (!formData.demographics.advancedCarePlanning.codeStatus) {
-      errors["demographics.advancedCarePlanning.codeStatus"] = "F2000: Code status is required";
+      errors["demographics.advancedCarePlanning.codeStatus"] = "Code status is required";
+    }
+    if (!formData.demographics.advancedCarePlanning.lifeSustainingAskedStatus) {
+      errors["demographics.advancedCarePlanning.lifeSustainingAskedStatus"] = "F2100: Was patient/responsible party asked about other life-sustaining treatments? is required";
     }
     if (!formData.demographics.advancedCarePlanning.lifeSustainingTreatmentPreference) {
-      errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "F2100: Life-sustaining treatment preference required";
+      errors["demographics.advancedCarePlanning.lifeSustainingTreatmentPreference"] = "Life-sustaining treatment preference required";
+    }
+    if (!formData.demographics.advancedCarePlanning.hospitalizationAskedStatus) {
+      errors["demographics.advancedCarePlanning.hospitalizationAskedStatus"] = "F2200: Was patient/responsible party asked about hospitalization preference? is required";
     }
     if (!formData.demographics.advancedCarePlanning.hospitalizationPreference) {
-      errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "F2200: Hospitalization preference required";
+      errors["demographics.advancedCarePlanning.hospitalizationPreference"] = "Hospitalization preference required";
     }
   }
 
@@ -819,18 +994,22 @@ function validateRNICA(formData, mode = "ica") {
     }
   }
 
-  // CDPH Gap #4 ? POC entries from assessment
-  if (!formData.finalization.pocGenerationCompleted) {
-    warnings["finalization.pocGenerationCompleted"] = "CDPH: POC generation from assessment problems required before lock";
-  }
-
   if (includeHopeRequirements) {
     // Pain ? HOPE J0900, J0915
-    if (!formData.pain.verbalizesPain) {
-      warnings["pain.verbalizesPain"] = "HOPE J0900: Pain verbalization required";
+    if (!formData.pain.screenedForPain) {
+      errors["pain.screenedForPain"] = "J0900.A: Was the patient screened for pain? is required";
     }
-    if (!formData.pain.uncomfortableBecauseOfPain) {
-      warnings["pain.uncomfortableBecauseOfPain"] = "HOPE J0915: Uncomfortable because of pain required";
+    if (formData.pain.screenedForPain === "1" && !formData.pain.painSeverityCategory) {
+      errors["pain.painSeverityCategory"] = "J0900.C: Patient's pain severity is required when screened for pain";
+    }
+    if (formData.pain.screenedForPain === "1" && !formData.pain.standardizedPainToolType) {
+      errors["pain.standardizedPainToolType"] = "J0900.D: Type of standardized pain tool used is required when screened for pain";
+    }
+    if (!formData.pain.verbalizesPain) {
+      warnings["pain.verbalizesPain"] = "Pain verbalization status required to select pain scale";
+    }
+    if (!formData.pain.neuropathicPain) {
+      errors["pain.neuropathicPain"] = "J0915: Does the patient have neuropathic pain? is required";
     }
 
     // Symptom Impact ? J2051 A-H (all 8 required)
@@ -844,6 +1023,9 @@ function validateRNICA(formData, mode = "ica") {
     // Diagnoses ? I0010
     if (!formData.diagnoses.primaryDiagnosis.icd10) {
       errors["diagnoses.primaryDiagnosis"] = "HOPE I0010: Primary diagnosis ICD-10 required";
+    }
+    if (!formData.diagnoses.primaryDiagnosis.hopeDiagnosisCategory) {
+      errors["diagnoses.primaryDiagnosis.hopeDiagnosisCategory"] = "HOPE I0010: Principal diagnosis category required";
     }
 
     // Performance Status ? M1190
@@ -867,19 +1049,45 @@ function validateRNICA(formData, mode = "ica") {
     warnings["skin.braden.total"] = "Braden Scale total required";
   }
 
+  // Psychosocial ? Suicide/self-harm safety documentation (CDPH: complete, accurate documentation required)
+  if (formData.psychosocial.patientConcerns?.includes("Suicide concerns") && !formData.psychosocial.notes?.trim()) {
+    warnings["psychosocial.notes"] = "Safety: Suicide concerns indicated — document safety assessment/plan in Psychosocial Notes";
+  }
+
+  // SECTION 10 — Clinical Narrative & Disease Trajectory. The frozen
+  // master map does not cite a HOPE code for this narrative (unlike the
+  // hard-blocking Diagnoses/Pain/etc. items above), so this is a soft
+  // completion warning rather than a hard error — but it applies equally
+  // whether the narrative text was typed manually or built via "Build
+  // Draft from Documented Findings," per the rule that a manually
+  // entered narrative is just as valid as a generated one.
+  if (formData.diagnoses.clinicalNarrative?.trim() && formData.diagnoses.clinicalNarrativeReviewed !== true) {
+    warnings["diagnoses.clinicalNarrativeReviewed"] = "Clinical narrative documented but not yet reviewed — confirm review before finalizing (Section 10)";
+  }
+
   // Admissions Order ? Level of Care required
-  if (!formData.admissionsOrder.levelOfCare.level) {
+  if (requireAdmissionOrders && !formData.admissionsOrder.levelOfCare.level) {
     errors["admissionsOrder.levelOfCare"] = "Level of Care is required for admission";
   }
 
   // Admissions Order ? T.O. Verification
-  if (!formData.admissionsOrder.toVerification.verbalOrderReadBack) {
+  if (requireAdmissionOrders && !formData.admissionsOrder.toVerification.verbalOrderReadBack) {
     errors["admissionsOrder.toVerification"] = "Verbal order read-back verification required";
   }
 
   // Finalization ? signature
+  if (!formData.finalization.clinicalNarrative) {
+    errors["finalization.clinicalNarrative"] = "Clinical narrative is required before attestation";
+  }
   if (!formData.finalization.clinicianSignature) {
     errors["finalization.clinicianSignature"] = "Clinician signature required";
+  }
+
+  // SECTION 12 — attestation. Previously present in the UI/INITIAL_FORM
+  // but never enforced; the assessment must not be lockable without an
+  // explicit clinician attestation that it is complete and accurate.
+  if (formData.finalization.signatureCertification !== true) {
+    errors["finalization.signatureCertification"] = "Signature certification (attestation) is required before locking";
   }
 
   return { errors, warnings, isValid: Object.keys(errors).length === 0 };
@@ -889,152 +1097,6 @@ function validateRNICA(formData, mode = "ica") {
 // ════════════════════════════════════════════════════════════════
 // 5. HELPER COMPONENTS
 // ════════════════════════════════════════════════════════════════
-
-// ── Shared Styles ──
-export function getRnicaStyles(COLORS) {
-  return {
-    page: {
-      display: "flex",
-      flexDirection: "column",
-      minHeight: "100vh",
-      height: "auto",
-      fontFamily: "Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
-      color: COLORS.dark,
-      background: COLORS.pageBg,
-    },
-    banner: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "14px 24px",
-      background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)",
-      color: "#FFFFFF",
-      fontSize: 13,
-      boxShadow: "0 4px 16px rgba(15, 23, 42, 0.12)",
-      borderBottom: "1px solid rgba(148, 163, 184, 0.2)",
-    },
-    bannerName: { fontSize: 18, fontWeight: 800, letterSpacing: "-0.02em" },
-    bannerMeta: { fontSize: 12, opacity: 0.82, letterSpacing: "0.01em" },
-    workspace: { display: "flex", flex: 1, minHeight: 0, minWidth: 0, overflow: "visible" },
-    sidebar: {
-      width: 220,
-      background: COLORS.sidebarBg,
-      borderRight: `1px solid ${COLORS.border}`,
-      overflowY: "auto",
-      padding: "12px 8px",
-      flexShrink: 0,
-      minHeight: 0,
-    },
-    sidebarItem: {
-      display: "flex",
-      alignItems: "center",
-      gap: 8,
-      padding: "6px 10px",
-      margin: "2px 0",
-      fontSize: 12.5,
-      cursor: "pointer",
-      borderRadius: 8,
-      borderLeft: "3px solid transparent",
-      transition: "all 0.2s ease",
-      color: COLORS.sidebarItemColor,
-    },
-    sidebarActive: {
-      background: "linear-gradient(90deg, rgba(13,148,136,0.18), rgba(13,148,136,0.05))",
-      borderLeftColor: COLORS.teal,
-      color: COLORS.sidebarActiveColor,
-      fontWeight: 700,
-      boxShadow: "inset 0 0 0 1px rgba(13,148,136,0.08)",
-    },
-    mainArea: { flex: 1, display: "flex", minHeight: 0, minWidth: 0, overflow: "visible" },
-    content: { flex: 1, overflowY: "auto", overflowX: "hidden", minHeight: 0, minWidth: 0, padding: "24px 28px 32px" },
-    rightPanel: {
-      width: 290,
-      background: COLORS.panelBg,
-      borderLeft: `1px solid ${COLORS.border}`,
-      overflowY: "auto",
-      padding: 18,
-      flexShrink: 0,
-      backdropFilter: "blur(10px)",
-      minHeight: 0,
-    },
-    card: {
-      background: COLORS.white,
-      borderRadius: 10,
-      border: `1px solid ${COLORS.border}`,
-      padding: 12,
-      marginBottom: 10,
-      boxShadow: "0 2px 10px rgba(15, 23, 42, 0.03)",
-    },
-    cardTitle: {
-      fontSize: 14,
-      fontWeight: 800,
-      marginBottom: 8,
-      color: COLORS.dark,
-      letterSpacing: "-0.01em",
-    },
-    sectionTitle: { fontSize: 18, fontWeight: 800, marginBottom: 3, letterSpacing: "-0.02em", color: COLORS.dark },
-    sectionSubtitle: { fontSize: 12, color: COLORS.gray, marginBottom: 12, lineHeight: 1.4 },
-    formGroup: { marginBottom: 10 },
-    fieldsGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "0px 16px", alignItems: "start" },
-    fieldSpanFull: { gridColumn: "1 / -1" },
-    stackedFields: { display: "flex", flexDirection: "column", gap: 10 },
-    label: { display: "block", fontSize: 12.5, fontWeight: 700, marginBottom: 4, color: COLORS.dark, lineHeight: 1.3 },
-    input: {
-      width: "100%",
-      padding: "7px 10px",
-      border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
-      boxSizing: "border-box",
-      background: COLORS.inputBg,
-      color: COLORS.dark,
-      transition: "border-color 0.2s ease, box-shadow 0.2s ease",
-      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-    },
-    textarea: {
-      width: "100%",
-      padding: "7px 10px",
-      border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
-      minHeight: 60,
-      resize: "vertical",
-      boxSizing: "border-box",
-      background: COLORS.inputBg,
-      color: COLORS.dark,
-      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-    },
-    select: {
-      width: "100%",
-      padding: "7px 10px",
-      border: `1px solid ${COLORS.border}`,
-      borderRadius: 8,
-      fontSize: 13.5,
-      background: COLORS.inputBg,
-      color: COLORS.dark,
-      boxSizing: "border-box",
-      boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
-    },
-    radioGroup: { display: "flex", gap: 12, flexWrap: "wrap" },
-    radioLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
-    checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "4px 14px" },
-    checkboxLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, cursor: "pointer", color: COLORS.dark },
-    hopeTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
-    sfvTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
-    cmsTag: { display: "inline-block", padding: "3px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
-    statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "5px 10px", borderRadius: 999, fontSize: 12, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
-    btnPrimary: { padding: "11px 18px", background: "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },
-    btnSecondary: { padding: "11px 18px", background: COLORS.white, color: COLORS.dark, border: `1px solid ${COLORS.border}`, borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 12px rgba(15, 23, 42, 0.03)" },
-    btnDanger: { padding: "11px 18px", background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)", color: "#FFFFFF", border: "none", borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(239, 68, 68, 0.2)" },
-    footer: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 24px", background: COLORS.panelBg, borderTop: `1px solid ${COLORS.border}`, boxShadow: "0 -4px 12px rgba(15, 23, 42, 0.03)" },
-    table: { width: "100%", borderCollapse: "collapse", fontSize: 13 },
-    th: { padding: "8px 12px", textAlign: "left", fontWeight: 700, fontSize: 11, textTransform: "uppercase", color: COLORS.gray, borderBottom: `2px solid ${COLORS.border}`, background: COLORS.bg },
-    td: { padding: "8px 12px", borderBottom: `1px solid ${COLORS.border}` },
-    infoBox: { padding: 16, background: COLORS.infoBoxBg, borderRadius: 12, border: `1px solid rgba(30,58,95,0.18)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
-    warningBox: { padding: 16, background: COLORS.warningBoxBg, borderRadius: 12, border: `1px solid rgba(245, 158, 11, 0.3)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
-    successBox: { padding: 16, background: COLORS.successBoxBg, borderRadius: 12, border: `1px solid rgba(16,185,129,0.26)`, fontSize: 13, lineHeight: 1.5, marginBottom: 16, color: COLORS.dark },
-  };
-}
 
 
 // Tag components
@@ -1081,7 +1143,7 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
+function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1090,13 +1152,13 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3 }) {
       <label style={styles.label}>{label}</label>
       <textarea
         style={{ ...styles.textarea, minHeight: rows * 24 }} value={value || ""}
-        onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
       />
     </div>
   );
 }
 
-function FormSelect({ label, value, onChange, options, required, hopeCode }) {
+function FormSelect({ label, value, onChange, options, required, hopeCode, disabled }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1106,7 +1168,7 @@ function FormSelect({ label, value, onChange, options, required, hopeCode }) {
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
         <option value="">— Select —</option>
         {options.map((opt) => (
           <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
@@ -1228,13 +1290,13 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
   );
 }
 
-function FormCheckbox({ label, checked, onChange }) {
+function FormCheckbox({ label, checked, onChange, disabled = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <label style={{ ...styles.checkboxLabel, ...styles.formGroup }}>
-      <input type="checkbox" checked={checked || false} onChange={(e) => onChange(e.target.checked)} />
+    <label style={{ ...styles.checkboxLabel, ...styles.formGroup, opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
+      <input type="checkbox" checked={checked || false} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
     </label>
   );
@@ -1445,7 +1507,7 @@ function LcdTernaryButtons({ value, onChange, COLORS }) {
   );
 }
 
-function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, COLORS }) {
+function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, COLORS, workspacePilot = false }) {
   const diagnosisText = `${diagnosesData?.primaryDiagnosis?.icd10 || ""} ${diagnosesData?.primaryDiagnosis?.description || ""}`.trim();
   const detectedDisease = diagnosesData?.ndsEligibility?.detectedDisease || "";
   const criteriaAnswers = diagnosesData?.ndsEligibility?.criteriaAnswers?.[detectedDisease] || {};
@@ -1569,6 +1631,69 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
     return map;
   }, [groupResults]);
 
+  const groupSummaries = useMemo(() => {
+    return (config?.criteria_groups || []).map((group) => {
+      let met = 0;
+      let unmet = 0;
+      let unknown = 0;
+      (group.criteria || []).forEach((criterion) => {
+        const detail = criterionDetails.get(`${group.group_id}:${criterion.criterion_id}`);
+        if (!detail || detail.actual === null || detail.actual === undefined || detail.actual === "") {
+          unknown += 1;
+        } else if (detail.matched) {
+          met += 1;
+        } else {
+          unmet += 1;
+        }
+      });
+      return { group, met, unmet, unknown };
+    });
+  }, [config, criterionDetails]);
+  const criterionSummary = useMemo(
+    () => groupSummaries.reduce(
+      (summary, group) => ({
+        met: summary.met + group.met,
+        unmet: summary.unmet + group.unmet,
+        unknown: summary.unknown + group.unknown,
+      }),
+      { met: 0, unmet: 0, unknown: 0 },
+    ),
+    [groupSummaries],
+  );
+  const orderedGroupSummaries = useMemo(
+    () => workspacePilot
+      ? [...groupSummaries].sort((a, b) => {
+          const aNeedsReview = a.unmet + a.unknown > 0 ? 0 : 1;
+          const bNeedsReview = b.unmet + b.unknown > 0 ? 0 : 1;
+          return aNeedsReview - bNeedsReview;
+        })
+      : groupSummaries,
+    [groupSummaries, workspacePilot],
+  );
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
+  useEffect(() => {
+    setExpandedGroups(new Set());
+    setCollapsedGroups(new Set());
+  }, [detectedDisease]);
+  const toggleGroup = (groupId, isOpen) => {
+    if (isOpen) {
+      setExpandedGroups((current) => {
+        const next = new Set(current);
+        next.delete(groupId);
+        return next;
+      });
+      setCollapsedGroups((current) => new Set(current).add(groupId));
+      return;
+    }
+    setCollapsedGroups((current) => {
+      const next = new Set(current);
+      next.delete(groupId);
+      return next;
+    });
+    setExpandedGroups((current) => new Set(current).add(groupId));
+  };
+
   const supplementalValueFor = (field) => criteriaFacts?.[field] ?? "";
   const currentFacts = evaluationPayload?.facts || {};
 
@@ -1631,7 +1756,7 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
       )}
 
       {diagnosisText && (
-        <div style={{ ...styles.infoBox, marginBottom: 10, padding: 12 }}>
+        <div className={workspacePilot ? "rnica-lcd-summary" : undefined} style={{ ...styles.infoBox, marginBottom: 10, padding: 12 }}>
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ fontWeight: 800, marginBottom: 2 }}>
@@ -1648,6 +1773,13 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
               {evaluationLoading ? "Evaluating..." : evaluation?.eligible ? "Eligible" : "Not eligible"}
             </div>
           </div>
+          {workspacePilot && (
+            <div className="rnica-lcd-summary__counts" aria-label="LCD criterion summary">
+              <span><strong>{criterionSummary.met}</strong> met</span>
+              <span><strong>{criterionSummary.unmet}</strong> unmet</span>
+              <span><strong>{criterionSummary.unknown}</strong> unknown</span>
+            </div>
+          )}
           {config?.source_document && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Source: {config.source_document}</div>}
         </div>
       )}
@@ -1660,11 +1792,33 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
 
       {configLoading && <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 8 }}>Loading LCD criteria…</div>}
 
-      {(config?.criteria_groups || []).map((group) => {
+      {orderedGroupSummaries.map(({ group, met, unmet, unknown }) => {
         const groupResult = groupResults.find((item) => item.group_id === group.group_id);
+        const needsReview = unmet + unknown > 0;
+        const groupOpen = !workspacePilot
+          || expandedGroups.has(group.group_id)
+          || (needsReview && !collapsedGroups.has(group.group_id));
+        const groupBadges = (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            {workspacePilot && <span className="rnica-lcd-group__count">{met} met · {unmet} unmet · {unknown} unknown</span>}
+            <span style={styles.cmsTag}>{formatLcdRule(group.rule)}</span>
+            {groupResult && (
+              <span style={{
+                ...styles.statusBadge,
+                padding: "3px 8px",
+                background: groupResult.passed ? COLORS.successBoxBg : COLORS.warningBoxBg,
+                color: COLORS.dark,
+                border: `1px solid ${groupResult.passed ? "rgba(16,185,129,0.26)" : "rgba(245,158,11,0.3)"}`,
+              }}>
+                {groupResult.passed ? "Pass" : "Fail"}
+              </span>
+            )}
+          </div>
+        );
         return (
           <div
             key={group.group_id}
+            className={workspacePilot ? `rnica-lcd-group ${needsReview ? "needs-review" : "is-satisfied"}` : undefined}
             style={{
               border: `1px solid ${COLORS.border}`,
               borderRadius: 10,
@@ -1673,30 +1827,25 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
               background: COLORS.bg,
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.dark }}>{group.group_name}</div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={styles.cmsTag}>{formatLcdRule(group.rule)}</span>
-                {groupResult && (
-                  <span style={{
-                    ...styles.statusBadge,
-                    padding: "3px 8px",
-                    background: groupResult.passed ? COLORS.successBoxBg : COLORS.warningBoxBg,
-                    color: COLORS.dark,
-                    border: `1px solid ${groupResult.passed ? "rgba(16,185,129,0.26)" : "rgba(245,158,11,0.3)"}`,
-                  }}>
-                    {groupResult.passed ? "Pass" : "Fail"}
-                  </span>
-                )}
+            {workspacePilot ? (
+              <button type="button" className="rnica-lcd-group__toggle" aria-expanded={groupOpen} onClick={() => toggleGroup(group.group_id, groupOpen)}>
+                <span>{groupOpen ? "▾" : "▸"} {group.group_name}</span>
+                {groupBadges}
+              </button>
+            ) : (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: COLORS.dark }}>{group.group_name}</div>
+                {groupBadges}
               </div>
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            )}
+            {groupOpen && <div className={workspacePilot ? "rnica-lcd-criteria" : undefined} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {(group.criteria || []).map((criterion) => {
                 const detail = criterionDetails.get(`${group.group_id}:${criterion.criterion_id}`);
                 const criterionWithGroup = { ...criterion, group_id: group.group_id };
                 return (
                   <div
                     key={criterion.criterion_id}
+                    className={workspacePilot ? "rnica-lcd-criterion" : undefined}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -1722,10 +1871,209 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
                   </div>
                 );
               })}
-            </div>
+            </div>}
           </div>
         );
       })}
+      {!workspacePilot && (
+        <div>
+          <FormTextarea
+            label="LCD supporting evidence"
+            value={diagnosesData?.lcdEligibilityNarrative || ""}
+            onChange={(value) => updateDiagnoses("lcdEligibilityNarrative", value)}
+            placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
+            rows={4}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// In the pilot workflow, structured checklists (LCD criteria, secondary
+// diagnoses, comorbidities) render first; this free-text LCD evidence card
+// renders last on the Diagnoses page so no narrative sits mid-page.
+function LcdSupportingEvidenceCard({ diagnosesData, updateField }) {
+  return (
+    <div className="rnica-lcd-evidence">
+      <FormTextarea
+        label="LCD supporting evidence"
+        value={diagnosesData?.lcdEligibilityNarrative || ""}
+        onChange={(value) => updateField("lcdEligibilityNarrative", value)}
+        placeholder="Document evidence specific to the selected LCD guideline. This is not the whole-patient clinical narrative."
+        rows={4}
+      />
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 10 — Clinical Narrative & Disease Trajectory.
+//
+// This card is deliberately separate from LcdEligibilityCard /
+// lcdEligibilityNarrative (distinct field, distinct purpose — the RN's
+// documented clinical findings narrative vs. the physician's LCD
+// eligibility-support narrative). The deterministic
+// buildClinicalNarrative() template renderer runs ONLY on an explicit
+// "Build Draft from Documented Findings" click — never on mount, never
+// on formData changes, never during save/validation/navigation. No AI
+// service, AI flag, or AI control exists anywhere in this card.
+// ════════════════════════════════════════════════════════════════
+function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked }) {
+  const [pendingReplace, setPendingReplace] = useState(false);
+  const narrative = diagnosesData?.clinicalNarrative || "";
+  const trajectory = diagnosesData?.diseaseTrajectory || "";
+  const isLegacyTrajectory = isLegacyDiseaseTrajectoryValue(trajectory);
+
+  const handleBuildDraft = () => {
+    if (narrative.trim()) {
+      setPendingReplace(true);
+      return;
+    }
+    applyDraft();
+  };
+
+  const applyDraft = () => {
+    const draft = buildClinicalNarrative(fullFormData, {});
+    updateField("clinicalNarrative", draft.text);
+    // Replacing the narrative content always resets review — a
+    // previously reviewed narrative cannot remain "reviewed" once its
+    // text has changed.
+    updateField("clinicalNarrativeReviewed", false);
+    setPendingReplace(false);
+  };
+
+  const handleNarrativeChange = (value) => {
+    updateField("clinicalNarrative", value);
+    updateField("clinicalNarrativeReviewed", false);
+  };
+
+  return (
+    <div>
+      <div style={styles.formGroup}>
+        <label style={styles.label}>Disease Trajectory</label>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {DISEASE_TRAJECTORY_OPTIONS.map((opt) => (
+            <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: COLORS.dark }}>
+              <input
+                type="radio"
+                name="diseaseTrajectory"
+                value={opt.value}
+                checked={trajectory === opt.value}
+                disabled={locked}
+                onChange={() => updateField("diseaseTrajectory", opt.value)}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+        {isLegacyTrajectory && (
+          <div style={{ marginTop: 6, fontSize: 12, color: COLORS.warning }}>
+            Legacy value on file: "{trajectory}". This was recorded before the current trajectory options existed and is not
+            automatically converted — please review and select one of the options above.
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        <FormInput
+          label="Recent Hospitalizations (count)"
+          type="number"
+          value={diagnosesData?.recentHospitalizations ?? ""}
+          onChange={(v) => updateField("recentHospitalizations", v)}
+          disabled={locked}
+          min={0}
+          step={1}
+          placeholder="Leave blank if not documented"
+        />
+        <FormInput
+          label="Recent Emergency Department Visits (count)"
+          type="number"
+          value={diagnosesData?.recentErVisits ?? ""}
+          onChange={(v) => updateField("recentErVisits", v)}
+          disabled={locked}
+          min={0}
+          step={1}
+          placeholder="Leave blank if not documented"
+        />
+      </div>
+      <FormTextarea
+        label="Utilization Notes"
+        value={diagnosesData?.utilizationNotes}
+        onChange={(v) => updateField("utilizationNotes", v)}
+        rows={2}
+        disabled={locked}
+      />
+
+      <div style={{ marginTop: 12, marginBottom: 8 }}>
+        <button
+          type="button"
+          style={{ ...styles.btnSecondary, opacity: locked ? 0.5 : 1 }}
+          onClick={handleBuildDraft}
+          disabled={locked}
+        >
+          Build Draft from Documented Findings
+        </button>
+        <span style={{ marginLeft: 10, fontSize: 11.5, color: COLORS.gray }}>
+          Assembles a draft strictly from already-documented fields on this assessment. It never runs automatically and never
+          determines eligibility, prognosis, or disease trajectory.
+        </span>
+      </div>
+
+      {pendingReplace && (
+        <div style={{
+          padding: 10, borderRadius: 8, border: `1px solid ${COLORS.warning}`,
+          background: COLORS.warningBoxBg, marginBottom: 10, fontSize: 12.5, color: COLORS.dark,
+        }}>
+          <div style={{ marginBottom: 8 }}>A clinical narrative already exists. Building a new draft will replace the current text.</div>
+          <button type="button" style={styles.btnSecondary} onClick={() => setPendingReplace(false)}>Keep Existing Narrative</button>
+          <button type="button" style={{ ...styles.btnPrimary, marginLeft: 8 }} onClick={applyDraft}>Replace with New Draft</button>
+        </div>
+      )}
+
+      <FormTextarea
+        label="Diagnoses Narrative"
+        value={narrative}
+        onChange={handleNarrativeChange}
+        rows={10}
+        disabled={locked}
+        placeholder="Document the patient's clinical presentation and supporting findings in your own words, or click Build Draft from Documented Findings above."
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 16px" }}>
+        <input
+          type="checkbox"
+          id="clinicalNarrativeReviewed"
+          checked={!!diagnosesData?.clinicalNarrativeReviewed}
+          disabled={locked}
+          onChange={(e) => updateField("clinicalNarrativeReviewed", e.target.checked)}
+        />
+        <label htmlFor="clinicalNarrativeReviewed" style={{ fontSize: 13, color: COLORS.dark }}>
+          I reviewed this narrative and verified that it matches the documented assessment findings.
+        </label>
+      </div>
+
+      <FormTextarea
+        label="RN Addendum"
+        value={diagnosesData?.rnAddendum}
+        onChange={(v) => updateField("rnAddendum", v)}
+        rows={3}
+        disabled={locked}
+      />
+      <FormTextarea
+        label="Clinician Clarification"
+        value={diagnosesData?.clinicianClarification}
+        onChange={(v) => updateField("clinicianClarification", v)}
+        rows={3}
+        disabled={locked}
+      />
+      {locked && (
+        <div style={{ fontSize: 11.5, color: COLORS.gray }}>
+          This assessment is locked/authenticated. Section 10 fields are read-only. Additional post-authentication information
+          must be captured as a distinct, traceable, authenticated addendum record — a documented gap in current SNS EMR
+          infrastructure, not implemented as an editable field on this locked assessment.
+        </div>
+      )}
     </div>
   );
 }
@@ -1734,18 +2082,89 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
 // SECONDARY DIAGNOSES — add/edit/remove list (feeds HOPE comorbidity
 // auto-detection below and hopeReportMapper.js diagnosisEntries()).
 // ════════════════════════════════════════════════════════════════
-function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS }) {
+function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const rows = diagnosesData?.secondaryDiagnoses || [];
+  const [showAll, setShowAll] = useState(false);
+  const visibleRows = workspacePilot && !showAll ? rows.slice(0, 7) : rows;
 
   const setRows = (next) => updateField("secondaryDiagnoses", next);
 
-  const addRow = () => setRows([...rows, { icd10: "", description: "", relatedToTerminal: true }]);
+  const addRow = () => {
+    setRows([...rows, { icd10: "", description: "", relatedToTerminal: true }]);
+    if (workspacePilot) setShowAll(true);
+  };
 
   const updateRow = (idx, field, value) => {
     setRows(rows.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
   };
 
   const removeRow = (idx) => setRows(rows.filter((_, i) => i !== idx));
+
+  if (workspacePilot) {
+    return (
+      <div className="rnica-diagnosis-ledger">
+        <div className="rnica-diagnosis-ledger__summary">
+          <p>
+            Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist.
+          </p>
+          <strong>{rows.length} {rows.length === 1 ? "diagnosis" : "diagnoses"}</strong>
+        </div>
+        {rows.length === 0 ? (
+          <div className="rnica-diagnosis-ledger__empty">No secondary diagnoses added yet.</div>
+        ) : (
+          <div className="rnica-diagnosis-ledger__table" role="table" aria-label="Secondary diagnoses">
+            <div className="rnica-diagnosis-ledger__header" role="row">
+              <span role="columnheader">ICD-10</span>
+              <span role="columnheader">Description</span>
+              <span role="columnheader">Terminal related</span>
+              <span role="columnheader">Action</span>
+            </div>
+            {visibleRows.map((row, idx) => (
+              <div className="rnica-diagnosis-ledger__row" role="row" key={idx}>
+                <div role="cell">
+                  <input
+                    aria-label={`Secondary diagnosis ${idx + 1} ICD-10 code`}
+                    placeholder="ICD-10"
+                    value={row.icd10 || ""}
+                    onChange={(event) => updateRow(idx, "icd10", event.target.value)}
+                  />
+                </div>
+                <div role="cell">
+                  <input
+                    aria-label={`Secondary diagnosis ${idx + 1} description`}
+                    placeholder="Description"
+                    value={row.description || ""}
+                    onChange={(event) => updateRow(idx, "description", event.target.value)}
+                  />
+                </div>
+                <label role="cell" className="rnica-diagnosis-ledger__related">
+                  <input
+                    type="checkbox"
+                    checked={row.relatedToTerminal !== false}
+                    onChange={(event) => updateRow(idx, "relatedToTerminal", event.target.checked)}
+                  />
+                  <span>{row.relatedToTerminal !== false ? "Related" : "Not related"}</span>
+                </label>
+                <div role="cell">
+                  <button type="button" className="rnica-diagnosis-ledger__remove" onClick={() => removeRow(idx)}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="rnica-diagnosis-ledger__actions">
+          <button type="button" onClick={addRow}>+ Add secondary diagnosis</button>
+          {rows.length > 7 && (
+            <button type="button" onClick={() => setShowAll((current) => !current)} aria-expanded={showAll}>
+              {showAll ? "Show fewer" : `Show all ${rows.length} diagnoses`}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -1808,6 +2227,166 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS }) 
 }
 
 // ════════════════════════════════════════════════════════════════
+// SKIN / WOUND — Structured wound documentation (Master Map §5.11).
+// Each wound is a repeatable row capturing every §5.11 attribute.
+// Wound Count is intentionally derived (rows.length), not a separate
+// manual field, so it can never drift out of sync with the actual
+// documented wounds (same "reuse, don't duplicate" rule applied to BMI).
+// Pressure-relief measures and repositioning plan are plan-level (not
+// per-wound) and are rendered as ordinary fields on the existing
+// "Wound Documentation & Notes" card — see SECTION_CONFIGS.skin.
+// ════════════════════════════════════════════════════════════════
+const WOUND_STAGE_OPTIONS = [
+  "Stage 1", "Stage 2", "Stage 3", "Stage 4",
+  "Unstageable", "Deep Tissue Injury", "N/A",
+];
+const WOUND_TYPE_OPTIONS = [
+  "Pressure injury", "Skin tear", "Surgical wound", "Venous ulcer",
+  "Arterial ulcer", "Diabetic ulcer", "Nonhealing wound", "Other",
+];
+const WOUND_DRAINAGE_OPTIONS = ["None", "Scant", "Small", "Moderate", "Large"];
+const WOUND_ODOR_OPTIONS = ["None", "Mild", "Foul"];
+
+function WoundEntryCard({ wound, index, onChange, onRemove, styles, COLORS }) {
+  const set = (field, value) => onChange(index, field, value);
+  return (
+    <div style={{
+      padding: "10px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+      background: COLORS.bg, marginBottom: 10,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <strong style={{ fontSize: 13 }}>Wound {index + 1}</strong>
+        <button type="button" style={{ ...styles.btnDanger, padding: "5px 10px", fontSize: 11.5 }} onClick={() => onRemove(index)}>
+          Remove
+        </button>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10 }}>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.presentAsPressureInjury} onChange={(e) => set("presentAsPressureInjury", e.target.checked)} />
+          Pressure injury
+        </label>
+        <FormSelect label="Stage" value={wound.stage} onChange={(v) => set("stage", v)} options={WOUND_STAGE_OPTIONS} />
+        <FormSelect label="Wound Type" value={wound.woundType} onChange={(v) => set("woundType", v)} options={WOUND_TYPE_OPTIONS} />
+        <FormInput label="Location" value={wound.location} onChange={(v) => set("location", v)} placeholder="e.g., Sacrum, L heel" />
+        <FormInput label="Length (cm)" value={wound.length} onChange={(v) => set("length", v)} type="number" />
+        <FormInput label="Width (cm)" value={wound.width} onChange={(v) => set("width", v)} type="number" />
+        <FormInput label="Depth (cm)" value={wound.depth} onChange={(v) => set("depth", v)} type="number" />
+        <FormSelect label="Drainage" value={wound.drainage} onChange={(v) => set("drainage", v)} options={WOUND_DRAINAGE_OPTIONS} />
+        <FormSelect label="Odor" value={wound.odor} onChange={(v) => set("odor", v)} options={WOUND_ODOR_OPTIONS} />
+        <FormInput label="Periwound Condition" value={wound.periwoundCondition} onChange={(v) => set("periwoundCondition", v)} />
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isSkinTear} onChange={(e) => set("isSkinTear", e.target.checked)} />
+          Skin tear
+        </label>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isSurgicalWound} onChange={(e) => set("isSurgicalWound", e.target.checked)} />
+          Surgical wound
+        </label>
+        <label style={{ ...styles.checkboxLabel }}>
+          <input type="checkbox" checked={!!wound.isNonhealingWound} onChange={(e) => set("isNonhealingWound", e.target.checked)} />
+          Nonhealing wound
+        </label>
+        <FormInput label="Current Treatment" value={wound.currentTreatment} onChange={(v) => set("currentTreatment", v)} />
+        <FormInput label="Dressing" value={wound.dressing} onChange={(v) => set("dressing", v)} />
+        <FormInput label="Dressing Frequency" value={wound.dressingFrequency} onChange={(v) => set("dressingFrequency", v)} placeholder="e.g., Daily, Q3 days" />
+      </div>
+    </div>
+  );
+}
+
+function WoundListCard({ data, updateField, styles, COLORS }) {
+  const wounds = data?.wounds || [];
+
+  const setWounds = (next) => updateField("wounds", next);
+
+  const addWound = () => setWounds([...wounds, {
+    presentAsPressureInjury: false, stage: "", woundType: "", location: "",
+    length: "", width: "", depth: "", drainage: "", odor: "",
+    periwoundCondition: "", isSkinTear: false, isSurgicalWound: false,
+    isNonhealingWound: false, currentTreatment: "", dressing: "", dressingFrequency: "",
+  }]);
+
+  const updateWound = (idx, field, value) => {
+    setWounds(wounds.map((w, i) => (i === idx ? { ...w, [field]: value } : w)));
+  };
+
+  const removeWound = (idx) => setWounds(wounds.filter((_, i) => i !== idx));
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 10 }}>
+        Wound Count (auto): <strong style={{ color: COLORS.dark }}>{wounds.length}</strong>
+      </div>
+      {wounds.length === 0 && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray, fontStyle: "italic", marginBottom: 10 }}>
+          No wounds documented yet.
+        </div>
+      )}
+      {wounds.map((wound, idx) => (
+        <WoundEntryCard key={idx} wound={wound} index={idx} onChange={updateWound} onRemove={removeWound} styles={styles} COLORS={COLORS} />
+      ))}
+      <button type="button" style={styles.btnSecondary} onClick={addWound}>
+        + Add Wound
+      </button>
+    </div>
+  );
+}
+
+const DME_ITEMS_WITH_SPECIFY = new Set(["Commode", "Other"]);
+
+const DME_STATUS_OPTIONS = ["", "Has", "Needs", "Ordered", "Delivered", "Declined", "N/A"];
+
+function DmeStatusCard({ data, updateField, styles, COLORS }) {
+  const items = data?.dmeItems || [];
+
+  const updateItem = (idx, field, value) => {
+    updateField("dmeItems", items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+  };
+
+  return (
+    <div>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Item</th>
+            <th style={styles.th}>Status</th>
+            <th style={styles.th}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((it, idx) => (
+            <tr key={it.item}>
+              <td style={styles.td}>{it.item}</td>
+              <td style={styles.td}>
+                <select
+                  style={styles.select}
+                  value={it.status || ""}
+                  onChange={(e) => updateItem(idx, "status", e.target.value)}
+                >
+                  {DME_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt || "blank"} value={opt}>{opt || "— select —"}</option>
+                  ))}
+                </select>
+              </td>
+              <td style={styles.td}>
+                {DME_ITEMS_WITH_SPECIFY.has(it.item) && (
+                  <input
+                    style={styles.input}
+                    placeholder="(specify)"
+                    value={it.specify || ""}
+                    onChange={(e) => updateItem(idx, "specify", e.target.value)}
+                  />
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
 // HOPE SECTION I0000 — Comorbidities and Co-existing Conditions.
 //
 // Per CMS HOPE Guidance Manual v1.02, Section I (Item I0100-I8005):
@@ -1850,7 +2429,21 @@ function categorizeIcd10(icd10) {
   return HOPE_COMORBIDITY_CATEGORIES.find((cat) => matchesCategory(icd10, cat.regex)) || null;
 }
 
-function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS }) {
+// Used to gate disease-specific performance scales (NYHA/FAST/ECOG) in the
+// Performance Status section so the RN only sees the scale relevant to this
+// patient's actual diagnoses, checking both the primary diagnosis and every
+// secondary diagnosis (not just the principal one) against the same
+// ICD-10 category regexes used for HOPE comorbidity categorization above.
+function diagnosesIncludeCategory(diagnosesData, categoryKey) {
+  const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
+  if (!category) return false;
+  const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
+  if (matchesCategory(primaryIcd10, category.regex)) return true;
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  return secondaryDx.some((dx) => matchesCategory(dx?.icd10, category.regex));
+}
+
+function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
   const hope = diagnosesData?.hopeComorbidities || {};
@@ -1881,15 +2474,16 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS }) {
   }, []);
 
   return (
-    <div>
-      <div style={styles.infoBox}>
+    <div className={workspacePilot ? "rnica-comorbidity-panel" : undefined}>
+      <div className={workspacePilot ? "rnica-comorbidity-guidance" : undefined} style={styles.infoBox}>
         Per CMS HOPE guidance: check all comorbid/coexisting conditions addressed in the plan of
         care. <strong>Do not check a category already coded as the Principal Diagnosis</strong>{" "}
         — the exception is if the patient has a second, distinct cancer diagnosis.
       </div>
 
+      <div className={workspacePilot ? "rnica-comorbidity-grid" : undefined}>
       {groups.map(({ group, categories }) => (
-        <div key={group} style={{ marginBottom: 14 }}>
+        <div key={group} className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
             {group}
           </div>
@@ -1904,7 +2498,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS }) {
               const checked = excluded ? false : Boolean(hope[cat.key]);
 
               return (
-                <div key={cat.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div key={cat.key} className={workspacePilot ? "rnica-comorbidity-option" : undefined} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <label
                     style={{
                       ...styles.checkboxLabel,
@@ -1945,6 +2539,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS }) {
           </div>
         </div>
       ))}
+      </div>
 
       <div style={{ marginBottom: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
@@ -2158,6 +2753,84 @@ function DeclineTrackerCard({ patientId, assessmentId, performanceData, weight, 
   );
 }
 
+// Auto-calculates BMI from height (inches) and weight (lbs) so it is never
+// entered as an independent, unrelated manual value. The field remains
+// editable (RN can override), but is pre-populated/kept in sync whenever
+// height or weight change, and is still persisted at vitals.bmi in the
+// existing form_data JSONB model (no new storage location).
+function AnthropometricsAutoBmiCard({ data, updateField, styles, COLORS }) {
+  const height = parseFloat(data?.height);
+  const weight = parseFloat(data?.weight);
+  const calculatedBmi = (!Number.isNaN(height) && !Number.isNaN(weight) && height > 0)
+    ? Math.round((703 * weight / (height * height)) * 10) / 10
+    : null;
+
+  const lastAutoValue = useRef(null);
+  useEffect(() => {
+    if (calculatedBmi === null) return;
+    const currentBmi = data?.bmi === "" || data?.bmi === undefined || data?.bmi === null ? null : parseFloat(data.bmi);
+    // Only auto-fill when the field is empty or still equal to our own last
+    // auto-calculated value — never overwrite an RN's manual entry.
+    if (currentBmi === null || currentBmi === lastAutoValue.current) {
+      lastAutoValue.current = calculatedBmi;
+      if (currentBmi !== calculatedBmi) updateField("bmi", calculatedBmi);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calculatedBmi]);
+
+  return (
+    <div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}>
+        <FormInput label="Height (in)" value={data?.height} onChange={(v) => updateField("height", v)} type="number" />
+        <FormInput label="Weight (lbs)" value={data?.weight} onChange={(v) => updateField("weight", v)} type="number" />
+        <FormInput label="BMI (auto-calculated)" value={data?.bmi ?? ""} onChange={(v) => updateField("bmi", v)} type="number" />
+        <FormInput label="MAC (Mid-Arm Circumference)" value={data?.mac} onChange={(v) => updateField("mac", v)} type="number" />
+      </div>
+      {calculatedBmi !== null && (
+        <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 6 }}>
+          Calculated from height/weight: {calculatedBmi}. Overwrite the BMI field above only if a manually verified value differs.
+        </div>
+      )}
+      {calculatedBmi === null && (
+        <div style={styles.infoBox}>Enter height and weight to auto-calculate BMI.</div>
+      )}
+    </div>
+  );
+}
+
+// Read-only reference of the authoritative anthropometric/metabolic values
+// (height/weight/BMI/MAC live under Vitals; serum albumin lives under LCD
+// Evidence). These are NOT duplicated as new Nutrition fields — this card
+// only displays the existing values in context for the nutrition assessment.
+function NutritionAnthropometricReferenceCard({ fullFormData, styles, COLORS }) {
+  const vitals = fullFormData?.vitals || {};
+  const criteriaFacts = fullFormData?.diagnoses?.ndsEligibility?.criteriaFacts || {};
+  const detectedDisease = fullFormData?.diagnoses?.ndsEligibility?.detectedDisease;
+  const albumin = detectedDisease ? criteriaFacts?.[detectedDisease]?.serum_albumin : null;
+
+  const hasAny = vitals.height || vitals.weight || vitals.bmi || vitals.mac || albumin;
+  if (!hasAny) {
+    return <div style={styles.infoBox}>Height, weight, BMI, and MAC are documented under Vitals & Measurements and will appear here for reference once entered.</div>;
+  }
+
+  const Item = ({ label, value }) => (
+    <div>
+      <div style={{ fontSize: 11, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{label}</div>
+      <div style={{ fontSize: 15, fontWeight: 700 }}>{value || "—"}</div>
+    </div>
+  );
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 12 }}>
+      <Item label="Height" value={vitals.height ? `${vitals.height} in` : null} />
+      <Item label="Weight" value={vitals.weight ? `${vitals.weight} lbs` : null} />
+      <Item label="BMI" value={vitals.bmi} />
+      <Item label="MAC" value={vitals.mac} />
+      <Item label="Serum Albumin" value={albumin} />
+    </div>
+  );
+}
+
 // Auto-computes the 6-month weight-loss % from actual serial weight entries
 // (RNICA/recert history) instead of relying on the RN to calculate it by
 // hand into a free-text field. Purely a suggestion -- the RN must click
@@ -2270,9 +2943,3044 @@ function WeightLossAutoCalcCard({ patientId, assessmentId, currentWeight, existi
   );
 }
 
-// Design intent: don't ask the RN to make a subjective call ("is the patient
-// constipated?"). Ask for the objective fact instead — last bowel movement
-// date — and let the system derive a suggested severity from days elapsed,
+// RN ICA -> Plan of Care controls for a single body-system subcard.
+// Add / View / Update / Resolve here all call the authoritative Plan of
+// Care document API (via backend app/services/rnica_poc_adapter.py) — this
+// component holds no POC state of its own beyond what it fetches on demand,
+// and never writes into RnicaAssessment.form_data.
+function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [showList, setShowList] = useState(false);
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState({ problem_label: "", evidence_text: "", goal_text: "", intervention_text: "" });
+  const [editingRuleKey, setEditingRuleKey] = useState(null);
+  const [editDraft, setEditDraft] = useState({ severity: "", description_addendum: "" });
+
+  const loadProblems = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    viewRnicaSectionPoc(assessmentId, sectionKey)
+      .then((res) => setProblems(res?.problems || []))
+      .catch((err) => setError(err.message || "Unable to load Plan of Care"))
+      .finally(() => setLoading(false));
+  }, [assessmentId, sectionKey]);
+
+  // Quietly check whether this section already has any POC problems (not
+  // just on-demand when the RN opens the list) so "View POC" only ever
+  // appears once there's something to view — a section with no linked
+  // problems yet shows only "+ Add to POC".
+  useEffect(() => {
+    if (!assessmentId) return;
+    let active = true;
+    viewRnicaSectionPoc(assessmentId, sectionKey)
+      .then((res) => { if (active) setProblems(res?.problems || []); })
+      .catch(() => { /* silent — this is just existence-check prefetch */ });
+    return () => { active = false; };
+  }, [assessmentId, sectionKey]);
+
+  const hasProblems = (problems?.length || 0) > 0;
+
+  const handleToggleList = () => {
+    const next = !showList;
+    setShowList(next);
+    if (next) loadProblems();
+  };
+
+  const handleAdd = () => {
+    if (!draft.problem_label.trim() || !draft.evidence_text.trim()) {
+      setError("Problem and supporting evidence are both required to add to the Plan of Care.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    addRnicaSectionPocProblem(assessmentId, sectionKey, {
+      problem_label: draft.problem_label.trim(),
+      evidence_text: draft.evidence_text.trim(),
+      goal_text: draft.goal_text.trim() || undefined,
+      intervention_text: draft.intervention_text.trim() || undefined,
+      discipline: "RN",
+    })
+      .then(() => {
+        setDraft({ problem_label: "", evidence_text: "", goal_text: "", intervention_text: "" });
+        setShowAdd(false);
+        setShowList(true);
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to add problem to Plan of Care"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleResolve = (ruleKey) => {
+    setSaving(true);
+    setError("");
+    resolveRnicaSectionPocProblem(assessmentId, sectionKey, ruleKey)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to resolve Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleUpdate = (ruleKey) => {
+    setSaving(true);
+    setError("");
+    updateRnicaSectionPocProblem(assessmentId, sectionKey, ruleKey, {
+      severity: editDraft.severity || undefined,
+      description_addendum: editDraft.description_addendum.trim() || undefined,
+    })
+      .then(() => {
+        setEditingRuleKey(null);
+        setEditDraft({ severity: "", description_addendum: "" });
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to update Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  if (!assessmentId) return null;
+
+  return (
+    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
+          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+          border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
+          color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
+        }}>
+          + Add to POC
+        </button>
+        {hasProblems && (
+          <button type="button" onClick={handleToggleList} style={{
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+            border: `1px solid ${COLORS.gray}`, background: showList ? COLORS.gray : "transparent",
+            color: showList ? COLORS.white : COLORS.gray, cursor: "pointer",
+          }}>
+            {showList ? "Hide POC" : "View POC"}
+          </button>
+        )}
+      </div>
+
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
+
+      {showAdd && (
+        <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
+          <FormInput label="Problem" value={draft.problem_label} onChange={(v) => setDraft((d) => ({ ...d, problem_label: v }))}
+            placeholder={`e.g., ${cardTitle || "clinical"} finding requiring intervention`} />
+          <FormInput label="Supporting Evidence / Finding" value={draft.evidence_text} onChange={(v) => setDraft((d) => ({ ...d, evidence_text: v }))}
+            placeholder="What was assessed/observed" />
+          <FormInput label="Goal (optional)" value={draft.goal_text} onChange={(v) => setDraft((d) => ({ ...d, goal_text: v }))} />
+          <FormInput label="Intervention (optional)" value={draft.intervention_text} onChange={(v) => setDraft((d) => ({ ...d, intervention_text: v }))} />
+          <button type="button" disabled={saving} onClick={handleAdd} style={{
+            fontSize: 12, fontWeight: 700, padding: "8px 12px", borderRadius: 6, border: "none",
+            background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", height: 36, alignSelf: "end",
+          }}>
+            {saving ? "Saving…" : "Save to Plan of Care"}
+          </button>
+        </div>
+      )}
+
+      {showList && (
+        <div style={{ marginTop: 10 }}>
+          {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
+          {!loading && problems && problems.length === 0 && (
+            <div style={styles.infoBox}>No Plan of Care problems linked to this section yet.</div>
+          )}
+          {!loading && problems && problems.map((p) => (
+            <div key={p.rule_key} style={{
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+              marginBottom: 6, fontSize: 12.5, background: p.status === "RESOLVED" ? COLORS.bg : "transparent",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <strong>{p.label}</strong>
+                <span style={{ fontWeight: 700, color: p.status === "RESOLVED" ? COLORS.gray : COLORS.teal }}>
+                  {p.status} {p.severity && p.severity !== "UNKNOWN" ? `· ${p.severity}` : ""}
+                </span>
+              </div>
+              {p.description && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 4, whiteSpace: "pre-wrap" }}>{p.description}</div>}
+              {p.status !== "RESOLVED" && (
+                <div style={{ marginTop: 6, display: "flex", gap: 6 }}>
+                  <button type="button" onClick={() => setEditingRuleKey(editingRuleKey === p.rule_key ? null : p.rule_key)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer" }}>
+                    Update POC
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleResolve(p.rule_key)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer" }}>
+                    Resolve POC
+                  </button>
+                </div>
+              )}
+              {editingRuleKey === p.rule_key && (
+                <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormSelect label="Severity" value={editDraft.severity} onChange={(v) => setEditDraft((d) => ({ ...d, severity: v }))}
+                    options={["LOW", "MODERATE", "HIGH", "CRITICAL"]} />
+                  <FormInput label="Update / Progress Note" value={editDraft.description_addendum}
+                    onChange={(v) => setEditDraft((d) => ({ ...d, description_addendum: v }))} />
+                  <button type="button" disabled={saving} onClick={() => handleUpdate(p.rule_key)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Saving…" : "Save Update"}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// SECTION 5B (Admissions Order) — Discipline Frequency of Visit. Physician-
+// ordered visit frequency, one row per discipline, added on demand — not a
+// fixed 5-discipline table. Any discipline the patient needs (PT/OT/ST,
+// dietitian, podiatry consult, an upcoming F2F-driving MD visit, etc.) can
+// be added via "+ Add Discipline", each with its own number-of-visits /
+// period, or a free-text "specify as required" override for anything that
+// doesn't fit the standard period picklist.
+function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
+  const list = Array.isArray(rows) ? rows : [];
+
+  const updateRow = (idx, patch) => {
+    onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const removeRow = (idx) => {
+    onChange(list.filter((_, i) => i !== idx));
+  };
+
+  const addRow = () => {
+    onChange([...list, { discipline: "", numberOfVisits: "", period: "", specify: "" }]);
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+        Physician-ordered visit frequency for every discipline on this patient's plan of care. Add a row for each
+        discipline needed — core IDG disciplines are pre-populated below, but any discipline can be added or removed.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {list.map((row, idx) => (
+          <div key={idx} style={{
+            display: "grid", gridTemplateColumns: "1.3fr 0.7fr 1.3fr 1.6fr auto", gap: 8, alignItems: "end",
+            padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+          }}>
+            <FormSelect
+              label="Discipline"
+              value={row.discipline}
+              onChange={(v) => updateRow(idx, { discipline: v })}
+              options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
+            />
+            <FormSelect
+              label="No. of Visits"
+              value={row.numberOfVisits}
+              onChange={(v) => updateRow(idx, { numberOfVisits: v })}
+              options={VISIT_FREQUENCY_COUNT_OPTIONS}
+            />
+            <FormSelect
+              label="Period"
+              value={row.period}
+              onChange={(v) => updateRow(idx, { period: v })}
+              options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+            />
+            <FormInput
+              label="Or specify as required"
+              value={row.specify || row.frequency || ""}
+              onChange={(v) => updateRow(idx, { specify: v })}
+              placeholder="e.g., within 5 days of admission then RECERT and PRN"
+            />
+            <button
+              type="button"
+              onClick={() => removeRow(idx)}
+              title="Remove this discipline"
+              style={{
+                border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
+                fontSize: 16, fontWeight: 700, height: 34, alignSelf: "end",
+              }}
+            >
+              ×
+            </button>
+          </div>
+        ))}
+        {list.length === 0 && (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>No disciplines added yet.</div>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={addRow}
+        style={{
+          marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+          border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+        }}
+      >
+        + Add Discipline
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------------
+// CHHA (Home Health Aide) Plan of Care. RN-authored once per patient, lives at
+// PatientChart's 'chha-assignment' destination (linked from RN ICA's HA
+// Assignment card, and reachable from the CHHA/HHA nav group, so it's never
+// forgotten once a patient has an aide assigned). Data is stored on the SAME
+// RN ICA assessment record (form_data.chhaPoc) -- there is no separate CHHA
+// data store, so this reads/writes through the same
+// getRnicaAssessmentByPatient / updateRnicaAssessment endpoints RNICA itself
+// uses.
+//
+// Deliberately does NOT list medications (an aide does not need drug names
+// or doses) -- instead, the "Safety Alerts & Report To" banner below is
+// auto-derived from documented risk factors (fall risk level, oxygen use,
+// aspiration/swallowing risk, skin breakdown risk, and active
+// anticoagulant/opioid/diabetes medication classes) so the relevant plain-
+// language precaution + "call [Report To] if you see this" symptom is
+// always surfaced -- the RN never has to remember to write it in by hand.
+// "Report To" is configurable (RN / RN and MD / MD) rather than hardcoded
+// to "RN office", since who the aide escalates to can differ once
+// LVN-authored plans exist. Any suggested alert can still be dismissed if
+// it doesn't apply, and custom alerts can be added.
+// ---------------------------------------------------------------------------------
+
+// Each task category expands into the specific, checkable interventions a
+// real HA order actually needs (equipment, catheter/colostomy care, diet
+// specifics, bed-rail configuration, razor type, etc.) -- a single
+// "Ambulation" checkbox with a free-text Instructions box was too vague to
+// act as the standing order. `detail: true` items show a required
+// specify-box when checked (e.g., which diet, which vitals, bed rail sides).
+const CHHA_TASK_OPTIONS = [
+  {
+    value: "Ambulation", label: "Ambulation",
+    items: [
+      { code: "AD_LIB", label: "Ambulates ad lib (no restriction)" },
+      { code: "RESTRICTED", label: "Ambulation restricted", detail: true, detailLabel: "Restriction (specify distance/limits)" },
+      { code: "WALKER", label: "Uses walker" },
+      { code: "CANE", label: "Uses cane" },
+      { code: "WHEELCHAIR", label: "Uses wheelchair" },
+      { code: "GERI_CHAIR", label: "Uses geri chair (every visit)" },
+      { code: "BEDBOUND", label: "Bedbound" },
+      { code: "CHAIR_TO_BED", label: "Chair-to-bed only" },
+      { code: "BED_RAILS", label: "Bed rails up (every visit)", detail: true, detailLabel: "Type & side(s) — e.g. full rail both sides, half rail left only" },
+      { code: "CLEAR_PATH", label: "Keep walking path/objects within reach clear (every visit)" },
+      { code: "LOW_BED", label: "Keep bed in low position (every visit)" },
+      { code: "REPOSITION", label: "Turn and reposition patient (every visit)", detail: true, detailLabel: "How often / which side(s)" },
+    ],
+  },
+  {
+    value: "Toileting/Continence Care", label: "Toileting / Continence Care",
+    items: [
+      { code: "BATHROOM", label: "Assist to bathroom" },
+      { code: "COMMODE", label: "Assist with bedside commode" },
+      { code: "BEDPAN", label: "Assist with bedpan" },
+      { code: "URINAL", label: "Assist with urinal (every visit)" },
+      { code: "ADULT_DIAPERS", label: "Adult diapers" },
+      { code: "BRIEFS", label: "Briefs (every visit)" },
+      { code: "URINARY_CONTINENT", label: "Continent — urinary" },
+      { code: "URINARY_INCONTINENT", label: "Incontinent — urinary (incontinence care every visit)" },
+      { code: "FOLEY_CARE", label: "Foley catheter care (every visit)" },
+      { code: "CONDOM_CATH", label: "Condom catheter — reapply (every visit)" },
+      { code: "MEASURE_OUTPUT", label: "Measure and record urinary output (every visit)" },
+      { code: "EMPTY_BAG", label: "Empty urinary collection bag" },
+      { code: "BOWEL_CONTINENT", label: "Continent — bowel" },
+      { code: "BOWEL_INCONTINENT", label: "Incontinent — bowel (incontinence care, record bowel movements every visit)" },
+      { code: "COLOSTOMY_CARE", label: "Colostomy care / empty bag" },
+    ],
+  },
+  {
+    value: "Transfer", label: "Transfer",
+    items: [
+      { code: "ONE_PERSON", label: "1-person assist" },
+      { code: "TWO_PERSON", label: "2-person assist" },
+      { code: "MECHANICAL_LIFT", label: "Mechanical lift" },
+      { code: "FALL_PRECAUTION", label: "Fall precaution (every visit)" },
+    ],
+  },
+  {
+    value: "Dressing", label: "Dressing",
+    items: [
+      { code: "STREET_CLOTHES", label: "Street clothes" },
+      { code: "PAJAMAS", label: "Pajamas / gown" },
+      { code: "DRESS_EVERY_VISIT", label: "Dress patient (every visit)" },
+    ],
+  },
+  {
+    value: "Feeding", label: "Feeding",
+    items: [
+      { code: "DIET_ORDER", label: "Diet order", detail: true, detailLabel: "Specify diet (e.g., mechanical soft, NAS, thickened liquids)" },
+      { code: "ASPIRATION_PRECAUTION", label: "Aspiration precaution (every visit)" },
+      { code: "MEAL_PREP", label: "Prepare meal(s)", detail: true, detailLabel: "Which meals (breakfast/lunch/dinner/snack)" },
+      { code: "FEEDING_ASSIST", label: "Feeding assistance (every visit)" },
+      { code: "ORAL_MED_ASSIST", label: "Assist with oral medication as ordered" },
+      { code: "ENCOURAGE_FLUIDS", label: "Encourage fluids as tolerated if not contraindicated (every visit)" },
+    ],
+  },
+  {
+    value: "Bathing/Hygiene", label: "Bathing / Hygiene",
+    items: [
+      { code: "BATH", label: "Bath (every visit)", detail: true, detailLabel: "Type — shower, tub bath, bed bath, or shower chair" },
+      { code: "HAIR_CARE", label: "Hair care — brush/comb/shampoo (every visit)" },
+      { code: "FACIAL_HAIR", label: "Facial hair care — use electric razor, not a blade, unless otherwise ordered (every visit)" },
+      { code: "MOUTH_CARE", label: "Mouth care — brush teeth / clean dentures (every visit)" },
+      { code: "NAIL_CARE", label: "Nail care — clean and file (every visit)" },
+      { code: "DEODORANT", label: "Apply deodorant (every visit)" },
+      { code: "LOTION", label: "Apply lotion (every visit)" },
+      { code: "SKIN_VISUALIZE", label: "Visualize skin condition and report to RN (every visit)" },
+      { code: "PERI_CARE", label: "Peri care (every visit)" },
+    ],
+  },
+  {
+    value: "Light Housekeeping", label: "Light Housekeeping (patient-care related)",
+    items: [
+      { code: "CHANGE_LINENS", label: "Change patient linens (every visit)" },
+      { code: "TIDY_ROOM", label: "Tidy patient's immediate area / empty trash (every visit)" },
+      { code: "COMPANION", label: "Provide companionship/supervision as ordered" },
+    ],
+  },
+  {
+    value: "Vital Signs", label: "Vital Signs Monitoring",
+    items: [
+      { code: "CHECK_VITALS", label: "Check and record vital signs (every visit)", detail: true, detailLabel: "Which parameters (e.g., temp, pulse, respirations, BP, O2 sat, weight)" },
+    ],
+  },
+];
+
+// Fixed scope-of-practice caption per task -- every task carries a
+// plain-language reminder of what is (and is not) within scope, in addition
+// to whatever the RN writes in Instructions. Static text, not
+// patient-specific, so it is not persisted.
+const CHHA_TASK_GUIDANCE = {
+  "Ambulation": "Assist only per the device/assist level checked below. Do not adjust the assist level yourself even if the patient asks.",
+  "Transfer": "Use the assist level and equipment (gait belt, walker, wheelchair) checked below every time. Do not attempt a higher-risk transfer alone.",
+  "Toileting/Continence Care": "Follow the assist level checked below. Report any change in continence, blood, or unusual color/odor -- do not assess or diagnose it yourself.",
+  "Dressing": "Assist per the level checked below. Report any new skin changes noticed while dressing instead of treating them.",
+  "Feeding": "Follow the diet/texture checked below exactly, including thickened liquids if ordered. Never change a patient's diet texture on your own.",
+  "Bathing/Hygiene": "Follow water-temperature and skin precautions checked below. Report any new redness, wound, or bruising instead of treating it.",
+  "Light Housekeeping": "Patient-care-related tasks only (e.g., changing linens, tidying patient's immediate area). Not general household chores.",
+  "Vital Signs": "Record only -- do not interpret the reading or decide it is \"fine.\" Report any value outside the range given below immediately.",
+};
+
+const CHHA_DEPENDENCE_OPTIONS = ["Independent", "Assist", "Complete Dependence"];
+const CHHA_TASK_FREQUENCY_OPTIONS = ["Every visit", "As needed (see instructions for exactly when)"];
+// Minimum safe assist level for ANY transfer/repositioning of this patient --
+// a hard staffing/safety requirement, never left to the HA's judgment
+// (a caregiver who weighs 90 lbs must never be relied on to manually move a
+// 300+ lb patient). Feeds a mandatory "Transfer / Lift Safety" guidance
+// category and gates the Transfer task options below.
+const CHHA_MINIMUM_ASSIST_OPTIONS = [
+  "Independent",
+  "1-person assist",
+  "2-person assist required",
+  "Mechanical lift required — no manual lift",
+];
+
+// Visit-time fact checklist per ordered task category -- what the HA
+// actually saw/did during THIS visit, captured as fixed checkboxes instead
+// of a free-text narrative. Narrative is unreliable (vague, inconsistent,
+// easy to skip); a checklist forces a specific, auditable answer every time.
+// At least one box is required whenever the task is marked "Completed as
+// ordered" so the record always shows exactly what was done, not just that
+// "something" was done.
+// Checklist codes that mean "another staff member physically helped" -- when
+// any of these are checked, we require the aide to name who assisted, both
+// for staffing-safety accountability and because a solo bariatric/lift
+// transfer is a documented safety violation.
+const ASSIST_NAME_TRIGGER_CODES = ["SECOND_PERSON_PRESENT", "TWO_PERSON_BATH_TRANSFER"];
+
+const CHHA_VISIT_FACT_OPTIONS = {
+  "Ambulation": [
+    { code: "USED_ORDERED_DEVICE", label: "Used the ordered device/assist level (walker, cane, wheelchair, etc.)" },
+    { code: "BED_RAILS_UP", label: "Bed rails placed up as ordered" },
+    { code: "PATH_CLEAR", label: "Walking path/objects kept clear" },
+    { code: "LOW_BED", label: "Bed kept in low position" },
+    { code: "REPOSITIONED", label: "Repositioned/turned per schedule" },
+    { code: "NO_NEW_MOBILITY_ISSUE", label: "No new weakness, balance problem, or fall observed" },
+  ],
+  "Toileting/Continence Care": [
+    { code: "ASSISTED_TOILETING", label: "Assisted to bathroom/commode/bedpan as ordered" },
+    { code: "CHANGED_BRIEF", label: "Changed brief/diaper" },
+    { code: "INCONTINENCE_CARE", label: "Provided incontinence care" },
+    { code: "MEASURED_OUTPUT", label: "Emptied/measured output as ordered" },
+    { code: "NO_NEW_FINDING", label: "No change in color, odor, or amount noted" },
+  ],
+  "Transfer": [
+    { code: "USED_GAIT_BELT", label: "Used gait belt" },
+    { code: "USED_MECH_LIFT", label: "Used mechanical lift" },
+    { code: "SECOND_PERSON_PRESENT", label: "A second person physically assisted (name required below)" },
+    { code: "FOLLOWED_ORDERED_LEVEL", label: "Followed the ordered assist level — did not attempt a lower-assist transfer alone" },
+    { code: "FALL_PRECAUTIONS", label: "Fall precautions followed" },
+  ],
+  "Dressing": [
+    { code: "DRESSED_AS_ORDERED", label: "Dressed patient as ordered" },
+    { code: "NO_NEW_SKIN_FINDING", label: "No new skin change noticed while dressing" },
+  ],
+  "Feeding": [
+    { code: "FOLLOWED_DIET_ORDER", label: "Followed the ordered diet/texture exactly" },
+    { code: "ASSISTED_FEEDING", label: "Physically assisted with feeding" },
+    { code: "UPRIGHT_DURING_MEAL", label: "Patient upright during the meal" },
+    { code: "ASSISTED_ORAL_MEDS", label: "Assisted with oral medication" },
+    { code: "ENCOURAGED_FLUIDS", label: "Encouraged fluids as tolerated" },
+    { code: "NO_SWALLOWING_ISSUE", label: "No coughing, choking, or pocketing observed" },
+  ],
+  "Bathing/Hygiene": [
+    { code: "BED_BATH", label: "Bed bath given (patient not moved to shower/tub)" },
+    { code: "SHOWER_TUB_BATH", label: "Shower/tub bath given" },
+    { code: "USED_SHOWER_CHAIR", label: "Used shower chair" },
+    { code: "USED_MECH_LIFT_BATH", label: "Used mechanical lift to bathe" },
+    { code: "TWO_PERSON_BATH_TRANSFER", label: "2-person transfer used to bathe" },
+    { code: "HYGIENE_COMPLETED", label: "Hair/mouth/nail/skin care completed as ordered" },
+    { code: "NO_NEW_SKIN_FINDING_BATH", label: "Skin visualized — no new findings" },
+  ],
+  "Light Housekeeping": [
+    { code: "CHANGED_LINENS", label: "Changed patient linens" },
+    { code: "TIDIED_AREA", label: "Tidied patient's immediate area" },
+  ],
+  "Vital Signs": [
+    { code: "VITALS_IN_RANGE", label: "Vitals recorded, within the range ordered" },
+    { code: "VITALS_OUT_OF_RANGE", label: "Vitals recorded, outside the range ordered — reported to RN" },
+  ],
+};
+
+// Name fragments used ONLY to derive a plain-language safety alert -- the
+// medication list itself is never shown in the CHHA POC.
+const CHHA_ANTICOAGULANT_KEYWORDS = ["warfarin", "coumadin", "eliquis", "apixaban", "xarelto", "rivaroxaban", "heparin", "lovenox", "enoxaparin", "plavix", "clopidogrel", "pradaxa", "dabigatran", "savaysa", "edoxaban"];
+const CHHA_OPIOID_KEYWORDS = ["morphine", "oxycodone", "oxycontin", "hydrocodone", "hydromorphone", "dilaudid", "fentanyl", "methadone", "roxanol"];
+const CHHA_DIABETES_KEYWORDS = ["insulin", "metformin", "glipizide", "glyburide", "glimepiride", "januvia", "jardiance", "farxiga", "ozempic", "trulicity", "lantus", "novolog", "humalog"];
+
+const CHHA_REPORT_TO_OPTIONS = [
+  { value: "RN", label: "RN / Hospice Nurse" },
+  { value: "RN_AND_MD", label: "RN and MD" },
+  { value: "MD", label: "MD" },
+];
+
+function chhaTextIncludesAny(text, keywords) {
+  const lower = (text || "").toLowerCase();
+  return keywords.some((k) => lower.includes(k));
+}
+
+function chhaReportToLabel(reportToRole) {
+  if (reportToRole === "RN_AND_MD") return "RN and MD";
+  if (reportToRole === "MD") return "MD";
+  return "RN";
+}
+
+// Derives structured, caregiver-safe guidance from data already documented
+// elsewhere in the chart -- never invented, always traceable to a specific
+// field. Per the "caregiver guidance engine" rule: clinical terms (Dysphagia,
+// Anticoagulation therapy, Aspiration risk, pressure-injury staging, etc.)
+// are NEVER surfaced here -- only the caregiver-safe risk label, what to
+// observe, what to do, and when to escalate. `reportToRole` is configurable
+// (default RN) since who the aide escalates to can differ once LVN-authored
+// plans exist (report to RN and MD, or MD directly).
+function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAssistLevel }) {
+  const reportTo = chhaReportToLabel(reportToRole);
+  const categories = [];
+  const activeMeds = (medications || []).filter((m) => !m.status || m.status === "active");
+  const medNames = activeMeds.map((m) => m.medication_name || "").join(" ");
+  const diagnosisText = `${formData?.diagnoses?.primaryDiagnosis?.description || ""} ${(formData?.diagnoses?.secondaryDiagnoses || []).map((d) => d?.description || "").join(" ")}`;
+
+  const fallRiskLevel = formData?.safety?.fallRiskLevel;
+  if (fallRiskLevel === "Moderate" || fallRiskLevel === "High") {
+    categories.push({
+      key: "fallRisk",
+      riskLabel: "Fall Risk",
+      observe: ["Increased weakness", "Difficulty standing", "New balance problems"],
+      safety: ["Keep pathways clear", "Lock wheelchair/bed brakes before any transfer", "Use walker/cane if ordered", "Do not leave the patient unattended during a transfer"],
+      escalate: [`Any fall, near fall, or sudden weakness — call ${reportTo} immediately`],
+    });
+  }
+  // Transfer/lift safety is a staff-injury risk, not just a patient-care
+  // preference -- never rely on the HA to judge whether they personally can
+  // lift the patient. If the RN has ordered 2-person or mechanical-lift
+  // assist, that is a hard requirement surfaced everywhere, the same way
+  // fall risk or oxygen precautions are.
+  if (minimumAssistLevel === "2-person assist required" || minimumAssistLevel === "Mechanical lift required — no manual lift") {
+    categories.push({
+      key: "transferSafety",
+      riskLabel: "Transfer / Lift Safety",
+      observe: ["Any transfer that cannot be done at the required assist level", "Strain, pain, or skin shearing to the patient or caregiver during a transfer"],
+      safety: [
+        `Required assist level: ${minimumAssistLevel}. Never attempt a lower level of assist, even if it seems faster or no one else is available.`,
+        "Wait for a second caregiver before starting if 2-person assist is required — do not attempt alone",
+        "Use the mechanical lift/equipment ordered every time, not manual lifting",
+      ],
+      escalate: [`Unable to safely transfer the patient at the required assist level, or any caregiver/patient injury during a transfer — call ${reportTo} immediately`],
+    });
+  }
+  if (formData?.safety?.oxygenInUse) {
+    categories.push({
+      key: "oxygen",
+      riskLabel: "Oxygen Use",
+      observe: ["Increased breathing difficulty", "Restlessness", "Lips or skin looking bluish/dusky", "Patient removing the oxygen"],
+      safety: ["No smoking or open flame near the oxygen", "Keep tubing secured, not a tripping hazard", "Do not change the flow rate yourself"],
+      escalate: [`Increased shortness of breath, oxygen not helping, or equipment malfunction — call ${reportTo} immediately`],
+    });
+  }
+  const swallowing = formData?.nutrition?.swallowingIssues || [];
+  if (["Dysphagia", "Aspiration risk", "Coughing with swallowing"].some((s) => swallowing.includes(s))) {
+    categories.push({
+      key: "swallowing",
+      riskLabel: "Swallowing Precautions",
+      observe: ["Coughing during meals", "Choking", "Food pocketing in the cheeks", "Wet or gurgly voice after swallowing"],
+      safety: ["Keep the patient upright during and after meals", "Follow the diet/texture ordered exactly", "Small bites, slow feeding — never rush"],
+      escalate: [`Choking episode, unable to swallow, refusing food due to swallowing difficulty, or increased coughing during meals — call ${reportTo} immediately`],
+    });
+  }
+  const pressureRisk = formData?.skinWounds?.pressureInjuryRisk || "";
+  if (pressureRisk.startsWith("High") || pressureRisk.startsWith("Moderate")) {
+    categories.push({
+      key: "skin",
+      riskLabel: "Skin Precautions",
+      observe: ["Redness", "Open areas", "Drainage", "Swelling"],
+      safety: ["Reposition exactly per the schedule ordered", "Keep skin clean and dry"],
+      escalate: [`New skin breakdown, drainage, or worsening redness — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_ANTICOAGULANT_KEYWORDS)) {
+    categories.push({
+      key: "bleeding",
+      riskLabel: "Bleeding Precautions",
+      observe: ["New bruising", "Bleeding gums", "Blood in urine or stool", "Black/tarry stool", "Nosebleeds", "Pale skin color"],
+      safety: ["Use an electric razor, not a blade", "Use a soft-bristle toothbrush", "Avoid activities likely to cause cuts or skin injury", "Report falls immediately, even minor ones"],
+      escalate: [`Any bleeding, significant bruising, a fall with head impact, or pale skin color — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_OPIOID_KEYWORDS)) {
+    categories.push({
+      key: "sedation",
+      riskLabel: "Pain Medication Precautions",
+      observe: ["Excessive sleepiness or difficulty waking", "Slow or shallow breathing", "Unrelieved pain"],
+      safety: ["Do not adjust medication timing or dose yourself"],
+      escalate: [`Excessive sleepiness/difficulty waking, slow or shallow breathing, or unrelieved pain — call ${reportTo} immediately`],
+    });
+  }
+  if (chhaTextIncludesAny(medNames, CHHA_DIABETES_KEYWORDS) || chhaTextIncludesAny(diagnosisText, ["diabet"])) {
+    categories.push({
+      key: "glucose",
+      riskLabel: "Blood Sugar Precautions",
+      observe: ["Shakiness", "Sweating", "Confusion", "Other signs of low blood sugar"],
+      safety: ["Follow the diet ordered", "Do not give food/juice on your own to \"treat\" a suspected episode without an order"],
+      escalate: [`Shakiness, sweating, confusion, or other signs of low blood sugar — call ${reportTo} immediately`],
+    });
+  }
+  return categories;
+}
+
+const DEFAULT_CHHA_POC = {
+  tasks: [],
+  dietInstructions: "",
+  additionalInstructions: "",
+  reportToRole: "RN",
+  patientWeightLbs: "",
+  minimumAssistLevel: "",
+  safetyAlerts: [],
+  dismissedSafetyAlertKeys: [],
+  completed: false,
+  completedDate: "",
+  completedBy: "",
+};
+
+export function CHHAPocCard({ patientId, styles, COLORS }) {
+  const [assessmentId, setAssessmentId] = useState(null);
+  const [locked, setLocked] = useState(false);
+  const [assignedAide, setAssignedAide] = useState("");
+  const [fullFormData, setFullFormData] = useState(null);
+  const [chhaPoc, setChhaPoc] = useState(DEFAULT_CHHA_POC);
+  const [medications, setMedications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [customAlertDraft, setCustomAlertDraft] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    setError("");
+    Promise.all([
+      getRnicaAssessmentByPatient(patientId).catch(() => null),
+      listMedications(patientId).catch(() => []),
+    ])
+      .then(([assessment, medList]) => {
+        if (assessment?.assessmentId) {
+          setAssessmentId(assessment.assessmentId);
+          setLocked(!!assessment.locked);
+          setFullFormData(assessment.formData || {});
+          setAssignedAide(assessment.formData?.haAssignment?.assignedAide || "");
+          setChhaPoc({ ...DEFAULT_CHHA_POC, ...(assessment.formData?.chhaPoc || {}) });
+        } else {
+          setError("No RN ICA assessment found for this patient yet — complete the RN ICA Admissions Order section first.");
+        }
+        setMedications(medList || []);
+      })
+      .catch((err) => setError(err.message || "Unable to load CHHA Plan of Care."))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const derivedCategories = useMemo(
+    () => deriveChhaCareGuidance({ formData: fullFormData, medications, reportToRole: chhaPoc.reportToRole, minimumAssistLevel: chhaPoc.minimumAssistLevel }),
+    [fullFormData, medications, chhaPoc.reportToRole, chhaPoc.minimumAssistLevel],
+  );
+
+  // System-derived guidance is computed live (never persisted as static text)
+  // so changing "Report To", fall risk level, meds, etc. always updates the
+  // wording immediately -- only *which keys were dismissed* is persisted.
+  const dismissedKeys = useMemo(() => new Set(chhaPoc.dismissedSafetyAlertKeys || []), [chhaPoc.dismissedSafetyAlertKeys]);
+  const visibleCategories = derivedCategories.filter((c) => !dismissedKeys.has(c.key));
+  const customAlerts = (chhaPoc.safetyAlerts || []).filter((a) => a.custom);
+  const todayWatchFor = [...new Set(visibleCategories.flatMap((c) => c.observe))];
+  const chhaTaskMissingCounts = (chhaPoc.tasks || []).map((t) => {
+    const items = t.items || [];
+    const catalog = CHHA_TASK_OPTIONS.find((o) => o.value === t.task);
+    const missingItemDetails = items.filter((i) => {
+      const itemDef = catalog?.items.find((c) => c.code === i.code);
+      return itemDef?.detail && !i.detail?.trim();
+    }).length;
+    const missingInstructions = items.length === 0 && !t.instructions?.trim() ? 1 : 0;
+    const requiredAssistCode = chhaPoc.minimumAssistLevel === "2-person assist required" ? "TWO_PERSON"
+      : chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "MECHANICAL_LIFT" : null;
+    const missingTransferSafety = t.task === "Transfer" && requiredAssistCode && !items.some((i) => i.code === requiredAssistCode) ? 1 : 0;
+    return missingItemDetails + missingInstructions + missingTransferSafety;
+  });
+  const tasksMissingInstructions = chhaTaskMissingCounts.reduce((sum, n) => sum + n, 0)
+    + (["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
+      && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") ? 1 : 0);
+
+  const persist = (next) => {
+    setChhaPoc(next);
+    if (!assessmentId || !fullFormData) return;
+    setSaving(true);
+    setSaveMessage("");
+    updateRnicaAssessment(assessmentId, { ...fullFormData, chhaPoc: next })
+      .then(() => setSaveMessage("Saved"))
+      .catch((err) => setError(err.message || "Unable to save CHHA Plan of Care."))
+      .finally(() => setSaving(false));
+  };
+
+  const dismissCategory = (key) => {
+    persist({ ...chhaPoc, dismissedSafetyAlertKeys: [...new Set([...(chhaPoc.dismissedSafetyAlertKeys || []), key])] });
+  };
+
+  const removeCustomAlert = (key) => {
+    persist({ ...chhaPoc, safetyAlerts: (chhaPoc.safetyAlerts || []).filter((a) => a.key !== key) });
+  };
+
+  const addCustomAlert = () => {
+    const text = customAlertDraft.trim();
+    if (!text) return;
+    persist({ ...chhaPoc, safetyAlerts: [...(chhaPoc.safetyAlerts || []), { key: `custom-${Date.now()}`, text, custom: true }] });
+    setCustomAlertDraft("");
+  };
+
+  const toggleTask = (taskValue, checked) => {
+    const existing = (chhaPoc.tasks || []).some((t) => t.task === taskValue);
+    if (checked) {
+      if (existing) return;
+      persist({ ...chhaPoc, tasks: [...(chhaPoc.tasks || []), { task: taskValue, dependence: "", frequency: "", instructions: "", items: [] }] });
+    } else {
+      persist({ ...chhaPoc, tasks: (chhaPoc.tasks || []).filter((t) => t.task !== taskValue) });
+    }
+  };
+  const updateTaskField = (taskValue, patch) => {
+    const next = (chhaPoc.tasks || []).map((t) => (t.task === taskValue ? { ...t, ...patch } : t));
+    persist({ ...chhaPoc, tasks: next });
+  };
+  const toggleTaskItem = (taskValue, itemCode, checked) => {
+    const next = (chhaPoc.tasks || []).map((t) => {
+      if (t.task !== taskValue) return t;
+      const items = t.items || [];
+      if (checked) {
+        if (items.some((i) => i.code === itemCode)) return t;
+        return { ...t, items: [...items, { code: itemCode, detail: "" }] };
+      }
+      return { ...t, items: items.filter((i) => i.code !== itemCode) };
+    });
+    persist({ ...chhaPoc, tasks: next });
+  };
+  const updateTaskItemDetail = (taskValue, itemCode, detailValue) => {
+    const next = (chhaPoc.tasks || []).map((t) => {
+      if (t.task !== taskValue) return t;
+      return { ...t, items: (t.items || []).map((i) => (i.code === itemCode ? { ...i, detail: detailValue } : i)) };
+    });
+    persist({ ...chhaPoc, tasks: next });
+  };
+
+  if (loading) {
+    return <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Plan of Care…</div>;
+  }
+
+  return (
+    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+
+      <Card title="CHHA Plan of Care" cms="Home Health Aide">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 8 }}>
+          <div style={{ fontSize: 12.5, color: COLORS.gray }}>
+            Assigned Home Aide: <strong style={{ color: COLORS.dark }}>{assignedAide || "Not yet assigned"}</strong>
+          </div>
+          {chhaPoc.completed && (
+            <div style={{ fontSize: 12.5, color: "#22c55e", fontWeight: 700 }}>
+              ✓ Completed{chhaPoc.completedDate ? ` — ${chhaPoc.completedDate}` : ""}{chhaPoc.completedBy ? ` by ${chhaPoc.completedBy}` : ""}
+            </div>
+          )}
+        </div>
+        {locked && (
+          <div style={{ ...styles.infoBox, marginBottom: 8 }}>
+            This patient's RN ICA is locked. CHHA Plan of Care edits after lock should go through the amendment process.
+          </div>
+        )}
+      </Card>
+
+      {/* ── Today's Key Observations — auto-generated summary card, always at the top ── */}
+      {(visibleCategories.length > 0 || customAlerts.length > 0) && (
+        <Card title="Today's Key Observations">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {visibleCategories.map((c) => (
+              <span key={c.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {c.riskLabel}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>Today, watch for:</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
+            {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
+            {customAlerts.map((a) => <li key={a.key}>{a.text}</li>)}
+          </ul>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+            Notify {chhaReportToLabel(chhaPoc.reportToRole)} immediately if observed.
+          </div>
+        </Card>
+      )}
+
+      {/* ── Safety Alerts & Report To — structured Observe / Safety / Escalate per risk, system-derived ── */}
+      <Card title="Safety Alerts & Report To">
+        <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+          Auto-generated from this patient's documented fall risk, oxygen use, swallowing risk, skin breakdown risk,
+          and active medication classes — clinical terms and medication names/doses are never shown here, only what
+          the HA should observe, do, and report. Dismiss a category if it doesn't apply; add anything else the RN
+          wants flagged below.
+        </div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+          <div style={{ maxWidth: 260 }}>
+            <FormSelect
+              label="Report To"
+              value={chhaPoc.reportToRole}
+              onChange={(v) => persist({ ...chhaPoc, reportToRole: v })}
+              options={CHHA_REPORT_TO_OPTIONS}
+            />
+          </div>
+          <div style={{ maxWidth: 160 }}>
+            <FormInput
+              label="Patient Weight (lbs)"
+              type="number"
+              value={chhaPoc.patientWeightLbs}
+              onChange={(v) => persist({ ...chhaPoc, patientWeightLbs: v })}
+            />
+          </div>
+          <div style={{ maxWidth: 280 }}>
+            <FormSelect
+              label="Minimum Safe Assist Level for ANY Transfer (required)"
+              value={chhaPoc.minimumAssistLevel}
+              onChange={(v) => persist({ ...chhaPoc, minimumAssistLevel: v })}
+              options={CHHA_MINIMUM_ASSIST_OPTIONS}
+            />
+          </div>
+        </div>
+        {["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
+          && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+            ⚠️ Check "Transfer" in Ordered Tasks below and select {chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "Mechanical lift" : "2-person assist"} —
+            a caregiver must never be relied on to manually move this patient at a lower assist level than ordered.
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {visibleCategories.map((c) => (
+            <div key={c.key} style={{
+              padding: "10px 12px", borderRadius: 8,
+              background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.3)",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 13 }}>⚠</span>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: COLORS.dark }}>{c.riskLabel}</div>
+                <button
+                  type="button"
+                  onClick={() => dismissCategory(c.key)}
+                  title="Dismiss — does not apply to this patient"
+                  style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
+                >
+                  ×
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, fontSize: 12, color: COLORS.dark }}>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Observe</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.observe.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Safety</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.safety.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Escalate — call {chhaReportToLabel(chhaPoc.reportToRole)}</div>
+                  <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.escalate.map((t) => <li key={t}>{t}</li>)}</ul>
+                </div>
+              </div>
+            </div>
+          ))}
+          {customAlerts.map((a) => (
+            <div key={a.key} style={{
+              display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 8,
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.35)",
+            }}>
+              <span style={{ fontSize: 14 }}>⚠</span>
+              <div style={{ flex: 1, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.5 }}>{a.text}</div>
+              <button
+                type="button"
+                onClick={() => removeCustomAlert(a.key)}
+                title="Remove"
+                style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          {visibleCategories.length === 0 && customAlerts.length === 0 && (
+            <div style={{ fontSize: 12, color: COLORS.gray }}>No active safety alerts for this patient right now.</div>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+          <FormInput
+            label="Add custom safety alert"
+            value={customAlertDraft}
+            onChange={setCustomAlertDraft}
+            placeholder={`e.g., Report to ${chhaReportToLabel(chhaPoc.reportToRole)} if patient refuses two consecutive visits`}
+          />
+          <button type="button" onClick={addCustomAlert} style={{ ...styles.btnSecondary, alignSelf: "end", height: 34 }}>
+            + Add
+          </button>
+        </div>
+      </Card>
+
+
+      {/* ── Ordered tasks — checklist of the standard task categories; check the specific items this patient needs ── */}
+      <Card title="Ordered Tasks">
+        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+          Check the category, then check only the specific items this patient actually needs. Fill in the specify-box for
+          any item that needs one (diet, bed rails, which vitals, etc.) so the HA has exact instructions, not a
+          judgment call.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {CHHA_TASK_OPTIONS.map((opt) => {
+            const row = (chhaPoc.tasks || []).find((t) => t.task === opt.value);
+            const checked = !!row;
+            const items = row?.items || [];
+            const missingInstructions = checked && items.length === 0 && !row.instructions?.trim();
+            const missingItemDetail = (code) => {
+              const itemDef = opt.items.find((c) => c.code === code);
+              const selected = items.find((i) => i.code === code);
+              return checked && itemDef?.detail && selected && !selected.detail?.trim();
+            };
+            // Transfer/lift safety is a staff-injury risk -- if the RN set a
+            // Minimum Safe Assist Level above, the matching Transfer item is
+            // mandatory and lower (unsafe) assist levels are disabled, not
+            // left as an option the HA or a rushed RN could pick by mistake.
+            const isTransfer = opt.value === "Transfer";
+            const transferRequiredCode = chhaPoc.minimumAssistLevel === "2-person assist required" ? "TWO_PERSON"
+              : chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "MECHANICAL_LIFT" : null;
+            const transferRequiredMissing = isTransfer && checked && transferRequiredCode && !items.some((i) => i.code === transferRequiredCode);
+            const anyMissing = missingInstructions || opt.items.some((i) => missingItemDetail(i.code)) || transferRequiredMissing;
+            return (
+              <div key={opt.value} style={{
+                borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+              }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: COLORS.dark, cursor: "pointer" }}>
+                  <input type="checkbox" checked={checked} onChange={(e) => toggleTask(opt.value, e.target.checked)} />
+                  {opt.label}
+                </label>
+                <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2, marginLeft: 24 }}>{CHHA_TASK_GUIDANCE[opt.value]}</div>
+                {checked && (
+                  <div style={{ marginTop: 8, marginLeft: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: "6px 16px" }}>
+                    {opt.items.map((itemDef) => {
+                      const selected = items.find((i) => i.code === itemDef.code);
+                      const itemChecked = !!selected;
+                      const needsDetail = missingItemDetail(itemDef.code);
+                      const isDisallowedAssist = isTransfer && transferRequiredCode === "MECHANICAL_LIFT" && (itemDef.code === "ONE_PERSON" || itemDef.code === "TWO_PERSON")
+                        ? true
+                        : isTransfer && transferRequiredCode === "TWO_PERSON" && itemDef.code === "ONE_PERSON";
+                      return (
+                        <div key={itemDef.code}>
+                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: isDisallowedAssist ? COLORS.gray : COLORS.dark, cursor: isDisallowedAssist ? "not-allowed" : "pointer" }}>
+                            <input
+                              type="checkbox"
+                              checked={itemChecked}
+                              disabled={isDisallowedAssist}
+                              onChange={(e) => toggleTaskItem(opt.value, itemDef.code, e.target.checked)}
+                            />
+                            {itemDef.label}
+                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: "#dc2626" }}>— not safe at this patient's assist level</span>}
+                          </label>
+                          {itemChecked && itemDef.detail && (
+                            <div style={{ marginLeft: 24, marginTop: 4, maxWidth: 420 }}>
+                              <FormInput
+                                label={`${itemDef.detailLabel} (required)`}
+                                value={selected.detail}
+                                onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
+                              />
+                              {needsDetail && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {transferRequiredMissing && (
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "6px 8px" }}>
+                        ⚠️ Required: this patient's Minimum Safe Assist Level is "{chhaPoc.minimumAssistLevel}" — check{" "}
+                        {transferRequiredCode === "MECHANICAL_LIFT" ? "Mechanical lift" : "2-person assist"} above before finishing this plan.
+                      </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+                      <FormSelect label="Dependence Level" value={row.dependence} onChange={(v) => updateTaskField(opt.value, { dependence: v })} options={CHHA_DEPENDENCE_OPTIONS} />
+                      <FormSelect label="Frequency" value={row.frequency} onChange={(v) => updateTaskField(opt.value, { frequency: v })} options={CHHA_TASK_FREQUENCY_OPTIONS} />
+                      <div>
+                        <FormInput
+                          label={items.length === 0 ? "Instructions (required — no items checked above, so spell out exactly what to do)" : "Additional instructions (optional)"}
+                          value={row.instructions}
+                          onChange={(v) => updateTaskField(opt.value, { instructions: v })}
+                          placeholder="e.g., Shower with chair, standby assist only, water lukewarm"
+                        />
+                        {missingInstructions && (
+                          <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12 }}>
+          <FormTextarea label="Diet / Nutrition Instructions" value={chhaPoc.dietInstructions} onChange={(v) => persist({ ...chhaPoc, dietInstructions: v })} rows={2} />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <FormTextarea label="Additional Instructions" value={chhaPoc.additionalInstructions} onChange={(v) => persist({ ...chhaPoc, additionalInstructions: v })} rows={2} />
+        </div>
+        <div style={{ ...styles.infoBox, marginTop: 12 }}>
+          If a task cannot be completed safely as written, or any symptom listed above occurs, stop and contact{" "}
+          {chhaReportToLabel(chhaPoc.reportToRole)}.
+        </div>
+      </Card>
+
+      {/* ── Completion — required before RN ICA can lock if an aide is assigned ── */}
+      <Card title="Completion">
+        {tasksMissingInstructions > 0 && (
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+            {tasksMissingInstructions} required field{tasksMissingInstructions > 1 ? "s are" : " is"} still blank in the
+            Ordered Tasks above (a specify-box or Instructions). Complete those before marking this plan complete.
+          </div>
+        )}
+        <FormCheckbox
+          label="CHHA Plan of Care Completed"
+          checked={chhaPoc.completed}
+          disabled={tasksMissingInstructions > 0}
+          onChange={(checked) => persist({
+            ...chhaPoc,
+            completed: checked,
+            completedDate: checked ? (chhaPoc.completedDate || new Date().toISOString().slice(0, 10)) : "",
+            completedBy: checked ? (chhaPoc.completedBy || getCurrentUser()?.full_name || getCurrentUser()?.name || "") : "",
+          })}
+        />
+        {chhaPoc.completed && (
+          <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
+            <FormInput label="Completed Date" type="date" value={chhaPoc.completedDate} onChange={(v) => persist({ ...chhaPoc, completedDate: v })} />
+            <FormInput label="Completed By" value={chhaPoc.completedBy} onChange={(v) => persist({ ...chhaPoc, completedBy: v })} />
+          </div>
+        )}
+        {saving && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Saving…</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+      </Card>
+    </div>
+  );
+}
+
+
+// ---------------------------------------------------------------------------------
+// CHHA Visit Note — per-visit documentation, distinct from the CHHA Plan of
+// Care above (the POC is the RN's standing order; this is what the aide
+// actually observed/did on ONE visit). Lives at PatientChart's 'chha-visits'
+// destination and is backed by the real chha_visit_outcomes /
+// chha_visit_task_results tables (visits.py's /visits/{id}/chha-outcome),
+// NOT the RNICA form_data blob -- so it participates in the same automatic
+// RN-follow-up-task creation as every other structured visit outcome
+// (upsert_chha_outcome flags a pending RN task whenever redness/breakdown,
+// a condition change, pain, or an explicit RN-notification flag is present).
+//
+// Same "never ask the aide to interpret clinical information" rule as the
+// POC: every observation below is a plain-language, layman-observable
+// checkbox (what was seen/heard), never a diagnosis. Any abnormal selection
+// automatically raises "RN Notification Required" -- the aide never has to
+// decide whether something is significant enough to report.
+// ---------------------------------------------------------------------------------
+
+const CHHA_SKIN_OPTIONS = [
+  { value: "NORMAL", label: "Normal for patient", abnormal: false },
+  { value: "PALE", label: "Pale", abnormal: true },
+  { value: "BRUISING", label: "Increased bruising", abnormal: true },
+  { value: "REDNESS", label: "Redness", abnormal: true },
+  { value: "SWELLING", label: "Swelling", abnormal: true },
+  { value: "BREAKDOWN", label: "Open area", abnormal: true },
+];
+
+const CHHA_RESPIRATION_OPTIONS = [
+  { value: "COMFORTABLE", label: "Breathing comfortably", abnormal: false },
+  { value: "INCREASED_DIFFICULTY", label: "Increased shortness of breath", abnormal: true },
+  { value: "OXYGEN_IN_USE", label: "Oxygen in use", abnormal: false },
+  { value: "COUGH", label: "Cough observed", abnormal: true },
+];
+
+const CHHA_NUTRITION_OPTIONS = [
+  { value: "ATE_MEAL", label: "Ate meal", abnormal: false },
+  { value: "FEEDING_ASSISTANCE", label: "Required feeding assistance", abnormal: false },
+  { value: "COUGHING_WHILE_EATING", label: "Coughing while eating", abnormal: true },
+  { value: "DIFFICULTY_SWALLOWING", label: "Difficulty swallowing", abnormal: true },
+];
+
+// Highest-severity-first, so a single skin_outcome column value can be
+// derived from a multi-select checklist without losing signal.
+const CHHA_SKIN_SEVERITY_ORDER = ["BREAKDOWN", "REDNESS", "SWELLING", "BRUISING", "PALE", "NORMAL"];
+
+const CHHA_TOLERANCE_OPTIONS = [
+  { value: "WELL_TOLERATED", label: "Patient tolerated care well" },
+  { value: "FAIR", label: "Patient had some difficulty" },
+  { value: "POOR", label: "Patient could not tolerate care as planned" },
+];
+
+// Per-visit supply/infection-control checklist -- stored as CHHAVisitTaskResult
+// rows with section_code "SUPPLY" (no dedicated backend column needed).
+const CHHA_SUPPLY_OPTIONS = [
+  { code: "ADULT_DIAPERS", label: "Adult diapers" },
+  { code: "BRIEFS", label: "Briefs" },
+  { code: "UNDERPADS", label: "Chux / underpads" },
+  { code: "DEODORIZERS", label: "Deodorizers" },
+  { code: "DRESSINGS", label: "Dressings" },
+  { code: "GLOVES", label: "Gloves" },
+  { code: "HAND_SANITIZER", label: "Hand sanitizer" },
+  { code: "WIPES", label: "Wipes" },
+  { code: "BARRIER_CREAM", label: "Barrier cream" },
+  { code: "CATHETER_SUPPLIES", label: "Catheter supplies" },
+  { code: "WOUND_CARE_SUPPLIES", label: "Wound care supplies" },
+  { code: "INFECTION_CONTROL_OBSERVED", label: "Infection control precautions observed" },
+  { code: "DME_CHECKED", label: "DME checked and in safe working order" },
+];
+
+function chhaAbnormalSelected(selectedValues, optionList) {
+  return selectedValues.some((v) => optionList.find((o) => o.value === v)?.abnormal);
+}
+
+function chhaDeriveSkinOutcome(selectedValues) {
+  if (!selectedValues.length) return "NOT_ASSESSED";
+  for (const level of CHHA_SKIN_SEVERITY_ORDER) {
+    if (selectedValues.includes(level)) return level;
+  }
+  return "NOT_ASSESSED";
+}
+
+const DEFAULT_CHHA_VISIT_META = {
+  correction: false,
+  typeOfVisit: "",
+  visitKind: "",
+  visitKindSpecify: "",
+  reasonForVisit: "",
+  visitDate: "",
+  timeIn: "",
+  timeOut: "",
+  duration: "",
+  enteredBy: "",
+  staffAssigned: "",
+  discipline: "CHHA",
+  careLevel: "",
+};
+
+// ════════════════════════════════════════════════════════════════
+// Continuous Care (CC) Hourly Narrative — shared across RN, LVN, AIDE
+// (CHHA), MSW, and Chaplain visits whenever the patient's care level is
+// Continuous Care (see app.domain.forms.form_registry, get_cc_package).
+// Renders live off note.visitMeta.careLevel so it appears/disappears the
+// instant the visit's Care Level dropdown changes — no locking, no
+// separate save step, since Care Level can change at any time.
+// ════════════════════════════════════════════════════════════════
+
+const DEFAULT_CC_ENTRY_DRAFT = {
+  entry_date: "",
+  entry_time: "",
+  temperature: "",
+  pulse: "",
+  respirations: "",
+  bp_systolic: "",
+  bp_diastolic: "",
+  o2_sat: "",
+  pain_level: "",
+  pain_location: "",
+  pain_intervention: "",
+  symptoms: "",
+  care_provided: "",
+  issue_identified: false,
+  issue_narrative: "",
+  poc_update_narrative: "",
+  narrative: "",
+};
+
+export function ContinuousCareLogSection({ visitId, discipline, enteredBy, styles, COLORS, disabled }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(DEFAULT_CC_ENTRY_DRAFT);
+
+  const updateDraft = (key, value) => setDraft((p) => ({ ...p, [key]: value }));
+
+  useEffect(() => {
+    if (!visitId) {
+      setEntries([]);
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    listCcHourlyNarrativeEntries(visitId)
+      .then((rows) => setEntries(Array.isArray(rows) ? rows : []))
+      .catch((err) => setError(err.message || "Unable to load the continuous care log."))
+      .finally(() => setLoading(false));
+  }, [visitId]);
+
+  const handleAddEntry = () => {
+    if (!visitId || disabled) return;
+    setSaving(true);
+    setError("");
+    createCcHourlyNarrativeEntry(visitId, { discipline, entered_by: enteredBy || "", ...draft })
+      .then((created) => {
+        setEntries((prev) => [...prev, created]);
+        setDraft(DEFAULT_CC_ENTRY_DRAFT);
+      })
+      .catch((err) => setError(err.message || "Unable to save this continuous care log entry."))
+      .finally(() => setSaving(false));
+  };
+
+  const handleRemoveEntry = (entryId) => {
+    if (!visitId || disabled) return;
+    deleteCcHourlyNarrativeEntry(visitId, entryId)
+      .then(() => setEntries((prev) => prev.filter((e) => e.id !== entryId)))
+      .catch((err) => setError(err.message || "Unable to remove this continuous care log entry."));
+  };
+
+  if (!visitId) {
+    return (
+      <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
+        <div style={{ ...styles.infoBox }}>Save this visit first to start the continuous care log.</div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
+      {loading ? (
+        <div style={{ fontSize: 12, color: COLORS.gray }}>Loading continuous care log…</div>
+      ) : (
+        <>
+          {!disabled && (
+            <div style={{ ...styles.fieldsGrid, marginBottom: 12 }}>
+              <FormInput label="Date" type="date" value={draft.entry_date} onChange={(v) => updateDraft("entry_date", v)} />
+              <FormInput label="Time" type="time" value={draft.entry_time} onChange={(v) => updateDraft("entry_time", v)} />
+              <FormInput label="Temp" value={draft.temperature} onChange={(v) => updateDraft("temperature", v)} />
+              <FormInput label="Pulse" value={draft.pulse} onChange={(v) => updateDraft("pulse", v)} />
+              <FormInput label="Resp" value={draft.respirations} onChange={(v) => updateDraft("respirations", v)} />
+              <FormInput label="BP Systolic" value={draft.bp_systolic} onChange={(v) => updateDraft("bp_systolic", v)} />
+              <FormInput label="BP Diastolic" value={draft.bp_diastolic} onChange={(v) => updateDraft("bp_diastolic", v)} />
+              <FormInput label="O2 Sat %" value={draft.o2_sat} onChange={(v) => updateDraft("o2_sat", v)} />
+              <FormInput label="Pain Level" value={draft.pain_level} onChange={(v) => updateDraft("pain_level", v)} />
+              <FormInput label="Pain Location" value={draft.pain_location} onChange={(v) => updateDraft("pain_location", v)} />
+              <FormInput label="Pain Intervention" value={draft.pain_intervention} onChange={(v) => updateDraft("pain_intervention", v)} />
+              <FormInput label="Symptoms" value={draft.symptoms} onChange={(v) => updateDraft("symptoms", v)} />
+              <FormInput label="Care Provided" value={draft.care_provided} onChange={(v) => updateDraft("care_provided", v)} />
+              <label style={styles.formGroup}>
+                <span style={styles.label}>Issue Identified</span>
+                <input
+                  type="checkbox"
+                  checked={draft.issue_identified}
+                  onChange={(e) => updateDraft("issue_identified", e.target.checked)}
+                  style={{ width: 18, height: 18 }}
+                />
+              </label>
+              {draft.issue_identified && (
+                <FormInput label="Issue Narrative" value={draft.issue_narrative} onChange={(v) => updateDraft("issue_narrative", v)} />
+              )}
+              <FormInput label="POC Update" value={draft.poc_update_narrative} onChange={(v) => updateDraft("poc_update_narrative", v)} />
+              <FormInput label="Narrative" value={draft.narrative} onChange={(v) => updateDraft("narrative", v)} />
+            </div>
+          )}
+          {!disabled && (
+            <button
+              type="button"
+              onClick={handleAddEntry}
+              disabled={saving}
+              style={{ ...styles.btnPrimary, opacity: saving ? 0.55 : 1, cursor: saving ? "not-allowed" : "pointer", marginBottom: 14 }}
+            >
+              {saving ? "Adding…" : "Add Hourly Entry"}
+            </button>
+          )}
+
+          {entries.length === 0 ? (
+            <div style={{ fontSize: 12, color: COLORS.gray }}>No continuous care log entries recorded yet.</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {entries.map((entry) => (
+                <div key={entry.id} style={{ border: `1px solid ${COLORS.border || "#e2e8f0"}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                    <strong>
+                      {entry.entry_date || "—"} {entry.entry_time || ""} · {entry.discipline}
+                      {entry.entered_by ? ` · ${entry.entered_by}` : ""}
+                    </strong>
+                    {!disabled && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveEntry(entry.id)}
+                        style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <div style={{ marginTop: 4, color: COLORS.dark }}>
+                    {(entry.temperature || entry.pulse || entry.respirations || entry.bp_systolic || entry.o2_sat) && (
+                      <div>
+                        Vitals: T {entry.temperature || "—"} · P {entry.pulse || "—"} · R {entry.respirations || "—"} · BP{" "}
+                        {entry.bp_systolic || "—"}/{entry.bp_diastolic || "—"} · O2 {entry.o2_sat || "—"}%
+                      </div>
+                    )}
+                    {(entry.pain_level || entry.pain_location || entry.pain_intervention) && (
+                      <div>
+                        Pain: {entry.pain_level || "—"} {entry.pain_location ? `@ ${entry.pain_location}` : ""}{" "}
+                        {entry.pain_intervention ? `— ${entry.pain_intervention}` : ""}
+                      </div>
+                    )}
+                    {entry.symptoms && <div>Symptoms: {entry.symptoms}</div>}
+                    {entry.care_provided && <div>Care provided: {entry.care_provided}</div>}
+                    {entry.issue_identified && <div style={{ color: "#b91c1c" }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
+                    {entry.poc_update_narrative && <div>POC update: {entry.poc_update_narrative}</div>}
+                    {entry.narrative && <div>Narrative: {entry.narrative}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+const DEFAULT_CHHA_VISIT_NOTE = {
+  taskResults: {}, // task value -> { state: "completed"|"refused"|"notDone", note: string }
+  skin: [],
+  respiration: [],
+  nutrition: [],
+  supplies: [],
+  painOrChangeObserved: false,
+  painNote: "",
+  toleranceToCare: "WELL_TOLERATED",
+  exceptionNarrative: "",
+  caregiverInstructionProvided: false,
+  caregiverUnderstandingConfirmed: false,
+  rnNotified: false,
+  rnNotifiedName: "",
+  visitMeta: DEFAULT_CHHA_VISIT_META,
+};
+
+export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [fullFormData, setFullFormData] = useState(null);
+  const [medications, setMedications] = useState([]);
+  const [orderedTasks, setOrderedTasks] = useState([]);
+  const [reportToRole, setReportToRole] = useState("RN");
+  const [minimumAssistLevel, setMinimumAssistLevel] = useState("");
+  const [visits, setVisits] = useState([]);
+  const [selectedVisitId, setSelectedVisitId] = useState("");
+  const [selectedVisitMeta, setSelectedVisitMeta] = useState(null);
+  const [note, setNote] = useState(DEFAULT_CHHA_VISIT_NOTE);
+  const [showCreateVisit, setShowCreateVisit] = useState(false);
+  const [newVisitStaffOptions, setNewVisitStaffOptions] = useState([]);
+  const [newVisitStaffId, setNewVisitStaffId] = useState("");
+  const [newVisitDate, setNewVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [newVisitCareLevel, setNewVisitCareLevel] = useState("RC");
+  const [creatingVisit, setCreatingVisit] = useState(false);
+  const [createVisitError, setCreateVisitError] = useState("");
+
+  const reloadPatientContext = useCallback(() => {
+    setLoading(true);
+    setError("");
+    Promise.all([
+      getRnicaAssessmentByPatient(patientId).catch(() => null),
+      listMedications(patientId).catch(() => []),
+      listAideVisitsForPatient(patientId).catch(() => []),
+    ])
+      .then(([assessment, meds, aideVisits]) => {
+        const formData = assessment?.formData || null;
+        setFullFormData(formData);
+        setMedications(Array.isArray(meds) ? meds : []);
+        setOrderedTasks(formData?.chhaPoc?.tasks || []);
+        setReportToRole(formData?.chhaPoc?.reportToRole || "RN");
+        setMinimumAssistLevel(formData?.chhaPoc?.minimumAssistLevel || "");
+        setVisits(aideVisits || []);
+        const preferred = (aideVisits || []).find((v) => !v.has_outcome) || (aideVisits || [])[0] || null;
+        setSelectedVisitId(preferred?.visit_id || "");
+        setSelectedVisitMeta(preferred || null);
+      })
+      .catch((err) => setError(err.message || "Unable to load this patient's CHHA visit context."))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reloadPatientContext();
+  }, [reloadPatientContext]);
+
+  // "HA CC Visit" staff+date picker -- lets the CHHA section create its own
+  // visit (RN/LVN/SC/MSW already get this via Add New Visit) instead of
+  // requiring a visit to already exist via scheduling before a note can be
+  // attached. Care Level defaults to Continuous Care since that's the
+  // primary reason this flow was requested (hourly CC documentation), but
+  // Routine is also offered since CHHA still has routine visits too.
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    listAssignableStaff(patientId, "CHHA")
+      .then((rows) => {
+        if (cancelled) return;
+        setNewVisitStaffOptions(rows);
+        const currentUser = getCurrentUser();
+        const self = rows.find((row) => row.user_id === currentUser?.id);
+        setNewVisitStaffId(self ? self.user_id : rows[0]?.user_id || currentUser?.id || "");
+      })
+      .catch(() => { if (!cancelled) setNewVisitStaffOptions([]); });
+    return () => { cancelled = true; };
+  }, [patientId]);
+
+  const newVisitStaffChoices = useMemo(() => {
+    const list = newVisitStaffOptions.map((row) => ({ value: row.user_id, label: `${row.name}${row.is_primary ? " (Primary)" : ""}` }));
+    const currentUser = getCurrentUser();
+    if (currentUser?.id && !list.some((item) => item.value === currentUser.id)) {
+      list.unshift({ value: currentUser.id, label: `${currentUser.full_name || currentUser.name || "Me"} (Myself)` });
+    }
+    return list;
+  }, [newVisitStaffOptions]);
+
+  const handleCreateAideVisit = () => {
+    setCreatingVisit(true);
+    setCreateVisitError("");
+    const currentUser = getCurrentUser();
+    const staffLabel = newVisitStaffChoices.find((item) => item.value === newVisitStaffId)?.label || currentUser?.full_name || currentUser?.name || "";
+    createVisitNote({
+      patient_id: patientId,
+      visit_type: "CHHA",
+      level_of_care: newVisitCareLevel || null,
+      visit_schedule_type: "SCHEDULED",
+      assigned_staff_id: newVisitStaffId || null,
+      visit_datetime: newVisitDate ? `${newVisitDate}T00:00:00` : null,
+      clinical_note: {
+        entered_by: currentUser?.full_name || currentUser?.name || "",
+        staff_assigned: staffLabel,
+        visit_date: newVisitDate,
+      },
+    })
+      .then((response) => {
+        setShowCreateVisit(false);
+        reloadPatientContext();
+        setSelectedVisitId(response.visit_id);
+      })
+      .catch((err) => setCreateVisitError(err.message || "Unable to create this CHHA visit."))
+      .finally(() => setCreatingVisit(false));
+  };
+
+  useEffect(() => {
+    if (!selectedVisitId) {
+      setNote(DEFAULT_CHHA_VISIT_NOTE);
+      return;
+    }
+    setSaveMessage("");
+    const currentUser = getCurrentUser();
+    const fallbackVisitMeta = {
+      ...DEFAULT_CHHA_VISIT_META,
+      visitDate: selectedVisitMeta?.visit_datetime
+        ? new Date(selectedVisitMeta.visit_datetime).toISOString().slice(0, 10)
+        : "",
+      enteredBy: currentUser?.full_name || currentUser?.name || "",
+      staffAssigned: currentUser?.full_name || currentUser?.name || "",
+      discipline: "CHHA",
+    };
+    getChhaVisitOutcome(selectedVisitId)
+      .then((existing) => {
+        if (!existing) {
+          setNote({ ...DEFAULT_CHHA_VISIT_NOTE, visitMeta: fallbackVisitMeta });
+          return;
+        }
+        const taskResults = {};
+        const skin = [];
+        const respiration = [];
+        const nutrition = [];
+        const supplies = [];
+        (existing.task_results || []).forEach((t) => {
+          if (t.section_code === "TASK") {
+            taskResults[t.task_code] = {
+              state: t.refused ? "refused" : t.not_done ? "notDone" : t.completed ? "completed" : "",
+              note: t.result_note || "",
+              checklist: [],
+              assistedBy: "",
+              noteIsAuto: false,
+            };
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "SKIN" && t.observation_code) {
+            skin.push(t.observation_code);
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "RESPIRATION" && t.observation_code) {
+            respiration.push(t.observation_code);
+          } else if (t.section_code === "OBSERVATION" && t.task_code === "NUTRITION" && t.observation_code) {
+            nutrition.push(t.observation_code);
+          } else if (t.section_code === "SUPPLY") {
+            supplies.push(t.task_code);
+          }
+        });
+        setNote({
+          taskResults,
+          skin,
+          respiration,
+          nutrition,
+          supplies,
+          painOrChangeObserved: !!existing.pain_or_change_observed,
+          painNote: existing.exception_narrative && existing.pain_or_change_observed ? existing.exception_narrative : "",
+          toleranceToCare: existing.tolerance_to_care || "WELL_TOLERATED",
+          exceptionNarrative: existing.exception_narrative || "",
+          caregiverInstructionProvided: !!existing.caregiver_instruction_provided,
+          caregiverUnderstandingConfirmed: !!existing.caregiver_understanding_confirmed,
+          rnNotified: !!existing.rn_notified,
+          rnNotifiedName: existing.rn_notified_name || "",
+          visitMeta: {
+            correction: !!existing.correction,
+            typeOfVisit: existing.type_of_visit || "",
+            visitKind: existing.visit_kind || "",
+            visitKindSpecify: existing.visit_kind_specify || "",
+            reasonForVisit: existing.reason_for_visit || "",
+            visitDate: existing.visit_date || fallbackVisitMeta.visitDate,
+            timeIn: existing.time_in || "",
+            timeOut: existing.time_out || "",
+            duration: existing.duration || "",
+            enteredBy: existing.entered_by || fallbackVisitMeta.enteredBy,
+            staffAssigned: existing.staff_assigned || fallbackVisitMeta.staffAssigned,
+            discipline: "CHHA",
+            careLevel: existing.care_level || "",
+          },
+        });
+      })
+      .catch((err) => setError(err.message || "Unable to load this visit's CHHA note."));
+  }, [selectedVisitId, selectedVisitMeta]);
+
+  const derivedCategories = useMemo(
+    () => deriveChhaCareGuidance({ formData: fullFormData, medications, reportToRole, minimumAssistLevel }),
+    [fullFormData, medications, reportToRole, minimumAssistLevel],
+  );
+  const todayWatchFor = useMemo(() => [...new Set(derivedCategories.flatMap((c) => c.observe))], [derivedCategories]);
+
+  // Flatten each ordered task category down to the specific items the RN
+  // actually checked in the POC -- the aide documents completion per item
+  // (e.g., "Foley catheter care", "Bed rails up"), not per broad category,
+  // matching how the standing order itself is now written. Carries the
+  // dependence level, frequency, scope-of-practice guidance, and any
+  // category-level instructions along with each item so the aide never has
+  // to leave the Visit Note and go back to the POC screen to see the order.
+  const orderedTaskItems = useMemo(() => orderedTasks.flatMap((t) => {
+    const catalog = CHHA_TASK_OPTIONS.find((o) => o.value === t.task);
+    const categoryLabel = catalog?.label || t.task;
+    const guidance = CHHA_TASK_GUIDANCE[t.task] || "";
+    const shared = { category: t.task, categoryLabel, guidance, dependence: t.dependence || "", frequency: t.frequency || "", categoryInstructions: t.instructions || "" };
+    if ((t.items || []).length > 0) {
+      return t.items.map((i) => {
+        const itemDef = catalog?.items?.find((c) => c.code === i.code);
+        return { key: `${t.task}::${i.code}`, itemCode: i.code, ...shared, label: itemDef?.label || i.code, detail: i.detail };
+      });
+    }
+    // Backward-compatible fallback for a category ordered with free-text
+    // Instructions only (no granular items checked).
+    return [{ key: t.task, itemCode: null, ...shared, label: categoryLabel, detail: "" }];
+  }), [orderedTasks]);
+
+  // One card per category (Ambulation, Transfer, Feeding, ...) instead of
+  // one card per item -- the category header, shared dependence/frequency,
+  // instructions, and guidance are shown ONCE, and every item ordered under
+  // that category is listed underneath it as its own row. This is what
+  // keeps a patient with 5 Ambulation items from producing 5 near-identical
+  // cards that all repeat "AMBULATION" at the top.
+  const groupedTaskCategories = useMemo(() => {
+    const byCategory = new Map();
+    for (const item of orderedTaskItems) {
+      if (!byCategory.has(item.category)) {
+        byCategory.set(item.category, {
+          category: item.category,
+          categoryLabel: item.categoryLabel,
+          guidance: item.guidance,
+          dependence: item.dependence,
+          frequency: item.frequency,
+          categoryInstructions: item.categoryInstructions,
+          items: [],
+        });
+      }
+      byCategory.get(item.category).items.push(item);
+    }
+    // Sort largest-to-smallest so the grid's left/right pair on each row is
+    // as close in item count as possible -- adjacent categories in a sorted
+    // list are always the closest match available, which keeps left/right
+    // box heights from looking randomly mismatched row to row.
+    return [...byCategory.values()].sort((a, b) => b.items.length - a.items.length);
+  }, [orderedTaskItems]);
+
+  // Visit-time facts are captured as checklists (CHHA_VISIT_FACT_OPTIONS),
+  // not free narrative -- narrative alone is unreliable (vague, inconsistent,
+  // easy to write nothing useful). The checklist is the required, auditable
+  // record. The narrative box is kept (some RNs/aides want to add color, and
+  // exception detail still needs free text), but it is auto-drafted from
+  // whatever the aide checks so it is never blank/generic -- the checklist
+  // does the heavy lifting and the aide only edits/adds to it if needed.
+  const visitFactCatalog = (t) => CHHA_VISIT_FACT_OPTIONS[t.category] || null;
+
+  const draftNarrativeFromChecklist = (t, checklist) => {
+    const catalog = visitFactCatalog(t) || [];
+    const labels = (checklist || []).map((code) => catalog.find((o) => o.code === code)?.label).filter(Boolean);
+    return labels.join("; ");
+  };
+
+  const setTaskResult = (itemKey, patch) => {
+    setNote((prev) => ({
+      ...prev,
+      taskResults: { ...prev.taskResults, [itemKey]: { ...(prev.taskResults[itemKey] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true }), ...patch } },
+    }));
+  };
+
+  // Editing the narrative by hand "detaches" it from the checklist so later
+  // checklist changes don't clobber what the user typed; a small control lets
+  // them re-sync it to the checklist wording if they want to start over.
+  const setTaskNarrative = (itemKey, value) => {
+    setTaskResult(itemKey, { note: value, noteIsAuto: false });
+  };
+
+  const resyncTaskNarrative = (t) => {
+    const result = note.taskResults[t.key] || {};
+    setTaskResult(t.key, { note: draftNarrativeFromChecklist(t, result.checklist), noteIsAuto: true });
+  };
+
+  const toggleTaskChecklistItem = (t, code, checked) => {
+    setNote((prev) => {
+      const current = prev.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
+      const checklist = checked ? [...new Set([...(current.checklist || []), code])] : (current.checklist || []).filter((c) => c !== code);
+      const noteIsAuto = current.noteIsAuto !== false; // only auto-regenerate if the user hasn't manually diverged
+      const nextNote = noteIsAuto ? draftNarrativeFromChecklist(t, checklist) : current.note;
+      return {
+        ...prev,
+        taskResults: { ...prev.taskResults, [t.key]: { ...current, checklist, note: nextNote, noteIsAuto } },
+      };
+    });
+  };
+
+  const skinAbnormal = chhaAbnormalSelected(note.skin, CHHA_SKIN_OPTIONS);
+  const respirationAbnormal = chhaAbnormalSelected(note.respiration, CHHA_RESPIRATION_OPTIONS);
+  const nutritionAbnormal = chhaAbnormalSelected(note.nutrition, CHHA_NUTRITION_OPTIONS);
+  const anyTaskRefusedOrNotDone = Object.values(note.taskResults).some((t) => t.state === "refused" || t.state === "notDone");
+  const conditionDuringVisit = (respirationAbnormal || nutritionAbnormal) ? "CHANGE_OBSERVED" : "STABLE";
+  const skinOutcome = chhaDeriveSkinOutcome(note.skin);
+
+  const rnNotificationReasons = [
+    skinAbnormal && "Abnormal skin finding",
+    respirationAbnormal && "Abnormal breathing finding",
+    nutritionAbnormal && "Coughing/swallowing difficulty during a meal",
+    note.painOrChangeObserved && "Pain or condition change observed",
+    anyTaskRefusedOrNotDone && "An ordered task was refused or not completed",
+  ].filter(Boolean);
+  const rnNotificationRequired = rnNotificationReasons.length > 0;
+
+  const visitLocked = selectedVisitMeta?.status === "FINALIZED";
+
+  const missingTaskNotes = orderedTaskItems.filter((t) => {
+    const result = note.taskResults[t.key];
+    const state = result?.state;
+    if (state === "refused" || state === "notDone") return !result?.note?.trim();
+    if (state === "completed") {
+      const catalog = visitFactCatalog(t);
+      const needsChecklist = !!catalog && (result?.checklist || []).length === 0;
+      const needsAssistedBy = (result?.checklist || []).some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result?.assistedBy?.trim();
+      return needsChecklist || needsAssistedBy;
+    }
+    return false;
+  }).length;
+  const missingRnNotifiedName = note.rnNotified && !note.rnNotifiedName.trim();
+  const canSubmit = !visitLocked && !!selectedVisitId && missingTaskNotes === 0 && !missingRnNotifiedName;
+
+  const updateVisitMeta = (key, value) => {
+    setNote((p) => ({ ...p, visitMeta: { ...p.visitMeta, [key]: value } }));
+  };
+
+  const handleSubmit = () => {
+    if (!selectedVisitId || !canSubmit) return;
+    setSaving(true);
+    setSaveMessage("");
+    setError("");
+
+    // Always lead with the checklist facts (the reliable, structured part of
+    // the record); "Assisted by" and any hand-typed narrative are appended
+    // as supplementary detail rather than replacing the checklist.
+    const buildResultNote = (t, result) => {
+      const catalog = visitFactCatalog(t) || [];
+      const checklistLabels = (result.checklist || []).map((c) => catalog.find((o) => o.code === c)?.label).filter(Boolean);
+      const parts = [];
+      if (checklistLabels.length) parts.push(checklistLabels.join("; "));
+      if (result.assistedBy?.trim()) parts.push(`Assisted by: ${result.assistedBy.trim()}`);
+      if (result.note?.trim() && (result.noteIsAuto === false || checklistLabels.length === 0)) parts.push(result.note.trim());
+      return parts.join(" | ") || null;
+    };
+
+    const taskResultRows = [
+      ...orderedTaskItems.map((t) => {
+        const result = note.taskResults[t.key] || { state: "", note: "" };
+        return {
+          section_code: "TASK",
+          task_code: t.key,
+          was_assigned: true,
+          completed: result.state === "completed",
+          refused: result.state === "refused",
+          not_done: result.state === "notDone",
+          observation_code: null,
+          result_note: buildResultNote(t, result),
+        };
+      }),
+      ...note.skin.map((v) => ({
+        section_code: "OBSERVATION", task_code: "SKIN", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.respiration.map((v) => ({
+        section_code: "OBSERVATION", task_code: "RESPIRATION", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.nutrition.map((v) => ({
+        section_code: "OBSERVATION", task_code: "NUTRITION", was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: v, result_note: null,
+      })),
+      ...note.supplies.map((v) => ({
+        section_code: "SUPPLY", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: null, result_note: null,
+      })),
+    ];
+
+    upsertChhaVisitOutcome(selectedVisitId, {
+      tolerance_to_care: note.toleranceToCare,
+      condition_during_visit: conditionDuringVisit,
+      skin_outcome: skinOutcome,
+      pain_or_change_observed: note.painOrChangeObserved,
+      rn_notification_required: rnNotificationRequired,
+      rn_notified: note.rnNotified,
+      rn_notified_name: note.rnNotified ? note.rnNotifiedName.trim() : null,
+      caregiver_instruction_provided: note.caregiverInstructionProvided,
+      caregiver_understanding_confirmed: note.caregiverUnderstandingConfirmed,
+      exception_narrative: [note.painNote?.trim(), note.exceptionNarrative?.trim()].filter(Boolean).join(" — ") || null,
+      task_results: taskResultRows,
+      correction: note.visitMeta.correction,
+      type_of_visit: note.visitMeta.typeOfVisit || null,
+      visit_kind: note.visitMeta.visitKind || null,
+      visit_kind_specify: note.visitMeta.visitKind === "Other" ? (note.visitMeta.visitKindSpecify?.trim() || null) : null,
+      reason_for_visit: note.visitMeta.reasonForVisit || null,
+      visit_date: note.visitMeta.visitDate || null,
+      time_in: note.visitMeta.timeIn || null,
+      time_out: note.visitMeta.timeOut || null,
+      duration: note.visitMeta.duration || null,
+      entered_by: note.visitMeta.enteredBy?.trim() || null,
+      staff_assigned: note.visitMeta.staffAssigned?.trim() || null,
+      care_level: note.visitMeta.careLevel || null,
+    })
+      .then(() => {
+        setSaveMessage("Visit note saved");
+        setVisits((prev) => prev.map((v) => (v.visit_id === selectedVisitId ? { ...v, has_outcome: true, rn_notification_required: rnNotificationRequired } : v)));
+      })
+      .catch((err) => setError(err.message || "Unable to save this CHHA visit note."))
+      .finally(() => setSaving(false));
+  };
+
+  if (loading) {
+    return <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Visit Note…</div>;
+  }
+
+  return (
+    <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+
+      <Card title="CHHA Visit Note" cms="Home Health Aide">
+        {visits.length === 0 ? (
+          <div style={{ ...styles.infoBox }}>No Home Health Aide visits are on record for this patient yet.</div>
+        ) : (
+          <div style={{ maxWidth: 360 }}>
+            <FormSelect
+              label="Visit"
+              value={selectedVisitId}
+              onChange={(v) => {
+                setSelectedVisitId(v);
+                setSelectedVisitMeta(visits.find((x) => x.visit_id === v) || null);
+              }}
+              options={visits.map((v) => ({
+                value: v.visit_id,
+                label: `${v.visit_datetime ? new Date(v.visit_datetime).toLocaleString() : "Undated visit"} — ${v.status}${v.has_outcome ? " ✓ documented" : ""}`,
+              }))}
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => setShowCreateVisit((prev) => !prev)}
+          style={{ ...styles.btnSecondary, marginTop: 8 }}
+        >
+          {showCreateVisit ? "Cancel" : "+ New CHHA Visit"}
+        </button>
+        {showCreateVisit && (
+          <div style={{ ...styles.infoBox, marginTop: 8, maxWidth: 480 }}>
+            {createVisitError && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
+            <div style={styles.fieldsGrid}>
+              <FormSelect
+                label="Staff Assigned"
+                value={newVisitStaffId}
+                onChange={setNewVisitStaffId}
+                options={newVisitStaffChoices}
+                placeholder="— Select HA Staff —"
+              />
+              <FormInput label="Visit Date" type="date" value={newVisitDate} onChange={setNewVisitDate} />
+              <FormSelect
+                label="Care Level"
+                value={newVisitCareLevel}
+                onChange={setNewVisitCareLevel}
+                options={[
+                  { value: "RC", label: "Routine Home Care" },
+                  { value: "CC", label: "Continuous Care (Crisis)" },
+                ]}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateAideVisit}
+              disabled={creatingVisit || !newVisitStaffId}
+              style={{ ...styles.btnPrimary, opacity: creatingVisit || !newVisitStaffId ? 0.65 : 1, marginTop: 8 }}
+            >
+              {creatingVisit ? "Creating…" : "Create Visit"}
+            </button>
+          </div>
+        )}
+        {visitLocked && (
+          <div style={{ ...styles.infoBox, marginTop: 8 }}>
+            This visit is finalized. It is read-only — corrections go through the amendment process.
+          </div>
+        )}
+      </Card>
+
+      <Card title="Visit Details" cms="Logistics & payroll tracking for this visit">
+          <div style={styles.fieldsGrid}>
+            <label style={styles.formGroup}>
+              <span style={styles.label}>Correction</span>
+              <input
+                type="checkbox"
+                checked={note.visitMeta.correction}
+                disabled={visitLocked}
+                onChange={(e) => updateVisitMeta("correction", e.target.checked)}
+                style={{ width: 18, height: 18 }}
+              />
+            </label>
+            <FormSelect
+              label="Type of Visit"
+              value={note.visitMeta.typeOfVisit}
+              onChange={(v) => updateVisitMeta("typeOfVisit", v)}
+              options={["In-Person", "Telephone", "Video"]}
+              disabled={visitLocked}
+            />
+            <FormSelect
+              label="Visit"
+              value={note.visitMeta.visitKind}
+              onChange={(v) => updateVisitMeta("visitKind", v)}
+              options={["Scheduled", "Unscheduled", "Other"]}
+              disabled={visitLocked}
+            />
+            {note.visitMeta.visitKind === "Other" && (
+              <FormInput
+                label="Specify"
+                value={note.visitMeta.visitKindSpecify}
+                onChange={(v) => updateVisitMeta("visitKindSpecify", v)}
+                disabled={visitLocked}
+              />
+            )}
+            <FormSelect
+              label="Reason for Visit"
+              value={note.visitMeta.reasonForVisit}
+              onChange={(v) => updateVisitMeta("reasonForVisit", v)}
+              options={CHHA_REASON_FOR_VISIT_OPTIONS}
+              disabled={visitLocked}
+            />
+            <FormInput
+              label="Visit Date"
+              type="date"
+              value={note.visitMeta.visitDate}
+              onChange={(v) => updateVisitMeta("visitDate", v)}
+              disabled={visitLocked}
+            />
+            <FormInput label="Time In" type="time" value={note.visitMeta.timeIn} onChange={(v) => updateVisitMeta("timeIn", v)} disabled={visitLocked} />
+            <FormInput label="Time Out" type="time" value={note.visitMeta.timeOut} onChange={(v) => updateVisitMeta("timeOut", v)} disabled={visitLocked} />
+            <FormInput label="Duration (h:m)" value={note.visitMeta.duration} onChange={(v) => updateVisitMeta("duration", v)} placeholder="1h 15m" disabled={visitLocked} />
+            <FormInput label="Entered By" value={note.visitMeta.enteredBy} onChange={(v) => updateVisitMeta("enteredBy", v)} disabled={visitLocked} />
+            <FormInput label="Staff Assigned" value={note.visitMeta.staffAssigned} onChange={(v) => updateVisitMeta("staffAssigned", v)} disabled={visitLocked} />
+            <FormInput label="Discipline" value="CHHA" disabled />
+            <FormSelect
+              label="Care Level"
+              value={note.visitMeta.careLevel}
+              onChange={(v) => updateVisitMeta("careLevel", v)}
+              options={CARE_LEVEL_OPTIONS}
+              disabled={visitLocked}
+            />
+          </div>
+      </Card>
+
+      {note.visitMeta.careLevel === "Continuous Care" && (
+        <ContinuousCareLogSection
+          visitId={selectedVisitId}
+          discipline="AIDE"
+          enteredBy={note.visitMeta.enteredBy}
+          styles={styles}
+          COLORS={COLORS}
+          disabled={visitLocked}
+        />
+      )}
+
+      {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
+      {(todayWatchFor.length > 0) && (
+        <Card title="Today's Key Observations">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+            {derivedCategories.map((c) => (
+              <span key={c.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {c.riskLabel}
+              </span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>Today, watch for:</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
+            {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
+          </ul>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+            Notify {chhaReportToLabel(reportToRole)} immediately if observed.
+          </div>
+        </Card>
+      )}
+
+      {/* ── Ordered tasks — what actually happened at THIS visit, one row per ordered item ── */}
+      <Card title="Ordered Tasks — Today's Visit">
+        {orderedTaskItems.length === 0 ? (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>No tasks are ordered in this patient's CHHA Plan of Care yet.</div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 10, alignItems: "start" }}>
+            {groupedTaskCategories.map((cat) => {
+              const anyCategoryMissing = cat.items.some((t) => {
+                const result = note.taskResults[t.key];
+                const state = result?.state;
+                if (state === "refused" || state === "notDone") return !result?.note?.trim();
+                if (state === "completed") {
+                  const catalog = visitFactCatalog(t);
+                  const needsChecklist = !!catalog && (result?.checklist || []).length === 0;
+                  const needsAssistedBy = (result?.checklist || []).some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result?.assistedBy?.trim();
+                  return needsChecklist || needsAssistedBy;
+                }
+                return false;
+              });
+              return (
+                <div key={cat.category} style={{
+                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{cat.categoryLabel}</div>
+                  {(cat.dependence || cat.frequency) && (
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>
+                      {[cat.dependence, cat.frequency].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  {cat.categoryInstructions && (
+                    <div style={{ fontSize: 11.5, color: COLORS.dark, marginTop: 2, fontStyle: "italic" }}>“{cat.categoryInstructions}”</div>
+                  )}
+                  {cat.guidance && (
+                    <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2 }}>{cat.guidance}</div>
+                  )}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                    {cat.items.map((t, idx) => {
+                      const result = note.taskResults[t.key] || { state: "", note: "", checklist: [], assistedBy: "", noteIsAuto: true };
+                      const catalog = visitFactCatalog(t);
+                      const checklist = result.checklist || [];
+                      const needsChecklist = result.state === "completed" && !!catalog && checklist.length === 0;
+                      const needsAssistedBy = result.state === "completed" && checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && !result.assistedBy?.trim();
+                      const needsFreeNote = (result.state === "refused" || result.state === "notDone") && !result.note?.trim();
+                      const anyMissing = needsChecklist || needsAssistedBy || needsFreeNote;
+                      const showChecklist = result.state === "completed" && !!catalog;
+                      const showNarrative = result.state === "refused" || result.state === "notDone" || result.state === "completed";
+                      return (
+                        <div key={t.key} style={{
+                          paddingTop: idx === 0 ? 0 : 10,
+                          borderTop: idx === 0 ? "none" : `1px solid ${COLORS.border}`,
+                        }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: anyMissing ? "#b45309" : COLORS.dark }}>{t.label}{t.detail ? ` — ${t.detail}` : ""}</div>
+                          <div style={{ display: "flex", gap: 14, marginTop: 6, marginBottom: 6, flexWrap: "wrap" }}>
+                            {[["completed", "Completed as ordered"], ["refused", "Patient refused"], ["notDone", "Not done"]].map(([val, lbl]) => (
+                              <label key={val} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                                <input type="radio" name={`task-${t.key}`} checked={result.state === val} onChange={() => setTaskResult(t.key, { state: val })} disabled={visitLocked} />
+                                {lbl}
+                              </label>
+                            ))}
+                          </div>
+                          {showChecklist && (
+                            <div style={{ marginBottom: 6 }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray, marginBottom: 4 }}>
+                                What did you actually do/see? (check all that apply — required)
+                              </div>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {catalog.map((fact) => (
+                                  <label key={fact.code} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: COLORS.dark, cursor: "pointer" }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={checklist.includes(fact.code)}
+                                      onChange={(e) => toggleTaskChecklistItem(t, fact.code, e.target.checked)}
+                                      disabled={visitLocked}
+                                    />
+                                    {fact.label}
+                                  </label>
+                                ))}
+                              </div>
+                              {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
+                              {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
+                                <div style={{ marginTop: 6 }}>
+                                  <FormInput
+                                    label="Who assisted? (name/role — required, staffing safety record)"
+                                    value={result.assistedBy}
+                                    onChange={(v) => setTaskResult(t.key, { assistedBy: v })}
+                                    placeholder="e.g., Second HA, Maria R."
+                                    disabled={visitLocked}
+                                  />
+                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {showNarrative && (
+                            <div>
+                              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+                                <span style={{ fontSize: 10.5, fontWeight: 700, color: COLORS.gray }}>
+                                  {result.state === "completed"
+                                    ? "Notes (auto-filled from checklist above — add anything else, or edit)"
+                                    : "What happened (required — describe only what you saw/heard)"}
+                                </span>
+                                {result.state === "completed" && catalog && result.noteIsAuto === false && (
+                                  <button type="button" onClick={() => resyncTaskNarrative(t)} style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 10.5, textDecoration: "underline" }}>
+                                    reset to checklist wording
+                                  </button>
+                                )}
+                              </div>
+                              <FormInput
+                                value={result.note}
+                                onChange={(v) => setTaskNarrative(t.key, v)}
+                                placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
+                                disabled={visitLocked}
+                              />
+                              {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      {/* ── Structured observations — Skin / Respiration / Nutrition ── */}
+      <Card title="Skin">
+        <FormCheckboxGroup values={note.skin} onChange={(v) => setNote((p) => ({ ...p, skin: v }))} options={CHHA_SKIN_OPTIONS} label="Observed" />
+        {skinAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Respiration">
+        <FormCheckboxGroup values={note.respiration} onChange={(v) => setNote((p) => ({ ...p, respiration: v }))} options={CHHA_RESPIRATION_OPTIONS} label="Observed" />
+        {respirationAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Nutrition / Swallowing">
+        <FormCheckboxGroup values={note.nutrition} onChange={(v) => setNote((p) => ({ ...p, nutrition: v }))} options={CHHA_NUTRITION_OPTIONS} label="Observed" />
+        {nutritionAbnormal && (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+        )}
+      </Card>
+
+      <Card title="Visit Supplies & Infection Control">
+        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+          Check what was used or observed at this visit.
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(160px, 1fr))", gap: "4px 16px" }}>
+          {CHHA_SUPPLY_OPTIONS.map((opt) => (
+            <label key={opt.code} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.dark, cursor: "pointer", padding: "2px 0" }}>
+              <input
+                type="checkbox"
+                checked={note.supplies.includes(opt.code)}
+                disabled={visitLocked}
+                onChange={(e) => setNote((p) => ({
+                  ...p,
+                  supplies: e.target.checked ? [...p.supplies, opt.code] : p.supplies.filter((c) => c !== opt.code),
+                }))}
+              />
+              {opt.label}
+            </label>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Pain / Condition Change">
+        <FormCheckbox
+          label="Patient showed signs of pain or seemed different from their usual self today"
+          checked={note.painOrChangeObserved}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, painOrChangeObserved: checked }))}
+        />
+        {note.painOrChangeObserved && (
+          <div style={{ marginTop: 6 }}>
+            <FormTextarea
+              label="Describe only what you saw or heard (not why you think it happened)"
+              value={note.painNote}
+              onChange={(v) => setNote((p) => ({ ...p, painNote: v }))}
+              rows={2}
+              disabled={visitLocked}
+            />
+          </div>
+        )}
+      </Card>
+
+      <Card title="Visit Summary">
+        <FormSelect
+          label="Overall"
+          value={note.toleranceToCare}
+          onChange={(v) => setNote((p) => ({ ...p, toleranceToCare: v }))}
+          options={CHHA_TOLERANCE_OPTIONS}
+          disabled={visitLocked}
+        />
+        <div style={{ marginTop: 8 }}>
+          <FormTextarea
+            label="Anything else you noticed (describe only what you saw or heard)"
+            value={note.exceptionNarrative}
+            onChange={(v) => setNote((p) => ({ ...p, exceptionNarrative: v }))}
+            rows={2}
+            disabled={visitLocked}
+          />
+        </div>
+        <div style={{ marginTop: 8 }}>
+          <FormCheckbox
+            label="Reviewed care instructions with family/caregiver present"
+            checked={note.caregiverInstructionProvided}
+            disabled={visitLocked}
+            onChange={(checked) => setNote((p) => ({ ...p, caregiverInstructionProvided: checked }))}
+          />
+        </div>
+        <FormCheckbox
+          label="Family/caregiver confirmed understanding"
+          checked={note.caregiverUnderstandingConfirmed}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, caregiverUnderstandingConfirmed: checked }))}
+        />
+      </Card>
+
+      <Card title="RN Notification">
+        {rnNotificationRequired ? (
+          <div style={{ ...styles.infoBox, borderColor: "#ef4444", marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
+            <ul style={{ margin: 0, paddingLeft: 18 }}>
+              {rnNotificationReasons.map((r) => <li key={r}>{r}</li>)}
+            </ul>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 10 }}>Nothing observed today requires RN notification.</div>
+        )}
+        <FormCheckbox
+          label={`I notified ${chhaReportToLabel(reportToRole)}`}
+          checked={note.rnNotified}
+          disabled={visitLocked}
+          onChange={(checked) => setNote((p) => ({ ...p, rnNotified: checked }))}
+        />
+        {note.rnNotified && (
+          <div style={{ marginTop: 6 }}>
+            <FormInput
+              label="Name of person notified (required)"
+              value={note.rnNotifiedName}
+              onChange={(v) => setNote((p) => ({ ...p, rnNotifiedName: v }))}
+              disabled={visitLocked}
+            />
+            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Submit">
+        {missingTaskNotes > 0 && (
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+            {missingTaskNotes} task{missingTaskNotes > 1 ? "s" : ""} above still {missingTaskNotes > 1 ? "need" : "needs"} a description of what happened.
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={!canSubmit || saving}
+          style={{ ...styles.btnPrimary, opacity: (!canSubmit || saving) ? 0.55 : 1, cursor: (!canSubmit || saving) ? "not-allowed" : "pointer" }}
+        >
+          {saving ? "Saving…" : "Save Visit Note"}
+        </button>
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+      </Card>
+    </div>
+  );
+}
+
+
+//
+// Reads the same authoritative poc_problems rows already written by
+// PocSectionControls' "Add to POC" (via rnica_poc_adapter), across ALL RN
+// ICA sections at once, and exposes View / Edit / Resolve / Deactivate.
+//
+// Deliberately does NOT:
+// - create new problems (no "Add" control here — creation stays scoped to
+//   the originating body-system section's PocSectionControls),
+// - merge duplicate problems, link an existing problem, or show version
+//   history (deferred — see Section 11 spec "Does not" list),
+// - replace the assessment section that originated each problem.
+const POC_STATUS_COLOR = (status, COLORS) => {
+  if (status === "RESOLVED") return COLORS.gray;
+  if (status === "HISTORICAL" || status === "SUPERSEDED") return COLORS.gray;
+  return COLORS.teal;
+};
+
+export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [expandedRuleKey, setExpandedRuleKey] = useState(null);
+  const [editingRuleKey, setEditingRuleKey] = useState(null);
+  const [editDraft, setEditDraft] = useState({ label: "", severity: "", description_addendum: "" });
+  const [historyRuleKey, setHistoryRuleKey] = useState(null);
+  const [historyData, setHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [linkingRuleKey, setLinkingRuleKey] = useState(null);
+  const [linkDraft, setLinkDraft] = useState({ sectionKey: "", evidenceText: "" });
+  const [linkError, setLinkError] = useState("");
+  const [mergingSurvivorKey, setMergingSurvivorKey] = useState(null);
+  const [mergeSelection, setMergeSelection] = useState(() => new Set());
+  const [mergeReason, setMergeReason] = useState("");
+  const [mergeError, setMergeError] = useState("");
+
+  const loadProblems = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    viewRnicaAllPoc(assessmentId)
+      .then((res) => setProblems(res?.problems || []))
+      .catch((err) => setError(err.message || "Unable to load Plan of Care"))
+      .finally(() => setLoading(false));
+  }, [assessmentId]);
+
+  useEffect(() => {
+    loadProblems();
+  }, [loadProblems]);
+
+  const startEdit = (p) => {
+    setEditingRuleKey(editingRuleKey === p.rule_key ? null : p.rule_key);
+    setEditDraft({ label: p.label || "", severity: p.severity && p.severity !== "UNKNOWN" ? p.severity : "", description_addendum: "" });
+  };
+
+  const handleSaveEdit = (p) => {
+    setSaving(true);
+    setError("");
+    updateRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key, {
+      label: editDraft.label.trim() || undefined,
+      severity: editDraft.severity || undefined,
+      description_addendum: editDraft.description_addendum.trim() || undefined,
+    })
+      .then(() => {
+        setEditingRuleKey(null);
+        setEditDraft({ label: "", severity: "", description_addendum: "" });
+        loadProblems();
+      })
+      .catch((err) => setError(err.message || "Unable to update Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleResolve = (p) => {
+    setSaving(true);
+    setError("");
+    resolveRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to resolve Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const handleDeactivate = (p) => {
+    setSaving(true);
+    setError("");
+    deactivateRnicaSectionPocProblem(assessmentId, p.origin_section, p.rule_key)
+      .then(() => loadProblems())
+      .catch((err) => setError(err.message || "Unable to deactivate Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const toggleHistory = (p) => {
+    if (historyRuleKey === p.rule_key) {
+      setHistoryRuleKey(null);
+      setHistoryData(null);
+      setHistoryError("");
+      return;
+    }
+    setHistoryRuleKey(p.rule_key);
+    setHistoryData(null);
+    setHistoryError("");
+    setHistoryLoading(true);
+    getRnicaSectionPocProblemHistory(assessmentId, p.origin_section, p.rule_key)
+      .then((res) => setHistoryData(res))
+      .catch((err) => setHistoryError(err.message || "Unable to load problem history"))
+      .finally(() => setHistoryLoading(false));
+  };
+
+  // SECTION 11.C — Link Existing Problem. No new Plan of Care storage,
+  // no duplicate problem creation: this reuses the same rule_key-matched
+  // problem and only attaches additional documented evidence to it.
+  const toggleLinkExisting = (p) => {
+    if (linkingRuleKey === p.rule_key) {
+      setLinkingRuleKey(null);
+      setLinkDraft({ sectionKey: "", evidenceText: "" });
+      setLinkError("");
+      return;
+    }
+    setLinkingRuleKey(p.rule_key);
+    setLinkDraft({ sectionKey: "", evidenceText: "" });
+    setLinkError("");
+  };
+
+  const handleLinkExisting = (p) => {
+    if (!linkDraft.sectionKey.trim()) {
+      setLinkError("Select which section documents this additional evidence.");
+      return;
+    }
+    if (!linkDraft.evidenceText.trim()) {
+      setLinkError("Evidence text is required to link this problem.");
+      return;
+    }
+    setSaving(true);
+    setLinkError("");
+    linkExistingRnicaSectionPocProblem(assessmentId, linkDraft.sectionKey.trim(), {
+      rule_key: p.rule_key,
+      evidence_text: linkDraft.evidenceText.trim(),
+    })
+      .then(() => {
+        setLinkingRuleKey(null);
+        setLinkDraft({ sectionKey: "", evidenceText: "" });
+        loadProblems();
+      })
+      .catch((err) => setLinkError(err.message || "Unable to link existing Plan of Care problem"))
+      .finally(() => setSaving(false));
+  };
+
+  const knownSectionKeys = Array.from(
+    new Set((problems || []).map((p) => p.origin_section).filter(Boolean))
+  ).sort();
+
+  // SECTION 11 — Merge Duplicate Problems. Consolidates one or more
+  // clinician-identified duplicates (matched by rule_key) into a single
+  // surviving problem. Nothing is deleted: duplicates are marked
+  // SUPERSEDED (an existing status value — no schema change) and remain
+  // visible via View History; their evidence/description fold into the
+  // survivor.
+  const toggleMerge = (p) => {
+    if (mergingSurvivorKey === p.rule_key) {
+      setMergingSurvivorKey(null);
+      setMergeSelection(new Set());
+      setMergeReason("");
+      setMergeError("");
+      return;
+    }
+    setMergingSurvivorKey(p.rule_key);
+    setMergeSelection(new Set());
+    setMergeReason("");
+    setMergeError("");
+  };
+
+  const toggleMergeCandidate = (ruleKey) => {
+    setMergeSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(ruleKey)) next.delete(ruleKey);
+      else next.add(ruleKey);
+      return next;
+    });
+  };
+
+  const handleMerge = (survivor) => {
+    if (mergeSelection.size === 0) {
+      setMergeError("Select at least one duplicate problem to merge.");
+      return;
+    }
+    if (!mergeReason.trim()) {
+      setMergeError("A reason is required to merge duplicate problems.");
+      return;
+    }
+    setSaving(true);
+    setMergeError("");
+    mergeRnicaPocDuplicateProblems(assessmentId, {
+      surviving_rule_key: survivor.rule_key,
+      duplicate_rule_keys: Array.from(mergeSelection),
+      reason: mergeReason.trim(),
+    })
+      .then(() => {
+        setMergingSurvivorKey(null);
+        setMergeSelection(new Set());
+        setMergeReason("");
+        loadProblems();
+      })
+      .catch((err) => setMergeError(err.message || "Unable to merge duplicate Plan of Care problems"))
+      .finally(() => setSaving(false));
+  };
+
+  if (!assessmentId) {
+    return <div style={styles.infoBox}>Save the assessment once to enable the Master Plan of Care Review.</div>;
+  }
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+        A synchronized, read-oriented view of every problem already recorded on the Plan of Care from any RN ICA
+        section. This is a review and governance layer, not a second Plan of Care record — new problems are still
+        added from the section that identified them.
+      </div>
+
+      {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {!loading && problems && problems.length === 0 && (
+        <div style={styles.infoBox}>No Plan of Care problems have been recorded yet.</div>
+      )}
+
+      {!loading && problems && problems.map((p) => {
+        const isActive = p.status !== "RESOLVED" && p.status !== "HISTORICAL" && p.status !== "SUPERSEDED";
+        const isExpanded = expandedRuleKey === p.rule_key;
+        const disciplines = Array.from(
+          new Set((p.goals || []).flatMap((g) => (g.interventions || []).map((i) => i.discipline).filter(Boolean)))
+        );
+
+        return (
+          <div key={p.rule_key} style={{
+            padding: "10px 12px", borderRadius: 8, border: `1px solid ${COLORS.border}`,
+            marginBottom: 8, fontSize: 12.5, background: isActive ? "transparent" : COLORS.bg,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <strong>{p.label}</strong>
+              <span style={{ fontWeight: 700, color: POC_STATUS_COLOR(p.status, COLORS) }}>
+                {p.status} {p.severity && p.severity !== "UNKNOWN" ? `· ${p.severity}` : ""}
+              </span>
+            </div>
+            <div style={{ color: COLORS.gray, fontSize: 11, marginTop: 4 }}>
+              Origin Section: <strong>{p.origin_section || "—"}</strong>
+              {disciplines.length > 0 && <> · Disciplines: <strong>{disciplines.join(", ")}</strong></>}
+              {p.status === "SUPERSEDED" && p.merged_into_rule_key && (
+                <> · Merged into: <strong>{p.merged_into_rule_key}</strong></>
+              )}
+            </div>
+
+            <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => setExpandedRuleKey(isExpanded ? null : p.rule_key)} style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+              }}>
+                {isExpanded ? "Hide Details" : "View Problem"}
+              </button>
+              <button type="button" onClick={() => toggleHistory(p)} style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+              }}>
+                {historyRuleKey === p.rule_key ? "Hide History" : "View History"}
+              </button>
+              {isActive && (
+                <button type="button" onClick={() => toggleLinkExisting(p)} style={{
+                  fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                  border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                }}>
+                  {linkingRuleKey === p.rule_key ? "Cancel Link" : "Link Existing Problem"}
+                </button>
+              )}
+              {isActive && (problems || []).some((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED") && (
+                <button type="button" onClick={() => toggleMerge(p)} style={{
+                  fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                  border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                }}>
+                  {mergingSurvivorKey === p.rule_key ? "Cancel Merge" : "Merge Duplicates Into This"}
+                </button>
+              )}
+              {isActive && (
+                <>
+                  <button type="button" onClick={() => startEdit(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                  }}>
+                    Edit Problem
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleResolve(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  }}>
+                    Resolve Problem
+                  </button>
+                  <button type="button" disabled={saving} onClick={() => handleDeactivate(p)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+                    border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  }}>
+                    Deactivate Problem
+                  </button>
+                </>
+              )}
+            </div>
+
+            {editingRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                <FormInput label="Problem Label" value={editDraft.label} onChange={(v) => setEditDraft((d) => ({ ...d, label: v }))} />
+                <FormSelect label="Severity" value={editDraft.severity} onChange={(v) => setEditDraft((d) => ({ ...d, severity: v }))}
+                  options={["LOW", "MODERATE", "HIGH", "CRITICAL"]} />
+                <FormInput label="Update / Progress Note" value={editDraft.description_addendum}
+                  onChange={(v) => setEditDraft((d) => ({ ...d, description_addendum: v }))} />
+                <button type="button" disabled={saving} onClick={() => handleSaveEdit(p)} style={{
+                  fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                  background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                }}>
+                  {saving ? "Saving…" : "Save Update"}
+                </button>
+              </div>
+            )}
+
+            {linkingRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+                  Attach additional documented evidence — from another RN ICA section — to this same problem. This
+                  never creates a duplicate problem; the finding is linked to <strong>{p.label}</strong>, which
+                  remains sourced from <strong>{p.origin_section}</strong>.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormSelect
+                    label="Evidence Documented In Section"
+                    value={linkDraft.sectionKey}
+                    onChange={(v) => setLinkDraft((d) => ({ ...d, sectionKey: v }))}
+                    options={knownSectionKeys}
+                  />
+                  <FormInput
+                    label="Evidence Text"
+                    value={linkDraft.evidenceText}
+                    onChange={(v) => setLinkDraft((d) => ({ ...d, evidenceText: v }))}
+                  />
+                  <button type="button" disabled={saving} onClick={() => handleLinkExisting(p)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Linking…" : "Link Evidence"}
+                  </button>
+                </div>
+                {linkError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
+              </div>
+            )}
+
+            {mergingSurvivorKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+                  Select one or more duplicate problems to merge into <strong>{p.label}</strong>. Duplicates are
+                  never deleted — they are marked SUPERSEDED and their evidence and description are folded into
+                  this problem, remaining fully traceable via View History.
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+                  {(problems || [])
+                    .filter((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED")
+                    .map((other) => (
+                      <label key={other.rule_key} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5 }}>
+                        <input
+                          type="checkbox"
+                          checked={mergeSelection.has(other.rule_key)}
+                          onChange={() => toggleMergeCandidate(other.rule_key)}
+                        />
+                        {other.label} <span style={{ color: COLORS.gray }}>({other.origin_section || "—"})</span>
+                      </label>
+                    ))}
+                  {(problems || []).filter((other) => other.rule_key !== p.rule_key && other.status !== "SUPERSEDED").length === 0 && (
+                    <div style={{ color: COLORS.gray, fontSize: 11.5 }}>No other active problems available to merge.</div>
+                  )}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8 }}>
+                  <FormInput label="Merge Reason" value={mergeReason} onChange={setMergeReason} />
+                  <button type="button" disabled={saving} onClick={() => handleMerge(p)} style={{
+                    fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 5, border: "none",
+                    background: COLORS.teal, color: COLORS.white, cursor: saving ? "wait" : "pointer", alignSelf: "end",
+                  }}>
+                    {saving ? "Merging…" : "Merge Selected"}
+                  </button>
+                </div>
+                {mergeError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
+              </div>
+            )}
+
+            {isExpanded && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}` }}>
+                <div style={{ color: COLORS.gray, fontSize: 11.5, whiteSpace: "pre-wrap" }}>
+                  <strong>Source Evidence:</strong> {p.description || "—"}
+                </div>
+                {(p.evidence_sources || []).length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11.5 }}>Linked Evidence Sources</div>
+                    {(p.evidence_sources || []).map((s, si) => (
+                      <div key={si} style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 2 }}>
+                        From <strong>{s.section_key}</strong>: {s.evidence_text}
+                        {s.linked_by ? ` — linked by ${s.linked_by}` : ""}
+                        {s.linked_at ? ` on ${new Date(s.linked_at).toLocaleString()}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(p.merged_from || []).length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontWeight: 700, fontSize: 11.5 }}>Merged Duplicate Problems</div>
+                    {(p.merged_from || []).map((m, mi) => (
+                      <div key={mi} style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 2 }}>
+                        <strong>{m.label}</strong> ({m.rule_key}) from <strong>{m.origin_section || "—"}</strong>
+                        {m.merged_by ? ` — merged by ${m.merged_by}` : ""}
+                        {m.merged_at ? ` on ${new Date(m.merged_at).toLocaleString()}` : ""}
+                        {m.merge_reason ? ` — ${m.merge_reason}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {(p.goals || []).length === 0 && (
+                  <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>No goals recorded.</div>
+                )}
+                {(p.goals || []).map((g, gi) => (
+                  <div key={gi} style={{ marginTop: 8 }}>
+                    <div style={{ fontWeight: 700 }}>
+                      Goal: {g.goal_text} <span style={{ fontWeight: 400, color: COLORS.gray }}>({g.status})</span>
+                    </div>
+                    {(g.interventions || []).length === 0 && (
+                      <div style={{ color: COLORS.gray, fontSize: 11.5, marginLeft: 12 }}>No interventions recorded.</div>
+                    )}
+                    {(g.interventions || []).map((iv, ii) => (
+                      <div key={ii} style={{ marginLeft: 12, fontSize: 11.5, color: COLORS.gray }}>
+                        {iv.discipline || "—"}: {iv.intervention_text || "—"}
+                        {iv.frequency ? ` (${iv.frequency})` : ""} — {iv.status}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {historyRuleKey === p.rule_key && (
+              <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, fontSize: 11.5 }}>
+                <div style={{ fontWeight: 700, marginBottom: 6 }}>Problem History (read-only)</div>
+                {historyLoading && <div style={{ color: COLORS.gray }}>Loading history…</div>}
+                {historyError && <div style={{ color: COLORS.error || "#ef4444" }}>{historyError}</div>}
+                {!historyLoading && !historyError && historyData && (
+                  <div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 6, marginBottom: 8 }}>
+                      <div><strong>Created By:</strong> {historyData.createdBy || "—"}</div>
+                      <div><strong>Created Date:</strong> {historyData.createdDate ? new Date(historyData.createdDate).toLocaleString() : "—"}</div>
+                      <div><strong>Last Updated By:</strong> {historyData.lastUpdatedBy || "—"}</div>
+                      <div><strong>Last Updated Date:</strong> {historyData.lastUpdatedDate ? new Date(historyData.lastUpdatedDate).toLocaleString() : "—"}</div>
+                    </div>
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Status Changes</div>
+                    {(historyData.statusChanges || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>No status changes recorded since creation.</div>
+                    )}
+                    {(historyData.statusChanges || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        v{c.versionNumber}: {c.fromStatus} → {c.toStatus} by {c.changedBy} on{" "}
+                        {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                        {c.changeReason ? ` — ${c.changeReason}` : ""}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Resolve Events</div>
+                    {(historyData.resolveEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.resolveEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Resolved by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Deactivate Events</div>
+                    {(historyData.deactivateEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.deactivateEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Deactivated by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                      </div>
+                    ))}
+
+                    <div style={{ fontWeight: 700, marginTop: 6 }}>Merge Events</div>
+                    {(historyData.mergeEvents || []).length === 0 && (
+                      <div style={{ color: COLORS.gray }}>None.</div>
+                    )}
+                    {(historyData.mergeEvents || []).map((c, ci) => (
+                      <div key={ci} style={{ color: COLORS.gray, marginTop: 2 }}>
+                        Merged (superseded) by {c.changedBy} on {c.changedAt ? new Date(c.changedAt).toLocaleString() : "—"}
+                        {c.changeReason ? ` — ${c.changeReason}` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// SECTION 12 — Post-lock amendments. The Lock button itself (see handleLock)
+// runs the same finalization-readiness check the backend enforces
+// server-side (rnica_finalization_service.py) and, if anything is missing,
+// tells the nurse exactly what and navigates them to the relevant section —
+// so there is no need for a standing pre-lock checklist card cluttering the
+// assessment. Once locked, this card exposes the amendment entry point.
+const AMENDMENT_CATEGORY_OPTIONS = [
+  { value: "CLINICAL_CORRECTION", label: "Clinical correction" },
+  { value: "ADDITIONAL_FINDING", label: "Additional finding" },
+  { value: "DOCUMENTATION_ERROR", label: "Documentation error" },
+  { value: "CLARIFICATION", label: "Clarification" },
+  { value: "OTHER", label: "Other" },
+];
+
+const AMENDMENT_REASON_CODE_OPTIONS = [
+  { value: "OMITTED_FINDING", label: "Omitted finding" },
+  { value: "INCORRECT_VALUE", label: "Incorrect value" },
+  { value: "CLARIFICATION_NEEDED", label: "Clarification needed" },
+  { value: "LATE_ENTRY", label: "Late entry" },
+  { value: "OTHER", label: "Other" },
+];
+
+const AMENDMENT_REQUEST_SOURCE_OPTIONS = [
+  { value: "PATIENT", label: "Patient" },
+  { value: "REPRESENTATIVE", label: "Representative" },
+  { value: "STAFF", label: "Staff" },
+  { value: "INTERNAL_QA", label: "Internal QA" },
+];
+
+// SECTION 12 -- who may approve/deny a proposed amendment. Mirrors the
+// server's AMENDMENT_APPROVAL_ROLES gate (app/api/visits.py) so the button
+// is hidden for roles the backend would 403 anyway; the backend remains the
+// real enforcement point.
+const AMENDMENT_APPROVAL_ROLES = new Set([
+  "DPCS",
+  "DPCS_DESIGNEE",
+  "CASE_MANAGER",
+  "SUPERVISOR",
+  "ADMIN",
+  "ADMINISTRATOR",
+  "QA",
+  "SYSTEM",
+]);
+
+function AmendmentPanel({ assessmentId, styles, COLORS }) {
+  const [amendments, setAmendments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [decidingId, setDecidingId] = useState(null);
+  const [message, setMessage] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    amendmentCategory: "",
+    reasonCode: "",
+    requestedChange: "",
+    requestSource: "STAFF",
+    sectionReference: "",
+    proposedValue: "",
+  });
+
+  const currentUser = getCurrentUser();
+  const currentRole = String(currentUser?.role || "").trim().toUpperCase();
+  const currentUserId = currentUser?.userId || currentUser?.user_id || currentUser?.id || null;
+  const canReview = AMENDMENT_APPROVAL_ROLES.has(currentRole);
+
+  const loadAmendments = useCallback(() => {
+    if (!assessmentId) return;
+    setLoading(true);
+    setError("");
+    listRnicaAmendments(assessmentId)
+      .then((res) => setAmendments(res?.amendments || []))
+      .catch((err) => setError(err.message || "Unable to load amendment history"))
+      .finally(() => setLoading(false));
+  }, [assessmentId]);
+
+  useEffect(() => {
+    loadAmendments();
+  }, [loadAmendments]);
+
+  const updateForm = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const handleSubmit = () => {
+    if (!form.amendmentCategory || !form.reasonCode || !form.requestedChange.trim()) {
+      setMessage("Category, reason, and the requested change are required.");
+      return;
+    }
+    setSubmitting(true);
+    setMessage("");
+    requestRnicaCorrection(assessmentId, {
+      amendmentCategory: form.amendmentCategory,
+      reasonCode: form.reasonCode,
+      requestedChange: form.requestedChange,
+      requestSource: form.requestSource,
+      sectionReference: form.sectionReference.trim() || null,
+      proposedValue: form.proposedValue.trim() || null,
+    })
+      .then(() => {
+        setMessage("Amendment submitted and is pending review.");
+        setForm({ amendmentCategory: "", reasonCode: "", requestedChange: "", requestSource: "STAFF", sectionReference: "", proposedValue: "" });
+        setShowForm(false);
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Amendment submission failed."))
+      .finally(() => setSubmitting(false));
+  };
+
+  const handleApprove = (amendmentId) => {
+    setDecidingId(amendmentId);
+    setMessage("");
+    approveRnicaAmendment(assessmentId, amendmentId)
+      .then(() => {
+        setMessage("Amendment approved.");
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Unable to approve amendment."))
+      .finally(() => setDecidingId(null));
+  };
+
+  const handleDeny = (amendmentId) => {
+    const reason = window.prompt("Reason for denying this amendment:");
+    if (reason == null) return;
+    if (!reason.trim()) {
+      setMessage("A denial reason is required.");
+      return;
+    }
+    setDecidingId(amendmentId);
+    setMessage("");
+    denyRnicaAmendment(assessmentId, amendmentId, reason.trim())
+      .then(() => {
+        setMessage("Amendment denied.");
+        loadAmendments();
+      })
+      .catch((err) => setMessage(err.message || "Unable to deny amendment."))
+      .finally(() => setDecidingId(null));
+  };
+
+  const statusColor = (status) => {
+    if (status === "APPROVED") return COLORS.success || "#16a34a";
+    if (status === "DENIED") return COLORS.error || "#ef4444";
+    return COLORS.gray;
+  };
+
+  return (
+    <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ fontWeight: 700, fontSize: 12.5, marginBottom: 4 }}>Correction / Amendment</div>
+      <div style={{ color: COLORS.gray, fontSize: 11.5, marginBottom: 6 }}>
+        This assessment is locked and signed. A correction is a distinct, traceable addendum linked to the
+        original -- it never overwrites the signed content, even once approved.
+      </div>
+
+      <button type="button" onClick={() => setShowForm((v) => !v)} style={{
+        fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+        border: `1px solid ${COLORS.gray}`, background: "transparent", color: COLORS.gray, cursor: "pointer",
+      }}>
+        {showForm ? "Cancel" : "Request Correction / Amendment"}
+      </button>
+
+      {showForm && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6, maxWidth: 480 }}>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Category
+            <select
+              value={form.amendmentCategory}
+              onChange={(e) => updateForm("amendmentCategory", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              <option value="">Select…</option>
+              {AMENDMENT_CATEGORY_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Reason
+            <select
+              value={form.reasonCode}
+              onChange={(e) => updateForm("reasonCode", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              <option value="">Select…</option>
+              {AMENDMENT_REASON_CODE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Requested by
+            <select
+              value={form.requestSource}
+              onChange={(e) => updateForm("requestSource", e.target.value)}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            >
+              {AMENDMENT_REQUEST_SOURCE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Section reference (optional)
+            <input
+              type="text"
+              value={form.sectionReference}
+              onChange={(e) => updateForm("sectionReference", e.target.value)}
+              placeholder="e.g. section_10_clinical_narrative"
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Requested change
+            <textarea
+              value={form.requestedChange}
+              onChange={(e) => updateForm("requestedChange", e.target.value)}
+              rows={3}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <label style={{ fontSize: 11, fontWeight: 600 }}>
+            Proposed value (optional, for reference only -- never auto-applied)
+            <textarea
+              value={form.proposedValue}
+              onChange={(e) => updateForm("proposedValue", e.target.value)}
+              rows={2}
+              style={{ display: "block", width: "100%", marginTop: 2, fontSize: 12, padding: 4 }}
+            />
+          </label>
+          <button type="button" disabled={submitting} onClick={handleSubmit} style={{
+            alignSelf: "flex-start", fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
+            border: `1px solid ${COLORS.teal}`, background: COLORS.teal, color: "#fff",
+            cursor: submitting ? "wait" : "pointer",
+          }}>
+            {submitting ? "Submitting…" : "Submit Amendment"}
+          </button>
+        </div>
+      )}
+
+      {message && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{message}</div>}
+
+      {loading && <div style={{ fontSize: 11.5, color: COLORS.gray, marginTop: 8 }}>Loading amendment history…</div>}
+      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 8 }}>{error}</div>}
+
+      {!loading && amendments.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>Amendment History</div>
+          {amendments.map((a) => (
+            <div key={a.id} style={{
+              padding: "6px 0", borderBottom: `1px solid ${COLORS.border}`, fontSize: 11.5,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontWeight: 600 }}>
+                  {AMENDMENT_CATEGORY_OPTIONS.find((o) => o.value === a.amendmentCategory)?.label || a.amendmentCategory}
+                  {a.sectionReference ? ` — ${a.sectionReference}` : ""}
+                </span>
+                <span style={{ color: statusColor(a.status), fontWeight: 700 }}>{a.status}</span>
+              </div>
+              <div style={{ color: COLORS.gray, marginTop: 2 }}>{a.requestedChange}</div>
+              <div style={{ color: COLORS.gray, marginTop: 2, fontSize: 11 }}>
+                Requested by: {AMENDMENT_REQUEST_SOURCE_OPTIONS.find((o) => o.value === a.requestSource)?.label || a.requestSource || "Staff"}
+              </div>
+              {(a.status === "APPROVED" || a.status === "DENIED") && a.decisionUserId && (
+                <div style={{ color: COLORS.gray, marginTop: 2, fontSize: 11 }}>
+                  Decision by {a.decisionUserId} on {a.decisionTimestamp ? new Date(a.decisionTimestamp).toLocaleString() : "—"}
+                </div>
+              )}
+              {a.status === "DENIED" && a.decisionReason && (
+                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.decisionReason}</div>
+              )}
+              {a.status === "APPROVED" && a.decisionReason && (
+                <div style={{ color: COLORS.gray, marginTop: 2 }}>Note: {a.decisionReason}</div>
+              )}
+              {a.status === "PENDING" && canReview && String(currentUserId) !== String(a.createdBy) && (
+                <div style={{ marginTop: 4, display: "flex", gap: 6 }}>
+                  <button type="button" disabled={decidingId === a.id} onClick={() => handleApprove(a.id)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
+                    border: `1px solid ${COLORS.success || "#16a34a"}`, background: "transparent",
+                    color: COLORS.success || "#16a34a", cursor: decidingId === a.id ? "wait" : "pointer",
+                  }}>
+                    Approve
+                  </button>
+                  <button type="button" disabled={decidingId === a.id} onClick={() => handleDeny(a.id)} style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
+                    border: `1px solid ${COLORS.error || "#ef4444"}`, background: "transparent",
+                    color: COLORS.error || "#ef4444", cursor: decidingId === a.id ? "wait" : "pointer",
+                  }}>
+                    Deny
+                  </button>
+                </div>
+              )}
+              {a.status === "PENDING" && canReview && String(currentUserId) === String(a.createdBy) && (
+                <div style={{ color: COLORS.gray, marginTop: 4, fontStyle: "italic" }}>
+                  Awaiting review by another reviewer (you submitted this amendment).
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Locked assessments can no longer be edited directly, so this is just the
+// amendment entry point (propose/review corrections). Nothing is rendered
+// pre-lock — see the note above on why the readiness checklist itself was
+// removed from the assessment body.
+function FinalReviewDashboardCard({ assessmentId, locked, styles, COLORS }) {
+  if (!locked) return null;
+  return <AmendmentPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />;
+}
+
+
 // the same way WeightLossAutoCalcCard turns raw weights into a % change.
 // The RN still confirms/overrides via the existing Constipation radio below;
 // this card only proposes a starting point so the RN isn't over-analyzing.
@@ -2352,6 +6060,113 @@ const SEVERITY_COLORS = {
   UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
 };
 
+// Real, backend-linked allergy list — the single source of truth shared by
+// the Infection section (RN ICA), the Medications card (Tx/Meds/DME), and
+// the Facesheet's Structured Allergies panel (all three call the same
+// listPatientAllergies/addPatientAllergy/removePatientAllergy API against
+// the same patient_allergies table, so an allergy entered in any one of
+// them appears in the other two immediately — no separate free-text field).
+export function AllergiesCard({ patientId, styles, COLORS }) {
+  const [allergies, setAllergies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
+  const [allergyError, setAllergyError] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    listPatientAllergies(patientId)
+      .then((list) => setAllergies(list || []))
+      .catch((err) => {
+        console.error("Failed to load allergies:", err);
+        setAllergyError(err?.response?.data?.detail || "Unable to load allergies.");
+      })
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const handleAddAllergy = async () => {
+    if (!allergyForm.allergen_text.trim()) {
+      setAllergyError("Allergen is required.");
+      return;
+    }
+    setAllergyError("");
+    try {
+      await addPatientAllergy(patientId, {
+        allergen_text: allergyForm.allergen_text.trim(),
+        allergen_type: "DRUG",
+        severity: allergyForm.severity || undefined,
+        reaction_description: allergyForm.reaction_description || undefined,
+      });
+      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
+      reload();
+    } catch (err) {
+      console.error("Add allergy failed:", err);
+      setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
+    }
+  };
+
+  const handleRemoveAllergy = async (allergyId) => {
+    try {
+      await removePatientAllergy(patientId, allergyId);
+      reload();
+    } catch (err) {
+      console.error("Remove allergy failed:", err);
+      window.alert("Unable to remove allergy.");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
+      {loading && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>Loading…</div>}
+      {!loading && allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
+      {allergies.map((a) => (
+        <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+          <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
+          {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
+          {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
+          <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
+            Remove
+          </button>
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+        <input
+          style={{ ...styles.input, width: 160 }}
+          placeholder="Allergen (e.g. penicillin)"
+          value={allergyForm.allergen_text}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
+        />
+        <select
+          style={{ ...styles.select, width: 130 }}
+          value={allergyForm.severity}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+        >
+          <option value="">Severity</option>
+          <option value="MILD">Mild</option>
+          <option value="MODERATE">Moderate</option>
+          <option value="SEVERE">Severe</option>
+          <option value="ANAPHYLAXIS">Anaphylaxis</option>
+        </select>
+        <input
+          style={{ ...styles.input, width: 180 }}
+          placeholder="Reaction (optional)"
+          value={allergyForm.reaction_description}
+          onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
+        />
+        <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
+          + Add Allergy
+        </button>
+      </div>
+      {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+    </div>
+  );
+}
+
 export function MedicationOrdersCard({ patientId, styles, COLORS }) {
   const [meds, setMeds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2373,21 +6188,14 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const [allergies, setAllergies] = useState([]);
-  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
-  const [allergyError, setAllergyError] = useState("");
-
   const reload = useCallback(() => {
     if (!patientId) return;
     setLoading(true);
     setError("");
-    Promise.all([listMedications(patientId), listPatientAllergies(patientId)])
-      .then(([medList, allergyList]) => {
-        setMeds(medList || []);
-        setAllergies(allergyList || []);
-      })
+    listMedications(patientId)
+      .then((medList) => setMeds(medList || []))
       .catch((err) => {
-        console.error("Failed to load medications/allergies:", err);
+        console.error("Failed to load medications:", err);
         setError(err?.response?.data?.detail || "Unable to load medications.");
       })
       .finally(() => setLoading(false));
@@ -2474,82 +6282,11 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
     }
   };
 
-  const handleAddAllergy = async () => {
-    if (!allergyForm.allergen_text.trim()) {
-      setAllergyError("Allergen is required.");
-      return;
-    }
-    setAllergyError("");
-    try {
-      await addPatientAllergy(patientId, {
-        allergen_text: allergyForm.allergen_text.trim(),
-        allergen_type: "DRUG",
-        severity: allergyForm.severity || undefined,
-        reaction_description: allergyForm.reaction_description || undefined,
-      });
-      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
-      reload();
-    } catch (err) {
-      console.error("Add allergy failed:", err);
-      setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
-    }
-  };
-
-  const handleRemoveAllergy = async (allergyId) => {
-    try {
-      await removePatientAllergy(patientId, allergyId);
-      reload();
-    } catch (err) {
-      console.error("Remove allergy failed:", err);
-      window.alert("Unable to remove allergy.");
-    }
-  };
-
   return (
     <div>
-      {/* ── Allergy list ── */}
+      {/* ── Allergy list — shared component, same data as Infection section + Facesheet ── */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
-        {allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
-        {allergies.map((a) => (
-          <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
-            <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
-            {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
-            {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
-            <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
-              Remove
-            </button>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-          <input
-            style={{ ...styles.input, width: 160 }}
-            placeholder="Allergen (e.g. penicillin)"
-            value={allergyForm.allergen_text}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
-          />
-          <select
-            style={{ ...styles.select, width: 130 }}
-            value={allergyForm.severity}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
-          >
-            <option value="">Severity</option>
-            <option value="MILD">Mild</option>
-            <option value="MODERATE">Moderate</option>
-            <option value="SEVERE">Severe</option>
-            <option value="ANAPHYLAXIS">Anaphylaxis</option>
-          </select>
-          <input
-            style={{ ...styles.input, width: 180 }}
-            placeholder="Reaction (optional)"
-            value={allergyForm.reaction_description}
-            onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
-          />
-          <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
-            + Add Allergy
-          </button>
-        </div>
-        {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+        <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
       </div>
 
       {/* ── Add medication form ── */}
@@ -2764,6 +6501,33 @@ const ORDER_TYPE_TO_VENDOR_TYPE = {
   OTHER: "Other",
 };
 
+// Order types whose real HospiceMD form has no drug-specific fields at all
+// (no Strength/Dosage/Route/Frequency/Indication/Quantity) -- confirmed via
+// real screenshots for Lab, Treatment, Other, and Supplies. DME and Diet keep
+// the fuller field set (also confirmed via screenshot) and only gained
+// Start Date/Stop Date, which every order type has in the real form.
+const MINIMAL_ORDER_TYPES = new Set(["LAB", "TREATMENT", "OTHER", "SUPPLY"]);
+
+// Common Orders quick-picks for the Lab tab — each is a single, independently
+// selectable test (by CPT code, so labels stay in sync with the catalog).
+// These are NOT bundled combos — e.g. CBC, CMP, and BMP are each their own
+// button since providers often order just one, not all together.
+const LAB_QUICK_PICKS = [
+  { label: "UA", cpts: ["81003"] },
+  { label: "UA with C&S", cpts: ["87088"] },
+  { label: "CBC", cpts: ["85025"] },
+  { label: "CMP", cpts: ["80053"] },
+  { label: "BMP", cpts: ["80048"] },
+  { label: "Liver Panel", cpts: ["80076"] },
+  { label: "TSH", cpts: ["84443"] },
+  { label: "Free T4", cpts: ["84439"] },
+  { label: "Free T3", cpts: ["84481"] },
+  { label: "BNP", cpts: ["83880"] },
+  { label: "PT/INR", cpts: ["85610"] },
+  { label: "A1C", cpts: ["83036"] },
+];
+
+
 const ohInput = {
   width: "100%",
   padding: "10px 12px",
@@ -2780,6 +6544,19 @@ const ohLabel = { fontSize: 11, fontWeight: 600, color: SNS_COLORS.dim, textTran
 const ohFormGroup = { marginBottom: 10 };
 const ohBtnPrimary = { ...SNS_S.btn(SNS_COLORS.teal) };
 const ohBtnSecondary = { ...SNS_S.btnOutline, padding: "6px 12px", fontSize: 12 };
+
+// Roles/disciplines eligible to be an ordering provider — same set used by
+// StaffAssignment.jsx's "MD / NP / DO" provider group, so the Ordering
+// Provider dropdown here lists the same staff (e.g. Stephen Pine, Tejon Woods).
+const ORDERING_PROVIDER_ROLES = new Set(["MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN", "MD", "DO", "NP", "PA"]);
+
+function providerRoleCode(staffMember) {
+  const disc = (staffMember?.discipline || staffMember?.role || "").toUpperCase();
+  if (disc.includes("NP")) return "NP";
+  if (disc.includes("PA")) return "PA";
+  return "MD";
+}
+
 const ohTabBtn = (active) => ({
   padding: "8px 16px",
   borderRadius: 8,
@@ -2791,9 +6568,23 @@ const ohTabBtn = (active) => ({
   cursor: "pointer",
 });
 
+// Maps the backend-agnostic status tone (physicianOrders.ts) onto this
+// surface's local SNS design tokens. The tone→severity mapping itself lives
+// in physicianOrders.ts (shared with PhysicianOrdersBoard.jsx) so the two
+// order-status surfaces cannot silently drift out of sync.
+const OH_TONE_COLORS = {
+  neutral: SNS_COLORS.muted,
+  warning: SNS_COLORS.orange,
+  info: SNS_COLORS.blue,
+  success: SNS_COLORS.green,
+  danger: SNS_COLORS.red,
+};
+
 export function OrdersHubCard({ patientId }) {
   const currentUser = getCurrentUser();
-  const isMD = currentUser?.role === "MD";
+  // Any role the backend accepts as an order signer (not just legacy "MD")
+  // must see the Approve/Countersign actions -- see ORDER_SIGNER_ROLES.
+  const canSignOrders = ORDER_SIGNER_ROLES.includes(currentUser?.role);
 
   const [activeType, setActiveType] = useState("DME");
   const [orders, setOrders] = useState([]);
@@ -2815,16 +6606,26 @@ export function OrdersHubCard({ patientId }) {
     order_text: "", strength: "", dosage: "", route: "", frequency: "",
     indication: "", quantity: "", payer: "", vendor: "", administered_by: "",
     special_instruction: "",
+    start_date: new Date().toISOString().slice(0, 10), stop_date: "",
     source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
     prescriber_authenticated: false, phone_readback_confirmed: false,
+    visit_frequency_discipline: "", visit_frequency_per_week: "", visit_frequency_prn_count: "",
   });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
   const [labCatalog, setLabCatalog] = useState(null);
   const [selectedLabTests, setSelectedLabTests] = useState([]);
+  const [labSearch, setLabSearch] = useState("");
 
   const [vendorOptions, setVendorOptions] = useState([]);
+  const [providerOptions, setProviderOptions] = useState([]);
+
+  useEffect(() => {
+    listStaff({ status: "active" })
+      .then((list) => setProviderOptions((list || []).filter((s) => ORDERING_PROVIDER_ROLES.has((s.discipline || s.role || "").toUpperCase()))))
+      .catch((err) => console.error("Failed to load providers:", err));
+  }, []);
 
   const [faxOpen, setFaxOpen] = useState(false);
   const [faxForm, setFaxForm] = useState({ recipient_name: "", recipient_fax_number: "" });
@@ -2917,21 +6718,62 @@ export function OrdersHubCard({ patientId }) {
     );
   };
 
+  const findLabTest = useCallback(
+    (cpt) => {
+      for (const cat of labCatalog?.categories || []) {
+        const found = cat.tests.find((t) => t.cpt === cpt);
+        if (found) return found;
+      }
+      return null;
+    },
+    [labCatalog]
+  );
+
+  const toggleLabQuickPick = (pick) => {
+    const tests = pick.cpts.map(findLabTest).filter(Boolean);
+    if (!tests.length) return;
+    const allSelected = tests.every((test) => selectedLabTests.some((t) => t.cpt === test.cpt));
+    setSelectedLabTests((prev) =>
+      allSelected
+        ? prev.filter((t) => !tests.some((test) => test.cpt === t.cpt))
+        : [...prev, ...tests.filter((test) => !prev.some((t) => t.cpt === test.cpt))]
+    );
+  };
+
+  const labSearchHasNoMatches = useMemo(() => {
+    if (!labCatalog || !labSearch.trim()) return false;
+    const query = labSearch.trim().toLowerCase();
+    return !labCatalog.categories?.some((cat) =>
+      cat.tests.some((test) => test.name.toLowerCase().includes(query) || test.cpt.toLowerCase().includes(query))
+    );
+  }, [labCatalog, labSearch]);
+
   const handleAddOrder = async () => {
-    const orderText = activeType === "LAB"
-      ? selectedLabTests.map((t) => `${t.name} (CPT ${t.cpt})`).join("; ")
-      : [
-          form.order_text,
-          form.strength && `Strength: ${form.strength}`,
-          form.dosage && `Dosage/Qty: ${form.dosage}`,
-          form.route && `Route: ${form.route}`,
-          form.frequency && `Frequency: ${form.frequency}`,
-          form.indication && `Indication: ${form.indication}`,
-          form.payer && `Payer: ${form.payer}`,
-          form.vendor && `Vendor: ${form.vendor}`,
-          form.administered_by && `Administered by: ${form.administered_by}`,
-          form.special_instruction && `Instructions: ${form.special_instruction}`,
-        ].filter(Boolean).join(" — ");
+    const freqDiscipline = activeType === "OTHER" ? form.visit_frequency_discipline : "";
+    const freqPerWeek = freqDiscipline && form.visit_frequency_per_week !== "" ? parseInt(form.visit_frequency_per_week, 10) : null;
+    const freqPrnCount = freqDiscipline && form.visit_frequency_prn_count !== "" ? parseInt(form.visit_frequency_prn_count, 10) : null;
+    const freqSummaryParts = [];
+    if (freqDiscipline) {
+      if (freqPerWeek) freqSummaryParts.push(`${freqPerWeek}x/week`);
+      if (freqPrnCount) freqSummaryParts.push(`PRN x${freqPrnCount}`);
+    }
+    const orderText = [
+      activeType === "LAB"
+        ? selectedLabTests.map((t) => `${t.name} (CPT ${t.cpt})`).join("; ")
+        : form.order_text,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.strength && `Strength: ${form.strength}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.dosage && `Dosage/Qty: ${form.dosage}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.route && `Route: ${form.route}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.frequency && `Frequency: ${form.frequency}`,
+      !MINIMAL_ORDER_TYPES.has(activeType) && form.indication && `Indication: ${form.indication}`,
+      freqDiscipline && `Visit Frequency: ${freqDiscipline} ${freqSummaryParts.join(", ")}`.trim(),
+      form.payer && `Payer: ${form.payer}`,
+      form.vendor && `Vendor: ${form.vendor}`,
+      form.administered_by && `Administered by: ${form.administered_by}`,
+      form.start_date && `Start Date: ${form.start_date}`,
+      form.stop_date && `Stop Date: ${form.stop_date}`,
+      form.special_instruction && `Instructions: ${form.special_instruction}`,
+    ].filter(Boolean).join(" — ");
 
     if (!orderText.trim()) {
       setSubmitError(activeType === "LAB" ? "Select at least one lab test." : "Order text is required.");
@@ -2957,13 +6799,18 @@ export function OrdersHubCard({ patientId }) {
         prescriber_authenticated: form.prescriber_authenticated,
         phone_readback_confirmed: form.phone_readback_confirmed,
         ordered_at: new Date().toISOString(),
+        visit_frequency_discipline: freqDiscipline || null,
+        visit_frequency_per_week: freqPerWeek,
+        visit_frequency_prn_count: freqPrnCount,
       });
       await submitPhysicianOrder(draft.id);
       setForm({
         order_text: "", strength: "", dosage: "", route: "", frequency: "", indication: "",
         quantity: "", payer: "", vendor: "", administered_by: "", special_instruction: "",
+        start_date: new Date().toISOString().slice(0, 10), stop_date: "",
         source_type: "WRITTEN", ordered_by_provider_name: "", ordered_by_provider_role: "MD",
         prescriber_authenticated: false, phone_readback_confirmed: false,
+        visit_frequency_discipline: "", visit_frequency_per_week: "", visit_frequency_prn_count: "",
       });
       setSelectedLabTests([]);
       reload();
@@ -3058,8 +6905,17 @@ export function OrdersHubCard({ patientId }) {
               <input
                 style={ohInput}
                 value={importAttestation.ordered_by_provider_name}
-                onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_name: e.target.value }))}
-                placeholder="Dr. Jane Smith"
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const match = providerOptions.find((p) => p.full_name === name);
+                  setImportAttestation((f) => ({
+                    ...f,
+                    ordered_by_provider_name: name,
+                    ordered_by_provider_role: match ? providerRoleCode(match) : f.ordered_by_provider_role,
+                  }));
+                }}
+                list="oh-provider-options"
+                placeholder={providerOptions.length ? "Select or type a provider…" : "Dr. Jane Smith"}
               />
               <select style={ohInput} value={importAttestation.ordered_by_provider_role} onChange={(e) => setImportAttestation((f) => ({ ...f, ordered_by_provider_role: e.target.value }))}>
                 <option value="MD">MD</option>
@@ -3109,23 +6965,76 @@ export function OrdersHubCard({ patientId }) {
           <div>
             <div style={ohLabel}>Lab Tests (select all that apply)</div>
             {!labCatalog && <div style={{ fontSize: 12.5, color: SNS_COLORS.dim }}>Loading catalog…</div>}
-            {labCatalog?.categories?.map((cat) => (
-              <div key={cat.category} style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: SNS_COLORS.muted, marginBottom: 4 }}>{cat.category}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
-                  {cat.tests.map((test) => (
-                    <label key={test.cpt + test.name} style={{ fontSize: 12, color: SNS_COLORS.white, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedLabTests.some((t) => t.cpt === test.cpt)}
-                        onChange={() => toggleLabTest(test)}
-                      />
-                      {test.name} <span style={{ color: SNS_COLORS.dim }}>(CPT {test.cpt})</span>
-                    </label>
-                  ))}
+            {labCatalog ? (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ ...ohLabel, marginBottom: 6 }}>Common Orders</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {LAB_QUICK_PICKS.map((pick) => {
+                    const tests = pick.cpts.map(findLabTest).filter(Boolean);
+                    const active = tests.length > 0 && tests.every((test) => selectedLabTests.some((t) => t.cpt === test.cpt));
+                    return (
+                      <button
+                        key={pick.label}
+                        type="button"
+                        onClick={() => toggleLabQuickPick(pick)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${active ? SNS_COLORS.teal : SNS_COLORS.border}`,
+                          background: active ? SNS_COLORS.teal : "transparent",
+                          color: active ? SNS_COLORS.bg : SNS_COLORS.white,
+                          fontSize: 11.5,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {pick.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
+            ) : null}
+            {labCatalog ? (
+              <input
+                style={{ ...ohInput, marginBottom: 12, maxWidth: 320 }}
+                value={labSearch}
+                onChange={(e) => setLabSearch(e.target.value)}
+                placeholder="Search by test name or CPT code…"
+              />
+            ) : null}
+            {selectedLabTests.length > 0 && (
+              <div style={{ fontSize: 11.5, color: SNS_COLORS.teal, marginBottom: 8 }}>
+                {selectedLabTests.length} test{selectedLabTests.length === 1 ? "" : "s"} selected: {selectedLabTests.map((t) => t.name).join(", ")}
+              </div>
+            )}
+            {labCatalog?.categories?.map((cat) => {
+              const query = labSearch.trim().toLowerCase();
+              const visibleTests = query
+                ? cat.tests.filter((test) => test.name.toLowerCase().includes(query) || test.cpt.toLowerCase().includes(query))
+                : cat.tests;
+              if (!visibleTests.length) return null;
+              return (
+                <div key={cat.category} style={{ marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: SNS_COLORS.muted, marginBottom: 4 }}>{cat.category}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "4px 16px" }}>
+                    {visibleTests.map((test) => (
+                      <label key={test.cpt + test.name} style={{ fontSize: 12, color: SNS_COLORS.white, display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedLabTests.some((t) => t.cpt === test.cpt)}
+                          onChange={() => toggleLabTest(test)}
+                        />
+                        {test.name} <span style={{ color: SNS_COLORS.dim }}>(CPT {test.cpt})</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {labCatalog && labSearchHasNoMatches ? (
+              <div style={{ fontSize: 12, color: SNS_COLORS.dim }}>No lab tests match "{labSearch}".</div>
+            ) : null}
             {labCatalog?.clinical_notes && Object.values(labCatalog.clinical_notes).map((note, i) => (
               <div key={i} style={{ fontSize: 11.5, color: SNS_COLORS.orange, marginTop: 8, fontStyle: "italic" }}>{note}</div>
             ))}
@@ -3150,7 +7059,7 @@ export function OrdersHubCard({ patientId }) {
                 <input style={ohInput} value={form.order_text} onChange={(e) => setForm((f) => ({ ...f, order_text: e.target.value }))} placeholder="e.g. Hospital Bed Full Electric" />
               )}
             </div>
-            {activeType !== "OTHER" && (
+            {!MINIMAL_ORDER_TYPES.has(activeType) && (
               <>
                 <div style={ohFormGroup}>
                   <label style={ohLabel}>Strength</label>
@@ -3205,8 +7114,98 @@ export function OrdersHubCard({ patientId }) {
               <label style={ohLabel}>Administered By</label>
               <input style={ohInput} value={form.administered_by} onChange={(e) => setForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Hospice Nurse Only" />
             </div>
+            {activeType === "OTHER" && (
+              <>
+                <div style={ohFormGroup}>
+                  <label style={ohLabel}>Visit Frequency — Discipline</label>
+                  <select
+                    style={ohInput}
+                    value={form.visit_frequency_discipline}
+                    onChange={(e) => setForm((f) => ({ ...f, visit_frequency_discipline: e.target.value }))}
+                  >
+                    <option value="">— Not a frequency order —</option>
+                    <option value="RN">RN (Skilled Nursing)</option>
+                    <option value="LVN">LVN/LPN</option>
+                    <option value="CHHA">CHHA (Home Health Aide)</option>
+                    <option value="MSW">MSW (Social Work)</option>
+                    <option value="SC">Chaplain / Spiritual Care</option>
+                  </select>
+                  <div style={{ fontSize: 10.5, color: SNS_COLORS.dim, marginTop: 3 }}>
+                    Set this to record a structured "visits per week" order the scheduling engine can track. Leave blank for a non-frequency Other order.
+                  </div>
+                </div>
+                {form.visit_frequency_discipline && (
+                  <>
+                    <div style={ohFormGroup}>
+                      <label style={ohLabel}>Visits per Week</label>
+                      <input
+                        type="number"
+                        min="0"
+                        style={ohInput}
+                        value={form.visit_frequency_per_week}
+                        onChange={(e) => setForm((f) => ({ ...f, visit_frequency_per_week: e.target.value }))}
+                        placeholder="e.g. 2"
+                      />
+                    </div>
+                    <div style={ohFormGroup}>
+                      <label style={ohLabel}>PRN Visits (count)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        style={ohInput}
+                        value={form.visit_frequency_prn_count}
+                        onChange={(e) => setForm((f) => ({ ...f, visit_frequency_prn_count: e.target.value }))}
+                        placeholder="e.g. 1"
+                      />
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         )}
+        {activeType === "LAB" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Payer</label>
+              <select style={ohInput} value={form.payer} onChange={(e) => setForm((f) => ({ ...f, payer: e.target.value }))}>
+                <option value="">—</option>
+                <option value="Hospice">Hospice covered</option>
+                <option value="Insurance">Insurance non-covered</option>
+                <option value="Patient">Patient non-covered</option>
+              </select>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Vendor</label>
+              <input
+                style={ohInput}
+                value={form.vendor}
+                onChange={(e) => setForm((f) => ({ ...f, vendor: e.target.value }))}
+                list="oh-vendor-options"
+                placeholder={vendorOptions.length ? "Select or type a vendor…" : "No vendors on file — type a name"}
+              />
+              <datalist id="oh-vendor-options">
+                {vendorOptions.map((v) => (
+                  <option key={v.id} value={v.name} />
+                ))}
+              </datalist>
+            </div>
+            <div style={ohFormGroup}>
+              <label style={ohLabel}>Administered By</label>
+              <input style={ohInput} value={form.administered_by} onChange={(e) => setForm((f) => ({ ...f, administered_by: e.target.value }))} placeholder="e.g. Outside Lab" />
+            </div>
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10, marginTop: 10 }}>
+          <div style={ohFormGroup}>
+            <label style={ohLabel}>Start Date</label>
+            <input type="date" style={ohInput} value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+          </div>
+          <div style={ohFormGroup}>
+            <label style={ohLabel}>Stop Date</label>
+            <input type="date" style={ohInput} value={form.stop_date} onChange={(e) => setForm((f) => ({ ...f, stop_date: e.target.value }))} />
+          </div>
+        </div>
         <div style={ohFormGroup}>
           <label style={ohLabel}>Special Instruction</label>
           <textarea style={ohTextarea} value={form.special_instruction} onChange={(e) => setForm((f) => ({ ...f, special_instruction: e.target.value }))} />
@@ -3219,7 +7218,26 @@ export function OrdersHubCard({ patientId }) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
             <div style={ohFormGroup}>
               <label style={ohLabel}>Ordering Provider Name</label>
-              <input style={ohInput} value={form.ordered_by_provider_name} onChange={(e) => setForm((f) => ({ ...f, ordered_by_provider_name: e.target.value }))} placeholder="Dr. Jane Smith" />
+              <input
+                style={ohInput}
+                value={form.ordered_by_provider_name}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const match = providerOptions.find((p) => p.full_name === name);
+                  setForm((f) => ({
+                    ...f,
+                    ordered_by_provider_name: name,
+                    ordered_by_provider_role: match ? providerRoleCode(match) : f.ordered_by_provider_role,
+                  }));
+                }}
+                list="oh-provider-options"
+                placeholder={providerOptions.length ? "Select or type a provider…" : "Dr. Jane Smith"}
+              />
+              <datalist id="oh-provider-options">
+                {providerOptions.map((p) => (
+                  <option key={p.id} value={p.full_name} />
+                ))}
+              </datalist>
             </div>
             <div style={ohFormGroup}>
               <label style={ohLabel}>Provider Role</label>
@@ -3274,10 +7292,10 @@ export function OrdersHubCard({ patientId }) {
                   <div style={{ fontSize: 13, color: SNS_COLORS.white, fontWeight: 600, maxWidth: "70%" }}>{o.order_text}</div>
                   <span style={{
                     fontSize: 10, fontWeight: 700, borderRadius: 6, padding: "2px 8px", textTransform: "uppercase",
-                    border: `1px solid ${o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange}`,
-                    color: o.status === "EXECUTED" && o.awaiting_countersignature ? SNS_COLORS.orange : o.status === "EXECUTED" ? SNS_COLORS.green : o.status === "APPROVED" ? SNS_COLORS.blue : o.status === "CANCELLED" ? SNS_COLORS.red : SNS_COLORS.orange,
+                    border: `1px solid ${o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)]}`,
+                    color: o.awaiting_countersignature ? SNS_COLORS.orange : OH_TONE_COLORS[getPhysicianOrderStatusTone(o.status)],
                   }}>
-                    {o.status === "EXECUTED" && o.awaiting_countersignature ? "Administered — Awaiting MD Countersignature" : o.status.replace(/_/g, " ")}
+                    {o.awaiting_countersignature ? "Administered — Awaiting Countersignature" : formatPhysicianOrderStatusLabel(o.status, o.status_label)}
                   </span>
                 </div>
                 <div style={{ fontSize: 11, color: SNS_COLORS.dim }}>
@@ -3292,12 +7310,12 @@ export function OrdersHubCard({ patientId }) {
                       Administer Now (Verbal Order)
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && canSignOrders && (
                     <button type="button" style={ohBtnSecondary} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Approve &amp; Sign (MD)
+                      Approve &amp; Sign
                     </button>
                   )}
-                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
+                  {o.status === "PENDING_HOSPICE_MD_APPROVAL" && !canSignOrders && !(o.source_type === "VERBAL_PHONE" && o.phone_readback_confirmed) && (
                     <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Awaiting Medical Director signature</span>
                   )}
                   {o.status === "APPROVED" && (
@@ -3305,15 +7323,15 @@ export function OrdersHubCard({ patientId }) {
                       Mark Executed
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && isMD && (
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && canSignOrders && (
                     <button type="button" style={{ ...ohBtnSecondary, borderColor: SNS_COLORS.blue, color: SNS_COLORS.blue }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, approvePhysicianOrder)}>
-                      Countersign (MD)
+                      Countersign
                     </button>
                   )}
-                  {o.status === "EXECUTED" && o.awaiting_countersignature && !isMD && (
-                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                  {o.status === "EXECUTED" && o.awaiting_countersignature && !canSignOrders && (
+                    <span style={{ fontSize: 11, color: SNS_COLORS.orange }}>Administered — awaiting countersignature</span>
                   )}
-                  {(o.status === "DRAFT" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
+                  {(o.status === "DRAFT" || o.status === "PENDING_CLINICAL_REVIEW" || o.status === "PENDING_HOSPICE_MD_APPROVAL" || o.status === "APPROVED") && (
                     <button type="button" style={{ ...ohBtnSecondary, color: SNS_COLORS.red, borderColor: SNS_COLORS.red }} disabled={busyOrderId === o.id} onClick={() => runOrderAction(o.id, (id) => cancelPhysicianOrder(id, "Cancelled from Orders Hub"))}>
                       Cancel
                     </button>
@@ -3646,6 +7664,18 @@ const POSTERIOR_REGIONS = [
   { id: "right_sole",          label: "Right Sole",               x: 101, y: 300 },
 ];
 
+const BODY_MAP_AUDIT = validateBodyMapRegions({
+  anterior: ANTERIOR_REGIONS,
+  posterior: POSTERIOR_REGIONS,
+  assetWidth: 540,
+  assetHeight: 960,
+  viewBoxWidth: 180,
+  viewBoxHeight: 320,
+});
+if (import.meta.env.DEV && !BODY_MAP_AUDIT.valid) {
+  throw new Error(`Invalid RNICA body-map overlay: ${BODY_MAP_AUDIT.errors.join("; ")}`);
+}
+
 function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = "both" }) {
   const [hovered, setHovered] = useState(null);
   const { mode: themeMode } = useThemeMode();
@@ -3738,8 +7768,8 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
   return (
     <div>
       <div style={{ display: "flex", gap: 32, justifyContent: "center" }}>
-        {showFront && renderView("/body-front.png", ANTERIOR_REGIONS, "Anterior (Front)", "anterior")}
-        {showBack && renderView("/body-back.png", POSTERIOR_REGIONS, "Posterior (Back)", "posterior")}
+        {showFront && renderView(frontBody, ANTERIOR_REGIONS, "Anterior (Front)", "anterior")}
+        {showBack && renderView(backBody, POSTERIOR_REGIONS, "Posterior (Back)", "posterior")}
       </div>
 
       {selectedRegions.length > 0 && (
@@ -3798,8 +7828,8 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.card} id={id}>
-      <div style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
+    <div className="rnica-form-card" style={styles.card} id={id}>
+      <div className="rnica-form-card__title" style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
         {title}
         {hopeCode && <HopeTag code={hopeCode} />}
         {sfv && <SfvTag />}
@@ -3814,12 +7844,22 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
 
-function renderDemographics(data, update, COLORS, styles) {
+function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiProfile = {}) {
   const u = (path, val) => update("demographics", path, val);
+  const showPatient = moduleKey === "all" || moduleKey === "demographics";
+  const showCaregiver = moduleKey === "all" || moduleKey === "caregiverAssessment";
+  const showPlanning = (moduleKey === "all" || moduleKey === "advancedCarePlanning") && !uiProfile.hideAdvancedCarePlanning;
   return (
     <>
-      <p style={styles.sectionSubtitle}>Patient identification, caregiver, living situation, and advanced care planning</p>
+      <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>
+        {showCaregiver && !showPatient
+          ? "Primary caregiver and willingness/capability assessment"
+          : showPlanning && !showPatient
+            ? "Code status, treatment preferences, decision maker, and directives"
+            : "Patient identification, contacts, and living situation"}
+      </p>
 
+      {showPatient && <>
       <Card title="Patient Information" hopeCode="A1110">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormInput label="First Name" value={data.firstName} onChange={(v) => u("firstName", v)} required />
@@ -3865,7 +7905,9 @@ function renderDemographics(data, update, COLORS, styles) {
           <FormInput label="Phone" value={data.emergencyContact?.phone} onChange={(v) => u("emergencyContact.phone", v)} type="tel" />
         </div>
       </Card>
+      </>}
 
+      {showCaregiver && <>
       <Card title="Primary Caregiver (PCG)" id="pcg">
         <FormRadioGroup label="Does this patient have a Primary Caregiver?"
           value={!pcgIsAssessed(data.pcg) ? "" : (data.pcg?.noPcg ? "no" : "yes")}
@@ -3881,10 +7923,11 @@ function renderDemographics(data, update, COLORS, styles) {
             onChange={(v) => {
               u("pcg.noPcgReason", v);
               // Keep Living Situation in sync so the facility type is only entered once.
-              const siteOfService = { "Memory Care": "Memory Care", "Board & Care": "Board & Care", "Skilled Nursing Facility": "SNF", "Assisted Living Facility": "ALF", "Other facility-based care": "Other" }[v];
+              // Values are the official CMS HOPE A0215 Site of Service codes.
+              const siteOfService = { "Memory Care": "02", "Board & Care": "02", "Skilled Nursing Facility": "04", "Assisted Living Facility": "02", "Other facility-based care": "99" }[v];
               if (siteOfService) {
                 u("livingSituation.siteOfService", siteOfService);
-                u("livingSituation.livingArrangement", "Facility");
+                u("livingSituation.livingArrangement", "4"); // A1905: Inpatient facility
               }
             }}
             options={["Memory Care", "Board & Care", "Skilled Nursing Facility", "Assisted Living Facility", "Other facility-based care"]} />
@@ -3959,30 +8002,72 @@ function renderDemographics(data, update, COLORS, styles) {
           placeholder="Document caregiver evaluation findings, concerns, and recommended interventions..." rows={4} />
       </Card>
       )}
+      </>}
 
+      {showPatient && (
       <Card title="Living Situation" hopeCode="A1905">
         <FormSelect label="Site of Service" value={data.livingSituation?.siteOfService} onChange={(v) => u("livingSituation.siteOfService", v)}
-          options={["Home", "SNF", "ALF", "Board & Care", "Memory Care", "Hospital", "Homeless", "Other"]} />
+          hopeCode="A0215" options={[
+            { value: "01", label: "Patient's Home/Residence" },
+            { value: "02", label: "Assisted Living Facility" },
+            { value: "03", label: "Nursing Long Term Care (LTC) or Non-Skilled Nursing Facility (NF)" },
+            { value: "04", label: "Skilled Nursing Facility (SNF)" },
+            { value: "05", label: "Inpatient Hospital" },
+            { value: "06", label: "Inpatient Hospice Facility (General Inpatient / GIP)" },
+            { value: "07", label: "Long Term Care Hospital (LTCH)" },
+            { value: "08", label: "Inpatient Psychiatric Facility" },
+            { value: "09", label: "Hospice Home Care (Routine Home Care) Provided in a Hospice Facility" },
+            { value: "99", label: "Not listed" },
+          ]} />
         <FormSelect label="Admitted From" value={data.livingSituation?.admittedFrom} onChange={(v) => u("livingSituation.admittedFrom", v)}
-          options={["Home", "Hospital", "SNF", "ALF", "Rehab", "Other"]} />
+          hopeCode="A1805" options={[
+            { value: "01", label: "Home/Community (private home/apt., board/care, assisted living, group home, etc.)" },
+            { value: "02", label: "Nursing Home (long-term care facility)" },
+            { value: "03", label: "Skilled Nursing Facility (SNF, swing beds)" },
+            { value: "04", label: "Short-Term General Hospital (acute hospital, IPPS)" },
+            { value: "05", label: "Long-Term Care Hospital (LTCH)" },
+            { value: "06", label: "Inpatient Rehabilitation Facility (IRF)" },
+            { value: "07", label: "Inpatient Psychiatric Facility" },
+            { value: "08", label: "Intermediate Care Facility (ID/DD facility)" },
+            { value: "10", label: "Hospice (institutional facility)" },
+            { value: "11", label: "Critical Access Hospital (CAH)" },
+            { value: "99", label: "Not Listed" },
+          ]} />
         <FormRadioGroup label="Living Arrangement" value={data.livingSituation?.livingArrangement} onChange={(v) => u("livingSituation.livingArrangement", v)}
-          options={["Alone", "With spouse", "With family", "With non-relative", "Facility"]} />
+          hopeCode="A1905" options={[
+            { value: "1", label: "Alone (no other residents in the home)" },
+            { value: "2", label: "With others in the home (family, friends, or paid caregiver)" },
+            { value: "3", label: "Congregate home (e.g., assisted living or residential care home)" },
+            { value: "4", label: "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)" },
+            { value: "5", label: "Does not have a permanent home (unstable housing / homeless)" },
+          ]} />
         <FormRadioGroup label="Availability of Assistance" value={data.livingSituation?.availabilityOfAssistance} onChange={(v) => u("livingSituation.availabilityOfAssistance", v)}
-          options={["24/7 available", "Daytime only", "Nighttime only", "Limited", "None"]} />
+          hopeCode="A1910" options={["24/7 available", "Daytime only", "Nighttime only", "Limited", "None"]} />
       </Card>
+      )}
 
+      {showPlanning && (
       <Card title="Advanced Care Planning" cms="F2000/F2100/F2200" id="advancedCarePlanning">
+        <FormRadioGroup label="F2000: Was patient/responsible party asked about CPR preference?" value={data.advancedCarePlanning?.cprPreferenceAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.cprPreferenceAskedStatus", v)} hopeCode="F2000"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Code Status" value={data.advancedCarePlanning?.codeStatus} onChange={(v) => u("advancedCarePlanning.codeStatus", v)}
-          hopeCode="F2000" options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
+          options={["Full Code", "DNR", "DNR-CC", "Comfort Measures Only"]} />
         <FormInput label="Code Status Discussion Date" value={data.advancedCarePlanning?.codeStatusDate}
           onChange={(v) => u("advancedCarePlanning.codeStatusDate", v)} type="date" />
+        <FormRadioGroup label="F2100: Was patient/responsible party asked about other life-sustaining treatments?" value={data.advancedCarePlanning?.lifeSustainingAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.lifeSustainingAskedStatus", v)} hopeCode="F2100"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Life-Sustaining Treatment Preference" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreference}
-          onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreference", v)} hopeCode="F2100"
+          onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreference", v)}
           options={["Yes — wants life-sustaining treatment", "No — does not want", "Undecided"]} />
         <FormInput label="Life-Sustaining Treatment Discussion Date" value={data.advancedCarePlanning?.lifeSustainingTreatmentPreferenceDate}
           onChange={(v) => u("advancedCarePlanning.lifeSustainingTreatmentPreferenceDate", v)} type="date" />
+        <FormRadioGroup label="F2200: Was patient/responsible party asked about hospitalization preference?" value={data.advancedCarePlanning?.hospitalizationAskedStatus}
+          onChange={(v) => u("advancedCarePlanning.hospitalizationAskedStatus", v)} hopeCode="F2200"
+          options={[{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }]} />
         <FormRadioGroup label="Hospitalization Preference" value={data.advancedCarePlanning?.hospitalizationPreference}
-          onChange={(v) => u("advancedCarePlanning.hospitalizationPreference", v)} hopeCode="F2200"
+          onChange={(v) => u("advancedCarePlanning.hospitalizationPreference", v)}
           options={["Yes — wants hospitalization", "No — does not want", "Undecided"]} />
         <FormInput label="Hospitalization Discussion Date" value={data.advancedCarePlanning?.hospitalizationPreferenceDate}
           onChange={(v) => u("advancedCarePlanning.hospitalizationPreferenceDate", v)} type="date" />
@@ -3994,6 +8079,7 @@ function renderDemographics(data, update, COLORS, styles) {
         <FormCheckbox label="Advance Directive on File" checked={data.advancedCarePlanning?.advanceDirectiveOnFile} onChange={(v) => u("advancedCarePlanning.advanceDirectiveOnFile", v)} />
         <FormCheckbox label="POLST on File" checked={data.advancedCarePlanning?.polstOnFile} onChange={(v) => u("advancedCarePlanning.polstOnFile", v)} />
       </Card>
+      )}
     </>
   );
 }
@@ -4013,9 +8099,31 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
+  const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
+    ? (cards || []).map((card) => ({
+        ...card,
+        fields: (card.fields || []).filter((field) => !["concernsAskedStatus", "concernsDiscussedDate"].includes(field.path)),
+      }))
+    : cards;
+
+  // Every clinical assessment section where an RN finding can turn into a
+  // Plan of Care problem gets Add/View/Update/Resolve POC controls on each
+  // field-based subcard (matches the legacy vendor system's per-focus-area
+  // "Add Issue" / "View POC" pattern). Excludes purely administrative /
+  // summary sections that don't themselves generate findings: demographics,
+  // vitals (numeric-only), diagnoses, performanceStatus, sfv (follow-up
+  // summary), admissionsOrder, referrals, finalization.
+  const POC_ENABLED_SECTIONS = new Set([
+    "pain", "symptomImpact",
+    "neurological", "cardiovascular", "respiratory", "infection",
+    "gastrointestinal", "nutrition", "endocrine", "genitourinary",
+    "musculoskeletal", "skin", "imminentDeath",
+    "safety", "psychosocial", "spiritual", "bereavement",
+    "personalCare", "teachingNeeds",
+  ]);
 
   const normalizePainPatientType = (type) => {
     if (!type || type === "adult-alert" || type === "alert") return "verbal";
@@ -4026,8 +8134,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const patientAge = sectionKey === "pain" ? calculateAgeFromDob(demographics?.dob) : null;
   const isPediatricAge = typeof patientAge === "number" && patientAge < 18;
 
-  // Auto-derive the pain scale from HOPE J0900 (can the patient verbalize
-  // pain?) and the patient's age — only one scale (Numeric / PAINAD / FLACC)
+  // Auto-derive the pain scale from the patient's pain-communication status
+  // (can the patient verbalize pain? — a clinical tool-selection question,
+  // distinct from the official HOPE J0900.A response) and the patient's age
+  // — only one scale (Numeric / PAINAD / FLACC)
   // is ever shown. A nurse can still override via the BodyMap patient-type
   // toggle, which updates painMapMode directly.
   const deriveModeFromScreening = (verbalizesPain) => {
@@ -4054,17 +8164,24 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
   const painAssessmentMode = sectionKey === "pain" ? getPainAssessmentMode() : null;
 
+  // Disease-specific performance scales only apply to patients with the
+  // matching diagnosis (primary or secondary): NYHA needs CHF/heart
+  // failure, FAST needs dementia, ECOG needs cancer.
+  const showNyha = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "heartFailure");
+  const showFast = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "dementia");
+  const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "cancer");
+
   return (
     <>
-      {subtitle && <p style={styles.sectionSubtitle}>{subtitle}</p>}
-      {cards.map((card, ci) => {
+      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
+      <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
+        {resolvedCards.map((card, ci) => {
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
         const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
-        const shouldRenderPocIssueEditor = sectionKey === "finalization" && card.title === "Plan of Care — Problem Generation (CDPH Gap #4)";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
@@ -4079,15 +8196,41 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
 
+        if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.title === "FAST Scale (Dementia)" && !showFast) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.title === "ECOG Performance Status" && !showEcog) {
+          return null;
+        }
+
         if (sectionKey === "diagnoses" && card.customRenderer === "lcdEligibility") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <LcdEligibilityCard
                 diagnosesData={data}
                 fullFormData={fullFormData}
                 updateField={u}
                 styles={styles}
                 COLORS={COLORS}
+                workspacePilot={workspacePilot}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "clinicalNarrative") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ClinicalNarrativeCard
+                diagnosesData={data}
+                fullFormData={fullFormData}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+                locked={locked}
               />
             </Card>
           );
@@ -4095,16 +8238,29 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "diagnoses" && card.customRenderer === "secondaryDiagnoses") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <SecondaryDiagnosesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} />
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <SecondaryDiagnosesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
             </Card>
           );
         }
 
         if (sectionKey === "diagnoses" && card.customRenderer === "hopeComorbidities") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <HopeComorbiditiesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} />
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <HopeComorbiditiesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "lcdSupportingEvidence") {
+          // Pilot-only: renders last on the Diagnoses page so free-text
+          // narrative never sits between structured checklists. Legacy mode
+          // keeps the evidence field inside the LCD Eligibility card above
+          // (unchanged) and this card renders nothing.
+          if (!workspacePilot) return null;
+          return (
+            <Card key={ci} id={card.id} title={card.title}>
+              <LcdSupportingEvidenceCard diagnosesData={data} updateField={u} />
             </Card>
           );
         }
@@ -4125,6 +8281,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "nutrition" && card.customRenderer === "nutritionAnthropometricReference") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <NutritionAnthropometricReferenceCard fullFormData={fullFormData} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "nutrition" && card.customRenderer === "weightLossAutoCalc") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -4137,6 +8301,30 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 styles={styles}
                 COLORS={COLORS}
               />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "vitals" && card.customRenderer === "anthropometricsAutoBmi") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <AnthropometricsAutoBmiCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "skin" && card.customRenderer === "woundList") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "safety" && card.customRenderer === "dmeStatus") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <DmeStatusCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -4156,24 +8344,75 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
-        if (sectionKey === "medications" && card.customRenderer === "medicationOrders") {
+        if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <MedicationOrdersCard patientId={patientId} styles={styles} COLORS={COLORS} />
+              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
 
-        if (sectionKey === "medications" && card.customRenderer === "ordersHub") {
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "disciplineFrequencyOfVisit") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <OrdersHubCard patientId={patientId} />
+              <DisciplineFrequencyOfVisitCard
+                rows={data.visitFrequency}
+                onChange={(next) => u("visitFrequency", next)}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "haAssignment") {
+          const assignedAide = data.haAssignment?.assignedAide || "";
+          const notApplicable = !!data.haAssignment?.notApplicable;
+          const chhaPocCompleted = fullFormData?.chhaPoc?.completed === true;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FormInput label="Assigned Home Aide" value={assignedAide} onChange={(v) => u("haAssignment.assignedAide", v)} />
+              <FormCheckbox label="HA Assignment N/A" checked={notApplicable} onChange={(v) => u("haAssignment.notApplicable", v)} />
+              {!notApplicable && (
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => onNavigateToSection?.("chha-assignment")}
+                    disabled={!onNavigateToSection}
+                    style={{ ...styles.btnSecondary, opacity: onNavigateToSection ? 1 : 0.5 }}
+                    title={onNavigateToSection ? "Open the CHHA Plan of Care" : "Open this patient's chart to reach the CHHA Plan of Care"}
+                  >
+                    → Open CHHA Plan of Care
+                  </button>
+                  {assignedAide.trim() && (
+                    chhaPocCompleted ? (
+                      <span style={{ fontSize: 11.5, color: "#22c55e", fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
+                    ) : (
+                      <span style={{ fontSize: 11.5, color: "#f59e0b", fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
+                    )
+                  )}
+                </div>
+              )}
+            </Card>
+          );
+        }
+
+        if (sectionKey === "finalization" && card.customRenderer === "finalReviewDashboard") {
+          if (!locked) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FinalReviewDashboardCard
+                assessmentId={assessmentId}
+                locked={locked}
+                styles={styles}
+                COLORS={COLORS}
+              />
             </Card>
           );
         }
 
         return (
-          <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+          <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
                 value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}
@@ -4251,57 +8490,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               />
             )}
 
-            {shouldRenderPocIssueEditor && (
-              <div style={{ marginBottom: 14 }}>
-                <div style={{ ...styles.infoBox, marginBottom: 10 }}>
-                  Add every problem identified during this assessment to the Plan of Care below (Problem / Goal /
-                  Intervention / Discipline), then open the current POC to confirm it was generated correctly.
-                </div>
-                {(data.pocEntries || []).length > 0 && (
-                  <div style={{ marginBottom: 10, display: "flex", flexDirection: "column", gap: 6 }}>
-                    {data.pocEntries.map((entry, ei) => (
-                      <div key={entry.id || ei} style={{
-                        display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto auto", gap: 8, alignItems: "center",
-                        padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, fontSize: 12.5,
-                      }}>
-                        <div><strong>Problem:</strong> {entry.problem || "—"}</div>
-                        <div><strong>Goal:</strong> {entry.goal || "—"}</div>
-                        <div><strong>Intervention:</strong> {entry.intervention || "—"}</div>
-                        <div style={{ fontWeight: 700, color: COLORS.teal }}>{entry.discipline || "—"}</div>
-                        <button type="button" onClick={() => u("pocEntries", data.pocEntries.filter((_, i) => i !== ei))}
-                          style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 15, fontWeight: 700 }}
-                          title="Remove this POC entry">×</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 10, alignItems: "end" }}>
-                  <FormInput label="Problem" value={data.pocDraft?.problem} onChange={(v) => u("pocDraft.problem", v)} placeholder="e.g., Pain related to bone mets" />
-                  <FormInput label="Goal" value={data.pocDraft?.goal} onChange={(v) => u("pocDraft.goal", v)} placeholder="e.g., Pain ≤3/10 within 72 hrs" />
-                  <FormInput label="Intervention / Frequency" value={data.pocDraft?.intervention} onChange={(v) => u("pocDraft.intervention", v)} placeholder="e.g., RN visits 2x/wk, titrate opioid per protocol" />
-                  <FormSelect label="Discipline" value={data.pocDraft?.discipline} onChange={(v) => u("pocDraft.discipline", v)}
-                    options={["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]} />
-                  <button type="button"
-                    disabled={!data.pocDraft?.problem}
-                    onClick={() => {
-                      const draft = data.pocDraft || {};
-                      if (!draft.problem) return;
-                      const entries = [...(data.pocEntries || []), { id: `poc-${Date.now()}`, ...draft }];
-                      u("pocEntries", entries);
-                      u("pocDraft", { problem: "", goal: "", intervention: "", discipline: "" });
-                    }}
-                    style={{
-                      fontSize: 12.5, fontWeight: 700, padding: "9px 14px", borderRadius: 6, border: "none",
-                      background: data.pocDraft?.problem ? COLORS.teal : COLORS.border,
-                      color: COLORS.white, cursor: data.pocDraft?.problem ? "pointer" : "not-allowed", height: 38,
-                    }}
-                  >
-                    + Add to POC
-                  </button>
-                </div>
-              </div>
-            )}
-
             <div style={styles.fieldsGrid}>
             {card.fields.map((field, fi) => {
               if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
@@ -4317,10 +8505,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               const onChange = (v) => {
                 u(fieldForRender.path, v);
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
-                  // Auto-select the correct pain scale from the HOPE J0900
-                  // answer + patient age so only one tool is ever shown:
+                  // Auto-select the correct pain scale from the patient's
+                  // communication status + age so only one tool is ever shown:
                   // verbal (reliable/sometimes) -> Numeric, non-verbal adult
-                  // -> PAINAD, pediatric -> FLACC.
+                  // -> PAINAD, pediatric -> FLACC. Note: this communication
+                  // status is distinct from the official HOPE J0900.A
+                  // "was patient screened for pain?" response (screenedForPain).
                   const mode = deriveModeFromScreening(v);
                   u("painMapMode", mode);
                   if (mode === "verbal") {
@@ -4375,9 +8565,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
+            {POC_ENABLED_SECTIONS.has(sectionKey) && card.fields && (
+              <PocSectionControls
+                assessmentId={assessmentId}
+                sectionKey={sectionKey}
+                cardTitle={card.title}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )}
           </Card>
         );
-      })}
+        })}
+      </div>
     </>
   );
 }
@@ -4456,12 +8656,8 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Anthropometrics", fields: [
-          { type: "input", label: "Height", path: "height", inputType: "number" },
-          { type: "input", label: "Weight", path: "weight", inputType: "number" },
-          { type: "input", label: "BMI", path: "bmi", inputType: "number" },
-          { type: "input", label: "MAC (Mid-Arm Circumference)", path: "mac", inputType: "number" },
-        ],
+        title: "Anthropometrics",
+        customRenderer: "anthropometricsAutoBmi",
       },
       {
         title: "IV Assessment", fields: [
@@ -4485,14 +8681,25 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Pain Screening", hopeCode: "J0900", fields: [
-          { type: "radio", label: "Can the patient verbalize pain?", path: "verbalizesPain", hopeCode: "J0900", options: [
+          { type: "radio", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
+            { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
+          ]},
+          { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
+          { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
+            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
+          ]},
+          { type: "radio", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
+            { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
+          ]},
+          { type: "radio", label: "Can the patient verbalize pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
-          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", hopeCode: "J0915", options: [
+          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
-          { type: "checkbox", label: "Neuropathic pain present", path: "neuropathicPain" },
-          { type: "input", label: "Pain screening date", path: "screeningDate", inputType: "date" },
+          { type: "radio", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          ]},
         ],
       },
       {
@@ -4563,19 +8770,30 @@ const SECTION_CONFIGS = {
 
   diagnoses: {
     title: "Diagnoses",
-    subtitle: "Primary/Secondary Dx, comorbidities, LCD eligibility, disease trajectory narrative",
+    subtitle: "Primary/Secondary Dx, comorbidities, disease trajectory, and LCD eligibility",
     cards: [
       {
         title: "Primary Diagnosis", hopeCode: "I0010", fields: [
-          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true, hopeCode: "I0010" },
+          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true },
           { type: "input", label: "Description", path: "primaryDiagnosis.description", required: true },
           { type: "input", label: "Onset Date", path: "primaryDiagnosis.onsetDate", inputType: "date" },
+          { type: "select", label: "HOPE Principal Diagnosis Category (I0010)", path: "primaryDiagnosis.hopeDiagnosisCategory", required: true, hopeCode: "I0010", options: [
+            { value: "01", label: "01 — Cancer" },
+            { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
+            { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
+            { value: "04", label: "04 — Stroke" },
+            { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
+            { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
+            { value: "07", label: "07 — Heart Failure" },
+            { value: "08", label: "08 — Liver Disease" },
+            { value: "09", label: "09 — Renal Disease" },
+            { value: "99", label: "99 — None of the above" },
+          ] },
         ],
       },
       {
         title: "Terminal Prognosis", hopeCode: "J0050", fields: [
           { type: "select", label: "Terminal Prognosis", path: "terminalPrognosis", hopeCode: "J0050", options: ["6 months or less", "More than 6 months", "Undetermined"] },
-          { type: "radio", label: "Disease Trajectory", path: "diseaseTrajectory", options: ["Decline", "Plateau", "Fluctuating"] },
         ],
       },
       {
@@ -4592,9 +8810,8 @@ const SECTION_CONFIGS = {
         customRenderer: "hopeComorbidities",
       },
       {
-        title: "Narrative & Disease Trajectory", fields: [
-          { type: "textarea", label: "LCD Eligibility Narrative", path: "lcdEligibilityNarrative", rows: 6, placeholder: "Document the patient's terminal illness, functional decline trajectory, and LCD eligibility criteria..." },
-        ],
+        title: "LCD Supporting Evidence",
+        customRenderer: "lcdSupportingEvidence",
       },
     ],
   },
@@ -4658,11 +8875,13 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Mental Status", hopeCode: "N0500", fields: [
-          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose"] },
+          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
           { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
           { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
           { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
+          { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
         ],
       },
       {
@@ -4674,11 +8893,12 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Communication & Sensory", fields: [
-          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable"] },
+          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
           { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
           { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand"] },
+          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
           { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
         ],
       },
       {
@@ -4686,16 +8906,26 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Cognition Assessment", path: "cognition" },
           { type: "checkbox", label: "Delirium", path: "delirium" },
           { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
-          { type: "textarea", label: "Psychiatric History", path: "psychiatricHistory" },
+          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
         ],
       },
       {
         title: "Sleep / Rest", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented"] },
+          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
           { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
-          { type: "checkboxGroup", label: "Sleep Aids", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
           { type: "radio", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
+        ],
+      },
+      {
+        title: "Motor Deficit", fields: [
+          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
+          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
+          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
         ],
       },
       {
@@ -4712,7 +8942,8 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Cardiovascular Assessment", fields: [
         { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
-        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Strong", "Weak", "Thready", "Bounding", "Irregular"] },
+        { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
+        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Regular", "Strong", "Weak", "Thready", "Bounding", "Irregular", "Tachycardia", "Bradycardia", "Absent"] },
         { type: "triState", label: "Edema Present", path: "edema.present" },
         { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
         { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
@@ -4721,6 +8952,15 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
         { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
+        { type: "input", label: "Skin Color", path: "skinColor" },
+        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
+        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
+        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
+        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
+        { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
+        { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
+        { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
+        { type: "checkboxGroup", label: "Heart Failure Type", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
       ]},
     ],
@@ -4732,14 +8972,15 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Respiratory Assessment", fields: [
         { type: "radio", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
-        { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion"] },
+        { type: "checkbox", label: "Treatment Declined (when applicable)", path: "treatmentDeclined" },
+        { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion", "With speech", "Push of speech", "Pursed-lip breathing", "Other"] },
         { type: "checkbox", label: "Screened for shortness of breath", path: "shortnessOfBreathScreened" },
         { type: "input", label: "SOB screening date", path: "screeningDate", inputType: "date" },
         { type: "checkbox", label: "Treatment for shortness of breath initiated", path: "treatmentInitiated" },
         { type: "input", label: "SOB treatment date", path: "treatmentDate", inputType: "date" },
-        { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub"] },
-        { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal"] },
-        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis"] },
+        { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub", "Rales"] },
+        { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Normal", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal", "Tachypnea", "Bradypnea", "Orthopnea"] },
+        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"] },
         { type: "input", label: "Sputum Character", path: "sputumCharacter" },
       ]},
       { title: "Oxygen Therapy", fields: [
@@ -4747,7 +8988,16 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Delivery Type", path: "oxygenTherapy.type", options: ["Nasal cannula", "Simple mask", "Non-rebreather", "Venturi mask", "High flow"] },
         { type: "input", label: "Liters/Minute", path: "oxygenTherapy.litersPerMinute", inputType: "number" },
         { type: "input", label: "Hours/Day", path: "oxygenTherapy.hoursPerDay" },
+        { type: "radio", label: "Delivery Mode", path: "oxygenTherapy.deliveryMode", options: ["Continuous", "PRN"] },
+        { type: "checkbox", label: "On Room Air", path: "oxygenTherapy.onRoomAir" },
         { type: "input", label: "SpO2 on O2", path: "oxygenTherapy.satOnO2", inputType: "number" },
+      ]},
+      { title: "Ventilator / Airway Support", fields: [
+        { type: "checkbox", label: "Short-Term Ventilator", path: "ventilator.shortTermVentilator" },
+        { type: "checkbox", label: "Long-Term Ventilator", path: "ventilator.longTermVentilator" },
+        { type: "input", label: "Ventilator Type and Settings", path: "ventilator.ventilatorTypeAndSettings" },
+        { type: "input", label: "Tracheostomy Type", path: "ventilator.tracheostomyType" },
+        { type: "input", label: "Tracheostomy Size", path: "ventilator.tracheostomySize" },
       ]},
       { title: "Notes", fields: [
         { type: "textarea", label: "Respiratory Notes", path: "notes" },
@@ -4757,12 +9007,24 @@ const SECTION_CONFIGS = {
 
   infection: {
     title: "Immunological / Infection",
-    subtitle: "Allergies, current infections, precautions",
+    subtitle: "Allergies, current infections, resistant-organism history, precautions",
     cards: [
-      { title: "Infection Assessment", fields: [
+      { title: "Allergies", customRenderer: "patientAllergies", fields: [] },
+      { title: "Immune Status", fields: [
         { type: "checkbox", label: "Immunosuppressed", path: "immunosuppressed" },
         { type: "checkboxGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
-        { type: "textarea", label: "Current Infections", path: "notes", placeholder: "List active infections..." },
+      ]},
+      { title: "Infection Assessment", fields: [
+        { type: "checkboxGroup", label: "Antibiotic-Resistant Infection (current)", path: "antibioticResistantInfection", options: ["None", "MRSA", "C. difficile", "Other"] },
+        { type: "checkboxGroup", label: "History of Resistant Infection", path: "historyOfResistantInfections", options: ["None", "MRSA", "C. difficile", "Other"] },
+        { type: "checkboxGroup", label: "Current Active Infection", path: "currentInfections", options: ["None", "Sepsis", "UTI", "Respiratory tract", "IV site", "Wound", "HIV-related", "Pressure area", "Other"] },
+      ]},
+      { title: "Additional Findings", fields: [
+        { type: "checkbox", label: "Antibiotic Use", path: "antibioticUse" },
+        { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "°F" },
+        { type: "checkbox", label: "Recurrent Infection", path: "recurrentInfection" },
+        { type: "textarea", label: "Infection History", path: "infectionHistory" },
+        { type: "textarea", label: "Other Observations / Notes", path: "notes", placeholder: "List active infections..." },
       ]},
     ],
   },
@@ -4775,14 +9037,20 @@ const SECTION_CONFIGS = {
       { title: "GI Symptoms", fields: [
         { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
         { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
       { title: "Abdominal / Bowel Assessment", fields: [
         { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
-        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Distended", "Tender", "Rigid"] },
-        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Incontinent"] },
+        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
+        { type: "checkbox", label: "Ascites", path: "ascites" },
+        { type: "input", label: "Abdominal Girth", path: "abdominalGirth" },
+        { type: "checkboxGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
+        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
+        { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
+        { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
       { title: "Feeding Devices", fields: [
         { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },
@@ -4799,6 +9067,10 @@ const SECTION_CONFIGS = {
     subtitle: "Weight loss, appetite, swallowing, hydration, diet",
     cards: [
       {
+        title: "Anthropometric & Metabolic Reference",
+        customRenderer: "nutritionAnthropometricReference",
+      },
+      {
         title: "Weight Loss Auto-Calculation",
         customRenderer: "weightLossAutoCalc",
       },
@@ -4814,27 +9086,40 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
         { type: "textarea", label: "Nutrition Notes", path: "notes" },
       ]},
+      { title: "NPO / Artificial Feeding", fields: [
+        { type: "radio", label: "NPO Status", path: "npoStatus", options: ["Not NPO", "NPO", "NPO except meds", "Modified/thickened liquids only"] },
+        { type: "checkboxGroup", label: "Artificial Feeding / Access Devices", path: "artificialFeeding", options: ["PEG", "NG", "J-tube", "Pump", "TPN", "None"] },
+      ]},
+      { title: "Oral Cavity", fields: [
+        { type: "checkboxGroup", label: "Oral Cavity Findings", path: "oralCavityFindings", options: ["Edentulous", "Stomatitis", "Thrush", "Poor dentition", "Normal"] },
+      ]},
     ],
   },
   endocrine: {
     title: "Endocrine",
-    subtitle: "Thyroid, diabetes management, endocrine symptoms",
+    subtitle: "Impairment, thyroid, diabetes management, endocrine symptoms",
     cards: [
+      { title: "Endocrine Impairment", fields: [
+        { type: "checkboxGroup", label: "Impairment", path: "endocrineImpairment", options: ["Thyroid", "Parathyroid", "Pituitary", "Adrenal", "Pancreas", "None"] },
+      ]},
       { title: "Thyroid Assessment", fields: [
         { type: "radio", label: "Thyroid", path: "thyroid.assessment", options: ["Normal", "Enlarged", "Tender", "Nodular", "Not assessed"] },
         { type: "textarea", label: "Thyroid Notes", path: "thyroid.notes" },
       ]},
       { title: "Diabetes Management", fields: [
         { type: "radio", label: "Diabetes Type", path: "diabetes.type", options: ["Type 1", "Type 2", "Not diabetic", "Unknown"] },
+        { type: "radio", label: "Diabetes Dependency", path: "diabetes.dependency", options: ["Insulin-dependent", "Non-insulin-dependent", "Glucose-management concern", "Not applicable"] },
         { type: "select", label: "Glucose Monitoring Frequency", path: "diabetes.glucoseMonitoring", options: ["None", "Daily", "BID", "TID", "QID", "Weekly"] },
         { type: "input", label: "Last HbA1c Value", path: "diabetes.lastHbA1c" },
         { type: "input", label: "Last HbA1c Date", path: "diabetes.lastHbA1cDate", inputType: "date" },
         { type: "input", label: "Insulin Type", path: "diabetes.insulinType" },
         { type: "input", label: "Insulin Dose", path: "diabetes.insulinDose" },
+        { type: "checkboxGroup", label: "Oral Hypoglycemics", path: "diabetes.oralHypoglycemics", options: ["Metformin", "Sulfonylurea", "DPP-4 inhibitor", "SGLT2 inhibitor", "None"] },
       ]},
-      { title: "Endocrine Symptoms", fields: [
+      { title: "Endocrine Symptoms & Treatment", fields: [
         { type: "checkboxGroup", label: "Symptoms Present", path: "endocrineSymptoms", options: ["Fatigue", "Weight changes", "Temperature intolerance", "Hair/skin changes", "Polydipsia", "Polyuria", "Tremors"] },
-        { type: "textarea", label: "Endocrine Notes", path: "notes" },
+        { type: "checkboxGroup", label: "Current Treatment", path: "currentEndocrineMeds", options: ["Levothyroxine", "Insulin", "Oral hypoglycemics", "Corticosteroid replacement", "Other endocrine medication", "None"] },
+        { type: "textarea", label: "Other Observations / Notes", path: "notes" },
       ]},
     ],
   },
@@ -4844,17 +9129,23 @@ const SECTION_CONFIGS = {
     subtitle: "Urinary status, catheter, urine output, reproductive concerns",
     cards: [
       { title: "Urinary Status", fields: [
-        { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized"] },
+        { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized", "Bladder program", "Urostomy", "Retention", "Painful urination", "Nocturia"] },
         { type: "input", label: "Frequency", path: "frequency" },
+        { type: "checkboxGroup", label: "Urine", path: "urineCharacteristics", options: ["Clear", "Cloudy", "Pale", "Blood", "Odor"] },
+        { type: "input", label: "Urine Color", path: "urineColor" },
       ]},
       { title: "Catheter Assessment", fields: [
         { type: "checkbox", label: "Catheter Present", path: "catheter.present" },
-        { type: "select", label: "Type", path: "catheter.type", options: ["Foley", "Suprapubic", "Condom", "Intermittent"] },
+        { type: "select", label: "Type", path: "catheter.type", options: ["None", "Foley", "Suprapubic", "Condom", "Intermittent", "Urostomy"] },
         { type: "input", label: "Size", path: "catheter.size" },
         { type: "input", label: "Insertion Date", path: "catheter.insertionDate", inputType: "date" },
         { type: "input", label: "Last Change Date", path: "catheter.lastChangeDate", inputType: "date" },
         { type: "radio", label: "Condition", path: "catheter.condition", options: ["Patent", "Blocked", "Leaking"] },
-        { type: "checkboxGroup", label: "Urine Characteristics", path: "catheter.urineCharacteristics", options: ["Clear", "Cloudy", "Amber", "Dark", "Hematuria", "Sediment", "Foul odor"] },
+        { type: "checkboxGroup", label: "Urine Characteristics (Catheter)", path: "catheter.urineCharacteristics", options: ["Clear", "Cloudy", "Amber", "Dark", "Hematuria", "Sediment", "Foul odor"] },
+        { type: "input", label: "Irrigation Solution", path: "catheter.irrigation.solution" },
+        { type: "input", label: "Irrigation Frequency", path: "catheter.irrigation.frequency" },
+        { type: "input", label: "Irrigation Duration", path: "catheter.irrigation.duration" },
+        { type: "textarea", label: "Catheter Care", path: "catheterCare" },
       ]},
       { title: "Urine Output", fields: [
         { type: "radio", label: "Output", path: "urineOutput", options: ["Adequate", "Decreased", "Anuria", "Polyuria"] },
@@ -4878,8 +9169,13 @@ const SECTION_CONFIGS = {
       { title: "Musculoskeletal Assessment", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "checkbox", label: "Rigidity Present (severity not documented)", path: "rigidityPresent" },
         { type: "radio", label: "Contractures", path: "contractures", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "checkbox", label: "Contractures Present (severity not documented)", path: "contracturesPresent" },
         { type: "checkboxGroup", label: "Contracture Location", path: "contracturesLocation", options: ["Bilateral lower extremities", "Unilateral LE", "Upper extremities", "Hands/fingers", "Neck/spine", "Generalized"] },
+        { type: "checkboxGroup", label: "ROM Loss Location", path: "romLimitations", options: ["Upper extremities", "Lower extremities", "Neck/spine", "Hands/fingers", "Generalized"] },
+        { type: "checkboxGroup", label: "Issues", path: "musculoskeletalIssues", options: ["Joint swelling", "Spasms / cramps", "Amputation", "Prosthesis", "ROM loss", "None"] },
+        { type: "radio", label: "Disability", path: "paralysis", options: ["None", "Paraplegia", "Quadriplegia", "Right hemiplegia", "Left hemiplegia", "Right hemiparesis", "Left hemiparesis"] },
         { type: "radio", label: "Gait", path: "gait", options: ["Normal", "Unsteady", "Shuffling", "Unable"] },
         { type: "checkboxGroup", label: "Assistive Devices", path: "assistiveDevices", options: ["Walker", "Wheelchair", "Cane", "Crutches", "Hospital bed", "Hoyer lift", "None"] },
       ]},
@@ -4887,6 +9183,9 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Ambulatory Status", path: "mobility.ambulatoryStatus", options: ["Independent", "Supervised", "Assisted", "Dependent", "Bedbound"] },
         { type: "radio", label: "Endurance", path: "mobility.endurance", options: ["Good", "Fair", "Poor"] },
         { type: "radio", label: "Transfer Ability", path: "mobility.transferAbility", options: ["Independent", "Standby assist", "1-person assist", "2-person assist", "Hoyer lift"] },
+        { type: "radio", label: "Strength", path: "strength", options: ["Normal", "Decreased", "Absent"] },
+        { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
+        { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
       { title: "ADL Assessment (0=Independent, 5=Dependent)", fields: [
         { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
@@ -4922,8 +9221,14 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Friction & Shear", path: "braden.frictionShear", options: [{ value: "1", label: "1 — Problem" }, { value: "2", label: "2 — Potential problem" }, { value: "3", label: "3 — No apparent problem" }] },
         { type: "radio", label: "Pressure Injury Risk", path: "pressureInjuryRisk", options: ["Low (19-23)", "Moderate (15-18)", "High (≤14)"] },
       ]},
+      {
+        title: "Wound Documentation (Structured)",
+        customRenderer: "woundList",
+      },
       { title: "Wound Documentation & Notes", fields: [
         { type: "textarea", label: "Wound Impairment", path: "woundImpairment" },
+        { type: "checkboxGroup", label: "Pressure-Relief Measures", path: "pressureReliefMeasures", options: ["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"] },
+        { type: "input", label: "Repositioning Plan", path: "repositioningPlan", placeholder: "e.g., Reposition every 2 hours, alternate sides" },
         { type: "textarea", label: "Skin Notes", path: "notes", rows: 4 },
       ]},
     ],
@@ -4991,17 +9296,43 @@ const SECTION_CONFIGS = {
         ]},
         { type: "checkbox", label: "Fall Risk Assessment Completed", path: "fallRiskAssessmentCompleted" },
         { type: "radio", label: "Fall Risk Level", path: "fallRiskLevel", options: ["Low", "Moderate", "High"] },
+        { type: "radio", label: "Transfer Safety", path: "transferSafetyLevel", options: [
+          "Independent", "Needs assist x1", "Needs assist x2", "Mechanical lift required", "Unsafe/high risk"
+        ]},
         { type: "checkbox", label: "Firearm in Home", path: "firearmInHome" },
         { type: "checkbox", label: "Oxygen in Use", path: "oxygenInUse" },
         { type: "checkbox", label: "Oxygen Safety Reviewed", path: "oxygenSafetyReviewed" },
+        { type: "checkbox", label: "Incident/Occurrence Reported This Visit", path: "incidentOccurrenceReported" },
+        { type: "textarea", label: "Incident/Occurrence Notes", path: "incidentOccurrenceNotes" },
       ]},
       { title: "Disaster Triage", fields: [
-        { type: "radio", label: "Disaster Level", path: "disasterLevel", options: ["Level 1 — Priority", "Level 2 — Urgent", "Level 3 — Non-urgent"] },
-        { type: "checkboxGroup", label: "Level 1 Conditions", path: "disasterLevelOneConditions", options: [
-          "Ventilator dependent", "IV medications", "Oxygen dependent", "Suction dependent",
-          "Tube feeding dependent", "Wound vac", "No caregiver"
+        { type: "radio", label: "Disaster Level", path: "disasterLevel", options: [
+          "Level 1 — Hospice must assist; no assistance available",
+          "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+          "Level 3 — No need for hospice to assist; has adequate assistance available"
+        ]},
+        { type: "checkboxGroup", label: "Level 1 Conditions (two or more apply)", path: "disasterLevelOneConditions", options: [
+          "Bed- or chair-confined", "Dependent on walker or cane",
+          "Lives above ground floor", "Requires electricity for medical equipment"
+        ]},
+        { type: "checkboxGroup", label: "Level 2 Conditions (one applies)", path: "disasterLevelTwoConditions", options: [
+          "Bed- or chair-confined", "Dependent on walker or cane",
+          "Lives above ground floor", "Requires electricity for medical equipment"
+        ]},
+        { type: "checkboxGroup", label: "Level 3 Conditions", path: "disasterLevelThreeConditions", options: [
+          "Lives in facility with disaster support", "Has alternate location and available helper to go to"
         ]},
         { type: "textarea", label: "Safety Notes", path: "notes" },
+      ]},
+      { title: "DME (Durable Medical Equipment)", customRenderer: "dmeStatus" },
+      { title: "Supplies", fields: [
+        { type: "checkboxGroup", label: "Existing Supplies", path: "supplies.existingCategories", options: [
+          "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
+        ]},
+        { type: "checkboxGroup", label: "Needed Supplies", path: "supplies.neededCategories", options: [
+          "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
+        ]},
+        { type: "textarea", label: "Other Supplies Notes", path: "supplies.otherSuppliesNotes" },
       ]},
     ],
   },
@@ -5017,9 +9348,14 @@ const SECTION_CONFIGS = {
       ]},
       { title: "Patient Concerns", fields: [
         { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
+          "None indicated",
           "Anxiety about illness", "Depression", "Grief/loss", "Financial concerns",
           "Family conflict", "Caregiver burden", "Social isolation", "Role changes",
-          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns"
+          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns",
+          "Non-acceptance of diagnosis", "Potential for non-compliance", "Lack of coping skills",
+          "Suicide concerns", "Substance abuse concerns", "History of emotional illness",
+          "Cultural concerns", "Burial concerns", "Anger",
+          "Want/need help with advance directives", "Want/need help with funeral plans"
         ]},
       ]},
       { title: "Caregiver/Family Concerns", fields: [
@@ -5041,6 +9377,7 @@ const SECTION_CONFIGS = {
         { type: "checkboxGroup", label: "Interventions", path: "interventionPlan", options: [
           "Counseling referral", "Support group", "Community resources", "Crisis intervention", "Psychiatric evaluation"
         ]},
+        { type: "checkbox", label: "Social Work Visit Needed", path: "socialWorkVisitNeeded" },
         { type: "textarea", label: "Psychosocial Notes", path: "notes" },
       ]},
     ],
@@ -5057,10 +9394,13 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Caregiver Faith Tradition", path: "caregiverFaith" },
         { type: "checkboxGroup", label: "Spiritual Concerns", path: "spiritualConcerns", options: [
           "Meaning of illness", "Forgiveness", "Hope", "Legacy", "Prayer requests",
-          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress"
+          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress",
+          "Fear", "Hopelessness"
         ]},
         { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
         { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
+        { type: "radio", label: "F3000: Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
+          options: [{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }] },
         { type: "input", label: "Spiritual concerns discussion date", path: "concernsDiscussedDate", inputType: "date" },
         { type: "checkbox", label: "Chaplain Referral Needed", path: "chaplainNeeded" },
         { type: "textarea", label: "Spiritual Notes", path: "notes" },
@@ -5074,11 +9414,13 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Bereavement Assessment", fields: [
         { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness"
+          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness",
+          "Multiple losses", "Active grieving"
         ]},
         { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverConcerns", options: [
           "Anticipatory grief", "Previous losses", "Complicated grief history",
-          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors"
+          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors",
+          "Multiple losses", "Active grieving"
         ]},
         { type: "radio", label: "Bereavement Risk Level", path: "bereavementRisk", options: ["Low", "Moderate", "High"] },
         { type: "checkbox", label: "Bereavement Visit Needed", path: "bereavementVisitNeeded" },
@@ -5093,9 +9435,11 @@ const SECTION_CONFIGS = {
     cards: [
       { title: "Home Visit Aide Tasks", fields: [
         { type: "checkboxGroup", label: "Aide Tasks Needed", path: "aideTasks", options: [
+          "None",
           "Bathing/showering", "Hair care/grooming", "Oral hygiene", "Skin care",
           "Dressing", "Toileting assistance", "Transfers/mobility", "Light meal preparation",
-          "Light housekeeping", "Laundry", "Vital signs", "Range of motion exercises", "Respite for caregiver"
+          "Light housekeeping", "Laundry", "Linen change", "Vital signs", "Range of motion exercises",
+          "Respite for caregiver", "See ADL assessment for other needs"
         ]},
       ]},
       { title: "Aide Visit Preferences", fields: [
@@ -5105,12 +9449,14 @@ const SECTION_CONFIGS = {
       ]},
       { title: "Volunteer Services", fields: [
         { type: "checkboxGroup", label: "Services Needed", path: "volunteerServices", options: [
+          "None",
           "Companionship/visits", "Respite care", "Errand assistance", "Transportation",
           "Vigil/11th hour", "Pet care", "Legacy project", "Music/art therapy", "Reading/letter writing"
         ]},
       ]},
       { title: "Community Resources", fields: [
         { type: "checkboxGroup", label: "Resources Needed", path: "communityResources", options: [
+          "None",
           "Meals on Wheels", "Adult day care", "Transportation services", "Legal aid",
           "Financial assistance programs", "Faith community support", "Veteran services", "Disease-specific organizations"
         ]},
@@ -5138,6 +9484,24 @@ const SECTION_CONFIGS = {
           "Language", "Literacy", "Cognitive impairment", "Hearing deficit",
           "Vision deficit", "Emotional readiness", "Cultural considerations", "Denial of diagnosis"
         ]},
+      ]},
+      { title: "Teaching Topics", fields: [
+        { type: "checkboxGroup", label: "Teach Patient/Family/PCG", path: "teachingTopics", options: [
+          "Diagnosis and disease process",
+          "Medication administration",
+          "Medication side effects",
+          "Medication contraindications",
+          "Comfort pack use",
+          "Opioid use and risk",
+          "Medication reconciliation",
+          "Oxygen",
+          "DME (durable medical equipment)",
+          "Infection control",
+          "Universal precautions",
+          "Safe use and disposal of controlled medications",
+          "Other education",
+        ]},
+        { type: "input", label: "Other Topic (specify)", path: "teachingTopicsOther" },
       ]},
       { title: "Teaching Methods Used", fields: [
         { type: "checkboxGroup", label: "Methods", path: "teachingMethods", options: [
@@ -5168,7 +9532,8 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Effective Date", path: "levelOfCare.effectiveDate", inputType: "date" },
         { type: "textarea", label: "LOC Justification", path: "levelOfCare.justification" },
       ]},
-      { title: "HA Assignment", fields: [
+      { title: "Discipline Frequency of Visit", customRenderer: "disciplineFrequencyOfVisit", fields: [] },
+      { title: "HA Assignment", customRenderer: "haAssignment", fields: [
         { type: "input", label: "Assigned Home Aide", path: "haAssignment.assignedAide" },
         { type: "checkbox", label: "HA Assignment N/A", path: "haAssignment.notApplicable" },
       ]},
@@ -5183,28 +9548,6 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Prescriber on Call Contacted", path: "toVerification.prescriberContacted" },
         { type: "input", label: "Verification Timestamp", path: "toVerification.verificationTimestamp", inputType: "datetime-local" },
       ]},
-    ],
-  },
-
-  medications: {
-    title: "Hospice Orders Hub",
-    subtitle: "Unified orders — Meds, DME, Supplies, Lab, Treatment, Diet, Other",
-    cards: [
-      { title: "Opioid / Bowel Assessment", fields: [
-        { type: "checkbox", label: "Scheduled Opioid", path: "scheduledOpioid" },
-        { type: "input", label: "Scheduled Opioid Start / Continue Date", path: "scheduledOpioidDate", inputType: "date" },
-        { type: "checkbox", label: "PRN Opioid", path: "prnOpioid" },
-        { type: "input", label: "PRN Opioid Start / Continue Date", path: "prnOpioidDate", inputType: "date" },
-        { type: "checkbox", label: "Bowel Regimen in Place", path: "bowelRegimen" },
-        { type: "input", label: "Bowel Regimen Start / Continue Date", path: "bowelRegimenDate", inputType: "date" },
-      ]},
-      { title: "Medication Reconciliation", fields: [
-        { type: "checkbox", label: "Med Reconciliation Completed", path: "medReconciliation.completed" },
-        { type: "input", label: "Completed Date", path: "medReconciliation.completedDate", inputType: "date" },
-        { type: "input", label: "Completed By", path: "medReconciliation.completedBy" },
-      ]},
-      { title: "Medications — Allergies, Orders & Interaction Safety Check", customRenderer: "medicationOrders" },
-      { title: "Orders Hub — DME, Supplies, Lab, Treatment, Diet & Other", customRenderer: "ordersHub" },
     ],
   },
 
@@ -5224,26 +9567,20 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Pharmacist Referral", path: "pharmacist.referred" },
         { type: "input", label: "Pharmacist Reason", path: "pharmacist.reason" },
         { type: "textarea", label: "Referral Notes", path: "notes" },
+        { type: "checkbox", label: "I reviewed the referral status for this patient and it is current and complete.", path: "reviewed" },
       ]},
     ],
   },
 
   finalization: {
     title: "Finalization & Signature",
-    subtitle: "Response to interventions, POC generation, completion, certification, clinician signature",
+    subtitle: "Completion, certification, clinician signature",
     cards: [
-      { title: "Response to Initial Interventions (CDPH Gap #3)", cms: "CDPH", fields: [
-        { type: "textarea", label: "Initial Response Summary", path: "responseToInterventions.initialResponseSummary", rows: 4,
-          placeholder: "Document patient's initial response to admission interventions — pain management, symptom control, comfort measures, family support. This establishes the baseline for subsequent reassessments." },
-        { type: "checkbox", label: "Baseline Response Established", path: "responseToInterventions.baselineEstablished" },
-        { type: "input", label: "Baseline Date", path: "responseToInterventions.baselineDate", inputType: "date" },
-        { type: "textarea", label: "Progress Notes / Assessment-to-Assessment Context", path: "responseToInterventions.progressNotes", rows: 3,
-          placeholder: "Initial observations that will anchor future reassessments and update comparisons..." },
+      { id: "rnica-clinical-narrative", title: "Clinical Narrative", fields: [
+        { type: "textarea", label: "Clinical narrative", path: "clinicalNarrative", rows: 8, required: true,
+          placeholder: "Synthesize the completed whole-patient assessment findings, changes, interventions, response, risks, and plan. Review all source-linked draft content before attestation." },
       ]},
-      { title: "Plan of Care — Problem Generation (CDPH Gap #4)", cms: "CDPH POC", fields: [
-        { type: "checkbox", label: "All assessment problems have been reviewed and POC entries generated", path: "pocGenerationCompleted" },
-        { type: "checkbox", label: "POC reviewed with IDG team", path: "pocReviewedWithIdg" },
-      ]},
+      { title: "Amendments", customRenderer: "finalReviewDashboard", fields: [] },
       { title: "Completion Status", cms: "F2000/F2100/F2200", fields: [
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
         { type: "input", label: "Clinician Signature", path: "clinicianSignature", required: true },
@@ -5260,16 +9597,245 @@ const SECTION_CONFIGS = {
   },
 };
 
+// Recursively merges a saved form-data object onto the full INITIAL_FORM
+// defaults so that partial/older records (missing nested keys added later)
+// don't crash rendering. Arrays are taken wholesale from `saved` when
+// present (not merged element-wise); plain objects are merged key-by-key.
+function deepMergeFormData(defaults, saved) {
+  if (saved === undefined || saved === null) return defaults;
+  if (Array.isArray(defaults) || Array.isArray(saved)) {
+    return Array.isArray(saved) ? saved : defaults;
+  }
+  if (typeof defaults === "object" && typeof saved === "object") {
+    const merged = { ...defaults };
+    for (const key of Object.keys(defaults)) {
+      merged[key] = deepMergeFormData(defaults[key], saved[key]);
+    }
+    // Preserve any extra keys present in saved but not in defaults.
+    for (const key of Object.keys(saved)) {
+      if (!(key in merged)) merged[key] = saved[key];
+    }
+    return merged;
+  }
+  return saved !== undefined ? saved : defaults;
+}
+
+// ════════════════════════════════════════════════════════════════
+// SECTION 1 — PATIENT & ENCOUNTER SNAPSHOT (read-only)
+// ════════════════════════════════════════════════════════════════
+// Per docs/SNS_RNICA_MASTER_MAP_1.1.md L94-151: "This section displays
+// authoritative information. It does not duplicate or independently own
+// patient data." Every value below comes from the same authoritative,
+// already-existing endpoints PatientFacesheet.jsx uses
+// (GET /patients/{id}/facesheet, /performance-history) — no new backend
+// field/model/write-path was added. PatientFacesheet.jsx itself was used
+// only as a visual model (spacing/typography/card treatment), not
+// imported, extended, or coupled to. Fields with no authoritative source
+// (living arrangement, medication summary, interpreter need, NYHA, POC
+// problem/goal/intervention sub-routes) are intentionally omitted — see
+// the contract's "Open Items" section for the tracked defects.
+const CARE_TEAM_DISPLAY_FIELDS = [
+  { key: "primary_rn_name", label: "Primary RN" },
+  { key: "lvn_name", label: "LVN" },
+  { key: "social_worker_name", label: "Social Worker" },
+  { key: "chaplain_name", label: "Chaplain" },
+  { key: "chha_name", label: "CHHA" },
+  { key: "volunteer_name", label: "Volunteer" },
+  { key: "clinical_manager_name", label: "Clinical Manager" },
+];
+
+function Section1SnapshotBadge({ colors, tone, children }) {
+  const palette = {
+    auto: { bg: colors.tealBg, color: colors.teal },
+    manual: { bg: colors.amberTagBg, color: colors.warning },
+    unassigned: { bg: colors.border, color: colors.gray },
+    synced: { bg: colors.hopeTagBg, color: colors.hope },
+  }[tone] || { bg: colors.border, color: colors.gray };
+  return (
+    <span style={{
+      display: "inline-block", padding: "1px 7px", borderRadius: 4, fontSize: 9,
+      fontWeight: 700, letterSpacing: 0.4, textTransform: "uppercase",
+      background: palette.bg, color: palette.color, whiteSpace: "nowrap",
+    }}>
+      {children}
+    </span>
+  );
+}
+
+function Section1SnapshotItem({ colors, label, value }) {
+  return (
+    <div style={{ minHeight: 34 }}>
+      <span style={{ color: colors.gray, fontSize: 9, textTransform: "uppercase", letterSpacing: 0.4, display: "block" }}>
+        {label}
+      </span>
+      <span style={{ color: colors.dark, fontSize: 12.5, fontWeight: 600 }}>{value || "—"}</span>
+    </div>
+  );
+}
+
+function Section1CareTeamGrid({ colors, facesheet }) {
+  const assignments = facesheet?.care_team?.assignments || {};
+  return (
+    <div style={{
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+      gap: 10,
+    }}>
+      {CARE_TEAM_DISPLAY_FIELDS.map(({ key, label }) => {
+        const autoMatch = assignments[key];
+        const manualName = facesheet?.care_team?.[key];
+        const name = autoMatch?.name || manualName || null;
+        const tone = autoMatch ? "auto" : manualName ? "manual" : "unassigned";
+        const tag = autoMatch ? "AUTO" : manualName ? "MANUAL" : "UNASSIGNED";
+        return (
+          <div key={key} style={{
+            display: "flex", flexDirection: "column", justifyContent: "space-between",
+            minHeight: 66, padding: "8px 10px", border: `1px solid ${colors.border}`,
+            borderRadius: 8, background: colors.white,
+          }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 6, minHeight: 24 }}>
+              <span style={{ color: colors.gray, fontSize: 10, textTransform: "uppercase", letterSpacing: 0.4, lineHeight: 1.3 }}>
+                {label}
+              </span>
+              <Section1SnapshotBadge colors={colors} tone={tone}>{tag}</Section1SnapshotBadge>
+            </div>
+            <span style={{ color: colors.dark, fontSize: 12.5, fontWeight: 700, marginTop: 6 }}>
+              {name || "Unassigned"}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, performanceHistory, locked, saving, resolvedPatientId, patientIdProp }) {
+  if (!patientSummary?.patient) return null;
+  const identity = facesheet?.identity || {};
+  const address = facesheet?.address || {};
+  const clinical = facesheet?.clinical || {};
+  const levelOfCare = facesheet?.level_of_care || {};
+  const placeOfService = facesheet?.place_of_service || {};
+  const serviceDates = facesheet?.service_dates || {};
+  const benefitPeriod = facesheet?.benefit_period || {};
+  const hospiceSnapshot = facesheet?.hospice_snapshot || {};
+  const physicians = facesheet?.physicians || {};
+  const contacts = facesheet?.contacts || {};
+  const latestPerformance = performanceHistory?.[0] || null;
+  const pid = resolvedPatientId || patientIdProp;
+
+  const age = (() => {
+    if (!identity.dob) return null;
+    const dob = new Date(identity.dob);
+    if (Number.isNaN(dob.getTime())) return null;
+    const today = new Date();
+    let years = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) years--;
+    return years;
+  })();
+
+  const contactLine = (contact) => {
+    if (!contact || !contact.name) return null;
+    return contact.relationship ? `${contact.name} (${contact.relationship})` : contact.name;
+  };
+
+  return (
+    <div style={{
+      margin: "0 24px 16px", padding: "12px 14px", borderRadius: 8,
+      border: `1px solid ${colors.border}`, background: colors.bg,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ color: colors.dark, fontSize: 13, fontWeight: 700 }}>Section 1 — Patient &amp; Encounter Snapshot</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: colors.gray, fontSize: 9.5, fontFamily: "monospace" }}>
+            {import.meta.env.VITE_BUILD_BRANCH ? `${import.meta.env.VITE_BUILD_BRANCH} @ ${import.meta.env.VITE_BUILD_COMMIT}` : ""}
+          </span>
+          <Section1SnapshotBadge colors={colors} tone="unassigned">READ ONLY</Section1SnapshotBadge>
+        </div>
+      </div>
+      {facesheetError && (
+        <div style={{ color: colors.error, fontSize: 11, marginBottom: 8 }}>Facesheet: {facesheetError}</div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="DOB / Age" value={identity.dob ? `${identity.dob}${age !== null ? ` (${age}y)` : ""}` : null} />
+        <Section1SnapshotItem colors={colors} label="Sex" value={identity.gender} />
+        <Section1SnapshotItem colors={colors} label="SOC Date" value={serviceDates.soc_date} />
+        <Section1SnapshotItem colors={colors} label="Benefit Period" value={benefitPeriod.benefit_period_number ? `#${benefitPeriod.benefit_period_number} (${benefitPeriod.benefit_period_start || "?"} – ${benefitPeriod.benefit_period_end || "?"})` : null} />
+        <Section1SnapshotItem colors={colors} label="Level of Care" value={levelOfCare.current_level_of_care} />
+        <Section1SnapshotItem colors={colors} label="Payer" value={facesheet?.insurance?.primary_payer} />
+        <Section1SnapshotItem colors={colors} label="Site of Service" value={placeOfService.current_pos_type} />
+        <Section1SnapshotItem colors={colors} label="Facility" value={placeOfService.current_pos_name} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="Terminal Diagnosis" value={clinical.active_primary_diagnosis?.description || clinical.primary_diagnosis} />
+        <Section1SnapshotItem colors={colors} label="Related / Comorbid Dx" value={clinical.secondary_diagnoses} />
+        <Section1SnapshotItem colors={colors} label="Code Status" value={hospiceSnapshot.code_status} />
+        <Section1SnapshotItem colors={colors} label="Allergies" value={clinical.allergies || (clinical.has_allergies === false ? "NKDA" : null)} />
+        <Section1SnapshotItem colors={colors} label="PPS / KPS / FAST" value={
+          (latestPerformance || hospiceSnapshot.pps_score)
+            ? `${latestPerformance?.pps ?? hospiceSnapshot.pps_score ?? "—"} / ${latestPerformance?.kps ?? hospiceSnapshot.kps_score ?? "—"} / ${latestPerformance?.fast_stage ?? hospiceSnapshot.fast_stage ?? "—"}`
+            : null
+        } />
+        <Section1SnapshotItem colors={colors} label="Attending Physician" value={physicians.attending?.name} />
+        <Section1SnapshotItem colors={colors} label="Medical Director" value={physicians.medical_director?.name} />
+        <Section1SnapshotItem colors={colors} label="Preferred Language" value={identity.language} />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "8px 16px", marginBottom: 12 }}>
+        <Section1SnapshotItem colors={colors} label="Primary Caregiver" value={contactLine(contacts.primary_caregiver)} />
+        <Section1SnapshotItem colors={colors} label="Decision-Maker" value={contactLine(contacts.decision_maker)} />
+        <Section1SnapshotItem colors={colors} label="Emergency Contact" value={contactLine(contacts.emergency_contact)} />
+      </div>
+
+      <div style={{ marginBottom: 6 }}>
+        <span style={{ color: colors.dark, fontSize: 11.5, fontWeight: 700 }}>Care Team</span>
+      </div>
+      <Section1CareTeamGrid colors={colors} facesheet={facesheet} />
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 12, gap: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 14 }}>
+          <Section1SnapshotItem colors={colors} label="Assessment Status" value={locked ? "LOCKED" : "IN PROGRESS"} />
+          <Section1SnapshotItem colors={colors} label="Autosave" value={saving ? "Saving…" : "Saved"} />
+        </div>
+        {pid ? (
+          <button
+            type="button"
+            onClick={() => window.open(`/plan-of-care?patientId=${pid}`, "_blank", "noopener")}
+            title="Opens the patient's current Master Plan of Care in a new tab (read-only link — Section 11 problem/goal/intervention deep-links are not yet available)"
+            style={{
+              fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 6,
+              border: `1px solid ${colors.border}`, background: colors.white, color: colors.dark, cursor: "pointer",
+            }}
+          >
+            View Master Plan of Care ↗
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
+  // Section 1 (Patient & Encounter Snapshot) read-only data. Sourced
+  // exclusively from the same authoritative endpoints PatientFacesheet.jsx
+  // already uses (GET /patients/{id}/facesheet, /performance-history) — no
+  // new backend field, model, or write path. See
+  // docs/SNS_RNICA_SECTION_1_IMPLEMENTATION_CONTRACT.md.
+  const [facesheetData, setFacesheetData] = useState(null);
+  const [facesheetError, setFacesheetError] = useState("");
+  const [performanceHistory, setPerformanceHistory] = useState([]);
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
   const [activeSection, setActiveSection] = useState("demographics");
   // Sections collapse independently of "activeSection" (which still drives
@@ -5306,11 +9872,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [intelligenceError, setIntelligenceError] = useState("");
   const [validation, setValidation] = useState({ errors: {}, warnings: {}, isValid: true });
   const [locked, setLocked] = useState(false);
+  const [lockedAt, setLockedAt] = useState(null);
+  const [finalizationReadiness, setFinalizationReadiness] = useState(null);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
+  const isUpdateAssessment = isOngoing && assessmentType === "update";
+  const assessmentUiProfile = useMemo(() => ({
+    hideAdvancedCarePlanning: isUpdateAssessment,
+    hideAdmissionsOrder: isUpdateAssessment,
+    hideSpiritualHopeFields: isUpdateAssessment,
+  }), [isUpdateAssessment]);
   const autosavePatientId = resolvedPatientId || patientId || "";
+  // Admission Action Center (Phase A) — global drawer, reachable from every
+  // section via the persistent footer button. No draft loss / navigation:
+  // opening/closing this never touches `formData` or `activeSection`.
+  const [actionCenterOpen, setActionCenterOpen] = useState(false);
 
   const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
     formData,
@@ -5326,11 +9904,46 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  const routes = useMemo(() => (isOngoing ? ROUTES.filter((route) => route.key !== "sfv") : ROUTES), [isOngoing]);
+  const routes = useMemo(() => {
+    const orderedRoutes = workspacePilot ? PILOT_ROUTES : LEGACY_ROUTES;
+    // SFV (Symptom Follow-Up Visit) is its own separate, distinctly
+    // documented visit that HOPE requires within 2 calendar days of the RN
+    // Initial Comprehensive Assessment -- it is never filled out inside an
+    // *ongoing/recert* RNICA visit. It IS part of the canonical 30-module
+    // initial-assessment navigation (module 20), so it must only be
+    // filtered when this is genuinely an ongoing-assessment visit, not
+    // unconditionally (see rnIcaClinicalNavigation.js's
+    // validateRnIcaClinicalNavigation, which checks the same explicit
+    // isOngoing flag rather than back-inferring it from route count).
+    return orderedRoutes.filter((route) => {
+      if (isOngoing && route.key === "sfv") return false;
+      if (assessmentUiProfile.hideAdmissionsOrder && UPDATE_HIDDEN_ROUTE_KEYS.has(route.key)) return false;
+      return true;
+    });
+  }, [assessmentUiProfile.hideAdmissionsOrder, workspacePilot, isOngoing]);
   const sidebarConfigItems = useMemo(() => {
-    const items = isOngoing ? SIDEBAR_CONFIG.filter((item) => item.key !== "sfv") : SIDEBAR_CONFIG;
+    // Keep in lock-step with `routes` above: SFV is only excluded from
+    // sidebar/lookup metadata for genuinely-ongoing (recert) visits.
+    const items = SIDEBAR_CONFIG.filter((item) => {
+      if (isOngoing && item.key === "sfv") return false;
+      if (isUpdateAssessment && UPDATE_HIDDEN_SIDEBAR_KEYS.has(item.key)) return false;
+      return true;
+    });
     return isOngoing ? items.map((item) => ({ ...item, hope: [] })) : items;
-  }, [isOngoing]);
+  }, [isOngoing, isUpdateAssessment]);
+
+  // Default every section to collapsed on load so the RN sees one page of
+  // short, tap-to-open rows instead of all 28 sections expanded at once
+  // requiring constant scrolling. Runs once per mount, before the RN has
+  // manually toggled anything — jumpToSection (sidebar nav) still expands
+  // + scrolls to whichever section is clicked afterward, and once opened a
+  // section stays open until the RN collapses it again.
+  const didInitCollapse = useRef(false);
+  useEffect(() => {
+    if (didInitCollapse.current || routes.length === 0) return;
+    didInitCollapse.current = true;
+    setCollapsedSections(new Set(routes.map((route) => route.key).filter((key) => key !== activeSection)));
+  }, [routes, activeSection]);
 
   useEffect(() => {
     resetAutosaveTracking({ markCurrentAsPersisted: true });
@@ -5392,6 +10005,57 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     };
   }, [resolvedPatientId, patientId]);
 
+  // Visit meta — seed discipline/staff/care level for logistics + payroll tracking.
+  useEffect(() => {
+    const currentUser = getCurrentUser();
+    setFormData((prev) => ({
+      ...prev,
+      visitMeta: {
+        ...prev.visitMeta,
+        discipline: currentUser?.role || prev.visitMeta.discipline || "RN",
+        enteredBy: prev.visitMeta.enteredBy || currentUser?.full_name || "",
+        staffAssigned: prev.visitMeta.staffAssigned || currentUser?.full_name || "",
+        careLevel: prev.visitMeta.careLevel || patientSummary?.patient?.acuity_state || "",
+      },
+    }));
+  }, [patientSummary]);
+
+  useEffect(() => {
+    const activeId = resolvedPatientId || patientId;
+    if (!activeId) {
+      setFacesheetData(null);
+      setFacesheetError("");
+      setPerformanceHistory([]);
+      return;
+    }
+
+    let mounted = true;
+    setFacesheetError("");
+    fetchFacesheet(activeId)
+      .then((data) => {
+        if (mounted) setFacesheetData(data);
+      })
+      .catch((error) => {
+        console.error("Failed to load facesheet for RN ICA Section 1:", error);
+        if (mounted) {
+          setFacesheetData(null);
+          setFacesheetError(error instanceof Error ? error.message : "Unable to load facesheet.");
+        }
+      });
+    fetchPerformanceHistory(activeId)
+      .then((res) => {
+        if (mounted) setPerformanceHistory(res?.history || []);
+      })
+      .catch((error) => {
+        console.error("Failed to load performance history for RN ICA Section 1:", error);
+        if (mounted) setPerformanceHistory([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [resolvedPatientId, patientId]);
+
   useEffect(() => {
     if (!patientSummary?.patient || assessmentId) {
       return;
@@ -5445,6 +10109,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     }
   }, []);
 
+  const refreshFinalizationReadiness = useCallback(async (currentAssessmentId) => {
+    if (!currentAssessmentId) {
+      setFinalizationReadiness(null);
+      return;
+    }
+    try {
+      const data = await getRnicaFinalizationReadiness(currentAssessmentId);
+      setFinalizationReadiness(data);
+    } catch (err) {
+      console.error("RN ICA finalization readiness load error:", err);
+      // Fail closed: an unreadable readiness check must not silently enable Lock.
+      setFinalizationReadiness({ ready: false, checks: {} });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (assessmentId) {
+      refreshFinalizationReadiness(assessmentId);
+    }
+  }, [assessmentId, refreshFinalizationReadiness]);
+
   // Load existing assessment
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
@@ -5455,7 +10140,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     let mounted = true;
     const loadAssessment = existingAssessmentId
       ? api.getRNICAAssessment(existingAssessmentId)
-      : api.getRNICAAssessmentByPatient(activePatientId);
+      : api.getRNICAAssessmentByPatient(activePatientId, isOngoing ? assessmentType : undefined);
 
     loadAssessment
       .then((data) => {
@@ -5463,15 +10148,19 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         if (!data?.assessmentId) {
           setAssessmentId(null);
           setLocked(false);
+          setLockedAt(null);
+          setFormData(JSON.parse(JSON.stringify(INITIAL_FORM)));
           setIntelligence(null);
           setIntelligenceError("");
           return null;
         }
         if (data.formData) {
-          setFormData(data.formData);
-          markPersisted(data.formData, data.assessmentId || existingAssessmentId);
+          const merged = deepMergeFormData(INITIAL_FORM, data.formData);
+          setFormData(merged);
+          markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
         setLocked(!!data.locked);
+        setLockedAt(data.lockedAt || null);
         return data;
       })
       .then((data) => {
@@ -5488,7 +10177,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     return () => {
       mounted = false;
     };
-  }, [existingAssessmentId, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+  }, [assessmentType, existingAssessmentId, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
 
   useEffect(() => {
     if (assessmentId) {
@@ -5498,8 +10187,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
   // Auto-validate on change
   useEffect(() => {
-    setValidation(validateRNICA(formData, mode));
-  }, [formData, mode]);
+    setValidation(validateRNICA(formData, mode, assessmentType));
+  }, [assessmentType, formData, mode]);
 
   useEffect(() => {
     onFormDataChange?.(formData);
@@ -5515,7 +10204,70 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setSaveStatus(null);
   }, []);
 
-  const saveButtonLabel = isOngoing || assessmentId ? "Update Assessment / Recert Assessment" : "Initial Comprehensive RN Assessment";
+  // Auto-derive all HOPE J2051 A-H Symptom Impact ratings from the
+  // clinical sections elsewhere in this same RNICA where each symptom is
+  // already assessed -- the RN shouldn't have to re-check something that
+  // was already documented. Each value only fills in while the Symptom
+  // Impact field is still blank, so a deliberate manual entry in Symptom
+  // Impact (which may legitimately differ) is never overwritten.
+  //   A. Pain              <- Pain Assessment: painSeverityCategory (0-3)
+  //   B. Shortness of Breath <- Respiratory: sobSeverity (None-Severe)
+  //   C. Anxiety           <- Neuro/Mental Status: symptomsDemeanor checklist
+  //   D. Nausea            <- Gastrointestinal: nausea (None-Severe)
+  //   E. Vomiting          <- Gastrointestinal: vomiting (None-Severe)
+  //   F. Diarrhea          <- Gastrointestinal: diarrhea (None-Severe)
+  //   G. Constipation      <- Gastrointestinal: constipation (None-Severe)
+  //   H. Agitation         <- Neuro/Mental Status: symptomsDemeanor checklist
+  useEffect(() => {
+    const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
+    const painSeverity = formData.pain?.painSeverityCategory;
+    const demeanor = formData.neurological?.symptomsDemeanor || [];
+    // symptomsDemeanor is a presence checklist, not a graded scale -- a
+    // checked box only tells us the symptom is present, so it's mapped to
+    // "1 - Mild" as a conservative starting point the RN can still adjust.
+    const derived = {
+      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : undefined,
+      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity],
+      anxiety: demeanor.includes("Anxiety") ? "1" : undefined,
+      nausea: severityMap[formData.gastrointestinal?.nausea],
+      vomiting: severityMap[formData.gastrointestinal?.vomiting],
+      diarrhea: severityMap[formData.gastrointestinal?.diarrhea],
+      constipation: severityMap[formData.gastrointestinal?.constipation],
+      agitation: demeanor.includes("Agitation") ? "1" : undefined,
+    };
+
+    setFormData((prev) => {
+      const current = prev.symptomImpact || {};
+      let next = current;
+      let changed = false;
+      for (const key of Object.keys(derived)) {
+        if (!current[key] && derived[key] !== undefined) {
+          next = { ...next, [key]: derived[key] };
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
+      return { ...prev, symptomImpact: next };
+    });
+  }, [
+    formData.pain?.painSeverityCategory,
+    formData.respiratory?.sobSeverity,
+    formData.neurological?.symptomsDemeanor,
+    formData.gastrointestinal?.nausea,
+    formData.gastrointestinal?.vomiting,
+    formData.gastrointestinal?.diarrhea,
+    formData.gastrointestinal?.constipation,
+  ]);
+
+  // RNICA (RN Initial Comprehensive Assessment) is a one-time document --
+  // it is never "updated" or "recertified" through this same form. Saving
+  // before it is locked is just progressing the single initial assessment,
+  // so the label never changes to "update"/"recert" wording while
+  // mode="ica". mode="ongoing" is a distinct follow-up encounter (not the
+  // RNICA itself) and keeps its own label.
+  const saveButtonLabel = isOngoing
+    ? (assessmentType === "recert" ? "Recertification Assessment" : "Update Assessment")
+    : "Initial Comprehensive RN Assessment";
 
   // Save / Update
   const handleSave = useCallback(async () => {
@@ -5526,11 +10278,16 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       if (assessmentId) {
         await api.updateRNICAAssessment(assessmentId, formData);
       } else {
-        const result = await api.saveRNICAAssessment(patientId, formData);
+        const result = await api.saveRNICAAssessment(
+          patientId,
+          formData,
+          isOngoing ? assessmentType : undefined
+        );
         activeAssessmentId = result.assessmentId;
         setAssessmentId(activeAssessmentId);
       }
       await refreshIntelligence(activeAssessmentId);
+      await refreshFinalizationReadiness(activeAssessmentId);
       markPersisted(formData, activeAssessmentId);
       setSaveStatus("saved");
     } catch (err) {
@@ -5540,38 +10297,103 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     } finally {
       setSaving(false);
     }
-  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence]);
+  }, [assessmentId, formData, markPersisted, patientId, refreshIntelligence, refreshFinalizationReadiness, isOngoing, assessmentType]);
 
   // Lock
   const handleLock = useCallback(async () => {
     if (!assessmentId) return;
-    const v = validateRNICA(formData, mode);
+    const v = validateRNICA(formData, mode, assessmentType);
     if (!v.isValid) {
       alert("Cannot lock: there are validation errors. Please complete all required fields.");
       return;
     }
+    if (finalizationReadiness && !finalizationReadiness.ready) {
+      const failedChecks = Object.entries(finalizationReadiness.checks || {}).filter(([, check]) => !check.ready);
+      const lines = failedChecks.map(([, check]) => `• ${check.label}: ${check.message}`);
+      const firstMappedSection = failedChecks
+        .map(([key]) => FINALIZATION_CHECK_SECTION_MAP[key])
+        .find(Boolean);
+      alert(
+        `Cannot lock this assessment yet — the following must be completed first:\n\n${lines.join("\n")}`
+      );
+      if (firstMappedSection) setActiveSection(firstMappedSection);
+      return;
+    }
     setPageError("");
+    setSaving(true);
+    let persistedBeforeLock = false;
     try {
-      await api.lockRNICAAssessment(assessmentId);
+      await api.updateRNICAAssessment(assessmentId, formData);
+      persistedBeforeLock = true;
+      markPersisted(formData, assessmentId);
+      setSaveStatus("saved");
+      const result = await api.lockRNICAAssessment(assessmentId);
       setLocked(true);
+      setLockedAt(result?.lockedAt || null);
+      await Promise.all([
+        refreshIntelligence(assessmentId),
+        refreshFinalizationReadiness(assessmentId),
+      ]);
     } catch (err) {
       console.error("Lock error:", err);
+      setSaveStatus(persistedBeforeLock ? "saved" : "error");
       setPageError(err instanceof Error ? err.message : "Unable to lock RN ICA assessment.");
+    } finally {
+      setSaving(false);
     }
-  }, [assessmentId, formData]);
+  }, [assessmentId, formData, markPersisted, mode, finalizationReadiness, refreshFinalizationReadiness, refreshIntelligence, setActiveSection]);
+
+  // Delete — only reachable for an in-progress DRAFT (never signed).
+  // Once locked, the backend rejects deletion at 423 so a permanent
+  // clinical record can never be removed outright, only amended.
+  const handleDelete = useCallback(async () => {
+    if (!assessmentId) return;
+    const confirmed = window.confirm(
+      "Delete this RN ICA assessment? This cannot be undone. Only unsigned drafts can be deleted."
+    );
+    if (!confirmed) return;
+    setSaving(true);
+    setPageError("");
+    try {
+      await api.deleteRNICAAssessment(assessmentId);
+      const pid = resolvedPatientId || patientId;
+      clearActivePatientId();
+      if (pid) {
+        navigate(`/portal?patientId=${pid}`);
+      } else {
+        navigate("/portal");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      setPageError(err instanceof Error ? err.message : "Unable to delete RN ICA assessment.");
+    } finally {
+      setSaving(false);
+    }
+  }, [assessmentId, resolvedPatientId, patientId, navigate]);
 
   // Section completion tracker
   const completedSections = useMemo(() => {
     const completed = [];
     routes.forEach((route) => {
-      const sectionData = formData[route.formSection];
+      let sectionData = route.completionPath
+        ? getValueByPath(formData[route.formSection], route.completionPath)
+        : formData[route.formSection];
+      let initialSectionData = route.completionPath
+        ? getValueByPath(INITIAL_FORM[route.formSection], route.completionPath)
+        : INITIAL_FORM[route.formSection];
+      if (route.key === "demographics" && workspacePilot) {
+        const { pcg: _pcg, advancedCarePlanning: _planning, ...patientDemographics } = sectionData;
+        const { pcg: _initialPcg, advancedCarePlanning: _initialPlanning, ...initialPatientDemographics } = initialSectionData;
+        sectionData = patientDemographics;
+        initialSectionData = initialPatientDemographics;
+      }
       if (sectionData) {
-        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(INITIAL_FORM[route.formSection]);
+        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(initialSectionData);
         if (hasContent) completed.push(route.key);
       }
     });
     return completed;
-  }, [formData, routes]);
+  }, [formData, routes, workspacePilot]);
 
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
@@ -5584,6 +10406,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const currentSectionData = formData[currentRoute?.formSection];
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
   const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
+  // SECTION 7 — HOPE Admission harvest/completion-status. RN ICA's job here is
+  // only to harvest the answers and show completion status / missing HOPE
+  // sources (never to generate, export, or submit the HOPE Admission record
+  // itself). A1400 (Payer Information) is Facesheet-sourced, not an RN ICA
+  // field, so it isn't part of SIDEBAR_CONFIG's per-section hope arrays and
+  // is intentionally excluded from this section-level completion check.
+  const hopeAdmissionPatient = useMemo(() => ({
+    primaryPayerType: patientSummary?.patient?.primary_payer_type || "",
+    secondaryPayerType: patientSummary?.patient?.secondary_payer_type || "",
+  }), [patientSummary]);
+  const hopeAdmissionStatus = useMemo(
+    () => getHopeAdmissionStatus(formData, hopeAdmissionPatient, {}, sidebarConfigItems),
+    [formData, hopeAdmissionPatient, sidebarConfigItems]
+  );
 
   // Navigate — move focus + scroll to the next/previous section (all
   // sections stay mounted; this no longer swaps content).
@@ -5640,15 +10476,123 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         {open && (
           <div style={{ padding: 16, contentVisibility: "auto", containIntrinsicSize: "600px" }}>
             {isDemo
-              ? renderDemographics(formData.demographics, updateField, COLORS, styles)
+              ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
       </div>
     );
   });
+
+  const renderWorkspaceSections = () => routes.map((route) => {
+    const config = SECTION_CONFIGS[route.formSection];
+    const sectionData = formData[route.formSection];
+    const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
+    const content = isDemographicsModule
+      ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key, assessmentUiProfile)
+      : config && sectionData
+        ? renderGenericSection(
+            route.formSection,
+            sectionData,
+            updateField,
+            config,
+            formData.demographics,
+            formData,
+            COLORS,
+            styles,
+            patientId,
+            assessmentId,
+            locked,
+            true,
+            onNavigateToSection,
+            assessmentUiProfile,
+          )
+        : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
+
+    return (
+      <div key={route.key} hidden={route.key !== activeSection} aria-hidden={route.key !== activeSection}>
+        {content}
+      </div>
+    );
+  });
+
+  if (workspacePilot) {
+    const secondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
+      .map((diagnosis) => `${diagnosis.description || diagnosis.icd10 || ""}`.trim())
+      .filter(Boolean)
+      .join(", ");
+    const verifiedComorbidities = Object.entries(formData.diagnoses.hopeComorbidities || {})
+      .filter(([, selected]) => selected === true)
+      .map(([key]) => key)
+      .join(", ");
+    const commandRoutes = routes.map((route) => ({
+      ...route,
+      label: route.label || sidebarConfigItems.find((item) => item.key === route.key)?.label || route.nav,
+      regulator: isOngoing && route.regulator === "HOPE" ? undefined : route.regulator,
+    }));
+
+    return (
+      <AssessmentModeContext.Provider value={mode}>
+        <RNICACommandWorkspace
+          patient={{
+            name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
+            mrn: patientSummary?.patient?.mrn || "Not available",
+            primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
+            secondaryDiagnoses,
+            comorbidities: verifiedComorbidities,
+            priorIssues: patientSummary
+              ? `${patientSummary.incident_summary.total} incident(s), ${patientSummary.communication_summary.total} communication item(s)`
+              : "Patient record summary loading",
+          }}
+          routes={commandRoutes}
+          formSections={Object.keys(formData)}
+          activeSection={activeSection}
+          completedSections={completedSections}
+          validation={validation}
+          locked={locked}
+          saving={saving}
+          saveStatus={saveStatus}
+          intelligence={intelligence}
+          isOngoingAssessment={isOngoing}
+          renderWorkspaceSections={renderWorkspaceSections}
+          visitRecorder={(
+            <VisitRecorderCard
+              patientId={resolvedPatientId || patientId}
+              assessmentId={assessmentId}
+              assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
+              COLORS={COLORS}
+              styles={styles}
+            />
+          )}
+          alerts={(
+            <>
+              {(patientSummaryError || pageError) && (
+                <div style={styles.warningBox}>
+                  {patientSummaryError && <div>Patient summary: {patientSummaryError}</div>}
+                  {pageError && <div>RN ICA: {pageError}</div>}
+                </div>
+              )}
+              {!isOngoing && sfvStatus.required && (
+                <div style={styles.warningBox}>
+                  <strong>SFV required:</strong> Moderate or severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
+                  {sfvStatus.dueDate ? ` Due ${sfvStatus.dueDate}.` : " Due within 2 calendar days of screening."}
+                </div>
+              )}
+            </>
+          )}
+          onSelect={setActiveSection}
+          onSave={handleSave}
+          onLock={handleLock}
+          onPrevious={goPrev}
+          onNext={goNext}
+          onExitPilot={onExitWorkspacePilot}
+          canLock={Boolean(assessmentId)}
+        />
+      </AssessmentModeContext.Provider>
+    );
+  }
 
   return (
     <AssessmentModeContext.Provider value={mode}>
@@ -5706,6 +10650,52 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         </div>
       </div>
 
+      {/* ── Visit Meta — logistics/payroll tracking (type of visit, reason, time in/out, staff, discipline, care level) ── */}
+      <div style={{ padding: "0 24px 12px" }}>
+        <div style={styles.card}>
+          <div style={styles.cardTitle}>Visit Details</div>
+          <div style={styles.sectionSubtitle}>Visit logistics for agency scheduling and payroll tracking</div>
+          <div style={styles.fieldsGrid}>
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Correction</label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.dark }}>
+                <input type="checkbox" checked={formData.visitMeta.correction} onChange={(e) => updateField("visitMeta", "correction", e.target.checked)} />
+                Correction
+              </label>
+            </div>
+            <FormSelect label="Type of Visit" value={formData.visitMeta.typeOfVisit} onChange={(v) => updateField("visitMeta", "typeOfVisit", v)} options={["In-Person", "Telephone", "Video"]} />
+            <FormSelect label="Visit" value={formData.visitMeta.visitKind} onChange={(v) => updateField("visitMeta", "visitKind", v)} options={["Scheduled", "Unscheduled", "Other"]} />
+            <FormSelect label="Reason for Visit" value={formData.visitMeta.reasonForVisit} onChange={(v) => updateField("visitMeta", "reasonForVisit", v)} options={REASON_FOR_VISIT_OPTIONS} />
+            <FormInput label="Visit Date" type="date" value={formData.visitMeta.visitDate} onChange={(v) => updateField("visitMeta", "visitDate", v)} />
+            {formData.visitMeta.visitKind === "Other" && (
+              <FormInput label="Visit specify" value={formData.visitMeta.visitKindSpecify} onChange={(v) => updateField("visitMeta", "visitKindSpecify", v)} />
+            )}
+            <FormInput label="Time In" type="time" value={formData.visitMeta.timeIn} onChange={(v) => updateField("visitMeta", "timeIn", v)} />
+            <FormInput label="Time Out" type="time" value={formData.visitMeta.timeOut} onChange={(v) => updateField("visitMeta", "timeOut", v)} />
+            <FormInput label="Duration (h:m)" value={formData.visitMeta.duration} onChange={(v) => updateField("visitMeta", "duration", v)} placeholder="1h 15m" />
+            <FormInput label="Entered By" value={formData.visitMeta.enteredBy} onChange={(v) => updateField("visitMeta", "enteredBy", v)} />
+            <FormInput label="Staff Assigned" value={formData.visitMeta.staffAssigned} onChange={(v) => updateField("visitMeta", "staffAssigned", v)} />
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Discipline</label>
+              <input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: COLORS.bg }} />
+            </div>
+            <FormSelect label="Care Level" value={formData.visitMeta.careLevel} onChange={(v) => updateField("visitMeta", "careLevel", v)} options={CARE_LEVEL_OPTIONS} />
+          </div>
+        </div>
+      </div>
+
+      <Section1Snapshot
+        colors={COLORS}
+        patientSummary={patientSummary}
+        facesheet={facesheetData}
+        facesheetError={facesheetError}
+        performanceHistory={performanceHistory}
+        locked={locked}
+        saving={saving}
+        resolvedPatientId={resolvedPatientId}
+        patientIdProp={patientId}
+      />
+
       {(patientSummaryError || pageError) && (
         <div style={styles.warningBox}>
           {patientSummaryError && <div>Patient summary: {patientSummaryError}</div>}
@@ -5745,22 +10735,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   careTeam: patientSummary.care_team.map((item) => item.discipline),
                 }
               : {
-                  diagnosis: "Lung cancer (C34.90), CHF, COPD",
-                  painSummary: "Pain and symptom review ongoing; support needs and caregiver concerns require coordinated follow-up across the chart.",
-                  primaryProvider: "Dr. James Olsen",
-                  hnpStatus: "Updated 2 days ago",
-                  lastVisit: "3 days ago",
-                  disciplineHistory: [
-                    "History & Physical — admission summary",
-                    "Nursing Assessment — clinical status and safety review",
-                    "Spiritual Assessment — coping and chaplain support",
-                    "Psychosocial Assessment — caregiver burden and support needs",
-                    "Tx / Meds / DME / Supplies — active orders and equipment",
-                    "IDG — interdisciplinary group review",
-                    "Plan of Care (POC) — current goals and revisions",
-                    "Documents — uploaded patient records and external supporting files",
-                  ],
-                  careTeam: ["RN", "MSW", "SC", "MD", "Chaplain", "Admin"],
+                  // No hardcoded/mock patient identity data here: showing a
+                  // fake diagnosis, provider name, or care team while the
+                  // real patient summary hasn't loaded (or failed to load)
+                  // could be mistaken for genuine PHI. Every field below is
+                  // an explicit, neutral "not yet available" placeholder.
+                  diagnosis: resolvedPatientId ? "Loading…" : "No patient selected",
+                  painSummary: resolvedPatientId
+                    ? "Patient overview is loading."
+                    : "Select a patient to view the clinical overview.",
+                  primaryProvider: "—",
+                  hnpStatus: "—",
+                  lastVisit: "—",
+                  disciplineHistory: [],
+                  careTeam: [],
                 }
           }
           sections={sidebarConfigItems.map((item) => ({
@@ -5807,6 +10795,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
               </div>
             )}
+            {!isOngoing && hopeAdmissionStatus.totalSections > 0 && (
+              <div style={{
+                ...styles.warningBox,
+                marginBottom: 16,
+                border: `1px solid ${hopeAdmissionStatus.allComplete ? "rgba(16,185,129,0.35)" : "rgba(234, 88, 12, 0.28)"}`,
+                background: hopeAdmissionStatus.allComplete ? COLORS.successBoxBg : COLORS.warningBoxBg,
+              }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>
+                  HOPE Admission Completion: {hopeAdmissionStatus.completedCount} / {hopeAdmissionStatus.totalSections} sections ({hopeAdmissionStatus.percentComplete}%)
+                </div>
+                {hopeAdmissionStatus.allComplete ? (
+                  <div>All HOPE Admission sources harvested from this assessment are complete.</div>
+                ) : (
+                  <div>
+                    Missing HOPE sources: {hopeAdmissionStatus.missingSections.map((section) => `${section.label} (${section.missingCodes.join(", ")})`).join("; ")}.
+                  </div>
+                )}
+              </div>
+            )}
             {renderAllSections()}
           </div>
 
@@ -5830,6 +10837,72 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 }} />
               </div>
             </div>
+
+            {/* SFV (Symptom Follow-up Visit) Status — always visible in the
+                right panel, independent of scroll position or which section
+                is active, since SFV is a required separate visit the RN
+                must not lose track of. Only tracked during the initial ICA;
+                a recert cannot trigger a new SFV requirement. */}
+            {!isOngoing && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 4 }}>SFV Status</div>
+                <div style={{
+                  padding: 8,
+                  borderRadius: 6,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  background: sfvStatus.completed
+                    ? COLORS.successBoxBg
+                    : sfvStatus.required
+                      ? COLORS.warningBoxBg
+                      : COLORS.bg,
+                  color: sfvStatus.completed ? COLORS.success : sfvStatus.required ? COLORS.warning : COLORS.gray,
+                  border: `1px solid ${sfvStatus.completed ? "rgba(16,185,129,0.35)" : sfvStatus.required ? "rgba(234,88,12,0.28)" : COLORS.border}`,
+                }}>
+                  {sfvStatus.statusLabel}
+                </div>
+                {sfvStatus.required && !sfvStatus.completed && sfvStatus.dueDate && (
+                  <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
+                    Due {sfvStatus.dueDate.slice(5, 7)}/{sfvStatus.dueDate.slice(8, 10)}/{sfvStatus.dueDate.slice(0, 4)}
+                  </div>
+                )}
+                {sfvStatus.required && (
+                  <div style={{ fontSize: 10, color: COLORS.gray, marginTop: 4 }}>
+                    Triggered by: {sfvStatus.triggeredSymptoms.join(", ")}
+                  </div>
+                )}
+
+                {/* J2051 A-H checklist — lets the RN see at a glance which
+                    Symptom Impact items are still blank when documenting
+                    manually, without hunting through the Symptom Impact
+                    section itself. Auto-derived values (from Pain,
+                    Respiratory, GI, Neuro sections) show here too. */}
+                <div style={{ marginTop: 8 }}>
+                  {SYMPTOM_IMPACT_CHECKLIST.map(({ key, label }) => {
+                    const value = formData.symptomImpact?.[key];
+                    const filled = value !== undefined && value !== null && value !== "";
+                    return (
+                      <div
+                        key={key}
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          fontSize: 10.5,
+                          padding: "3px 0",
+                          color: filled ? COLORS.dark : COLORS.gray,
+                        }}
+                      >
+                        <span>{filled ? "✔" : "○"} {label}</span>
+                        <span style={{ fontWeight: 700 }}>
+                          {filled ? SYMPTOM_SEVERITY_LABEL[value] || value : "Not documented"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* HOPE Items for current section */}
             {!isOngoing && sidebarConfig?.hope?.length > 0 && (
@@ -5929,6 +11002,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         </div>
       </div>
 
+      {/* Spacer so page content isn't hidden behind the fixed footer below */}
+      <div style={styles.footerSpacer} />
+
       {/* ── Footer ── */}
       <div style={styles.footer}>
         <div style={{ display: "flex", gap: 8 }}>
@@ -5938,21 +11014,55 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <button style={styles.btnSecondary} onClick={goNext} disabled={activeSection === routes[routes.length - 1]?.key}>
             Next &rarr;
           </button>
+          {assessmentId && (
+            <AdmissionActionCenterButton
+              styles={styles}
+              onClick={() => setActionCenterOpen(true)}
+            />
+          )}
+          {assessmentId && !locked && (
+            <button
+              type="button"
+              style={{ ...styles.btnSecondary, color: COLORS.error || "#dc2626", borderColor: COLORS.error || "#dc2626" }}
+              onClick={handleDelete}
+              disabled={saving}
+              title="Permanently delete this draft assessment (only available before it is signed)"
+            >
+              Delete
+            </button>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {assessmentId && (
             <span style={{ fontSize: 12, color: COLORS.gray }}>ID: {assessmentId}</span>
           )}
+          {locked && lockedAt && (
+            <span style={{ fontSize: 12, color: COLORS.gray }}>
+              Signed: {new Date(lockedAt).toLocaleString()}
+            </span>
+          )}
           <button style={styles.btnPrimary} onClick={handleSave} disabled={saving || locked}>
             {saving ? "Saving..." : saveButtonLabel}
           </button>
           {assessmentId && !locked && (
-            <button style={styles.btnDanger} onClick={handleLock}>
+            <button
+              style={styles.btnDanger}
+              onClick={handleLock}
+            >
               Lock Assessment
             </button>
           )}
         </div>
       </div>
+
+      <AdmissionActionCenterDrawer
+        open={actionCenterOpen}
+        onClose={() => setActionCenterOpen(false)}
+        assessmentId={assessmentId}
+        sourceSection={activeSection}
+        styles={styles}
+        COLORS={COLORS}
+      />
       </div>
     </AssessmentModeContext.Provider>
   );

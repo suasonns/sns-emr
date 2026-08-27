@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   DashboardOverview,
   PatientCensus,
+  Referrals,
   Clinical,
   Analytics,
   HelpSupport,
@@ -13,6 +14,7 @@ import { fetchTenantDashboard } from '../api/dashboard';
 import { fetchCensusWorkspace } from '../api/census';
 import { getCurrentUser } from '../api/session';
 import { hasRouteAccess } from '../utils/authorization';
+import { formatRoleLabel } from '../utils/roleLabel';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
 
@@ -28,7 +30,7 @@ function getTenantNav(currentUser) {
   const normalizedRole = normalizeRole(currentUser?.role);
   const canViewAgencySettings = ADMIN_SETTING_ROLES.some((role) => normalizedRole.includes(role));
 
-  const items = ['Dashboard', 'Patient Census', 'Clinical', 'Insights', 'Help & Support'];
+  const items = ['Dashboard', 'Patient Census', 'Referrals', 'Clinical', 'Insights', 'Help & Support'];
   if (canViewAgencySettings) {
     items.push('Agency Settings');
   }
@@ -41,7 +43,7 @@ function getTenantPages(currentUser) {
   const normalizedRole = normalizeRole(currentUser?.role);
   const canViewAgencySettings = ADMIN_SETTING_ROLES.some((role) => normalizedRole.includes(role));
 
-  const pages = [DashboardOverview, PatientCensus, Clinical, Analytics, HelpSupport];
+  const pages = [DashboardOverview, PatientCensus, Referrals, Clinical, Analytics, HelpSupport];
   if (canViewAgencySettings) {
     pages.push(AgencySettings);
   }
@@ -63,7 +65,7 @@ export default function TenantDashboard() {
   const { mode, toggleMode } = useThemeMode();
   const tenantName = workspace?.tenant_name || currentUser?.tenant_name || 'Tenant Workspace';
   const displayName = currentUser?.full_name || currentUser?.email || 'Signed-in User';
-  const displayRole = currentUser?.role || 'Staff';
+  const displayRole = formatRoleLabel(currentUser?.role);
   const agencyLabel = currentUser?.tenant_name || tenantName || 'Current Agency';
   const initials = (displayName.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || 'SU';
 
@@ -89,6 +91,15 @@ export default function TenantDashboard() {
       active = false;
     };
   }, [isRestricted]);
+
+  const refreshCensus = () => {
+    fetchCensusWorkspace()
+      .then((censusResponse) => setCensus(censusResponse))
+      .catch(() => {
+        // Non-fatal: the newly created patient is still reachable directly
+        // via chart navigation even if the census list refresh fails.
+      });
+  };
 
   if (isRestricted) {
     return (
@@ -165,8 +176,8 @@ export default function TenantDashboard() {
         <div style={{ padding: '16px 20px', borderTop: `1px solid ${COLORS.border}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 32, height: 32, borderRadius: '50%', background: COLORS.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: COLORS.white }}>{initials}</div>
           <div style={{ minWidth: 0 }}>
-            <p style={{ fontSize: 12, fontWeight: 600, color: COLORS.white, margin: 0 }}>{displayName}</p>
-            <p style={{ fontSize: 10, fontWeight: 400, color: COLORS.dim, margin: '2px 0 0' }}>{displayRole}</p>
+            <p style={{ fontSize: 12, fontWeight: 600, color: COLORS.white, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</p>
+            <p style={{ fontSize: 10, fontWeight: 400, color: COLORS.dim, margin: '2px 0 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayRole}</p>
             <p style={{ fontSize: 9, fontWeight: 600, color: COLORS.teal, margin: '4px 0 0', letterSpacing: '0.04em', textTransform: 'uppercase', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               Agency: {agencyLabel}
             </p>
@@ -176,7 +187,7 @@ export default function TenantDashboard() {
 
       <div style={{ flex: 1, padding: '32px 40px', overflowY: 'auto' }}>
         {error ? <div style={{ ...S.card, color: COLORS.red }}>{error}</div> : null}
-        <ActivePage workspace={workspace} census={census} loading={loading} />
+        <ActivePage workspace={workspace} census={census} loading={loading} onPatientCreated={refreshCensus} />
       </div>
     </div>
   );

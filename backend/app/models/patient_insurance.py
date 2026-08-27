@@ -122,9 +122,30 @@ class PatientInsurance(TenantScopedMixin, BaseModel):
         index=True,
     )
 
+    eligibility_status = Column(
+        String(32),
+        nullable=True,
+        server_default=text("'UNKNOWN'"),
+        index=True,
+        doc="ACTIVE / INACTIVE / UNKNOWN / ERROR -- set from the most recent PayerEligibilityCheck",
+    )
+
+    next_verification_due = Column(
+        Date,
+        nullable=True,
+        doc="When the next eligibility check should be performed (biller-set or policy-driven cadence).",
+    )
+
     patient = relationship(
         "Patient",
         back_populates="insurances",
+    )
+
+    eligibility_checks = relationship(
+        "PayerEligibilityCheck",
+        back_populates="patient_insurance",
+        cascade="all, delete-orphan",
+        order_by="PayerEligibilityCheck.checked_at.desc()",
     )
 
     __table_args__ = (

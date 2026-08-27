@@ -22,6 +22,7 @@ ALLOWED_HOSPICE_REV_CODES = {
     "0652",  # Continuous Home Care
     "0655",  # Inpatient Respite
     "0656",  # General Inpatient Care
+    "0551",  # Skilled Nursing (used for the Service Intensity Add-on, HCPCS G0299/G0300)
 }
 
 
@@ -99,6 +100,17 @@ def _validate_hospice_lines(lines):
         if code not in ALLOWED_HOSPICE_REV_CODES:
             raise EDIBuilderError(f"Invalid hospice revenue code: {code}")
 
+        # A claim line flagged with rate_gap_reason means the dollar amount
+        # is a known real under-count (e.g. an unpriced CMS fiscal
+        # year/CBSA), NOT an intentional $0.00. Never let a claim with an
+        # unresolved rate gap reach an actual 837I submission -- that would
+        # silently under-bill Medicare with no downstream signal.
+        if row.get("rate_gap_reason"):
+            raise EDIBuilderError(
+                "Claim line has an unresolved rate gap and cannot be "
+                f"submitted: {row['rate_gap_reason']}"
+            )
+
 
 # =========================================================
 # MAIN BUILDER
@@ -134,6 +146,11 @@ def build_837i_text(export_payload: dict) -> str:
     payer_obj = payer.get("primary_payer", {})
     payer_name = _clean(payer_obj.get("payer_name"))
     payer_type = _clean(payer_obj.get("payer_type"))
+    # Real, MSP-aware sequence code (P/S/T...) resolved by
+    # msp_validation_service -- never hardcoded to "P". A payer block
+    # missing this (e.g. a legacy/pre-MSP export payload) still defaults
+    # to "P" for backward compatibility.
+    sbr_sequence_code = _clean(payer_obj.get("sequence_code")) or "P"
 
     provider_name = _clean(provider.get("agency_name"))
     provider_npi = _clean(provider.get("npi"))
@@ -176,7 +193,7 @@ def build_837i_text(export_payload: dict) -> str:
 
     # PATIENT
     segments.append(_segment("HL", "2", "1", "22", "0"))
-    segments.append(_segment("SBR", "P", "18"))
+    segments.append(_segment("SBR", sbr_sequence_code, "18"))
     segments.append(_segment("NM1", "IL", "1", patient_name, "", "", "", "", subscriber_id_type, subscriber_id))
     if patient_dob:
         segments.append(_segment("DMG", "D8", patient_dob))
@@ -187,6 +204,15 @@ def build_837i_text(export_payload: dict) -> str:
     # DIAGNOSIS
     if primary_dx:
         segments.append(_segment("HI", f"ABK:{primary_dx}"))
+
+    # MEDICARE SECONDARY PAYER (MSP) VALUE CODES -- required whenever an
+    # MSP-type payer is on the claim so the MAC knows which coordination
+    # rule was applied instead of independently flagging the claim for
+    # MSP development. See msp_validation_service.build_msp_value_codes_for_claim.
+    for msp_value in payer.get("msp_value_codes", []):
+        code = _clean(msp_value.get("value_code"))
+        if code:
+            segments.append(_segment("HI", f"BE:{code}"))
 
     # ATTENDING (REQUIRED)
     segments.append(_segment("NM1", "71", "1", attending["last_name"], attending["first_name"], "", "", "", "XX", attending["npi"]))

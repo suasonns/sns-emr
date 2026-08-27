@@ -15,6 +15,7 @@ from sqlalchemy import (
     event,
     text,
     Index,
+    select,
     UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSON, JSONB, UUID
@@ -116,6 +117,16 @@ class ClinicalNote(BaseModel):
 
     late_entry_reason = Column(String(255), nullable=True)
 
+    # Captures visit.care_level (or the requested level_of_care) at the
+    # moment this note is created, for audit/reporting purposes -- the
+    # live care_level on the visit can change later, so this column
+    # preserves what was true when the note was authored. Originally added
+    # by migration 8bd03327f9df ("add care_level_snapshot to
+    # clinical_notes"); that migration was lost when the migration history
+    # was collapsed into the consolidated baseline and never re-added here.
+    # Restored via a forward-only migration (see alembic/versions).
+    care_level_snapshot = Column(String(20), nullable=True)
+
     # ===================================================
     # CONTENT
     # ===================================================
@@ -160,7 +171,7 @@ class ClinicalNote(BaseModel):
     __table_args__ = (
 
         CheckConstraint(
-            "discipline IN ('RN','LVN','NP','MD','SC','MSW','LCSW','BSW')",
+            "discipline IN ('RN','LVN','NP','PA','MD','SC','MSW','LCSW','BSW','SW','CHAPLAIN','AIDE','CHHA','ADMINISTRATIVE')",
             name="ck_discipline_valid"
         ),
 
@@ -322,7 +333,11 @@ def before_update(mapper, connection, target):
         target.content = {}
 
     if target.finalized_at:
-        raise ValueError("Cannot modify finalized note")
+        existing_finalized_at = connection.execute(
+            select(ClinicalNote.finalized_at).where(ClinicalNote.id == target.id)
+        ).scalar_one_or_none()
+        if existing_finalized_at:
+            raise ValueError("Cannot modify finalized note")
 
     if (target.countersigned_by and not target.countersigned_at) or \
        (target.countersigned_at and not target.countersigned_by):

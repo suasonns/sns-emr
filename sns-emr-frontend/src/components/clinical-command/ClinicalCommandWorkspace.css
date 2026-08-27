@@ -1,0 +1,82 @@
+.clinical-command-container {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  overflow-x: hidden;
+  container: clinical-command-workspace / inline-size;
+}
+
+.clinical-command {
+  --ccw-gap: 0.5rem;
+  --ccw-pad: 0.625rem;
+  --ccw-body-size: 12px;
+  --ccw-input-size: 12px;
+  --ccw-label-size: 10px;
+  --ccw-meta-size: 9.5px;
+  --ccw-section-size: 14.5px;
+  --ccw-patient-size: 18px;
+  --ccw-nav-size: var(--ccw-body-size);
+  --ccw-nav-meta-size: var(--ccw-meta-size);
+  --ccw-button-size: var(--ccw-body-size);
+  --ccw-control-height: 34px;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  color: var(--sns-white);
+  background: var(--sns-bg);
+  font-family: Inter, sans-serif;
+  font-size: var(--ccw-body-size);
+}
+
+.clinical-command--comfortable {
+  --ccw-gap: 0.75rem;
+  --ccw-pad: 0.75rem;
+  --ccw-body-size: 12.5px;
+  --ccw-input-size: 12.5px;
+  --ccw-label-size: 10.5px;
+  --ccw-meta-size: 10px;
+  --ccw-section-size: 15px;
+  --ccw-nav-size: var(--ccw-body-size);
+  --ccw-nav-meta-size: var(--ccw-meta-size);
+  --ccw-button-size: var(--ccw-body-size);
+  --ccw-control-height: 36px;
+}
+
+.clinical-command--large {
+  --ccw-gap: 0.625rem;
+  --ccw-pad: 0.7rem;
+  --ccw-body-size: 14px;
+  --ccw-input-size: 14px;
+  --ccw-label-size: 11.5px;
+  --ccw-meta-size: 11px;
+  --ccw-section-size: 16px;
+  --ccw-patient-size: 19.5px;
+  --ccw-nav-size: var(--ccw-body-size);
+  --ccw-nav-meta-size: var(--ccw-meta-size);
+  --ccw-button-size: var(--ccw-body-size);
+  --ccw-control-height: 36px;
+}
+
+.clinical-command *, .clinical-command *::before, .clinical-command *::after { box-sizing: border-box; }
+.clinical-command button, .clinical-command input, .clinical-command select, .clinical-command textarea { font-family: Inter, sans-serif; }
+.clinical-command input[type="checkbox"], .clinical-command input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  accent-color: var(--sns-teal);
+  font-size: var(--ccw-body-size);
+}
+.clinical-command label { font-size: var(--ccw-label-size) !important; }
+.clinical-command input:not([type="checkbox"]):not([type="radio"]), .clinical-command select, .clinical-command textarea { font-size: var(--ccw-input-size) !important; }
+.clinical-command button:focus-visible, .clinical-command input:focus-visible, .clinical-command select:focus-visible, .clinical-command textarea:focus-visible { outline: 3px solid var(--sns-blue); outline-offset: 2px; }
+.clinical-command-card { border: 1px solid var(--sns-border); border-radius: 8px; background: var(--sns-card); }
+.clinical-command-status { border-radius: 999px; font-size: var(--ccw-meta-size); font-weight: 800; text-transform: uppercase; }
+
+@media (pointer: coarse) {
+  .clinical-command button,
+  .clinical-command input:not([type="checkbox"]):not([type="radio"]),
+  .clinical-command select {
+    min-height: 44px !important;
+  }
+}

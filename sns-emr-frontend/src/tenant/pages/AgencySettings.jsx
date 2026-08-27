@@ -1,7 +1,22 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { COLORS, S } from '../design';
 import VendorManagement from './VendorManagement';
 import OrderPackManagement from './OrderPackManagement';
+import { getAgencyProfile } from '../../api/agencyProfile';
+import { listStaff } from '../../api/staff';
+
+// Honest placeholder for settings domains that have no backend persistence
+// yet (Notifications / Clinical templates / Billing config / Integrations).
+// Per this project's "never fabricate data" policy, these must not show
+// invented toggle states, fake integration statuses, or fake API keys.
+function NotAvailableCard({ title, note }) {
+  return (
+    <div style={{ ...S.card, marginBottom: 0, padding: 24, border: `1px dashed ${COLORS.border}` }}>
+      <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 8 }}>{title}</div>
+      <div style={{ fontSize: 13, color: COLORS.muted, lineHeight: 1.6 }}>{note}</div>
+    </div>
+  );
+}
 
 const settingsTabs = [
   { label: 'General' },
@@ -15,39 +30,38 @@ const settingsTabs = [
 ];
 
 function GeneralTab() {
-  const agencyInfo = [
-    { label: 'Agency Name', value: 'Grace Hospice Care' },
-    { label: 'NPI Number', value: '1234567890' },
-    { label: 'Medicare Provider ID', value: '45-1234' },
-    { label: 'State License', value: 'TX-HC-2024-0891' },
-    { label: 'Address', value: '4521 Oak Lawn Ave, Suite 200, Dallas, TX 75219' },
-    { label: 'Phone', value: '(214) 555-0182' },
-    { label: 'Administrator', value: 'Sarah Jenkins, RN' },
-  ];
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const accessRoles = [
-    { label: 'Administrator', enabled: true },
-    { label: 'DPCS', enabled: true },
-    { label: 'RN / Clinical Staff', enabled: false },
-    { label: 'Billing Staff', enabled: false },
-    { label: 'Physician', enabled: false },
-  ];
+  useEffect(() => {
+    let cancelled = false;
+    getAgencyProfile()
+      .then((data) => { if (!cancelled) setProfile(data); })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load agency profile'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
-  const operatingHours = [
-    { day: 'Monday – Friday', hours: '8:00 AM – 6:00 PM' },
-    { day: 'Saturday', hours: '9:00 AM – 1:00 PM' },
-    { day: 'Sunday', hours: 'Closed (On-Call Only)' },
-  ];
+  const agencyInfo = profile ? [
+    { label: 'Agency Name', value: profile.display_name || '—' },
+    { label: 'Legal Name', value: profile.legal_name || '—' },
+    { label: 'NPI Number', value: profile.npi || '—' },
+    { label: 'EIN', value: profile.ein || '—' },
+    { label: 'PTAN', value: profile.ptan || '—' },
+    { label: 'Tenant Type', value: profile.tenant_type || '—' },
+    { label: 'CBSA Code', value: profile.cbsa_code || '—' },
+    { label: 'Status', value: profile.status || '—' },
+  ] : [];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white }}>Agency Information</div>
-          <button style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Edit</button>
-        </div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Core agency details, license, and contact information.</div>
-        {agencyInfo.map((item, i) => (
+        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Agency Information</div>
+        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Core agency identity fields on record.</div>
+        {loading && <div style={{ fontSize: 13, color: COLORS.muted }}>Loading…</div>}
+        {error && <div style={{ fontSize: 13, color: COLORS.red }}>{error}</div>}
+        {!loading && !error && agencyInfo.map((item, i) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < agencyInfo.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
             <span style={{ fontSize: 13, color: COLORS.muted }}>{item.label}</span>
             <span style={{ fontSize: 13, color: COLORS.white, fontWeight: 500 }}>{item.value}</span>
@@ -55,334 +69,114 @@ function GeneralTab() {
         ))}
       </div>
 
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Access Level Visibility</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Control which roles can see Agency Settings in the sidebar.</div>
-        {accessRoles.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < accessRoles.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <span style={{ fontSize: 13, color: COLORS.white }}>{item.label}</span>
-            <div style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', background: item.enabled ? COLORS.teal : COLORS.border }}>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: item.enabled ? 21 : 3, transition: 'left 0.2s' }} />
-            </div>
-          </div>
-        ))}
-      </div>
+      <NotAvailableCard
+        title="Address, Operating Hours &amp; Service Areas"
+        note="Not configured yet — these fields aren't part of the agency record in this release. Editing here would not persist anywhere, so nothing is shown until real fields and an edit endpoint exist."
+      />
 
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white }}>Operating Hours</div>
-          <button style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Edit</button>
-        </div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Standard business hours and on-call schedule.</div>
-        {operatingHours.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < operatingHours.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <span style={{ fontSize: 13, color: COLORS.muted }}>{item.day}</span>
-            <span style={{ fontSize: 13, color: COLORS.white, fontWeight: 500 }}>{item.hours}</span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Service Areas</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 16 }}>Counties and zip codes covered by this agency.</div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {['Dallas County', 'Tarrant County', 'Collin County', 'Denton County', 'Rockwall County'].map((area, i) => (
-            <span key={i} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 500, background: `${COLORS.teal}1a`, color: COLORS.teal, border: `1px solid ${COLORS.teal}33` }}>{area}</span>
-          ))}
-        </div>
-      </div>
+      <NotAvailableCard
+        title="Access Level Visibility"
+        note="Role-based access to Agency Settings is enforced by the backend and is not user-configurable in this release."
+      />
     </div>
   );
 }
 
 function NotificationsTab() {
-  const emailNotifs = [
-    { label: 'New patient admission alerts', enabled: true },
-    { label: 'POC expiration reminders (72hr, 48hr, 24hr)', enabled: true },
-    { label: 'Unsigned order reminders', enabled: true },
-    { label: 'Claims denial notifications', enabled: true },
-    { label: 'Staff credential expiration warnings', enabled: true },
-    { label: 'QAPI measure threshold alerts', enabled: false },
-    { label: 'Weekly census summary digest', enabled: true },
-  ];
-
-  const smsNotifs = [
-    { label: 'Critical patient status changes', enabled: true },
-    { label: 'On-call visit assignments', enabled: true },
-    { label: 'System downtime alerts', enabled: true },
-    { label: 'Missed visit alerts (same-day)', enabled: false },
-  ];
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Email Notifications</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Agency-wide email alert settings. Individual users can override in personal Settings.</div>
-        {emailNotifs.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < emailNotifs.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <span style={{ fontSize: 13, color: COLORS.white }}>{item.label}</span>
-            <div style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', background: item.enabled ? COLORS.teal : COLORS.border }}>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: item.enabled ? 21 : 3 }} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>SMS / Text Notifications</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Critical alerts sent via SMS to on-call and administrative staff.</div>
-        {smsNotifs.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < smsNotifs.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <span style={{ fontSize: 13, color: COLORS.white }}>{item.label}</span>
-            <div style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', background: item.enabled ? COLORS.teal : COLORS.border }}>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: item.enabled ? 21 : 3 }} />
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Quiet Hours</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Suppress non-critical notifications during off-hours. Critical alerts always go through.</div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: COLORS.muted, marginBottom: 6, display: 'block' }}>Start Time</label>
-            <input defaultValue="10:00 PM" style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.white, fontSize: 13, outline: 'none' }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: COLORS.muted, marginBottom: 6, display: 'block' }}>End Time</label>
-            <input defaultValue="7:00 AM" style={{ width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.white, fontSize: 13, outline: 'none' }} />
-          </div>
-        </div>
-      </div>
+      <NotAvailableCard
+        title="Email Notifications"
+        note="Not available yet — there is no notification-preference backend, so alert toggles shown here would not actually change what gets sent."
+      />
+      <NotAvailableCard
+        title="SMS / Text Notifications"
+        note="Not available yet — no SMS delivery integration exists in this release."
+      />
+      <NotAvailableCard
+        title="Quiet Hours"
+        note="Not available yet — quiet-hours scheduling isn't wired to any backend preference."
+      />
     </div>
   );
 }
 
 function ClinicalTab() {
-  const docTemplates = [
-    { name: 'Nursing Visit Note', type: 'Visit Note', status: 'Active', lastModified: 'Aug 10, 2026' },
-    { name: 'Aide Visit Documentation', type: 'Visit Note', status: 'Active', lastModified: 'Aug 05, 2026' },
-    { name: 'MSW Assessment', type: 'Assessment', status: 'Active', lastModified: 'Jul 28, 2026' },
-    { name: 'Chaplain Spiritual Care', type: 'Visit Note', status: 'Active', lastModified: 'Jul 22, 2026' },
-    { name: 'Bereavement Follow-Up', type: 'Follow-Up', status: 'Draft', lastModified: 'Jul 15, 2026' },
-  ];
-
-  const assessmentSchedules = [
-    { name: 'Comprehensive Assessment', frequency: 'Admission + every 15 days', required: true },
-    { name: 'Pain Assessment (PPS)', frequency: 'Every visit', required: true },
-    { name: 'Fall Risk Assessment', frequency: 'Admission + quarterly', required: true },
-    { name: 'Wound Assessment', frequency: 'Every skilled nursing visit', required: false },
-    { name: 'Nutritional Screening', frequency: 'Admission + monthly', required: false },
-  ];
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white }}>Documentation Templates</div>
-            <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>Manage clinical documentation templates used across the agency.</div>
-          </div>
-          <button style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: COLORS.teal, color: COLORS.white, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ Add Template</button>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-              {['Template Name', 'Type', 'Status', 'Last Modified', ''].map((h) => (
-                <th key={h} style={{ padding: '10px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: COLORS.muted }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {docTemplates.map((t, i) => (
-              <tr key={i} style={{ borderBottom: i < docTemplates.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-                <td style={{ padding: '12px 20px', fontSize: 13, fontWeight: 500, color: COLORS.white }}>{t.name}</td>
-                <td style={{ padding: '12px 20px', fontSize: 13, color: COLORS.muted }}>{t.type}</td>
-                <td style={{ padding: '12px 20px' }}>
-                  <span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: t.status === 'Active' ? `${COLORS.green}22` : `${COLORS.orange}22`, color: t.status === 'Active' ? COLORS.green : COLORS.orange }}>{t.status}</span>
-                </td>
-                <td style={{ padding: '12px 20px', fontSize: 12, color: COLORS.muted }}>{t.lastModified}</td>
-                <td style={{ padding: '12px 20px' }}><span style={{ fontSize: 12, color: COLORS.teal, cursor: 'pointer' }}>Edit</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Assessment Schedules</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Configure assessment frequency and requirements per CMS guidelines.</div>
-        {assessmentSchedules.map((item, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < assessmentSchedules.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: COLORS.white }}>{item.name}</div>
-              <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 2 }}>{item.frequency}</div>
-            </div>
-            <span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: item.required ? `${COLORS.red}22` : `${COLORS.teal}22`, color: item.required ? COLORS.red : COLORS.teal }}>{item.required ? 'Required' : 'Optional'}</span>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Clinical Protocols</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 16 }}>Standing orders, symptom management, and emergency protocols.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-          {['Comfort Kit Standing Orders', 'Symptom Management Protocol', 'Emergency Comfort Measures', 'Continuous Care Criteria', 'GIP Admission Criteria', 'Respite Care Guidelines'].map((p, i) => (
-            <div key={i} style={{ padding: '12px 16px', borderRadius: 8, border: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 13, color: COLORS.white }}>{p}</span>
-              <span style={{ fontSize: 11, color: COLORS.teal }}>View →</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      <NotAvailableCard
+        title="Documentation Templates"
+        note="Not available yet — clinical note templates are hardcoded per note type in this release; there is no configurable template library or backend model for it."
+      />
+      <NotAvailableCard
+        title="Assessment Schedules"
+        note="Not available yet — assessment cadence isn't backed by a configurable schedule; it's driven by the fixed clinical workflows already built."
+      />
+      <NotAvailableCard
+        title="Clinical Protocols"
+        note="Not available yet — standing orders and protocol documents aren't stored or manageable here."
+      />
     </div>
   );
 }
 
 function BillingTab() {
-  const inputStyle = {
-    width: '100%', padding: '10px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`,
-    background: COLORS.bg, color: COLORS.white, fontSize: 13, outline: 'none',
-  };
-
-  const labelStyle = { fontSize: 12, fontWeight: 600, color: COLORS.muted, marginBottom: 6, display: 'block' };
-
-  const rateSchedule = [
-    { level: 'Routine Home Care', rate: '$203.79', code: '0651' },
-    { level: 'Continuous Home Care', rate: '$1,432.41', code: '0652' },
-    { level: 'General Inpatient Care', rate: '$803.25', code: '0656' },
-    { level: 'Inpatient Respite Care', rate: '$183.10', code: '0655' },
-    { level: 'Service Intensity Add-On (SIA)', rate: '$41.39', code: '0657' },
-  ];
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Billing Configuration</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Agency billing defaults and submission settings.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-          <div><label style={labelStyle}>Default Payer</label><select style={inputStyle}><option>Medicare</option><option>Medicaid</option><option>Private Insurance</option></select></div>
-          <div><label style={labelStyle}>Billing Cycle</label><select style={inputStyle}><option>Monthly</option><option>Bi-Weekly</option><option>Weekly</option></select></div>
-          <div><label style={labelStyle}>Claims Submission</label><select style={inputStyle}><option>Electronic (EDI 837)</option><option>Paper (CMS-1500)</option></select></div>
-          <div><label style={labelStyle}>Auto-Submit NOE</label><select style={inputStyle}><option>Within 5 calendar days</option><option>Within 3 calendar days</option><option>Manual</option></select></div>
-        </div>
-      </div>
-
-      <div style={{ background: COLORS.card, border: `1px solid ${COLORS.border}`, borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white }}>Medicare Rate Schedule (FY 2026)</div>
-            <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 2 }}>Current per-diem rates for hospice levels of care.</div>
-          </div>
-          <button style={{ padding: '8px 16px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Update Rates</button>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-              {['Level of Care', 'Revenue Code', 'Per Diem Rate'].map((h) => (
-                <th key={h} style={{ padding: '10px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: COLORS.muted }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rateSchedule.map((r, i) => (
-              <tr key={i} style={{ borderBottom: i < rateSchedule.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-                <td style={{ padding: '12px 20px', fontSize: 13, fontWeight: 500, color: COLORS.white }}>{r.level}</td>
-                <td style={{ padding: '12px 20px', fontSize: 13, color: COLORS.muted }}>{r.code}</td>
-                <td style={{ padding: '12px 20px', fontSize: 13, fontWeight: 600, color: COLORS.teal }}>{r.rate}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Auto-Billing Rules</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Automated billing triggers and validation rules.</div>
-        {[
-          { label: 'Auto-generate claims when visit notes are signed', enabled: true },
-          { label: 'Block claim submission if POC unsigned', enabled: true },
-          { label: 'Auto-submit NOE within 5 days of admission', enabled: true },
-          { label: 'Flag duplicate billing entries', enabled: true },
-          { label: 'Auto-calculate SIA eligibility', enabled: false },
-        ].map((rule, i) => (
-          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < 4 ? `1px solid ${COLORS.border}` : 'none' }}>
-            <span style={{ fontSize: 13, color: COLORS.white }}>{rule.label}</span>
-            <div style={{ width: 40, height: 22, borderRadius: 11, position: 'relative', background: rule.enabled ? COLORS.teal : COLORS.border }}>
-              <div style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff', position: 'absolute', top: 3, left: rule.enabled ? 21 : 3 }} />
-            </div>
-          </div>
-        ))}
-      </div>
+      <NotAvailableCard
+        title="Billing Configuration"
+        note="Not available yet — default payer, billing cycle, and submission-mode preferences aren't stored per agency; billing runs use the real claims/EDI pipeline directly."
+      />
+      <NotAvailableCard
+        title="Medicare Rate Schedule"
+        note="Not available yet — this page won't show a rate table until it reads the real CMS per-diem rate service, so it can't drift from what billing actually uses."
+      />
+      <NotAvailableCard
+        title="Auto-Billing Rules"
+        note="Not available yet — these switches aren't wired to any backend rule engine, so toggling them would not change how claims are generated."
+      />
     </div>
   );
 }
 
 function IntegrationsTab() {
-  const integrations = [
-    { name: 'Palmetto GBA (Medicare MAC)', type: 'Claims / NOE', status: 'Connected', lastSync: '2 min ago' },
-    { name: 'SHP for Hospice', type: 'Quality / Benchmarking', status: 'Connected', lastSync: '1 hr ago' },
-    { name: 'DocuSign', type: 'E-Signatures', status: 'Connected', lastSync: '15 min ago' },
-    { name: 'QuickBooks Online', type: 'Accounting', status: 'Connected', lastSync: '4 hr ago' },
-    { name: 'Surescripts', type: 'E-Prescribing', status: 'Disconnected', lastSync: 'N/A' },
-    { name: 'HL7 FHIR Gateway', type: 'Interoperability', status: 'Connected', lastSync: '30 min ago' },
-  ];
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 16 }}>
-        {integrations.map((item, i) => (
-          <div key={i} style={{ background: COLORS.card, borderRadius: 12, border: `1px solid ${COLORS.border}`, padding: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white }}>{item.name}</div>
-              <span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: item.status === 'Connected' ? `${COLORS.green}22` : `${COLORS.red}22`, color: item.status === 'Connected' ? COLORS.green : COLORS.red }}>{item.status}</span>
-            </div>
-            <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>{item.type}</div>
-            <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 12 }}>Last sync: {item.lastSync}</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Configure</button>
-              <button style={{ padding: '6px 14px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>{item.status === 'Connected' ? 'Sync Now' : 'Reconnect'}</button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>API Access</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Manage API keys for third-party integrations.</div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ flex: 1, padding: '10px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.muted, fontSize: 13, fontFamily: 'monospace' }}>sk-live-••••••••••••••••••••3f8a</div>
-          <button style={{ padding: '8px 16px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Reveal</button>
-          <button style={{ padding: '8px 16px', borderRadius: 6, border: `1px solid ${COLORS.border}`, background: 'transparent', color: COLORS.white, fontSize: 12, cursor: 'pointer' }}>Regenerate</button>
-        </div>
-        <div style={{ fontSize: 11, color: COLORS.muted }}>Created: Jul 01, 2026 · Last used: Aug 15, 2026 · Scopes: read, write, admin</div>
-      </div>
+      <NotAvailableCard
+        title="Third-Party Integrations"
+        note="Not available yet — this agency has no connected Medicare MAC, quality benchmarking, e-signature, accounting, e-prescribing, or FHIR integrations configured. Nothing here is actually connected."
+      />
+      <NotAvailableCard
+        title="API Access"
+        note="Not available yet — there is no API key issuance for third-party integrations in this release."
+      />
     </div>
   );
 }
 
 function UsersTab() {
-  const users = [
-    { name: 'Sarah Jenkins', email: 'sarah.jenkins@gracehospice.com', role: 'Administrator', status: 'Active', lastLogin: 'Today, 8:15 AM' },
-    { name: 'Emily Watson', email: 'emily.watson@gracehospice.com', role: 'RN', status: 'Active', lastLogin: 'Today, 9:02 AM' },
-    { name: 'Dr. Albert Chen', email: 'albert.chen@gracehospice.com', role: 'Physician', status: 'Active', lastLogin: 'Yesterday' },
-    { name: 'Maria Ramirez', email: 'maria.ramirez@gracehospice.com', role: 'HHA', status: 'Active', lastLogin: 'Today, 7:45 AM' },
-    { name: 'Robert Chen', email: 'robert.chen@gracehospice.com', role: 'MSW', status: 'Active', lastLogin: '2 days ago' },
-    { name: 'Dr. Allen Patel', email: 'allen.patel@gracehospice.com', role: 'Physician', status: 'Active', lastLogin: 'Today, 10:30 AM' },
-    { name: 'Patricia Holmes', email: 'patricia.holmes@gracehospice.com', role: 'Billing Admin', status: 'Active', lastLogin: 'Yesterday' },
-    { name: 'David Kowalski', email: 'david.kowalski@gracehospice.com', role: 'DPCS', status: 'Active', lastLogin: '3 days ago' },
-    { name: 'Laura Chen', email: 'laura.chen@gracehospice.com', role: 'RN', status: 'Invited', lastLogin: 'Never' },
-  ];
+  const [staffList, setStaffList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listStaff({ status: 'active' })
+      .then((data) => { if (!cancelled) setStaffList(data); })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load staff'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const total = staffList.length;
+  const roleCount = new Set(staffList.map((u) => u.role).filter(Boolean)).size;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
         {[
-          { label: 'Total Users', value: '9' },
-          { label: 'Active', value: '8' },
-          { label: 'Pending Invite', value: '1' },
-          { label: 'Roles Configured', value: '6' },
+          { label: 'Total Active Staff', value: String(total) },
+          { label: 'Roles Represented', value: String(roleCount) },
         ].map((stat, i) => (
           <div key={i} style={{ background: COLORS.card, borderRadius: 10, border: `1px solid ${COLORS.border}`, padding: '14px 20px' }}>
             <div style={{ fontSize: 12, color: COLORS.muted }}>{stat.label}</div>
@@ -392,57 +186,48 @@ function UsersTab() {
       </div>
 
       <div style={{ background: COLORS.card, borderRadius: 12, border: `1px solid ${COLORS.border}`, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${COLORS.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <input placeholder="Search users..." style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, color: COLORS.white, fontSize: 13, outline: 'none', width: 260 }} />
-          <button style={{ padding: '8px 16px', borderRadius: 6, border: 'none', background: COLORS.teal, color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>+ Invite User</button>
+        <div style={{ padding: '16px 20px', borderBottom: `1px solid ${COLORS.border}`, fontSize: 13, fontWeight: 600, color: COLORS.white }}>
+          Staff Roster
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-              {['Name', 'Email', 'Role', 'Status', 'Last Login', ''].map((h) => (
-                <th key={h} style={{ padding: '10px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: COLORS.muted }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u, i) => (
-              <tr key={i} style={{ borderBottom: i < users.length - 1 ? `1px solid ${COLORS.border}` : 'none' }}>
-                <td style={{ padding: '12px 20px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: COLORS.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 11 }}>{u.name.split(' ').map((n) => n[0]).join('')}</div>
-                    <span style={{ fontSize: 13, fontWeight: 500, color: COLORS.white }}>{u.name}</span>
-                  </div>
-                </td>
-                <td style={{ padding: '12px 20px', fontSize: 12, color: COLORS.muted }}>{u.email}</td>
-                <td style={{ padding: '12px 20px' }}><span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: `${COLORS.teal}22`, color: COLORS.teal }}>{u.role}</span></td>
-                <td style={{ padding: '12px 20px' }}><span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: u.status === 'Active' ? `${COLORS.green}22` : `${COLORS.orange}22`, color: u.status === 'Active' ? COLORS.green : COLORS.orange }}>{u.status}</span></td>
-                <td style={{ padding: '12px 20px', fontSize: 12, color: COLORS.muted }}>{u.lastLogin}</td>
-                <td style={{ padding: '12px 20px' }}><span style={{ fontSize: 12, color: COLORS.teal, cursor: 'pointer' }}>Manage</span></td>
+        {loading && <div style={{ padding: 20, fontSize: 13, color: COLORS.muted }}>Loading…</div>}
+        {error && <div style={{ padding: 20, fontSize: 13, color: COLORS.red }}>{error}</div>}
+        {!loading && !error && staffList.length === 0 && (
+          <div style={{ padding: 20, fontSize: 13, color: COLORS.muted }}>No active staff on record.</div>
+        )}
+        {!loading && !error && staffList.length > 0 && (
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                {['Name', 'Email', 'Role', 'Status'].map((h) => (
+                  <th key={h} style={{ padding: '10px 20px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: COLORS.muted }}>{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {staffList.map((u) => (
+                <tr key={u.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                  <td style={{ padding: '12px 20px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: COLORS.teal, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 11 }}>
+                        {(u.full_name || u.email || '?').split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: COLORS.white }}>{u.full_name || '—'}</span>
+                    </div>
+                  </td>
+                  <td style={{ padding: '12px 20px', fontSize: 12, color: COLORS.muted }}>{u.email}</td>
+                  <td style={{ padding: '12px 20px' }}><span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: `${COLORS.teal}22`, color: COLORS.teal }}>{u.role}</span></td>
+                  <td style={{ padding: '12px 20px' }}><span style={{ padding: '3px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: u.active ? `${COLORS.green}22` : `${COLORS.orange}22`, color: u.active ? COLORS.green : COLORS.orange }}>{u.active ? 'Active' : 'Inactive'}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
-      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Role Permissions</div>
-        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20 }}>Configure what each role can view and modify across the platform.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {[
-            { role: 'Administrator', perms: 'Full access to all modules, settings, and user management' },
-            { role: 'DPCS', perms: 'Clinical oversight, agency settings, staff management, QAPI' },
-            { role: 'Physician', perms: 'Sign orders, review POC, certify/recertify, view census' },
-            { role: 'RN / LVN', perms: 'Visit notes, assessments, POC, orders, patient records' },
-            { role: 'Billing Admin', perms: 'Claims, billing reports, payer management, financial analytics' },
-            { role: 'HHA / Aide', perms: 'Aide visit documentation, schedule view, assigned patients' },
-          ].map((r, i) => (
-            <div key={i} style={{ padding: '14px 16px', borderRadius: 8, border: `1px solid ${COLORS.border}` }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>{r.role}</div>
-              <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.5 }}>{r.perms}</div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <NotAvailableCard
+        title="Role Permissions"
+        note="Not available yet — role permission matrices aren't user-configurable here; access is enforced by the backend's fixed role definitions."
+      />
     </div>
   );
 }
@@ -455,7 +240,7 @@ export default function AgencySettings() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: COLORS.white, margin: 0 }}>Agency Settings</h1>
         <p style={{ fontSize: 13, color: COLORS.muted, margin: '6px 0 0' }}>
-          Configure Grace Hospice Care preferences, integrations, notifications, and compliance parameters.
+          Configure agency preferences, integrations, notifications, and compliance parameters.
           <span style={{ color: '#f59e0b', marginLeft: 8, fontSize: 11, fontWeight: 600 }}>Administrator / DPCS Access Only</span>
         </p>
       </div>

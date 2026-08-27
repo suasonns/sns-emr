@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 import re
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Generator
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
@@ -17,7 +17,7 @@ from sqlalchemy import func, text
 
 from app.core.security import get_current_user
 from app.core.patient_access import get_authorized_patient
-from app.core.roles import role_matches
+from app.core.capabilities import VIEW_ALL_TENANT_PATIENTS, has_capability
 from app.db_tenant_dependency import get_db_tenant
 
 from app.models.patient import Patient
@@ -29,6 +29,7 @@ from app.models.task import Task
 from app.models.visit import Visit
 from app.models.patient_diagnosis import PatientDiagnosis
 from app.billing.models.patient_pos import PatientPOS
+from app.models.patient_payer import PatientPayer
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.rn_recert_assessment import RNRecertAssessment
 
@@ -50,7 +51,26 @@ from app.services.icd10_resolver_service import (
 from app.services.diagnosis_sync_service import (
     sync_official_primary_diagnosis,
 )
+from app.services.code_status_sync_service import (
+    CODE_STATUS_DISPLAY_LABELS,
+    get_current_code_status,
+)
+from app.services.physician_sync_service import (
+    ASSOCIATE_MEDICAL_DIRECTOR,
+    ATTENDING,
+    MEDICAL_DIRECTOR,
+    get_physician_assignments,
+)
+from app.services.contact_sync_service import (
+    EMERGENCY_CONTACT,
+    RESPONSIBLE_PARTY,
+    get_patient_contacts,
+)
 from app.services.hnp_parser_service import build_hnp_summary
+from app.services.assessment_history_service import (
+    AssessmentHistoryFilters,
+    list_patient_assessment_history,
+)
 from enum import Enum
 
 from datetime import datetime
@@ -239,11 +259,15 @@ def list_patients(
     # -----------------------------------------------------
     # Access scoping
     # Use EXISTS instead of JOIN to avoid duplicate rows
+    #
+    # Single clinical-admin access group (ADMINISTRATOR/DPCS/
+    # DPCS_ADMINISTRATOR) + verified tenant-wide physician oversight
+    # (MEDICAL_DIRECTOR) see every same-tenant patient. Everyone else
+    # (RN, CASE_MANAGER, ATTENDING_PHYSICIAN, etc.) only sees patients
+    # they are ACTIVELY assigned to.
     # -----------------------------------------------------
-    FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
-
     if not (
-        role_matches(user.role, FULL_ACCESS_ROLES)
+        has_capability(user.role, VIEW_ALL_TENANT_PATIENTS)
         or access_level == "FULL_ACCESS"
     ):
         assignment_exists = (
@@ -252,6 +276,7 @@ def list_patients(
                 PatientAssignment.patient_id == Patient.id,
                 PatientAssignment.tenant_id == tenant_id,
                 PatientAssignment.user_id == user.user_id,
+                PatientAssignment.active.is_(True),
             )
             .exists()
         )
@@ -658,6 +683,150 @@ def _get_diagnosis_summary_payload(
         ],
     }
 
+# =========================================================
+# CARE TEAM — AUTO-POPULATED FROM SHARED ASSIGNMENT SYSTEM
+# =========================================================
+#
+# Facesheet must NOT be the source of truth for who is on a patient's
+# care team. app.models.patient_assignment.PatientAssignment (assigned
+# via RNICA / scheduling) is the shared source of truth. This helper
+# reads the current active assignments and maps them onto the roles the
+# Facesheet Hospice Snapshot / Care Team card displays.
+#
+# NOTE: "Volunteer" has no Discipline enum value yet in this codebase,
+# so it cannot be auto-populated from PatientAssignment today; it
+# remains a manually-maintained facesheet field until a VOLUNTEER
+# discipline is added to app.models.enums.Discipline.
+# =========================================================
+
+_CARE_TEAM_DISCIPLINE_MAP: dict[str, tuple[str, ...]] = {
+    "primary_rn_name": ("RN",),
+    "lvn_name": ("LVN", "LPN"),
+    "social_worker_name": ("MSW", "SW", "LCSW", "BSW"),
+    "chaplain_name": ("CHAPLAIN",),
+    "chha_name": ("CHHA", "AIDE"),
+    "clinical_manager_name": ("CASE_MANAGER",),
+}
+
+
+def _get_care_team_assignments(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+) -> dict:
+    rows = (
+        db.query(PatientAssignment, User)
+        .join(User, User.id == PatientAssignment.user_id)
+        .filter(
+            PatientAssignment.tenant_id == tenant_id,
+            PatientAssignment.patient_id == patient_id,
+            PatientAssignment.active.is_(True),
+        )
+        .order_by(
+            PatientAssignment.is_primary.desc(),
+            PatientAssignment.assigned_at.desc(),
+        )
+        .all()
+    )
+
+    by_discipline: dict[str, tuple[str, str]] = {}
+    for assignment, assigned_user in rows:
+        discipline_value = getattr(assignment.discipline, "value", assignment.discipline)
+        if discipline_value in by_discipline:
+            continue
+        name = assigned_user.display_name or assigned_user.full_name or assigned_user.email
+        by_discipline[discipline_value] = (name, str(assigned_user.id))
+
+    result: dict[str, dict | None] = {}
+    for field, disciplines in _CARE_TEAM_DISCIPLINE_MAP.items():
+        match = None
+        for discipline in disciplines:
+            if discipline in by_discipline:
+                match = by_discipline[discipline]
+                break
+        result[field] = (
+            {"name": match[0], "user_id": match[1], "source": "ASSIGNMENT"}
+            if match
+            else None
+        )
+
+    return result
+
+
+# =========================================================
+# BENEFIT PERIOD — SYSTEM-CALCULATED SCHEDULE
+# =========================================================
+#
+# Hospice benefit periods (per CMS): the first two benefit periods are
+# 90 days each; every subsequent benefit period is 60 days, and periods
+# continue indefinitely as long as the patient remains eligible. This
+# schedule is derived from the election date and should be the primary,
+# auto-calculated source for the Facesheet's Benefit Period fields —
+# manual entry is a fallback/override only when no election date is on
+# file yet (e.g. still in referral).
+# =========================================================
+
+def _compute_benefit_period_schedule(
+    election_date: date | None,
+    *,
+    today: date | None = None,
+) -> dict:
+    if not election_date:
+        return {
+            "available": False,
+            "reason": "NO_ELECTION_DATE",
+            "benefit_period_number": None,
+            "benefit_period_start": None,
+            "benefit_period_end": None,
+            "days_remaining": None,
+            "recert_due_date": None,
+            "face_to_face_due_date": None,
+        }
+
+    today = today or date.today()
+
+    period_number = 1
+    period_start = election_date
+    period_length = 90
+
+    # Walk forward through the BP schedule until we find the period
+    # containing "today" (or the next upcoming period if today is
+    # before election, or the most recent period if the patient has
+    # somehow lapsed past all computed periods).
+    while True:
+        period_end = period_start + timedelta(days=period_length)
+
+        if today < period_end or period_number >= 60:
+            break
+
+        period_number += 1
+        period_start = period_end
+        period_length = 90 if period_number <= 2 else 60
+
+    days_remaining = (period_end - today).days
+
+    # Operational buffer: recert paperwork should be completed before
+    # the benefit period ends; flag 15 days ahead as the internal due
+    # date so staff aren't scrambling on the last day.
+    recert_due_date = period_end - timedelta(days=15)
+
+    # CMS requires a face-to-face encounter within the 30 days prior to
+    # the start of the 3rd benefit period and every period thereafter.
+    face_to_face_due_date = period_start if period_number >= 3 else None
+
+    return {
+        "available": True,
+        "reason": None,
+        "benefit_period_number": period_number,
+        "benefit_period_start": period_start,
+        "benefit_period_end": period_end,
+        "days_remaining": days_remaining,
+        "recert_due_date": recert_due_date,
+        "face_to_face_due_date": face_to_face_due_date,
+    }
+
+
 def _generate_mrn_for_tenant(
     db: Session,
     *,
@@ -878,18 +1047,20 @@ class ReferralFaceSheetCreate(BaseModel):
     special_instructions: str | None = None
 
 
-@router.post("/from-referral")
-def create_patient_from_referral(
+def build_patient_from_referral_payload(
+    db: Session,
+    *,
+    tenant_id,
+    user_id,
     payload: ReferralFaceSheetCreate,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    tenant_id = _tenant_id_uuid(user)
-    user_id = getattr(user, "user_id", None)
+) -> dict:
+    """Convert accepted referral-intake data into a full Patient record.
 
-    if not user_id:
-        raise HTTPException(500, "Invalid user identity")
-
+    Shared by the direct-create endpoint (POST /patients/from-referral) and
+    the referral review-queue accept action (POST /referrals/{id}/accept) so
+    both paths create the exact same Patient + PatientFaceSheet +
+    PatientDiagnosis + Admission bundle from the same field set.
+    """
     first_name, middle_name, last_name = _normalize_name_parts(
         first_name=payload.first_name,
         middle_name=payload.middle_name,
@@ -1020,6 +1191,22 @@ def create_patient_from_referral(
         "referral_source": payload.referral_source,
         "referral_date": payload.referral_date,
     }
+
+
+@router.post("/from-referral")
+def create_patient_from_referral(
+    payload: ReferralFaceSheetCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+    user_id = getattr(user, "user_id", None)
+
+    if not user_id:
+        raise HTTPException(500, "Invalid user identity")
+
+    return build_patient_from_referral_payload(db, tenant_id=tenant_id, user_id=user_id, payload=payload)
+
 
 
 class HnpImportRequest(BaseModel):
@@ -1277,6 +1464,12 @@ class FaceSheetCreate(BaseModel):
 
     primary_payer: str | None = None
 
+    # HOPE A1400 payer source category (Medicare / Medicare Advantage /
+    # Medicaid-Medi-Cal / Medicaid-Medi-Cal Managed Care / Private-Managed
+    # Care / Other Government / Self Pay / No Payer Source). Distinct from
+    # the free-text payer name; see PAYER_SOURCE_TYPES for allowed values.
+    primary_payer_type: str | None = None
+
     primary_policy_number: str | None = None
 
     mbi_number: str | None = None
@@ -1286,6 +1479,8 @@ class FaceSheetCreate(BaseModel):
     # ==================================================
 
     secondary_payer: str | None = None
+
+    secondary_payer_type: str | None = None
 
     secondary_policy_number: str | None = None
 
@@ -1325,6 +1520,8 @@ class FaceSheetCreate(BaseModel):
 
     secondary_diagnoses: str | None = None
 
+    diagnosis_entries: list[dict] | None = None
+
     has_allergies: bool | None = None
 
     allergies: str | None = None
@@ -1336,6 +1533,54 @@ class FaceSheetCreate(BaseModel):
     ref_date: date | None = None
 
     recert_date: date | None = None
+
+    election_date: date | None = None
+
+    face_to_face_due_date: date | None = None
+
+    # ==================================================
+    # ✅ BENEFIT PERIOD
+    # ==================================================
+
+    benefit_period_number: str | None = None
+
+    benefit_period_start: date | None = None
+
+    benefit_period_end: date | None = None
+
+    # ==================================================
+    # ✅ HOSPICE SNAPSHOT
+    # ==================================================
+
+    pps_score: str | None = None
+
+    kps_score: str | None = None
+
+    fast_stage: str | None = None
+
+    code_status: str | None = None
+
+    cti_status: str | None = None
+
+    noe_status: str | None = None
+
+    primary_rn_name: str | None = None
+
+    social_worker_name: str | None = None
+
+    # ==================================================
+    # ✅ CARE TEAM
+    # ==================================================
+
+    lvn_name: str | None = None
+
+    chaplain_name: str | None = None
+
+    chha_name: str | None = None
+
+    volunteer_name: str | None = None
+
+    clinical_manager_name: str | None = None
 
     # ==================================================
     # ✅ RESPONSIBLE PARTY
@@ -1414,12 +1659,30 @@ class FaceSheetCreate(BaseModel):
     dme_vendor_phone: str | None = None
 
     # ==================================================
+    # ✅ OXYGEN
+    # ==================================================
+
+    oxygen_vendor_name: str | None = None
+
+    oxygen_vendor_phone: str | None = None
+
+    oxygen_vendor_emergency_phone: str | None = None
+
+    # ==================================================
     # ✅ MORTUARY
     # ==================================================
 
     mortuary_name: str | None = None
 
     mortuary_phone: str | None = None
+
+    mortuary_prearranged: bool | None = None
+
+    mortuary_contact_name: str | None = None
+
+    mortuary_contact_phone: str | None = None
+
+    mortuary_notes: str | None = None
 
     # ==================================================
     # ✅ SPECIAL INSTRUCTIONS
@@ -1693,6 +1956,88 @@ def get_facesheet(
         )
 
     # --------------------------------------------------
+    # ✅ SHARED CODE STATUS (authoritative, cross-module)
+    # --------------------------------------------------
+    current_code_status_row = get_current_code_status(db, patient_id=patient.id, tenant_id=tenant_id)
+    current_code_status = (
+        {
+            "code_status_id": str(current_code_status_row.id),
+            "code_status": current_code_status_row.code_status,
+            "display_label": CODE_STATUS_DISPLAY_LABELS.get(
+                current_code_status_row.code_status, current_code_status_row.code_status
+            ),
+            "effective_date": (
+                current_code_status_row.effective_date.isoformat()
+                if current_code_status_row.effective_date
+                else None
+            ),
+            "source": current_code_status_row.source,
+            "notes": current_code_status_row.notes,
+            "created_at": (
+                current_code_status_row.created_at.isoformat()
+                if current_code_status_row.created_at
+                else None
+            ),
+        }
+        if current_code_status_row
+        else None
+    )
+
+    # --------------------------------------------------
+    # ✅ SHARED PHYSICIAN ASSIGNMENTS (authoritative, cross-module)
+    # --------------------------------------------------
+    physician_assignments = get_physician_assignments(db, patient_id=patient.id, tenant_id=tenant_id)
+
+    def _physician_dict(role: str, legacy_name, legacy_address=None, legacy_phone=None, legacy_fax=None, legacy_npi=None, legacy_following=None):
+        row = physician_assignments.get(role)
+        if row is not None:
+            return {
+                "name": row.name if row.name is not None else legacy_name,
+                "address": row.address if row.address is not None else legacy_address,
+                "phone": row.phone if row.phone is not None else legacy_phone,
+                "fax": row.fax if row.fax is not None else legacy_fax,
+                "npi": row.npi if row.npi is not None else legacy_npi,
+                "following": row.will_follow_in_hospice if row.will_follow_in_hospice is not None else legacy_following,
+                "source": row.source,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+        # No shared row yet - fall back to legacy facesheet-only values.
+        return {
+            "name": legacy_name,
+            "address": legacy_address,
+            "phone": legacy_phone,
+            "fax": legacy_fax,
+            "npi": legacy_npi,
+            "following": legacy_following,
+            "source": None,
+            "updated_at": None,
+        }
+
+    # --------------------------------------------------
+    # ✅ SHARED CAREGIVER / DECISION-MAKER CONTACTS (authoritative, cross-module)
+    # --------------------------------------------------
+    patient_contacts = get_patient_contacts(db, patient_id=patient.id, tenant_id=tenant_id)
+
+    def _contact_dict(role: str, legacy_name=None, legacy_relationship=None, legacy_phone=None):
+        row = patient_contacts.get(role)
+        if row is not None:
+            return {
+                "name": row.name if row.name is not None else legacy_name,
+                "relationship": row.relationship_to_patient if row.relationship_to_patient is not None else legacy_relationship,
+                "phone": row.phone if row.phone is not None else legacy_phone,
+                "source": row.source,
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+        # No shared row yet - fall back to legacy facesheet-only values.
+        return {
+            "name": legacy_name,
+            "relationship": legacy_relationship,
+            "phone": legacy_phone,
+            "source": None,
+            "updated_at": None,
+        }
+
+    # --------------------------------------------------
     # ✅ DIAGNOSIS SUMMARY
     # --------------------------------------------------
     diagnosis_summary = _get_diagnosis_summary_payload(
@@ -1705,6 +2050,16 @@ def get_facesheet(
         db,
         tenant_id=tenant_id,
         patient_id=patient.id,
+    )
+
+    care_team_assignments = _get_care_team_assignments(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+    )
+
+    benefit_period_schedule = _compute_benefit_period_schedule(
+        facesheet.election_date
     )
 
     # --------------------------------------------------
@@ -1752,9 +2107,11 @@ def get_facesheet(
 
         "insurance": {
             "primary_payer": facesheet.primary_payer,
+            "primary_payer_type": facesheet.primary_payer_type,
             "primary_policy_number": facesheet.primary_policy_number,
             "mbi_number": facesheet.mbi_number,
             "secondary_payer": facesheet.secondary_payer,
+            "secondary_payer_type": facesheet.secondary_payer_type,
             "secondary_policy_number": facesheet.secondary_policy_number,
         },
 
@@ -1776,6 +2133,7 @@ def get_facesheet(
         "clinical": {
             "primary_diagnosis": facesheet.primary_diagnosis,
             "secondary_diagnoses": facesheet.secondary_diagnoses,
+            "diagnosis_entries": facesheet.diagnosis_entries,
             "diagnoses": diagnosis_summary,
             "active_primary_diagnosis":
                 diagnosis_summary["primary"],
@@ -1810,61 +2168,53 @@ def get_facesheet(
         },
 
         "contacts": {
-            "responsible_party": {
-                "name": facesheet.responsible_party_name,
-                "relationship":
-                    facesheet.responsible_party_relationship,
-                "phone":
-                    facesheet.responsible_party_phone,
-            },
-            "emergency_contact": {
-                "name": facesheet.emergency_contact_name,
-                "relationship":
-                    facesheet.emergency_contact_relationship,
-                "phone":
-                    facesheet.emergency_contact_phone,
-            },
+            "responsible_party": _contact_dict(
+                RESPONSIBLE_PARTY,
+                facesheet.responsible_party_name,
+                facesheet.responsible_party_relationship,
+                facesheet.responsible_party_phone,
+            ),
+            "emergency_contact": _contact_dict(
+                EMERGENCY_CONTACT,
+                facesheet.emergency_contact_name,
+                facesheet.emergency_contact_relationship,
+                facesheet.emergency_contact_phone,
+            ),
+            "primary_caregiver": _contact_dict("PRIMARY_CAREGIVER"),
+            "dpoa": _contact_dict("DPOA"),
+            "healthcare_agent": _contact_dict("HEALTHCARE_AGENT"),
+            "decision_maker": _contact_dict("DECISION_MAKER"),
         },
 
         "physicians": {
-            "attending": {
-                "name":
-                    facesheet.attending_physician_name,
-                "address":
-                    facesheet.attending_physician_address,
-                "phone":
-                    facesheet.attending_physician_phone,
-                "fax":
-                    facesheet.attending_physician_fax,
-                "npi":
-                    facesheet.attending_physician_npi,
-                "following":
-                    facesheet.attending_physician_following,
-            },
-            "medical_director": {
-                "name":
-                    facesheet.medical_director_name,
-                "address":
-                    facesheet.medical_director_address,
-                "phone":
-                    facesheet.medical_director_phone,
-                "fax":
-                    facesheet.medical_director_fax,
-                "npi":
-                    facesheet.medical_director_npi,
-            },
+            "attending": _physician_dict(
+                ATTENDING,
+                facesheet.attending_physician_name,
+                facesheet.attending_physician_address,
+                facesheet.attending_physician_phone,
+                facesheet.attending_physician_fax,
+                facesheet.attending_physician_npi,
+                facesheet.attending_physician_following,
+            ),
+            "medical_director": _physician_dict(
+                MEDICAL_DIRECTOR,
+                facesheet.medical_director_name,
+                facesheet.medical_director_address,
+                facesheet.medical_director_phone,
+                facesheet.medical_director_fax,
+                facesheet.medical_director_npi,
+            ),
             "medical_director_designee": {
                 "name":
                     facesheet.medical_director_designee_name,
                 "npi":
                     facesheet.medical_director_designee_npi,
             },
-            "associate_medical_director": {
-                "name":
-                    facesheet.associate_medical_director_name,
-                "npi":
-                    facesheet.associate_medical_director_npi,
-            },
+            "associate_medical_director": _physician_dict(
+                ASSOCIATE_MEDICAL_DIRECTOR,
+                facesheet.associate_medical_director_name,
+                legacy_npi=facesheet.associate_medical_director_npi,
+            ),
         },
 
         "vendors": {
@@ -1877,9 +2227,18 @@ def get_facesheet(
                 "name": facesheet.dme_vendor_name,
                 "phone": facesheet.dme_vendor_phone,
             },
+            "oxygen": {
+                "name": facesheet.oxygen_vendor_name,
+                "phone": facesheet.oxygen_vendor_phone,
+                "emergency_phone": facesheet.oxygen_vendor_emergency_phone,
+            },
             "mortuary": {
                 "name": facesheet.mortuary_name,
                 "phone": facesheet.mortuary_phone,
+                "prearranged": facesheet.mortuary_prearranged,
+                "contact_name": facesheet.mortuary_contact_name,
+                "contact_phone": facesheet.mortuary_contact_phone,
+                "notes": facesheet.mortuary_notes,
             },
         },
 
@@ -1890,6 +2249,40 @@ def get_facesheet(
             "admission_date": active_admission.admission_date if active_admission else None,
             "ref_date": facesheet.ref_date,
             "recert_date": facesheet.recert_date,
+            "election_date": facesheet.election_date,
+            "face_to_face_due_date": facesheet.face_to_face_due_date,
+        },
+
+        "benefit_period": {
+            "benefit_period_number": facesheet.benefit_period_number,
+            "benefit_period_start": facesheet.benefit_period_start,
+            "benefit_period_end": facesheet.benefit_period_end,
+            "auto_calculated": benefit_period_schedule,
+        },
+
+        "hospice_snapshot": {
+            "pps_score": facesheet.pps_score,
+            "kps_score": facesheet.kps_score,
+            "fast_stage": facesheet.fast_stage,
+            "code_status": (
+                current_code_status["display_label"]
+                if current_code_status
+                else facesheet.code_status
+            ),
+            "code_status_detail": current_code_status,
+            "cti_status": facesheet.cti_status,
+            "noe_status": facesheet.noe_status,
+        },
+
+        "care_team": {
+            "primary_rn_name": facesheet.primary_rn_name,
+            "lvn_name": facesheet.lvn_name,
+            "social_worker_name": facesheet.social_worker_name,
+            "chaplain_name": facesheet.chaplain_name,
+            "chha_name": facesheet.chha_name,
+            "volunteer_name": facesheet.volunteer_name,
+            "clinical_manager_name": facesheet.clinical_manager_name,
+            "assignments": care_team_assignments,
         },
 
         "notes": {
@@ -2068,7 +2461,182 @@ def update_patient_pos_history(
     db.refresh(entry)
 
     return _serialize_pos_history_entry(entry)
-    
+
+
+# =========================================================
+# PATIENT PAYER / INSURANCE (REAL — previously no write path existed
+# anywhere in the app; billing engine depends on this table)
+# =========================================================
+
+class PatientPayerCreate(BaseModel):
+    payer_name: str
+    payer_type: str
+    subscriber_id: str | None = None
+    subscriber_id_type: str | None = None
+    facility_name: str | None = None
+    effective_start_date: date | None = None
+    end_date: date | None = None
+    is_primary: bool = True
+
+
+class PatientPayerUpdate(BaseModel):
+    payer_name: str | None = None
+    payer_type: str | None = None
+    subscriber_id: str | None = None
+    subscriber_id_type: str | None = None
+    facility_name: str | None = None
+    effective_start_date: date | None = None
+    end_date: date | None = None
+    is_primary: bool | None = None
+
+
+def _serialize_patient_payer(entry: PatientPayer) -> dict:
+    return {
+        "id": str(entry.id),
+        "patient_id": str(entry.patient_id),
+        "payer_name": entry.payer_name,
+        "payer_type": entry.payer_type,
+        "subscriber_id": entry.subscriber_id,
+        "subscriber_id_type": entry.subscriber_id_type,
+        "facility_name": entry.facility_name,
+        "effective_start_date": str(entry.effective_start_date) if entry.effective_start_date else None,
+        "end_date": str(entry.end_date) if entry.end_date else None,
+        "is_primary": entry.is_primary,
+        "created_at": entry.created_at.isoformat() if entry.created_at else None,
+    }
+
+
+@router.get("/{patient_id}/payers")
+def list_patient_payers(
+    patient_id: uuid.UUID,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entries = (
+        db.query(PatientPayer)
+        .filter(PatientPayer.patient_id == patient.id)
+        .order_by(
+            PatientPayer.is_primary.desc().nullslast(),
+            PatientPayer.effective_start_date.desc(),
+        )
+        .all()
+    )
+
+    return [_serialize_patient_payer(entry) for entry in entries]
+
+
+@router.post("/{patient_id}/payers")
+def create_patient_payer(
+    patient_id: uuid.UUID,
+    payload: PatientPayerCreate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    if (
+        payload.end_date
+        and payload.effective_start_date
+        and payload.end_date < payload.effective_start_date
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after effective_start_date",
+        )
+
+    actor_uuid = uuid.UUID(str(user.user_id)) if getattr(user, "user_id", None) else None
+
+    if payload.is_primary:
+        # Only one primary payer per patient at a time — mirrors real
+        # coordination-of-benefits behavior, avoids ambiguous claims.
+        db.query(PatientPayer).filter(
+            PatientPayer.patient_id == patient.id,
+            PatientPayer.is_primary.is_(True),
+        ).update({"is_primary": False}, synchronize_session=False)
+
+    entry = PatientPayer(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        payer_name=payload.payer_name,
+        payer_type=payload.payer_type,
+        subscriber_id=payload.subscriber_id,
+        subscriber_id_type=payload.subscriber_id_type,
+        facility_name=payload.facility_name,
+        effective_start_date=payload.effective_start_date,
+        end_date=payload.end_date,
+        is_primary=payload.is_primary,
+        created_by=actor_uuid,
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_patient_payer(entry)
+
+
+@router.put("/{patient_id}/payers/{payer_id}")
+def update_patient_payer(
+    patient_id: uuid.UUID,
+    payer_id: uuid.UUID,
+    payload: PatientPayerUpdate,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    patient = get_authorized_patient(db, patient_id, user)
+
+    entry = (
+        db.query(PatientPayer)
+        .filter(
+            PatientPayer.id == payer_id,
+            PatientPayer.patient_id == patient.id,
+        )
+        .first()
+    )
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Payer not found")
+
+    data = payload.model_dump(exclude_unset=True)
+
+    start_date_value = data.get("effective_start_date", entry.effective_start_date)
+    end_date_value = data.get("end_date", entry.end_date)
+
+    if end_date_value and start_date_value and end_date_value < start_date_value:
+        raise HTTPException(
+            status_code=422,
+            detail="end_date must be on or after effective_start_date",
+        )
+
+    if data.get("is_primary"):
+        db.query(PatientPayer).filter(
+            PatientPayer.patient_id == patient.id,
+            PatientPayer.id != entry.id,
+            PatientPayer.is_primary.is_(True),
+        ).update({"is_primary": False}, synchronize_session=False)
+
+    for field in (
+        "payer_name",
+        "payer_type",
+        "subscriber_id",
+        "subscriber_id_type",
+        "facility_name",
+        "effective_start_date",
+        "end_date",
+        "is_primary",
+    ):
+        if field in data:
+            setattr(entry, field, data[field])
+
+    entry.updated_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(entry)
+
+    return _serialize_patient_payer(entry)
+
+
 # =========================================================
 # UPDATE PATIENT ✅ RESTORED
 # =========================================================
@@ -2435,8 +3003,10 @@ def patient_chart_summary(
             # COVERAGE
             # -----------------------------------------
             "primary_payer": getattr(facesheet, "primary_payer", None),
+            "primary_payer_type": getattr(facesheet, "primary_payer_type", None),
             "primary_policy_number": getattr(facesheet, "primary_policy_number", None),
             "secondary_payer": getattr(facesheet, "secondary_payer", None),
+            "secondary_payer_type": getattr(facesheet, "secondary_payer_type", None),
             "secondary_policy_number": getattr(facesheet, "secondary_policy_number", None),
             "mbi_number": getattr(facesheet, "mbi_number", None),
 
@@ -2580,10 +3150,100 @@ def _num(value):
     """Best-effort numeric coercion; returns None for blank/non-numeric values."""
     if value is None or value == "":
         return None
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "")
+        if cleaned.endswith("%"):
+            cleaned = cleaned[:-1].strip()
+        value = cleaned
     try:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _adl_summary(form_data):
+    adl = ((form_data.get("musculoskeletal") or {}).get("adl")) or {}
+    adl_scores = [_num(v) for v in adl.values()]
+    adl_scores = [v for v in adl_scores if v is not None]
+    return {
+        "adl_scores": adl_scores,
+        "adl_score": sum(adl_scores) if adl_scores else None,
+        "adl_dependency_count": sum(1 for v in adl_scores if v >= 3) if adl_scores else None,
+    }
+
+
+def _calculate_bmi(vitals):
+    saved_bmi = _num((vitals or {}).get("bmi"))
+    if saved_bmi is not None:
+        return saved_bmi
+    height = _num((vitals or {}).get("height"))
+    weight = _num((vitals or {}).get("weight"))
+    if height is None or weight is None or height <= 0:
+        return None
+    return round((703 * weight / (height * height)), 1)
+
+
+def _nyha_numeric(value):
+    mapping = {"I": 1, "II": 2, "III": 3, "IV": 4}
+    return mapping.get(str(value or "").strip().upper())
+
+
+def _fast_numeric(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return None
+    scale = {
+        "1": 1.0,
+        "2": 2.0,
+        "3": 3.0,
+        "4": 4.0,
+        "5": 5.0,
+        "6a": 6.1,
+        "6b": 6.2,
+        "6c": 6.3,
+        "6d": 6.4,
+        "6e": 6.5,
+        "7a": 7.1,
+        "7b": 7.2,
+        "7c": 7.3,
+        "7d": 7.4,
+        "7e": 7.5,
+        "7f": 7.6,
+    }
+    return scale.get(raw)
+
+
+def _rnica_trend_point(row: RnicaAssessment) -> dict:
+    fd = row.form_data or {}
+    perf = fd.get("performanceStatus") or {}
+    vitals = fd.get("vitals") or {}
+    pain = fd.get("pain") or {}
+    adl_summary = _adl_summary(fd)
+    visit_meta = fd.get("visitMeta") or {}
+    visit_date = str(visit_meta.get("visitDate") or "").strip()
+    plotted_date = row.locked_at or row.updated_at or row.created_at
+    if visit_date:
+        try:
+            plotted_date = datetime.fromisoformat(f"{visit_date[:10]}T00:00:00+00:00")
+        except ValueError:
+            pass
+    return {
+        "id": str(row.id),
+        "assessment_type": "ADMISSION" if (row.assessment_type or "RNICA") == "RNICA" else (row.assessment_type or "RNICA"),
+        "status": row.status,
+        "date": plotted_date,
+        "pps": _num(perf.get("pps")),
+        "kps": _num(perf.get("kps")),
+        "pain_level": _num((pain.get("painIntensity") or {}).get("current")) or _num(pain.get("painSeverityCategory")),
+        "adl_score": adl_summary["adl_score"],
+        "adl_dependency_count": adl_summary["adl_dependency_count"],
+        "bmi": _calculate_bmi(vitals),
+        "mac": _num(vitals.get("mac")),
+        "nyha": _nyha_numeric(perf.get("nyha")),
+        "nyha_label": perf.get("nyha") or None,
+        "fast": _fast_numeric(perf.get("fast")),
+        "fast_label": perf.get("fast") or None,
+    }
 
 
 @router.get("/{patient_id}/performance-history")
@@ -2614,12 +3274,7 @@ def get_patient_performance_history(
     for row in rnica_rows:
         fd = row.form_data or {}
         perf = fd.get("performanceStatus") or {}
-        adl = ((fd.get("musculoskeletal") or {}).get("adl")) or {}
-        adl_scores = [_num(v) for v in adl.values()]
-        adl_scores = [v for v in adl_scores if v is not None]
-        adl_dependency_count = (
-            sum(1 for v in adl_scores if v >= 3) if adl_scores else None
-        )
+        adl_summary = _adl_summary(fd)
         history.append({
             "id": str(row.id),
             "source": row.assessment_type or "RNICA",
@@ -2629,7 +3284,7 @@ def get_patient_performance_history(
             "kps": _num(perf.get("kps")),
             "fast_stage": perf.get("fast") or None,
             "weight": _num((fd.get("vitals") or {}).get("weight")),
-            "adl_dependency_count": adl_dependency_count,
+            "adl_dependency_count": adl_summary["adl_dependency_count"],
         })
 
     recert_rows = (
@@ -2656,3 +3311,92 @@ def get_patient_performance_history(
 
     history.sort(key=lambda h: h["date"] or datetime.min)
     return {"history": history}
+
+
+@router.get("/{patient_id}/decline-of-status-trend")
+def get_patient_decline_of_status_trend(
+    patient_id: uuid.UUID,
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must be on or before to_date")
+    patient = get_authorized_patient(db, patient_id, user)
+    tenant_id = getattr(patient, "tenant_id", None)
+    rows = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == patient.id,
+            (RnicaAssessment.tenant_id == tenant_id) | (RnicaAssessment.tenant_id.is_(None)),
+            RnicaAssessment.locked.is_(True),
+            RnicaAssessment.assessment_type.in_(["RNICA", "UPDATE"]),
+        )
+        .order_by(RnicaAssessment.locked_at.asc(), RnicaAssessment.created_at.asc())
+        .all()
+    )
+    trend = [_rnica_trend_point(row) for row in rows]
+    trend.sort(key=lambda item: item["date"] or datetime.min)
+    available_dates = [item["date"].date().isoformat() for item in trend if item.get("date")]
+    if from_date or to_date:
+        filtered_trend = []
+        for item in trend:
+            item_date = item.get("date")
+            if item_date is None:
+                continue
+            point_date = item_date.date() if hasattr(item_date, "date") else None
+            if point_date is None:
+                continue
+            if from_date and point_date < from_date:
+                continue
+            if to_date and point_date > to_date:
+                continue
+            filtered_trend.append(item)
+        trend = filtered_trend
+
+    return {
+        "trend": trend,
+        "applied_from_date": from_date.isoformat() if from_date else None,
+        "applied_to_date": to_date.isoformat() if to_date else None,
+        "available_from_date": min(available_dates) if available_dates else None,
+        "available_to_date": max(available_dates) if available_dates else None,
+    }
+
+
+@router.get("/{patient_id}/assessment-history")
+def get_patient_assessment_history(
+    patient_id: uuid.UUID,
+    discipline: str | None = Query(default=None),
+    assessment_type: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    sort_order: str = Query(default="asc", pattern="^(asc|desc)$"),
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must be on or before to_date")
+    patient = get_authorized_patient(db, patient_id, user)
+    tenant_id = getattr(patient, "tenant_id", None)
+    return {
+        "patient_id": str(patient.id),
+        **list_patient_assessment_history(
+            db,
+            patient_id=patient.id,
+            tenant_id=tenant_id,
+            filters=AssessmentHistoryFilters(
+                discipline=discipline,
+                assessment_type=assessment_type,
+                status=status_filter,
+                from_date=from_date,
+                to_date=to_date,
+                limit=limit,
+                offset=offset,
+                sort_order=sort_order,
+            ),
+        ),
+    }

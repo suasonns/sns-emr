@@ -46,7 +46,15 @@ from app.models.benefit_period import BenefitPeriod
 
 from app.models.medication import Medication
 from app.models.patient_allergy import PatientAllergy
+from app.models.patient_issue import PatientIssue
 from app.models.admission import Admission
+from app.models.referral import Referral
+from app.models.bereavement_assessment import BereavementAssessment
+from app.models.bereavement_poc import BereavementPOC
+from app.models.post_death_bereavement_assessment import PostDeathBereavementAssessment
+from app.models.bereavement_letter_tracker import BereavementLetterTracker
+from app.models.bereavement_communication_note import BereavementCommunicationNote
+from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
 
 # ---------------------------------------------------------
 # ✅ CLINICAL DOMAIN
@@ -56,6 +64,8 @@ from app.models.clinical_note import ClinicalNote
 from app.models.notification import Notification
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
+from app.models.admission_action_request import AdmissionActionRequest
+from app.models.rnica_amendment import RnicaAmendment
 from app.models.msw_ica_assessment import MswIcaAssessment
 from app.models.scica_assessment import ScicaAssessment
 from app.models.communications_log import CommunicationsLog
@@ -66,6 +76,12 @@ from app.models.communications_log import CommunicationsLog
 
 from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.chha_visit_task_result import CHHAVisitTaskResult
+
+# ---------------------------------------------------------
+# ✅ CONTINUOUS CARE (shared hourly narrative form)
+# ---------------------------------------------------------
+
+from app.models.cc_hourly_narrative_entry import CCHourlyNarrativeEntry
 
 # ---------------------------------------------------------
 # ✅ PATIENT SUPPORT / DEPENDENCIES
@@ -172,6 +188,17 @@ from app.models.payer import Payer
 from app.billing.models.authorization import Authorization
 from app.billing.models.contract import Contract
 from app.billing.models.claim_export_log import ClaimExportLog
+from app.billing.models.claim_edi_batch import ClaimEdiBatch
+from app.billing.models.claim import Claim
+from app.billing.models.remittance_advice import RemittanceAdvice
+from app.billing.models.payment import Payment
+from app.billing.models.payment_adjustment import PaymentAdjustment
+from app.billing.models.denial import Denial
+from app.billing.models.appeal import Appeal
+from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
+from app.billing.models.hospice_cap_record import HospiceCapRecord
+from app.billing.models.noe_edi_submission import NoeEdiSubmission
+from app.billing.models.election_addendum_request import ElectionAddendumRequest
 
 # ---------------------------------------------------------
 # ✅ POC PHYSICIAN APPROVAL TRACKING
@@ -182,6 +209,17 @@ from app.models.poc_physician_approval import (
     PocPhysicianApprovalDocument,
     PocPhysicianApprovalAuditEvent,
 )
+
+# ---------------------------------------------------------
+# ✅ PHYSICIAN IDENTITY / ORDERS PHASE 1 / CTI / F2F / SIGNATURE AUTHORITY
+# ---------------------------------------------------------
+
+from app.models.patient_physician_assignment import PatientPhysicianAssignment
+from app.models.patient_contact import PatientContact
+from app.models.patient_code_status import PatientCodeStatus
+from app.models.physician_order import PhysicianOrder, PhysicianOrderStatusEvent
+from app.models.certification import Certification, CertificationStatusEvent
+from app.models.f2f_encounter import F2FEncounter, F2FEncounterStatusEvent
 
 # ---------------------------------------------------------
 # ✅ EXPORT (REQUIRED)

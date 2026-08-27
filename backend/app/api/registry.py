@@ -32,9 +32,20 @@ from app.api import (
     admission_authorization,
     med_reconciliation,
     physicians,
+    staff,
     vendors,
     visit_recordings,
 )
+from app.api.agency_profile import router as agency_profile_router
+from app.api.hospice_cap import router as hospice_cap_router
+from app.api.noe import router as noe_router
+from app.api.election_addendum import router as election_addendum_router
+
+# PHYSICIAN IDENTITY MAPPING / SHARED PATIENT-CONTACT-DECISION-MAKER RECORDS
+from app.api.physician_identity import router as physician_identity_router
+from app.api.patient_code_status import router as patient_code_status_router
+from app.api.patient_contacts import router as patient_contacts_router
+from app.api.patient_physicians import router as patient_physicians_router
 
 # DOMAIN / WORKFLOW
 from app.api.eligibility.routes import router as eligibility_router
@@ -42,7 +53,16 @@ from app.api.rules.routes import router as rules_router
 from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
 from app.api.routes.plan_of_care import router as poc_router
+from app.api.routes.rnica_poc import router as rnica_poc_router
+from app.api.routes.admission_action_center import router as admission_action_center_router
 from app.api.patient_allergies import router as patient_allergies_router
+from app.api.patient_issues import router as patient_issues_router
+from app.api.referrals import router as referrals_router
+from app.api.bereavement import router as bereavement_router
+from app.api.bereavement_poc import router as bereavement_poc_router
+from app.api.post_death_bereavement import router as post_death_bereavement_router
+from app.api.bereavement_letters import router as bereavement_letters_router
+from app.api.bereavement_support import router as bereavement_support_router
 
 # ENGINE LAYER
 from app.api.clinical_notes.router import router as clinical_notes_router
@@ -61,6 +81,7 @@ from app.api.task_scheduling import router as task_scheduling_router
 
 # WORKFLOW
 from app.api.patient_assignments import router as patient_assignments_router
+from app.api.supervisory_schedule import router as supervisory_schedule_router
 from app.api.soc_orders import router as soc_orders_router
 from app.api.admission import router as admission_router
 from app.api.admissions import router as admissions_router
@@ -68,6 +89,7 @@ from app.api.print import router as print_router
 from app.api.auth_reauth import router as auth_reauth_router
 from app.api.internal_superuser import router as internal_superuser_router
 from app.api.admission_diagnosis import router as admission_diagnosis_router
+from app.api.icd10 import router as icd10_router
 
 # ORDERS HUB (order templates / generic patient orders / fax / lab catalog)
 from app.api.order_templates import router as order_templates_router
@@ -85,10 +107,17 @@ from app.api.external_substances import router as external_substances_router
 # BILLING
 from app.billing.api.billing_queue_router import router as billing_queue_router
 from app.billing.api.tenant_router import router as tenant_router
-from app.billing.api.export_router import router as export_router
 from app.billing.api.claim_status_router import router as claim_status_router
 from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
+from app.api.billing_835 import router as billing_835_router
+from app.billing.api.eligibility_check_router import router as eligibility_check_router
+from app.billing.api.visits_notes_router import router as visits_notes_router
+from app.billing.api.poc_certification_router import router as poc_certification_router
+from app.billing.api.noe_tracking_router import router as noe_tracking_router
+from app.billing.api.claims_router import router as claims_router
+from app.billing.api.denials_router import router as denials_router
+from app.billing.api.payment_posting_router import router as payment_posting_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -147,7 +176,16 @@ def register_routers(app: FastAPI) -> None:
         clinical_translation_router,  # ✅ ADD THIS
 
         poc_router,
+        rnica_poc_router,
+        admission_action_center_router,
         patient_charts_router,
+        patient_issues_router,
+        referrals_router,
+        bereavement_router,
+        bereavement_poc_router,
+        post_death_bereavement_router,
+        bereavement_letters_router,
+        bereavement_support_router,
 
         # ✅ ADD YOUR TASKS ROUTER HERE (CRITICAL)
         tasks_router,
@@ -166,6 +204,11 @@ def register_routers(app: FastAPI) -> None:
         admission_authorization.router,
         med_reconciliation.router,
         physicians.router,
+        staff.router,
+        agency_profile_router,
+        hospice_cap_router,
+        noe_router,
+        election_addendum_router,
         vendors.router,
         soc_orders_router,
         admission_router,
@@ -174,12 +217,14 @@ def register_routers(app: FastAPI) -> None:
         auth_reauth_router,
         internal_superuser_router,
         admission_diagnosis_router,
+        icd10_router,
 
         # Existing task system
         task_completion_router,
         task_scheduling_router,
 
         patient_assignments_router,
+        supervisory_schedule_router,
         eligibility_router,
         rules_router,
         regulatory_router,
@@ -188,16 +233,27 @@ def register_routers(app: FastAPI) -> None:
         external_substances_router,
         billing_queue_router,
         tenant_router,
-        export_router,
         claim_status_router,
         audit_router,
         billing_router,
-
-        order_templates_router,
+        billing_835_router,
+        eligibility_check_router,
+        visits_notes_router,
+        poc_certification_router,
+        noe_tracking_router,
+        claims_router,
+        denials_router,
+        payment_posting_router,
         patient_orders_router,
         fax_router,
         lab_catalog_router,
         physician_orders_router,
+
+        # Physician Identity Mapping / shared patient contact-decision-maker records
+        physician_identity_router,
+        patient_code_status_router,
+        patient_contacts_router,
+        patient_physicians_router,
     ]
 
     for router in tenant_routes:

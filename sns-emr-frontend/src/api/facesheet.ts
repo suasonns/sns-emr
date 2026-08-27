@@ -296,8 +296,44 @@ export type PerformanceHistoryResponse = {
   history: PerformanceHistoryEntry[];
 };
 
+export type DeclineOfStatusTrendEntry = {
+  id: string;
+  assessment_type: string;
+  status: string | null;
+  date: string | null;
+  pps: number | null;
+  kps: number | null;
+  pain_level: number | null;
+  adl_score: number | null;
+  adl_dependency_count: number | null;
+  bmi: number | null;
+  mac: number | null;
+  nyha: number | null;
+  nyha_label: NullableString;
+  fast: number | null;
+  fast_label: NullableString;
+};
+
+export type DeclineOfStatusTrendResponse = {
+  trend: DeclineOfStatusTrendEntry[];
+  applied_from_date: string | null;
+  applied_to_date: string | null;
+  available_from_date: string | null;
+  available_to_date: string | null;
+};
+
 export async function fetchPerformanceHistory(patientId: string) {
   const response = await api.get<PerformanceHistoryResponse>(`/patients/${patientId}/performance-history`);
+  return response.data;
+}
+
+export async function fetchDeclineOfStatusTrend(patientId: string, range?: { fromDate?: string; toDate?: string }) {
+  const response = await api.get<DeclineOfStatusTrendResponse>(`/patients/${patientId}/decline-of-status-trend`, {
+    params: {
+      from_date: range?.fromDate || undefined,
+      to_date: range?.toDate || undefined,
+    },
+  });
   return response.data;
 }
 

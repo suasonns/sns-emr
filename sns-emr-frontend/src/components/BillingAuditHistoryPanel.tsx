@@ -48,7 +48,7 @@ function formatEventLabel(eventType: string): string {
   return eventType
     .replaceAll("_", " ")
     .toLowerCase()
-    .replace(/\w/g, (char) => char.toUpperCase());
+    .replace(/\w/g, (char) => char.toUpperCase());
 }
 
 function formatTimestamp(value: string): string {
@@ -96,7 +96,10 @@ export default function BillingAuditHistoryPanel({
   };
 
   useEffect(() => {
-    void loadHistory();
+    queueMicrotask(() => {
+      void loadHistory();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patientId, billingCycleId]);
 
   const eventTypeOptions = useMemo(() => {

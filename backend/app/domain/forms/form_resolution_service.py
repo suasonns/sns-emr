@@ -275,7 +275,12 @@ def _mapped_form_key_for_request(
     # ✅ LVN LOGIC
     # =====================================================
     if d == "LVN":
-        if f in {"ROUTINE_VISIT", "SHORT_FORM"}:
+        # LVN can document ASSESS (a full assessment-style visit) or a plain
+        # ROUTINE_VISIT/SHORT_FORM (PRN) — all map to the same LVN_ROUTINE
+        # form, since there is no separate LVN comprehensive-assessment
+        # template distinct from RN_ASSESS. Only SUPV_VISIT_ONLY (the RN
+        # Supervisory Visit) stays RN-exclusive.
+        if f in {"ROUTINE_VISIT", "SHORT_FORM", "ASSESS"}:
             return "LVN_ROUTINE"
 
         raise ValueError(

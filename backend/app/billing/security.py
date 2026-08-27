@@ -15,15 +15,21 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 
-AUTOMATED = "AUTOMATED"
-
-
 def require_automated_billing(
     db: Session,
     tenant_id: str,
 ) -> None:
     """
-    Enforces that the tenant's billing organization is AUTOMATED.
+    Enforces that the tenant is authorized for automated billing.
+
+    Canonical source: tenants.billing_enabled (public schema). This flag is
+    only ever set true once a tenant has real operating authority on file
+    (EIN + PTAN) — enforced by ck_tenant_billing_requires_operating_authority
+    on the tenants table.
+
+    NOTE: this previously queried a non-existent core.tenants /
+    core.billing_organizations schema (dead code — every call 500'd).
+    Replaced with the real tenants.billing_enabled column.
 
     Used to protect:
     - claim generation
@@ -35,20 +41,18 @@ def require_automated_billing(
     row = db.execute(
         text(
             """
-            SELECT bo.capability_tier
-            FROM core.tenants t
-            JOIN core.billing_organizations bo
-              ON bo.id = t.billing_organization_id
-            WHERE t.id = :tenant_id
+            SELECT billing_enabled
+            FROM tenants
+            WHERE id = :tenant_id
             """
         ),
         {"tenant_id": tenant_id},
     ).fetchone()
 
-    if not row or row.capability_tier != AUTOMATED:
+    if not row or not row.billing_enabled:
         raise HTTPException(
             status_code=403,
-            detail="Automated billing features are available only for NE Billing tenants.",
+            detail="Automated billing features are available only for tenants with billing enabled (requires EIN + PTAN on file).",
         )
 
 
@@ -57,7 +61,8 @@ def tenant_has_automated_billing(
     tenant_id: str,
 ) -> bool:
     """
-    Returns True if the tenant is linked to an AUTOMATED billing organization.
+    Returns True if the tenant has automated billing enabled
+    (tenants.billing_enabled).
 
     Used for:
     - remittance advice visibility
@@ -68,14 +73,12 @@ def tenant_has_automated_billing(
     row = db.execute(
         text(
             """
-            SELECT bo.capability_tier
-            FROM core.tenants t
-            JOIN core.billing_organizations bo
-              ON bo.id = t.billing_organization_id
-            WHERE t.id = :tenant_id
+            SELECT billing_enabled
+            FROM tenants
+            WHERE id = :tenant_id
             """
         ),
         {"tenant_id": tenant_id},
     ).fetchone()
 
-    return bool(row and row.capability_tier == AUTOMATED)
+    return bool(row and row.billing_enabled)

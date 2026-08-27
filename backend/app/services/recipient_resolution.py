@@ -1,5 +1,7 @@
-from typing import List
 from dataclasses import dataclass
+from typing import List
+
+from sqlalchemy import text
 
 
 @dataclass
@@ -29,12 +31,14 @@ def resolve_patient_recipients(db, patient_id) -> List[NotificationRecipient]:
     # Case Manager (example lookup)
     cm = (
         db.execute(
-            """
+            text(
+                """
             SELECT user_id
             FROM patient_assignments
-            WHERE patient_id = :pid AND role = 'CASE_MANAGER'
+            WHERE patient_id = :pid AND discipline = 'CASE_MANAGER' AND active = true
             LIMIT 1
-            """,
+            """
+            ),
             {"pid": patient_id},
         )
         .scalar()
@@ -44,12 +48,14 @@ def resolve_patient_recipients(db, patient_id) -> List[NotificationRecipient]:
     # Assigned RN
     rn = (
         db.execute(
-            """
+            text(
+                """
             SELECT user_id
             FROM patient_assignments
-            WHERE patient_id = :pid AND role = 'RN'
+            WHERE patient_id = :pid AND discipline = 'RN' AND active = true
             LIMIT 1
-            """,
+            """
+            ),
             {"pid": patient_id},
         )
         .scalar()
@@ -59,12 +65,14 @@ def resolve_patient_recipients(db, patient_id) -> List[NotificationRecipient]:
     # Assigned LVN
     lvn = (
         db.execute(
-            """
+            text(
+                """
             SELECT user_id
             FROM patient_assignments
-            WHERE patient_id = :pid AND role = 'LVN'
+            WHERE patient_id = :pid AND discipline = 'LVN' AND active = true
             LIMIT 1
-            """,
+            """
+            ),
             {"pid": patient_id},
         )
         .scalar()

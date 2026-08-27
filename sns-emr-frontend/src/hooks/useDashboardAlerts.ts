@@ -35,8 +35,7 @@ export function useDashboardAlerts(role: string, refreshMs = 30000) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : 'Failed to load alerts');
       } finally {
-        if (!mounted) return;
-        setLoading(false);
+        if (mounted) setLoading(false);
       }
     };
 

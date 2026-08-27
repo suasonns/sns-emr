@@ -26,15 +26,27 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.roles import role_matches
+from app.core.capabilities import VIEW_ALL_TENANT_PATIENTS, has_capability
 from app.core.security import CurrentUser
 from app.models.patient import Patient
 from app.models.patient_assignment import PatientAssignment
 from app.models.user import User
+from app.services.physician_identity_service import (
+    is_identity_verified,
+    is_provider_identity_role,
+    is_tenant_wide_oversight_role,
+)
 
 # Roles that may access any patient within their own tenant, bypassing
-# care-team assignment scoping. Mirrors app/api/patients.py:list_patients.
-FULL_ACCESS_ROLES = {"ADMIN", "DPCS", "MD"}
+# care-team assignment scoping. This is the SAME single clinical-admin
+# access group as app.core.roles.CLINICAL_ADMIN_ROLES / VIEW_ALL_TENANT_
+# PATIENTS in app.core.capabilities (ADMINISTRATOR, DPCS, DPCS_ADMINISTRATOR
+# — one group, identical access, owner directive 2026-08-22). Determined
+# explicitly via has_capability(), never via an implicit allow_clinical_admin
+# fallback.
+# NOTE: "MD"/"MEDICAL_DIRECTOR"/"MEDICAL_DIRECTOR_DESIGNEE" are handled
+# separately below via the Physician Identity Mapping gate — they are
+# NOT full-access merely by role label; see is_provider_identity_role().
 
 
 def _as_uuid(value: Any, field_name: str) -> uuid.UUID:
@@ -74,7 +86,41 @@ def get_authorized_patient(db: Session, patient_id: uuid.UUID, user: CurrentUser
 
     access_level = db_user.access_level or "ROLE_BASED"
 
-    if role_matches(user.role, FULL_ACCESS_ROLES) or access_level == "FULL_ACCESS":
+    # ---------------------------------------------------------------
+    # Physician Identity Mapping (owner directive 2026-08-21): a
+    # provider-identity role (MD/MEDICAL_DIRECTOR/MEDICAL_DIRECTOR_DESIGNEE/
+    # ATTENDING_PHYSICIAN/HOSPICE_PHYSICIAN/NP/PA) never gets patient
+    # access from its role label alone. Fail-closed: without an ACTIVE
+    # verified physician_id linkage, access is denied entirely — no
+    # fallback to the generic assignment/unclaimed-caseload logic below.
+    # Once verified: Medical Director/Designee (and legacy "MD") get
+    # tenant-wide oversight visibility; Attending Physician/Hospice
+    # Physician/NP/PA are scoped to their own PatientAssignment rows only
+    # (never the "unclaimed caseload" fallback — that exists for generic
+    # clinical onboarding, not provider-identity roles).
+    # ---------------------------------------------------------------
+    if is_provider_identity_role(user.role):
+        if not is_identity_verified(db_user):
+            raise HTTPException(status_code=404, detail="Patient not found")
+
+        if is_tenant_wide_oversight_role(user.role):
+            return patient
+
+        assignment = (
+            db.query(PatientAssignment)
+            .filter(
+                PatientAssignment.patient_id == patient.id,
+                PatientAssignment.tenant_id == tenant_id,
+                PatientAssignment.user_id == user_id,
+                PatientAssignment.active.is_(True),
+            )
+            .first()
+        )
+        if assignment:
+            return patient
+        raise HTTPException(status_code=404, detail="Patient not found")
+
+    if has_capability(user.role, VIEW_ALL_TENANT_PATIENTS) or access_level == "FULL_ACCESS":
         return patient
 
     assignment = (

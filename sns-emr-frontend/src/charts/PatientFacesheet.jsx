@@ -1,8 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createPosHistory, fetchFacesheet, fetchPosHistory, saveFacesheet, updatePosHistory } from '../api/facesheet';
+import api from '../api/client';
+import { fetchDocumentBlobUrl, listPatientDocuments, uploadDocument } from '../api/documents';
+import { createPosHistory, fetchFacesheet, fetchPerformanceHistory, fetchPosHistory, saveFacesheet, updatePosHistory } from '../api/facesheet';
+import { addPatientAllergy as addAllergy, listPatientAllergies as fetchAllergies, removePatientAllergy as removeAllergy } from '../api/medications';
 import { listPhysicians } from '../api/physicians';
 import PhysicianDirectoryModal from '../components/PhysicianDirectoryModal';
+import Icd10DiagnosisInput from '../components/Icd10DiagnosisInput';
 import { useThemeMode } from '../theme/theme';
+
+const fetchCodeStatusHistory = async (patientId) => {
+  const response = await api.get(`/patients/${patientId}/code-status`);
+  return response.data;
+};
 
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
@@ -11,6 +20,7 @@ const getColors = (mode) => mode === 'light' ? {
   teal: '#0d7d7a',
   white: '#18354c',
   label: '#5f7286',
+  muted: '#5f7286',
   text: '#1e2d3b',
   green: '#2d7b63',
   red: '#d64d57',
@@ -26,6 +36,7 @@ const getColors = (mode) => mode === 'light' ? {
   teal: '#10b7a2',
   white: '#ffffff',
   label: '#94a3b8',
+  muted: '#94a3b8',
   text: '#e2e8f0',
   green: '#059669',
   red: '#ef4444',
@@ -89,9 +100,11 @@ const EMPTY_DRAFT = {
   current_level_of_care: '',
   loc_effective_date: '',
   primary_payer: '',
+  primary_payer_type: '',
   primary_policy_number: '',
   mbi_number: '',
   secondary_payer: '',
+  secondary_payer_type: '',
   secondary_policy_number: '',
   requires_prior_authorization: null,
   authorization_required_for: '',
@@ -101,10 +114,29 @@ const EMPTY_DRAFT = {
   authorization_end_date: '',
   primary_diagnosis: '',
   secondary_diagnoses: '',
+  diagnosis_entries: [],
   has_allergies: null,
   allergies: '',
   ref_date: '',
   recert_date: '',
+  election_date: '',
+  face_to_face_due_date: '',
+  benefit_period_number: '',
+  benefit_period_start: '',
+  benefit_period_end: '',
+  pps_score: '',
+  kps_score: '',
+  fast_stage: '',
+  code_status: '',
+  cti_status: '',
+  noe_status: '',
+  primary_rn_name: '',
+  social_worker_name: '',
+  lvn_name: '',
+  chaplain_name: '',
+  chha_name: '',
+  volunteer_name: '',
+  clinical_manager_name: '',
   responsible_party_name: '',
   responsible_party_relationship: '',
   responsible_party_phone: '',
@@ -131,8 +163,15 @@ const EMPTY_DRAFT = {
   pharmacy_fax: '',
   dme_vendor_name: '',
   dme_vendor_phone: '',
+  oxygen_vendor_name: '',
+  oxygen_vendor_phone: '',
+  oxygen_vendor_emergency_phone: '',
   mortuary_name: '',
   mortuary_phone: '',
+  mortuary_prearranged: null,
+  mortuary_contact_name: '',
+  mortuary_contact_phone: '',
+  mortuary_notes: '',
   special_instructions: '',
 };
 
@@ -172,6 +211,21 @@ const LOC_OPTIONS = [
   'GENERAL_INPATIENT',
   'INPATIENT_RESPITE',
 ].map((value) => ({ value, label: value ? value.replaceAll('_', ' ') : 'Select level' }));
+
+// HOPE A1400 payer source category. Stored alongside the free-text payer
+// name so the HOPE report mapper can export the official CMS code without
+// guessing at it from an arbitrary payer name string.
+const PAYER_SOURCE_TYPE_OPTIONS = [
+  { value: '', label: 'Select payer source type' },
+  { value: 'MEDICARE', label: 'Medicare' },
+  { value: 'MEDICARE_ADVANTAGE', label: 'Medicare Advantage/Medicare Part A (MA)' },
+  { value: 'MEDICAID', label: 'Medicaid/Medi-Cal' },
+  { value: 'MEDICAID_MANAGED_CARE', label: 'Medicaid/Medi-Cal Managed Care (MMC)' },
+  { value: 'PRIVATE_MANAGED_CARE', label: 'Private/Managed Care (HMO, Payer Plans, PPO)' },
+  { value: 'OTHER_GOVERNMENT', label: 'Other Government (VA, TRICARE)' },
+  { value: 'SELF_PAY', label: 'Self Pay' },
+  { value: 'NO_PAYER_SOURCE', label: 'No Payer Source (Charity/Pro Bono)' },
+];
 
 const AUTH_REQUIRED_FOR_OPTIONS = [
   '',
@@ -272,9 +326,13 @@ const getBannerName = (draft) => {
 
 const getBreadcrumbName = (draft) => getFullName([draft.first_name, draft.middle_name, draft.last_name]) || 'Patient';
 
-const getAllergySummary = (draft) => {
-  if (draft.has_allergies === false) return 'None reported';
+const getAllergySummary = (allergyList, draft) => {
+  if (allergyList && allergyList.length > 0) {
+    return allergyList.map((a) => a.allergen_text).join(', ');
+  }
+  if (allergyList && allergyList.length === 0 && draft.has_allergies === false) return 'None reported';
   if (draft.has_allergies === true) return draft.allergies?.trim() || 'Reported';
+  if (allergyList && allergyList.length === 0) return 'None reported';
   return '—';
 };
 
@@ -334,9 +392,11 @@ const buildPayload = (draft) => {
   current_level_of_care: toNullableString(draft.current_level_of_care),
   loc_effective_date: toNullableString(draft.loc_effective_date),
   primary_payer: toNullableString(draft.primary_payer),
+  primary_payer_type: toNullableString(draft.primary_payer_type),
   primary_policy_number: toNullableString(draft.primary_policy_number),
   mbi_number: toNullableString(draft.mbi_number),
   secondary_payer: toNullableString(draft.secondary_payer),
+  secondary_payer_type: toNullableString(draft.secondary_payer_type),
   secondary_policy_number: toNullableString(draft.secondary_policy_number),
   requires_prior_authorization: draft.requires_prior_authorization,
   authorization_required_for: toNullableString(draft.authorization_required_for),
@@ -346,10 +406,29 @@ const buildPayload = (draft) => {
   authorization_end_date: toNullableString(draft.authorization_end_date),
   ...(primaryDiagnosis ? { primary_diagnosis: primaryDiagnosis } : {}),
   secondary_diagnoses: toNullableString(draft.secondary_diagnoses),
+  diagnosis_entries: draft.diagnosis_entries,
   has_allergies: draft.has_allergies,
   allergies: toNullableString(draft.allergies),
   ref_date: toNullableString(draft.ref_date),
   recert_date: toNullableString(draft.recert_date),
+  election_date: toNullableString(draft.election_date),
+  face_to_face_due_date: toNullableString(draft.face_to_face_due_date),
+  benefit_period_number: toNullableString(draft.benefit_period_number),
+  benefit_period_start: toNullableString(draft.benefit_period_start),
+  benefit_period_end: toNullableString(draft.benefit_period_end),
+  pps_score: toNullableString(draft.pps_score),
+  kps_score: toNullableString(draft.kps_score),
+  fast_stage: toNullableString(draft.fast_stage),
+  code_status: toNullableString(draft.code_status),
+  cti_status: toNullableString(draft.cti_status),
+  noe_status: toNullableString(draft.noe_status),
+  primary_rn_name: toNullableString(draft.primary_rn_name),
+  social_worker_name: toNullableString(draft.social_worker_name),
+  lvn_name: toNullableString(draft.lvn_name),
+  chaplain_name: toNullableString(draft.chaplain_name),
+  chha_name: toNullableString(draft.chha_name),
+  volunteer_name: toNullableString(draft.volunteer_name),
+  clinical_manager_name: toNullableString(draft.clinical_manager_name),
   responsible_party_name: toNullableString(draft.responsible_party_name),
   responsible_party_relationship: toNullableString(draft.responsible_party_relationship),
   responsible_party_phone: toNullableString(draft.responsible_party_phone),
@@ -376,8 +455,15 @@ const buildPayload = (draft) => {
   pharmacy_fax: toNullableString(draft.pharmacy_fax),
   dme_vendor_name: toNullableString(draft.dme_vendor_name),
   dme_vendor_phone: toNullableString(draft.dme_vendor_phone),
+  oxygen_vendor_name: toNullableString(draft.oxygen_vendor_name),
+  oxygen_vendor_phone: toNullableString(draft.oxygen_vendor_phone),
+  oxygen_vendor_emergency_phone: toNullableString(draft.oxygen_vendor_emergency_phone),
   mortuary_name: toNullableString(draft.mortuary_name),
   mortuary_phone: toNullableString(draft.mortuary_phone),
+  mortuary_prearranged: draft.mortuary_prearranged,
+  mortuary_contact_name: toNullableString(draft.mortuary_contact_name),
+  mortuary_contact_phone: toNullableString(draft.mortuary_contact_phone),
+  mortuary_notes: toNullableString(draft.mortuary_notes),
   special_instructions: toNullableString(draft.special_instructions),
   };
 };
@@ -428,9 +514,11 @@ const mapResponseToDraft = (response) => ({
   current_level_of_care: response?.level_of_care?.current_level_of_care || '',
   loc_effective_date: normalizeDateValue(response?.level_of_care?.loc_effective_date),
   primary_payer: response?.insurance?.primary_payer || '',
+  primary_payer_type: response?.insurance?.primary_payer_type || '',
   primary_policy_number: response?.insurance?.primary_policy_number || '',
   mbi_number: response?.insurance?.mbi_number || '',
   secondary_payer: response?.insurance?.secondary_payer || '',
+  secondary_payer_type: response?.insurance?.secondary_payer_type || '',
   secondary_policy_number: response?.insurance?.secondary_policy_number || '',
   requires_prior_authorization: response?.authorization?.requires_prior_authorization ?? null,
   authorization_required_for: response?.authorization?.authorization_required_for || '',
@@ -440,16 +528,42 @@ const mapResponseToDraft = (response) => ({
   authorization_end_date: normalizeDateValue(response?.authorization?.authorization_end_date),
   primary_diagnosis: response?.clinical?.primary_diagnosis || '',
   secondary_diagnoses: response?.clinical?.secondary_diagnoses || '',
+  diagnosis_entries: Array.isArray(response?.clinical?.diagnosis_entries) ? response.clinical.diagnosis_entries : [],
   has_allergies: response?.clinical?.has_allergies ?? null,
   allergies: response?.clinical?.allergies || '',
   ref_date: normalizeDateValue(response?.service_dates?.ref_date),
   recert_date: normalizeDateValue(response?.service_dates?.recert_date),
+  election_date: normalizeDateValue(response?.service_dates?.election_date),
+  face_to_face_due_date: normalizeDateValue(response?.service_dates?.face_to_face_due_date),
+  benefit_period_number: response?.benefit_period?.benefit_period_number || '',
+  benefit_period_start: normalizeDateValue(response?.benefit_period?.benefit_period_start),
+  benefit_period_end: normalizeDateValue(response?.benefit_period?.benefit_period_end),
+  pps_score: response?.hospice_snapshot?.pps_score || '',
+  kps_score: response?.hospice_snapshot?.kps_score || '',
+  fast_stage: response?.hospice_snapshot?.fast_stage || '',
+  code_status: response?.hospice_snapshot?.code_status_detail?.code_status || '',
+  code_status_detail: response?.hospice_snapshot?.code_status_detail || null,
+  cti_status: response?.hospice_snapshot?.cti_status || '',
+  noe_status: response?.hospice_snapshot?.noe_status || '',
+  primary_rn_name: response?.care_team?.primary_rn_name || '',
+  social_worker_name: response?.care_team?.social_worker_name || '',
+  lvn_name: response?.care_team?.lvn_name || '',
+  chaplain_name: response?.care_team?.chaplain_name || '',
+  chha_name: response?.care_team?.chha_name || '',
+  volunteer_name: response?.care_team?.volunteer_name || '',
+  clinical_manager_name: response?.care_team?.clinical_manager_name || '',
   responsible_party_name: response?.contacts?.responsible_party?.name || '',
   responsible_party_relationship: response?.contacts?.responsible_party?.relationship || '',
   responsible_party_phone: response?.contacts?.responsible_party?.phone || '',
   emergency_contact_name: response?.contacts?.emergency_contact?.name || '',
   emergency_contact_relationship: response?.contacts?.emergency_contact?.relationship || '',
   emergency_contact_phone: response?.contacts?.emergency_contact?.phone || '',
+  synced_contacts: {
+    primary_caregiver: response?.contacts?.primary_caregiver || null,
+    decision_maker: response?.contacts?.decision_maker || null,
+    dpoa: response?.contacts?.dpoa || null,
+    healthcare_agent: response?.contacts?.healthcare_agent || null,
+  },
   attending_physician_name: response?.physicians?.attending?.name || '',
   attending_physician_address: response?.physicians?.attending?.address || '',
   attending_physician_phone: response?.physicians?.attending?.phone || '',
@@ -470,8 +584,15 @@ const mapResponseToDraft = (response) => ({
   pharmacy_fax: response?.vendors?.pharmacy?.fax || '',
   dme_vendor_name: response?.vendors?.dme?.name || '',
   dme_vendor_phone: response?.vendors?.dme?.phone || '',
+  oxygen_vendor_name: response?.vendors?.oxygen?.name || '',
+  oxygen_vendor_phone: response?.vendors?.oxygen?.phone || '',
+  oxygen_vendor_emergency_phone: response?.vendors?.oxygen?.emergency_phone || '',
   mortuary_name: response?.vendors?.mortuary?.name || '',
   mortuary_phone: response?.vendors?.mortuary?.phone || '',
+  mortuary_prearranged: response?.vendors?.mortuary?.prearranged ?? null,
+  mortuary_contact_name: response?.vendors?.mortuary?.contact_name || '',
+  mortuary_contact_phone: response?.vendors?.mortuary?.contact_phone || '',
+  mortuary_notes: response?.vendors?.mortuary?.notes || '',
   special_instructions: response?.notes?.special_instructions || '',
 });
 
@@ -554,6 +675,7 @@ const Badge = ({ children, variant = 'teal', colors }) => {
     green: { bg: colors.greenBg, color: colors.green },
     red: { bg: colors.redBg, color: colors.red },
     amber: { bg: colors.amberBg, color: colors.amber },
+    muted: { bg: colors.border, color: colors.label },
   }[variant] || { bg: colors.tealBg, color: colors.teal };
   return <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700, backgroundColor: v.bg, color: v.color, letterSpacing: 0.2 }}>{children}</span>;
 };
@@ -609,11 +731,14 @@ const getStatusVariant = (status) => {
   return 'teal';
 };
 
-const PatientBanner = ({ colors, draft, facesheet }) => {
+const PatientBanner = ({ colors, draft, facesheet, allergyList }) => {
   const age = getAge(draft.dob);
   const status = facesheet?.service_dates?.admission_status || '—';
   const dobText = formatDateDisplay(draft.dob);
   const genderText = draft.gender || '—';
+  const autoBP = facesheet?.benefit_period?.auto_calculated;
+  const bpBannerText = autoBP?.available ? `BP ${autoBP.benefit_period_number}` : '—';
+  const hasStructuredAllergyAlert = (allergyList && allergyList.length > 0) || draft.has_allergies === true;
 
   return (
     <div style={{ backgroundColor: colors.card, borderRadius: 8, padding: '12px 16px', marginBottom: 10, boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)' }}>
@@ -626,8 +751,8 @@ const PatientBanner = ({ colors, draft, facesheet }) => {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, max-content))', columnGap: 18, rowGap: 8, alignItems: 'end' }}>
         {[
           { label: 'SOC DATE', value: formatDateDisplay(facesheet?.service_dates?.soc_date) },
-          { label: 'BENEFIT PERIOD', value: '—' },
-          { label: 'ALLERGIES', value: getAllergySummary(draft), alert: draft.has_allergies === true },
+          { label: 'BENEFIT PERIOD', value: bpBannerText },
+          { label: 'ALLERGIES', value: getAllergySummary(allergyList, draft), alert: hasStructuredAllergyAlert },
         ].map((item) => (
           <div key={item.label}>
             <span style={{ color: colors.label, fontSize: 9, textTransform: 'uppercase', display: 'block', letterSpacing: 0.5 }}>{item.label}</span>
@@ -660,7 +785,7 @@ const PatientStatusStrip = ({ colors, facesheet }) => (
     minHeight: 0,
     marginBottom: 12,
     display: 'grid',
-    gridTemplateColumns: 'minmax(180px, 1fr) minmax(220px, 1.4fr)',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
     gap: 12,
     alignItems: 'stretch',
   }}>
@@ -684,7 +809,7 @@ const PatientStatusStrip = ({ colors, facesheet }) => (
       borderRadius: 8,
       padding: '8px 10px',
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
       gap: 8,
     }}>
       {[
@@ -699,6 +824,256 @@ const PatientStatusStrip = ({ colors, facesheet }) => (
     </div>
   </div>
 );
+
+const CODE_STATUS_OPTIONS = [
+  { value: '', label: 'Select status' },
+  { value: 'FULL_CODE', label: 'Full Code' },
+  { value: 'DNR_DNI', label: 'DNR/DNI' },
+  { value: 'COMFORT_MEASURES_ONLY', label: 'Comfort Measures Only' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+const CTI_STATUS_OPTIONS = [
+  '',
+  'NOT_STARTED',
+  'PENDING_SIGNATURE',
+  'SIGNED',
+  'EXPIRED',
+].map((value) => ({ value, label: value ? value.replaceAll('_', ' ') : 'Select status' }));
+
+const NOE_STATUS_OPTIONS = [
+  '',
+  'NOT_FILED',
+  'PENDING',
+  'FILED',
+  'ACCEPTED',
+  'LATE',
+].map((value) => ({ value, label: value ? value.replaceAll('_', ' ') : 'Select status' }));
+
+const SnapshotItem = ({ colors, label, value, alert = false }) => (
+  <div>
+    <span style={{ color: colors.label, fontSize: 9, textTransform: 'uppercase', display: 'block', letterSpacing: 0.5 }}>{label}</span>
+    <span style={{ color: alert ? colors.red : colors.white, fontSize: 12, fontWeight: 700, display: 'block', lineHeight: 1.3 }}>{formatDisplayValue(value)}</span>
+  </div>
+);
+
+const getDaysRemaining = (dateStr) => {
+  const normalized = normalizeDateValue(dateStr);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+const CodeStatusHistoryPanel = ({ colors, history }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!history?.length) return null;
+
+  return (
+    <div style={{ gridColumn: '1 / -1', marginTop: 4 }}>
+      <button
+        onClick={() => setExpanded((value) => !value)}
+        style={{ background: 'none', border: 'none', color: colors.teal, fontSize: 10.5, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+      >
+        {expanded ? '▾ Hide Code Status History' : `▸ Code Status History (${history.length})`}
+      </button>
+      {expanded ? (
+        <div style={{ marginTop: 6, border: `1px solid ${colors.border}`, borderRadius: 8, overflow: 'hidden' }}>
+          {history.map((row) => (
+            <div
+              key={row.code_status_id}
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                gap: 8,
+                padding: '6px 10px',
+                borderBottom: `1px solid ${colors.border}`,
+                fontSize: 11,
+                backgroundColor: row.is_current ? colors.tealBg : 'transparent',
+              }}
+            >
+              <span style={{ color: colors.label, minWidth: 90 }}>{formatDateDisplay(row.effective_date)}</span>
+              <span style={{ color: colors.white, fontWeight: 600, flex: 1 }}>
+                {CODE_STATUS_OPTIONS.find((option) => option.value === row.code_status)?.label || row.code_status}
+                {row.is_current ? ' (current)' : ''}
+              </span>
+              <span style={{ color: colors.label }}>Source: {formatEnumLabel(row.source)}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const HospiceSnapshotCard = ({ colors, draft, update, facesheet, performanceHistory, codeStatusHistory }) => {
+  const admissionDate = formatDateDisplay(facesheet?.service_dates?.admission_date);
+
+  // Latest RNICA / Recertification performance status (PPS/KPS/FAST) is the
+  // authoritative source per the Facesheet sync requirements — no manual
+  // Facesheet entry once at least one assessment exists.
+  const latestPerf = performanceHistory?.length ? performanceHistory[performanceHistory.length - 1] : null;
+  const hasAutoPerf = Boolean(latestPerf && (latestPerf.pps !== null || latestPerf.kps !== null || latestPerf.fast_stage));
+  const ppsValue = hasAutoPerf ? latestPerf.pps : draft.pps_score;
+  const kpsValue = hasAutoPerf ? latestPerf.kps : draft.kps_score;
+  const fastValue = hasAutoPerf ? latestPerf.fast_stage : draft.fast_stage;
+  const isDementiaRelated = /dementia|alzheimer/i.test(draft.primary_diagnosis || '') || Boolean(fastValue);
+
+  // System-calculated benefit period schedule (CMS 90/90/60-day rule from
+  // election date). This is the authoritative source when an election date
+  // is on file; manually entered benefit_period_* fields below remain as an
+  // override/fallback for patients still in referral (no election date yet).
+  const autoBP = facesheet?.benefit_period?.auto_calculated;
+  const hasAutoBP = Boolean(autoBP?.available);
+
+  const bpNumber = hasAutoBP ? autoBP.benefit_period_number : draft.benefit_period_number;
+  const bpStart = hasAutoBP ? autoBP.benefit_period_start : draft.benefit_period_start;
+  const bpEnd = hasAutoBP ? autoBP.benefit_period_end : draft.benefit_period_end;
+  const recertDue = hasAutoBP ? autoBP.recert_due_date : draft.recert_date;
+  const f2fDue = hasAutoBP ? autoBP.face_to_face_due_date : draft.face_to_face_due_date;
+
+  const benefitPeriodText = bpStart || bpEnd
+    ? `${formatDateDisplay(bpStart)} – ${formatDateDisplay(bpEnd)}`
+    : '—';
+  const daysRemaining = hasAutoBP ? autoBP.days_remaining : getDaysRemaining(bpEnd);
+  const daysRemainingText = daysRemaining === null || daysRemaining === undefined ? '—' : (daysRemaining < 0 ? `${Math.abs(daysRemaining)}d overdue` : `${daysRemaining}d`);
+
+  return (
+    <div style={{ ...cardBase(colors), padding: '10px 12px', minHeight: 0, marginBottom: 12 }}>
+      <CardHeader title="Hospice Snapshot" colors={colors} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px 14px', marginBottom: 10 }}>
+        <SnapshotItem colors={colors} label="Terminal Diagnosis" value={draft.primary_diagnosis} />
+        <SnapshotItem colors={colors} label="Admission Date" value={admissionDate} />
+        <SnapshotItem colors={colors} label="Level of Care" value={formatEnumLabel(draft.current_level_of_care)} />
+        <SnapshotItem colors={colors} label="Residence Type" value={formatEnumLabel(draft.current_pos_type)} />
+        <SnapshotItem colors={colors} label="Facility Name" value={draft.current_pos_name} />
+        <SnapshotItem colors={colors} label="Attending Physician" value={draft.attending_physician_name} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 4 }}>
+        <span style={{ color: colors.label, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Benefit Period</span>
+        <Badge variant={hasAutoBP ? 'teal' : 'muted'} colors={colors}>{hasAutoBP ? 'SYSTEM-CALCULATED' : 'MANUAL (no election date)'}</Badge>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px 14px', marginBottom: 10, borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
+        <SnapshotItem colors={colors} label="Current BP" value={bpNumber ? `BP ${bpNumber} (${benefitPeriodText})` : benefitPeriodText} />
+        <SnapshotItem colors={colors} label="Days Remaining" value={daysRemainingText} alert={daysRemaining !== null && daysRemaining !== undefined && daysRemaining <= 14} />
+        <SnapshotItem colors={colors} label="Recert Due" value={formatDateDisplay(recertDue)} />
+        <SnapshotItem colors={colors} label="F2F Due" value={f2fDue ? formatDateDisplay(f2fDue) : (hasAutoBP ? 'N/A (BP 1–2)' : '—')} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '4px 14px', borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
+        <Field label="Election Date" value={draft.election_date} type="date" colors={colors} editable onChange={(value) => update('election_date', value)} />
+        {!hasAutoBP ? (
+          <>
+            <Field label="Benefit Period # (manual)" value={draft.benefit_period_number} colors={colors} editable onChange={(value) => update('benefit_period_number', value)} />
+            <Field label="Benefit Period Start (manual)" value={draft.benefit_period_start} type="date" colors={colors} editable onChange={(value) => update('benefit_period_start', value)} />
+            <Field label="Benefit Period End (manual)" value={draft.benefit_period_end} type="date" colors={colors} editable onChange={(value) => update('benefit_period_end', value)} />
+            <Field label="Recert Due (manual)" value={draft.recert_date} type="date" colors={colors} editable onChange={(value) => update('recert_date', value)} />
+            <Field label="Face-to-Face Due (manual)" value={draft.face_to_face_due_date} type="date" colors={colors} editable onChange={(value) => update('face_to_face_due_date', value)} />
+          </>
+        ) : null}
+        <Field label={hasAutoPerf ? `PPS (auto — ${latestPerf.source})` : 'PPS (manual)'} value={ppsValue} placeholder="e.g. 40%" colors={colors} editable={!hasAutoPerf} onChange={(value) => update('pps_score', value)} />
+        <Field label={hasAutoPerf ? `KPS (auto — ${latestPerf.source})` : 'KPS (manual)'} value={kpsValue} placeholder="e.g. 40%" colors={colors} editable={!hasAutoPerf} onChange={(value) => update('kps_score', value)} />
+        {isDementiaRelated ? (
+          <Field label={hasAutoPerf ? `FAST (auto — ${latestPerf.source})` : 'FAST (manual)'} value={fastValue} placeholder="e.g. 7C" colors={colors} editable={!hasAutoPerf} onChange={(value) => update('fast_stage', value)} />
+        ) : null}
+        <Field
+          label={
+            draft.code_status_detail
+              ? `Code Status (last set via ${draft.code_status_detail.source} on ${draft.code_status_detail.effective_date || '—'})`
+              : 'Code Status'
+          }
+          value={draft.code_status}
+          type="select"
+          options={CODE_STATUS_OPTIONS}
+          colors={colors}
+          editable
+          onChange={(value) => update('code_status', value)}
+        />
+        <CodeStatusHistoryPanel colors={colors} history={codeStatusHistory} />
+        <Field label="CTI Status" value={draft.cti_status} type="select" options={CTI_STATUS_OPTIONS} colors={colors} editable onChange={(value) => update('cti_status', value)} />
+        <Field label="NOE Status" value={draft.noe_status} type="select" options={NOE_STATUS_OPTIONS} colors={colors} editable onChange={(value) => update('noe_status', value)} />
+      </div>
+    </div>
+  );
+};
+
+const CARE_TEAM_FIELDS = [
+  { key: 'primary_rn_name', label: 'Primary RN', autoField: 'primary_rn_name' },
+  { key: 'lvn_name', label: 'LVN', autoField: 'lvn_name' },
+  { key: 'social_worker_name', label: 'Social Worker', autoField: 'social_worker_name' },
+  { key: 'chaplain_name', label: 'Chaplain', autoField: 'chaplain_name' },
+  { key: 'chha_name', label: 'CHHA', autoField: 'chha_name' },
+  { key: 'volunteer_name', label: 'Volunteer', autoField: null },
+  { key: 'clinical_manager_name', label: 'Clinical Manager', autoField: 'clinical_manager_name' },
+];
+
+const CareTeamCard = ({ colors, draft, update, facesheet }) => {
+  const assignments = facesheet?.care_team?.assignments || {};
+
+  return (
+    <div style={{ ...cardBase(colors), padding: '10px 12px', minHeight: 0, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <CardHeader title="Care Team" colors={colors} />
+      </div>
+      <SectionNote colors={colors}>Names marked AUTO are pulled live from active staff assignments. Roles with no active assignment fall back to manual entry until staff is assigned.</SectionNote>
+      {/* Equal-width responsive grid: 2-3 columns depending on card width,
+          never the previously-compressed 6-across layout. Each role renders
+          as its own fixed-height cell so labels/badges/names line up across
+          rows regardless of label text length. */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: 10,
+        marginTop: 8,
+      }}>
+        {CARE_TEAM_FIELDS.map(({ key, label, autoField }) => {
+          const autoMatch = autoField ? assignments[autoField] : null;
+          return (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                minHeight: 74,
+                padding: '8px 10px',
+                border: `1px solid ${colors.border}`,
+                borderRadius: 8,
+                backgroundColor: colors.bg,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6, minHeight: 26 }}>
+                <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, lineHeight: 1.3 }}>
+                  {label}
+                </span>
+                <Badge variant={autoMatch ? 'teal' : 'muted'} colors={colors}>
+                  {autoMatch ? 'AUTO' : 'UNASSIGNED'}
+                </Badge>
+              </div>
+              <div style={{ marginTop: 6 }}>
+                {autoMatch ? (
+                  <span style={{ color: colors.white, fontSize: 12.5, fontWeight: 700, display: 'block' }}>{autoMatch.name}</span>
+                ) : (
+                  <input
+                    type="text"
+                    value={draft[key] ?? ''}
+                    placeholder="Enter name (manual)"
+                    onChange={(event) => update(key, event.target.value)}
+                    style={{ ...baseInputStyle(colors), border: `1px solid ${colors.border}`, fontSize: 12.5, padding: '5px 8px' }}
+                  />
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
 
 const SafetyBanner = ({ colors, orderingContactState }) => {
   if (orderingContactState.hasVerifiedOrderingContact) {
@@ -808,94 +1183,403 @@ const InsuranceCard = ({ colors, draft, update }) => (
     <div style={{ marginBottom: 12 }}>
       <div style={{ marginBottom: 8 }}><Badge variant="teal" colors={colors}>PRIMARY</Badge></div>
       <Field label="Payer" value={draft.primary_payer} colors={colors} editable onChange={(value) => update('primary_payer', value)} />
+      <Field label="Payer Source Type (HOPE A1400)" value={draft.primary_payer_type} type="select" options={PAYER_SOURCE_TYPE_OPTIONS} colors={colors} editable onChange={(value) => update('primary_payer_type', value)} />
       <Field label="Policy Number" value={draft.primary_policy_number} colors={colors} editable onChange={(value) => update('primary_policy_number', value)} />
       <Field label="MBI Number" value={draft.mbi_number} colors={colors} editable onChange={(value) => update('mbi_number', value)} />
     </div>
     <div>
       <div style={{ marginBottom: 8 }}><Badge variant="teal" colors={colors}>SECONDARY</Badge></div>
       <Field label="Payer" value={draft.secondary_payer} colors={colors} editable onChange={(value) => update('secondary_payer', value)} />
+      <Field label="Payer Source Type (HOPE A1400)" value={draft.secondary_payer_type} type="select" options={PAYER_SOURCE_TYPE_OPTIONS} colors={colors} editable onChange={(value) => update('secondary_payer_type', value)} />
       <Field label="Policy Number" value={draft.secondary_policy_number} colors={colors} editable onChange={(value) => update('secondary_policy_number', value)} />
     </div>
     <SectionNote colors={colors}>Only primary and secondary payer details are stored on the current facesheet backend.</SectionNote>
   </div>
 );
 
-const DocumentPlaceholder = ({ colors, title, buttonLabel }) => (
-  <div style={{ minWidth: 0 }}>
-    <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
-    <div style={{ border: `1px dashed ${colors.border}`, borderRadius: 8, padding: 16, textAlign: 'center', margin: '8px 0 12px' }}>
-      <span style={{ color: colors.label, fontSize: 12 }}>Document upload is not wired to this facesheet endpoint yet.</span><br />
-      <button type="button" disabled style={{ marginTop: 8, padding: '6px 16px', backgroundColor: colors.border, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, cursor: 'not-allowed' }}>{buttonLabel}</button>
+const formatDocumentTimestamp = (value) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '—' : parsed.toLocaleString();
+};
+
+const formatDocumentSize = (value) => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentType }) => {
+  const [documents, setDocuments] = useState([]);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState('');
+  const [error, setError] = useState('');
+  const [uploadMessage, setUploadMessage] = useState('');
+  const [pickerKey, setPickerKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDocuments = async () => {
+      if (!patientId) {
+        setDocuments([]);
+        return;
+      }
+
+      setLoading(true);
+      setError('');
+      try {
+        const response = await listPatientDocuments(patientId, documentType);
+        if (!cancelled) {
+          setDocuments(Array.isArray(response?.documents) ? response.documents : []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err?.response?.data?.detail || 'Unable to load documents for this section.');
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDocuments();
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, documentType]);
+
+  const handleUpload = async () => {
+    if (!patientId || !selectedFile || uploading) return;
+
+    setUploading(true);
+    setError('');
+    setUploadMessage('');
+    try {
+      const response = await uploadDocument(patientId, documentType, selectedFile);
+      const refreshed = await listPatientDocuments(patientId, documentType);
+      setDocuments(Array.isArray(refreshed?.documents) ? refreshed.documents : []);
+      setSelectedFile(null);
+      setPickerKey((value) => value + 1);
+      setUploadMessage(
+        `Uploaded ${response.file_name || 'document'}${response.size_bytes ? ` (${formatDocumentSize(response.size_bytes)})` : ''}.`,
+      );
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to upload this document.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleView = async (documentId) => {
+    if (!documentId || downloadingId) return;
+
+    setDownloadingId(documentId);
+    setError('');
+    try {
+      const blobUrl = await fetchDocumentBlobUrl(documentId);
+      window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to open this document.');
+    } finally {
+      setDownloadingId('');
+    }
+  };
+
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 4 }}>{title}</div>
+      <div style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: 12, margin: '8px 0 12px', backgroundColor: colors.bg }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 8 }}>
+          <label
+            htmlFor={`${documentType}-upload`}
+            style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, color: colors.white, backgroundColor: colors.card, fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+          >
+            {buttonLabel}
+          </label>
+          <input
+            key={pickerKey}
+            id={`${documentType}-upload`}
+            type="file"
+            onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+            style={{ display: 'none' }}
+          />
+          <div style={{ color: colors.label, fontSize: 11, flex: 1, minWidth: 0 }}>
+            {selectedFile ? `${selectedFile.name}${selectedFile.size ? ` (${formatDocumentSize(selectedFile.size)})` : ''}` : 'No file selected'}
+          </div>
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={!selectedFile || uploading}
+            style={{ padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: !selectedFile || uploading ? colors.border : colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: !selectedFile || uploading ? 'not-allowed' : 'pointer' }}
+          >
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </div>
+        {uploadMessage ? <div style={{ color: colors.green, fontSize: 11, marginBottom: 8 }}>{uploadMessage}</div> : null}
+        {error ? <div style={{ color: colors.red, fontSize: 11, marginBottom: 8 }}>{error}</div> : null}
+        {loading ? (
+          <div style={{ color: colors.label, fontSize: 11 }}>Loading documents…</div>
+        ) : documents.length ? (
+          <div style={{ display: 'grid', gap: 8 }}>
+            {documents.map((doc) => (
+              <div key={doc.id} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', backgroundColor: colors.card }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {doc.file_name || 'Untitled document'}
+                    </div>
+                    <div style={{ color: colors.label, fontSize: 10.5, marginTop: 3 }}>
+                      Uploaded {formatDocumentTimestamp(doc.uploaded_at)}
+                    </div>
+                  </div>
+                  {doc.is_flagged ? <Badge variant="amber" colors={colors}>FLAGGED</Badge> : null}
+                  <button
+                    type="button"
+                    onClick={() => handleView(doc.id)}
+                    disabled={downloadingId === doc.id}
+                    style={{ background: 'none', border: 'none', color: colors.teal, fontSize: 10.5, fontWeight: 600, cursor: downloadingId === doc.id ? 'wait' : 'pointer', padding: 0 }}
+                  >
+                    {downloadingId === doc.id ? 'Opening…' : 'View'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: colors.label, fontSize: 11 }}>No documents uploaded for this section yet.</div>
+        )}
+      </div>
+      <div style={{ color: colors.label, fontSize: 11 }}>Files are stored on the patient record and can be reopened from this facesheet.</div>
     </div>
-    <div style={{ color: colors.label, fontSize: 11 }}>Use the save button above to persist the authorization fields on this page.</div>
-  </div>
-);
+  );
+};
 
-const AuthEligibility = ({ colors, draft, update }) => (
-  <div style={cardBase(colors)}>
-    <CardHeader title="Authorization & Eligibility Documents" colors={colors} />
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 1.2fr) minmax(260px, 1fr)', gap: 12, alignItems: 'stretch' }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-          <Field
-            label="Requires Prior Authorization"
-            value={selectBooleanValue(draft.requires_prior_authorization)}
-            type="select"
-            options={BOOLEAN_OPTIONS}
-            colors={colors}
-            editable
-            onChange={(value) => update('requires_prior_authorization', parseBooleanValue(value))}
-          />
-          <Field
-            label="Authorization Required For"
-            value={draft.authorization_required_for}
-            type="select"
-            options={AUTH_REQUIRED_FOR_OPTIONS}
-            colors={colors}
-            editable
-            onChange={(value) => update('authorization_required_for', value)}
-          />
+const AuthEligibility = ({ colors, draft, update, patientId }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div style={cardBase(colors)}>
+      <CardHeader title="Administrative Documents" colors={colors} onToggle={() => setExpanded((value) => !value)} isExpanded={expanded} />
+      {expanded ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, alignItems: 'stretch' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <Field
+                label="Requires Prior Authorization"
+                value={selectBooleanValue(draft.requires_prior_authorization)}
+                type="select"
+                options={BOOLEAN_OPTIONS}
+                colors={colors}
+                editable
+                onChange={(value) => update('requires_prior_authorization', parseBooleanValue(value))}
+              />
+              <Field
+                label="Authorization Required For"
+                value={draft.authorization_required_for}
+                type="select"
+                options={AUTH_REQUIRED_FOR_OPTIONS}
+                colors={colors}
+                editable
+                onChange={(value) => update('authorization_required_for', value)}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <Field label="Authorization Number" value={draft.authorization_number} colors={colors} editable onChange={(value) => update('authorization_number', value)} />
+              <Field
+                label="Authorization Status"
+                value={draft.authorization_status}
+                type="select"
+                options={AUTH_STATUS_OPTIONS}
+                colors={colors}
+                editable
+                onChange={(value) => update('authorization_status', value)}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <Field label="Authorization Start Date" value={draft.authorization_start_date} type="date" colors={colors} editable onChange={(value) => update('authorization_start_date', value)} />
+              <Field label="Authorization End Date" value={draft.authorization_end_date} type="date" colors={colors} editable onChange={(value) => update('authorization_end_date', value)} />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 12 }}>
+            <DocumentUploadWidget colors={colors} title="Authorization Documents" buttonLabel="Choose File" patientId={patientId} documentType="AUTHORIZATION" />
+            <DocumentUploadWidget colors={colors} title="Eligibility / Submission Documents" buttonLabel="Choose File" patientId={patientId} documentType="ELIGIBILITY_SUBMISSION" />
+          </div>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-          <Field label="Authorization Number" value={draft.authorization_number} colors={colors} editable onChange={(value) => update('authorization_number', value)} />
-          <Field
-            label="Authorization Status"
-            value={draft.authorization_status}
-            type="select"
-            options={AUTH_STATUS_OPTIONS}
-            colors={colors}
-            editable
-            onChange={(value) => update('authorization_status', value)}
-          />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
-          <Field label="Authorization Start Date" value={draft.authorization_start_date} type="date" colors={colors} editable onChange={(value) => update('authorization_start_date', value)} />
-          <Field label="Authorization End Date" value={draft.authorization_end_date} type="date" colors={colors} editable onChange={(value) => update('authorization_end_date', value)} />
-        </div>
+      ) : (
+        <SectionNote colors={colors}>Authorization status: {draft.authorization_status || '—'}. Expand to view or edit authorization and eligibility documents.</SectionNote>
+      )}
+    </div>
+  );
+};
+
+const DiagnosisReferenceList = ({ title, items, colors }) => {
+  const badgeFor = (item) => {
+    if (title === 'Active Primary') return item?.is_terminal ? 'TERMINAL' : null;
+    if (title === 'Active Secondary') return item?.is_related_to_terminal ? 'RELATED' : 'UNRELATED';
+    if (title === 'Active Comorbidities') return 'COMORBIDITY';
+    return null;
+  };
+
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>{title}</span>
+      {items?.length ? items.map((item) => {
+        const badge = badgeFor(item);
+        return (
+          <div key={item.id || `${title}-${item.display_name || item.diagnosis_description}`} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6, backgroundColor: colors.bg }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600, flex: 1, minWidth: 0 }}>{item.display_name || item.diagnosis_description || item.icd10_code || 'Diagnosis'}</div>
+              {badge ? <Badge variant={DIAGNOSIS_CLASSIFICATION_VARIANT[badge]} colors={colors}>{badge}</Badge> : null}
+            </div>
+            <div style={{ color: colors.label, fontSize: 10.5, marginTop: 3 }}>
+              {item.icd10_code || 'No ICD-10'}
+            </div>
+          </div>
+        );
+      }) : <div style={{ color: colors.label, fontSize: 11 }}>No active diagnoses listed.</div>}
+    </div>
+  );
+};
+
+const DIAGNOSIS_CLASSIFICATION_OPTIONS = [
+  { value: 'RELATED', label: 'Related' },
+  { value: 'COMORBIDITY', label: 'Comorbidity' },
+  { value: 'UNRELATED', label: 'Unrelated' },
+];
+
+const DIAGNOSIS_CLASSIFICATION_VARIANT = {
+  TERMINAL: 'red',
+  RELATED: 'teal',
+  COMORBIDITY: 'amber',
+  UNRELATED: 'muted',
+};
+
+const DiagnosisEntryList = ({ colors, entries, update }) => {
+  const [draftText, setDraftText] = useState('');
+  const [draftClassification, setDraftClassification] = useState('RELATED');
+
+  const addEntry = () => {
+    const text = draftText.trim();
+    if (!text) return;
+    update('diagnosis_entries', [...(entries || []), { text, classification: draftClassification }]);
+    setDraftText('');
+  };
+
+  const removeEntry = (index) => {
+    update('diagnosis_entries', (entries || []).filter((_, i) => i !== index));
+  };
+
+  const updateClassification = (index, classification) => {
+    update('diagnosis_entries', (entries || []).map((entry, i) => (i === index ? { ...entry, classification } : entry)));
+  };
+
+  return (
+    <div>
+      <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>Secondary Diagnoses</span>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
+        {(entries || []).length ? entries.map((entry, index) => (
+          <div key={`${entry.text}-${index}`} style={{ display: 'flex', alignItems: 'center', gap: 8, border: `1px solid ${colors.border}`, borderRadius: 6, padding: '4px 8px' }}>
+            <span style={{ color: colors.white, fontSize: 12, flex: 1, minWidth: 0 }}>{entry.text}</span>
+            <select
+              value={entry.classification || 'RELATED'}
+              onChange={(event) => updateClassification(index, event.target.value)}
+              style={{ fontSize: 10, padding: '2px 4px', borderRadius: 4, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white }}
+            >
+              {DIAGNOSIS_CLASSIFICATION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <Badge variant={DIAGNOSIS_CLASSIFICATION_VARIANT[entry.classification] || 'muted'} colors={colors}>{(entry.classification || 'RELATED')}</Badge>
+            <button
+              type="button"
+              onClick={() => removeEntry(index)}
+              style={{ background: 'none', border: 'none', color: colors.label, cursor: 'pointer', fontSize: 13, padding: '0 2px' }}
+              aria-label="Remove diagnosis"
+            >
+              ×
+            </button>
+          </div>
+        )) : <div style={{ color: colors.label, fontSize: 11 }}>No secondary diagnoses added.</div>}
       </div>
-      <div style={{ display: 'grid', gap: 12 }}>
-        <DocumentPlaceholder colors={colors} title="Authorization Documents" buttonLabel="Choose File" />
-        <DocumentPlaceholder colors={colors} title="Eligibility / Submission Documents" buttonLabel="Upload" />
+      <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Icd10DiagnosisInput
+            value={draftText}
+            onChange={setDraftText}
+            colors={colors}
+            inputStyle={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white }}
+            placeholder="Add diagnosis (e.g. CKD Stage III)"
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addEntry(); } }}
+          />
+        </div>
+        <select
+          value={draftClassification}
+          onChange={(event) => setDraftClassification(event.target.value)}
+          style={{ fontSize: 11, padding: '5px 4px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white }}
+        >
+          {DIAGNOSIS_CLASSIFICATION_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
+        <button
+          type="button"
+          onClick={addEntry}
+          style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+        >
+          Add
+        </button>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
-const DiagnosisReferenceList = ({ title, items, colors }) => (
-  <div style={{ marginBottom: 10 }}>
-    <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>{title}</span>
-    {items?.length ? items.map((item) => (
-      <div key={item.id || `${title}-${item.display_name || item.diagnosis_description}`} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6, backgroundColor: colors.bg }}>
-        <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600 }}>{item.display_name || item.diagnosis_description || item.icd10_code || 'Diagnosis'}</div>
-        <div style={{ color: colors.label, fontSize: 10.5, marginTop: 3 }}>
-          {item.icd10_code || 'No ICD-10'} {item.is_related_to_terminal ? '• Related to terminal diagnosis' : ''}
-        </div>
+const StructuredAllergyList = ({ colors, allergies, loading, error, saving, onAdd, onRemove }) => {
+  const [text, setText] = useState('');
+  const [type, setType] = useState('DRUG');
+  const [severity, setSeverity] = useState('');
+
+  const submit = () => {
+    if (!text.trim()) return;
+    onAdd({ allergen_text: text.trim(), allergen_type: type, severity: severity || undefined });
+    setText('');
+    setSeverity('');
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Structured Allergies</span>
+        <Badge variant="teal" colors={colors}>SHARED</Badge>
       </div>
-    )) : <div style={{ color: colors.label, fontSize: 11 }}>No active diagnoses listed.</div>}
-  </div>
-);
+      <SectionNote colors={colors}>Shared with medication safety checks across the chart. {loading ? 'Loading…' : error || ''}</SectionNote>
+      {allergies?.length ? allergies.map((a) => (
+        <div key={a.allergy_id} style={{ display: 'flex', alignItems: 'center', gap: 6, border: `1px solid ${colors.border}`, borderRadius: 8, padding: '5px 8px', marginBottom: 5, backgroundColor: colors.bg }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ color: colors.white, fontSize: 11.5, fontWeight: 600 }}>{a.allergen_text}</span>
+            <span style={{ color: colors.label, fontSize: 10, marginLeft: 6 }}>{a.allergen_type}{a.severity ? ` • ${a.severity}` : ''}</span>
+          </div>
+          <button type="button" onClick={() => onRemove(a.allergy_id)} disabled={saving} style={{ border: 'none', background: 'none', color: colors.red, fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>Remove</button>
+        </div>
+      )) : <div style={{ color: colors.label, fontSize: 11, marginBottom: 6 }}>No structured allergies recorded.</div>}
+      <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Allergen (e.g. penicillin)"
+          style={{ flex: 1, minWidth: 0, padding: '5px 8px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white, fontSize: 11 }}
+        />
+        <select value={type} onChange={(e) => setType(e.target.value)} style={{ padding: '5px 6px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white, fontSize: 11 }}>
+          {['DRUG', 'FOOD', 'ENVIRONMENTAL', 'OTHER'].map((v) => <option key={v} value={v}>{v}</option>)}
+        </select>
+        <button type="button" onClick={submit} disabled={saving} style={{ padding: '5px 12px', borderRadius: 6, border: 'none', backgroundColor: colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Add</button>
+      </div>
+    </div>
+  );
+};
 
-const DiagnosesAllergies = ({ colors, draft, update, facesheet }) => {
+const DiagnosesAllergies = ({ colors, draft, update, facesheet, allergyList, allergyLoading, allergyError, allergySaving, onAddAllergy, onRemoveAllergy }) => {
   const activePrimary = facesheet?.clinical?.active_primary_diagnosis;
   const activeSecondary = facesheet?.clinical?.active_secondary_diagnoses || [];
   const activeComorbidities = facesheet?.clinical?.active_comorbidities || [];
@@ -905,8 +1589,23 @@ const DiagnosesAllergies = ({ colors, draft, update, facesheet }) => {
       <CardHeader title="Diagnoses & Allergies" colors={colors} />
       <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 1fr 0.9fr', gap: 0, alignItems: 'stretch' }}>
         <div style={{ minWidth: 0, paddingRight: 16 }}>
-          <Field label="Primary Diagnosis" value={draft.primary_diagnosis} colors={colors} editable onChange={(value) => update('primary_diagnosis', value)} />
-          <Field label="Secondary Diagnoses" value={draft.secondary_diagnoses} type="textarea" rows={6} colors={colors} editable onChange={(value) => update('secondary_diagnoses', value)} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ color: colors.label, fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 2 }}>Primary Diagnosis</span>
+              <Icd10DiagnosisInput
+                value={draft.primary_diagnosis}
+                onChange={(value) => update('primary_diagnosis', value)}
+                colors={colors}
+                inputStyle={baseInputStyle(colors)}
+                placeholder="Start typing a diagnosis or ICD-10 code…"
+              />
+            </div>
+            {draft.primary_diagnosis ? <Badge variant="red" colors={colors}>TERMINAL</Badge> : null}
+          </div>
+          <DiagnosisEntryList colors={colors} entries={draft.diagnosis_entries} update={update} />
+          <div style={{ marginTop: 8 }}>
+            <Field label="Additional Notes (uncoded)" value={draft.secondary_diagnoses} type="textarea" rows={3} colors={colors} editable onChange={(value) => update('secondary_diagnoses', value)} />
+          </div>
         </div>
         <div style={{ minWidth: 0, padding: '0 16px', borderLeft: `1px solid ${colors.border}` }}>
           <span style={{ color: colors.label, fontSize: 10, textTransform: 'uppercase', display: 'block', marginBottom: 6, letterSpacing: 0.5 }}>Assessment-Derived Diagnosis Summary</span>
@@ -927,7 +1626,18 @@ const DiagnosesAllergies = ({ colors, draft, update, facesheet }) => {
             editable
             onChange={(value) => update('has_allergies', parseBooleanValue(value))}
           />
-          <Field label="Allergies" value={draft.allergies} type="textarea" rows={4} colors={colors} editable onChange={(value) => update('allergies', value)} />
+          <StructuredAllergyList
+            colors={colors}
+            allergies={allergyList}
+            loading={allergyLoading}
+            error={allergyError}
+            saving={allergySaving}
+            onAdd={onAddAllergy}
+            onRemove={onRemoveAllergy}
+          />
+          <div style={{ marginTop: 8 }}>
+            <Field label="Additional Allergy Notes (uncoded)" value={draft.allergies} type="textarea" rows={2} colors={colors} editable onChange={(value) => update('allergies', value)} />
+          </div>
           <div style={{ marginTop: 'auto' }}>
             <Field label="Referral Date" value={draft.ref_date} type="date" colors={colors} editable onChange={(value) => update('ref_date', value)} />
             <Field label="Recert Date" value={draft.recert_date} type="date" colors={colors} editable onChange={(value) => update('recert_date', value)} />
@@ -1091,6 +1801,56 @@ const AuthorizedRep = ({ colors, draft, update }) => (
     <SectionNote colors={colors}>The backend stores one responsible party and one emergency contact on the facesheet.</SectionNote>
   </div>
 );
+
+const SYNCED_CONTACT_LABELS = {
+  primary_caregiver: 'Primary Caregiver',
+  decision_maker: 'Decision Maker',
+  dpoa: 'DPOA',
+  healthcare_agent: 'Healthcare Agent',
+};
+
+const SyncedContactsPanel = ({ colors, draft }) => {
+  const contacts = draft.synced_contacts || {};
+  const rows = Object.entries(SYNCED_CONTACT_LABELS).map(([key, label]) => ({
+    key,
+    label,
+    entry: contacts[key],
+  }));
+
+  return (
+    <div style={cardBase(colors)}>
+      <CardHeader title="Patient Contacts (Synced)" colors={colors} />
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+        {rows.map(({ key, label, entry }) => (
+          <div
+            key={key}
+            style={{
+              border: `1px solid ${colors.border}`,
+              borderRadius: 8,
+              padding: 12,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+              <span style={{ color: colors.muted, fontSize: 12, fontWeight: 600, textTransform: 'uppercase' }}>{label}</span>
+              {entry?.source ? <Badge variant="teal" colors={colors}>{entry.source}</Badge> : null}
+            </div>
+            <div style={{ color: colors.white, fontSize: 15, fontWeight: 600 }}>{entry?.name || '—'}</div>
+            {entry?.relationship ? (
+              <div style={{ color: colors.muted, fontSize: 13 }}>{entry.relationship}</div>
+            ) : null}
+            {entry?.phone ? (
+              <div style={{ color: colors.muted, fontSize: 13 }}>{entry.phone}</div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      <SectionNote colors={colors}>
+        Read-only here. Primary Caregiver, Decision Maker, DPOA, and Healthcare Agent are entered and maintained in RNICA and sync here automatically.
+      </SectionNote>
+    </div>
+  );
+};
 
 const formatPhysicianDirectoryAddress = (physician) => {
   const lineOne = [physician?.address_street, physician?.address_suite].filter(Boolean).join(', ');
@@ -1463,7 +2223,7 @@ const ReferralPhysicians = ({ colors, draft, update }) => {
 const ServiceVendors = ({ colors, draft, update }) => (
   <div style={cardBase(colors)}>
     <CardHeader title="Service Vendors" colors={colors} />
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 24 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 24 }}>
       <div>
         <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Pharmacy</div>
         <Field label="Vendor" value={draft.pharmacy_name} colors={colors} editable onChange={(value) => update('pharmacy_name', value)} />
@@ -1474,6 +2234,12 @@ const ServiceVendors = ({ colors, draft, update }) => (
         <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Durable Medical Equipment (DME)</div>
         <Field label="Vendor" value={draft.dme_vendor_name} colors={colors} editable onChange={(value) => update('dme_vendor_name', value)} />
         <Field label="Phone" value={draft.dme_vendor_phone} colors={colors} editable onChange={(value) => update('dme_vendor_phone', value)} />
+      </div>
+      <div>
+        <div style={{ color: colors.white, fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Oxygen Vendor</div>
+        <Field label="Vendor" value={draft.oxygen_vendor_name} colors={colors} editable onChange={(value) => update('oxygen_vendor_name', value)} />
+        <Field label="Phone" value={draft.oxygen_vendor_phone} colors={colors} editable onChange={(value) => update('oxygen_vendor_phone', value)} />
+        <Field label="Emergency Number" value={draft.oxygen_vendor_emergency_phone} colors={colors} editable onChange={(value) => update('oxygen_vendor_emergency_phone', value)} />
       </div>
     </div>
     <SectionNote colors={colors}>Other supplies vendors are not stored on the current facesheet backend.</SectionNote>
@@ -1501,8 +2267,20 @@ const MortuaryInfo = ({ colors, draft, update }) => {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'start' }}>
             <Field label="Name" value={draft.mortuary_name} colors={colors} editable onChange={(value) => update('mortuary_name', value)} />
             <Field label="Phone" value={draft.mortuary_phone} colors={colors} editable onChange={(value) => update('mortuary_phone', value)} />
+            <Field
+              label="Prearranged?"
+              value={selectBooleanValue(draft.mortuary_prearranged)}
+              type="select"
+              options={BOOLEAN_OPTIONS}
+              colors={colors}
+              editable
+              onChange={(value) => update('mortuary_prearranged', parseBooleanValue(value))}
+            />
+            <Field label="Contact Person" value={draft.mortuary_contact_name} colors={colors} editable onChange={(value) => update('mortuary_contact_name', value)} />
+            <Field label="Contact Phone" value={draft.mortuary_contact_phone} colors={colors} editable onChange={(value) => update('mortuary_contact_phone', value)} />
           </div>
-          <SectionNote colors={colors}>Address, fax, email, contact person, and pre-arrangement are not stored on the current facesheet backend.</SectionNote>
+          <Field label="Notes" value={draft.mortuary_notes} type="textarea" rows={2} colors={colors} editable onChange={(value) => update('mortuary_notes', value)} />
+          <SectionNote colors={colors}>Address, fax, and email are not stored on the current facesheet backend.</SectionNote>
         </>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'center' }}>
@@ -1514,21 +2292,30 @@ const MortuaryInfo = ({ colors, draft, update }) => {
   );
 };
 
-const SpecialInstructions = ({ colors, draft, update }) => (
-  <div style={matchingBottomCard(colors)}>
-    <CardHeader title="Special Instructions" colors={colors} />
-    <Field
-      label="Special Instructions"
-      value={draft.special_instructions}
-      type="textarea"
-      rows={8}
-      colors={colors}
-      editable
-      onChange={(value) => update('special_instructions', value)}
-      placeholder="Enter special instructions for the care team"
-    />
-  </div>
-);
+const SpecialInstructions = ({ colors, draft, update }) => {
+  const [expanded, setExpanded] = useState(true);
+  const preview = draft.special_instructions?.trim() || 'No special instructions documented.';
+
+  return (
+    <div style={matchingBottomCard(colors)}>
+      <CardHeader title="Special Instructions" colors={colors} onToggle={() => setExpanded((value) => !value)} isExpanded={expanded} />
+      {expanded ? (
+        <Field
+          label="Special Instructions"
+          value={draft.special_instructions}
+          type="textarea"
+          rows={8}
+          colors={colors}
+          editable
+          onChange={(value) => update('special_instructions', value)}
+          placeholder="Enter special instructions for the care team"
+        />
+      ) : (
+        <div style={{ color: colors.label, fontSize: 11, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{preview}</div>
+      )}
+    </div>
+  );
+};
 
 const PatientFacesheet = ({ patientId }) => {
   const { mode } = useThemeMode();
@@ -1546,6 +2333,48 @@ const PatientFacesheet = ({ patientId }) => {
   const [posHistoryError, setPosHistoryError] = useState('');
   const [saveState, setSaveState] = useState('idle');
   const [saveMessage, setSaveMessage] = useState('');
+  const [allergyList, setAllergyList] = useState([]);
+  const [allergyLoading, setAllergyLoading] = useState(false);
+  const [allergyError, setAllergyError] = useState('');
+  const [allergySaving, setAllergySaving] = useState(false);
+  const [performanceHistory, setPerformanceHistory] = useState([]);
+  const [codeStatusHistory, setCodeStatusHistory] = useState([]);
+
+  const loadAllergyData = async (activePatientId) => {
+    setAllergyLoading(true);
+    try {
+      const result = await fetchAllergies(activePatientId);
+      setAllergyList(result || []);
+      setAllergyError('');
+    } catch {
+      setAllergyList([]);
+      setAllergyError('Unable to load structured allergy list.');
+    } finally {
+      setAllergyLoading(false);
+    }
+  };
+
+  const handleAddAllergy = async (entry) => {
+    if (!patientId || !entry?.allergen_text?.trim()) return;
+    setAllergySaving(true);
+    try {
+      await addAllergy(patientId, entry);
+      await loadAllergyData(patientId);
+    } finally {
+      setAllergySaving(false);
+    }
+  };
+
+  const handleRemoveAllergy = async (allergyId) => {
+    if (!patientId || !allergyId) return;
+    setAllergySaving(true);
+    try {
+      await removeAllergy(patientId, allergyId);
+      await loadAllergyData(patientId);
+    } finally {
+      setAllergySaving(false);
+    }
+  };
 
   const loadFacesheetData = async (activePatientId) => {
     const result = await fetchFacesheet(activePatientId);
@@ -1569,6 +2398,15 @@ const PatientFacesheet = ({ patientId }) => {
     }
   };
 
+  const loadCodeStatusHistory = async (activePatientId) => {
+    try {
+      const result = await fetchCodeStatusHistory(activePatientId);
+      setCodeStatusHistory(result?.history || []);
+    } catch {
+      setCodeStatusHistory([]);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -1581,6 +2419,8 @@ const PatientFacesheet = ({ patientId }) => {
       setAddStayOpen(false);
       setLoadError('No patient selected.');
       setLoading(false);
+      setAllergyList([]);
+      setAllergyError('');
       return () => {
         mounted = false;
       };
@@ -1595,8 +2435,11 @@ const PatientFacesheet = ({ patientId }) => {
     Promise.all([
       fetchFacesheet(patientId),
       fetchPosHistory(patientId).catch(() => null),
+      fetchAllergies(patientId).catch(() => null),
+      fetchPerformanceHistory(patientId).catch(() => null),
+      fetchCodeStatusHistory(patientId).catch(() => null),
     ])
-      .then(([facesheetResult, posHistoryResult]) => {
+      .then(([facesheetResult, posHistoryResult, allergyResult, performanceResult, codeStatusResult]) => {
         if (!mounted) return;
         const nextDraft = mapResponseToDraft(facesheetResult);
         setFacesheet(facesheetResult);
@@ -1604,6 +2447,10 @@ const PatientFacesheet = ({ patientId }) => {
         setSavedDraft(nextDraft);
         setPosHistory(posHistoryResult || { current_entry: null, entries: [] });
         setPosHistoryError(posHistoryResult ? '' : 'Unable to load place-of-service history.');
+        setAllergyList(allergyResult || []);
+        setAllergyError(allergyResult ? '' : 'Unable to load structured allergy list.');
+        setPerformanceHistory(performanceResult?.history || []);
+        setCodeStatusHistory(codeStatusResult?.history || []);
       })
       .catch(() => {
         if (!mounted) return;
@@ -1684,6 +2531,7 @@ const PatientFacesheet = ({ patientId }) => {
         await Promise.all([
           loadFacesheetData(patientId),
           loadPosHistoryData(patientId),
+          loadCodeStatusHistory(patientId),
         ]);
       } catch {
         setFacesheet((previous) => previous);
@@ -1758,18 +2606,21 @@ const PatientFacesheet = ({ patientId }) => {
         <span>{getBreadcrumbName(draft)}</span><span style={{ margin: '0 8px' }}>&gt;</span>
         <span style={{ color: colors.white }}>Facesheet</span>
       </div>
-      <PatientBanner colors={colors} draft={draft} facesheet={facesheet} />
+      <PatientBanner colors={colors} draft={draft} facesheet={facesheet} allergyList={allergyList} />
       <PatientStatusStrip colors={colors} facesheet={facesheet} />
+      <HospiceSnapshotCard colors={colors} draft={draft} update={update} facesheet={facesheet} performanceHistory={performanceHistory} codeStatusHistory={codeStatusHistory} />
+      <CareTeamCard colors={colors} draft={draft} update={update} facesheet={facesheet} />
       <SafetyBanner colors={colors} orderingContactState={orderingContactState} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
         <div style={{ minWidth: 0 }}><PersonalInformation colors={colors} draft={draft} update={update} /></div>
         <div style={{ minWidth: 0 }}><InsuranceCard colors={colors} draft={draft} update={update} /></div>
       </div>
-      <div style={{ marginBottom: 12 }}><AuthEligibility colors={colors} draft={draft} update={update} /></div>
-      <div style={{ marginBottom: 12 }}><DiagnosesAllergies colors={colors} draft={draft} update={update} facesheet={facesheet} /></div>
+      <div style={{ marginBottom: 12 }}><DiagnosesAllergies colors={colors} draft={draft} update={update} facesheet={facesheet} allergyList={allergyList} allergyLoading={allergyLoading} allergyError={allergyError} allergySaving={allergySaving} onAddAllergy={handleAddAllergy} onRemoveAllergy={handleRemoveAllergy} /></div>
+      <div style={{ marginBottom: 12 }}><AuthEligibility colors={colors} draft={draft} update={update} patientId={patientId} /></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12, alignItems: 'stretch' }}>
         <div style={{ minWidth: 0 }}><PlaceOfService colors={colors} draft={draft} update={update} posHistory={posHistory} posHistoryLoading={posHistoryLoading} posHistoryError={posHistoryError} addStayOpen={addStayOpen} setAddStayOpen={setAddStayOpen} posForm={posForm} updatePosForm={updatePosForm} posHistorySaving={posHistorySaving} onAddStay={handleAddStay} /></div>
         <div style={{ minWidth: 0 }}><AuthorizedRep colors={colors} draft={draft} update={update} /></div>
+        <div style={{ minWidth: 0 }}><SyncedContactsPanel colors={colors} draft={draft} /></div>
       </div>
       <div style={{ marginBottom: 12 }}><ReferralPhysicians colors={colors} draft={draft} update={update} /></div>
       <div style={{ marginBottom: 12 }}><ServiceVendors colors={colors} draft={draft} update={update} /></div>

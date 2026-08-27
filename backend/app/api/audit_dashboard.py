@@ -8,12 +8,24 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.capabilities import VIEW_ALL_TENANT_PATIENTS, VIEW_ASSIGNED_PATIENTS, has_capability, require_any_capability
 from app.core.permissions import require_roles
+from app.core.roles import CLINICAL_DEPARTMENT_ROLES, QA_ROLES
 from app.core.security import CurrentUser
 from app.services.audit_logger import log_event
 
 
 router = APIRouter(prefix="/audit-dashboard", tags=["audit-dashboard"])
+
+# /census is the general patient-list workspace used throughout the clinical
+# UI (Patient Census, Tenant Dashboard, Care Overview, RN ICA "choose a
+# patient" picker) — every clinical department role must be able to view it
+# (scoped to their own assignments, or tenant-wide for DPCS/Administrator/QA/
+# physician per app/core/capabilities.py), not just admin/QA oversight. This
+# is distinct from /patients below (an audit/compliance risk list), which
+# correctly stays admin/QA-only.
+CENSUS_VIEW_ROLES = sorted(CLINICAL_DEPARTMENT_ROLES | QA_ROLES | {"MD", "NP", "PA"})
+
 
 
 # =========================================================
@@ -180,9 +192,16 @@ def get_audit_dashboard_census(
         description="Maximum number of patient rows to return",
     ),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["ADMIN", "DPCS", "QA"])),
+    user: CurrentUser = Depends(require_any_capability(VIEW_ALL_TENANT_PATIENTS, VIEW_ASSIGNED_PATIENTS)),
 ):
     resolved_tenant_id = _resolve_tenant_id(request, db, tenant_id, user)
+
+    # DPCS/DPCS_ADMINISTRATOR/Administrator/QA/physician-tier roles have
+    # VIEW_ALL_TENANT_PATIENTS and see the whole tenant census. Plain RN
+    # (and any other role that only has VIEW_ASSIGNED_PATIENTS) only sees
+    # patients they are actively assigned to via patient_assignments —
+    # case-manager scoping, not tenant-wide visibility.
+    restrict_to_assigned_rn = not has_capability(user.role, VIEW_ALL_TENANT_PATIENTS)
 
     rows = db.execute(
         text(
@@ -249,11 +268,27 @@ def get_audit_dashboard_census(
             LEFT JOIN latest_admission la ON la.patient_id = p.id
             LEFT JOIN primary_payer pp ON pp.patient_id = p.id
             WHERE p.tenant_id = :tenant_id
+              AND (
+                    :restrict_to_assigned_rn = false
+                    OR EXISTS (
+                        SELECT 1 FROM patient_assignments pa
+                        WHERE pa.patient_id = p.id
+                          AND pa.tenant_id = p.tenant_id
+                          AND pa.user_id = :user_id
+                          AND pa.discipline = 'RN'
+                          AND pa.active = true
+                    )
+              )
             ORDER BY full_name ASC
             LIMIT :limit
             """
         ),
-        {"tenant_id": resolved_tenant_id, "limit": limit},
+        {
+            "tenant_id": resolved_tenant_id,
+            "limit": limit,
+            "restrict_to_assigned_rn": restrict_to_assigned_rn,
+            "user_id": user.user_id,
+        },
     ).mappings().all()
 
     return {

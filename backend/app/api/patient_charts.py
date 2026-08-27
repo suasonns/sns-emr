@@ -16,17 +16,16 @@ from app.models.patient_facesheet import PatientFaceSheet
 from app.models.certification import Certification
 from app.models.f2f_encounter import F2FEncounter
 from app.models.task import Task
-from app.models.user import User
 from app.models.communications_log import CommunicationsLog
 from app.models.incident_report import IncidentReport
 from app.models.clinical_note import ClinicalNote
-from app.models.patient_assignment import PatientAssignment
 from app.models.enums import Discipline, TaskStatus, TaskType
 from app.services.bereavement_aggregation_engine import (
     BereavementAggregationEngine,
     BereavementNoteInput,
 )
 from app.services.eligibility.engine import evaluate_hospice_eligibility
+from app.services.patient_assignment_service import list_patient_assignments
 
 
 router = APIRouter(prefix="/patient-charts", tags=["patient-charts"])
@@ -79,7 +78,17 @@ def _patient_full_name(db: Session, patient: Patient) -> str:
     return patient.mrn or "Unknown patient"
 
 
+def _latest_facesheet(db: Session, patient: Patient) -> PatientFaceSheet | None:
+    return (
+        db.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .order_by(PatientFaceSheet.created_at.desc(), PatientFaceSheet.id.desc())
+        .first()
+    )
+
+
 def _base_patient(db: Session, patient: Patient) -> dict:
+    face_sheet = _latest_facesheet(db, patient)
     return {
         "id": str(patient.id),
         "mrn": patient.mrn,
@@ -89,7 +98,18 @@ def _base_patient(db: Session, patient: Patient) -> dict:
         "acuity_state": patient.acuity_state,
         "admission_status": patient.admission_status,
         "hospice_election_date": _serialize_date(patient.hospice_election_date),
-        "soc_date": _serialize_datetime(getattr(patient, "soc_date", None)),
+        # Patient has no soc_date column of its own -- Start of Care is
+        # recorded on the Facesheet (and/or the Admission row). Pulling
+        # `getattr(patient, "soc_date", None)` always returned None here,
+        # which caused HOPE Report A0220 (Admission Date) to silently fall
+        # back to a hardcoded UI placeholder date instead of the real SOC.
+        "soc_date": _serialize_date(getattr(face_sheet, "soc_date", None)) if face_sheet else None,
+        # HOPE A1400 payer source — structured category from the Facesheet
+        # Insurance card, distinct from the free-text payer name.
+        "primary_payer": getattr(face_sheet, "primary_payer", None) if face_sheet else None,
+        "primary_payer_type": getattr(face_sheet, "primary_payer_type", None) if face_sheet else None,
+        "secondary_payer": getattr(face_sheet, "secondary_payer", None) if face_sheet else None,
+        "secondary_payer_type": getattr(face_sheet, "secondary_payer_type", None) if face_sheet else None,
     }
 
 
@@ -153,24 +173,22 @@ def get_patient_chart_summary(
 
     visit_rows = _load_visit_rows(db, patient.id, limit=8, ascending=False)
 
-    assignment_rows = (
-        db.query(PatientAssignment, User.full_name.label("staff_name"))
-        .join(User, User.id == PatientAssignment.user_id)
-        .filter(PatientAssignment.patient_id == patient.id)
-        .filter(PatientAssignment.active.is_(True))
-        .order_by(PatientAssignment.is_primary.desc(), PatientAssignment.assigned_at.desc())
-        .all()
+    assignment_rows = list_patient_assignments(
+        db,
+        tenant_id=patient.tenant_id,
+        patient_id=patient.id,
+        include_inactive=False,
     )
 
     return {
         "patient": _base_patient(db, patient),
         "care_team": [
             {
-                "discipline": row.PatientAssignment.discipline.value if hasattr(row.PatientAssignment.discipline, "value") else str(row.PatientAssignment.discipline),
-                "staff_name": row.staff_name,
-                "primary": bool(row.PatientAssignment.is_primary),
-                "status": row.PatientAssignment.status,
-                "service_area": row.PatientAssignment.service_area,
+                "discipline": row["discipline"],
+                "staff_name": row["staff_name"],
+                "primary": bool(row["is_primary"]),
+                "status": row["status"],
+                "service_area": row["service_area"],
             }
             for row in assignment_rows
         ],
@@ -517,12 +535,11 @@ def get_patient_volunteer_schedule(
 
     visit_rows = _load_visit_rows(db, patient.id, ascending=True)
 
-    assignment_rows = (
-        db.query(PatientAssignment, User.full_name.label("staff_name"))
-        .join(User, User.id == PatientAssignment.user_id)
-        .filter(PatientAssignment.patient_id == patient.id)
-        .order_by(PatientAssignment.assigned_at.desc())
-        .all()
+    assignment_rows = list_patient_assignments(
+        db,
+        tenant_id=patient.tenant_id,
+        patient_id=patient.id,
+        include_inactive=True,
     )
 
     task_rows = (
@@ -549,13 +566,13 @@ def get_patient_volunteer_schedule(
         ],
         "assignments": [
             {
-                "id": str(row.PatientAssignment.id),
-                "discipline": row.PatientAssignment.discipline.value if hasattr(row.PatientAssignment.discipline, "value") else str(row.PatientAssignment.discipline),
-                "staff_name": row.staff_name,
-                "primary": bool(row.PatientAssignment.is_primary),
-                "service_area": row.PatientAssignment.service_area,
-                "status": row.PatientAssignment.status,
-                "assigned_at": _serialize_datetime(row.PatientAssignment.assigned_at),
+                "id": row["id"],
+                "discipline": row["discipline"],
+                "staff_name": row["staff_name"],
+                "primary": bool(row["is_primary"]),
+                "service_area": row["service_area"],
+                "status": row["status"],
+                "assigned_at": row["assigned_at"],
             }
             for row in assignment_rows
         ],

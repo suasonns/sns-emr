@@ -72,6 +72,22 @@ class PatientOrder(BaseModel):
         index=True,
     )
 
+    # MANUAL | RULE_SUGGESTED. Mirrors PlanOfCare's source_kind: a
+    # RULE_SUGGESTED order was created from an explicit clinician "Add to
+    # Orders" action on a system-generated suggestion (see
+    # app.services.order_suggestion_service); it is never auto-applied.
+    source_kind = Column(String(32), nullable=False, server_default="MANUAL")
+
+    # Traceability back to the RN ICA assessment whose findings produced the
+    # suggestion this order was created from (nullable; only set for
+    # RULE_SUGGESTED orders).
+    source_rnica_assessment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rnica_assessments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     patient = relationship("Patient", back_populates="patient_orders")
 
     __table_args__ = (

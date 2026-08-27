@@ -10,31 +10,32 @@ import {
   updateScicaAssessment,
 } from "../api/icaAssessments";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
+import { useThemeMode } from "../theme/theme";
+// Shared design system (colors + base styles) — the same one RNICA/CHHA/MSW ICA use,
+// so every clinical page stays visually identical. Do not fork these values locally.
+import { getRnicaColors, getRnicaStyles } from "../theme/clinicalDesign";
 
 const STORAGE_PREFIX = "sns-hospice-solutions-sc-ica";
 const SUICIDAL_THOUGHTS_OPTION = "Suicidal thoughts";
 const RATED_BY_OPTIONS = ["Patient", "Clinician", "SC"];
 const DISTRESS_DETAIL_OPTIONS = ["Unresolved life matters", "Anger/resentment", "Active grief response", "Fear of dying process", "Guilt/regret", "Other significant losses"];
 
-const CLINICAL_BRAND = {
-  navy: "#1E3A5F",
-  teal: "#0D9488",
-  tealDark: "#0F766E",
-  tealLight: "#CCFBF1",
-  bg: "#F8FAFC",
-  canvas: "#EEF3E8",
-  panel: "#FFFFFF",
-  line: "#D8E3E8",
-  text: "#0F172A",
-  muted: "#64748B",
-  slate: "#334155",
-};
-
 const YES_NO = ["", "Yes", "No"];
 const MENTAL_STATUS_OPTIONS = ["", "Alert", "Awake", "Oriented", "Calm", "Confused", "Drowsy", "Withdrawn", "Tearful"];
 const MARITAL_STATUS_OPTIONS = ["", "Widowed", "Married", "Single", "Divorced", "Separated", "Partnered"];
 const INVOLVEMENT_OPTIONS = ["", "Active", "Inactive", "Occasional", "Unknown"];
 const RATING_OPTIONS = ["", "None", "Mild", "Moderate", "Severe"];
+const CARE_LEVEL_OPTIONS = ["", "Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
 const SPIRITUAL_SUPPORT_OPTIONS = [
   "Faith Community",
   "Prayer",
@@ -125,8 +126,13 @@ const INITIAL_FORM = {
     careLevel: "",
   },
   pain: {
-    controlled: "",
-    level: "",
+    uncomfortable: "",
+    painLevel: "",
+    mentalStatus: "",
+    historian: "",
+    historianOtherName: "",
+    historianOtherRelation: "",
+    notes: "",
   },
   deliveryOfCare: {
     declined: "",
@@ -199,51 +205,70 @@ const INITIAL_FORM = {
   },
 };
 
-const styles = {
-  page: { minHeight: "100vh", background: CLINICAL_BRAND.canvas },
-  frame: { maxWidth: 1220, margin: "0 auto", padding: "24px 0" },
-  shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
-  sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
-  patientCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
-  patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 700 },
-  navCard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
-  navHeader: { background: "#EDF7F7", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "6px 10px", fontWeight: 700 },
-  navBody: { padding: 8, maxHeight: 700, overflow: "auto" },
-  navButton: {
-    width: "100%",
-    textAlign: "left",
-    border: "none",
-    background: "transparent",
-    color: "#0f172a",
-    fontSize: 12,
-    padding: "6px 8px",
-    cursor: "pointer",
-    borderRadius: 8,
-  },
-  main: { background: "#f4f7f9", border: `1px solid ${CLINICAL_BRAND.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
-  header: { borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
-  headerTitle: { fontSize: 18, fontWeight: 700 },
-  headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
-  metaBar: { padding: "16px 24px", background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}` },
-  content: { padding: 24 },
-  sectionCard: { border: `1px solid ${CLINICAL_BRAND.line}`, marginBottom: 14, background: CLINICAL_BRAND.panel, borderRadius: 12, overflow: "hidden" },
-  sectionHeader: { background: "#F8FAFC", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" },
-  sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: CLINICAL_BRAND.text },
-  sectionHint: { fontSize: 10, color: CLINICAL_BRAND.muted },
-  sectionBody: { padding: 12 },
-  sectionSubcard: { border: `1px solid ${CLINICAL_BRAND.line}`, background: "#f8fafc", borderRadius: 12, padding: 12, marginBottom: 10 },
-  fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: CLINICAL_BRAND.slate },
-  input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, background: "#fff", fontSize: 13 },
-  textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, fontSize: 13, lineHeight: 1.4, resize: "vertical" },
-  select: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1px solid #c8d5df", borderRadius: 10, background: "#fff", fontSize: 13 },
-  checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "#111827" },
-  button: { border: `1px solid ${CLINICAL_BRAND.teal}`, background: "#fff", color: CLINICAL_BRAND.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
-  stubButton: { border: "1px dashed #94a3b8", background: "#f8fafc", color: "#475569", borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "not-allowed", fontWeight: 700 },
-  mutedBox: { border: `1px solid ${CLINICAL_BRAND.line}`, background: "#F8FAFC", borderRadius: 12, padding: 12, fontSize: 12, color: CLINICAL_BRAND.slate },
-  statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "#dcfce7", color: "#166534" },
-  footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
-  alert: { marginBottom: 12, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
-};
+function getBrand(COLORS) {
+  return {
+    navy: COLORS.navy,
+    teal: COLORS.teal,
+    tealDark: COLORS.tealDark,
+    tealLight: COLORS.tealBg,
+    bg: COLORS.bg,
+    canvas: COLORS.pageBg,
+    panel: COLORS.white,
+    line: COLORS.border,
+    text: COLORS.dark,
+    muted: COLORS.gray,
+    slate: COLORS.dark,
+  };
+}
+
+function getStyles(CLINICAL_BRAND, COLORS) {
+  const base = getRnicaStyles(COLORS);
+  return {
+    page: base.page,
+    frame: { width: "100%", padding: "16px 20px 24px" },
+    shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
+    sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
+    patientCard: { ...base.card, fontSize: 11.5, marginBottom: 12, padding: 0 },
+    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${CLINICAL_BRAND.navy}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em" },
+    navCard: { ...base.card, padding: 0 },
+    navHeader: { background: CLINICAL_BRAND.panel, borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, color: CLINICAL_BRAND.text, letterSpacing: "-0.01em" },
+    navBody: { padding: 8, maxHeight: 700, overflow: "auto" },
+    navButton: {
+      width: "100%",
+      textAlign: "left",
+      border: "none",
+      background: "transparent",
+      color: CLINICAL_BRAND.text,
+      fontSize: 11.5,
+      padding: "4px 8px",
+      cursor: "pointer",
+      borderRadius: 6,
+    },
+    main: { ...base.card, padding: 0, marginBottom: 0 },
+    header: { borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
+    headerTitle: { fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" },
+    headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
+    metaBar: { padding: "16px 24px", background: CLINICAL_BRAND.canvas, borderBottom: `1px solid ${CLINICAL_BRAND.line}` },
+    content: { padding: 24 },
+    sectionCard: { ...base.card, marginBottom: 14, padding: 0 },
+    sectionHeader: { background: CLINICAL_BRAND.panel, borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" },
+    sectionTitle: base.cardTitle,
+    sectionHint: base.sectionSubtitle,
+    sectionBody: { padding: 14 },
+    sectionSubcard: { background: CLINICAL_BRAND.canvas, border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 8, padding: 10, marginBottom: 12, color: CLINICAL_BRAND.text },
+    fieldLabel: base.label,
+    input: base.input,
+    textarea: base.textarea,
+    select: base.select,
+    checkboxLabel: base.checkboxLabel,
+    button: { border: `1px solid ${CLINICAL_BRAND.teal}`, background: CLINICAL_BRAND.panel, color: CLINICAL_BRAND.tealDark, borderRadius: base.btnSecondary.borderRadius, padding: base.btnSecondary.padding, fontSize: base.btnSecondary.fontSize, cursor: "pointer", fontWeight: base.btnSecondary.fontWeight },
+    stubButton: { border: "1px dashed #94a3b8", background: "#f8fafc", color: "#475569", borderRadius: 6, padding: "8px 14px", fontSize: 12, cursor: "not-allowed", fontWeight: 700 },
+    mutedBox: { border: `1px solid ${CLINICAL_BRAND.line}`, background: CLINICAL_BRAND.canvas, borderRadius: 8, padding: 10, fontSize: 11.5, color: CLINICAL_BRAND.text },
+    statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "#dcfce7", color: "#166534" },
+    footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
+    alert: base.warningBox,
+  };
+}
 
 function cloneInitialForm() {
   return JSON.parse(JSON.stringify(INITIAL_FORM));
@@ -381,16 +406,24 @@ const api = {
 };
 
 function Field({ label, children, hint }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
     <div style={{ marginBottom: 10 }}>
       <label style={styles.fieldLabel}>{label}</label>
       {children}
-      {hint ? <div style={{ marginTop: 4, fontSize: 11, color: "#64748b" }}>{hint}</div> : null}
+      {hint ? <div style={{ marginTop: 4, fontSize: 11, color: CLINICAL_BRAND.muted }}>{hint}</div> : null}
     </div>
   );
 }
 
 function Card({ title, subtitle, id, children }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
     <section id={id} style={styles.sectionCard}>
       <div style={styles.sectionHeader}>
@@ -405,6 +438,10 @@ function Card({ title, subtitle, id, children }) {
 }
 
 function CheckboxGrid({ options, values, onToggle, columns = 2 }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: 6 }}>
       {options.map((option) => (
@@ -418,6 +455,10 @@ function CheckboxGrid({ options, values, onToggle, columns = 2 }) {
 }
 
 function FaithCommunityFields({ prefix, value, onChange }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 12 }}>
       <Field label={`${prefix} Faith`}>
@@ -450,8 +491,12 @@ function FaithCommunityFields({ prefix, value, onChange }) {
 }
 
 function DistressSourceGrid({ distress, onToggleSource, onSourceDetailChange }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
       {DISTRESS_OPTIONS.map((option) => {
         const needsDetail = DISTRESS_DETAIL_OPTIONS.includes(option) && distress.sources.includes(option);
         return (
@@ -476,6 +521,10 @@ function DistressSourceGrid({ distress, onToggleSource, onSourceDetailChange }) 
 }
 
 function SuicideRiskCard({ distress, sectionKey, updateNestedField, imminentRisk, notificationsComplete }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   return (
     <div style={styles.sectionSubcard}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", marginBottom: 8 }}>Suicide Risk - Documented Assessment</div>
@@ -569,6 +618,10 @@ function SuicideRiskCard({ distress, sectionKey, updateNestedField, imminentRisk
 }
 
 export default function SCICA({ patientId = getActivePatientId() ?? "", assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const CLINICAL_BRAND = useMemo(() => getBrand(COLORS), [COLORS]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, COLORS), [CLINICAL_BRAND, COLORS]);
   const currentUser = useMemo(() => getCurrentUser(), []);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
@@ -711,10 +764,11 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
       visitMeta: {
         ...prev.visitMeta,
         staffAssigned: prev.visitMeta.staffAssigned || spiritualStaff?.staff_name || currentUser?.full_name || "",
+        discipline: currentUser?.role || prev.visitMeta.discipline || "SC",
         careLevel: prev.visitMeta.careLevel || patientSummary.patient.acuity_state || "",
       },
     }, { preserveExisting: true }));
-  }, [currentUser?.full_name, patientSummary, prepareFormForPersist]);
+  }, [currentUser?.full_name, currentUser?.role, patientSummary, prepareFormForPersist]);
 
   const updateSection = useCallback((section, key, value) => {
     setFormData((prev) => withFormDefaults({
@@ -947,7 +1001,9 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
                   </select>
                 </Field>
                 <Field label="Reason for Visit">
-                  <input value={formData.visitMeta.reasonForVisit} readOnly style={{ ...styles.input, background: "#f8fafc" }} />
+                  <select value={formData.visitMeta.reasonForVisit} onChange={(e) => updateSection("visitMeta", "reasonForVisit", e.target.value)} style={styles.select}>
+                    {selectOptions(REASON_FOR_VISIT_OPTIONS)}
+                  </select>
                 </Field>
                 <Field label="Visit Date">
                   <input type="date" value={formData.visitMeta.visitDate} onChange={(e) => updateSection("visitMeta", "visitDate", e.target.value)} style={styles.input} />
@@ -969,7 +1025,11 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
                 <Field label="Entered By"><input value={formData.visitMeta.enteredBy} onChange={(e) => updateSection("visitMeta", "enteredBy", e.target.value)} style={styles.input} /></Field>
                 <Field label="Staff Assigned"><input value={formData.visitMeta.staffAssigned} onChange={(e) => updateSection("visitMeta", "staffAssigned", e.target.value)} style={styles.input} /></Field>
                 <Field label="Discipline"><input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
-                <Field label="Care Level"><input value={formData.visitMeta.careLevel} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
+                <Field label="Care Level">
+                  <select value={formData.visitMeta.careLevel} onChange={(e) => updateSection("visitMeta", "careLevel", e.target.value)} style={styles.select}>
+                    {selectOptions(CARE_LEVEL_OPTIONS)}
+                  </select>
+                </Field>
               </div>
             </div>
 
@@ -977,11 +1037,36 @@ export default function SCICA({ patientId = getActivePatientId() ?? "", assessme
               {patientSummaryError ? <div style={styles.alert}>Patient summary: {patientSummaryError}</div> : null}
               {pageError ? <div style={styles.alert}>{pageError}</div> : null}
 
-              <Card title="1. Pain" subtitle="Comfort screening at the spiritual care visit" id="pain">
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 220px", gap: 12, alignItems: "end" }}>
-                  <Field label="Is Pain controlled at a comfortable level?"><select value={formData.pain.controlled} onChange={(e) => updateSection("pain", "controlled", e.target.value)} style={styles.select}>{selectOptions(YES_NO)}</select></Field>
-                  <Field label="If No, Pain level?"><input type="number" min="0" max="10" value={formData.pain.level} onChange={(e) => updateSection("pain", "level", e.target.value)} style={styles.input} disabled={formData.pain.controlled !== "No"} /></Field>
-                  <button type="button" style={styles.stubButton} disabled>Pain Assessment Tool</button>
+              <Card title="1. Pain" subtitle="Patient response to illness" id="pain">
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, alignItems: "end" }}>
+                  <Field label="Are you uncomfortable because of pain?">
+                    <select value={formData.pain.uncomfortable} onChange={(e) => updateSection("pain", "uncomfortable", e.target.value)} style={styles.select}>{selectOptions(YES_NO)}</select>
+                  </Field>
+                  <Field label="If yes, pain level (0-10)">
+                    <input type="number" min="0" max="10" value={formData.pain.painLevel} onChange={(e) => updateSection("pain", "painLevel", e.target.value)} style={styles.input} />
+                  </Field>
+                  <Field label="Observed patient mental status">
+                    <select value={formData.pain.mentalStatus} onChange={(e) => updateSection("pain", "mentalStatus", e.target.value)} style={styles.select}>{selectOptions(MENTAL_STATUS_OPTIONS)}</select>
+                  </Field>
+                  <Field label="Historian / primary support">
+                    <select value={formData.pain.historian} onChange={(e) => updateSection("pain", "historian", e.target.value)} style={styles.select}>{selectOptions(["", "Patient", "PCG", "Family", "Other"])}</select>
+                  </Field>
+                  {formData.pain.historian === "Other" ? (
+                    <>
+                      <Field label="If other: name"><input value={formData.pain.historianOtherName} onChange={(e) => updateSection("pain", "historianOtherName", e.target.value)} style={styles.input} /></Field>
+                      <Field label="If other: relation"><input value={formData.pain.historianOtherRelation} onChange={(e) => updateSection("pain", "historianOtherRelation", e.target.value)} style={styles.input} /></Field>
+                    </>
+                  ) : null}
+                  <div style={{ gridColumn: "1 / -1" }}>
+                    <Field label="Narrative">
+                      <textarea
+                        value={formData.pain.notes}
+                        onChange={(e) => updateSection("pain", "notes", e.target.value)}
+                        style={styles.textarea}
+                        placeholder="Social worker narrative and support context."
+                      />
+                    </Field>
+                  </div>
                 </div>
               </Card>
 

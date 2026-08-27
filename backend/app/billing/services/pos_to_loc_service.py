@@ -22,6 +22,12 @@ POS_DEFAULT_LOC_MAP = {
 # Continuous Care / CHC must never apply in SNF/HOSPITAL/LTC/HOSPICE FACILITY
 CONTINUOUS_ALLOWED_POS = {"HOME", "AL", "B&C"}
 
+# CMS caps Inpatient Respite Care at 5 consecutive days per respite
+# occurrence (42 CFR 418.204). Any day beyond the 5th within a single
+# respite occurrence must be billed at the Routine Home Care rate instead
+# of the Respite rate -- it does NOT extend the respite authorization.
+RESPITE_MAX_CONSECUTIVE_DAYS = 5
+
 
 @dataclass(frozen=True)
 class DateRangeEvent:
@@ -91,6 +97,33 @@ def _event_hits(day: date, events: list[DateRangeEvent]) -> bool:
     return False
 
 
+def cap_respite_events(events: list[DateRangeEvent]) -> list[DateRangeEvent]:
+    """
+    Truncates each respite occurrence to its first RESPITE_MAX_CONSECUTIVE_DAYS
+    (5) days. Days 6+ of a single occurrence are intentionally dropped from
+    the returned events so resolve_loc_for_day() falls through to the next
+    priority (POS default, typically ROUTINE) for those overage days --
+    matching CMS's rule that day 6+ of an inpatient respite stay bills at
+    the Routine Home Care rate, not the Respite rate. Each input event is
+    treated as one occurrence (its own start/end date span); this does not
+    merge adjacent/back-to-back RespitePeriod rows into a single occurrence.
+    """
+    capped: list[DateRangeEvent] = []
+    for event in events:
+        max_end = event.start_date + timedelta(days=RESPITE_MAX_CONSECUTIVE_DAYS - 1)
+        if event.end_date <= max_end:
+            capped.append(event)
+        else:
+            capped.append(
+                DateRangeEvent(
+                    start_date=event.start_date,
+                    end_date=max_end,
+                    reason=event.reason,
+                )
+            )
+    return capped
+
+
 def resolve_loc_for_day(
     day: date,
     pos_type: str | None,
@@ -144,6 +177,7 @@ def build_loc_timeline(
     ]
     """
     result: list[dict] = []
+    capped_respite_events = cap_respite_events(respite_events)
 
     for row in pos_timeline:
         day = row["date"]
@@ -153,7 +187,7 @@ def build_loc_timeline(
             day=day,
             pos_type=pos_type,
             gip_events=gip_events,
-            respite_events=respite_events,
+            respite_events=capped_respite_events,
             continuous_events=continuous_events,
         )
 

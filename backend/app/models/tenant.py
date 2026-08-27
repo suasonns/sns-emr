@@ -110,14 +110,34 @@ class Tenant(BaseModel):
     )
 
     # ---------------------------------------------------------
+    # ✅ CBSA CODE (REQUIRED FOR REAL CMS WAGE-INDEX RATE LOOKUPS)
+    # ---------------------------------------------------------
+    # Core Based Statistical Area code for the tenant's primary service
+    # location, per the CMS hospice wage index tables. Used to look up the
+    # real, published wage index for computing wage-adjusted per-diem rates.
+    # Nullable: agencies without this configured fall back to $0.00 rates
+    # (safer than guessing) rather than an invented default.
+    cbsa_code = Column(
+        String(10),
+        nullable=True,
+    )
+
+    # ---------------------------------------------------------
     # ENTERPRISE CONSTRAINTS
     # ---------------------------------------------------------
 
     __table_args__ = (
 
         # ✅ Enforce valid tenant types
+        # PLATFORM = SNS Hospice Solutions (vendor/platform org: OWNER-role
+        # staff — executives, compliance, QA, support, developers,
+        # implementation). BILLING = SNS Billing Services (separate billing
+        # org: BILLING-role staff). Both are real, permanent organizations,
+        # not hospice agencies — kept distinct so tenant_id stays required
+        # (no nullable tenant_id) while access is still tenant + domain +
+        # role scoped.
         CheckConstraint(
-            "tenant_type IN ('PRODUCTION', 'TRAINING', 'DEV')",
+            "tenant_type IN ('PRODUCTION', 'TRAINING', 'DEV', 'PLATFORM', 'BILLING')",
             name="ck_tenant_type_valid",
         ),
 

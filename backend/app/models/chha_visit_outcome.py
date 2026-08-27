@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, String, Text, Boolean, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -36,6 +36,26 @@ class CHHAVisitOutcome(Base):
     caregiver_understanding_confirmed = Column(Boolean, nullable=False, default=False)
 
     exception_narrative = Column(Text, nullable=True)
+
+    # Visit logistics / payroll tracking (mirrors the "Visit Details" block
+    # captured on RN ICA, MSW ICA, and SC ICA)
+    correction = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+    )
+    type_of_visit = Column(String(32), nullable=True)
+    visit_kind = Column(String(32), nullable=True)
+    visit_kind_specify = Column(String(255), nullable=True)
+    reason_for_visit = Column(String(64), nullable=True)
+    visit_date = Column(String(16), nullable=True)
+    time_in = Column(String(16), nullable=True)
+    time_out = Column(String(16), nullable=True)
+    duration = Column(String(32), nullable=True)
+    entered_by = Column(String(255), nullable=True)
+    staff_assigned = Column(String(255), nullable=True)
+    care_level = Column(String(64), nullable=True)
 
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))

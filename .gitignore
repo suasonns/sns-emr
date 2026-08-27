@@ -40,6 +40,8 @@ Thumbs.db
 .coverage
 .pytest_cache/
 htmlcov/
+backend/storage/test_documents_pytest/
+backend/storage/documents/
 
 # ======================
 # Logs

@@ -1,30 +1,12 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { COLORS, S } from '../design';
-import { changePassword, logout } from '../../api/auth';
-import { getCurrentUser, setCurrentUser } from '../../api/session';
-
-const initialSettings = {
-  platformName: 'Grace Hospice Care',
-  supportEmail: 'support@gracehospice.com',
-  maintenanceMode: false,
-  backupSchedule: 'Daily at 2:00 AM',
-  faxEnabled: true,
-  smsAlerts: true,
-};
-
-const AGENCY_MANAGEMENT_ROLES = ['ADMIN', 'ADMINISTRATOR', 'CLINICALADMIN', 'DPCS', 'DPCSADMIN', 'SUPERADMIN'];
-
-function normalizeRole(value) {
-  return String(value ?? '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-}
+import { changePassword, getLinkedAgencies, logout, switchAgency } from '../../api/auth';
+import { getCurrentUser } from '../../api/session';
 
 export default function Settings() {
   const navigate = useNavigate();
   const currentUser = getCurrentUser();
-  const normalizedRole = normalizeRole(currentUser?.role);
-  const canManageAgency = AGENCY_MANAGEMENT_ROLES.some((role) => normalizedRole.includes(role));
-  const [settings, setSettings] = useState(initialSettings);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,42 +14,32 @@ export default function Settings() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const agencyOptions = useMemo(() => {
-    const canonical = [
-      { id: '01271980-0000-0000-0000-000005101977', name: 'Love & Faith Hospice Services, Inc.' },
-      { id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', name: 'Angela Hospice (Training)' },
-      { id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', name: 'Silva Hospice (Training)' },
-      { id: '5224ceb6-e29d-4841-858e-e77f1b67fe65', name: 'Dev Tenant A' },
-      { id: '85282f8b-fd5b-45e6-bb82-45394ef7a2f8', name: 'Dev Tenant B' },
-    ];
+  // Real cross-agency identity linking: every other agency this same
+  // physical person has a staff account in, matched server-side by SSN
+  // (primary) or name + DOB + license (fallback) -- not a hardcoded/mock
+  // tenant list. Replaces the old localStorage dev-tenant switcher.
+  const [linkedAgencies, setLinkedAgencies] = useState([]);
+  const [linkedAgenciesLoading, setLinkedAgenciesLoading] = useState(true);
+  const [linkedAgenciesError, setLinkedAgenciesError] = useState('');
+  const [switchTarget, setSwitchTarget] = useState(null);
+  const [switchPassword, setSwitchPassword] = useState('');
+  const [switchError, setSwitchError] = useState('');
+  const [switching, setSwitching] = useState(false);
 
-    const stored = (() => {
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
       try {
-        return JSON.parse(localStorage.getItem('sns-agency-options') || 'null');
-      } catch {
-        return null;
+        const agencies = await getLinkedAgencies();
+        if (!cancelled) setLinkedAgencies(agencies);
+      } catch (err) {
+        if (!cancelled) setLinkedAgenciesError(err instanceof Error ? err.message : 'Unable to load linked agencies.');
+      } finally {
+        if (!cancelled) setLinkedAgenciesLoading(false);
       }
     })();
-
-    const fallback = Array.isArray(stored) && stored.length ? stored : canonical;
-
-    if (!Array.isArray(stored) || !stored.length) {
-      localStorage.setItem('sns-agency-options', JSON.stringify(fallback));
-    }
-
-    return fallback;
+    return () => { cancelled = true; };
   }, []);
-
-  const [activeAgency, setActiveAgency] = useState(() => {
-    const stored = localStorage.getItem('sns-active-agency');
-    const canonicalId = '01271980-0000-0000-0000-000005101977';
-    if (stored && agencyOptions.some((agency) => agency.id === stored)) {
-      return stored;
-    }
-    const nextAgencyId = currentUser?.tenant_id || canonicalId;
-    localStorage.setItem('sns-active-agency', nextAgencyId);
-    return nextAgencyId;
-  });
 
   const fieldStyle = {
     width: '100%', background: COLORS.bg, border: `1px solid ${COLORS.border}`, borderRadius: 8,
@@ -103,22 +75,32 @@ export default function Settings() {
     }
   };
 
-  const handleAgencyChange = (event) => {
-    const nextAgencyId = event.target.value;
-    setActiveAgency(nextAgencyId);
-    localStorage.setItem('sns-active-agency', nextAgencyId);
+  const openSwitchPrompt = (agency) => {
+    setSwitchTarget(agency);
+    setSwitchPassword('');
+    setSwitchError('');
+  };
 
-    const nextAgency = agencyOptions.find((agency) => agency.id === nextAgencyId) || agencyOptions[0];
-    if (!currentUser) return;
+  const closeSwitchPrompt = () => {
+    setSwitchTarget(null);
+    setSwitchPassword('');
+    setSwitchError('');
+  };
 
-    const updatedUser = {
-      ...currentUser,
-      tenant_id: nextAgency?.id || currentUser.tenant_id,
-      tenant_name: nextAgency?.name || currentUser.tenant_name,
-    };
-
-    setCurrentUser(updatedUser);
-    setStatus(`Active agency set to ${nextAgency?.name || 'current agency'}.`);
+  const handleSwitchAgency = async (event) => {
+    event.preventDefault();
+    if (!switchTarget) return;
+    setSwitchError('');
+    setSwitching(true);
+    try {
+      await switchAgency(switchTarget.user_id, switchPassword);
+      // switchAgency() already updated the stored session (token + user)
+      // to the target agency; reload so the whole app re-reads it fresh.
+      window.location.href = '/portal';
+    } catch (err) {
+      setSwitchError(err instanceof Error ? err.message : 'Unable to switch agency.');
+      setSwitching(false);
+    }
   };
 
   const handleLogout = () => {
@@ -131,73 +113,84 @@ export default function Settings() {
       <div style={S.header}>
         <div>
           <h1 style={S.pageTitle}>System Settings</h1>
-          <p style={S.pageSubtitle}>Manage agency preferences, automation rules, integrations, and operational defaults.</p>
+          <p style={S.pageSubtitle}>Manage your account, password, and agency access.</p>
         </div>
-        <button style={S.btn(COLORS.teal)}>Save Changes</button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-        <div style={S.card}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 16px' }}>General</h3>
-          <div style={{ display: 'grid', gap: 14 }}>
-            <label>
-              <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Agency Name</div>
-              <input value={settings.platformName} onChange={(e) => setSettings({ ...settings, platformName: e.target.value })} style={fieldStyle} />
-            </label>
-            <label>
-              <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Support Email</div>
-              <input value={settings.supportEmail} onChange={(e) => setSettings({ ...settings, supportEmail: e.target.value })} style={fieldStyle} />
-            </label>
-            <label>
-              <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Backup Schedule</div>
-              <select value={settings.backupSchedule} onChange={(e) => setSettings({ ...settings, backupSchedule: e.target.value })} style={fieldStyle}>
-                <option>Daily at 2:00 AM</option>
-                <option>Twice Daily</option>
-                <option>Weekly</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div style={S.card}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 16px' }}>Automation & Integrations</h3>
-          <div style={{ display: 'grid', gap: 14 }}>
-            {[
-              ['Maintenance Mode', 'maintenanceMode'],
-              ['Faxing Enabled', 'faxEnabled'],
-              ['SMS Alerts Active', 'smsAlerts'],
-            ].map(([label, key]) => (
-              <label key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.bg, padding: '12px 14px' }}>
-                <span style={{ color: COLORS.textPrimary, fontSize: 13 }}>{label}</span>
-                <input
-                  type="checkbox"
-                  checked={settings[key]}
-                  onChange={(e) => setSettings({ ...settings, [key]: e.target.checked })}
-                  style={{ width: 18, height: 18 }}
-                />
-              </label>
-            ))}
-          </div>
+      <div style={{ ...S.card, borderStyle: 'dashed' }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 8px' }}>General &amp; Automation Preferences</h3>
+        <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.6 }}>
+          Not available yet — agency name/support-email/backup-schedule and automation toggles aren't backed by a
+          settings store in this release, so this page doesn't show controls that wouldn't actually save.
         </div>
       </div>
 
       <div style={{ ...S.card, marginTop: 24 }}>
         <h3 style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, margin: '0 0 16px' }}>Account</h3>
         <div style={{ display: 'grid', gap: 14 }}>
-        {canManageAgency ? (
-          <label>
-            <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Active agency</div>
-            <select value={activeAgency} onChange={handleAgencyChange} style={fieldStyle}>
-              {agencyOptions.map((agency) => (
-                <option key={agency.id} value={agency.id}>{agency.name}</option>
+        <div>
+          <div style={{ color: COLORS.muted, fontSize: 12, marginBottom: 6 }}>Other agencies you're connected to</div>
+          {linkedAgenciesLoading ? (
+            <div style={{ color: COLORS.muted, fontSize: 12 }}>Checking for linked agencies...</div>
+          ) : linkedAgenciesError ? (
+            <div style={{ color: '#fca5a5', fontSize: 12 }}>{linkedAgenciesError}</div>
+          ) : linkedAgencies.length === 0 ? (
+            <div style={{ color: COLORS.muted, fontSize: 12, lineHeight: 1.5 }}>
+              No other agency accounts were found linked to your identity (matched by SSN, or name + date of birth + license number).
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 8 }}>
+              {linkedAgencies.map((agency) => (
+                <div
+                  key={agency.user_id}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: '10px 12px',
+                  }}
+                >
+                  <div>
+                    <div style={{ color: COLORS.white, fontSize: 13, fontWeight: 600 }}>{agency.tenant_name}</div>
+                    <div style={{ color: COLORS.muted, fontSize: 11 }}>{agency.email}</div>
+                  </div>
+                  <button type="button" onClick={() => openSwitchPrompt(agency)} style={{ ...S.btn(COLORS.teal), minWidth: 90 }}>
+                    Switch
+                  </button>
+                </div>
               ))}
-            </select>
-          </label>
-        ) : (
-          <div style={{ color: COLORS.muted, fontSize: 12, lineHeight: 1.5 }}>
-            Agency selection is managed by the hospice administrator or DPCS for this tenant.
-          </div>
-        )}
+            </div>
+          )}
+        </div>
+
+        {switchTarget ? (
+          <form
+            onSubmit={handleSwitchAgency}
+            style={{ display: 'grid', gap: 10, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 14 }}
+          >
+            <div style={{ color: COLORS.white, fontSize: 13, fontWeight: 700 }}>
+              Sign in to {switchTarget.tenant_name}
+            </div>
+            <div style={{ color: COLORS.muted, fontSize: 12 }}>
+              Enter the password for {switchTarget.email} to switch into this agency.
+            </div>
+            <input
+              type="password"
+              placeholder="Password"
+              autoFocus
+              value={switchPassword}
+              onChange={(e) => setSwitchPassword(e.target.value)}
+              style={fieldStyle}
+            />
+            {switchError ? <div style={{ color: '#fca5a5', fontSize: 12 }}>{switchError}</div> : null}
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button type="submit" disabled={switching || !switchPassword} style={{ ...S.btn(COLORS.teal), opacity: switching ? 0.7 : 1 }}>
+                {switching ? 'Switching...' : 'Switch agency'}
+              </button>
+              <button type="button" onClick={closeSwitchPrompt} disabled={switching} style={S.btn('#475569')}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
 
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <button type="button" onClick={handleLogout} style={{ ...S.btn('#ef4444'), minWidth: 140 }}>

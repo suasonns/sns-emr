@@ -1,8 +1,22 @@
 # tests/services/test_admission_guardrails_determinism.py
 
 # --- TEST-LOCAL STUBS (prevent import-time failures) ---
+# These stubs are only needed to satisfy imports pulled in by
+# guardrail_assessment_service below. They are installed into sys.modules,
+# the import is performed, and then the original modules (or absence
+# thereof) are restored immediately afterwards so this test file doesn't
+# leak fake classes into sys.modules for the rest of the test session
+# (which previously broke unrelated tests that import the real
+# app.models.audit_log.AuditLog after this module was collected).
 import sys
 import types
+
+_STUBBED_MODULE_NAMES = (
+    "app.models.documentation_assessment",
+    "app.models.audit_log",
+    "app.services.tenant_settings_service",
+)
+_original_modules = {name: sys.modules.get(name) for name in _STUBBED_MODULE_NAMES}
 
 
 # Stub: app.models.documentation_assessment
@@ -40,9 +54,19 @@ sys.modules["app.services.tenant_settings_service"] = tenant_settings_mod
 # ------------------------------------------------------
 
 
-from app.services.admission.guardrail_assessment_service import (
-    AdmissionGuardrailAssessmentService,
-)
+try:
+    from app.services.admission.guardrail_assessment_service import (
+        AdmissionGuardrailAssessmentService,
+    )
+finally:
+    # Restore sys.modules so later-collected test files that import the
+    # real modules (e.g. app.models.audit_log.AuditLog) get the genuine
+    # classes instead of these test-local stubs.
+    for _name, _original in _original_modules.items():
+        if _original is None:
+            sys.modules.pop(_name, None)
+        else:
+            sys.modules[_name] = _original
 
 
 class FakeDBSession:

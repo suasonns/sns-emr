@@ -11,6 +11,7 @@ export type SessionUser = {
   ai_enabled?: boolean;
   billing_enabled?: boolean;
   access_scope: "platform" | "billing" | "tenant";
+  must_change_password?: boolean;
 };
 
 export function getAccessToken(): string | null {

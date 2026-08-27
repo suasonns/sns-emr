@@ -503,6 +503,7 @@ def sync_official_primary_diagnosis(
     if not facesheet:
         facesheet = PatientFaceSheet(
             patient_id=patient.id,
+            tenant_id=patient.tenant_id,
             dob=getattr(patient, "date_of_birth", None),
             primary_diagnosis=display_name,
             created_by=actor_id,
@@ -548,4 +549,226 @@ def sync_official_primary_diagnosis(
         "facesheet_created": facesheet_created,
         "facesheet_identity_backfilled": facesheet_identity_backfilled,
         **diagnosis_result,
+    }
+
+
+# =========================================================
+# SECONDARY / COMORBIDITY DIAGNOSIS SYNC
+# =========================================================
+#
+# Synchronizes non-primary diagnoses (SECONDARY, with a RELATED/UNRELATED
+# classification, and COMORBIDITY) into the authoritative patient_diagnoses
+# table. Designed to be called from any module that captures these
+# diagnoses (RN ICA, Recert, Facesheet) so there is exactly ONE shared list
+# instead of a per-module copy.
+#
+# Safety posture: this function only ADDS or UPDATES rows. It never
+# deactivates/retires a diagnosis the caller's payload happens to omit,
+# because a partial or in-progress form save must never silently make an
+# active diagnosis disappear from the chart. Retiring a diagnosis is a
+# deliberate clinical action and must go through an explicit removal path.
+# =========================================================
+
+
+def _format_diagnosis_input(item: dict[str, Any]) -> str | None:
+    icd10 = _clean_text(item.get("icd10") or item.get("code"))
+    description = _clean_text(
+        item.get("description") or item.get("name") or item.get("label")
+    )
+
+    if description and icd10:
+        return f"{description} ({icd10})"
+
+    return description or icd10
+
+
+def _sync_one_non_primary_diagnosis(
+    db: Session,
+    *,
+    tenant_id,
+    patient_id,
+    item: dict[str, Any],
+    diagnosis_type: DiagnosisType,
+    diagnosis_role: str,
+    source: DiagnosisSource,
+    workflow_context: str,
+    actor_id,
+    now: datetime,
+) -> dict[str, Any]:
+    diagnosis_input = _format_diagnosis_input(item)
+
+    if not diagnosis_input:
+        return {"skipped": True, "reason": "EMPTY_DIAGNOSIS_INPUT"}
+
+    try:
+        resolved = resolve_icd10_diagnosis_for_use(
+            db,
+            diagnosis_input=diagnosis_input,
+            diagnosis_role=diagnosis_role,
+            workflow_context=workflow_context,
+        )
+    except ICD10ResolutionError as exc:
+        return {
+            "skipped": True,
+            "reason": "ICD10_RESOLUTION_FAILED",
+            "detail": str(exc),
+            "input": diagnosis_input,
+        }
+
+    relationship = str(
+        item.get("relationship") or item.get("classification") or ""
+    ).strip().upper()
+    is_related_to_terminal = relationship != "UNRELATED"
+
+    existing = (
+        db.query(PatientDiagnosis)
+        .filter(
+            PatientDiagnosis.tenant_id == tenant_id,
+            PatientDiagnosis.patient_id == patient_id,
+            PatientDiagnosis.diagnosis_type == diagnosis_type,
+            PatientDiagnosis.status == DiagnosisStatus.ACTIVE,
+            PatientDiagnosis.active.is_(True),
+            PatientDiagnosis.resolved_date.is_(None),
+            PatientDiagnosis.icd10_code == resolved.icd10_code,
+        )
+        .first()
+    )
+
+    if existing:
+        existing.diagnosis_description = resolved.diagnosis_description
+        existing.display_name = resolved.display_name
+        if diagnosis_type == DiagnosisType.SECONDARY:
+            existing.is_related_to_terminal = is_related_to_terminal
+        existing.updated_by = actor_id
+        existing.updated_at = now
+
+        return {
+            "skipped": False,
+            "created": False,
+            "icd10_code": resolved.icd10_code,
+            "diagnosis_id": str(existing.id),
+        }
+
+    new_diagnosis = PatientDiagnosis(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        diagnosis_type=diagnosis_type,
+        status=DiagnosisStatus.ACTIVE,
+        source=source,
+        icd10_code=resolved.icd10_code,
+        diagnosis_description=resolved.diagnosis_description,
+        display_name=resolved.display_name,
+        active=True,
+        is_terminal=False,
+        is_related_to_terminal=(
+            is_related_to_terminal
+            if diagnosis_type == DiagnosisType.SECONDARY
+            else False
+        ),
+        effective_date=date.today(),
+        created_by=actor_id,
+        change_reason=f"Synchronized from {source.value}",
+    )
+
+    db.add(new_diagnosis)
+    db.flush()
+
+    return {
+        "skipped": False,
+        "created": True,
+        "icd10_code": resolved.icd10_code,
+        "diagnosis_id": str(new_diagnosis.id),
+    }
+
+
+def sync_secondary_and_comorbidity_diagnoses(
+    db: Session,
+    *,
+    tenant_id,
+    patient_id,
+    secondary_items: list[dict] | None,
+    comorbidity_items: list[dict] | None,
+    source: str,
+    updated_by=None,
+) -> dict[str, Any]:
+    """
+    Synchronize secondary (related/unrelated) and comorbidity diagnoses into
+    the authoritative patient_diagnoses table.
+
+    secondary_items / comorbidity_items: list of dicts shaped like
+        {"icd10": "I50.9", "description": "...", "relationship": "RELATED"|"UNRELATED"}
+    (relationship only meaningful for secondary_items; defaults to RELATED).
+
+    This function intentionally does NOT commit. Caller owns the
+    transaction boundary. Items that fail ICD10 resolution are skipped
+    (reported in the result) rather than aborting the whole save, so a
+    single bad entry cannot block an otherwise valid clinical save.
+    """
+
+    diagnosis_source = _diagnosis_source_from_value(source)
+    workflow_context = _workflow_context_from_diagnosis_source(diagnosis_source)
+
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id, Patient.tenant_id == tenant_id)
+        .first()
+    )
+
+    if not patient:
+        return {
+            "synced": False,
+            "reason": "PATIENT_NOT_FOUND",
+            "patient_id": str(patient_id) if patient_id else None,
+        }
+
+    now = datetime.now(timezone.utc)
+    actor_id = _resolve_actor_id(patient=patient, updated_by=updated_by)
+
+    if actor_id is None:
+        return {
+            "synced": False,
+            "reason": "MISSING_ACTOR_FOR_AUDIT_FIELDS",
+            "patient_id": str(patient.id),
+        }
+
+    secondary_results = [
+        _sync_one_non_primary_diagnosis(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            item=item,
+            diagnosis_type=DiagnosisType.SECONDARY,
+            diagnosis_role="SECONDARY",
+            source=diagnosis_source,
+            workflow_context=workflow_context,
+            actor_id=actor_id,
+            now=now,
+        )
+        for item in (secondary_items or [])
+        if isinstance(item, dict)
+    ]
+
+    comorbidity_results = [
+        _sync_one_non_primary_diagnosis(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            item=item,
+            diagnosis_type=DiagnosisType.COMORBIDITY,
+            diagnosis_role="COMORBIDITY",
+            source=diagnosis_source,
+            workflow_context=workflow_context,
+            actor_id=actor_id,
+            now=now,
+        )
+        for item in (comorbidity_items or [])
+        if isinstance(item, dict)
+    ]
+
+    return {
+        "synced": True,
+        "patient_id": str(patient.id),
+        "source": diagnosis_source.value,
+        "secondary": secondary_results,
+        "comorbidities": comorbidity_results,
     }

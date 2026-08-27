@@ -21,7 +21,17 @@ import MyProfilePage from "./pages/MyProfilePage";
 import IDGWorkspacePage from "./pages/IDGWorkspacePage";
 import OwnerDashboard from "./owner/OwnerDashboard";
 import TenantDashboard from "./tenant/TenantDashboard";
-import BillingDashboard from "./pages/BillingDashboard";
+import BillingOverviewPage from "./pages/billing/BillingOverviewPage";
+import BillerShell from "./components/billing/BillerShell";
+import VisitsNotesPage from "./pages/billing/VisitsNotesPage";
+import PocCertificationPage from "./pages/billing/PocCertificationPage";
+import NoeTrackingPage from "./pages/billing/NoeTrackingPage";
+import ComingSoonPage from "./pages/billing/ComingSoonPage";
+import ClaimsManagementPage from "./pages/billing/ClaimsManagementPage";
+import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
+import EligibilityVerificationPage from "./pages/billing/EligibilityVerificationPage";
+import PaymentPostingPage from "./pages/billing/PaymentPostingPage";
+import ReportsPage from "./pages/billing/ReportsPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
@@ -41,7 +51,27 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
 
         {/* Pages */}
-        <Route path="/billing" element={<RequireFeatureAccess feature="billing"><BillingDashboard /></RequireFeatureAccess>} />
+        <Route
+          path="/billing"
+          element={
+            <RequireFeatureAccess feature="billing">
+              <BillerShell />
+            </RequireFeatureAccess>
+          }
+        >
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<BillingOverviewPage />} />
+          <Route path="readiness" element={<Navigate to="/billing/dashboard" replace />} />
+          <Route path="settings" element={<ComingSoonPage title="Settings" />} />
+          <Route path="visits-notes" element={<VisitsNotesPage />} />
+          <Route path="poc-certification" element={<PocCertificationPage />} />
+          <Route path="noe-tracking" element={<NoeTrackingPage />} />
+          <Route path="claims" element={<ClaimsManagementPage />} />
+          <Route path="denials" element={<DenialsAppealsPage />} />
+          <Route path="eligibility" element={<EligibilityVerificationPage />} />
+          <Route path="payment-posting" element={<PaymentPostingPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+        </Route>
         <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />
         <Route path="/tenant" element={tenantRoute(<TenantDashboard />)} />
         <Route path="/owner" element={<RequireRoleAccess access="owner"><OwnerDashboard /></RequireRoleAccess>} />

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import text
@@ -16,15 +16,14 @@ from app.services.benefit_period_service import rollover_benefit_period
 @pytest.fixture
 def tenant_id(db_session):
     """
-    Reuse any already-seeded tenant row in the test DB.
-    This avoids guessing tenant table required columns.
+    Use the conftest.py db_session fixture's designated test tenant, not
+    "the first tenant row" -- that previously resolved to the live Love &
+    Faith tenant (lowest-sorting UUID) and wrote synthetic BPTEST-*
+    patients directly into real production-like data.
     """
-    tenant_id = db_session.execute(
-        text("SELECT id FROM tenants ORDER BY id LIMIT 1")
-    ).scalar()
-
-    assert tenant_id is not None, "No tenant row found in test DB."
-    return tenant_id
+    tenant_id = db_session.info.get("tenant_id")
+    assert tenant_id is not None, "No test tenant resolved by db_session fixture."
+    return UUID(str(tenant_id))
 
 
 @pytest.fixture

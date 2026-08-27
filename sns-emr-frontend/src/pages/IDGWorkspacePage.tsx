@@ -63,7 +63,27 @@ function statusColor(status: string): "default" | "success" | "warning" | "error
 export default function IDGWorkspacePage() {
   const currentUser = getCurrentUser();
   const role = currentUser?.role || "";
-  const isMD = role === "MD";
+  // Mirrors backend/app/api/idg/router.py::CLINICAL_ROLES. Any clinical
+  // role present at IDG (RN facilitator, MSW, chaplain, etc.) may record a
+  // physician's Reviewed/Deferred decision -- the backend does not require
+  // the logged-in user to literally be the MD, so gating this button on
+  // "MD only" hid it from every other clinical role able to use it.
+  const canRecordReview = [
+    "LVN",
+    "RN",
+    "NP",
+    "PA",
+    "MD",
+    "MSW",
+    "Chaplain",
+    "Surveyor",
+  ].includes(role);
+  // Mirrors backend/app/api/idg/router.py::MD_ONLY. Batch electronic
+  // signing of pending orders is deliberately narrower than the general
+  // order-signer list (excludes MEDICAL_DIRECTOR_DESIGNEE, NP, PA): only a
+  // legacy "MD", MEDICAL_DIRECTOR, or ATTENDING_PHYSICIAN role may open or
+  // act on the batch signature queue.
+  const canBatchSign = ["MD", "MEDICAL_DIRECTOR", "ATTENDING_PHYSICIAN"].includes(role);
   // OWNER (platform/vendor super-user) and BILLER have no clinical reason
   // to view IDG patient rosters, review status, or defer reasons — this is
   // PHI that must stay minimum-necessary. The nav already hides this link
@@ -123,7 +143,7 @@ export default function IDGWorkspacePage() {
   };
 
   useEffect(() => {
-    if (selectedDate) loadPatients(selectedDate);
+    if (selectedDate) queueMicrotask(() => loadPatients(selectedDate));
   }, [selectedDate]);
 
   const reviewedCount = useMemo(() => patients.filter((p) => p.review_status === "REVIEWED").length, [patients]);
@@ -294,7 +314,7 @@ export default function IDGWorkspacePage() {
                     </Stack>
                   </Stack>
 
-                  {isMD ? (
+                  {canBatchSign ? (
                     <Button
                       variant="outlined"
                       size="small"
@@ -333,7 +353,7 @@ export default function IDGWorkspacePage() {
                               color={statusColor(row.review_status)}
                               size="small"
                             />
-                            {isMD ? (
+                            {canRecordReview ? (
                               <>
                                 <Button
                                   size="small"

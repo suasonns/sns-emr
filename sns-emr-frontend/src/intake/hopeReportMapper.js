@@ -36,6 +36,13 @@ const addDays = (value, days) => {
   return date.toISOString().slice(0, 10);
 };
 
+const RECORD_REASON_BY_TIMEPOINT = {
+  ADMISSION: "1 - Admission (ADM)",
+  HUV1: "2 - HOPE Update Visit 1 (HUV1)",
+  HUV2: "3 - HOPE Update Visit 2 (HUV2)",
+  DISCHARGE: "99 - Discharge (DC)",
+};
+
 const boolCode = (value, yesCode = "1", yesDescription = "Yes", noCode = "0", noDescription = "No") => ({
   code: value ? yesCode : noCode,
   description: value ? yesDescription : noDescription,
@@ -48,31 +55,129 @@ const SEX_MAP = {
   F: ["2", "Female"],
 };
 
-const SITE_OF_SERVICE_MAP = {
-  Home: ["1", "Private home / residence"],
-  SNF: ["2", "Skilled nursing facility"],
-  ALF: ["3", "Assisted living facility"],
-  Hospital: ["4", "Hospital"],
-  Homeless: ["5", "Homeless / shelter"],
-  Other: ["9", "Other"],
+// A0215 Site of Service at Admission — official CMS codes.
+const SITE_OF_SERVICE_LABELS = {
+  "01": "Patient's Home/Residence",
+  "02": "Assisted Living Facility",
+  "03": "Nursing Long Term Care (LTC) or Non-Skilled Nursing Facility (NF)",
+  "04": "Skilled Nursing Facility (SNF)",
+  "05": "Inpatient Hospital",
+  "06": "Inpatient Hospice Facility (General Inpatient (GIP))",
+  "07": "Long Term Care Hospital (LTCH)",
+  "08": "Inpatient Psychiatric Facility",
+  "09": "Hospice Home Care (Routine Home Care (RHC)) Provided in a Hospice Facility",
+  "99": "Not listed",
+};
+// Legacy RNICA free-vocab values (pre-code-set fix) translated to the official code.
+const LEGACY_SITE_OF_SERVICE_TO_CODE = {
+  Home: "01", ALF: "02", "Board & Care": "02", "Memory Care": "02", SNF: "04", Hospital: "05", Homeless: "99", Other: "99",
 };
 
-const ADMITTED_FROM_MAP = {
-  Home: ["1", "Private home / residence"],
-  Hospital: ["2", "Acute care hospital"],
-  SNF: ["3", "Skilled nursing facility"],
-  ALF: ["4", "Assisted living facility"],
-  Rehab: ["5", "Rehabilitation facility"],
-  Other: ["9", "Other"],
+// A1805 Admitted From — official CMS codes.
+const ADMITTED_FROM_LABELS = {
+  "01": "Home/Community",
+  "02": "Nursing Home (long-term care facility)",
+  "03": "Skilled Nursing Facility (SNF, swing beds)",
+  "04": "Short-Term General Hospital (acute hospital, IPPS)",
+  "05": "Long-Term Care Hospital (LTCH)",
+  "06": "Inpatient Rehabilitation Facility (IRF)",
+  "07": "Inpatient Psychiatric Facility",
+  "08": "Intermediate Care Facility (ID/DD facility)",
+  "10": "Hospice (institutional facility)",
+  "11": "Critical Access Hospital (CAH)",
+  "99": "Not Listed",
+};
+const LEGACY_ADMITTED_FROM_TO_CODE = {
+  Home: "01", ALF: "01", Hospital: "04", SNF: "03", Rehab: "06", Other: "99",
 };
 
-const LIVING_ARRANGEMENT_MAP = {
-  Alone: ["1", "Lives alone"],
-  "With spouse": ["2", "Lives with spouse / partner"],
-  "With family": ["3", "Lives with family"],
-  "With non-relative": ["4", "Lives with non-relative"],
-  Facility: ["5", "Facility resident"],
+// A1905 Living Arrangements — official CMS codes.
+const LIVING_ARRANGEMENT_LABELS = {
+  "1": "Alone (no other residents in the home)",
+  "2": "With others in the home (e.g., family, friends, or paid caregiver)",
+  "3": "Congregate home (e.g., assisted living or residential care home)",
+  "4": "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)",
+  "5": "Does not have a permanent home",
 };
+const LEGACY_LIVING_ARRANGEMENT_TO_CODE = {
+  Alone: "1", "With spouse": "2", "With family": "2", "With non-relative": "2", Facility: "4",
+};
+
+// Resolve a value to its official CMS code: pass through if it's already an
+// official code, translate if it's a legacy pre-fix vocabulary value, else
+// fall back to the placeholder (never guess at an unrecognized value).
+function officialCodeLookup(value, labelMap, legacyMap) {
+  if (value === undefined || value === null || value === "") {
+    return { code: PLACEHOLDER, description: PLACEHOLDER };
+  }
+  if (labelMap[value]) {
+    return { code: value, description: labelMap[value] };
+  }
+  const legacyCode = legacyMap[value];
+  if (legacyCode) {
+    return { code: legacyCode, description: labelMap[legacyCode] };
+  }
+  return { code: PLACEHOLDER, description: String(value) };
+}
+
+// I0010 Principal Diagnosis — official CMS category codes.
+const PRINCIPAL_DIAGNOSIS_CATEGORY_LABELS = {
+  "01": "Cancer",
+  "02": "Dementia (including Alzheimer's disease)",
+  "03": "Neurological Condition (e.g., Parkinson's disease, multiple sclerosis, ALS)",
+  "04": "Stroke",
+  "05": "Chronic Obstructive Pulmonary Disease (COPD)",
+  "06": "Cardiovascular (excluding heart failure)",
+  "07": "Heart Failure",
+  "08": "Liver Disease",
+  "09": "Renal Disease",
+  "99": "None of the above",
+};
+
+// A1400 Payer Information — official CMS multi-select codes (check all that apply).
+const PAYER_SOURCE_LABELS = {
+  A: "Medicare (traditional fee-for-service)",
+  B: "Medicare (managed care/Part C/Medicare Advantage)",
+  C: "Medicaid (traditional fee-for-service)",
+  D: "Medicaid (managed care)",
+  G: "Other government (e.g., TRICARE, VA, etc.)",
+  H: "Private Insurance/Medigap",
+  I: "Private managed care",
+  J: "Self-pay",
+  K: "No payer source",
+  X: "Unknown",
+  Y: "Other",
+};
+
+// Facesheet Insurance card "Payer Source Type" category (single source of
+// truth for payer information — see PatientFacesheet.jsx) crosswalked to its
+// official CMS A1400 code. A1400 is a multi-select item, so both the primary
+// and secondary Facesheet payer types (when present) each contribute a code.
+const FACESHEET_PAYER_TYPE_TO_A1400_CODE = {
+  MEDICARE: "A",
+  MEDICARE_ADVANTAGE: "B",
+  MEDICAID: "C",
+  MEDICAID_MANAGED_CARE: "D",
+  PRIVATE_MANAGED_CARE: "I",
+  OTHER_GOVERNMENT: "G",
+  SELF_PAY: "J",
+  NO_PAYER_SOURCE: "K",
+};
+
+function payerSources(primaryPayerType, secondaryPayerType) {
+  const codes = [primaryPayerType, secondaryPayerType]
+    .map((type) => FACESHEET_PAYER_TYPE_TO_A1400_CODE[type])
+    .filter((code) => Boolean(code) && PAYER_SOURCE_LABELS[code]);
+  const uniqueCodes = [...new Set(codes)];
+  if (!uniqueCodes.length) {
+    return { incomplete: true, codes: [], text: "Legacy record: review required" };
+  }
+  return {
+    incomplete: false,
+    codes: uniqueCodes,
+    text: uniqueCodes.map((code) => `${code} - ${PAYER_SOURCE_LABELS[code]}`).join("; "),
+  };
+}
 
 const ASSISTANCE_MAP = {
   "24/7 available": ["1", "Assistance available around the clock"],
@@ -82,18 +187,92 @@ const ASSISTANCE_MAP = {
   None: ["5", "No assistance available"],
 };
 
-const CODE_STATUS_MAP = {
-  "Full Code": ["1", "Attempt resuscitation / full code"],
-  DNR: ["2", "Do not resuscitate"],
-  "DNR-CC": ["3", "Do not resuscitate - comfort care"],
-  "Comfort Measures Only": ["4", "Comfort measures only"],
+// HOPE J0900.A "Was the patient screened for pain?" (0 No / 1 Yes),
+// J0900.C "The patient's pain severity was:" (0 None / 1 Mild / 2 Moderate /
+// 3 Severe / 9 Pain not rated), and J0900.D "Type of standardized pain tool
+// used:" (1 Numeric / 2 Verbal descriptor / 3 Patient visual / 4 Staff
+// observation / 9 No standardized tool used). These are distinct from RN
+// ICA's verbalizesPain (drives which pain scale tool to show — Numeric /
+// PAINAD / FLACC), painIntensity.current (a raw numeric score), and
+// assessmentTool (an auto-derived UI tool selection, not the clinician's
+// explicit CMS-coded tool-type confirmation) — none of those legacy fields
+// is an official CMS HOPE response on its own.
+const PAIN_SCREENED_LABELS = {
+  "0": "No",
+  "1": "Yes",
 };
 
-const PAIN_SCREEN_MAP = {
+const PAIN_SEVERITY_LABELS = {
+  "0": "None",
+  "1": "Mild",
+  "2": "Moderate",
+  "3": "Severe",
+  "9": "Pain not rated",
+};
+
+const PAIN_TOOL_LABELS = {
+  "1": "Numeric",
+  "2": "Verbal descriptor",
+  "3": "Patient visual",
+  "4": "Staff observation",
+  "9": "No standardized tool used",
+};
+
+function painScreeningResponse(screenedForPain, painSeverityCategory, standardizedPainToolType) {
+  if (screenedForPain !== "0" && screenedForPain !== "1") {
+    return {
+      a: PLACEHOLDER,
+      aDescription: "Legacy record: review required",
+      c: PLACEHOLDER,
+      cDescription: PLACEHOLDER,
+      d: PLACEHOLDER,
+      dDescription: PLACEHOLDER,
+      incomplete: true,
+    };
+  }
+  if (screenedForPain === "0") {
+    return {
+      a: "0",
+      aDescription: PAIN_SCREENED_LABELS["0"],
+      c: PLACEHOLDER,
+      cDescription: "Skipped — not screened (J0905, Pain Active Problem)",
+      d: PLACEHOLDER,
+      dDescription: "Skipped — not screened (J0905, Pain Active Problem)",
+      incomplete: false,
+    };
+  }
+  const severityDescription = PAIN_SEVERITY_LABELS[painSeverityCategory];
+  const toolDescription = PAIN_TOOL_LABELS[standardizedPainToolType];
+  if (!severityDescription || !toolDescription) {
+    return {
+      a: "1",
+      aDescription: PAIN_SCREENED_LABELS["1"],
+      c: severityDescription ? painSeverityCategory : PLACEHOLDER,
+      cDescription: severityDescription || "Legacy record: review required",
+      d: toolDescription ? standardizedPainToolType : PLACEHOLDER,
+      dDescription: toolDescription || "Legacy record: review required",
+      incomplete: true,
+    };
+  }
+  return {
+    a: "1",
+    aDescription: PAIN_SCREENED_LABELS["1"],
+    c: painSeverityCategory,
+    cDescription: severityDescription,
+    d: standardizedPainToolType,
+    dDescription: toolDescription,
+    incomplete: false,
+  };
+}
+
+// HOPE J0915 "Does the patient have neuropathic pain?" (0 No / 1 Yes) —
+// distinct from the clinical "uncomfortable because of pain" question,
+// which is not itself a CMS HOPE item. J0915 is tracked for legacy review
+// independently of J0900 — one item missing must not flag the other as
+// incomplete.
+const NEUROPATHIC_PAIN_MAP = {
   "0": ["0", "No"],
-  "1": ["1", "Yes, reliably"],
-  "2": ["2", "Sometimes"],
-  "3": ["3", "Unable to determine"],
+  "1": ["1", "Yes"],
 };
 
 const YES_NO_UNABLE_MAP = {
@@ -121,13 +300,29 @@ const IMPACT_KEYS = [
   ["agitation", "Agitation"],
 ];
 
-function preferenceLookup(value) {
-  const text = String(value || "");
-  if (!text) return { code: PLACEHOLDER, description: PLACEHOLDER };
-  if (text.startsWith("Yes")) return { code: "1", description: text };
-  if (text.startsWith("No")) return { code: "0", description: text };
-  if (text === "Undecided") return { code: "9", description: "Undecided" };
-  return { code: PLACEHOLDER, description: text };
+// HOPE F2000/F2100/F2200/F3000 item A: "was the patient/responsible party asked?"
+// CMS defines this as 0 No / 1 Yes-discussion occurred / 2 Yes-refused to discuss.
+// This is a distinct question from the resulting clinical preference (code status,
+// treatment preference, etc.) that RNICA also documents alongside it.
+const ASKED_STATUS_LABELS = {
+  "0": "No",
+  "1": "Yes, and discussion occurred",
+  "2": "Yes, but patient/responsible party refused to discuss",
+};
+
+function askedStatus(codedValue, legacyIndicator) {
+  if (codedValue === "0" || codedValue === "1" || codedValue === "2") {
+    return { code: codedValue, description: ASKED_STATUS_LABELS[codedValue], incomplete: false };
+  }
+  if (legacyIndicator) {
+    return {
+      code: PLACEHOLDER,
+      description: "Legacy record: review required",
+      incomplete: true,
+      blockedFromSubmission: true,
+    };
+  }
+  return { code: PLACEHOLDER, description: PLACEHOLDER, incomplete: true, blockedFromSubmission: true };
 }
 
 function splitPatientName(patient = {}) {
@@ -264,7 +459,10 @@ function hasStructuredHopeComorbidities(diagnoses = {}) {
   return HOPE_COMORBIDITY_ITEMS.some((item) => Boolean(hope[item.key])) || Boolean(hope.other);
 }
 
-export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}) {
+export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, agency = {}, options = {}) {
+  const timepoint = String(options.timepoint || "ADMISSION").toUpperCase();
+  const isDischarge = timepoint === "DISCHARGE";
+  const discharge = options.discharge || {};
   const demographics = formData.demographics || {};
   const livingSituation = demographics.livingSituation || {};
   const advancedCarePlanning = demographics.advancedCarePlanning || {};
@@ -277,6 +475,8 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const spiritual = formData.spiritual || {};
   const medications = formData.medications || {};
   const finalization = formData.finalization || {};
+  const assessmentMeta = options.assessmentMeta || {};
+  const completionDate = finalization.signatureDate || assessmentMeta.lockedAt || assessmentMeta.updatedAt || assessmentMeta.createdAt || "";
   const imminentDeath = formData.imminentDeath || {};
   const name = splitPatientName(patient);
   const agencyInfo = {
@@ -288,19 +488,42 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
     ccn: agency.ccn || PLACEHOLDER,
     facilityId: agency.facilityId || PLACEHOLDER,
   };
-  const siteOfService = lookup(SITE_OF_SERVICE_MAP, livingSituation.siteOfService);
-  const admittedFrom = lookup(ADMITTED_FROM_MAP, livingSituation.admittedFrom);
-  const livingArrangement = lookup(LIVING_ARRANGEMENT_MAP, livingSituation.livingArrangement);
+  const siteOfService = officialCodeLookup(livingSituation.siteOfService, SITE_OF_SERVICE_LABELS, LEGACY_SITE_OF_SERVICE_TO_CODE);
+  const admittedFrom = officialCodeLookup(livingSituation.admittedFrom, ADMITTED_FROM_LABELS, LEGACY_ADMITTED_FROM_TO_CODE);
+  const livingArrangement = officialCodeLookup(livingSituation.livingArrangement, LIVING_ARRANGEMENT_LABELS, LEGACY_LIVING_ARRANGEMENT_TO_CODE);
   const assistance = lookup(ASSISTANCE_MAP, livingSituation.availabilityOfAssistance);
   const sex = lookup(SEX_MAP, demographics.gender || patient.sex);
-  const codeStatus = lookup(CODE_STATUS_MAP, advancedCarePlanning.codeStatus);
-  const lifeSustaining = preferenceLookup(advancedCarePlanning.lifeSustainingTreatmentPreference);
-  const hospitalization = preferenceLookup(advancedCarePlanning.hospitalizationPreference);
-  const painScreen = lookup(PAIN_SCREEN_MAP, pain.verbalizesPain);
-  const neuropathicPain = lookup(YES_NO_UNABLE_MAP, pain.uncomfortableBecauseOfPain);
+  const cprAsked = askedStatus(advancedCarePlanning.cprPreferenceAskedStatus, advancedCarePlanning.codeStatus);
+  const lifeSustainingAsked = askedStatus(advancedCarePlanning.lifeSustainingAskedStatus, advancedCarePlanning.lifeSustainingTreatmentPreference);
+  const hospitalizationAsked = askedStatus(advancedCarePlanning.hospitalizationAskedStatus, advancedCarePlanning.hospitalizationPreference);
+  const painScreening = painScreeningResponse(pain.screenedForPain, pain.painSeverityCategory, pain.standardizedPainToolType);
+  const neuropathicPain = lookup(NEUROPATHIC_PAIN_MAP, pain.neuropathicPain);
+  const neuropathicPainIncomplete = neuropathicPain.code === PLACEHOLDER;
   const imminent = lookup(YES_NO_UNABLE_MAP, imminentDeath.appearsThreeDaysOrLess);
   const principalDiagnosis = `${valueText(diagnoses.primaryDiagnosis?.icd10)} - ${valueText(diagnoses.primaryDiagnosis?.description)}`;
-  const f3000Asked = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
+  const principalDiagnosisCategoryCode = diagnoses.primaryDiagnosis?.hopeDiagnosisCategory || "";
+  const principalDiagnosisCategory = {
+    code: principalDiagnosisCategoryCode || PLACEHOLDER,
+    description: PRINCIPAL_DIAGNOSIS_CATEGORY_LABELS[principalDiagnosisCategoryCode] || PLACEHOLDER,
+  };
+  const f3000LegacyIndicator = spiritual.concernsDiscussed || Boolean((spiritual.spiritualConcerns || []).length) || Boolean(spiritual.notes);
+  const spiritualAsked = askedStatus(spiritual.concernsAskedStatus, f3000LegacyIndicator);
+  const payerInformation = payerSources(patient.primaryPayerType, patient.secondaryPayerType);
+  const legacyReviewItems = [
+    ["F2000", cprAsked],
+    ["F2100", lifeSustainingAsked],
+    ["F2200", hospitalizationAsked],
+    ["F3000", spiritualAsked],
+    ["A1400", payerInformation],
+    ["J0900", painScreening],
+    // J0915 is tracked independently of J0900 — one missing item must not
+    // flag the other as incomplete, since they are separate CMS codes.
+    ["J0915", { incomplete: neuropathicPainIncomplete }],
+  ].filter(([, result]) => result.incomplete).map(([code]) => code);
+  const legacyReviewRequired = {
+    required: legacyReviewItems.length > 0,
+    items: legacyReviewItems,
+  };
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
   const sfvStatus = getSfvStatus(formData);
   const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
@@ -324,19 +547,21 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         { code: "I8005", label: "Other Medical Condition", entries: [{ label: "Active diagnosis indicator", value: boolCode(hasOtherMedicalCondition).description }] },
       ];
 
-  return {
-    agency: agencyInfo,
-    patientName: name.display,
-    sfvStatus,
-    sections: [
+  const sections = [
       {
         title: "Section A - Administrative Information",
         items: [
           { code: "A0050", label: "Type of Record", entries: [{ label: "Code + description", value: "1 - Add new record" }] },
           { code: "A0100", label: "Facility Provider Numbers", entries: [{ label: "A. NPI", value: agencyInfo.npi }, { label: "B. CCN", value: agencyInfo.ccn }, { label: "C. Facility ID", value: agencyInfo.facilityId }] },
           { code: "A0215", label: "Site of Service at Admission", entries: [{ label: "Code + description", value: `${siteOfService.code} - ${siteOfService.description}` }] },
-          { code: "A0220", label: "Admission Date", entries: [{ label: "Date", value: formatDate(patient.socDate || formData.admissionsOrder?.levelOfCare?.effectiveDate || finalization.signatureDate) }] },
-          { code: "A0250", label: "Reason for Record", entries: [{ label: "Code + description", value: "1 - Admission (ADM)" }] },
+          { code: "A0220", label: "Admission Date", entries: [{ label: "Date", value: formatDate(patient.socDate || formData.admissionsOrder?.levelOfCare?.effectiveDate || completionDate) }] },
+          { code: "A0250", label: "Reason for Record", entries: [{ label: "Code + description", value: RECORD_REASON_BY_TIMEPOINT[timepoint] || RECORD_REASON_BY_TIMEPOINT.ADMISSION }] },
+          ...(isDischarge
+            ? [
+                { code: "A0270", label: "Discharge Date", entries: [{ label: "Date", value: formatDate(discharge.dischargeDate) }] },
+                { code: "A2115", label: "Reason for Discharge", entries: [{ label: "Code + description", value: discharge.reasonCode ? `${discharge.reasonCode} - ${discharge.reasonLabel || ""}` : PLACEHOLDER }] },
+              ]
+            : []),
           { code: "A0500", label: "Legal Name of Patient", entries: [{ label: "A. First", value: name.first }, { label: "B. MI", value: name.middleInitial }, { label: "C. Last", value: name.last }] },
           { code: "A0550", label: "Patient Zip Code", entries: [{ label: "ZIP", value: valueText(demographics.address?.zip) }] },
           { code: "A0600", label: "Social Security and Medicare Numbers", entries: [{ label: "A. SSN", value: valueText(patient.ssn) }, { label: "B. Medicare / MBI", value: valueText(patient.medicareNumber) }] },
@@ -346,7 +571,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "A1005", label: "Ethnicity", entries: [{ label: "Selection", value: arrayText(demographics.ethnicity) }] },
           { code: "A1010", label: "Race", entries: [{ label: "Selection", value: arrayText(demographics.race) }] },
           { code: "A1110", label: "Language", entries: [{ label: "A. Preferred language", value: valueText(demographics.preferredLanguage) }, { label: "B. Need interpreter", value: boolCode(Boolean(demographics.needsInterpreter)).description }] },
-          { code: "A1400", label: "Payer Information", entries: [{ label: "Payer", value: valueText(patient.payer) }] },
+          { code: "A1400", label: "Payer Information", entries: [{ label: "Payer source(s)", value: payerInformation.text }] },
           { code: "A1805", label: "Admitted From", entries: [{ label: "Code + description", value: `${admittedFrom.code} - ${admittedFrom.description}` }] },
           { code: "A1905", label: "Living Arrangements", entries: [{ label: "Code + description", value: `${livingArrangement.code} - ${livingArrangement.description}` }] },
           { code: "A1910", label: "Availability of Assistance", entries: [{ label: "Code + description", value: `${assistance.code} - ${assistance.description}` }] },
@@ -354,11 +579,14 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       },
       {
         title: "Section F - Preferences",
+        dataSourceNote: legacyReviewRequired.required
+          ? `⚠ HOPE Legacy Review Required — this assessment predates HOPE discussion-status tracking. Review ${legacyReviewRequired.items.join(", ")} before submission.`
+          : undefined,
         items: [
-          { code: "F2000", label: "CPR Preference", entries: [{ label: "A. Was patient / rep asked?", value: `${codeStatus.code} - ${codeStatus.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.codeStatusDate) }] },
-          { code: "F2100", label: "Life-sustaining treatments other than CPR", entries: [{ label: "A. Asked?", value: `${lifeSustaining.code} - ${lifeSustaining.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.lifeSustainingTreatmentPreferenceDate) }] },
-          { code: "F2200", label: "Hospitalization preference", entries: [{ label: "A. Asked?", value: `${hospitalization.code} - ${hospitalization.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.hospitalizationPreferenceDate) }] },
-          { code: "F3000", label: "Spiritual / Existential Concerns", entries: [{ label: "A. Asked?", value: boolCode(f3000Asked).description }, { label: "B. Date first asked", value: formatDate(spiritual.concernsDiscussedDate) }] },
+          { code: "F2000", label: "CPR Preference", entries: [{ label: "A. Was patient / rep asked?", value: `${cprAsked.code} - ${cprAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.codeStatusDate) }] },
+          { code: "F2100", label: "Life-sustaining treatments other than CPR", entries: [{ label: "A. Asked?", value: `${lifeSustainingAsked.code} - ${lifeSustainingAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.lifeSustainingTreatmentPreferenceDate) }] },
+          { code: "F2200", label: "Hospitalization preference", entries: [{ label: "A. Asked?", value: `${hospitalizationAsked.code} - ${hospitalizationAsked.description}` }, { label: "B. Date first asked", value: formatDate(advancedCarePlanning.hospitalizationPreferenceDate) }] },
+          { code: "F3000", label: "Spiritual / Existential Concerns", entries: [{ label: "A. Asked?", value: `${spiritualAsked.code} - ${spiritualAsked.description}` }, { label: "B. Date first asked", value: formatDate(spiritual.concernsDiscussedDate) }] },
         ],
       },
       {
@@ -367,7 +595,10 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           ? "Comorbidities harvested from structured RNICA findings (H&P/labs/MD records scan + RN assessment)."
           : "⚠ This assessment predates structured HOPE harvesting from the RNICA — Heart Failure/COPD/Other Medical Condition below were inferred from the free-text diagnosis list only. Verify against the chart (H&P, labs, MD notes) before submission.",
         items: [
-          { code: "I0010", label: "Principal Diagnosis", entries: [{ label: "Code + description", value: principalDiagnosis }] },
+          { code: "I0010", label: "Principal Diagnosis", entries: [
+            { label: "Category", value: `${principalDiagnosisCategory.code} - ${principalDiagnosisCategory.description}` },
+            { label: "ICD-10 code + description (supporting detail)", value: principalDiagnosis },
+          ] },
           ...comorbidityItems,
           { code: "I0000", label: "Comorbidities and Co-existing Conditions", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
         ],
@@ -376,7 +607,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         title: "Section J - Health Conditions",
         items: [
           { code: "J0050", label: "Death is Imminent", entries: [{ label: "Yes / No", value: `${imminent.code} - ${imminent.description}` }] },
-          { code: "J0900", label: "Pain Screening", entries: [{ label: "A. Screened?", value: `${painScreen.code} - ${painScreen.description}` }, { label: "B. Date", value: formatDate(pain.screeningDate) }, { label: "C. Severity", value: valueText(pain.painIntensity?.current) }, { label: "D. Tool used", value: valueText(pain.assessmentTool) }] },
+          { code: "J0900", label: "Pain Screening", entries: [{ label: "A. Screened?", value: `${painScreening.a} - ${painScreening.aDescription}` }, { label: "B. Date", value: formatDate(pain.screeningDate) }, { label: "C. Severity", value: `${painScreening.c} - ${painScreening.cDescription}` }, { label: "D. Tool used", value: `${painScreening.d} - ${painScreening.dDescription}` }] },
           { code: "J0905", label: "Pain Active Problem", entries: [{ label: "Yes / No", value: boolCode(Boolean(pain.painIntensity?.current || pain.painManagementPlan || (pain.painLocation || []).length)).description }] },
           { code: "J0910", label: "Comprehensive Pain Assessment", entries: [{ label: "A. Done?", value: boolCode(Boolean(pain.comprehensiveAssessmentCompleted)).description }, { label: "B. Date", value: formatDate(pain.comprehensiveAssessmentDate) }, { label: "C. Findings included", value: derivePainFindings(pain) }] },
           { code: "J0915", label: "Neuropathic Pain", entries: [{ label: "Yes / No / blank", value: `${neuropathicPain.code} - ${neuropathicPain.description}` }] },
@@ -407,10 +638,78 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
       {
         title: "Z0500 - Signature of Person Verifying Record Completion",
         items: [
-          { code: "Z0500", label: "Attestation", entries: [{ label: "Attestation", value: finalization.signatureCertification ? "I certify this HOPE report reflects the RN initial comprehensive assessment." : PLACEHOLDER }, { label: "Clinician Signature", value: valueText(finalization.clinicianSignature) }, { label: "Date", value: formatDate(finalization.signatureDate) }, { label: "Submission / Confirmation Number", value: valueText(finalization.hopeSubmissionNumber) }, { label: "Already submitted / no tracking", value: boolCode(Boolean(finalization.hopeAlreadySubmitted)).description }] },
+          ...(timepoint === "HUV1" || timepoint === "HUV2"
+            ? [{ code: "Z0350", label: "Date Assessment Completed", entries: [{ label: "Date", value: formatDate(completionDate) }] }]
+            : []),
+          { code: "Z0500", label: "Attestation", entries: [{ label: "Attestation", value: finalization.signatureCertification ? "I certify this HOPE report reflects the signed assessment record." : PLACEHOLDER }, { label: "Clinician Signature", value: valueText(finalization.clinicianSignature) }, { label: "Date", value: formatDate(finalization.signatureDate || completionDate) }, { label: "Submission / Confirmation Number", value: valueText(finalization.hopeSubmissionNumber) }, { label: "Already submitted / no tracking", value: boolCode(Boolean(finalization.hopeAlreadySubmitted)).description }] },
         ],
       },
-    ],
+  ];
+  return {
+    agency: agencyInfo,
+    patientName: name.display,
+    sfvStatus,
+    legacyReviewRequired,
+    sections: sections
+      .filter((section) => !(timepoint === "HUV1" || timepoint === "HUV2") || section.title !== "Section F - Preferences")
+      .filter((section) => !isDischarge || section.title === "Section A - Administrative Information" || section.title === "Z0500 - Signature of Person Verifying Record Completion"),
+  };
+}
+
+// HOPE Admission harvest/completion-status (RN ICA Master Map SECTION 7).
+// RN ICA's role for HOPE Admission is to harvest the assessment answers that
+// feed the HOPE Admission report and show completion status / missing HOPE
+// sources — it does NOT generate, export, or submit the HOPE Admission
+// record itself (that is a separate downstream concern out of RN ICA scope).
+//
+// `sections` is the caller's per-section HOPE-code inventory (RNICA.jsx's
+// SIDEBAR_CONFIG entries — { key, label, hope: [...] } — already curated to
+// the clinically-relevant, assessment-driven HOPE codes, deliberately
+// excluding purely administrative/agency-level report fields like A0050 or
+// Z0500 that are not "things the clinician charts" and would never read as
+// complete for a real assessment). This function reuses the exact same
+// completeness signal mapRnIcaToHopeReport already computes per code (no
+// value in an item's entries containing the PLACEHOLDER "^") so there is a
+// single source of truth for "is this HOPE code answered."
+export function getHopeAdmissionStatus(formData = {}, patient = defaultPatient, agency = {}, sections = []) {
+  const report = mapRnIcaToHopeReport(formData, patient, agency);
+  const itemsByCode = new Map();
+  report.sections.forEach((section) => {
+    section.items.forEach((item) => {
+      if (!itemsByCode.has(item.code)) itemsByCode.set(item.code, item);
+    });
+  });
+
+  const isCodeComplete = (code) => {
+    const item = itemsByCode.get(code);
+    if (!item) return true; // Not a code the mapper harvests — not a gap.
+    return !(item.entries || []).some((entry) => String(entry.value ?? "").includes(PLACEHOLDER));
+  };
+
+  const hopeSections = (sections || []).filter((section) => Array.isArray(section.hope) && section.hope.length > 0);
+  const evaluated = hopeSections.map((section) => {
+    const missingCodes = section.hope.filter((code) => !isCodeComplete(code));
+    return {
+      key: section.key,
+      label: section.label,
+      codes: section.hope,
+      complete: missingCodes.length === 0,
+      missingCodes,
+    };
+  });
+
+  const missingSections = evaluated.filter((section) => !section.complete);
+  const totalSections = evaluated.length;
+  const completedCount = totalSections - missingSections.length;
+
+  return {
+    totalSections,
+    completedCount,
+    missingCount: missingSections.length,
+    percentComplete: totalSections ? Math.round((completedCount / totalSections) * 100) : 100,
+    sections: evaluated,
+    missingSections,
+    allComplete: missingSections.length === 0,
   };
 }
 

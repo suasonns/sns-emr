@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     text,
 )
@@ -53,6 +54,18 @@ class PatientPayer(Base):
         nullable=True,
         server_default=text("true"),
     )
+
+    # Real CMS Medicare Secondary Payer (MSP) value code (e.g. "12"
+    # Working Aged/GHP, "15" Workers' Comp, "47" Liability). NULL when
+    # this payer has no MSP relationship to Medicare (it either IS
+    # Medicare, or is a payer with no COB claim against Medicare).
+    msp_type_code = Column(String(2), nullable=True)
+
+    # Explicit coordination-of-benefits sequence (1=primary, 2=secondary,
+    # 3=tertiary...). Used instead of/alongside is_primary to resolve
+    # multi-payer ordering unambiguously -- see
+    # app/billing/services/msp_validation_service.py.
+    priority_order = Column(Integer, nullable=True)
 
     created_at = Column(
         DateTime(timezone=True),

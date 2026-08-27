@@ -119,6 +119,7 @@ def add_order(
     user: CurrentUser = Depends(require_roles(CLINICAL_ROLES)),
 ):
     patient = get_authorized_patient(db, patient_id, user)
+    order_type = (payload.order_type or "").strip().upper()
     if order_type not in ORDER_TYPES:
         raise HTTPException(status_code=422, detail=f"order_type must be one of {sorted(ORDER_TYPES)}")
 

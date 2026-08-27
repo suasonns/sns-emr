@@ -1,0 +1,1377 @@
+from __future__ import annotations
+
+import uuid
+from datetime import date
+
+import pytest
+
+from app.models.admission import Admission
+from app.models.patient import Patient
+from app.models.plan_of_care import PlanOfCare
+from app.models.plan_of_care_version import PlanOfCareVersion
+from app.models.poc import POCProblem
+from app.models.rnica_assessment import RnicaAssessment
+
+
+def _make_patient_and_admission(db_session, tenant_id):
+    patient = Patient(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        mrn=f"RNICA-POC-{uuid.uuid4().hex[:12]}",
+        date_of_birth=date(1940, 1, 1),
+        primary_diagnosis="Hospice qualifying diagnosis",
+        status="ACTIVE",
+        admission_status="PRE_REFERRAL",
+        created_by=None,
+    )
+    db_session.add(patient)
+    db_session.commit()
+
+    admission = Admission(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        status="ACTIVE",
+    )
+    db_session.add(admission)
+    db_session.commit()
+
+    return patient, admission
+
+
+def _make_rnica_assessment(db_session, patient, tenant_id, form_data):
+    record = RnicaAssessment(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        tenant_id=uuid.UUID(str(tenant_id)),
+        form_data=form_data,
+    )
+    db_session.add(record)
+    db_session.commit()
+    return record
+
+
+@pytest.mark.integration
+def test_add_view_update_resolve_poc_problem_via_rnica_routes(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    assert tenant_id is not None
+
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}})
+
+    section_key = "nutrition"
+
+    # --- Add to POC ---------------------------------------------------
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}",
+        json={
+            "problem_label": "Unintentional weight loss > 5% in 30 days",
+            "evidence_text": "Weight down from 140 lb to 128 lb over 4 weeks.",
+            "goal_text": "Stabilize weight / minimize further decline",
+            "intervention_text": "RN to reassess weight and intake weekly.",
+            "discipline": "RN",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    add_body = add_resp.json()
+    assert add_body["added"], add_body
+    rule_key = add_body["added"][0]
+
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).one()
+    assert poc.current_version_id is not None
+    version_1_id = poc.current_version_id
+
+    # --- Duplicate prevention: re-adding the same problem must not
+    # create a second POCProblem row --------------------------------
+    add_again_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}",
+        json={
+            "problem_label": "Unintentional weight loss > 5% in 30 days",
+            "evidence_text": "Weight down from 140 lb to 128 lb over 4 weeks.",
+        },
+        headers=rn_headers,
+    )
+    assert add_again_resp.status_code == 201, add_again_resp.text
+    assert add_again_resp.json()["skipped_duplicate"] == [rule_key]
+    assert add_again_resp.json()["added"] == []
+
+    problem_rows = db_session.query(POCProblem).filter_by(rule_key=rule_key).all()
+    # Materialized once per POC version; duplicate-add must not create a
+    # second row within the same (current) version.
+    current_version_problem_rows = [p for p in problem_rows if p.poc_version_id == poc.current_version_id]
+    assert len(current_version_problem_rows) == 1, "duplicate Add-to-POC must not create a duplicate problem row"
+
+    # --- View POC --------------------------------------------------
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/{section_key}", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    problems = view_resp.json()["problems"]
+    assert len(problems) == 1
+    assert problems[0]["rule_key"] == rule_key
+    assert problems[0]["status"] == "ACTIVE"
+    assert "Source: RN ICA assessment" in (problems[0]["description"] or "")
+
+    # --- Update POC --------------------------------------------------
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
+        json={"severity": "high", "description_addendum": "Albumin trending down."},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["problem"]["severity"] == "HIGH"
+
+    db_session.refresh(poc)
+    assert poc.current_version_id != version_1_id, "update must create a new version, not mutate history"
+
+    view_after_update = client.get(f"/visits/rnica/{record.id}/poc/{section_key}", headers=rn_headers).json()
+    assert view_after_update["problems"][0]["severity"] == "HIGH"
+    assert "Albumin trending down" in view_after_update["problems"][0]["description"]
+
+    # --- Resolve POC --------------------------------------------------
+    resolve_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}/resolve",
+        headers=rn_headers,
+    )
+    assert resolve_resp.status_code == 200, resolve_resp.text
+    assert resolve_resp.json()["problem"]["status"] == "RESOLVED"
+
+    view_after_resolve = client.get(f"/visits/rnica/{record.id}/poc/{section_key}", headers=rn_headers).json()
+    assert view_after_resolve["problems"][0]["status"] == "RESOLVED"
+
+    # Full version history preserved — nothing was deleted.
+    # Versions: 1) bootstrap (empty), 2) add, 3) update, 4) resolve.
+    # The duplicate re-add is a true no-op and creates no version.
+    version_count = (
+        db_session.query(PlanOfCareVersion)
+        .filter_by(plan_of_care_id=poc.id)
+        .count()
+    )
+    assert version_count == 4
+
+
+@pytest.mark.integration
+def test_master_poc_review_lists_all_sections_and_supports_deactivate(client, db_session, rn_headers):
+    """SECTION 11 — Master Plan of Care Review (Phase A). GET
+    /visits/rnica/{assessment_id}/poc (no section) must return problems from
+    every RN-ICA-sourced section with an `origin_section`, and the new
+    deactivate action must mark a problem HISTORICAL (distinct from
+    RESOLVED) without deleting it or touching other sections' problems.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    assert tenant_id is not None
+
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "skin": {}})
+
+    nutrition_add = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert nutrition_add.status_code == 201, nutrition_add.text
+    nutrition_rule_key = nutrition_add.json()["added"][0]
+
+    skin_add = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={
+            "problem_label": "Stage 2 sacral pressure injury",
+            "evidence_text": "2cm x 2cm partial thickness wound noted on sacrum.",
+            "intervention_text": "RN wound care 3x/week.",
+            "discipline": "RN",
+        },
+        headers=rn_headers,
+    )
+    assert skin_add.status_code == 201, skin_add.text
+    skin_rule_key = skin_add.json()["added"][0]
+
+    # --- Master review lists BOTH sections' problems in one call --------
+    all_resp = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers)
+    assert all_resp.status_code == 200, all_resp.text
+    problems = all_resp.json()["problems"]
+    by_rule_key = {p["rule_key"]: p for p in problems}
+    assert set(by_rule_key) == {nutrition_rule_key, skin_rule_key}
+    assert by_rule_key[nutrition_rule_key]["origin_section"] == "nutrition"
+    assert by_rule_key[skin_rule_key]["origin_section"] == "skin"
+    # Interventions carry frequency so the review can display it.
+    skin_goal = by_rule_key[skin_rule_key]["goals"][0]
+    assert skin_goal["interventions"][0]["discipline"] == "RN"
+
+    # --- Deactivate the skin problem only --------------------------------
+    deactivate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/{skin_rule_key}/deactivate",
+        headers=rn_headers,
+    )
+    assert deactivate_resp.status_code == 200, deactivate_resp.text
+    assert deactivate_resp.json()["problem"]["status"] == "HISTORICAL"
+
+    all_after = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers).json()["problems"]
+    by_rule_key_after = {p["rule_key"]: p for p in all_after}
+    # Deactivated problem still present (never deleted) but HISTORICAL...
+    assert by_rule_key_after[skin_rule_key]["status"] == "HISTORICAL"
+    # ...and distinct from RESOLVED — the nutrition problem is untouched.
+    assert by_rule_key_after[nutrition_rule_key]["status"] == "ACTIVE"
+
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).one()
+    version_count = (
+        db_session.query(PlanOfCareVersion)
+        .filter_by(plan_of_care_id=poc.id)
+        .count()
+    )
+    # bootstrap, add-nutrition, add-skin, deactivate-skin = 4 versions;
+    # full history preserved, nothing overwritten in place.
+    assert version_count == 4
+
+
+@pytest.mark.integration
+def test_lock_rnica_assessment_creates_no_poc_version_or_problem(client, db_session, rn_headers):
+    """Locking RN ICA must only validate/sign/lock/preserve data — it must
+    never create a PlanOfCareVersion or POCProblem. POC changes are strictly
+    clinician-initiated via the explicit Add/Update/Resolve routes."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+
+    form_data = {
+        "nutrition": {
+            "weightLossPastSixMonths": "Yes",
+            "appetite": "Poor",
+            "notes": "Significant unintentional weight loss noted.",
+        },
+        "diagnoses": {"lcdEligibilityNarrative": "Documented decline per LCD criteria."},
+        "referrals": {"reviewed": True},
+        "finalization": {
+            "clinicianSignature": "RN Test",
+            "signatureCertification": True,
+            "pocGenerationCompleted": True,
+            "responseToInterventions": {"baselineEstablished": True},
+        },
+    }
+    record = _make_rnica_assessment(db_session, patient, tenant_id, form_data)
+
+    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp.status_code == 200, lock_resp.text
+    body = lock_resp.json()
+    assert body["locked"] is True
+    assert body["status"] == "locked"
+    # The lock response must not carry any POC-generation payload.
+    assert "pocGeneration" not in body
+
+    db_session.refresh(record)
+    assert record.locked is True
+    assert record.status == "LOCKED"
+
+    # No PlanOfCare, PlanOfCareVersion, or POCProblem was created as a
+    # side effect of locking.
+    assert db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first() is None
+    assert db_session.query(PlanOfCareVersion).count() == 0
+    assert db_session.query(POCProblem).count() == 0
+
+    # Locking a second time is likewise a no-op for POC.
+    lock_resp_2 = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp_2.status_code == 200, lock_resp_2.text
+    assert db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first() is None
+    assert db_session.query(POCProblem).count() == 0
+
+
+@pytest.mark.integration
+def test_update_and_resolve_require_explicit_action(client, db_session, rn_headers):
+    """A problem added to the POC must remain untouched (no severity
+    change, no status change) until an explicit Update/Resolve call is
+    made — proving neither happens implicitly as a side effect of any
+    other RN ICA action (e.g. saving/locking the assessment)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(
+        db_session,
+        patient,
+        tenant_id,
+        {
+            "skin": {},
+            "diagnoses": {"lcdEligibilityNarrative": "Documented decline per LCD criteria."},
+            "referrals": {"reviewed": True},
+            "finalization": {
+                "clinicianSignature": "RN Test",
+                "signatureCertification": True,
+                "pocGenerationCompleted": True,
+                "responseToInterventions": {"baselineEstablished": True},
+            },
+        },
+    )
+    section_key = "skin"
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}",
+        json={
+            "problem_label": "Stage 2 pressure injury, sacrum",
+            "evidence_text": "2cm x 1.5cm partial-thickness wound noted on assessment.",
+            "goal_text": "Promote wound healing / prevent progression",
+            "intervention_text": "RN to assess and dress wound per protocol.",
+            "discipline": "RN",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    rule_key = add_resp.json()["added"][0]
+
+    problem = db_session.query(POCProblem).filter_by(rule_key=rule_key).one()
+    assert problem.status == "ACTIVE"
+    assert problem.severity == "UNKNOWN"
+    version_after_add = problem.poc_version_id
+
+    # Only the explicit Update route changes severity — nothing else
+    # (e.g. adding the problem itself) implicitly changes it.
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
+        json={"severity": "moderate"},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+    assert update_resp.json()["problem"]["severity"] == "MODERATE"
+
+    still_active = db_session.query(POCProblem).filter_by(rule_key=rule_key).order_by(POCProblem.created_at.desc()).first()
+    assert still_active.status == "ACTIVE", "explicit Update must not resolve the problem"
+
+    # Only the explicit Resolve route changes status.
+    resolve_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}/resolve",
+        headers=rn_headers,
+    )
+    assert resolve_resp.status_code == 200, resolve_resp.text
+    assert resolve_resp.json()["problem"]["status"] == "RESOLVED"
+
+    # Locking the assessment (an unrelated action) must not update or
+    # resolve any POC problem as a side effect.
+    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp.status_code == 200, lock_resp.text
+
+    unchanged = db_session.query(POCProblem).filter_by(rule_key=rule_key).order_by(POCProblem.created_at.desc()).first()
+    assert unchanged.status == "RESOLVED"
+    assert unchanged.severity == "MODERATE"
+
+    # SECTION 12: once locked, POC problem mutation routes must also be
+    # immutable (mirrors update_rnica_assessment's 423 guard) — a signed
+    # assessment cannot have its Plan of Care silently altered post-signature.
+    locked_update_resp = client.put(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}",
+        json={"severity": "severe"},
+        headers=rn_headers,
+    )
+    assert locked_update_resp.status_code == 423
+
+    locked_resolve_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/{section_key}/{rule_key}/resolve",
+        headers=rn_headers,
+    )
+    assert locked_resolve_resp.status_code == 423
+
+
+@pytest.mark.integration
+def test_skin_wound_structured_fields_save_reload_and_preserve_existing_data(client, db_session, rn_headers):
+    """Master Map §5.11 structured wound fields persist through the
+    existing RNICA form_data JSONB model, round-trip on reload, and never
+    disturb pre-existing skin fields (Braden, skinStatus, skinBodySites,
+    woundImpairment, notes)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    initial_form_data = {
+        "skin": {
+            "skinConditionsPresent": True,
+            "skinStatus": ["Dry", "Fragile"],
+            "skinTurgor": "Fair",
+            "skinBodySites": ["sacrum", "left-heel"],
+            "braden": {
+                "sensoryPerception": "2", "moisture": "2", "activity": "2",
+                "mobility": "2", "nutrition": "3", "frictionShear": "2", "total": "13",
+            },
+            "pressureInjuryRisk": "High (≤14)",
+            "woundImpairment": "Pre-existing free-text wound note.",
+            "notes": "Pre-existing skin notes.",
+        },
+    }
+    record = _make_rnica_assessment(db_session, patient, tenant_id, initial_form_data)
+
+    # Add structured wound data + plan-level fields, as the frontend
+    # WoundListCard / "Wound Documentation & Notes" card would.
+    wound_entry = {
+        "presentAsPressureInjury": True,
+        "stage": "Stage 2",
+        "woundType": "Pressure injury",
+        "location": "Sacrum",
+        "length": 2.0,
+        "width": 1.5,
+        "depth": 0.3,
+        "drainage": "Small",
+        "odor": "None",
+        "periwoundCondition": "Intact, mild erythema",
+        "isSkinTear": False,
+        "isSurgicalWound": False,
+        "isNonhealingWound": False,
+        "currentTreatment": "Hydrocolloid dressing",
+        "dressing": "Hydrocolloid",
+        "dressingFrequency": "Every 3 days",
+    }
+    updated_skin = {
+        **initial_form_data["skin"],
+        "wounds": [wound_entry],
+        "pressureReliefMeasures": ["Pressure-relief mattress", "Frequent position changes"],
+        "repositioningPlan": "Reposition every 2 hours, alternate sides",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"skin": updated_skin}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    # Reload and confirm both the new structured fields AND the
+    # pre-existing skin fields all round-trip intact.
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    skin = get_resp.json()["formData"]["skin"]
+
+    # New §5.11 structured fields.
+    assert len(skin["wounds"]) == 1
+    reloaded_wound = skin["wounds"][0]
+    for key, value in wound_entry.items():
+        assert reloaded_wound[key] == value, f"wound field {key} did not round-trip"
+    assert skin["pressureReliefMeasures"] == ["Pressure-relief mattress", "Frequent position changes"]
+    assert skin["repositioningPlan"] == "Reposition every 2 hours, alternate sides"
+
+    # Pre-existing skin fields untouched.
+    assert skin["skinConditionsPresent"] is True
+    assert skin["skinStatus"] == ["Dry", "Fragile"]
+    assert skin["skinTurgor"] == "Fair"
+    assert skin["skinBodySites"] == ["sacrum", "left-heel"]
+    assert skin["braden"]["total"] == "13"
+    assert skin["pressureInjuryRisk"] == "High (≤14)"
+    assert skin["woundImpairment"] == "Pre-existing free-text wound note."
+    assert skin["notes"] == "Pre-existing skin notes."
+
+    # POC linkage from the skin section still works end-to-end after the
+    # structured wound fields are present.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={
+            "problem_label": "Stage 2 pressure injury, sacrum",
+            "evidence_text": "2.0cm x 1.5cm x 0.3cm wound, small serous drainage, no odor.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/skin", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_infection_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.4 Immunological/Infection structured fields (allergies,
+    antibiotic-resistant infection, history of resistant infection, current
+    active infection, antibiotic use, temperature, recurrent infection,
+    infection history) persist through the existing RNICA form_data JSONB
+    model, round-trip on reload, and coexist with POC controls on the
+    infection section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"infection": {}})
+
+    updated_infection = {
+        "allergies": ["Food allergies", "Sensitivities"],
+        "allergyDetails": "Shellfish; adhesive tape sensitivity.",
+        "immunosuppressed": True,
+        "precautions": ["Contact"],
+        "antibioticResistantInfection": ["MRSA"],
+        "historyOfResistantInfections": ["C. difficile"],
+        "currentInfections": ["UTI", "Wound"],
+        "antibioticUse": True,
+        "temperature": "100.4",
+        "recurrentInfection": True,
+        "infectionHistory": "Recurrent UTIs over past year, 3 courses of antibiotics.",
+        "notes": "Wound culture pending.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"infection": updated_infection}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    infection = get_resp.json()["formData"]["infection"]
+
+    for key, value in updated_infection.items():
+        assert infection[key] == value, f"infection field {key} did not round-trip"
+
+    # POC linkage from the infection section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/infection",
+        json={
+            "problem_label": "Active infection risk — recurrent UTI, MRSA history",
+            "evidence_text": "Temp 100.4F, MRSA on current culture, recurrent UTI history.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/infection", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_endocrine_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.7 Endocrine structured fields (impairment domain,
+    diabetes dependency classification, oral hypoglycemics, current
+    treatment) persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the endocrine
+    section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"endocrine": {}})
+
+    updated_endocrine = {
+        "endocrineImpairment": ["Thyroid", "Pancreas"],
+        "thyroid": {"assessment": "Enlarged", "notes": "Palpable nodule, referred to endocrinology."},
+        "diabetes": {
+            "type": "Type 2",
+            "dependency": "Insulin-dependent",
+            "glucoseMonitoring": "BID",
+            "lastHbA1c": "8.2",
+            "lastHbA1cDate": "2026-07-01",
+            "insulinType": "Lantus",
+            "insulinDose": "20 units qHS",
+            "oralHypoglycemics": ["Metformin"],
+        },
+        "endocrineSymptoms": ["Fatigue", "Polyuria"],
+        "symptomSeverity": {"Fatigue": "Moderate"},
+        "currentEndocrineMeds": ["Insulin", "Levothyroxine"],
+        "notes": "Blood glucose trending high this week.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"endocrine": updated_endocrine}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    endocrine = get_resp.json()["formData"]["endocrine"]
+
+    for key, value in updated_endocrine.items():
+        assert endocrine[key] == value, f"endocrine field {key} did not round-trip"
+
+    # POC linkage from the endocrine section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/endocrine",
+        json={
+            "problem_label": "Glucose-management problem — insulin-dependent, HbA1c 8.2",
+            "evidence_text": "Poorly controlled Type 2 diabetes, HbA1c 8.2, fatigue and polyuria present.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/endocrine", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_cardiovascular_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.2 Cardiovascular structured fields (pulse sites,
+    expanded pulse characteristics, pacemaker/defibrillator, varicose
+    veins, central venous line, cool extremities, stasis ulcer, skin
+    color) persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    cardiovascular section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"cardiovascular": {}})
+
+    updated_cardio = {
+        "bpSymptoms": ["Hypertensive"],
+        "pulseSites": ["Apical", "Pedal"],
+        "pulseQuality": "Tachycardia",
+        "edema": {"present": "Yes", "location": ["Bilateral lower extremities"], "severity": "2+", "pitting": ""},
+        "chestPain": {"present": "No", "type": "", "frequency": ""},
+        "peripheralCirculation": "Diminished",
+        "heartSounds": "S1S2 regular, no murmur",
+        "jvd": "No",
+        "skinColor": "Pale",
+        "pacemaker": True,
+        "internalDefibrillator": False,
+        "varicoseVeins": True,
+        "centralVenousLine": False,
+        "coolExtremities": True,
+        "stasisUlcer": False,
+        "notes": "Bilateral pedal pulses weak but palpable.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"cardiovascular": updated_cardio}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    cardio = get_resp.json()["formData"]["cardiovascular"]
+
+    for key, value in updated_cardio.items():
+        assert cardio[key] == value, f"cardiovascular field {key} did not round-trip"
+
+    # POC linkage from the cardiovascular section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/cardiovascular",
+        json={
+            "problem_label": "Perfusion concern — pacemaker, cool extremities, weak pedal pulses",
+            "evidence_text": "Cool extremities, weak pedal/apical pulses, tachycardia noted, pacemaker present.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/cardiovascular", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_respiratory_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.3 Respiratory structured fields (treatment declined,
+    expanded exertion level / lung sounds / respirations / cough options,
+    oxygen delivery mode / room air, and ventilator/airway support)
+    persist through the existing RNICA form_data JSONB model, round-trip
+    on reload, and coexist with POC controls on the respiratory
+    section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"respiratory": {}})
+
+    updated_respiratory = {
+        "sobSeverity": "Moderate",
+        "treatmentDeclined": False,
+        "exertionLevel": "Pursed-lip breathing",
+        "shortnessOfBreathScreened": True,
+        "screeningDate": "2026-08-01",
+        "treatmentInitiated": True,
+        "treatmentDate": "2026-08-02",
+        "lungSounds": ["Crackles", "Rales"],
+        "respirations": ["Tachypnea", "Orthopnea"],
+        "coughType": "Barrel chest",
+        "sputumCharacter": "Thick yellow",
+        "oxygenTherapy": {
+            "inUse": True, "type": "Nasal cannula", "litersPerMinute": "2",
+            "hoursPerDay": "24", "satOnO2": "92",
+            "deliveryMode": "Continuous", "onRoomAir": False,
+        },
+        "ventilator": {
+            "shortTermVentilator": False, "longTermVentilator": True,
+            "ventilatorTypeAndSettings": "AC 14/450/40% FiO2",
+            "tracheostomyType": "Cuffed", "tracheostomySize": "6.0",
+        },
+        "notes": "Patient on long-term vent via tracheostomy.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"respiratory": updated_respiratory}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    respiratory = get_resp.json()["formData"]["respiratory"]
+
+    for key, value in updated_respiratory.items():
+        assert respiratory[key] == value, f"respiratory field {key} did not round-trip"
+
+    # POC linkage from the respiratory section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/respiratory",
+        json={
+            "problem_label": "Long-term ventilator dependence via tracheostomy",
+            "evidence_text": "AC 14/450/40% FiO2, cuffed trach size 6.0, SpO2 92% on 2L NC.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/respiratory", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_gastrointestinal_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.5 Gastrointestinal structured fields (vomiting
+    occurrences in 24 hours, expanded abdomen findings, ascites,
+    abdominal girth, stool characteristics, expanded bowel status,
+    bowel frequency, and reason bowel regimen could not be initiated)
+    persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    gastrointestinal section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"gastrointestinal": {}})
+
+    updated_gi = {
+        "nausea": "Mild",
+        "vomiting": "Moderate",
+        "vomitingOccurrences24h": "3",
+        "diarrhea": "None",
+        "constipation": "None",
+        "bowelSounds": "Hypoactive",
+        "abdomen": "Tympanic",
+        "ascites": True,
+        "abdominalGirth": "38 in",
+        "stoolCharacter": ["Bloody"],
+        "bowelStatus": "Impaction",
+        "bowelFrequency": "Every 3-4 days",
+        "reasonBowelRegimenNotInitiated": "Patient declined per family request pending IDG discussion.",
+        "lastBM": "2026-08-18",
+        "continence": "Incontinent",
+        "feedingTube": {"present": False, "type": "", "site": ""},
+        "ostomy": {"present": False, "type": "", "condition": ""},
+        "notes": "Abdomen distended, tympanic to percussion, ascites suspected.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"gastrointestinal": updated_gi}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    gi = get_resp.json()["formData"]["gastrointestinal"]
+
+    for key, value in updated_gi.items():
+        assert gi[key] == value, f"gastrointestinal field {key} did not round-trip"
+
+    # POC linkage from the gastrointestinal section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={
+            "problem_label": "Bowel impaction with bloody stool, ascites",
+            "evidence_text": "Impaction, bloody stool, ascites, abdominal girth 38in, last BM 8/18.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/gastrointestinal", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_genitourinary_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.8 Genitourinary/Reproductive structured fields
+    (expanded continence options, general urine characteristics/color,
+    expanded catheter type, catheter irrigation, and catheter care)
+    persist through the existing RNICA form_data JSONB model,
+    round-trip on reload, and coexist with POC controls on the
+    genitourinary section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"genitourinary": {}})
+
+    updated_gu = {
+        "urinaryStatus": "Retention",
+        "frequency": "Every 2 hours",
+        "urineCharacteristics": ["Cloudy", "Odor"],
+        "urineColor": "Dark amber",
+        "catheter": {
+            "present": True, "type": "Urostomy", "size": "16 Fr",
+            "insertionDate": "2026-07-01", "lastChangeDate": "2026-08-01",
+            "condition": "Patent", "urineCharacteristics": ["Cloudy", "Foul odor"],
+            "irrigation": {"solution": "Normal saline", "frequency": "Daily", "duration": "15 min"},
+        },
+        "catheterCare": "Stoma site cleaned, appliance changed, no skin breakdown noted.",
+        "urineOutput": "Decreased",
+        "twentyFourHourVolume": "450",
+        "reproductive": {"concerns": [], "notes": ""},
+        "bladderManagement": ["Scheduled toileting"],
+        "notes": "Urostomy functioning well, output decreased today.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"genitourinary": updated_gu}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    gu = get_resp.json()["formData"]["genitourinary"]
+
+    for key, value in updated_gu.items():
+        assert gu[key] == value, f"genitourinary field {key} did not round-trip"
+
+    # POC linkage from the genitourinary section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/genitourinary",
+        json={
+            "problem_label": "Urinary-elimination problem — retention, decreased output via urostomy",
+            "evidence_text": "Retention noted, urostomy output decreased to 450mL/24h, cloudy urine with odor.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/genitourinary", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_sleep_rest_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.9 Sleep/Rest structured fields (exact spec sleep
+    pattern options, nighttime symptoms, and response to interventions)
+    persist through the existing RNICA form_data JSONB model, round-trip
+    on reload, and coexist with POC controls on the neurological section
+    (Sleep/Rest is a subcard within Neurological)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"neurological": {}})
+
+    updated_sleep_rest = {
+        "sleepPattern": "Lack of sleep",
+        "averageSleepHours": "3",
+        "sleepAids": ["Medication"],
+        "nighttimeSymptoms": ["Pain", "Restlessness"],
+        "response": "Partial relief after PRN morphine dose.",
+        "restfulness": "Inadequate",
+        "notes": "Patient reports frequent awakening due to pain.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"neurological": {"sleepRest": updated_sleep_rest}}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    sleep_rest = get_resp.json()["formData"]["neurological"]["sleepRest"]
+
+    for key, value in updated_sleep_rest.items():
+        assert sleep_rest[key] == value, f"sleepRest field {key} did not round-trip"
+
+    # POC linkage from the neurological section (which hosts Sleep/Rest)
+    # works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/neurological",
+        json={
+            "problem_label": "Sleep-pattern disturbance — pain-related lack of sleep",
+            "evidence_text": "Averaging 3 hours sleep/night, pain and restlessness reported, partial relief with PRN morphine.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/neurological", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+def test_musculoskeletal_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.10 Musculoskeletal structured fields (Issues checklist,
+    ROM-loss location, Disability classification, and Additional items —
+    Strength/Balance/Pain with movement) persist through the existing
+    RNICA form_data JSONB model, round-trip on reload, and coexist with
+    POC controls on the musculoskeletal section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"musculoskeletal": {}})
+
+    updated_musculoskeletal = {
+        "weakness": "Moderate",
+        "rigidity": "Mild",
+        "contractures": "None",
+        "paralysis": "Right hemiparesis",
+        "contracturesLocation": [],
+        "romLimitations": ["Upper extremities", "Neck/spine"],
+        "musculoskeletalIssues": ["Joint swelling", "Spasms / cramps", "Prosthesis"],
+        "strength": "Decreased",
+        "balance": "Impaired",
+        "painWithMovement": "Moderate",
+        "gait": "Unsteady",
+        "assistiveDevices": ["Walker"],
+        "fallHistory": {"fallsLast90Days": "1", "fallInjuries": "None"},
+        "mobility": {"ambulatoryStatus": "Assisted", "endurance": "Fair", "transferAbility": "Standby assist"},
+        "adl": {"bathing": "3", "dressing": "2", "toileting": "2", "transferring": "3", "eating": "0", "grooming": "1"},
+        "notes": "Right-sided weakness following recent CVA; fall precautions in place.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"musculoskeletal": updated_musculoskeletal}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    musculoskeletal = get_resp.json()["formData"]["musculoskeletal"]
+
+    for key, value in updated_musculoskeletal.items():
+        assert musculoskeletal[key] == value, f"musculoskeletal field {key} did not round-trip"
+
+    # POC linkage from the musculoskeletal section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/musculoskeletal",
+        json={
+            "problem_label": "Fall risk — right hemiparesis with impaired balance",
+            "evidence_text": "Right hemiparesis, decreased strength, impaired balance, 1 fall in last 90 days.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/musculoskeletal", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+def test_neurological_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
+    """Master Map §5.1 Neurological/Mental/Sensory structured fields
+    (Symptoms/Demeanor checklist, expanded Level of Consciousness,
+    Disoriented, structured Psychiatric History, expanded Communication
+    and Balance options, and Sensory Aids) persist through the existing
+    RNICA form_data JSONB model, round-trip on reload, and coexist with
+    POC controls on the neurological section."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"neurological": {}})
+
+    updated_neuro = {
+        "consciousness": "Minimally responsive",
+        "orientation": {"time": False, "place": False, "person": True, "situation": False, "disoriented": True},
+        "communication": "Aphasia",
+        "hearing": "Impaired",
+        "vision": "Impaired",
+        "balance": "Impaired",
+        "cognition": "Severely impaired",
+        "delirium": True,
+        "seizureHistory": False,
+        "psychiatricHistory": "History of major depressive disorder, stable on sertraline.",
+        "psychiatricHistoryType": ["Depression"],
+        "sensoryDeficits": ["Numbness"],
+        "sensoryAids": ["Glasses", "Hearing aids"],
+        "symptomsDemeanor": ["Agitation", "Sundowning", "Tremors / twitching"],
+        "notes": "Patient exhibits sundowning behavior in early evening hours.",
+    }
+    update_resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {"neurological": updated_neuro}},
+        headers=rn_headers,
+    )
+    assert update_resp.status_code == 200, update_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    neuro = get_resp.json()["formData"]["neurological"]
+
+    for key, value in updated_neuro.items():
+        assert neuro[key] == value, f"neurological field {key} did not round-trip"
+
+    # POC linkage from the neurological section works end-to-end.
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/neurological",
+        json={
+            "problem_label": "Agitation / sundowning behavior",
+            "evidence_text": "Agitation, sundowning, and tremors observed; minimally responsive with aphasia.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    assert add_resp.json()["added"], add_resp.json()
+
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/neurological", headers=rn_headers)
+    assert view_resp.status_code == 200, view_resp.text
+    assert len(view_resp.json()["problems"]) == 1
+
+
+@pytest.mark.integration
+def test_link_existing_problem_attaches_evidence_without_duplicating(client, db_session, rn_headers):
+    """SECTION 11.C - Link Existing Problem. Attaching evidence documented
+    in a *different* section to an already-existing problem must not
+    create a second problem row, must preserve the problem's original
+    origin_section/source_condition, must record the linked evidence so it
+    is retrievable, and must be idempotent for identical repeats."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "skin": {}})
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert add_resp.status_code == 201, add_resp.text
+    rule_key = add_resp.json()["added"][0]
+
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=admission.id).one()
+    version_count_before = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+
+    # --- Link evidence documented in a different (skin) section --------
+    link_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={
+            "rule_key": rule_key,
+            "evidence_text": "Loose, tenting skin turgor consistent with malnutrition/dehydration.",
+        },
+        headers=rn_headers,
+    )
+    assert link_resp.status_code == 200, link_resp.text
+    assert link_resp.json()["already_linked"] is False
+
+    # --- No duplicate problem row was created ---------------------------
+    poc_rows = db_session.query(POCProblem).filter_by(rule_key=rule_key).all()
+    current_poc = db_session.query(PlanOfCare).filter_by(id=poc.id).one()
+    current_version_rows = [p for p in poc_rows if p.poc_version_id == current_poc.current_version_id]
+    assert len(current_version_rows) == 1, "linking must never create a duplicate problem row"
+
+    # --- Origin metadata preserved (still nutrition, not skin) ----------
+    view_resp = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers)
+    problems = view_resp.json()["problems"]
+    assert len(problems) == 1
+    linked_problem = problems[0]
+    assert linked_problem["origin_section"] == "nutrition"
+    assert linked_problem["source_condition"] == "RNICA:nutrition"
+
+    # --- Evidence source recorded and retrievable, multiple sources allowed
+    assert len(linked_problem["evidence_sources"]) == 1
+    source = linked_problem["evidence_sources"][0]
+    assert source["section_key"] == "skin"
+    assert source["evidence_text"] == "Loose, tenting skin turgor consistent with malnutrition/dehydration."
+    assert "tenting skin turgor" in linked_problem["description"]
+
+    # The problem does NOT show up under the skin section's own view -- it
+    # remains a nutrition-origin problem, only additionally evidenced by skin.
+    skin_view = client.get(f"/visits/rnica/{record.id}/poc/skin", headers=rn_headers).json()
+    assert skin_view["problems"] == []
+
+    # A new version was created for the link.
+    db_session.refresh(poc)
+    version_count_after_link = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_link == version_count_before + 1
+
+    # --- Idempotent: relinking identical evidence from the same section
+    # must not create another version or duplicate evidence-source entry.
+    relink_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={
+            "rule_key": rule_key,
+            "evidence_text": "Loose, tenting skin turgor consistent with malnutrition/dehydration.",
+        },
+        headers=rn_headers,
+    )
+    assert relink_resp.status_code == 200, relink_resp.text
+    assert relink_resp.json()["already_linked"] is True
+
+    version_count_after_relink = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_relink == version_count_after_link
+
+    view_after_relink = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers).json()
+    assert len(view_after_relink["problems"][0]["evidence_sources"]) == 1
+
+    # --- Multiple distinct evidence sources are allowed -----------------
+    third_link = client.post(
+        f"/visits/rnica/{record.id}/poc/vitals/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "Orthostatic hypotension noted on standing."},
+        headers=rn_headers,
+    )
+    assert third_link.status_code == 200, third_link.text
+    view_after_third = client.get(f"/visits/rnica/{record.id}/poc/nutrition", headers=rn_headers).json()
+    sources = view_after_third["problems"][0]["evidence_sources"]
+    assert len(sources) == 2
+    assert {s["section_key"] for s in sources} == {"skin", "vitals"}
+
+    # --- Linking a nonexistent rule_key fails without side effects ------
+    missing_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": "does-not-exist", "evidence_text": "Some finding."},
+        headers=rn_headers,
+    )
+    assert missing_resp.status_code == 404, missing_resp.text
+
+
+@pytest.mark.integration
+def test_link_existing_problem_requires_evidence_text_and_respects_lock(client, db_session, rn_headers):
+    """Evidence text is required, and a locked RN ICA assessment must
+    reject link-existing the same way it rejects every other POC mutation
+    path (mirrors the fix applied to add/update/resolve/deactivate)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}})
+
+    add_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={"problem_label": "Unintentional weight loss", "evidence_text": "Weight down 10% in 60 days."},
+        headers=rn_headers,
+    )
+    rule_key = add_resp.json()["added"][0]
+
+    blank_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "   "},
+        headers=rn_headers,
+    )
+    assert blank_resp.status_code == 422, blank_resp.text
+
+    record.locked = True
+    db_session.add(record)
+    db_session.commit()
+
+    locked_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin/link-existing",
+        json={"rule_key": rule_key, "evidence_text": "Some finding."},
+        headers=rn_headers,
+    )
+    assert locked_resp.status_code == 423, locked_resp.text
+
+
+@pytest.mark.integration
+def test_merge_duplicate_problems_folds_evidence_and_supersedes_duplicate(client, db_session, rn_headers):
+    """SECTION 11 - Merge Duplicate Problems. Merging a clinician-identified
+    duplicate into a survivor must: fold the duplicate's evidence sources
+    and description into the survivor, record a traceable `merged_from`
+    entry, mark the duplicate SUPERSEDED (not deleted), exclude it from
+    active section/master views, and surface the merge as a status-change
+    event in View History (`mergeEvents`)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, {"nutrition": {}, "gastrointestinal": {}})
+
+    survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={
+            "problem_label": "Unintentional weight loss",
+            "evidence_text": "Weight down 10% in 60 days.",
+        },
+        headers=rn_headers,
+    )
+    assert survivor_resp.status_code == 201, survivor_resp.text
+    survivor_rule_key = survivor_resp.json()["added"][0]
+
+    duplicate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={
+            "problem_label": "Progressive weight loss / poor oral intake",
+            "evidence_text": "Reports skipping meals due to early satiety.",
+        },
+        headers=rn_headers,
+    )
+    assert duplicate_resp.status_code == 201, duplicate_resp.text
+    duplicate_rule_key = duplicate_resp.json()["added"][0]
+
+    merge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Same underlying weight-loss problem documented from two sections.",
+        },
+        headers=rn_headers,
+    )
+    assert merge_resp.status_code == 200, merge_resp.text
+    merge_body = merge_resp.json()
+    assert merge_body["merged"] == [duplicate_rule_key]
+    assert merge_body["already_merged"] == []
+
+    # --- Survivor shows folded evidence + merged_from, and remains active
+    master_view = client.get(f"/visits/rnica/{record.id}/poc", headers=rn_headers).json()
+    by_rule_key = {p["rule_key"]: p for p in master_view["problems"]}
+
+    survivor = by_rule_key[survivor_rule_key]
+    assert survivor["status"] != "SUPERSEDED"
+    assert any(m["rule_key"] == duplicate_rule_key for m in survivor["merged_from"])
+    assert "Progressive weight loss" in survivor["description"]
+    evidence_texts = {s.get("evidence_text") for s in survivor.get("evidence_sources", [])}
+    # Duplicate had no evidence_sources of its own (it was created via
+    # add_manual_problem, not link-existing), so evidence_sources may still
+    # be empty here -- the important guarantee is description/merged_from.
+
+    duplicate = by_rule_key[duplicate_rule_key]
+    assert duplicate["status"] == "SUPERSEDED"
+    assert duplicate["merged_into_rule_key"] == survivor_rule_key
+
+    # --- Duplicate excluded from its own section's active view ----------
+    gi_view = client.get(f"/visits/rnica/{record.id}/poc/gastrointestinal", headers=rn_headers).json()
+    gi_problem = next(p for p in gi_view["problems"] if p["rule_key"] == duplicate_rule_key)
+    assert gi_problem["status"] == "SUPERSEDED"
+
+    # --- Merge event surfaces in View History ----------------------------
+    history_resp = client.get(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal/{duplicate_rule_key}/history",
+        headers=rn_headers,
+    )
+    assert history_resp.status_code == 200, history_resp.text
+    history = history_resp.json()
+    assert len(history["mergeEvents"]) == 1
+    assert history["mergeEvents"][0]["toStatus"] == "SUPERSEDED"
+
+    # --- Idempotent: merging the same duplicate into the same survivor
+    # again is a no-op (no new version, reported as already_merged) --------
+    poc = db_session.query(PlanOfCare).filter_by(admission_id=_admission.id).one()
+    version_count_before_remerge = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+
+    remerge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Repeat request.",
+        },
+        headers=rn_headers,
+    )
+    assert remerge_resp.status_code == 200, remerge_resp.text
+    assert remerge_resp.json()["merged"] == []
+    assert remerge_resp.json()["already_merged"] == [duplicate_rule_key]
+
+    version_count_after_remerge = db_session.query(PlanOfCareVersion).filter_by(plan_of_care_id=poc.id).count()
+    assert version_count_after_remerge == version_count_before_remerge
+
+
+@pytest.mark.integration
+def test_merge_duplicate_problems_validation_and_lock(client, db_session, rn_headers):
+    """Merge must reject: a blank reason, an empty duplicate list, merging
+    a rule_key into itself, an unknown rule_key, merging a duplicate that
+    was already merged elsewhere, and any attempt on a locked assessment
+    (423), matching every other POC mutation path."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(
+        db_session, patient, tenant_id, {"nutrition": {}, "gastrointestinal": {}, "skin": {}}
+    )
+
+    survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/nutrition",
+        json={"problem_label": "Unintentional weight loss", "evidence_text": "Weight down 10% in 60 days."},
+        headers=rn_headers,
+    )
+    survivor_rule_key = survivor_resp.json()["added"][0]
+
+    duplicate_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/gastrointestinal",
+        json={"problem_label": "Poor oral intake", "evidence_text": "Skipping meals."},
+        headers=rn_headers,
+    )
+    duplicate_rule_key = duplicate_resp.json()["added"][0]
+
+    other_survivor_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/skin",
+        json={"problem_label": "Stage 2 pressure injury", "evidence_text": "Sacral wound noted."},
+        headers=rn_headers,
+    )
+    other_survivor_rule_key = other_survivor_resp.json()["added"][0]
+
+    # --- Blank reason ------------------------------------------------
+    blank_reason_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={"surviving_rule_key": survivor_rule_key, "duplicate_rule_keys": [duplicate_rule_key], "reason": "   "},
+        headers=rn_headers,
+    )
+    assert blank_reason_resp.status_code == 422, blank_reason_resp.text
+
+    # --- Empty duplicate list ------------------------------------------
+    empty_dups_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={"surviving_rule_key": survivor_rule_key, "duplicate_rule_keys": [], "reason": "test"},
+        headers=rn_headers,
+    )
+    assert empty_dups_resp.status_code == 422, empty_dups_resp.text
+
+    # --- Self-merge rejected ---------------------------------------------
+    self_merge_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [survivor_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert self_merge_resp.status_code == 400, self_merge_resp.text
+
+    # --- Unknown rule_key rejected ---------------------------------------
+    unknown_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": ["does-not-exist"],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert unknown_resp.status_code == 400, unknown_resp.text
+
+    # --- Successfully merge duplicate_rule_key into survivor -------------
+    ok_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "Same problem.",
+        },
+        headers=rn_headers,
+    )
+    assert ok_resp.status_code == 200, ok_resp.text
+
+    # --- Cannot merge an already-superseded duplicate into a DIFFERENT
+    # survivor -------------------------------------------------------
+    remerge_elsewhere_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": other_survivor_rule_key,
+            "duplicate_rule_keys": [duplicate_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert remerge_elsewhere_resp.status_code == 400, remerge_elsewhere_resp.text
+
+    # --- Locked assessment rejects merge (423) ---------------------------
+    record.locked = True
+    db_session.add(record)
+    db_session.commit()
+
+    locked_resp = client.post(
+        f"/visits/rnica/{record.id}/poc/merge",
+        json={
+            "surviving_rule_key": survivor_rule_key,
+            "duplicate_rule_keys": [other_survivor_rule_key],
+            "reason": "test",
+        },
+        headers=rn_headers,
+    )
+    assert locked_resp.status_code == 423, locked_resp.text

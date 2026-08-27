@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -13,6 +15,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.models.clinical_note import ClinicalNote
 from app.models.incident_report import IncidentReport
+from app.services.evidence.harvest_service import harvest_from_source
 
 from app.services.eligibility.eligibility_registry_service import (
     is_required_when_visible,
@@ -29,6 +32,8 @@ from app.domain.clinical.rn_ica_keys import (
 NOTE_STATUS_DRAFT = "DRAFT"
 NOTE_STATUS_SIGNED = "SIGNED"
 NOTE_STATUS_FINALIZED = "FINALIZED"
+
+logger = logging.getLogger("sns_emr")
 
 INCIDENT_STATUS_NONE = "NONE"
 INCIDENT_STATUS_PENDING = "PENDING"
@@ -383,11 +388,18 @@ RN_ICA_REQUIRED_FIELD_GROUPS = [
         ],
     },
     {
-        "label": "LCD Eligibility Narrative",
-        "section": "Eligibility Narrative",
+        "label": "LCD Supporting Evidence",
+        "section": "LCD Review",
         "paths": [
             "diagnoses.lcdEligibilityNarrative",
             "lcd_eligibility_narrative",
+        ],
+    },
+    {
+        "label": "Clinical Narrative",
+        "section": "Finalization",
+        "paths": [
+            "finalization.clinicalNarrative",
             "assessment_summary",
             "nursing_summary",
         ],
@@ -1650,6 +1662,27 @@ def _ensure_incident_report(
         "incident_report",
         incident.id,
     )
+
+    # ------------------------------
+    # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service docstring)
+    # ------------------------------
+    try:
+        harvest_from_source(
+            db=db,
+            tenant_id=incident.tenant_id,
+            patient_id=incident.patient_id,
+            source_type="INCIDENT_REPORT",
+            source_record_id=incident.id,
+            recorded_at=datetime.combine(incident.incident_date, datetime.min.time(), tzinfo=timezone.utc),
+            text=incident.narrative or "",
+            recorded_by_user_id=actor_user_id,
+            commit=False,
+        )
+    except Exception:
+        logger.exception(
+            "Failed to harvest incident report into AI evidence registry",
+            extra={"incident_report_id": str(incident.id)},
+        )
 
     return incident.id
 

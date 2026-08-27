@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import PatientModuleShell from "../components/PatientModuleShell";
-import { fetchPatientSummary } from "../api/patientCharts";
+import { fetchPatientSummary, type PatientSummaryResponse } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { getActivePatientId, setActivePatientId } from "../utils/activePatient";
 
@@ -35,49 +35,78 @@ const sections = [
   { key: "care-team", label: "Care Team" },
 ];
 
-function buildScheduleFromOrders(summary: any) {
-  const orderSummary = [
-    summary?.patient?.order_summary,
-    summary?.patient?.orders_text,
-    summary?.patient?.ordersSummary,
-    summary?.patient?.visit_plan,
-    summary?.order_summary,
-    summary?.orders_summary,
-  ].filter(Boolean).join(" \n ");
+function formatVisitParts(value: string | null | undefined) {
+  if (!value) {
+    return {
+      day: "Date unavailable",
+      time: "Time unavailable",
+    };
+  }
 
-  const normalized = (orderSummary || "").toLowerCase();
-  const hasSnOrder = /skilled nursing|lvn|rn.*visit|sn.*visit/.test(normalized);
-  const hasAideOrder = /hospice aide|chha|home aide/.test(normalized);
-  const hasMswOrder = /msw.*visit|medical social worker|psychosocial/.test(normalized);
-  const hasScOrder = /sc.*visit|spiritual counselor|chaplain|spiritual/.test(normalized);
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return {
+      day: value,
+      time: "Time unavailable",
+    };
+  }
 
-  const defaultSchedule = [
-    { day: "Mon", time: "9:00 AM", staff: "RN", type: "RN Visit", status: "Scheduled" },
-    { day: "Mon", time: "11:00 AM", staff: "LVN", type: "Skilled Nursing", status: "Scheduled" },
-    { day: "Tue", time: "8:30 AM", staff: "MSW", type: "Psychosocial", status: "Confirmed" },
-    { day: "Tue", time: "1:00 PM", staff: "SC", type: "Spiritual Support", status: "Scheduled" },
-    { day: "Wed", time: "10:15 AM", staff: "RN", type: "Wound/Medication", status: "Scheduled" },
-    { day: "Thu", time: "9:45 AM", staff: "CHHA", type: "Home Aide Care", status: "Confirmed" },
-    { day: "Fri", time: "12:00 PM", staff: "LVN", type: "Medication Review", status: "Scheduled" },
-    { day: "Sat", time: "1:30 PM", staff: "CHHA", type: "Hygiene / Personal Care", status: "Scheduled" },
+  return {
+    day: parsed.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }),
+    time: parsed.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+  };
+}
+
+function buildVisitList(summary: PatientSummaryResponse | null) {
+  return (summary?.recent_visits || []).map((visit) => {
+    const parts = formatVisitParts(visit.visit_datetime);
+    return {
+      id: visit.id,
+      day: parts.day,
+      time: parts.time,
+      staff: visit.provider_name || "Provider unavailable",
+      type: visit.visit_type || "Visit",
+      discipline: visit.discipline || "Discipline unavailable",
+      status: visit.status || "Recorded",
+    };
+  });
+}
+
+function buildClinicalReadiness(summary: PatientSummaryResponse | null) {
+  if (!summary) return [];
+
+  const openIssues = summary.compliance_summary?.open_issues?.length || 0;
+  const recentVisits = summary.recent_visits?.length || 0;
+  const careTeamAssignments = summary.care_team?.length || 0;
+  const communications = summary.communication_summary?.total || 0;
+  const incidents = summary.incident_summary?.total || 0;
+
+  return [
+    {
+      label: summary.patient?.status ? `Patient status: ${summary.patient.status}` : "Patient status not available",
+      tone: "neutral",
+    },
+    {
+      label: recentVisits ? `${recentVisits} recent visit record(s) on chart` : "No visits recorded yet",
+      tone: recentVisits ? "positive" : "warning",
+    },
+    {
+      label: openIssues ? `${openIssues} open compliance issue(s)` : "No open compliance issues in chart summary",
+      tone: openIssues ? "warning" : "positive",
+    },
+    {
+      label: communications ? `${communications} communication log entr${communications === 1 ? "y" : "ies"}` : "No communication log entries in chart summary",
+      tone: "neutral",
+    },
+    {
+      label: careTeamAssignments ? `${careTeamAssignments} care team assignment(s) on file` : "No care team assignments on file",
+      tone: careTeamAssignments ? "positive" : "warning",
+    },
+    {
+      label: incidents ? `${incidents} incident report(s) on file` : "No incident reports in chart summary",
+      tone: incidents ? "warning" : "positive",
+    },
   ];
-
-  if (!orderSummary) return defaultSchedule;
-
-  const schedule = [...defaultSchedule];
-  if (hasSnOrder) {
-    schedule.push({ day: "Tue", time: "2:00 PM", staff: "LVN", type: "Skilled Nursing Follow-up", status: "Scheduled" });
-  }
-  if (hasAideOrder) {
-    schedule.push({ day: "Thu", time: "3:00 PM", staff: "CHHA", type: "Aide Visit", status: "Scheduled" });
-  }
-  if (hasMswOrder) {
-    schedule.push({ day: "Fri", time: "9:00 AM", staff: "MSW", type: "Caregiver Check-in", status: "Confirmed" });
-  }
-  if (hasScOrder) {
-    schedule.push({ day: "Sun", time: "10:00 AM", staff: "SC", type: "Spiritual Support", status: "Scheduled" });
-  }
-  return schedule;
 }
 
 function formatDate(value: string | null | undefined) {
@@ -92,10 +121,11 @@ function formatDate(value: string | null | undefined) {
 export default function CareOverviewPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [summary, setSummary] = useState<any>(null);
+  const [summary, setSummary] = useState<PatientSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const schedule = useMemo(() => buildScheduleFromOrders(summary), [summary]);
+  const recentVisits = useMemo(() => buildVisitList(summary), [summary]);
+  const readinessItems = useMemo(() => buildClinicalReadiness(summary), [summary]);
 
   const patientId = new URLSearchParams(location.search).get("patientId") || getActivePatientId() || "";
   const selectedSection = new URLSearchParams(location.search).get("section") || "overview";
@@ -154,7 +184,7 @@ export default function CareOverviewPage() {
   const patientOverview = useMemo(() => {
     const patient = summary?.patient;
     const latestVisit = summary?.recent_visits?.[0];
-    const clinician = summary?.care_team?.find((person: any) => person.primary)?.staff_name || "Provider not assigned";
+    const clinician = summary?.care_team?.find((person) => person.primary)?.staff_name || "Provider not assigned";
     const latestCommunication = summary?.communication_summary?.latest?.[0];
 
     return {
@@ -163,8 +193,8 @@ export default function CareOverviewPage() {
       primaryProvider: clinician,
       hnpStatus: patient?.status || "No status on file",
       lastVisit: latestVisit ? formatDate(latestVisit.visit_datetime) : "No recent visit recorded",
-      disciplineHistory: summary?.care_team?.map((member: any) => `${member.discipline || "Care team"} — ${member.staff_name || "Unassigned"}`) || ["No care team data"],
-      careTeam: summary?.care_team?.map((member: any) => member.discipline || "Care team") || ["Care team"],
+      disciplineHistory: summary?.care_team?.map((member) => `${member.discipline || "Care team"} — ${member.staff_name || "Unassigned"}`) || ["No care team data"],
+      careTeam: summary?.care_team?.map((member) => member.discipline || "Care team") || ["Care team"],
     };
   }, [summary]);
 
@@ -234,34 +264,46 @@ export default function CareOverviewPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 20 }}>
         <section style={{ border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 12, overflow: "hidden", background: CLINICAL_BRAND.bg }}>
           <div style={{ background: "linear-gradient(90deg, rgba(30,58,95,0.10), rgba(13,148,136,0.08))", borderBottom: `1px solid ${CLINICAL_BRAND.line}`, padding: "12px 16px", fontSize: 15, fontWeight: 800, color: CLINICAL_BRAND.text }}>
-            Visit calendar / staffing view
+            Recent / upcoming visits
           </div>
           <div style={{ padding: 16 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
-              {schedule.map((item) => (
-                <div key={`${item.day}-${item.time}`} style={{ border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, background: CLINICAL_BRAND.panel, padding: 10, boxShadow: "0 8px 18px rgba(15, 23, 42, 0.03)" }}>
-                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: CLINICAL_BRAND.muted }}>{item.day}</div>
-                  <div style={{ marginTop: 8, fontSize: 13, fontWeight: 800, color: CLINICAL_BRAND.text }}>{item.time}</div>
-                  <div style={{ marginTop: 6, fontSize: 12, color: CLINICAL_BRAND.text }}>{item.staff}</div>
-                  <div style={{ marginTop: 4, fontSize: 11, color: CLINICAL_BRAND.tealDark, fontWeight: 700 }}>{item.type}</div>
-                  <div
-                    style={{
-                      marginTop: 8,
-                      display: "inline-flex",
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      background: item.status === "Confirmed" ? "#dcfce7" : item.status === "Scheduled" ? "#E0F2FE" : "#FEF3C7",
-                      color: item.status === "Confirmed" ? "#166534" : item.status === "Scheduled" ? CLINICAL_BRAND.tealDark : "#92400e",
-                      fontSize: 10,
-                      fontWeight: 800,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    {item.status}
+            {recentVisits.length ? (
+              <div style={{ display: "grid", gap: 10 }}>
+                {recentVisits.map((item) => (
+                  <div key={item.id} style={{ border: `1px solid ${CLINICAL_BRAND.line}`, borderRadius: 10, background: CLINICAL_BRAND.panel, padding: 12, boxShadow: "0 8px 18px rgba(15, 23, 42, 0.03)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                      <div>
+                        <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: CLINICAL_BRAND.muted }}>{item.day}</div>
+                        <div style={{ marginTop: 6, fontSize: 13, fontWeight: 800, color: CLINICAL_BRAND.text }}>{item.time}</div>
+                        <div style={{ marginTop: 6, fontSize: 12, color: CLINICAL_BRAND.text }}>{item.type}</div>
+                        <div style={{ marginTop: 4, fontSize: 11, color: CLINICAL_BRAND.muted }}>
+                          {item.discipline} · {item.staff}
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: item.status.toLowerCase() === "completed" ? "#dcfce7" : item.status.toLowerCase() === "scheduled" ? "#E0F2FE" : "#FEF3C7",
+                          color: item.status.toLowerCase() === "completed" ? "#166534" : item.status.toLowerCase() === "scheduled" ? CLINICAL_BRAND.tealDark : "#92400e",
+                          fontSize: 10,
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.status}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ border: `1px dashed ${CLINICAL_BRAND.line}`, borderRadius: 10, background: CLINICAL_BRAND.panel, padding: 18, color: CLINICAL_BRAND.muted, fontSize: 13 }}>
+                No visits recorded yet.
+              </div>
+            )}
           </div>
         </section>
 
@@ -270,20 +312,25 @@ export default function CareOverviewPage() {
             Clinical readiness
           </div>
           <div style={{ padding: 16 }}>
-            {[
-              "HNP reviewed and current",
-              "POC update pending physician review",
-              "LCD eligibility active",
-              "QIES/HOPE submission ready",
-              "Communication log reviewed",
-              "Bereavement support call scheduled",
-              "Incident reporting closed",
-            ].map((item) => (
-              <div key={item} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
-                <span style={{ width: 18, height: 18, borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", background: "#dcfce7", color: "#166534", fontSize: 12, fontWeight: 900 }}>
-                  ✓
+            {readinessItems.map((item) => (
+              <div key={item.label} style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                <span
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: item.tone === "positive" ? "#dcfce7" : item.tone === "warning" ? "#FEF3C7" : "#E2E8F0",
+                    color: item.tone === "positive" ? "#166534" : item.tone === "warning" ? "#92400e" : "#475569",
+                    fontSize: 12,
+                    fontWeight: 900,
+                  }}
+                >
+                  {item.tone === "warning" ? "!" : "•"}
                 </span>
-                <span style={{ fontSize: 13, color: CLINICAL_BRAND.text }}>{item}</span>
+                <span style={{ fontSize: 13, color: CLINICAL_BRAND.text }}>{item.label}</span>
               </div>
             ))}
           </div>

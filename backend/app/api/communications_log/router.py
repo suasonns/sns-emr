@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.core.patient_access import get_authorized_patient
 from app.core.db import get_db
+from app.core.database import SessionLocal
 from app.dependencies.auth import get_current_user
 from app.models.communications_log import CommunicationsLog
 from app.api.communications_log.schemas import (
@@ -20,6 +21,12 @@ from app.api.communications_log.schemas import (
 )
 from app.services.communications_log_alerts import create_commlog_alerts
 from app.services.commlog_to_task_bridge import handle_commlog_for_tasks
+from app.services.idg_intelligence_service import create_or_update_from_communication_log
+from app.services.hospitalization_prevention_service import (
+    create_or_update_family_concern_from_source,
+)
+from app.services.evidence.harvest_service import harvest_from_source
+from app.core.roles import CLINICAL_ADMIN_ROLES, normalize_role
 
 logger = logging.getLogger(__name__)
 
@@ -87,12 +94,14 @@ def require_create_access(user) -> None:
 
 def _get_user_admin_flag(db: Session, *, user_id: UUID) -> bool:
     """
-    Look up tenant-configurable admin access from public.users.
+    Look up whether this user carries clinical admin authority
+    (ADMINISTRATOR / DPCS / DPCS_ADMINISTRATOR), based on their
+    canonical role -- there is no separate has_admin_access column.
     """
     user_row = db.execute(
         text(
             """
-            SELECT has_admin_access
+            SELECT role
             FROM public.users
             WHERE id = :user_id
             """
@@ -100,7 +109,10 @@ def _get_user_admin_flag(db: Session, *, user_id: UUID) -> bool:
         {"user_id": user_id},
     ).fetchone()
 
-    return bool(user_row[0]) if user_row else False
+    if not user_row or not user_row[0]:
+        return False
+
+    return normalize_role(user_row[0]) in CLINICAL_ADMIN_ROLES
 
 
 def _resolve_user_ids_to_notify(
@@ -162,7 +174,6 @@ def _resolve_user_ids_to_notify(
                   AND active = true
                   AND (
                         role = 'DPCS'
-                        OR has_admin_access = true
                         OR role ILIKE '%ADMIN%'
                       )
                 """
@@ -308,38 +319,116 @@ def create_communications_log(
     db.add(entry)
     db.flush()  # entry.id available for alerts/tasks
 
+    # Persist the entry itself immediately. Everything below is
+    # best-effort enrichment (IDG harvest, hospitalization-prevention
+    # concern detection, AI evidence harvest, alerts, task bridge) and
+    # must never be able to block or roll back log creation -- each
+    # runs against its own isolated DB session so a failure there
+    # can't poison this request's transaction.
+    db.commit()
+    db.refresh(entry)
+
+    # -------------------------------------------------
+    # IDG intelligence harvest (best-effort, but logged)
+    # -------------------------------------------------
+    try:
+        harvest_db = SessionLocal()
+        try:
+            create_or_update_from_communication_log(db=harvest_db, entry=entry)
+            harvest_db.commit()
+        finally:
+            harvest_db.close()
+    except Exception as e:
+        logger.error("COMMLOG IDG INTELLIGENCE HARVEST FAILURE: %s", e)
+
+    # -------------------------------------------------
+    # Hospitalization-prevention family concern (best-effort, but logged)
+    # -------------------------------------------------
+    try:
+        concern_db = SessionLocal()
+        try:
+            create_or_update_family_concern_from_source(
+                db=concern_db,
+                tenant_id=entry.tenant_id,
+                patient_id=entry.patient_id,
+                benefit_period_id=None,
+                concern_text=entry.summary,
+                source_type="COMMUNICATION_LOG",
+                source_table="communications_log",
+                source_record_id=entry.id,
+                source_discipline="COMMUNICATION_LOG",
+                source_author_id=_user_get(user, "id"),
+                source_note_date=entry.event_time,
+                source_excerpt=entry.summary,
+                reported_source_type=entry.event_type,
+                created_by=_user_get(user, "id"),
+            )
+            concern_db.commit()
+        finally:
+            concern_db.close()
+    except Exception as e:
+        logger.error("COMMLOG HOSPITALIZATION PREVENTION HARVEST FAILURE: %s", e)
+
+    # -------------------------------------------------
+    # AI evidence harvester (best-effort, but logged)
+    # -------------------------------------------------
+    try:
+        evidence_db = SessionLocal()
+        try:
+            harvest_from_source(
+                db=evidence_db,
+                tenant_id=entry.tenant_id,
+                patient_id=entry.patient_id,
+                source_type="COMMUNICATION_LOG",
+                source_record_id=entry.id,
+                communication_log_id=entry.id,
+                recorded_at=entry.event_time,
+                text=entry.summary,
+                recorded_by_user_id=_user_get(user, "id"),
+                commit=True,
+            )
+        finally:
+            evidence_db.close()
+    except Exception as e:
+        logger.error("COMMLOG AI EVIDENCE HARVEST FAILURE: %s", e)
+
     # -------------------------------------------------
     # Alerts (best-effort, but logged)
     # -------------------------------------------------
     try:
-        user_ids_to_notify = _resolve_user_ids_to_notify(
-            db,
-            patient_id=payload.patient_id,
-            tenant_id=tenant_id,
-        )
-
-        logger.info(
-            "COMMLOG ALERT RECIPIENTS resolved patient_id=%s tenant_id=%s recipients=%s",
-            str(payload.patient_id),
-            str(tenant_id),
-            [str(x) for x in user_ids_to_notify],
-        )
-
-        if user_ids_to_notify:
-            create_commlog_alerts(
-                db=db,
-                tenant_id=tenant_id,
+        alerts_db = SessionLocal()
+        try:
+            user_ids_to_notify = _resolve_user_ids_to_notify(
+                alerts_db,
                 patient_id=payload.patient_id,
-                commlog_id=entry.id,
-                message=payload.summary,
-                user_ids=user_ids_to_notify,
+                tenant_id=tenant_id,
             )
-        else:
-            logger.warning(
-                "COMMLOG ALERTS SKIPPED: no recipients found for patient_id=%s tenant_id=%s",
+
+            logger.info(
+                "COMMLOG ALERT RECIPIENTS resolved patient_id=%s tenant_id=%s recipients=%s",
                 str(payload.patient_id),
                 str(tenant_id),
+                [str(x) for x in user_ids_to_notify],
             )
+
+            if user_ids_to_notify:
+                create_commlog_alerts(
+                    db=alerts_db,
+                    tenant_id=tenant_id,
+                    patient_id=payload.patient_id,
+                    commlog_id=entry.id,
+                    message=payload.summary,
+                    user_ids=user_ids_to_notify,
+                )
+                alerts_db.commit()
+            else:
+                logger.warning(
+                    "COMMLOG ALERTS SKIPPED: no recipients found for patient_id=%s tenant_id=%s",
+                    str(payload.patient_id),
+                    str(tenant_id),
+                )
+        finally:
+            alerts_db.close()
 
     except Exception as e:
         logger.error("COMMLOG ALERT FAILURE: %s", e)
@@ -348,13 +437,15 @@ def create_communications_log(
     # Task bridge (best-effort, but logged)
     # -------------------------------------------------
     try:
-        handle_commlog_for_tasks(db, entry)
+        tasks_db = SessionLocal()
+        try:
+            fresh_entry = tasks_db.get(CommunicationsLog, entry.id)
+            handle_commlog_for_tasks(tasks_db, fresh_entry)
+            tasks_db.commit()
+        finally:
+            tasks_db.close()
     except Exception as e:
         logger.error("COMMLOG TASK FAILURE: %s", e)
-
-    db.expire_on_commit = False
-    db.commit()
-    db.refresh(entry)
 
     return entry
 

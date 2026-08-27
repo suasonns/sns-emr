@@ -18,6 +18,7 @@ from app.models.poc_physician_approval import (
     PocPhysicianApproval,
     PocPhysicianApprovalAuditEvent,
 )
+from app.services.evidence.harvest_service import harvest_from_source, extract_narrative_text
 
 logger = logging.getLogger("sns_emr")
 
@@ -526,6 +527,39 @@ def finalize_plan_of_care_version(
             str(tenant_id),
             str(version_id),
         )
+
+        # ------------------------------
+        # AI EVIDENCE HARVESTER (safe, isolated -- see harvest_service
+        # docstring). Called standalone AFTER our own commit above, so a
+        # harvesting failure can never affect POC version finalization.
+        # ------------------------------
+        try:
+            plan_of_care = version.plan_of_care
+            if plan_of_care is not None:
+                narrative_text = "\n".join(
+                    filter(
+                        None,
+                        [
+                            (version.change_reason or "").strip(),
+                            extract_narrative_text(version.snapshot_json),
+                        ],
+                    )
+                )
+                harvest_from_source(
+                    db=db,
+                    tenant_id=version.tenant_id,
+                    patient_id=plan_of_care.patient_id,
+                    source_type="PLAN_OF_CARE_REVIEW",
+                    source_record_id=version.id,
+                    recorded_at=now,
+                    text=narrative_text,
+                    recorded_by_user_id=user_id,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to harvest POC version into AI evidence registry",
+                extra={"plan_of_care_version_id": str(version.id)},
+            )
 
         return version
 

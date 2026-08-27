@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Alert, Box, Button, Container, Paper, TextField, Typography } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { login } from "../api/auth";
+import { isAgencySelectionRequired, login, type LoginAgencyOption } from "../api/auth";
 import { canAccessPath, getDefaultRoute } from "../utils/authorization";
 
 export default function LoginPage() {
@@ -12,22 +12,54 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agencyOptions, setAgencyOptions] = useState<LoginAgencyOption[] | null>(null);
+  const [selectedAgency, setSelectedAgency] = useState<LoginAgencyOption | null>(null);
+  const [agencyPassword, setAgencyPassword] = useState("");
 
   const from = (location.state as { from?: { pathname?: string } } | null)?.from?.pathname || "/portal";
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function attemptLogin(loginEmail: string, loginPassword: string, tenantId?: string) {
     setLoading(true);
     setError(null);
 
     try {
-      const result = await login(email.trim(), password);
+      const result = await login(loginEmail.trim(), loginPassword, tenantId);
+      if (isAgencySelectionRequired(result)) {
+        // Password matched (or the person is identity-linked to) more
+        // than one agency -- show a picker instead of guessing which one
+        // was meant. Some of these agencies may use a different email
+        // and/or password than what was just typed.
+        setAgencyOptions(result.agencies);
+        return;
+      }
       navigate(canAccessPath(result.user, from) ? from : getDefaultRoute(result.user), { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to login");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    await attemptLogin(email, password);
+  }
+
+  function handleAgencyPick(agency: LoginAgencyOption) {
+    setSelectedAgency(agency);
+    // Prefill with the password just typed -- it's correct for at least
+    // one of the listed agencies (that's how they ended up in this list),
+    // so this saves re-typing when it happens to also be right for the
+    // chosen one; the field stays editable for agencies with their own
+    // separate password.
+    setAgencyPassword(password);
+    setError(null);
+  }
+
+  async function handleAgencySubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!selectedAgency) return;
+    await attemptLogin(selectedAgency.email, agencyPassword, selectedAgency.tenant_id);
   }
 
   return (
@@ -96,6 +128,91 @@ export default function LoginPage() {
                {error}
              </Alert>
            ) : null}
+           {agencyOptions && !selectedAgency ? (
+             <Box sx={{ display: "grid", gap: 1.5 }}>
+               <Typography sx={{ color: "#1f2f3d", fontWeight: 700, fontSize: 14 }}>
+                 Choose which agency to sign in to
+               </Typography>
+               {agencyOptions.map((agency) => (
+                 <Button
+                   key={agency.tenant_id}
+                   type="button"
+                   variant="outlined"
+                   disabled={loading}
+                   onClick={() => handleAgencyPick(agency)}
+                   sx={{
+                     justifyContent: "flex-start",
+                     textTransform: "none",
+                     fontWeight: 700,
+                     borderRadius: 2,
+                     color: "#0d3b5a",
+                     borderColor: "rgba(13, 59, 90, 0.4)",
+                   }}
+                 >
+                   {agency.tenant_name}
+                 </Button>
+               ))}
+               <Button
+                 type="button"
+                 variant="text"
+                 disabled={loading}
+                 onClick={() => setAgencyOptions(null)}
+                 sx={{ justifySelf: "start", fontWeight: 600 }}
+               >
+                 Back
+               </Button>
+             </Box>
+           ) : agencyOptions && selectedAgency ? (
+             <Box component="form" onSubmit={handleAgencySubmit} sx={{ display: "grid", gap: 2 }}>
+               <Typography sx={{ color: "#1f2f3d", fontWeight: 700, fontSize: 14 }}>
+                 Sign in to {selectedAgency.tenant_name}
+               </Typography>
+               <Typography sx={{ color: "#4b6470", fontSize: 13 }}>
+                 This agency may use its own password. Enter it below.
+               </Typography>
+               <TextField
+                 label="Password"
+                 type="password"
+                 value={agencyPassword}
+                 onChange={(event) => setAgencyPassword(event.target.value)}
+                 autoComplete="current-password"
+                 fullWidth
+                 sx={{
+                   "& .MuiInputLabel-root": { color: "#1f2f3d", fontWeight: 700 },
+                   "& .MuiOutlinedInput-root": { borderRadius: 2, backgroundColor: "rgba(255,255,255,0.8)" },
+                   "& .MuiOutlinedInput-input": { color: "#0f172a" },
+                 }}
+               />
+               <Button
+                 type="submit"
+                 variant="contained"
+                 disabled={loading || !agencyPassword}
+                 sx={{
+                   height: 46,
+                   borderRadius: 2,
+                   background: "#0d3b5a",
+                   color: "#ffffff",
+                   fontWeight: 900,
+                   textTransform: "none",
+                 }}
+               >
+                 {loading ? "Signing in..." : "Sign in"}
+               </Button>
+               <Button
+                 type="button"
+                 variant="text"
+                 disabled={loading}
+                 onClick={() => {
+                   setSelectedAgency(null);
+                   setAgencyPassword("");
+                   setError(null);
+                 }}
+                 sx={{ justifySelf: "start", fontWeight: 600 }}
+               >
+                 Back
+               </Button>
+             </Box>
+           ) : (
              <Box component="form" onSubmit={handleSubmit} sx={{ display: "grid", gap: 2 }}>
                <TextField
                  label="Email"
@@ -170,6 +287,7 @@ export default function LoginPage() {
                  Forgot password?
                </Button>
              </Box>
+            )}
          </Paper>
        </Box>
      </Container>

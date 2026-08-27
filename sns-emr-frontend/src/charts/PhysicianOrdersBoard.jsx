@@ -4,6 +4,7 @@ import { getCurrentUser } from "../api/session";
 import { addMedication } from "../api/medications";
 import { listVendors } from "../api/vendors";
 import MedicationNameInput from "../components/MedicationNameInput";
+import { normalizeProviderRole, buildProviderRoleAuditMeta } from "../utils/providerRoleNormalization";
 import {
   listPhysicianOrders,
   createPhysicianOrder,
@@ -11,6 +12,9 @@ import {
   approvePhysicianOrder,
   executePhysicianOrder,
   cancelPhysicianOrder,
+  ORDER_SIGNER_ROLES,
+  getPhysicianOrderStatusTone,
+  formatPhysicianOrderStatusLabel,
 } from "../api/physicianOrders";
 
 const MED_PREFIX = "MEDICATION::";
@@ -48,12 +52,16 @@ const poFormGroup = { marginBottom: 10 };
 const poBtnPrimary = { ...S.btn(COLORS.teal) };
 const poBtnSecondary = { ...S.btnOutline, padding: "6px 12px", fontSize: 12 };
 
-const STATUS_COLORS = {
-  DRAFT: COLORS.muted,
-  PENDING_HOSPICE_MD_APPROVAL: COLORS.orange,
-  APPROVED: COLORS.blue,
-  EXECUTED: COLORS.green,
-  CANCELLED: COLORS.red,
+// Maps the backend-agnostic status tone (see physicianOrders.ts) onto this
+// surface's local SNS design tokens. Keeping the tone→severity mapping in
+// physicianOrders.ts (shared with RNICA.jsx's OrdersHubCard) means the two
+// surfaces cannot silently drift out of sync as new statuses are added.
+const TONE_COLORS = {
+  neutral: COLORS.muted,
+  warning: COLORS.orange,
+  info: COLORS.blue,
+  success: COLORS.green,
+  danger: COLORS.red,
 };
 
 const SOURCE_TYPE_LABELS = {
@@ -66,8 +74,8 @@ function formatSourceType(sourceType) {
   return SOURCE_TYPE_LABELS[sourceType] || (sourceType || "").replace(/_/g, " ");
 }
 
-function StatusBadge({ status, awaitingCountersignature }) {
-  const color = awaitingCountersignature ? COLORS.orange : (STATUS_COLORS[status] || COLORS.muted);
+function StatusBadge({ status, statusLabel, awaitingCountersignature }) {
+  const color = awaitingCountersignature ? COLORS.orange : TONE_COLORS[getPhysicianOrderStatusTone(status)];
   return (
     <span
       style={{
@@ -81,14 +89,16 @@ function StatusBadge({ status, awaitingCountersignature }) {
         letterSpacing: 0.4,
       }}
     >
-      {awaitingCountersignature ? "Administered — Awaiting MD Countersignature" : (status || "").replace(/_/g, " ")}
+      {awaitingCountersignature ? "Administered — Awaiting Countersignature" : formatPhysicianOrderStatusLabel(status, statusLabel)}
     </span>
   );
 }
 
 export default function PhysicianOrdersBoard({ patientId, initialView = "history" }) {
   const currentUser = getCurrentUser();
-  const isMD = currentUser?.role === "MD";
+  // Any role the backend accepts as an order signer (not just legacy "MD")
+  // must see the Approve/Countersign actions -- see ORDER_SIGNER_ROLES.
+  const canSignOrders = ORDER_SIGNER_ROLES.includes(currentUser?.role);
 
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -110,6 +120,16 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
     prescriber_authenticated: false,
     phone_readback_confirmed: false,
   });
+  // Free-text provider-role entry + the UI normalization layer's resolved
+  // state. `form.ordered_by_provider_role` above always holds the
+  // canonical MD/NP/PA value (or "" while ambiguous input awaits explicit
+  // confirmation) -- that's the only value ever sent as the authoritative
+  // role. `providerRoleInput` is what the user actually typed, and
+  // `providerRoleAuditMeta` is the {original_input, normalized_value,
+  // normalization_method} payload preserved for audit purposes only.
+  const [providerRoleInput, setProviderRoleInput] = useState("MD");
+  const [providerRoleAuditMeta, setProviderRoleAuditMeta] = useState(null);
+  const [providerRoleConfirmation, setProviderRoleConfirmation] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState("");
   const [reconciledIds, setReconciledIds] = useState([]);
@@ -137,6 +157,30 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
 
   useEffect(() => { reload(); }, [reload]);
 
+  const handleProviderRoleInputChange = (text) => {
+    setProviderRoleInput(text);
+    const result = normalizeProviderRole(text);
+    if (result.confidence === "high") {
+      setForm((f) => ({ ...f, ordered_by_provider_role: result.canonicalValue }));
+      setProviderRoleAuditMeta(buildProviderRoleAuditMeta(result));
+      setProviderRoleConfirmation(null);
+    } else {
+      // Ambiguous or unrecognized: never guess. Clear the canonical value
+      // so submission is blocked until the user explicitly confirms one
+      // of the candidate roles below.
+      setForm((f) => ({ ...f, ordered_by_provider_role: "" }));
+      setProviderRoleAuditMeta(null);
+      setProviderRoleConfirmation(result);
+    }
+  };
+
+  const handleConfirmProviderRole = (role) => {
+    if (!providerRoleConfirmation) return;
+    setForm((f) => ({ ...f, ordered_by_provider_role: role }));
+    setProviderRoleAuditMeta(buildProviderRoleAuditMeta(providerRoleConfirmation, role));
+    setProviderRoleConfirmation(null);
+  };
+
   const handleCreateAndSubmit = async () => {
     const isMedication = form.order_category === "MEDICATION";
     const orderText = isMedication ? buildMedicationOrderText(form) : form.order_text;
@@ -154,6 +198,12 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
       setFormMessage("Ordering provider name is required.");
       return;
     }
+    if (!form.ordered_by_provider_role) {
+      setFormMessage(
+        `Please confirm the provider role for "${providerRoleInput}" (select MD, NP, or PA below) before submitting.`,
+      );
+      return;
+    }
     if (form.source_type === "VERBAL_PHONE" && !form.phone_readback_confirmed) {
       setFormMessage("Phone read-back confirmation is required for verbal/phone orders.");
       return;
@@ -169,6 +219,7 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
         prescriber_authenticated: form.prescriber_authenticated,
         phone_readback_confirmed: form.phone_readback_confirmed,
         ordered_at: new Date().toISOString(),
+        ordered_by_provider_role_source: providerRoleAuditMeta,
       });
       await submitPhysicianOrder(draft.id);
       setForm({
@@ -185,6 +236,9 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
         prescriber_authenticated: false,
         phone_readback_confirmed: false,
       });
+      setProviderRoleInput("MD");
+      setProviderRoleAuditMeta(null);
+      setProviderRoleConfirmation(null);
       setFormMessage(
         form.source_type === "IDG"
           ? "Medication/order submitted — pending Medical Director signature (IDG order, no telephone read-back required)."
@@ -357,15 +411,47 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
             </div>
             <div style={poFormGroup}>
               <label style={poLabel}>Provider Role</label>
-              <select
+              <input
                 style={poInput}
-                value={form.ordered_by_provider_role}
-                onChange={(e) => setForm({ ...form, ordered_by_provider_role: e.target.value })}
-              >
-                <option value="MD">MD</option>
-                <option value="NP">NP</option>
-                <option value="PA">PA</option>
-              </select>
+                list="provider-role-suggestions"
+                value={providerRoleInput}
+                onChange={(e) => handleProviderRoleInputChange(e.target.value)}
+                placeholder="e.g. attending physician, doctor, NP, physician assistant"
+              />
+              <datalist id="provider-role-suggestions">
+                <option value="MD" />
+                <option value="NP" />
+                <option value="PA" />
+                <option value="Attending Physician" />
+                <option value="Physician" />
+                <option value="Doctor" />
+                <option value="Nurse Practitioner" />
+                <option value="Physician Assistant" />
+              </datalist>
+              {form.ordered_by_provider_role && (
+                <div style={{ fontSize: 11.5, color: COLORS.muted, marginTop: 4 }}>
+                  Provider Role: <strong>{form.ordered_by_provider_role}</strong>
+                </div>
+              )}
+              {providerRoleConfirmation && (
+                <div style={{ fontSize: 12, color: COLORS.warning || COLORS.muted, marginTop: 6 }}>
+                  <div>
+                    &ldquo;{providerRoleConfirmation.originalInput}&rdquo; is not a specific credential. Did you mean:
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    {providerRoleConfirmation.candidates.map((role) => (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => handleConfirmProviderRole(role)}
+                        style={{ padding: "2px 10px", fontSize: 12, cursor: "pointer" }}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
@@ -446,7 +532,7 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                 <div style={{ fontSize: 13.5, color: COLORS.white, fontWeight: 600, maxWidth: "70%" }}>
                   {order.order_text}
                 </div>
-                <StatusBadge status={order.status} awaitingCountersignature={order.awaiting_countersignature} />
+                <StatusBadge status={order.status} statusLabel={order.status_label} awaitingCountersignature={order.awaiting_countersignature} />
               </div>
               <div style={{ fontSize: 11.5, color: COLORS.muted }}>
                 {order.ordered_by_provider_name} ({order.ordered_by_provider_role}) · {formatSourceType(order.source_type)} ·{" "}
@@ -471,16 +557,16 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                     Administer Now (Verbal Order)
                   </button>
                 )}
-                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && isMD && (
+                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && canSignOrders && (
                   <button
                     style={poBtnSecondary}
                     disabled={busyOrderId === order.id}
                     onClick={() => runAction(order.id, approvePhysicianOrder)}
                   >
-                    Approve &amp; Sign (MD)
+                    Approve &amp; Sign
                   </button>
                 )}
-                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && !isMD && !(order.source_type === "VERBAL_PHONE" && order.phone_readback_confirmed) && (
+                {order.status === "PENDING_HOSPICE_MD_APPROVAL" && !canSignOrders && !(order.source_type === "VERBAL_PHONE" && order.phone_readback_confirmed) && (
                   <span style={{ fontSize: 11, color: COLORS.orange }}>Awaiting Medical Director approval</span>
                 )}
                 {order.status === "APPROVED" && (
@@ -492,19 +578,19 @@ export default function PhysicianOrdersBoard({ patientId, initialView = "history
                     Mark Executed
                   </button>
                 )}
-                {order.status === "EXECUTED" && order.awaiting_countersignature && isMD && (
+                {order.status === "EXECUTED" && order.awaiting_countersignature && canSignOrders && (
                   <button
                     style={{ ...poBtnSecondary, borderColor: COLORS.blue, color: COLORS.blue }}
                     disabled={busyOrderId === order.id}
                     onClick={() => runAction(order.id, approvePhysicianOrder)}
                   >
-                    Countersign (MD)
+                    Countersign
                   </button>
                 )}
-                {order.status === "EXECUTED" && order.awaiting_countersignature && !isMD && (
-                  <span style={{ fontSize: 11, color: COLORS.orange }}>Administered — awaiting MD countersignature</span>
+                {order.status === "EXECUTED" && order.awaiting_countersignature && !canSignOrders && (
+                  <span style={{ fontSize: 11, color: COLORS.orange }}>Administered — awaiting countersignature</span>
                 )}
-                {(order.status === "DRAFT" || order.status === "PENDING_HOSPICE_MD_APPROVAL" || order.status === "APPROVED") && (
+                {(order.status === "DRAFT" || order.status === "PENDING_CLINICAL_REVIEW" || order.status === "PENDING_HOSPICE_MD_APPROVAL" || order.status === "APPROVED") && (
                   <button
                     style={{ ...poBtnSecondary, color: COLORS.red, borderColor: COLORS.red }}
                     disabled={busyOrderId === order.id}

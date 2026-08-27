@@ -12,7 +12,9 @@ import {
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { getCurrentUser } from "../api/session";
 import { useThemeMode } from "../theme/theme";
-import { getChartColors } from "../theme/chartColors";
+// Shared design system (colors + base styles) — the same one RNICA/CHHA use, so every
+// clinical page stays visually identical. Do not fork these values locally.
+import { getRnicaColors, getRnicaStyles } from "../theme/clinicalDesign";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 
 const API_BASE = "/visits/msw-ica";
@@ -29,10 +31,36 @@ const ONGOING_COPING_OPTIONS = [
   "Ability to fulfill desired sexual expression",
 ];
 const ABUSE_CATEGORY_OPTIONS = ["Abuse/Domestic Violence", "Abandonment", "Neglect", "Exploitation"];
+const CARE_LEVEL_OPTIONS = ["", "Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
+const REASON_FOR_VISIT_OPTIONS = [
+  "Initial Comprehensive Assessment",
+  "Recertification",
+  "Follow-up / Routine Visit",
+  "Update/Revision",
+  "Bereavement Support",
+  "Crisis Intervention",
+  "Discharge/Transfer",
+  "Other",
+];
 
 const createSupportPerson = () => ({ name: "", phone: "", relationship: "" });
 
 const INITIAL_FORM = {
+  visitMeta: {
+    correction: false,
+    typeOfVisit: "",
+    visitKind: "",
+    visitKindSpecify: "",
+    reasonForVisit: "Initial Comprehensive Assessment",
+    visitDate: "",
+    timeIn: "",
+    timeOut: "",
+    duration: "",
+    enteredBy: "",
+    staffAssigned: "",
+    discipline: "MSW",
+    careLevel: "",
+  },
   pain: {
     uncomfortable: "",
     painLevel: "",
@@ -211,58 +239,64 @@ const sidebarItems = [
   "Monthly Schedule",
 ];
 
-function getBrand(colors) {
+// Maps the shared RNICA color tokens onto the local names this component's
+// JSX already references (brand.line, brand.muted, etc.) so no other code
+// needed to change — only the source of truth did.
+function getBrand(COLORS) {
   return {
-    navy: "#1E3A5F",
-    teal: colors.teal,
-    tealDark: colors.teal,
-    tealLight: colors.tealBg,
-    bg: colors.bg,
-    canvas: colors.bg,
-    panel: colors.card,
-    line: colors.border,
-    text: colors.text,
-    muted: colors.label,
-    slate: colors.text,
+    navy: COLORS.navy,
+    teal: COLORS.teal,
+    tealDark: COLORS.tealDark,
+    tealLight: COLORS.tealBg,
+    bg: COLORS.bg,
+    canvas: COLORS.pageBg,
+    panel: COLORS.white,
+    line: COLORS.border,
+    text: COLORS.dark,
+    muted: COLORS.gray,
+    slate: COLORS.dark,
   };
 }
 
-function getStyles(brand) {
+function getStyles(brand, COLORS) {
+  const base = getRnicaStyles(COLORS);
   return {
-    page: { minHeight: "100vh", background: brand.canvas },
-    frame: { maxWidth: 1180, margin: "0 auto", padding: "24px 0" },
+    page: base.page,
+    frame: { width: "100%", padding: "16px 20px 24px" },
     shell: { display: "grid", gridTemplateColumns: "260px 1fr", gap: 12 },
     sidebar: { width: 260, minWidth: 260, paddingTop: 3 },
-    patientCard: { border: `1px solid ${brand.line}`, background: brand.panel, fontSize: 11, marginBottom: 12, borderRadius: 12, overflow: "hidden" },
-    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 700 },
-    navCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
-    navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 700, color: brand.text },
+    patientCard: { ...base.card, fontSize: 11.5, marginBottom: 12, padding: 0 },
+    patientCardHeader: { background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff", borderBottom: `1px solid ${brand.navy}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, letterSpacing: "-0.01em" },
+    navCard: { ...base.card, padding: 0 },
+    navHeader: { background: brand.panel, borderBottom: `1px solid ${brand.line}`, padding: "6px 10px", fontWeight: 800, fontSize: 13, color: brand.text, letterSpacing: "-0.01em" },
     navBody: { padding: 8, maxHeight: 640, overflow: "auto" },
-    main: { background: brand.bg, border: `1px solid ${brand.line}`, boxShadow: "0 12px 28px rgba(15, 23, 42, 0.08)", borderRadius: 14, overflow: "hidden" },
+    main: { ...base.card, padding: 0, marginBottom: 0 },
     header: { borderBottom: `1px solid ${brand.line}`, padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "linear-gradient(90deg, #1E3A5F 0%, #0D9488 100%)", color: "#fff" },
-    headerTitle: { fontSize: 18, fontWeight: 700 },
+    headerTitle: { fontSize: 16, fontWeight: 800, letterSpacing: "-0.02em" },
     headerSub: { fontSize: 11, color: "rgba(255,255,255,0.88)" },
     progress: { fontSize: 11, fontWeight: 700 },
     uploadBar: { padding: 10, background: brand.tealLight, borderBottom: `1px solid ${brand.line}`, fontSize: 11, color: brand.text },
-    alert: { margin: 10, padding: 10, border: "1px solid #f59e0b", background: "#fff7ed", color: "#9a3412", fontSize: 12, borderRadius: 10 },
+    metaBar: { padding: "16px 24px", background: brand.canvas, borderBottom: `1px solid ${brand.line}` },
+    alert: base.warningBox,
     content: { padding: 24 },
     sectionStack: { display: "flex", flexDirection: "column", gap: 12 },
-    sectionCard: { border: `1px solid ${brand.line}`, background: brand.panel, borderRadius: 12, overflow: "hidden" },
+    sectionCard: { ...base.card, padding: 0, marginBottom: 0 },
     sectionHeader: { background: brand.panel, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, cursor: "pointer", userSelect: "none" },
-    sectionTitle: { fontSize: 14, fontWeight: 700, fontStyle: "italic", color: brand.text },
-    sectionHint: { fontSize: 10, color: brand.muted },
+    sectionTitle: base.cardTitle,
+    sectionHint: base.sectionSubtitle,
     sectionBadge: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "2px 8px", fontSize: 10, fontWeight: 800, color: brand.tealDark, background: brand.tealLight, letterSpacing: ".04em", textTransform: "uppercase" },
     sectionComplete: { fontSize: 11, fontWeight: 700, color: "#166534" },
     sectionSummary: { fontSize: 11, color: brand.muted },
     sectionBody: { padding: 14 },
-    fieldLabel: { display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: brand.slate },
+    fieldLabel: base.label,
     fieldShell: { minWidth: 0, marginBottom: 10 },
     fieldShellFull: { minWidth: 0, marginBottom: 10, gridColumn: "1 / -1" },
-    sectionSubcard: { background: brand.canvas, border: `1px solid ${brand.line}`, borderRadius: 10, padding: 10, marginBottom: 12, color: brand.text },
-    input: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13 },
-    textarea: { width: "100%", boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${brand.line}`, borderRadius: 10, background: brand.panel, color: brand.text, fontSize: 13, lineHeight: 1.3, resize: "vertical" },
-    checkboxLabel: { display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11, color: brand.text },
-    button: { border: `1px solid ${brand.teal}`, background: brand.panel, color: brand.tealDark, borderRadius: 10, padding: "8px 14px", fontSize: 12, cursor: "pointer", fontWeight: 700 },
+    sectionSubcard: { background: brand.canvas, border: `1px solid ${brand.line}`, borderRadius: 8, padding: 10, marginBottom: 12, color: brand.text },
+    input: base.input,
+    textarea: base.textarea,
+    select: base.select,
+    checkboxLabel: base.checkboxLabel,
+    button: { border: `1px solid ${brand.teal}`, background: brand.panel, color: brand.tealDark, borderRadius: base.btnSecondary.borderRadius, padding: base.btnSecondary.padding, fontSize: base.btnSecondary.fontSize, cursor: "pointer", fontWeight: base.btnSecondary.fontWeight },
     footer: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, paddingTop: 8, flexWrap: "wrap" },
     statusPill: { display: "inline-flex", alignItems: "center", borderRadius: 999, padding: "4px 8px", fontSize: 10, fontWeight: 800, textTransform: "uppercase" },
   };
@@ -291,6 +325,7 @@ function withFormDefaults(value) {
   return {
     ...base,
     ...parsed,
+    visitMeta: { ...base.visitMeta, ...(parsed.visitMeta || {}) },
     pain: { ...base.pain, ...(parsed.pain || {}) },
     psychosocial: {
       ...base.psychosocial,
@@ -340,6 +375,9 @@ function seedCurrentUserBindings(value, { preserveExisting = false } = {}) {
   const currentUserId = currentUser?.id || "";
   const next = withFormDefaults(value);
 
+  next.visitMeta.discipline = currentUser?.role || next.visitMeta.discipline || "MSW";
+  if (!preserveExisting || !next.visitMeta.enteredBy) next.visitMeta.enteredBy = currentUserName;
+  if (!preserveExisting || !next.visitMeta.staffAssigned) next.visitMeta.staffAssigned = currentUserName;
   if (!preserveExisting || !next.finalization.clinician_name) next.finalization.clinician_name = currentUserName;
   if (!preserveExisting || !next.finalization.clinician_user_id) next.finalization.clinician_user_id = currentUserId;
   if (!preserveExisting || !next.finalization.countersign_staff_name) next.finalization.countersign_staff_name = currentUserName;
@@ -406,9 +444,9 @@ const api = {
 
 export default function MSWICA({ patientId = getActivePatientId() ?? "", assessmentId: existingAssessmentId = undefined, mode = "ica" }) {
   const { mode: themeMode } = useThemeMode();
-  const colors = useMemo(() => getChartColors(themeMode), [themeMode]);
+  const colors = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const CLINICAL_BRAND = useMemo(() => getBrand(colors), [colors]);
-  const styles = useMemo(() => getStyles(CLINICAL_BRAND), [CLINICAL_BRAND]);
+  const styles = useMemo(() => getStyles(CLINICAL_BRAND, colors), [CLINICAL_BRAND, colors]);
   const [patientSummary, setPatientSummary] = useState(null);
   const [patientSummaryError, setPatientSummaryError] = useState("");
   const [formData, setFormData] = useState(() => readStoredForm(patientId));
@@ -468,6 +506,17 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
       mounted = false;
     };
   }, [patientId]);
+
+  useEffect(() => {
+    if (!patientSummary) return;
+    setFormData((prev) => withFormDefaults({
+      ...prev,
+      visitMeta: {
+        ...prev.visitMeta,
+        careLevel: prev.visitMeta.careLevel || patientSummary.patient?.acuity_state || "",
+      },
+    }));
+  }, [patientSummary]);
 
   useEffect(() => {
     const nextFormData = readStoredForm(patientId);
@@ -1144,6 +1193,70 @@ export default function MSWICA({ patientId = getActivePatientId() ?? "", assessm
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: progressTone }}>{progressLabel}</div>
                 <div style={{ fontSize: 10, color: "rgba(255,255,255,0.8)" }}>Close</div>
+              </div>
+            </div>
+
+            <div style={styles.metaBar}>
+              <div style={{ display: "grid", gridTemplateColumns: "180px repeat(4, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                <Field label="Correction">
+                  <label style={styles.checkboxLabel}>
+                    <input type="checkbox" checked={formData.visitMeta.correction} onChange={(e) => updateField("visitMeta", "correction", e.target.checked)} />
+                    Correction
+                  </label>
+                </Field>
+                <Field label="Type of Visit">
+                  <select value={formData.visitMeta.typeOfVisit} onChange={(e) => updateField("visitMeta", "typeOfVisit", e.target.value)} style={styles.select}>
+                    <option value="">Select</option>
+                    <option value="In-Person">In-Person</option>
+                    <option value="Telephone">Telephone</option>
+                    <option value="Video">Video</option>
+                  </select>
+                </Field>
+                <Field label="Visit">
+                  <select value={formData.visitMeta.visitKind} onChange={(e) => updateField("visitMeta", "visitKind", e.target.value)} style={styles.select}>
+                    <option value="">Select</option>
+                    <option value="Scheduled">Scheduled</option>
+                    <option value="Unscheduled">Unscheduled</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </Field>
+                <Field label="Reason for Visit">
+                  <select value={formData.visitMeta.reasonForVisit} onChange={(e) => updateField("visitMeta", "reasonForVisit", e.target.value)} style={styles.select}>
+                    {REASON_FOR_VISIT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Visit Date">
+                  <input type="date" value={formData.visitMeta.visitDate} onChange={(e) => updateField("visitMeta", "visitDate", e.target.value)} style={styles.input} />
+                </Field>
+              </div>
+
+              {formData.visitMeta.visitKind === "Other" ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12, marginBottom: 12 }}>
+                  <Field label="Visit specify">
+                    <input value={formData.visitMeta.visitKindSpecify} onChange={(e) => updateField("visitMeta", "visitKindSpecify", e.target.value)} style={styles.input} />
+                  </Field>
+                </div>
+              ) : null}
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12 }}>
+                <Field label="Time In"><input type="time" value={formData.visitMeta.timeIn} onChange={(e) => updateField("visitMeta", "timeIn", e.target.value)} style={styles.input} /></Field>
+                <Field label="Time Out"><input type="time" value={formData.visitMeta.timeOut} onChange={(e) => updateField("visitMeta", "timeOut", e.target.value)} style={styles.input} /></Field>
+                <Field label="Duration (h:m)"><input value={formData.visitMeta.duration} onChange={(e) => updateField("visitMeta", "duration", e.target.value)} style={styles.input} placeholder="1h 15m" /></Field>
+                <Field label="Entered By"><input value={formData.visitMeta.enteredBy} onChange={(e) => updateField("visitMeta", "enteredBy", e.target.value)} style={styles.input} /></Field>
+                <Field label="Staff Assigned"><input value={formData.visitMeta.staffAssigned} onChange={(e) => updateField("visitMeta", "staffAssigned", e.target.value)} style={styles.input} /></Field>
+                <Field label="Discipline"><input value={formData.visitMeta.discipline} readOnly style={{ ...styles.input, background: "#f8fafc" }} /></Field>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                <Field label="Care Level">
+                  <select value={formData.visitMeta.careLevel} onChange={(e) => updateField("visitMeta", "careLevel", e.target.value)} style={styles.select}>
+                    {CARE_LEVEL_OPTIONS.map((option) => (
+                      <option key={option || "blank"} value={option}>{option || "Select"}</option>
+                    ))}
+                  </select>
+                </Field>
               </div>
             </div>
 

@@ -80,8 +80,21 @@ const navSections = [
     { label: 'CHHA CC Visit', key: 'chha-cc' },
   ] },
   { label: 'Volunteer Services', key: 'volunteer', children: [] },
-  { label: 'Bereavement', key: 'bereavement', children: [] },
-  { label: 'Compliance & HOPE', key: 'compliance', children: [] },
+  { label: 'Bereavement', key: 'bereavement', children: [
+    { label: 'Initial Assessment', key: 'bereavement' },
+    { label: 'Bereavement POC', key: 'bereavement-poc' },
+    { label: 'Post-Death Assessment', key: 'bereavement-post-death' },
+    { label: 'Letters Tracker', key: 'bereavement-letters' },
+    { label: 'Post-Death Support', key: 'bereavement-support' },
+  ] },
+  { label: 'Compliance & HOPE', key: 'compliance', children: [
+    { label: 'LCD Eligibility', key: 'lcd-eligibility' },
+    { label: 'HOPE - Admission', key: 'hope-admission' },
+    { label: 'HOPE - HUV1', key: 'hope-huv1' },
+    { label: 'HOPE - HUV2', key: 'hope-huv2' },
+    { label: 'HOPE - Discharge', key: 'hope-discharge' },
+    { label: 'Decline of Status', key: 'decline-of-status' },
+  ] },
   { label: 'Issues & Outcomes', key: 'issues', children: [] },
   { label: 'Incident Logs', key: 'incidents', children: [] },
   { label: 'Documents & Images', key: 'documents', children: [
@@ -101,7 +114,7 @@ const PatientChartSidebar = ({ activeSection = 'facesheet', onNavigate, patient 
   const COLORS = getColors(mode);
   const navigate = useNavigate();
   const [expandedSections, setExpandedSections] = useState([
-    'intake', 'assessments', 'visit-notes', 'tx-meds', 'physician-orders', 'idg', 'poc', 'chha', 'documents',
+    'intake', 'assessments', 'visit-notes', 'tx-meds', 'physician-orders', 'idg', 'poc', 'chha', 'bereavement', 'compliance', 'documents',
   ]);
 
   const toggleSection = (key) => {

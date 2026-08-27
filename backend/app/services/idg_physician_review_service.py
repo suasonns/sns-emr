@@ -389,6 +389,7 @@ def batch_sign(
     tenant_id,
     idg_meeting_id,
     physician_user_id,
+    physician_role: Optional[str] = None,
     patient_ids: Optional[Iterable[uuid.UUID]] = None,
     signature_method: str = "ELECTRONIC",
 ) -> dict:
@@ -397,6 +398,14 @@ def batch_sign(
     pending order for every Reviewed (never Deferred) patient in the
     session's Batch Signature Queue, each order recording its own
     signature timestamp via physician_order_service.approve_order.
+
+    `patient_ids` (when provided by the caller) is expected to already be
+    scoped to patients the calling physician is authorized to access under
+    the fail-closed Physician Identity Mapping gate (app.core.patient_access
+    .get_authorized_patient) — this function does not re-derive that scope
+    itself, since it has no request-scoped CurrentUser to check assignments
+    against; callers (app.api.idg.router.batch_sign_orders) MUST filter
+    patient_ids through get_authorized_patient before calling this.
     """
     queue = get_batch_signature_queue(db, tenant_id=tenant_id, idg_meeting_id=idg_meeting_id)
 
@@ -420,6 +429,7 @@ def batch_sign(
                     db,
                     order=order,
                     approved_by=physician_user_id,
+                    approved_by_role=physician_role,
                     signature_method=signature_method,
                 )
                 any_signed_for_patient = True

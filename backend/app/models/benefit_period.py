@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, text
+from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, text
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import relationship
 
@@ -69,6 +69,17 @@ class BenefitPeriod(BaseModel):
         nullable=False,
         server_default=text("true"),
     )
+
+    # Real-world NOE filing date for this period's election (only meaningful
+    # for benefit_type=INITIAL / period_number=1). Used to compute CMS's
+    # late-NOE non-covered-day penalty -- see
+    # app/billing/services/noe_penalty_service.py.
+    noe_submitted_date = Column(Date, nullable=True)
+
+    # Free-text note when a CMS-recognized exception waives the late-NOE
+    # penalty (e.g. "MAC system outage per CMS transmittal X"). Presence of
+    # a non-null value suppresses the penalty even if filed late.
+    noe_exception_reason = Column(String, nullable=True)
 
     created_by = Column(
         UUID(as_uuid=True),

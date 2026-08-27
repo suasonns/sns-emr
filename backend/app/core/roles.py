@@ -33,6 +33,18 @@ _ALIASES = {
     "BILLER": "BILLING",
     "ALTERNATE_MEDICAL_DIRECTOR": "MEDICAL_DIRECTOR",
     "MEDICAL_DIRECTOR_DESIGNEE": "MEDICAL_DIRECTOR",
+    # Discovered in live data (2026-08-22 role audit): a designee acting
+    # with DPCS authority is DPCS for authorization purposes, same pattern
+    # as MEDICAL_DIRECTOR_DESIGNEE above.
+    "DPCS_DESIGNEE": "DPCS",
+    # "SUPERVISOR" is the persisted spelling for the existing
+    # CLINICAL_SUPERVISOR canonical role — same role, different spelling.
+    "SUPERVISOR": "CLINICAL_SUPERVISOR",
+    # Generic "MD" role label used in several legacy require_roles(...)
+    # lists; treat as the physician-tier ATTENDING_PHYSICIAN role for
+    # capability purposes (assignment-scoped, not tenant-wide oversight —
+    # that stays exclusive to MEDICAL_DIRECTOR).
+    "MD": "ATTENDING_PHYSICIAN",
 }
 
 # =============================================================
@@ -86,6 +98,7 @@ CLINICAL_DEPARTMENT_ROLES = {
     "CHAPLAIN",
     "VOLUNTEER_COORDINATOR",
     "CLINICAL_SUPERVISOR",
+    "CASE_MANAGER",
 }
 
 # =============================================================

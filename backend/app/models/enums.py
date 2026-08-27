@@ -239,6 +239,18 @@ class VisitFormType(str, enum.Enum):
     ON_CALL_TRIAGE = "ON_CALL_TRIAGE"
     MISSED_VISIT = "MISSED_VISIT"
     DECLINED_VISIT = "DECLINED_VISIT"
+    # Additional Visit Notes form types (RN/LVN "Add New Visit" workflow) —
+    # minimal-content visit types that collapse the documentation body down
+    # to just a Narrative (plus a couple of contextual fields).
+    AFTER_HOURS = "AFTER_HOURS"
+    OFFICE_HOURS = "OFFICE_HOURS"
+    ANCILLARY_SUPPORT = "ANCILLARY_SUPPORT"
+    BEREAVEMENT_VISIT = "BEREAVEMENT_VISIT"
+    DEATH_VISIT = "DEATH_VISIT"
+    RESPITE_RELIEF = "RESPITE_RELIEF"
+    SUPV_VISIT_ONLY = "SUPV_VISIT_ONLY"
+    VOLUNTEER_SUPPORT = "VOLUNTEER_SUPPORT"
+    WEEKENDS = "WEEKENDS"
 
 class ServiceContext(str, enum.Enum):
     ADMISSION_RN_ICA = "ADMISSION_RN_ICA"

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -65,6 +65,9 @@ class OrderTemplateItem(BaseModel):
     vendor = Column(String(128), nullable=True)
     administered_by = Column(String(64), nullable=True)
     special_instruction = Column(Text, nullable=True)
+
+    start_date = Column(Date, nullable=True)
+    stop_date = Column(Date, nullable=True)
 
     sort_order = Column(Integer, nullable=False, server_default="0")
 
