@@ -20,7 +20,7 @@ Isolation contract:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -162,6 +162,102 @@ def _run_ai_extraction(
                 structured_findings=list(signal.structured_findings),
             )
         )
+
+
+def list_pending_structured_findings(db: Session, patient_id: UUID) -> list[dict[str, Any]]:
+    """Return every not-yet-reviewed harvested signal for `patient_id` that
+    carries at least one validated StructuredFinding.
+
+    This is the read side of the RNICA structured-findings application
+    layer: each entry pairs one signal's provenance (excerpt, source type,
+    recorded_at) with the concept-coded findings extracted from it, so the
+    frontend can offer an "Apply to RNICA field(s)" action per signal
+    without ever seeing an un-validated field_path/value pair -- only what
+    already passed `validate_findings()` at harvest time is ever returned
+    here.
+
+    Signals with an empty `structured_findings` list are excluded entirely
+    -- this is scoped to structured-findings consumption only, not a
+    general narrative-signal review queue.
+    """
+
+    rows = (
+        db.query(PatientHarvestedSignal)
+        .filter(
+            PatientHarvestedSignal.patient_id == patient_id,
+            PatientHarvestedSignal.review_status == "NEW",
+        )
+        .order_by(PatientHarvestedSignal.recorded_at.desc())
+        .limit(200)
+        .all()
+    )
+
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        findings = row.structured_findings or []
+        if not findings:
+            continue
+        results.append(
+            {
+                "id": str(row.id),
+                "source_type": row.source_type,
+                "clinical_system": row.clinical_system,
+                "recorded_at": row.recorded_at.isoformat() if row.recorded_at else None,
+                "original_text_excerpt": row.original_text_excerpt,
+                "structured_findings": findings,
+            }
+        )
+    return results
+
+
+VALID_SIGNAL_REVIEW_DISPOSITIONS = {"APPLIED", "DISMISSED"}
+
+
+def review_harvested_signal(
+    db: Session,
+    *,
+    signal_id: UUID,
+    tenant_id: UUID,
+    disposition: str,
+    reviewed_by_user_id: UUID | None = None,
+    reason: str | None = None,
+) -> PatientHarvestedSignal:
+    """Record an RN's disposition of one structured-finding-bearing signal.
+
+    `disposition` must be "APPLIED" (the RN used the structured findings to
+    populate RNICA field(s) -- the apply itself already happened
+    client-side via applyStructuredFindings.js; this call only records
+    that it happened) or "DISMISSED" (the RN reviewed the finding(s) and
+    chose not to apply them). Combined with the "NEW" default set at
+    harvest time, review_status is always exactly one of NEW / APPLIED /
+    DISMISSED -- never a broader narrative-signal review vocabulary.
+
+    Never applies anything to a chart itself. Scoped to `tenant_id` so a
+    signal from one tenant can never be reviewed via another tenant's
+    session.
+    """
+
+    if disposition not in VALID_SIGNAL_REVIEW_DISPOSITIONS:
+        raise ValueError(f"disposition must be one of {sorted(VALID_SIGNAL_REVIEW_DISPOSITIONS)}")
+
+    signal = (
+        db.query(PatientHarvestedSignal)
+        .filter(
+            PatientHarvestedSignal.id == signal_id,
+            PatientHarvestedSignal.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if signal is None:
+        raise LookupError("Harvested signal not found")
+
+    signal.review_status = disposition
+    signal.reviewed_by_user_id = reviewed_by_user_id
+    signal.reviewed_at = datetime.now(timezone.utc)
+    signal.review_disposition_reason = reason
+    db.commit()
+    db.refresh(signal)
+    return signal
 
 
 def extract_narrative_text(content: Any, *, max_chars: int = 20000) -> str:
