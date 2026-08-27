@@ -306,6 +306,104 @@ def review_harvested_signals_batch(
     return {"updated": sorted(found_ids), "not_found": not_found}
 
 
+# Every review_status value the state machine can hold today (see the
+# REVIEW STATE MACHINE comment on PatientHarvestedSignal.review_status).
+# Acceptance Analytics reports ONLY these persisted values -- it does not
+# invent "MODIFIED" or "CONFLICTED" buckets, since neither is stored
+# anywhere on the signal today. If those are needed later, that is a
+# separate schema/design decision, not something this function should
+# approximate from ephemeral, non-persisted state.
+_KNOWN_REVIEW_STATUSES = ("NEW", "APPLIED", "DISMISSED")
+
+
+def get_structured_findings_acceptance_analytics(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Read-only rollup of harvested-signal review outcomes, computed
+    entirely from the persisted `review_status` column (NEW / APPLIED /
+    DISMISSED) and the persisted `structured_findings` concept codes on
+    each signal. No new tables or columns -- every number here is derived
+    from data that already exists.
+
+    Dimensions returned:
+      - by_status: counts of NEW / APPLIED / DISMISSED signals
+      - by_concept: per concept_code counts + status breakdown
+      - by_patient: per patient_id counts + status breakdown
+      - application_rate: APPLIED / (APPLIED + DISMISSED), i.e. of the
+        signals an RN has actually reviewed (excluding still-pending
+        NEW ones), what fraction were applied to the chart. None when
+        nothing has been reviewed yet, to avoid a misleading 0%/100%.
+
+    Always scoped to `tenant_id`; `patient_id`/`start_date`/`end_date`
+    further narrow the signals considered, but are all optional -- with
+    none supplied this reports tenant-wide acceptance across all patients
+    and all time.
+    """
+
+    query = db.query(PatientHarvestedSignal).filter(PatientHarvestedSignal.tenant_id == tenant_id)
+    if patient_id is not None:
+        query = query.filter(PatientHarvestedSignal.patient_id == patient_id)
+    if start_date is not None:
+        query = query.filter(PatientHarvestedSignal.recorded_at >= start_date)
+    if end_date is not None:
+        query = query.filter(PatientHarvestedSignal.recorded_at <= end_date)
+
+    # Scope strictly to signals that actually carry >=1 structured
+    # finding -- the review_status/reviewed_at columns are shared with the
+    # broader narrative AI-signal review workflow (whose statuses include
+    # ACKNOWLEDGED/ESCALATED, not just NEW/APPLIED/DISMISSED), so without
+    # this filter "Structured Findings Acceptance Analytics" would silently
+    # include unrelated narrative signals that were never part of this
+    # feature at all.
+    rows = [row for row in query.all() if row.structured_findings]
+
+    def _empty_status_counts() -> dict[str, int]:
+        return {status: 0 for status in _KNOWN_REVIEW_STATUSES}
+
+    by_status = _empty_status_counts()
+    by_concept: dict[str, dict[str, Any]] = {}
+    by_patient: dict[str, dict[str, Any]] = {}
+
+    for row in rows:
+        status = row.review_status if row.review_status in _KNOWN_REVIEW_STATUSES else row.review_status
+        by_status[status] = by_status.get(status, 0) + 1
+
+        patient_key = str(row.patient_id)
+        patient_bucket = by_patient.setdefault(
+            patient_key, {"patient_id": patient_key, "total": 0, **_empty_status_counts()}
+        )
+        patient_bucket["total"] += 1
+        patient_bucket[status] = patient_bucket.get(status, 0) + 1
+
+        for finding in row.structured_findings or []:
+            concept_code = finding.get("concept_code") if isinstance(finding, dict) else None
+            if not concept_code:
+                continue
+            concept_bucket = by_concept.setdefault(
+                concept_code, {"concept_code": concept_code, "total": 0, **_empty_status_counts()}
+            )
+            concept_bucket["total"] += 1
+            concept_bucket[status] = concept_bucket.get(status, 0) + 1
+
+    applied = by_status.get("APPLIED", 0)
+    dismissed = by_status.get("DISMISSED", 0)
+    reviewed = applied + dismissed
+    application_rate = round(applied / reviewed, 4) if reviewed > 0 else None
+
+    return {
+        "total_signals": len(rows),
+        "by_status": by_status,
+        "by_concept": sorted(by_concept.values(), key=lambda c: c["concept_code"]),
+        "by_patient": sorted(by_patient.values(), key=lambda p: p["patient_id"]),
+        "reviewed_count": reviewed,
+        "application_rate": application_rate,
+    }
+
 
 
 def extract_narrative_text(content: Any, *, max_chars: int = 20000) -> str:

@@ -52,6 +52,7 @@ from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
 from app.services.evidence.harvest_service import (
+    get_structured_findings_acceptance_analytics,
     list_pending_structured_findings,
     review_harvested_signal,
     review_harvested_signals_batch,
@@ -1732,6 +1733,58 @@ def batch_review_rnica_harvested_signals(
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     return result
+
+
+@router.get("/rnica/signals/analytics")
+def get_structured_findings_analytics(
+    patient_id: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default=None),
+    end_date: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Read-only Structured Findings Acceptance Analytics.
+
+    Reports counts by status / concept / patient and the application rate
+    (APPLIED / (APPLIED + DISMISSED)) computed entirely from the persisted
+    review_status and structured_findings columns -- no new tables or
+    columns. Scoped to the current user's tenant; pass patient_id to
+    narrow to one patient (authorized like any other patient-scoped
+    endpoint), and/or start_date/end_date (YYYY-MM-DD) to narrow by
+    signal recorded_at.
+    """
+
+    patient_uuid = None
+    if patient_id:
+        try:
+            patient_uuid = uuid.UUID(patient_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+        get_authorized_patient(db, patient_uuid, current_user)
+
+    def _parse_date(label: str, value: Optional[str]):
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"{label} must be in YYYY-MM-DD format") from None
+
+    start_dt = _parse_date("start_date", start_date)
+    end_dt = _parse_date("end_date", end_date)
+    if end_dt is not None:
+        # Inclusive of the whole end_date calendar day.
+        end_dt = end_dt + timedelta(days=1) - timedelta(microseconds=1)
+    if start_dt is not None and end_dt is not None and start_dt > end_dt:
+        raise HTTPException(status_code=422, detail="start_date must not be after end_date")
+
+    return get_structured_findings_acceptance_analytics(
+        db,
+        tenant_id=current_user.tenant_id,
+        patient_id=patient_uuid,
+        start_date=start_dt,
+        end_date=end_dt,
+    )
 
 
 @router.post("/msw-ica/save")

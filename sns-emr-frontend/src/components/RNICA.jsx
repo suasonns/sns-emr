@@ -57,6 +57,7 @@ import {
   mergeRnicaPocDuplicateProblems,
   reviewHarvestedSignal,
   batchReviewHarvestedSignals,
+  getStructuredFindingsAnalytics,
 } from "../api/icaAssessments";
 import { applyStructuredFindings, applyAllNonConflicting } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
@@ -9920,10 +9921,33 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // the AI-suggested value — the clinician value is never overwritten;
   // these are surfaced for explicit RN review/resolution instead.
   const [structuredFieldConflicts, setStructuredFieldConflicts] = useState([]);
+  // Acceptance Analytics (read-only): counts by status/application rate
+  // for this patient's structured findings, computed entirely from
+  // persisted review_status data on the backend (no new schema). Refetched
+  // whenever the pending list changes size, so applying/dismissing
+  // (single or bulk) keeps the summary current without a full page reload.
+  const [structuredFindingsAnalytics, setStructuredFindingsAnalytics] = useState(null);
 
   useEffect(() => {
     setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
   }, [intelligence]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    getStructuredFindingsAnalytics({ patientId })
+      .then((data) => {
+        if (!cancelled) setStructuredFindingsAnalytics(data);
+      })
+      .catch(() => {
+        // Analytics is a non-critical, supplementary summary -- never
+        // block or error out the rest of the RNICA page over it.
+        if (!cancelled) setStructuredFindingsAnalytics(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [patientId, pendingStructuredSignals.length]);
 
   const handleApplyStructuredSignal = useCallback(
     async (signal) => {
@@ -11292,6 +11316,44 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               <div style={{ fontSize: 12, color: COLORS.gray, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 Structured Findings — Pending Review
               </div>
+
+              {structuredFindingsAnalytics && structuredFindingsAnalytics.total_signals > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 16,
+                    fontSize: 11,
+                    color: COLORS.gray,
+                    marginBottom: 10,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    background: COLORS.bg,
+                    border: `1px solid ${COLORS.border}`,
+                  }}
+                >
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{structuredFindingsAnalytics.total_signals}</strong> total findings
+                  </span>
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{structuredFindingsAnalytics.by_status?.APPLIED ?? 0}</strong> applied
+                  </span>
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{structuredFindingsAnalytics.by_status?.DISMISSED ?? 0}</strong> dismissed
+                  </span>
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{structuredFindingsAnalytics.by_status?.NEW ?? 0}</strong> pending
+                  </span>
+                  <span>
+                    Application rate:{" "}
+                    <strong style={{ color: COLORS.dark }}>
+                      {structuredFindingsAnalytics.application_rate === null || structuredFindingsAnalytics.application_rate === undefined
+                        ? "—"
+                        : `${Math.round(structuredFindingsAnalytics.application_rate * 100)}%`}
+                    </strong>
+                  </span>
+                </div>
+              )}
 
               {pendingStructuredSignals.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
