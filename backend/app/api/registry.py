@@ -89,6 +89,7 @@ from app.api.print import router as print_router
 from app.api.auth_reauth import router as auth_reauth_router
 from app.api.internal_superuser import router as internal_superuser_router
 from app.api.admission_diagnosis import router as admission_diagnosis_router
+from app.api.icd10 import router as icd10_router
 
 # ORDERS HUB (order templates / generic patient orders / fax / lab catalog)
 from app.api.order_templates import router as order_templates_router
@@ -216,6 +217,7 @@ def register_routers(app: FastAPI) -> None:
         auth_reauth_router,
         internal_superuser_router,
         admission_diagnosis_router,
+        icd10_router,
 
         # Existing task system
         task_completion_router,

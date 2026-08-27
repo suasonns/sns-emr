@@ -5,6 +5,7 @@ import { createPosHistory, fetchFacesheet, fetchPerformanceHistory, fetchPosHist
 import { addPatientAllergy as addAllergy, listPatientAllergies as fetchAllergies, removePatientAllergy as removeAllergy } from '../api/medications';
 import { listPhysicians } from '../api/physicians';
 import PhysicianDirectoryModal from '../components/PhysicianDirectoryModal';
+import Icd10DiagnosisInput from '../components/Icd10DiagnosisInput';
 import { useThemeMode } from '../theme/theme';
 
 const fetchCodeStatusHistory = async (patientId) => {
@@ -1505,13 +1506,16 @@ const DiagnosisEntryList = ({ colors, entries, update }) => {
         )) : <div style={{ color: colors.label, fontSize: 11 }}>No secondary diagnoses added.</div>}
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
-        <input
-          value={draftText}
-          onChange={(event) => setDraftText(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addEntry(); } }}
-          placeholder="Add diagnosis (e.g. CKD Stage III)"
-          style={{ flex: 1, minWidth: 0, fontSize: 12, padding: '5px 8px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white }}
-        />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Icd10DiagnosisInput
+            value={draftText}
+            onChange={setDraftText}
+            colors={colors}
+            inputStyle={{ width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '5px 8px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: colors.bg, color: colors.white }}
+            placeholder="Add diagnosis (e.g. CKD Stage III)"
+            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addEntry(); } }}
+          />
+        </div>
         <select
           value={draftClassification}
           onChange={(event) => setDraftClassification(event.target.value)}
@@ -1587,7 +1591,14 @@ const DiagnosesAllergies = ({ colors, draft, update, facesheet, allergyList, all
         <div style={{ minWidth: 0, paddingRight: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <Field label="Primary Diagnosis" value={draft.primary_diagnosis} colors={colors} editable onChange={(value) => update('primary_diagnosis', value)} />
+              <span style={{ color: colors.label, fontSize: 8.5, textTransform: 'uppercase', letterSpacing: 0.5, display: 'block', marginBottom: 2 }}>Primary Diagnosis</span>
+              <Icd10DiagnosisInput
+                value={draft.primary_diagnosis}
+                onChange={(value) => update('primary_diagnosis', value)}
+                colors={colors}
+                inputStyle={baseInputStyle(colors)}
+                placeholder="Start typing a diagnosis or ICD-10 code…"
+              />
             </div>
             {draft.primary_diagnosis ? <Badge variant="red" colors={colors}>TERMINAL</Badge> : null}
           </div>
