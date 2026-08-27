@@ -58,6 +58,7 @@ import {
   reviewHarvestedSignal,
   batchReviewHarvestedSignals,
   getStructuredFindingsAnalytics,
+  getRnProductivityMetrics,
 } from "../api/icaAssessments";
 import { applyStructuredFindings, applyAllNonConflicting } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
@@ -9927,6 +9928,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // whenever the pending list changes size, so applying/dismissing
   // (single or bulk) keeps the summary current without a full page reload.
   const [structuredFindingsAnalytics, setStructuredFindingsAnalytics] = useState(null);
+  // RN Productivity Metrics (read-only): fields_populated and
+  // manual_entries_avoided, also computed entirely from persisted data
+  // (no time-saved estimate -- that would require an assumption, not a
+  // persisted fact). Refetched alongside Acceptance Analytics above.
+  const [rnProductivityMetrics, setRnProductivityMetrics] = useState(null);
 
   useEffect(() => {
     setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
@@ -9943,6 +9949,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         // Analytics is a non-critical, supplementary summary -- never
         // block or error out the rest of the RNICA page over it.
         if (!cancelled) setStructuredFindingsAnalytics(null);
+      });
+    getRnProductivityMetrics({ patientId })
+      .then((data) => {
+        if (!cancelled) setRnProductivityMetrics(data);
+      })
+      .catch(() => {
+        if (!cancelled) setRnProductivityMetrics(null);
       });
     return () => {
       cancelled = true;
@@ -11351,6 +11364,31 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                         ? "—"
                         : `${Math.round(structuredFindingsAnalytics.application_rate * 100)}%`}
                     </strong>
+                  </span>
+                </div>
+              )}
+
+              {rnProductivityMetrics && rnProductivityMetrics.manual_entries_avoided > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 16,
+                    fontSize: 11,
+                    color: COLORS.gray,
+                    marginBottom: 10,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    background: COLORS.bg,
+                    border: `1px solid ${COLORS.border}`,
+                  }}
+                >
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{rnProductivityMetrics.manual_entries_avoided}</strong> manual entries
+                    avoided
+                  </span>
+                  <span>
+                    <strong style={{ color: COLORS.dark }}>{rnProductivityMetrics.fields_populated}</strong> RNICA fields populated
                   </span>
                 </div>
               )}

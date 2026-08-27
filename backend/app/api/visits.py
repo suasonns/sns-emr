@@ -52,6 +52,7 @@ from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
 from app.services.rnica_intelligence import build_rnica_intelligence
 from app.services.evidence.harvest_service import (
+    get_rn_productivity_metrics,
     get_structured_findings_acceptance_analytics,
     list_pending_structured_findings,
     review_harvested_signal,
@@ -1735,6 +1736,37 @@ def batch_review_rnica_harvested_signals(
     return result
 
 
+def _parse_analytics_date(label: str, value: Optional[str]):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"{label} must be in YYYY-MM-DD format") from None
+
+
+def _resolve_analytics_date_range(start_date: Optional[str], end_date: Optional[str]):
+    start_dt = _parse_analytics_date("start_date", start_date)
+    end_dt = _parse_analytics_date("end_date", end_date)
+    if end_dt is not None:
+        # Inclusive of the whole end_date calendar day.
+        end_dt = end_dt + timedelta(days=1) - timedelta(microseconds=1)
+    if start_dt is not None and end_dt is not None and start_dt > end_dt:
+        raise HTTPException(status_code=422, detail="start_date must not be after end_date")
+    return start_dt, end_dt
+
+
+def _resolve_analytics_patient_id(patient_id: Optional[str], db: Session, current_user: CurrentUser):
+    if not patient_id:
+        return None
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    get_authorized_patient(db, patient_uuid, current_user)
+    return patient_uuid
+
+
 @router.get("/rnica/signals/analytics")
 def get_structured_findings_analytics(
     patient_id: Optional[str] = Query(default=None),
@@ -1754,31 +1786,38 @@ def get_structured_findings_analytics(
     signal recorded_at.
     """
 
-    patient_uuid = None
-    if patient_id:
-        try:
-            patient_uuid = uuid.UUID(patient_id)
-        except ValueError:
-            raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
-        get_authorized_patient(db, patient_uuid, current_user)
-
-    def _parse_date(label: str, value: Optional[str]):
-        if not value:
-            return None
-        try:
-            return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-        except ValueError:
-            raise HTTPException(status_code=422, detail=f"{label} must be in YYYY-MM-DD format") from None
-
-    start_dt = _parse_date("start_date", start_date)
-    end_dt = _parse_date("end_date", end_date)
-    if end_dt is not None:
-        # Inclusive of the whole end_date calendar day.
-        end_dt = end_dt + timedelta(days=1) - timedelta(microseconds=1)
-    if start_dt is not None and end_dt is not None and start_dt > end_dt:
-        raise HTTPException(status_code=422, detail="start_date must not be after end_date")
+    patient_uuid = _resolve_analytics_patient_id(patient_id, db, current_user)
+    start_dt, end_dt = _resolve_analytics_date_range(start_date, end_date)
 
     return get_structured_findings_acceptance_analytics(
+        db,
+        tenant_id=current_user.tenant_id,
+        patient_id=patient_uuid,
+        start_date=start_dt,
+        end_date=end_dt,
+    )
+
+
+@router.get("/rnica/signals/productivity-metrics")
+def get_structured_findings_productivity_metrics(
+    patient_id: Optional[str] = Query(default=None),
+    start_date: Optional[str] = Query(default=None),
+    end_date: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Read-only RN Productivity Metrics: fields_populated and
+    manual_entries_avoided, computed strictly from persisted review_status
+    (APPLIED) and structured_findings data -- no new tables/columns, and
+    deliberately no time-saved estimate (that would require an assumption,
+    not a persisted fact). Same tenant/patient/date-range scoping as the
+    Acceptance Analytics endpoint above.
+    """
+
+    patient_uuid = _resolve_analytics_patient_id(patient_id, db, current_user)
+    start_dt, end_dt = _resolve_analytics_date_range(start_date, end_date)
+
+    return get_rn_productivity_metrics(
         db,
         tenant_id=current_user.tenant_id,
         patient_id=patient_uuid,

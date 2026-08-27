@@ -405,6 +405,63 @@ def get_structured_findings_acceptance_analytics(
     }
 
 
+def get_rn_productivity_metrics(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> dict[str, Any]:
+    """Read-only RN Productivity Metrics, derived strictly from persisted
+    data already used by Acceptance Analytics (PR #16) -- no new tables or
+    columns, and deliberately NO time-saved estimate, since "seconds saved
+    per field" is an assumption, not something ever recorded on a signal.
+
+    Two counts, both scoped to signals with review_status == "APPLIED"
+    and >=1 structured finding (same narrative-signal exclusion as
+    get_structured_findings_acceptance_analytics):
+
+      - fields_populated: total structured_findings entries across every
+        APPLIED signal. Each entry corresponds to one concept-code write
+        attempted against a RNICA field by applyStructuredFindings() on
+        the frontend at apply time (the field itself may or may not have
+        been blank at that moment -- this counts what was *offered* by an
+        applied signal, since per-field apply/conflict outcomes are not
+        persisted anywhere to count from instead).
+      - manual_entries_avoided: count of APPLIED signals themselves --
+        each one represents one harvested piece of documentation an RN
+        reviewed and applied instead of re-transcribing it by hand.
+
+    Always scoped to `tenant_id`; `patient_id`/`start_date`/`end_date`
+    optionally narrow further, exactly like the Acceptance Analytics
+    endpoint.
+    """
+
+    query = db.query(PatientHarvestedSignal).filter(
+        PatientHarvestedSignal.tenant_id == tenant_id,
+        PatientHarvestedSignal.review_status == "APPLIED",
+    )
+    if patient_id is not None:
+        query = query.filter(PatientHarvestedSignal.patient_id == patient_id)
+    if start_date is not None:
+        query = query.filter(PatientHarvestedSignal.recorded_at >= start_date)
+    if end_date is not None:
+        query = query.filter(PatientHarvestedSignal.recorded_at <= end_date)
+
+    # Same narrative-signal exclusion as Acceptance Analytics: only count
+    # signals that actually carry structured findings.
+    applied_rows = [row for row in query.all() if row.structured_findings]
+
+    fields_populated = sum(len(row.structured_findings or []) for row in applied_rows)
+    manual_entries_avoided = len(applied_rows)
+
+    return {
+        "fields_populated": fields_populated,
+        "manual_entries_avoided": manual_entries_avoided,
+    }
+
+
 
 def extract_narrative_text(content: Any, *, max_chars: int = 20000) -> str:
     """Best-effort narrative text extraction from a note's JSONB content dict.
