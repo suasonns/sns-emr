@@ -257,6 +257,27 @@ export async function batchReviewHarvestedSignals(
   );
 }
 
+// Read-only Structured Findings Acceptance Analytics — counts by status
+// (NEW/APPLIED/DISMISSED), by concept, by patient, and the application
+// rate (APPLIED / (APPLIED + DISMISSED)). Computed entirely from
+// persisted review_status + structured_findings data; no new schema.
+// Pass patientId to scope to one patient (the common case, shown on the
+// RNICA page); omit it for a tenant-wide summary.
+export async function getStructuredFindingsAnalytics(options?: {
+  patientId?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const params: Record<string, string> = {};
+  if (options?.patientId) params.patient_id = options.patientId;
+  if (options?.startDate) params.start_date = options.startDate;
+  if (options?.endDate) params.end_date = options.endDate;
+  return unwrap(
+    api.get(`/visits/rnica/signals/analytics`, { params }),
+    "Unable to load structured findings analytics"
+  );
+}
+
 
 // SECTION 12 — Final Review Dashboard data source. Single source of truth
 // shared with the backend lock endpoint, so the UI's Lock button and the
