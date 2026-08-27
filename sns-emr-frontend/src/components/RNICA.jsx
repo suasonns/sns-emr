@@ -11298,7 +11298,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   <button
                     type="button"
                     onClick={handleApplyAllNonConflicting}
-                    disabled={structuredFindingsBulkBusy}
+                    disabled={structuredFindingsBulkBusy || structuredFindingsBusyId !== null}
                     style={{
                       fontSize: 11,
                       fontWeight: 600,
@@ -11307,8 +11307,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       border: "none",
                       background: COLORS.teal,
                       color: "#fff",
-                      cursor: structuredFindingsBulkBusy ? "default" : "pointer",
-                      opacity: structuredFindingsBulkBusy ? 0.6 : 1,
+                      cursor: structuredFindingsBulkBusy || structuredFindingsBusyId !== null ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy || structuredFindingsBusyId !== null ? 0.6 : 1,
                     }}
                   >
                     {structuredFindingsBulkBusy ? "Applying…" : `Apply All Non-Conflicting (${pendingStructuredSignals.length})`}
@@ -11316,7 +11316,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   <button
                     type="button"
                     onClick={handleApplySelected}
-                    disabled={structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0}
+                    disabled={structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0}
                     style={{
                       fontSize: 11,
                       fontWeight: 600,
@@ -11325,8 +11325,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       border: `1px solid ${COLORS.teal}`,
                       background: "transparent",
                       color: COLORS.teal,
-                      cursor: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? "default" : "pointer",
-                      opacity: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? 0.5 : 1,
+                      cursor:
+                        structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0
+                          ? "default"
+                          : "pointer",
+                      opacity:
+                        structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0
+                          ? 0.5
+                          : 1,
                     }}
                   >
                     {`Apply Selected (${selectedStructuredSignalIds.size})`}
@@ -11334,7 +11340,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   <button
                     type="button"
                     onClick={handleDismissSelected}
-                    disabled={structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0}
+                    disabled={structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0}
                     style={{
                       fontSize: 11,
                       fontWeight: 600,
@@ -11343,8 +11349,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       border: `1px solid ${COLORS.border}`,
                       background: "transparent",
                       color: COLORS.gray,
-                      cursor: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? "default" : "pointer",
-                      opacity: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? 0.5 : 1,
+                      cursor:
+                        structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0
+                          ? "default"
+                          : "pointer",
+                      opacity:
+                        structuredFindingsBulkBusy || structuredFindingsBusyId !== null || selectedStructuredSignalIds.size === 0
+                          ? 0.5
+                          : 1,
                     }}
                   >
                     {`Dismiss Selected (${selectedStructuredSignalIds.size})`}
@@ -11352,7 +11364,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   <button
                     type="button"
                     onClick={handleDismissAllPending}
-                    disabled={structuredFindingsBulkBusy}
+                    disabled={structuredFindingsBulkBusy || structuredFindingsBusyId !== null}
                     style={{
                       fontSize: 11,
                       fontWeight: 600,
@@ -11361,8 +11373,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       border: `1px solid ${COLORS.border}`,
                       background: "transparent",
                       color: COLORS.gray,
-                      cursor: structuredFindingsBulkBusy ? "default" : "pointer",
-                      opacity: structuredFindingsBulkBusy ? 0.6 : 1,
+                      cursor: structuredFindingsBulkBusy || structuredFindingsBusyId !== null ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy || structuredFindingsBusyId !== null ? 0.6 : 1,
                     }}
                   >
                     {`Dismiss All (${pendingStructuredSignals.length})`}
@@ -11391,6 +11403,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       type="checkbox"
                       checked={selectedStructuredSignalIds.has(signal.id)}
                       onChange={() => toggleStructuredSignalSelected(signal.id)}
+                      disabled={structuredFindingsBulkBusy || structuredFindingsBusyId === signal.id}
                       aria-label={`Select structured finding from ${signal.source_type}`}
                       style={{ marginTop: 2 }}
                     />
@@ -11414,7 +11427,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                     <button
                       type="button"
                       onClick={() => handleApplyStructuredSignal(signal)}
-                      disabled={structuredFindingsBusyId === signal.id}
+                      disabled={structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy}
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
@@ -11423,8 +11436,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                         border: "none",
                         background: COLORS.teal,
                         color: "#fff",
-                        cursor: structuredFindingsBusyId === signal.id ? "default" : "pointer",
-                        opacity: structuredFindingsBusyId === signal.id ? 0.6 : 1,
+                        cursor: structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy ? "default" : "pointer",
+                        opacity: structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy ? 0.6 : 1,
                       }}
                     >
                       {structuredFindingsBusyId === signal.id ? "Applying…" : "Apply to RNICA"}
@@ -11432,7 +11445,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                     <button
                       type="button"
                       onClick={() => handleDismissStructuredSignal(signal)}
-                      disabled={structuredFindingsBusyId === signal.id}
+                      disabled={structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy}
                       style={{
                         fontSize: 11,
                         fontWeight: 600,
@@ -11441,8 +11454,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                         border: `1px solid ${COLORS.border}`,
                         background: "transparent",
                         color: COLORS.gray,
-                        cursor: structuredFindingsBusyId === signal.id ? "default" : "pointer",
-                        opacity: structuredFindingsBusyId === signal.id ? 0.6 : 1,
+                        cursor: structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy ? "default" : "pointer",
+                        opacity: structuredFindingsBusyId === signal.id || structuredFindingsBulkBusy ? 0.6 : 1,
                       }}
                     >
                       Dismiss
