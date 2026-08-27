@@ -1,7 +1,7 @@
 """add structured findings to harvested signals
 
 Revision ID: 43ebae4b566d
-Revises: f6a9c1d3e7b2
+Revises: f3a7c9d2b4e1
 Create Date: 2026-08-27 11:35:47.860518
 
 """
@@ -14,7 +14,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '43ebae4b566d'
-down_revision: Union[str, Sequence[str], None] = 'f6a9c1d3e7b2'
+down_revision: Union[str, Sequence[str], None] = 'f3a7c9d2b4e1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
