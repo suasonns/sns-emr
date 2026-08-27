@@ -9973,6 +9973,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           reasonParts.length > 0 ? reasonParts.join("; ") : "No blank fields to populate"
         );
         setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
+        setSelectedStructuredSignalIds((prev) => {
+          if (!prev.has(signal.id)) return prev;
+          const next = new Set(prev);
+          next.delete(signal.id);
+          return next;
+        });
       } catch (err) {
         console.error("Apply structured finding error:", err);
         setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply structured finding(s).");
@@ -9989,6 +9995,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     try {
       await reviewHarvestedSignal(signal.id, "DISMISSED", "Reviewed — not applied by RN");
       setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
+      setSelectedStructuredSignalIds((prev) => {
+        if (!prev.has(signal.id)) return prev;
+        const next = new Set(prev);
+        next.delete(signal.id);
+        return next;
+      });
     } catch (err) {
       console.error("Dismiss structured finding error:", err);
       setStructuredFindingsError(err instanceof Error ? err.message : "Unable to dismiss structured finding(s).");
@@ -9997,75 +10009,149 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     }
   }, []);
 
-  // --- Bulk action: "Apply All Non-Conflicting" ---------------------------
+  // --- Bulk actions: "Apply All Non-Conflicting" / "Apply Selected" /
+  // "Dismiss Selected" / "Dismiss All" -------------------------------------
   // Kept as a separate busy/loading flag from the per-signal
-  // structuredFindingsBusyId so this bulk action's own button can show its
-  // own pending state without disabling/relabeling every individual row.
+  // structuredFindingsBusyId so a bulk action's own button can show its own
+  // pending state without disabling/relabeling every individual row.
   const [structuredFindingsBulkBusy, setStructuredFindingsBulkBusy] = useState(false);
+  // RN-driven checkbox selection over the pending list, used by "Apply
+  // Selected" / "Dismiss Selected" -- deliberately independent of "Apply
+  // All Non-Conflicting" / "Dismiss All", which always act on the full
+  // pending list regardless of what's checked.
+  const [selectedStructuredSignalIds, setSelectedStructuredSignalIds] = useState(() => new Set());
 
-  const handleApplyAllNonConflicting = useCallback(async () => {
+  const toggleStructuredSignalSelected = useCallback((signalId) => {
+    setSelectedStructuredSignalIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(signalId)) next.delete(signalId);
+      else next.add(signalId);
+      return next;
+    });
+  }, []);
+
+  // Shared core for "Apply All Non-Conflicting" and "Apply Selected" --
+  // both run the exact same all-or-nothing-per-signal merge, just over a
+  // different target list (the full pending list vs. only checked rows).
+  const applyStructuredSignalsBulk = useCallback(
+    async (targetSignals, reasonLabel) => {
+      if (targetSignals.length === 0) {
+        setStructuredFindingsError("No structured findings selected to apply.");
+        return;
+      }
+      setStructuredFindingsError("");
+      setStructuredFindingsBulkBusy(true);
+      try {
+        const {
+          formData: nextFormData,
+          appliedSignalIds,
+          skippedSignalIds,
+          appliedFieldsBySignal,
+          skippedConflicts,
+        } = applyAllNonConflicting(formData, targetSignals);
+
+        if (appliedSignalIds.length === 0) {
+          setStructuredFindingsError(
+            skippedSignalIds.length > 0
+              ? "Every selected signal has at least one conflicting field — review them individually below."
+              : "No pending structured findings to apply."
+          );
+          return;
+        }
+
+        setFormData(nextFormData);
+
+        const provenanceEntries = [];
+        for (const signal of targetSignals) {
+          if (!appliedSignalIds.includes(signal.id)) continue;
+          const applied = appliedFieldsBySignal[signal.id] || [];
+          for (const f of applied) {
+            provenanceEntries.push({
+              section: f.section,
+              path: f.path,
+              value: f.value,
+              concept_code: f.concept_code,
+              source_type: signal.source_type,
+              source_excerpt: signal.original_text_excerpt,
+              recorded_at: signal.recorded_at,
+              confidence: f.finding?.confidence,
+              signal_id: signal.id,
+            });
+          }
+        }
+        if (provenanceEntries.length > 0) {
+          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+        }
+
+        await batchReviewHarvestedSignals(appliedSignalIds, "APPLIED", { reason: reasonLabel });
+        setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
+        setSelectedStructuredSignalIds((prev) => {
+          if (prev.size === 0) return prev;
+          const next = new Set(prev);
+          for (const id of appliedSignalIds) next.delete(id);
+          return next;
+        });
+
+        if (skippedSignalIds.length > 0) {
+          setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
+          setStructuredFindingsError(
+            `Applied ${appliedSignalIds.length} non-conflicting signal(s). ${skippedSignalIds.length} signal(s) had a conflicting field and still need individual review.`
+          );
+        }
+      } catch (err) {
+        console.error(`${reasonLabel} error:`, err);
+        setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply structured findings.");
+      } finally {
+        setStructuredFindingsBulkBusy(false);
+      }
+    },
+    [formData]
+  );
+
+  const handleApplyAllNonConflicting = useCallback(() => {
+    return applyStructuredSignalsBulk(pendingStructuredSignals, "Apply All Non-Conflicting");
+  }, [applyStructuredSignalsBulk, pendingStructuredSignals]);
+
+  const handleApplySelected = useCallback(() => {
+    const selected = pendingStructuredSignals.filter((s) => selectedStructuredSignalIds.has(s.id));
+    return applyStructuredSignalsBulk(selected, "Apply Selected");
+  }, [applyStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
+
+  // Shared core for "Dismiss Selected" and "Dismiss All" -- both just
+  // record every target signal's disposition as DISMISSED in one call.
+  const dismissStructuredSignalsBulk = useCallback(async (targetSignals, reasonLabel) => {
+    if (targetSignals.length === 0) {
+      setStructuredFindingsError("No structured findings selected to dismiss.");
+      return;
+    }
     setStructuredFindingsError("");
     setStructuredFindingsBulkBusy(true);
     try {
-      const {
-        formData: nextFormData,
-        appliedSignalIds,
-        skippedSignalIds,
-        appliedFieldsBySignal,
-        skippedConflicts,
-      } = applyAllNonConflicting(formData, pendingStructuredSignals);
-
-      if (appliedSignalIds.length === 0) {
-        setStructuredFindingsError(
-          skippedSignalIds.length > 0
-            ? "Every pending signal has at least one conflicting field — review them individually below."
-            : "No pending structured findings to apply."
-        );
-        return;
-      }
-
-      setFormData(nextFormData);
-
-      const provenanceEntries = [];
-      for (const signal of pendingStructuredSignals) {
-        if (!appliedSignalIds.includes(signal.id)) continue;
-        const applied = appliedFieldsBySignal[signal.id] || [];
-        for (const f of applied) {
-          provenanceEntries.push({
-            section: f.section,
-            path: f.path,
-            value: f.value,
-            concept_code: f.concept_code,
-            source_type: signal.source_type,
-            source_excerpt: signal.original_text_excerpt,
-            recorded_at: signal.recorded_at,
-            confidence: f.finding?.confidence,
-            signal_id: signal.id,
-          });
-        }
-      }
-      if (provenanceEntries.length > 0) {
-        setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
-      }
-
-      await batchReviewHarvestedSignals(appliedSignalIds, "APPLIED", {
-        reason: "Apply All Non-Conflicting",
+      const ids = targetSignals.map((s) => s.id);
+      await batchReviewHarvestedSignals(ids, "DISMISSED", { reason: reasonLabel });
+      setPendingStructuredSignals((prev) => prev.filter((s) => !ids.includes(s.id)));
+      setSelectedStructuredSignalIds((prev) => {
+        if (prev.size === 0) return prev;
+        const next = new Set(prev);
+        for (const id of ids) next.delete(id);
+        return next;
       });
-      setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
-
-      if (skippedSignalIds.length > 0) {
-        setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
-        setStructuredFindingsError(
-          `Applied ${appliedSignalIds.length} non-conflicting signal(s). ${skippedSignalIds.length} signal(s) had a conflicting field and still need individual review.`
-        );
-      }
     } catch (err) {
-      console.error("Apply All Non-Conflicting error:", err);
-      setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply all non-conflicting findings.");
+      console.error(`${reasonLabel} error:`, err);
+      setStructuredFindingsError(err instanceof Error ? err.message : "Unable to dismiss structured findings.");
     } finally {
       setStructuredFindingsBulkBusy(false);
     }
-  }, [formData, pendingStructuredSignals]);
+  }, []);
+
+  const handleDismissAllPending = useCallback(() => {
+    return dismissStructuredSignalsBulk(pendingStructuredSignals, "Bulk dismissed by RN — reviewed, not applied (Dismiss All)");
+  }, [dismissStructuredSignalsBulk, pendingStructuredSignals]);
+
+  const handleDismissSelected = useCallback(() => {
+    const selected = pendingStructuredSignals.filter((s) => selectedStructuredSignalIds.has(s.id));
+    return dismissStructuredSignalsBulk(selected, "Bulk dismissed by RN — reviewed, not applied (Dismiss Selected)");
+  }, [dismissStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
 
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
@@ -11208,7 +11294,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               </div>
 
               {pendingStructuredSignals.length > 0 && (
-                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
                   <button
                     type="button"
                     onClick={handleApplyAllNonConflicting}
@@ -11226,6 +11312,60 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                     }}
                   >
                     {structuredFindingsBulkBusy ? "Applying…" : `Apply All Non-Conflicting (${pendingStructuredSignals.length})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplySelected}
+                    disabled={structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${COLORS.teal}`,
+                      background: "transparent",
+                      color: COLORS.teal,
+                      cursor: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? 0.5 : 1,
+                    }}
+                  >
+                    {`Apply Selected (${selectedStructuredSignalIds.size})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDismissSelected}
+                    disabled={structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${COLORS.border}`,
+                      background: "transparent",
+                      color: COLORS.gray,
+                      cursor: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy || selectedStructuredSignalIds.size === 0 ? 0.5 : 1,
+                    }}
+                  >
+                    {`Dismiss Selected (${selectedStructuredSignalIds.size})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDismissAllPending}
+                    disabled={structuredFindingsBulkBusy}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: `1px solid ${COLORS.border}`,
+                      background: "transparent",
+                      color: COLORS.gray,
+                      cursor: structuredFindingsBulkBusy ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {`Dismiss All (${pendingStructuredSignals.length})`}
                   </button>
                 </div>
               )}
@@ -11246,14 +11386,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   key={signal.id}
                   style={{ marginBottom: 10, padding: 10, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.border}` }}
                 >
-                  <div style={{ fontSize: 10, color: COLORS.gray, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    {signal.source_type}{signal.recorded_at ? ` • ${new Date(signal.recorded_at).toLocaleDateString()}` : ""}
-                  </div>
-                  {signal.original_text_excerpt && (
-                    <div style={{ fontSize: 11, fontStyle: "italic", color: COLORS.dark, marginBottom: 6 }}>
-                      &ldquo;{signal.original_text_excerpt}&rdquo;
-                    </div>
-                  )}
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedStructuredSignalIds.has(signal.id)}
+                      onChange={() => toggleStructuredSignalSelected(signal.id)}
+                      aria-label={`Select structured finding from ${signal.source_type}`}
+                      style={{ marginTop: 2 }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 10, color: COLORS.gray, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        {signal.source_type}{signal.recorded_at ? ` • ${new Date(signal.recorded_at).toLocaleDateString()}` : ""}
+                      </div>
+                      {signal.original_text_excerpt && (
+                        <div style={{ fontSize: 11, fontStyle: "italic", color: COLORS.dark, marginBottom: 6 }}>
+                          &ldquo;{signal.original_text_excerpt}&rdquo;
+                        </div>
+                      )}
                   {(signal.structured_findings || []).map((finding, fIdx) => (
                     <div key={`${finding.concept_code}-${fIdx}`} style={{ fontSize: 10, color: COLORS.gray, marginBottom: 2 }}>
                       <strong style={{ color: COLORS.dark }}>{finding.concept_code}</strong>
@@ -11298,6 +11447,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                     >
                       Dismiss
                     </button>
+                  </div>
+                    </div>
                   </div>
                 </div>
               ))}
