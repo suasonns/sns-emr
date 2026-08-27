@@ -29,6 +29,8 @@ from typing import Any
 
 import httpx
 
+from app.services.evidence.structured_findings import concept_prompt_catalog, validate_findings
+
 logger = logging.getLogger("sns_emr")
 
 DEFAULT_TIMEOUT_SECONDS = 30.0
@@ -45,6 +47,11 @@ class ExtractedSignal:
     clinical_system: str | None
     requires_idg_review: bool
     requires_poc_review: bool
+    # Concept-coded structured RNICA field findings (see
+    # app.services.evidence.structured_findings) validated against the
+    # shared, server-controlled CONCEPT_REGISTRY -- the model never emits a
+    # raw field_path/value here; only a fixed concept_code.
+    structured_findings: tuple[dict[str, Any], ...] = ()
 
 
 def _azure_openai_config() -> dict[str, str] | None:
@@ -102,11 +109,50 @@ Respond ONLY with a JSON object of this exact shape:
       "confidence": 0.0-1.0,
       "clinical_system": "e.g. cardiopulmonary, neuro, functional, nutrition, psychosocial, safety, skin, pain",
       "requires_idg_review": true | false,
-      "requires_poc_review": true | false
+      "requires_poc_review": true | false,
+      "structured_findings": [
+        {
+          "concept_code": "<EXACT_CODE_FROM_CONCEPT_CATALOG>",
+          "value": "<true|false|number, only if the concept has a value_slot>",
+          "source_excerpt": "<verbatim quote supporting this, required>",
+          "confidence": 0.0-1.0,
+          "assertion_status": "CURRENT|HISTORICAL|NEGATED|UNCERTAIN",
+          "subject": "PATIENT|FAMILY|OTHER"
+        }
+      ]
     }
   ]
 }
+
+ADDITIONAL RULE for "structured_findings": in addition to the free-text signal above, \
+also identify any discrete clinical facts in this same excerpt that map to one of the \
+fixed concept_code values in the catalog below -- these become candidate RNICA \
+structured field values (checkboxes/dropdowns/numeric fields), not just narrative text. \
+You may ONLY use a concept_code that appears verbatim in the catalog; never invent one, \
+never guess the nearest match. Leave "structured_findings" as an empty list when nothing \
+in this excerpt maps to the catalog.
+- "assertion_status" is mandatory: CURRENT (true now), HISTORICAL (past/resolved, e.g. \
+"history of...", "resolved", a past date), NEGATED (explicitly denied, e.g. "not using \
+oxygen", "denies..."), UNCERTAIN (ambiguous or you cannot confidently tell).
+- Only emit a concept when you can quote a real excerpt as source_excerpt -- never guess \
+without one.
+- Do not invent a numeric value (e.g. liters/minute) the source text doesn't state.
+- When a concept has a free-text "value" (e.g. an anatomic location) and the source \
+documents MULTIPLE distinct sites for the same concept (e.g. "left buttock and right \
+foot wounds"), emit ONE separate structured_finding entry per site, each with a single \
+site name in "value" -- never join multiple sites into one combined string (e.g. never \
+"left buttock; right foot").
+- history mentioned only in passing (e.g. "history of septic shock, resolved") is \
+HISTORICAL, not CURRENT, even when it sounds clinically significant.
+- When in doubt whether a finding qualifies, omit it entirely.
+
+CONCEPT CATALOG (the only concept_code values structured_findings may ever use):
+%%CONCEPT_CATALOG%%
 """
+
+# Rendered once at import time (the registry is static) rather than
+# recomputed on every chunk call.
+_SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("%%CONCEPT_CATALOG%%", concept_prompt_catalog())
 
 
 def extract_signals(
@@ -179,10 +225,12 @@ def extract_signals(
     if not isinstance(signals_raw, list):
         return []
 
+    finding_source_type = _resolve_finding_source_type(source_type, note_type)
+
     signals: list[ExtractedSignal] = []
     for item in signals_raw:
         try:
-            signal = _parse_signal(item)
+            signal = _parse_signal(item, finding_source_type=finding_source_type)
         except Exception:
             logger.warning(
                 "evidence_harvester: skipping malformed signal item=%r", item
@@ -194,7 +242,44 @@ def extract_signals(
     return signals
 
 
-def _parse_signal(item: Any) -> ExtractedSignal | None:
+# Every evidence source that reaches this module's `extract_signals()` is
+# stamped with the PatientEvidenceRecord.source_type it was harvested from
+# (clinical_notes, communications_log, patients.py's H&P intake,
+# document_harvest_job.py's uploaded-document pipeline, certifications,
+# F2F, etc). That value maps 1:1 onto the shared StructuredFinding
+# contract's source_type enum except for the generic "DOCUMENT_UPLOAD" tag
+# used for ad-hoc file uploads, which is disambiguated using the classified
+# document type (H&P/referral vs anything else) so the same concept
+# behaves identically regardless of which pipeline it arrived through.
+_HNP_DOCUMENT_TYPES = {"H_AND_P", "HNP", "REFERRAL", "REFERRAL_HNP"}
+
+
+def _resolve_finding_source_type(evidence_source_type: str, note_type: str | None) -> str:
+    """Map a PatientEvidenceRecord.source_type (+ optional note_type/document
+    classification) onto one of the 4 StructuredFinding source_type values.
+
+    This is the single place that decides REFERRAL_HNP vs UPLOADED_DOCUMENT
+    vs CLINICAL_NOTE so every adapter (transcript is handled separately in
+    note_draft_service.py) stays consistent -- a concept extracted from an
+    uploaded H&P PDF must validate and apply exactly the same way as one
+    typed directly into the H&P intake textbox.
+    """
+
+    normalized_source = (evidence_source_type or "").strip().upper()
+    normalized_note_type = (note_type or "").strip().upper()
+
+    if normalized_source == "REFERRAL_HNP":
+        return "REFERRAL_HNP"
+    if normalized_source == "DOCUMENT_UPLOAD":
+        return "REFERRAL_HNP" if normalized_note_type in _HNP_DOCUMENT_TYPES else "UPLOADED_DOCUMENT"
+    # CLINICAL_NOTE, COMMUNICATION_LOG, ON_CALL_LOG, INCIDENT_REPORT,
+    # IDG_NOTE, PLAN_OF_CARE_REVIEW, CERTIFICATION, F2F_ENCOUNTER,
+    # VOLUNTEER_NOTE, FACILITY_NOTIFICATION -- all authored clinical
+    # documentation, not an uploaded/scanned source document.
+    return "CLINICAL_NOTE"
+
+
+def _parse_signal(item: Any, *, finding_source_type: str = "CLINICAL_NOTE") -> ExtractedSignal | None:
     if not isinstance(item, dict):
         return None
 
@@ -217,6 +302,17 @@ def _parse_signal(item: Any) -> ExtractedSignal | None:
     if trend not in ("UP", "DOWN", "STABLE", "UNKNOWN"):
         trend = None
 
+    # structured_findings validated against the shared, server-controlled
+    # CONCEPT_REGISTRY -- the model never emits a raw field_path/value;
+    # only a fixed concept_code. `finding_source_type` is resolved once per
+    # call by `_resolve_finding_source_type` from the real evidence source
+    # (REFERRAL_HNP / DOCUMENT_UPLOAD->REFERRAL_HNP or UPLOADED_DOCUMENT /
+    # CLINICAL_NOTE and siblings) so a concept applies identically no
+    # matter which of those pipelines it came from.
+    findings_raw = item.get("structured_findings")
+    validated = validate_findings(findings_raw, source_type=finding_source_type)
+    structured_findings = tuple(f.to_dict() for f in validated)
+
     return ExtractedSignal(
         signal_key=signal_key[:128],
         signal_text=signal_text,
@@ -226,4 +322,5 @@ def _parse_signal(item: Any) -> ExtractedSignal | None:
         clinical_system=(str(item.get("clinical_system"))[:64] if item.get("clinical_system") else None),
         requires_idg_review=bool(item.get("requires_idg_review", False)),
         requires_poc_review=bool(item.get("requires_poc_review", False)),
+        structured_findings=structured_findings,
     )

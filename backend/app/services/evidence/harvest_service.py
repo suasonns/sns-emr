@@ -159,6 +159,7 @@ def _run_ai_extraction(
                 requires_idg_review=signal.requires_idg_review,
                 requires_poc_review=signal.requires_poc_review,
                 review_status="NEW",
+                structured_findings=list(signal.structured_findings),
             )
         )
 

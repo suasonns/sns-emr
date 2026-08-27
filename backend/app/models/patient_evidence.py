@@ -41,7 +41,7 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
 from app.db.base import Base
@@ -164,6 +164,19 @@ class PatientHarvestedSignal(Base):
     confidence = Column(Numeric(3, 2), nullable=True)
 
     clinical_system = Column(String(64), nullable=True)
+
+    # Validated StructuredFinding objects (see app.services.evidence.
+    # structured_findings) extracted from this same signal's source text --
+    # zero or more concept-code findings, each already passed through
+    # validate_findings() so only registry-known concepts, allowed enum
+    # values, and in-range numerics ever land here. This is what feeds the
+    # RNICA structured-field auto-apply layer (blank-only, assertion-status
+    # gated); it is stored independently of signal_text/original_text_excerpt
+    # above so "no structured field mapped" (EVIDENCE_FOUND) is always
+    # distinguishable from "at least one field mapped" (ASSESSMENT_DRAFTED)
+    # without re-parsing free text. Empty list, never null, when nothing in
+    # this excerpt maps to a known concept.
+    structured_findings = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
 
     requires_rn_review = Column(Boolean, nullable=False, server_default=text("true"))
     requires_idg_review = Column(Boolean, nullable=False, server_default=text("false"))

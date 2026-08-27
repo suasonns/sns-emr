@@ -544,6 +544,16 @@ const INITIAL_FORM = {
     sensoryDeficits: [],
     sensoryAids: [],
     symptomsDemeanor: [],
+    // Motor deficit findings (e.g. hemiparesis/hemiplegia) extracted from
+    // H&P/referral/uploaded-document/transcript evidence by the shared
+    // StructuredFinding contract (app/services/evidence/structured_findings.py
+    // NEURO_HEMIPARESIS_*/NEURO_HEMIPLEGIA_* concepts). `paralysis` under
+    // musculoskeletal below is the matching cross-section write target for
+    // the same finding (a hemiparesis is both a neurological deficit and a
+    // musculoskeletal disability classification).
+    motorDeficit: false,
+    affectedSide: "",
+    deficitType: [],
     sleepRest: {
       sleepPattern: "", averageSleepHours: "",
       sleepAids: [], restfulness: "",
@@ -565,6 +575,15 @@ const INITIAL_FORM = {
     skinColor: "", pacemaker: false, internalDefibrillator: false,
     varicoseVeins: false, centralVenousLine: false,
     coolExtremities: false, stasisUlcer: false,
+    // Objective heart-failure finding drafted from evidence text (H&P,
+    // referral, uploaded documents, or transcript) via the shared
+    // StructuredFinding contract's CV_HEART_FAILURE_* concepts. Deliberately
+    // separate from hopeComorbidities.heartFailure (HOPE I0600) below, which
+    // is auto-derived from a coded Primary/Secondary Diagnosis category --
+    // this field can be populated even before/without a coded diagnosis and
+    // is always draft/review-needed until clinician review.
+    heartFailurePresent: false,
+    heartFailureType: [],
     notes: "",
   },
 
@@ -667,6 +686,14 @@ const INITIAL_FORM = {
     // (e.g. cardiovascular.edema.location). `contractures` itself stays the
     // existing None/Mild/Moderate/Severe severity radio.
     contracturesLocation: [],
+    // Presence-only flags written by MSK_CONTRACTURES_PRESENT /
+    // MSK_RIGIDITY_PRESENT (structured_findings.py) when evidence documents
+    // the finding without stating a severity. The `contractures`/`rigidity`
+    // severity radios above are only ever set by a distinct, explicit-
+    // severity concept (MSK_CONTRACTURES_SEVERITY_*/MSK_RIGIDITY_SEVERITY_*)
+    // so severity is never inferred/guessed from a presence-only mention.
+    contracturesPresent: false,
+    rigidityPresent: false,
     romLimitations: [],
     // §5.10 Issues/Additional items not covered by the existing severity
     // radios (weakness/rigidity/contractures) or paralysis/romLimitations.
@@ -8895,6 +8922,13 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        title: "Motor Deficit", fields: [
+          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
+          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
+          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
+        ],
+      },
+      {
         title: "Notes", fields: [
           { type: "textarea", label: "Neurological Notes", path: "notes", rows: 4 },
         ],
@@ -8925,6 +8959,8 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
         { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
         { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
+        { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
+        { type: "checkboxGroup", label: "Heart Failure Type", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
       ]},
     ],
@@ -9133,7 +9169,9 @@ const SECTION_CONFIGS = {
       { title: "Musculoskeletal Assessment", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "checkbox", label: "Rigidity Present (severity not documented)", path: "rigidityPresent" },
         { type: "radio", label: "Contractures", path: "contractures", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "checkbox", label: "Contractures Present (severity not documented)", path: "contracturesPresent" },
         { type: "checkboxGroup", label: "Contracture Location", path: "contracturesLocation", options: ["Bilateral lower extremities", "Unilateral LE", "Upper extremities", "Hands/fingers", "Neck/spine", "Generalized"] },
         { type: "checkboxGroup", label: "ROM Loss Location", path: "romLimitations", options: ["Upper extremities", "Lower extremities", "Neck/spine", "Hands/fingers", "Generalized"] },
         { type: "checkboxGroup", label: "Issues", path: "musculoskeletalIssues", options: ["Joint swelling", "Spasms / cramps", "Amputation", "Prosthesis", "ROM loss", "None"] },

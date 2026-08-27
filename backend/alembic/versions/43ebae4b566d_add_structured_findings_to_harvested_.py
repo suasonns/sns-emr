@@ -1,0 +1,37 @@
+"""add structured findings to harvested signals
+
+Revision ID: 43ebae4b566d
+Revises: f6a9c1d3e7b2
+Create Date: 2026-08-27 11:35:47.860518
+
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+
+# revision identifiers, used by Alembic.
+revision: str = '43ebae4b566d'
+down_revision: Union[str, Sequence[str], None] = 'f6a9c1d3e7b2'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    """Upgrade schema."""
+    op.add_column(
+        "patient_harvested_signals",
+        sa.Column(
+            "structured_findings",
+            postgresql.JSONB(astext_type=sa.Text()),
+            nullable=False,
+            server_default=sa.text("'[]'::jsonb"),
+        ),
+    )
+
+
+def downgrade() -> None:
+    """Downgrade schema."""
+    op.drop_column("patient_harvested_signals", "structured_findings")
