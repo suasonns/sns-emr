@@ -278,6 +278,25 @@ export async function getStructuredFindingsAnalytics(options?: {
   );
 }
 
+// Read-only RN Productivity Metrics — fields_populated and
+// manual_entries_avoided, computed strictly from persisted review_status
+// (APPLIED) + structured_findings data. Deliberately no time-saved
+// estimate (that would require an assumption, not a persisted fact).
+export async function getRnProductivityMetrics(options?: {
+  patientId?: string;
+  startDate?: string;
+  endDate?: string;
+}) {
+  const params: Record<string, string> = {};
+  if (options?.patientId) params.patient_id = options.patientId;
+  if (options?.startDate) params.start_date = options.startDate;
+  if (options?.endDate) params.end_date = options.endDate;
+  return unwrap(
+    api.get(`/visits/rnica/signals/productivity-metrics`, { params }),
+    "Unable to load RN productivity metrics"
+  );
+}
+
 
 // SECTION 12 — Final Review Dashboard data source. Single source of truth
 // shared with the backend lock endpoint, so the UI's Lock button and the
