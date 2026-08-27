@@ -18,6 +18,7 @@ class HnpPatientRecord:
     email: str | None = None
     primary_diagnosis: str | None = None
     diagnoses: list[str] | None = None
+    diagnosis_entries: list[dict[str, Any]] | None = None
     raw_text: str = ""
 
 
@@ -85,24 +86,112 @@ def _extract_first_match(pattern: str, text: str) -> str | None:
     return _clean_whitespace(match.group(1))
 
 
-def _extract_diagnoses(text: str) -> list[str]:
+_NEGATED_DIAGNOSIS_PATTERNS = (
+    "rule out ",
+    "ruled out ",
+    "denies ",
+    "denied ",
+    "no evidence of ",
+    "without evidence of ",
+)
+
+_UNCERTAIN_DIAGNOSIS_PATTERNS = (
+    "possible ",
+    "possibly ",
+    "probable ",
+    "suspected ",
+    "concern for ",
+    "question of ",
+)
+
+_HISTORICAL_DIAGNOSIS_PATTERNS = (
+    "history of ",
+    "hx of ",
+    "h/o ",
+    "personal history of ",
+    "old ",
+)
+
+_SYMPTOM_ONLY_TERMS = {
+    "shortness of breath",
+    "sob",
+    "dyspnea",
+    "chest pain",
+    "pain",
+    "fatigue",
+    "weakness",
+    "edema",
+}
+
+
+def _classify_diagnosis(value: str) -> dict[str, Any]:
+    normalized = _clean_whitespace(value) or ""
+    lowered = normalized.lower()
+    lowered_without_code = re.sub(
+        r"\s*\([a-z][a-z0-9]{1,6}(?:\.[a-z0-9]{1,4})?\)\s*$",
+        "",
+        lowered,
+        flags=re.IGNORECASE,
+    ).strip()
+    is_negated = any(pattern in lowered for pattern in _NEGATED_DIAGNOSIS_PATTERNS)
+    is_uncertain = any(pattern in lowered for pattern in _UNCERTAIN_DIAGNOSIS_PATTERNS)
+    is_historical = any(lowered_without_code.startswith(pattern) for pattern in _HISTORICAL_DIAGNOSIS_PATTERNS)
+    compact = re.sub(r"\s+", " ", lowered_without_code).strip(" .,:;")
+    is_symptom_only = compact in _SYMPTOM_ONLY_TERMS
+    return {
+        "description": normalized,
+        "status": (
+            "negated"
+            if is_negated
+            else "uncertain"
+            if is_uncertain
+            else "historical"
+            if is_historical
+            else "symptom_only"
+            if is_symptom_only
+            else "current"
+        ),
+        "is_negated": is_negated,
+        "is_uncertain": is_uncertain,
+        "is_historical": is_historical,
+        "is_symptom_only": is_symptom_only,
+    }
+
+
+def _extract_diagnoses(text: str) -> tuple[list[str], list[dict[str, Any]]]:
     diagnoses: list[str] = []
+    diagnosis_entries: list[dict[str, Any]] = []
     # Non-greedy but spans newlines (DOTALL) since diagnosis descriptions can
     # word-wrap onto a second line in PDF-extracted text (e.g. "...STAGE\n3A...").
-    pattern = r"Diagnosis:\s*(.+?)\s*Noted on:"
+    pattern = r"Diagnosis:\s*(.+?)\s*Noted on:\s*([0-9/\-]+)"
     for match in re.finditer(pattern, text, flags=re.IGNORECASE | re.DOTALL):
         value = _clean_whitespace(match.group(1))
+        noted_on = _parse_date(match.group(2))
         if value and value not in diagnoses:
             diagnoses.append(value)
+            diagnosis_entries.append(
+                {
+                    **_classify_diagnosis(value),
+                    "noted_on": noted_on.isoformat() if noted_on else None,
+                }
+            )
 
     if not diagnoses:
         for line in text.splitlines():
             if "Diagnosis:" in line:
                 value = line.split("Diagnosis:", 1)[1].strip()
                 if value:
-                    diagnoses.append(value)
+                    cleaned = _clean_whitespace(value)
+                    if cleaned and cleaned not in diagnoses:
+                        diagnoses.append(cleaned)
+                        diagnosis_entries.append(
+                            {
+                                **_classify_diagnosis(cleaned),
+                                "noted_on": None,
+                            }
+                        )
 
-    return diagnoses
+    return diagnoses, diagnosis_entries
 
 
 def parse_hnp_text(raw_text: str) -> HnpPatientRecord | None:
@@ -134,7 +223,7 @@ def parse_hnp_text(raw_text: str) -> HnpPatientRecord | None:
     phone = _extract_first_match(r"Home phone:\s*([0-9\-\(\)\s]+)", text) or _extract_first_match(r"Mobile:\s*([0-9\-\(\)\s]+)", text)
     email = _extract_first_match(r"Email:\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})", text)
 
-    diagnoses = _extract_diagnoses(text)
+    diagnoses, diagnosis_entries = _extract_diagnoses(text)
     primary = diagnoses[0] if diagnoses else None
 
     dob = _parse_date(dob_raw)
@@ -152,6 +241,7 @@ def parse_hnp_text(raw_text: str) -> HnpPatientRecord | None:
         email=email,
         primary_diagnosis=primary,
         diagnoses=diagnoses,
+        diagnosis_entries=diagnosis_entries,
         raw_text=text,
     )
 
@@ -175,4 +265,5 @@ def build_hnp_summary(payload: dict[str, Any] | str) -> dict[str, Any]:
         "email": parsed.email,
         "primary_diagnosis": parsed.primary_diagnosis,
         "diagnoses": parsed.diagnoses or [],
+        "diagnosis_entries": parsed.diagnosis_entries or [],
     }

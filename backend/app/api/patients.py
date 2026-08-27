@@ -13,7 +13,7 @@ from typing import Generator
 from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import func, text
+from sqlalchemy import func, inspect, text
 
 from app.core.security import get_current_user
 from app.core.patient_access import get_authorized_patient
@@ -28,6 +28,7 @@ from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
 from app.models.visit import Visit
 from app.models.patient_diagnosis import PatientDiagnosis
+from app.models.diagnosis_source import DiagnosisSource as DiagnosisSourceRecord
 from app.billing.models.patient_pos import PatientPOS
 from app.models.patient_payer import PatientPayer
 from app.models.rnica_assessment import RnicaAssessment
@@ -453,6 +454,253 @@ def _clean_name_part(value: str | None) -> str | None:
         return None
 
     return cleaned
+
+
+def _extract_embedded_icd10(value: str | None) -> str | None:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return None
+
+    match = re.search(r"\(([A-Z][A-Z0-9]{1,6}(?:\.[A-Z0-9]{1,4})?)\)\s*$", cleaned, flags=re.IGNORECASE)
+    if not match:
+        return None
+    return match.group(1).upper()
+
+
+def _strip_embedded_icd10(value: str | None) -> str | None:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return None
+    stripped = re.sub(r"\s*\([A-Z][A-Z0-9]{1,6}(?:\.[A-Z0-9]{1,4})?\)\s*$", "", cleaned, flags=re.IGNORECASE)
+    return stripped.strip() or cleaned
+
+
+def _diagnosis_identity_key(icd10_code: str | None, description: str | None) -> str:
+    code = str(icd10_code or "").strip().upper()
+    desc = re.sub(r"\s+", " ", str(description or "").strip().lower())
+    return f"{code}|{desc}"
+
+
+def _build_hnp_secondary_summary(entries: list[dict]) -> str | None:
+    lines: list[str] = []
+    seen: set[str] = set()
+
+    for entry in entries:
+        if entry.get("status") != "current":
+            continue
+        description = str(entry.get("display_name") or entry.get("description") or "").strip()
+        if not description:
+            continue
+        key = _diagnosis_identity_key(entry.get("icd10_code"), description)
+        if key in seen:
+            continue
+        seen.add(key)
+        icd10 = str(entry.get("icd10_code") or "").strip()
+        lines.append(f"- {description} ({icd10})" if icd10 else f"- {description}")
+
+    if not lines:
+        return None
+
+    return "Secondary Diagnoses:\n" + "\n".join(lines)
+
+
+def _resolve_hnp_diagnosis_for_secondary_use(
+    db: Session,
+    diagnosis_text: str,
+) -> tuple[str | None, str, str]:
+    extracted_code = _extract_embedded_icd10(diagnosis_text)
+    stripped_description = _strip_embedded_icd10(diagnosis_text) or diagnosis_text.strip()
+    if extracted_code:
+        return (
+            extracted_code,
+            stripped_description,
+            stripped_description,
+        )
+
+    try:
+        resolved = resolve_icd10_diagnosis_for_use(
+            db,
+            diagnosis_input=diagnosis_text,
+            diagnosis_role="SECONDARY",
+            workflow_context="REFERRAL",
+        )
+        return (
+            resolved.icd10_code,
+            resolved.diagnosis_description,
+            resolved.display_name,
+        )
+    except ICD10ResolutionError:
+        return (
+            extracted_code,
+            stripped_description,
+            stripped_description,
+        )
+
+
+def _sync_hnp_diagnosis_sources(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    source_name: str,
+    diagnosis_entries: list[dict],
+) -> None:
+    if not inspect(db.get_bind()).has_table("diagnosis_sources"):
+        return
+
+    for index, entry in enumerate(diagnosis_entries):
+        description = str(entry.get("description") or "").strip()
+        if not description:
+            continue
+
+        icd10_code = entry.get("icd10_code")
+        noted_on = entry.get("noted_on")
+        documented_at = None
+        if noted_on:
+            try:
+                documented_at = datetime.fromisoformat(str(noted_on))
+            except ValueError:
+                documented_at = None
+
+        dx_type = DiagnosisType.PRIMARY.value if index == 0 else DiagnosisType.SECONDARY.value
+        existing = (
+            db.query(DiagnosisSourceRecord)
+            .filter(
+                DiagnosisSourceRecord.tenant_id == tenant_id,
+                DiagnosisSourceRecord.patient_id == patient_id,
+                DiagnosisSourceRecord.source == source_name,
+                DiagnosisSourceRecord.dx_type == dx_type,
+                DiagnosisSourceRecord.icd_code == icd10_code,
+                DiagnosisSourceRecord.description == description,
+            )
+            .first()
+        )
+
+        if existing:
+            existing.documented_at = documented_at or existing.documented_at
+            existing.is_active = entry.get("status") == "current"
+            continue
+
+        db.add(
+            DiagnosisSourceRecord(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                source=source_name,
+                dx_type=dx_type,
+                icd_code=icd10_code,
+                description=description,
+                documented_at=documented_at,
+                is_active=entry.get("status") == "current",
+            )
+        )
+
+
+def _sync_hnp_secondary_diagnoses(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+    source_name: str,
+    diagnosis_entries: list[dict],
+) -> list[dict]:
+    existing_rows = (
+        db.query(PatientDiagnosis)
+        .filter(
+            PatientDiagnosis.tenant_id == tenant_id,
+            PatientDiagnosis.patient_id == patient_id,
+            PatientDiagnosis.diagnosis_type == DiagnosisType.SECONDARY,
+        )
+        .all()
+    )
+    existing_keys = {
+        _diagnosis_identity_key(row.icd10_code, row.diagnosis_description)
+        for row in existing_rows
+    }
+
+    persisted: list[dict] = []
+    seen_input_keys: set[str] = set()
+
+    for entry in diagnosis_entries[1:]:
+        description = str(entry.get("description") or "").strip()
+        if not description:
+            continue
+
+        resolved_code, resolved_description, resolved_display_name = (
+            _resolve_hnp_diagnosis_for_secondary_use(db, description)
+        )
+        identity_key = _diagnosis_identity_key(resolved_code, resolved_description)
+        if identity_key in seen_input_keys:
+            continue
+        seen_input_keys.add(identity_key)
+
+        status = str(entry.get("status") or "current").strip().lower()
+        noted_on = entry.get("noted_on")
+        effective_date = None
+        if noted_on:
+            try:
+                effective_date = date.fromisoformat(str(noted_on))
+            except ValueError:
+                effective_date = None
+
+        if status in {"negated", "uncertain", "symptom_only"}:
+            persisted.append(
+                {
+                    "description": resolved_display_name,
+                    "icd10_code": resolved_code,
+                    "status": status,
+                }
+            )
+            continue
+
+        if identity_key in existing_keys:
+            persisted.append(
+                {
+                    "description": resolved_display_name,
+                    "icd10_code": resolved_code,
+                    "status": status,
+                }
+            )
+            continue
+
+        db.add(
+            PatientDiagnosis(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                diagnosis_type=DiagnosisType.SECONDARY,
+                status=(
+                    DiagnosisStatus.HISTORICAL
+                    if status == "historical"
+                    else DiagnosisStatus.ACTIVE
+                ),
+                source=DiagnosisSource.REFERRAL,
+                icd10_code=resolved_code or "N/A",
+                diagnosis_description=resolved_description,
+                display_name=resolved_display_name,
+                active=status != "historical",
+                is_terminal=False,
+                is_related_to_terminal=False,
+                effective_date=effective_date or date.today(),
+                supporting_evidence_summary=(
+                    f"Imported from {source_name} documented diagnosis"
+                    + (f" noted on {noted_on}." if noted_on else ".")
+                ),
+                change_reason="HNP documented diagnosis import",
+                notes=f"Imported from {source_name}.",
+                created_by=actor_id,
+                updated_by=actor_id,
+            )
+        )
+        existing_keys.add(identity_key)
+        persisted.append(
+            {
+                "description": resolved_display_name,
+                "icd10_code": resolved_code,
+                "status": status,
+            }
+        )
+
+    return persisted
 
 
 def _normalize_name_parts(
@@ -1232,6 +1480,18 @@ def create_patient_from_hnp(
     except ValueError as exc:
         raise HTTPException(400, str(exc)) from exc
 
+    source_name = (payload.source_name or "HNP").strip() or "HNP"
+    diagnosis_entries = list(summary.get("diagnosis_entries") or [])
+    for entry in diagnosis_entries:
+        resolved_code, resolved_description, resolved_display_name = (
+            _resolve_hnp_diagnosis_for_secondary_use(
+                db,
+                str(entry.get("description") or ""),
+            )
+        )
+        entry["icd10_code"] = resolved_code
+        entry["display_name"] = resolved_display_name or resolved_description
+
     if payload.patient_id:
         patient = (
             db.query(Patient)
@@ -1289,6 +1549,7 @@ def create_patient_from_hnp(
             address=summary.get("address"),
             gender=summary.get("sex"),
             primary_diagnosis=summary["primary_diagnosis"] or "Diagnosis pending",
+            secondary_diagnoses=_build_hnp_secondary_summary(diagnosis_entries),
             created_by=user_id,
             updated_by=user_id,
             updated_at=now,
@@ -1361,8 +1622,36 @@ def create_patient_from_hnp(
             facesheet.address = summary.get("address") or facesheet.address
             facesheet.gender = summary.get("sex") or facesheet.gender
             facesheet.primary_diagnosis = summary["primary_diagnosis"] or facesheet.primary_diagnosis
+            facesheet.secondary_diagnoses = _build_hnp_secondary_summary(diagnosis_entries)
             facesheet.updated_by = user_id
             facesheet.updated_at = datetime.now(timezone.utc)
+
+    # Flush so the new patient row (and its FK-dependent rows added above)
+    # are visible to Postgres before diagnosis_sources/secondary diagnoses
+    # rows referencing patient.id are inserted below. Without this, a brand
+    # new patient's id is only known client-side (uuid4 default) and the
+    # dependency-based insert ordering SQLAlchemy normally infers can't be
+    # trusted here -- this schema has an existing unresolvable FK cycle
+    # (physicians <-> users) that disables automatic FK-based insert
+    # ordering, which was observed to let diagnosis_sources inserts race
+    # ahead of the patients insert within the same flush.
+    db.flush()
+
+    _sync_hnp_diagnosis_sources(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        source_name=source_name,
+        diagnosis_entries=diagnosis_entries,
+    )
+    _sync_hnp_secondary_diagnoses(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        actor_id=user_id,
+        source_name=source_name,
+        diagnosis_entries=diagnosis_entries,
+    )
 
     try:
         db.commit()
@@ -1377,7 +1666,7 @@ def create_patient_from_hnp(
         "last_name": summary["last_name"],
         "date_of_birth": patient.date_of_birth,
         "primary_diagnosis": patient.primary_diagnosis,
-        "source": payload.source_name or "HNP",
+        "source": source_name,
         "updated_from_hnp": True,
     }
 
