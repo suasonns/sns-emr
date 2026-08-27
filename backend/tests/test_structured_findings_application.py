@@ -22,6 +22,7 @@ from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedS
 from app.services.evidence.harvest_service import (
     list_pending_structured_findings,
     review_harvested_signal,
+    review_harvested_signals_batch,
 )
 from app.services.rnica_intelligence import build_rnica_intelligence
 from tests.conftest import TEST_USER_ID
@@ -265,3 +266,99 @@ def test_build_rnica_intelligence_defaults_structured_findings_signals_to_empty_
     intelligence = build_rnica_intelligence({}, patient_id="patient-1")
 
     assert intelligence["structured_findings_signals"] == []
+
+
+def test_review_harvested_signals_batch_applies_all(db_session):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    evidence = _make_evidence_record(db_session, tenant_id=tenant_id, patient_id=patient.id)
+    signal_a = _make_signal(
+        db_session, tenant_id=tenant_id, patient_id=patient.id, evidence_record_id=evidence.id,
+        structured_findings=[_SAMPLE_FINDING],
+    )
+    signal_b = _make_signal(
+        db_session, tenant_id=tenant_id, patient_id=patient.id, evidence_record_id=evidence.id,
+        structured_findings=[_SAMPLE_FINDING],
+    )
+
+    result = review_harvested_signals_batch(
+        db_session,
+        signal_ids=[signal_a.id, signal_b.id],
+        tenant_id=tenant_id,
+        disposition="APPLIED",
+        reviewed_by_user_id=TEST_USER_ID,
+        reason="Apply All Non-Conflicting",
+    )
+
+    assert set(result["updated"]) == {str(signal_a.id), str(signal_b.id)}
+    assert result["not_found"] == []
+    assert list_pending_structured_findings(db_session, patient.id) == []
+
+    db_session.refresh(signal_a)
+    db_session.refresh(signal_b)
+    assert signal_a.review_status == "APPLIED"
+    assert signal_a.reviewed_by_user_id == TEST_USER_ID
+    assert signal_a.review_disposition_reason == "Apply All Non-Conflicting"
+    assert signal_b.review_status == "APPLIED"
+
+
+def test_review_harvested_signals_batch_reports_not_found_without_failing(db_session):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    evidence = _make_evidence_record(db_session, tenant_id=tenant_id, patient_id=patient.id)
+    signal = _make_signal(
+        db_session, tenant_id=tenant_id, patient_id=patient.id, evidence_record_id=evidence.id,
+        structured_findings=[_SAMPLE_FINDING],
+    )
+    missing_id = uuid.uuid4()
+
+    result = review_harvested_signals_batch(
+        db_session,
+        signal_ids=[signal.id, missing_id],
+        tenant_id=tenant_id,
+        disposition="APPLIED",
+    )
+
+    assert result["updated"] == [str(signal.id)]
+    assert result["not_found"] == [str(missing_id)]
+
+
+def test_review_harvested_signals_batch_rejects_invalid_disposition(db_session):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    evidence = _make_evidence_record(db_session, tenant_id=tenant_id, patient_id=patient.id)
+    signal = _make_signal(
+        db_session, tenant_id=tenant_id, patient_id=patient.id, evidence_record_id=evidence.id,
+        structured_findings=[_SAMPLE_FINDING],
+    )
+
+    with pytest.raises(ValueError):
+        review_harvested_signals_batch(
+            db_session,
+            signal_ids=[signal.id],
+            tenant_id=tenant_id,
+            disposition="ACKNOWLEDGED",
+        )
+
+
+def test_review_harvested_signals_batch_rejects_cross_tenant_signals(db_session):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    other_tenant_id = uuid.uuid4()
+    patient = _make_patient(db_session, tenant_id)
+    evidence = _make_evidence_record(db_session, tenant_id=tenant_id, patient_id=patient.id)
+    signal = _make_signal(
+        db_session, tenant_id=tenant_id, patient_id=patient.id, evidence_record_id=evidence.id,
+        structured_findings=[_SAMPLE_FINDING],
+    )
+
+    result = review_harvested_signals_batch(
+        db_session,
+        signal_ids=[signal.id],
+        tenant_id=other_tenant_id,
+        disposition="APPLIED",
+    )
+
+    assert result["updated"] == []
+    assert result["not_found"] == [str(signal.id)]
+    db_session.refresh(signal)
+    assert signal.review_status == "NEW"

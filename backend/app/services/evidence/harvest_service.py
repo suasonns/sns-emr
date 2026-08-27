@@ -260,6 +260,54 @@ def review_harvested_signal(
     return signal
 
 
+def review_harvested_signals_batch(
+    db: Session,
+    *,
+    signal_ids: list[UUID],
+    tenant_id: UUID,
+    disposition: str,
+    reviewed_by_user_id: UUID | None = None,
+    reason: str | None = None,
+) -> dict[str, list[str]]:
+    """Bulk version of `review_harvested_signal`, used by "Apply All
+    Non-Conflicting" so one round trip records every cleanly-applied
+    signal's disposition instead of N. Still fully scoped to `tenant_id`
+    and still validating `disposition` against the same closed vocabulary.
+
+    Returns {"updated": [signal_id, ...], "not_found": [signal_id, ...]} so
+    the caller (and RN) can tell which signals genuinely didn't exist / were
+    already reviewed by someone else / belonged to a different tenant,
+    rather than silently dropping them.
+    """
+
+    if disposition not in VALID_SIGNAL_REVIEW_DISPOSITIONS:
+        raise ValueError(f"disposition must be one of {sorted(VALID_SIGNAL_REVIEW_DISPOSITIONS)}")
+
+    now = datetime.now(timezone.utc)
+
+    rows = (
+        db.query(PatientHarvestedSignal)
+        .filter(
+            PatientHarvestedSignal.id.in_(signal_ids),
+            PatientHarvestedSignal.tenant_id == tenant_id,
+        )
+        .all()
+    )
+    found_ids = {str(row.id) for row in rows}
+    not_found = [str(sid) for sid in signal_ids if str(sid) not in found_ids]
+
+    for row in rows:
+        row.review_status = disposition
+        row.reviewed_by_user_id = reviewed_by_user_id
+        row.reviewed_at = now
+        row.review_disposition_reason = reason
+
+    db.commit()
+    return {"updated": sorted(found_ids), "not_found": not_found}
+
+
+
+
 def extract_narrative_text(content: Any, *, max_chars: int = 20000) -> str:
     """Best-effort narrative text extraction from a note's JSONB content dict.
 

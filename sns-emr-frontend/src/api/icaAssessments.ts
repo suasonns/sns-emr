@@ -239,6 +239,25 @@ export async function reviewHarvestedSignal(signalId: string, disposition: "APPL
   );
 }
 
+// Bulk counterpart to reviewHarvestedSignal, used by "Apply All
+// Non-Conflicting" so the RN doesn't have to click through every pending
+// signal one at a time.
+export async function batchReviewHarvestedSignals(
+  signalIds: string[],
+  disposition: "APPLIED" | "DISMISSED",
+  options?: { reason?: string }
+) {
+  return unwrap(
+    api.post(`/visits/rnica/signals/batch-review`, {
+      signal_ids: signalIds,
+      disposition,
+      reason: options?.reason,
+    }),
+    "Unable to record bulk structured finding review"
+  );
+}
+
+
 // SECTION 12 — Final Review Dashboard data source. Single source of truth
 // shared with the backend lock endpoint, so the UI's Lock button and the
 // server's lock gate can never disagree.

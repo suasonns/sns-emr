@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { applyStructuredFindings, sectionsWithAppliedStructuredFields } from "./applyStructuredFindings";
+import { applyAllNonConflicting, applyStructuredFindings, sectionsWithAppliedStructuredFields } from "./applyStructuredFindings";
 
 function findingOf(overrides = {}) {
   return {
@@ -108,5 +108,72 @@ describe("applyStructuredFindings", () => {
     ];
     expect(sectionsWithAppliedStructuredFields(applied)).toEqual(new Set(["cardiovascular", "infection"]));
     expect(sectionsWithAppliedStructuredFields([])).toEqual(new Set());
+  });
+});
+
+describe("applyAllNonConflicting", () => {
+  it("applies every signal when none conflict", () => {
+    const signals = [
+      { id: "sig-1", structured_findings: [findingOf({ concept_code: "CV_HEART_FAILURE_SYSTOLIC" })] },
+      {
+        id: "sig-2",
+        structured_findings: [
+          findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "right foot", source_excerpt: "right foot wound" }),
+        ],
+      },
+    ];
+
+    const result = applyAllNonConflicting({ cardiovascular: {}, skin: { wounds: [] } }, signals);
+
+    expect(result.appliedSignalIds.sort()).toEqual(["sig-1", "sig-2"]);
+    expect(result.skippedSignalIds).toEqual([]);
+    expect(result.formData.cardiovascular.heartFailurePresent).toBe(true);
+    expect(result.formData.skin.wounds).toHaveLength(1);
+    expect(result.appliedFieldsBySignal["sig-1"].length).toBeGreaterThan(0);
+  });
+
+  it("leaves a conflicting signal's fields completely untouched and reports it skipped", () => {
+    const signals = [
+      { id: "sig-clean", structured_findings: [findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "right foot" })] },
+      { id: "sig-conflict", structured_findings: [findingOf({ concept_code: "CV_HEART_FAILURE_SYSTOLIC" })] },
+    ];
+
+    const result = applyAllNonConflicting(
+      { cardiovascular: { heartFailurePresent: false }, skin: { wounds: [] } },
+      signals
+    );
+
+    expect(result.appliedSignalIds).toEqual(["sig-clean"]);
+    expect(result.skippedSignalIds).toEqual(["sig-conflict"]);
+    // RN's explicit "No" preserved exactly -- the conflicting signal never
+    // partially wrote anything (heartFailureType, its second write, is
+    // also left alone since the whole signal is skipped).
+    expect(result.formData.cardiovascular.heartFailurePresent).toBe(false);
+    expect(result.formData.cardiovascular.heartFailureType).toBeUndefined();
+    expect(result.formData.skin.wounds).toHaveLength(1);
+    expect(result.skippedConflicts[0].signal_id).toBe("sig-conflict");
+  });
+
+  it("counts a signal with only HISTORICAL/reviewNeeded findings as cleanly applied (no conflict, no write)", () => {
+    const signals = [
+      { id: "sig-historical", structured_findings: [findingOf({ assertion_status: "HISTORICAL" })] },
+    ];
+
+    const result = applyAllNonConflicting({ cardiovascular: {} }, signals);
+
+    expect(result.appliedSignalIds).toEqual(["sig-historical"]);
+    expect(result.skippedSignalIds).toEqual([]);
+    expect(result.appliedFieldsBySignal["sig-historical"]).toEqual([]);
+  });
+
+  it("never mutates the original formData object across signals (immutability preserved)", () => {
+    const original = { cardiovascular: {}, skin: { wounds: [] } };
+    const signals = [
+      { id: "sig-1", structured_findings: [findingOf({ concept_code: "CV_HEART_FAILURE_SYSTOLIC" })] },
+    ];
+
+    applyAllNonConflicting(original, signals);
+
+    expect(original.cardiovascular.heartFailurePresent).toBeUndefined();
   });
 });

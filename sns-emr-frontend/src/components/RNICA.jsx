@@ -56,8 +56,9 @@ import {
   linkExistingRnicaSectionPocProblem,
   mergeRnicaPocDuplicateProblems,
   reviewHarvestedSignal,
+  batchReviewHarvestedSignals,
 } from "../api/icaAssessments";
-import { applyStructuredFindings } from "./rn-ica/applyStructuredFindings";
+import { applyStructuredFindings, applyAllNonConflicting } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -9996,6 +9997,76 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     }
   }, []);
 
+  // --- Bulk action: "Apply All Non-Conflicting" ---------------------------
+  // Kept as a separate busy/loading flag from the per-signal
+  // structuredFindingsBusyId so this bulk action's own button can show its
+  // own pending state without disabling/relabeling every individual row.
+  const [structuredFindingsBulkBusy, setStructuredFindingsBulkBusy] = useState(false);
+
+  const handleApplyAllNonConflicting = useCallback(async () => {
+    setStructuredFindingsError("");
+    setStructuredFindingsBulkBusy(true);
+    try {
+      const {
+        formData: nextFormData,
+        appliedSignalIds,
+        skippedSignalIds,
+        appliedFieldsBySignal,
+        skippedConflicts,
+      } = applyAllNonConflicting(formData, pendingStructuredSignals);
+
+      if (appliedSignalIds.length === 0) {
+        setStructuredFindingsError(
+          skippedSignalIds.length > 0
+            ? "Every pending signal has at least one conflicting field — review them individually below."
+            : "No pending structured findings to apply."
+        );
+        return;
+      }
+
+      setFormData(nextFormData);
+
+      const provenanceEntries = [];
+      for (const signal of pendingStructuredSignals) {
+        if (!appliedSignalIds.includes(signal.id)) continue;
+        const applied = appliedFieldsBySignal[signal.id] || [];
+        for (const f of applied) {
+          provenanceEntries.push({
+            section: f.section,
+            path: f.path,
+            value: f.value,
+            concept_code: f.concept_code,
+            source_type: signal.source_type,
+            source_excerpt: signal.original_text_excerpt,
+            recorded_at: signal.recorded_at,
+            confidence: f.finding?.confidence,
+            signal_id: signal.id,
+          });
+        }
+      }
+      if (provenanceEntries.length > 0) {
+        setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+      }
+
+      await batchReviewHarvestedSignals(appliedSignalIds, "APPLIED", {
+        reason: "Apply All Non-Conflicting",
+      });
+      setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
+
+      if (skippedSignalIds.length > 0) {
+        setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
+        setStructuredFindingsError(
+          `Applied ${appliedSignalIds.length} non-conflicting signal(s). ${skippedSignalIds.length} signal(s) had a conflicting field and still need individual review.`
+        );
+      }
+    } catch (err) {
+      console.error("Apply All Non-Conflicting error:", err);
+      setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply all non-conflicting findings.");
+    } finally {
+      setStructuredFindingsBulkBusy(false);
+    }
+  }, [formData, pendingStructuredSignals]);
+
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
   const isUpdateAssessment = isOngoing && assessmentType === "update";
@@ -11135,6 +11206,30 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               <div style={{ fontSize: 12, color: COLORS.gray, fontWeight: 700, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                 Structured Findings — Pending Review
               </div>
+
+              {pendingStructuredSignals.length > 0 && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                  <button
+                    type="button"
+                    onClick={handleApplyAllNonConflicting}
+                    disabled={structuredFindingsBulkBusy}
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "6px 12px",
+                      borderRadius: 6,
+                      border: "none",
+                      background: COLORS.teal,
+                      color: "#fff",
+                      cursor: structuredFindingsBulkBusy ? "default" : "pointer",
+                      opacity: structuredFindingsBulkBusy ? 0.6 : 1,
+                    }}
+                  >
+                    {structuredFindingsBulkBusy ? "Applying…" : `Apply All Non-Conflicting (${pendingStructuredSignals.length})`}
+                  </button>
+                </div>
+              )}
+
 
               {structuredFindingsError && (
                 <div style={{ ...styles.warningBox, marginTop: 0, marginBottom: 8 }}>{structuredFindingsError}</div>
