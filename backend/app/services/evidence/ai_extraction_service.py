@@ -155,6 +155,27 @@ CONCEPT CATALOG (the only concept_code values structured_findings may ever use):
 _SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("%%CONCEPT_CATALOG%%", concept_prompt_catalog())
 
 
+@dataclass(frozen=True)
+class ExtractionDiagnostics:
+    """Raw-vs-validated structured_findings counts for one extract_signals()
+    call. Used by structured_findings_reprocess_service to report how many
+    model-proposed findings were discarded by validate_findings() (unknown
+    concept_code, out-of-range value, malformed shape, etc) -- observability
+    that plain `extract_signals()` callers (harvest_service) don't need.
+    """
+
+    raw_findings_count: int = 0
+    rejected_findings_count: int = 0
+    # False when the call could not actually be evaluated by the model at
+    # all (missing Azure OpenAI config, network/HTTP error, unparsable
+    # response) -- as opposed to a genuine "model ran, found nothing"
+    # result, which is `succeeded=True` with 0 signals/findings. Callers
+    # that need to distinguish a real failure from a legitimate empty
+    # result (structured_findings_reprocess_service) must check this.
+    succeeded: bool = True
+    error: str | None = None
+
+
 def extract_signals(
     *,
     text: str,
@@ -168,6 +189,35 @@ def extract_signals(
     the model output cannot be parsed.
     """
 
+    signals, _diagnostics = _extract_signals_impl(
+        text=text, discipline=discipline, note_type=note_type, source_type=source_type
+    )
+    return signals
+
+
+def extract_signals_with_diagnostics(
+    *,
+    text: str,
+    discipline: str | None = None,
+    note_type: str | None = None,
+    source_type: str,
+) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
+    """Same as `extract_signals`, but also returns raw-vs-validated
+    structured_findings counts. Never raises -- see `extract_signals`.
+    """
+
+    return _extract_signals_impl(
+        text=text, discipline=discipline, note_type=note_type, source_type=source_type
+    )
+
+
+def _extract_signals_impl(
+    *,
+    text: str,
+    discipline: str | None,
+    note_type: str | None,
+    source_type: str,
+) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
     config = _azure_openai_config()
     if config is None:
         logger.info(
@@ -175,11 +225,12 @@ def extract_signals(
             "source_type=%s",
             source_type,
         )
-        return []
+        return [], ExtractionDiagnostics(succeeded=False, error="Azure OpenAI not configured")
 
     cleaned_text = (text or "").strip()
     if not cleaned_text:
-        return []
+        # Nothing to extract from -- a legitimate (not a failure) empty result.
+        return [], ExtractionDiagnostics()
 
     truncated_text = cleaned_text[:MAX_SOURCE_TEXT_CHARS]
 
@@ -215,20 +266,26 @@ def extract_signals(
         body = response.json()
         raw_content = body["choices"][0]["message"]["content"]
         parsed = json.loads(raw_content)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "evidence_harvester: AI extraction call failed source_type=%s", source_type
         )
-        return []
+        return [], ExtractionDiagnostics(succeeded=False, error=str(exc)[:500])
 
     signals_raw = parsed.get("signals") if isinstance(parsed, dict) else None
     if not isinstance(signals_raw, list):
-        return []
+        return [], ExtractionDiagnostics(
+            succeeded=False, error="Model response missing a 'signals' list"
+        )
 
     finding_source_type = _resolve_finding_source_type(source_type, note_type)
 
     signals: list[ExtractedSignal] = []
+    raw_findings_count = 0
+    validated_findings_count = 0
     for item in signals_raw:
+        if isinstance(item, dict) and isinstance(item.get("structured_findings"), list):
+            raw_findings_count += len(item["structured_findings"])
         try:
             signal = _parse_signal(item, finding_source_type=finding_source_type)
         except Exception:
@@ -238,8 +295,13 @@ def extract_signals(
             continue
         if signal is not None:
             signals.append(signal)
+            validated_findings_count += len(signal.structured_findings)
 
-    return signals
+    diagnostics = ExtractionDiagnostics(
+        raw_findings_count=raw_findings_count,
+        rejected_findings_count=max(0, raw_findings_count - validated_findings_count),
+    )
+    return signals, diagnostics
 
 
 # Every evidence source that reaches this module's `extract_signals()` is

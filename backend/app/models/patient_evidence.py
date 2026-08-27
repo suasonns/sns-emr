@@ -183,23 +183,30 @@ class PatientHarvestedSignal(Base):
     # this excerpt maps to a known concept.
     structured_findings = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
 
-    requires_rn_review = Column(Boolean, nullable=False, server_default=text("true"))
-    requires_idg_review = Column(Boolean, nullable=False, server_default=text("false"))
-    requires_poc_review = Column(Boolean, nullable=False, server_default=text("false"))
-
     # -----------------------------------------------------------
-    # STRUCTURED-FINDINGS PROCESSING STATE (added by migration
-    # b6c7d8e9f0a1; PENDING/COMPLETED/FAILED lets a reprocess sweep tell
-    # "never attempted by the concept-aware pipeline" apart from
-    # "attempted, model found nothing" -- see
-    # app.services.evidence.structured_findings_reprocess_service).
+    # STRUCTURED FINDINGS PROCESSING STATE
     # -----------------------------------------------------------
+    # Tracks whether the concept-aware structured_findings extraction
+    # pipeline (app.services.evidence.structured_findings) has actually been
+    # run against this row's source text -- an empty structured_findings
+    # list alone is ambiguous between "never attempted" and "attempted, model
+    # found nothing". PENDING -> COMPLETED | FAILED via harvest_service on
+    # creation, and via structured_findings_reprocess_service for backfill /
+    # retry of older rows. Rows created before this column existed are
+    # migrated to PENDING so they become eligible for backfill.
     structured_findings_status = Column(
-        String(24), nullable=False, server_default=text("'PENDING'")
+        String(24),
+        nullable=False,
+        default="PENDING",
+        server_default=text("'PENDING'"),
     )
     structured_findings_attempts = Column(Integer, nullable=False, server_default=text("0"))
     structured_findings_last_attempted_at = Column(DateTime(timezone=True), nullable=True)
     structured_findings_last_error = Column(Text, nullable=True)
+
+    requires_rn_review = Column(Boolean, nullable=False, server_default=text("true"))
+    requires_idg_review = Column(Boolean, nullable=False, server_default=text("false"))
+    requires_poc_review = Column(Boolean, nullable=False, server_default=text("false"))
 
     # -----------------------------------------------------------
     # REVIEW STATE MACHINE (doubles as Phase 2 signal registry)
