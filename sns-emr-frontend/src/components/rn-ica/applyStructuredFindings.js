@@ -216,13 +216,25 @@ export function sectionsWithAppliedStructuredFields(appliedFields) {
 
 /**
  * Bulk "Apply All Non-Conflicting" -- runs applyStructuredFindings() once
- * per pending signal (in the order given), but only KEEPS a signal's
- * changes if that signal produced zero conflicts. A signal that produces
- * even one conflict is left completely untouched (its writes are rolled
- * back, not partially applied) and reported in `skippedSignals` for the
- * RN to review individually -- this keeps the "never overwrite RN data"
- * guarantee intact while letting a nurse clear an entire batch of clean,
- * no-conflict findings in one click instead of clicking Apply N times.
+ * per pending signal (in the order given) and merges EVERY signal's
+ * result into the running form state.
+ *
+ * applyStructuredFindings() already guarantees write-level safety on its
+ * own: a "set"/"multi_add"/"push_draft_row" write is only ever committed
+ * when the target field is genuinely blank (or, for multi_add/push_draft_row,
+ * only adds a new option/row -- it never overwrites or removes anything).
+ * Any write that would touch a non-blank field is instead recorded in
+ * `conflicts` and left completely alone. Because that separation already
+ * happens at the individual-write level, there is no need to roll back an
+ * entire signal just because ONE of its bundled findings conflicts --
+ * doing so previously discarded genuinely non-conflicting findings (e.g.
+ * a new wound row) whenever they happened to be harvested in the same
+ * signal as an unrelated duplicate/conflicting mention. A signal is now
+ * only marked "skipped" (fully pending RN review) if it produced ZERO
+ * applied fields and at least one conflict; a signal that produced BOTH
+ * applied fields and conflicts is marked "applied" (its clean writes are
+ * kept) while its conflicting writes are still surfaced in
+ * `skippedConflicts` for individual RN review.
  *
  * @param {object} formData - the full RNICA form state.
  * @param {Array} signals - pending structured-findings signals, each with
@@ -250,21 +262,28 @@ export function applyAllNonConflicting(formData, signals) {
     const { formData: candidate, appliedFields: candidateApplied, conflicts: candidateConflicts } =
       applyStructuredFindings(next, signal.structured_findings || []);
 
+    // Always merge -- applyStructuredFindings() never overwrites a
+    // non-blank field itself, so merging is safe even when this signal
+    // also produced conflicts for its OTHER findings.
+    next = candidate;
+
     if (candidateConflicts.length > 0) {
-      // Leave this signal's fields exactly as they were -- do not merge
-      // `candidate` into `next` -- and surface why for the RN.
-      skippedSignalIds.push(signal.id);
       skippedConflicts.push(
         ...candidateConflicts.map((c) => ({ ...c, signal_id: signal.id }))
       );
-      continue;
     }
 
-    next = candidate;
     if (candidateApplied.length > 0) {
+      // At least one finding in this signal genuinely wrote a value --
+      // count the signal as applied even if some of its other findings
+      // conflicted and are still pending individual RN review.
       appliedSignalIds.push(signal.id);
       appliedFieldsBySignal[signal.id] = candidateApplied;
       appliedFields.push(...candidateApplied);
+    } else if (candidateConflicts.length > 0) {
+      // Nothing applied and something conflicted -- this signal is
+      // entirely pending RN review.
+      skippedSignalIds.push(signal.id);
     } else {
       // Nothing to write (e.g. every finding was HISTORICAL/NEGATED and
       // routed to reviewNeeded) -- still counts as "cleanly reviewed",

@@ -10257,10 +10257,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return next;
         });
 
-        if (skippedSignalIds.length > 0) {
+        if (skippedConflicts.length > 0) {
+          // A signal can land in `appliedSignalIds` (its non-conflicting
+          // findings were written) while STILL producing conflicts for
+          // its other bundled findings -- e.g. a new wound mention and an
+          // unrelated already-set duplicate finding harvested together.
+          // Those conflicts must always reach the RN review queue,
+          // regardless of whether the signal itself ended up fully
+          // skipped or partially applied.
           setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
           setStructuredFindingsError(
-            `Applied ${appliedSignalIds.length} non-conflicting signal(s). ${skippedSignalIds.length} signal(s) had a conflicting field and still need individual review.`
+            `Applied ${appliedSignalIds.length} signal(s). ${skippedConflicts.length} field(s) across ${skippedSignalIds.length} fully-conflicting signal(s) (plus any partially-applied signals) still need individual review.`
           );
         }
       } catch (err) {
