@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -64,6 +65,7 @@ class DocumentOut(BaseModel):
     ai_key_findings: Optional[list] = None
     ai_needs_manual_review: Optional[bool] = None
     has_extracted_text: bool = False
+    processing_status: str = "PENDING"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -72,6 +74,7 @@ class DocumentUploadResponse(DocumentOut):
     document_id: str
     size_bytes: int
     content_type: str
+    deduplicated: bool = False
 
 
 class DocumentListResponse(BaseModel):
@@ -96,6 +99,7 @@ def _serialize(doc: DocumentRecord) -> dict[str, Any]:
         "ai_key_findings": extracted_values.get("ai_key_findings"),
         "ai_needs_manual_review": extracted_values.get("ai_needs_manual_review"),
         "has_extracted_text": bool(doc.document_text),
+        "processing_status": doc.processing_status or "PENDING",
     }
 
 
@@ -190,26 +194,21 @@ async def upload_document(
     except DocumentStorageConfigurationError as exc:
         raise HTTPException(status_code=500, detail="Document storage is misconfigured") from exc
 
-    document_id = uuid.uuid4()
-    object_key = build_document_key(
-        tenant_id=tenant_id,
-        patient_id=patient.id,
-        document_id=document_id,
-        content_type=content_type,
-    )
+    # Read the full upload into memory up front (bounded by
+    # max_upload_bytes, same limit the storage layer would otherwise
+    # enforce while streaming). This lets us (a) hash the content for
+    # Phase A upload idempotency below, and (b) decrypt a password-
+    # protected PDF -- a password-protected PDF can't be stored/extracted
+    # as-is downstream (pypdf/Document Intelligence would just fail
+    # silently on it later), so it is decrypted here and the decrypted
+    # bytes are what get stored; the password itself never needs to be
+    # persisted or threaded through to the background extraction job.
+    try:
+        raw_bytes = await _read_upload_bounded(file, max_upload_bytes)
+    except DocumentUploadTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
-    # A password-protected PDF can't be stored/extracted as-is downstream
-    # (pypdf/Document Intelligence would just fail silently on it later).
-    # Decrypt it up front, at upload time, and store the decrypted bytes --
-    # this way the password itself never needs to be persisted or threaded
-    # through to the background extraction job.
-    upload_source: Any = file.file
     if content_type == "application/pdf":
-        try:
-            raw_bytes = await _read_upload_bounded(file, max_upload_bytes)
-        except DocumentUploadTooLarge as exc:
-            raise HTTPException(status_code=413, detail=str(exc)) from exc
-
         try:
             from pypdf import PdfReader, PdfWriter
             from pypdf.errors import PdfReadError
@@ -230,21 +229,63 @@ async def upload_document(
                     writer.add_page(page)
                 decrypted_buffer = BytesIO()
                 writer.write(decrypted_buffer)
-                upload_source = BytesIO(decrypted_buffer.getvalue())
-            else:
-                upload_source = BytesIO(raw_bytes)
+                raw_bytes = decrypted_buffer.getvalue()
         except HTTPException:
             raise
         except PdfReadError as exc:
             raise HTTPException(status_code=422, detail="Uploaded PDF could not be read") from exc
 
+    # ------------------------------------------------------------
+    # PHASE A DURABILITY: upload idempotency.
+    #
+    # An RN working with marginal connectivity may retry an upload that
+    # actually succeeded (the response just never made it back before the
+    # connection dropped). Recognize a byte-identical re-upload for the
+    # same patient and return the EXISTING document instead of creating a
+    # duplicate -- otherwise the same clinical content would be harvested
+    # twice, producing duplicate structured findings and duplicate RNICA
+    # writes.
+    # ------------------------------------------------------------
+    content_hash = hashlib.sha256(raw_bytes).hexdigest()
+    duplicate = (
+        db.query(DocumentRecord)
+        .filter(
+            DocumentRecord.tenant_id == tenant_id,
+            DocumentRecord.patient_id == patient.id,
+            DocumentRecord.content_hash == content_hash,
+        )
+        .order_by(DocumentRecord.uploaded_at.desc())
+        .first()
+    )
+    if duplicate is not None:
+        logger.info(
+            "upload_document: duplicate content_hash=%s for patient_id=%s resolves to "
+            "existing document_id=%s -- skipping re-store/re-process",
+            content_hash,
+            patient.id,
+            duplicate.id,
+        )
+        return {
+            **_serialize(duplicate),
+            "document_id": str(duplicate.id),
+            "size_bytes": len(raw_bytes),
+            "content_type": content_type,
+            "deduplicated": True,
+        }
+
+    document_id = uuid.uuid4()
+    object_key = build_document_key(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_id=document_id,
+        content_type=content_type,
+    )
+
     try:
-        if upload_source is file.file:
-            await file.seek(0)
         size_bytes = await run_in_threadpool(
             storage.put,
             object_key,
-            upload_source,
+            BytesIO(raw_bytes),
             content_type=content_type,
             max_bytes=max_upload_bytes,
         )
@@ -274,6 +315,8 @@ async def upload_document(
         document_text=document_text,
         uploaded_by=user_id,
         uploaded_at=datetime.now(timezone.utc),
+        content_hash=content_hash,
+        processing_status="PENDING",
     )
 
     flag_result = evaluate_document_flags(
@@ -336,7 +379,42 @@ async def upload_document(
         "document_id": str(doc.id),
         "size_bytes": size_bytes,
         "content_type": content_type,
+        "deduplicated": False,
     }
+
+
+# ---------------------------------------------------------------------
+# Phase A durability: on-demand recovery trigger
+# ---------------------------------------------------------------------
+
+
+class RecoverPendingResponse(BaseModel):
+    examined: int
+    recovered: list[str]
+    still_failed: list[str]
+
+
+@router.post("/recover-pending", response_model=RecoverPendingResponse)
+def recover_pending_documents(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Immediately re-drive any of this tenant's documents stuck in
+    PENDING/PROCESSING/FAILED, instead of waiting for the periodic sweep.
+
+    Intended to be called by the RN's client the moment connectivity
+    returns (e.g. on a `navigator.onLine` transition to true) so
+    structured-finding generation and RNICA population resume right away
+    for anything uploaded while offline/degraded, rather than waiting up
+    to INTERVAL_SECONDS for the background scheduler's next pass.
+    Idempotent and safe to call repeatedly -- see recovery_service.py.
+    """
+
+    from app.services.evidence.recovery_service import recover_documents
+
+    tenant_id = UUIDType(str(current_user.tenant_id))
+    result = recover_documents(db, tenant_id=tenant_id)
+    return result
 
 
 @router.get("/patient/{patient_id}", response_model=DocumentListResponse)
