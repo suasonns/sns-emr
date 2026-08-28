@@ -52,6 +52,14 @@ def test_registry_covers_all_eight_requested_sections():
         "skin",
         "nutrition",
         "musculoskeletal",
+        # Coverage Expansion (2026-08-28): GI and GU were added as their own
+        # sections, in addition to closing remaining gaps within the
+        # original eight (ADLs/functional status under musculoskeletal,
+        # dentures under nutrition, pressure-relief measures under skin,
+        # oxygen hours/SpO2 under respiratory, HOPE BIMS/sleep under
+        # neurological). See RNICA Coverage Expansion Matrix.
+        "gastrointestinal",
+        "genitourinary",
     }
 
 

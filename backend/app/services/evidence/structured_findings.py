@@ -1,4 +1,4 @@
-"""Shared StructuredFinding contract for AI -> RNICA structured-field mapping.
+﻿"""Shared StructuredFinding contract for AI -> RNICA structured-field mapping.
 
 Both AI extraction pipelines (the document/note harvester in
 ai_extraction_service.py, and the visit-recording transcript drafter in
@@ -477,6 +477,754 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "MSK_PAIN_WITH_MOVEMENT_MILD": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MILD", "musculoskeletal", "Mild pain with movement", (_fw("painWithMovement", "Mild"),)),
     "MSK_PAIN_WITH_MOVEMENT_MODERATE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MODERATE", "musculoskeletal", "Moderate pain with movement", (_fw("painWithMovement", "Moderate"),)),
     "MSK_PAIN_WITH_MOVEMENT_SEVERE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_SEVERE", "musculoskeletal", "Severe pain with movement", (_fw("painWithMovement", "Severe"),)),
+
+    # ═══════════════════════════ MUSCULOSKELETAL (coverage expansion) ═══
+    "ADL_BATHING_INDEPENDENT": ConceptMapping(
+        "ADL_BATHING_INDEPENDENT", "musculoskeletal", "Bathing: Independent",
+        (_fw("adl.bathing", "0"),),
+    ),
+    "ADL_BATHING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_BATHING_SETUP_ASSIST_ONLY", "musculoskeletal", "Bathing: Setup assist only",
+        (_fw("adl.bathing", "1"),),
+    ),
+    "ADL_BATHING_SUPERVISION": ConceptMapping(
+        "ADL_BATHING_SUPERVISION", "musculoskeletal", "Bathing: Supervision",
+        (_fw("adl.bathing", "2"),),
+    ),
+    "ADL_BATHING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_BATHING_LIMITED_ASSISTANCE", "musculoskeletal", "Bathing: Limited assistance",
+        (_fw("adl.bathing", "3"),),
+    ),
+    "ADL_BATHING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_BATHING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Bathing: Extensive assistance",
+        (_fw("adl.bathing", "4"),),
+    ),
+    "ADL_BATHING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_BATHING_TOTAL_DEPENDENCE", "musculoskeletal", "Bathing: Total dependence",
+        (_fw("adl.bathing", "5"),),
+    ),
+    "ADL_DRESSING_INDEPENDENT": ConceptMapping(
+        "ADL_DRESSING_INDEPENDENT", "musculoskeletal", "Dressing: Independent",
+        (_fw("adl.dressing", "0"),),
+    ),
+    "ADL_DRESSING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_DRESSING_SETUP_ASSIST_ONLY", "musculoskeletal", "Dressing: Setup assist only",
+        (_fw("adl.dressing", "1"),),
+    ),
+    "ADL_DRESSING_SUPERVISION": ConceptMapping(
+        "ADL_DRESSING_SUPERVISION", "musculoskeletal", "Dressing: Supervision",
+        (_fw("adl.dressing", "2"),),
+    ),
+    "ADL_DRESSING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_DRESSING_LIMITED_ASSISTANCE", "musculoskeletal", "Dressing: Limited assistance",
+        (_fw("adl.dressing", "3"),),
+    ),
+    "ADL_DRESSING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_DRESSING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Dressing: Extensive assistance",
+        (_fw("adl.dressing", "4"),),
+    ),
+    "ADL_DRESSING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_DRESSING_TOTAL_DEPENDENCE", "musculoskeletal", "Dressing: Total dependence",
+        (_fw("adl.dressing", "5"),),
+    ),
+    "ADL_TOILETING_INDEPENDENT": ConceptMapping(
+        "ADL_TOILETING_INDEPENDENT", "musculoskeletal", "Toileting: Independent",
+        (_fw("adl.toileting", "0"),),
+    ),
+    "ADL_TOILETING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_TOILETING_SETUP_ASSIST_ONLY", "musculoskeletal", "Toileting: Setup assist only",
+        (_fw("adl.toileting", "1"),),
+    ),
+    "ADL_TOILETING_SUPERVISION": ConceptMapping(
+        "ADL_TOILETING_SUPERVISION", "musculoskeletal", "Toileting: Supervision",
+        (_fw("adl.toileting", "2"),),
+    ),
+    "ADL_TOILETING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_TOILETING_LIMITED_ASSISTANCE", "musculoskeletal", "Toileting: Limited assistance",
+        (_fw("adl.toileting", "3"),),
+    ),
+    "ADL_TOILETING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_TOILETING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Toileting: Extensive assistance",
+        (_fw("adl.toileting", "4"),),
+    ),
+    "ADL_TOILETING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_TOILETING_TOTAL_DEPENDENCE", "musculoskeletal", "Toileting: Total dependence",
+        (_fw("adl.toileting", "5"),),
+    ),
+    "ADL_TRANSFERRING_INDEPENDENT": ConceptMapping(
+        "ADL_TRANSFERRING_INDEPENDENT", "musculoskeletal", "Transferring: Independent",
+        (_fw("adl.transferring", "0"),),
+    ),
+    "ADL_TRANSFERRING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_TRANSFERRING_SETUP_ASSIST_ONLY", "musculoskeletal", "Transferring: Setup assist only",
+        (_fw("adl.transferring", "1"),),
+    ),
+    "ADL_TRANSFERRING_SUPERVISION": ConceptMapping(
+        "ADL_TRANSFERRING_SUPERVISION", "musculoskeletal", "Transferring: Supervision",
+        (_fw("adl.transferring", "2"),),
+    ),
+    "ADL_TRANSFERRING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_TRANSFERRING_LIMITED_ASSISTANCE", "musculoskeletal", "Transferring: Limited assistance",
+        (_fw("adl.transferring", "3"),),
+    ),
+    "ADL_TRANSFERRING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_TRANSFERRING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Transferring: Extensive assistance",
+        (_fw("adl.transferring", "4"),),
+    ),
+    "ADL_TRANSFERRING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_TRANSFERRING_TOTAL_DEPENDENCE", "musculoskeletal", "Transferring: Total dependence",
+        (_fw("adl.transferring", "5"),),
+    ),
+    "ADL_EATING_INDEPENDENT": ConceptMapping(
+        "ADL_EATING_INDEPENDENT", "musculoskeletal", "Eating: Independent",
+        (_fw("adl.eating", "0"),),
+    ),
+    "ADL_EATING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_EATING_SETUP_ASSIST_ONLY", "musculoskeletal", "Eating: Setup assist only",
+        (_fw("adl.eating", "1"),),
+    ),
+    "ADL_EATING_SUPERVISION": ConceptMapping(
+        "ADL_EATING_SUPERVISION", "musculoskeletal", "Eating: Supervision",
+        (_fw("adl.eating", "2"),),
+    ),
+    "ADL_EATING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_EATING_LIMITED_ASSISTANCE", "musculoskeletal", "Eating: Limited assistance",
+        (_fw("adl.eating", "3"),),
+    ),
+    "ADL_EATING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_EATING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Eating: Extensive assistance",
+        (_fw("adl.eating", "4"),),
+    ),
+    "ADL_EATING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_EATING_TOTAL_DEPENDENCE", "musculoskeletal", "Eating: Total dependence",
+        (_fw("adl.eating", "5"),),
+    ),
+    "ADL_GROOMING_INDEPENDENT": ConceptMapping(
+        "ADL_GROOMING_INDEPENDENT", "musculoskeletal", "Grooming: Independent",
+        (_fw("adl.grooming", "0"),),
+    ),
+    "ADL_GROOMING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_GROOMING_SETUP_ASSIST_ONLY", "musculoskeletal", "Grooming: Setup assist only",
+        (_fw("adl.grooming", "1"),),
+    ),
+    "ADL_GROOMING_SUPERVISION": ConceptMapping(
+        "ADL_GROOMING_SUPERVISION", "musculoskeletal", "Grooming: Supervision",
+        (_fw("adl.grooming", "2"),),
+    ),
+    "ADL_GROOMING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_GROOMING_LIMITED_ASSISTANCE", "musculoskeletal", "Grooming: Limited assistance",
+        (_fw("adl.grooming", "3"),),
+    ),
+    "ADL_GROOMING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_GROOMING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Grooming: Extensive assistance",
+        (_fw("adl.grooming", "4"),),
+    ),
+    "ADL_GROOMING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_GROOMING_TOTAL_DEPENDENCE", "musculoskeletal", "Grooming: Total dependence",
+        (_fw("adl.grooming", "5"),),
+    ),
+    "MSK_ENDURANCE_GOOD": ConceptMapping(
+        "MSK_ENDURANCE_GOOD", "musculoskeletal", "Endurance: good",
+        (_fw("mobility.endurance", "Good"),),
+    ),
+    "MSK_ENDURANCE_FAIR": ConceptMapping(
+        "MSK_ENDURANCE_FAIR", "musculoskeletal", "Endurance: fair",
+        (_fw("mobility.endurance", "Fair"),),
+    ),
+    "MSK_ENDURANCE_POOR": ConceptMapping(
+        "MSK_ENDURANCE_POOR", "musculoskeletal", "Endurance: poor",
+        (_fw("mobility.endurance", "Poor"),),
+    ),
+    "MSK_FALLS_LAST_90_DAYS": ConceptMapping(
+        "MSK_FALLS_LAST_90_DAYS", "musculoskeletal", "Falls in last 90 days",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="fallHistory.fallsLast90Days", min_value=0, max_value=365),
+    ),
+
+    # ═══════════════════════════ GASTROINTESTINAL (coverage expansion) ═══
+    "GI_NAUSEA_NONE": ConceptMapping(
+        "GI_NAUSEA_NONE", "gastrointestinal", "Nausea, none",
+        (_fw("nausea", "None"),),
+    ),
+    "GI_NAUSEA_MILD": ConceptMapping(
+        "GI_NAUSEA_MILD", "gastrointestinal", "Nausea, mild",
+        (_fw("nausea", "Mild"),),
+    ),
+    "GI_NAUSEA_MODERATE": ConceptMapping(
+        "GI_NAUSEA_MODERATE", "gastrointestinal", "Nausea, moderate",
+        (_fw("nausea", "Moderate"),),
+    ),
+    "GI_NAUSEA_SEVERE": ConceptMapping(
+        "GI_NAUSEA_SEVERE", "gastrointestinal", "Nausea, severe",
+        (_fw("nausea", "Severe"),),
+    ),
+    "GI_VOMITING_NONE": ConceptMapping(
+        "GI_VOMITING_NONE", "gastrointestinal", "Vomiting, none",
+        (_fw("vomiting", "None"),),
+    ),
+    "GI_VOMITING_MILD": ConceptMapping(
+        "GI_VOMITING_MILD", "gastrointestinal", "Vomiting, mild",
+        (_fw("vomiting", "Mild"),),
+    ),
+    "GI_VOMITING_MODERATE": ConceptMapping(
+        "GI_VOMITING_MODERATE", "gastrointestinal", "Vomiting, moderate",
+        (_fw("vomiting", "Moderate"),),
+    ),
+    "GI_VOMITING_SEVERE": ConceptMapping(
+        "GI_VOMITING_SEVERE", "gastrointestinal", "Vomiting, severe",
+        (_fw("vomiting", "Severe"),),
+    ),
+    "GI_DIARRHEA_NONE": ConceptMapping(
+        "GI_DIARRHEA_NONE", "gastrointestinal", "Diarrhea, none",
+        (_fw("diarrhea", "None"),),
+    ),
+    "GI_DIARRHEA_MILD": ConceptMapping(
+        "GI_DIARRHEA_MILD", "gastrointestinal", "Diarrhea, mild",
+        (_fw("diarrhea", "Mild"),),
+    ),
+    "GI_DIARRHEA_MODERATE": ConceptMapping(
+        "GI_DIARRHEA_MODERATE", "gastrointestinal", "Diarrhea, moderate",
+        (_fw("diarrhea", "Moderate"),),
+    ),
+    "GI_DIARRHEA_SEVERE": ConceptMapping(
+        "GI_DIARRHEA_SEVERE", "gastrointestinal", "Diarrhea, severe",
+        (_fw("diarrhea", "Severe"),),
+    ),
+    "GI_CONSTIPATION_NONE": ConceptMapping(
+        "GI_CONSTIPATION_NONE", "gastrointestinal", "Constipation, none",
+        (_fw("constipation", "None"),),
+    ),
+    "GI_CONSTIPATION_MILD": ConceptMapping(
+        "GI_CONSTIPATION_MILD", "gastrointestinal", "Constipation, mild",
+        (_fw("constipation", "Mild"),),
+    ),
+    "GI_CONSTIPATION_MODERATE": ConceptMapping(
+        "GI_CONSTIPATION_MODERATE", "gastrointestinal", "Constipation, moderate",
+        (_fw("constipation", "Moderate"),),
+    ),
+    "GI_CONSTIPATION_SEVERE": ConceptMapping(
+        "GI_CONSTIPATION_SEVERE", "gastrointestinal", "Constipation, severe",
+        (_fw("constipation", "Severe"),),
+    ),
+    "GI_VOMITING_OCCURRENCES_24H": ConceptMapping(
+        "GI_VOMITING_OCCURRENCES_24H", "gastrointestinal", "Vomiting occurrences in 24h",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="vomitingOccurrences24h", min_value=0, max_value=20),
+    ),
+    "GI_BOWEL_SOUNDS_NORMAL": ConceptMapping(
+        "GI_BOWEL_SOUNDS_NORMAL", "gastrointestinal", "Bowel sounds normal",
+        (_fw("bowelSounds", "Normal"),),
+    ),
+    "GI_BOWEL_SOUNDS_HYPERACTIVE": ConceptMapping(
+        "GI_BOWEL_SOUNDS_HYPERACTIVE", "gastrointestinal", "Bowel sounds hyperactive",
+        (_fw("bowelSounds", "Hyperactive"),),
+    ),
+    "GI_BOWEL_SOUNDS_HYPOACTIVE": ConceptMapping(
+        "GI_BOWEL_SOUNDS_HYPOACTIVE", "gastrointestinal", "Bowel sounds hypoactive",
+        (_fw("bowelSounds", "Hypoactive"),),
+    ),
+    "GI_BOWEL_SOUNDS_ABSENT": ConceptMapping(
+        "GI_BOWEL_SOUNDS_ABSENT", "gastrointestinal", "Bowel sounds absent",
+        (_fw("bowelSounds", "Absent"),),
+    ),
+    "GI_ABDOMEN_SOFT": ConceptMapping(
+        "GI_ABDOMEN_SOFT", "gastrointestinal", "Abdomen soft",
+        (_fw("abdomen", "Soft"),),
+    ),
+    "GI_ABDOMEN_FIRM": ConceptMapping(
+        "GI_ABDOMEN_FIRM", "gastrointestinal", "Abdomen firm",
+        (_fw("abdomen", "Firm"),),
+    ),
+    "GI_ABDOMEN_TYMPANIC": ConceptMapping(
+        "GI_ABDOMEN_TYMPANIC", "gastrointestinal", "Abdomen tympanic",
+        (_fw("abdomen", "Tympanic"),),
+    ),
+    "GI_ABDOMEN_DISTENDED": ConceptMapping(
+        "GI_ABDOMEN_DISTENDED", "gastrointestinal", "Abdomen distended",
+        (_fw("abdomen", "Distended"),),
+    ),
+    "GI_ABDOMEN_TENDER": ConceptMapping(
+        "GI_ABDOMEN_TENDER", "gastrointestinal", "Abdomen tender",
+        (_fw("abdomen", "Tender"),),
+    ),
+    "GI_ABDOMEN_NONTENDER": ConceptMapping(
+        "GI_ABDOMEN_NONTENDER", "gastrointestinal", "Abdomen nontender",
+        (_fw("abdomen", "Nontender"),),
+    ),
+    "GI_ABDOMEN_RIGID": ConceptMapping(
+        "GI_ABDOMEN_RIGID", "gastrointestinal", "Abdomen rigid",
+        (_fw("abdomen", "Rigid"),),
+    ),
+    "GI_ASCITES_PRESENT": ConceptMapping(
+        "GI_ASCITES_PRESENT", "gastrointestinal", "Ascites present",
+        (_fw("ascites", True),),
+    ),
+    "GI_ASCITES_ABSENT": ConceptMapping(
+        "GI_ASCITES_ABSENT", "gastrointestinal", "Ascites explicitly absent",
+        (_fw("ascites", False),),
+    ),
+    "GI_STOOL_NORMAL": ConceptMapping(
+        "GI_STOOL_NORMAL", "gastrointestinal", "Stool normal",
+        (_fw("stoolCharacter", "Normal", op="multi_add"),),
+    ),
+    "GI_STOOL_BLOODY": ConceptMapping(
+        "GI_STOOL_BLOODY", "gastrointestinal", "Stool bloody",
+        (_fw("stoolCharacter", "Bloody", op="multi_add"),),
+    ),
+    "GI_STOOL_COLOSTOMY": ConceptMapping(
+        "GI_STOOL_COLOSTOMY", "gastrointestinal", "Stool colostomy",
+        (_fw("stoolCharacter", "Colostomy", op="multi_add"),),
+    ),
+    "GI_STOOL_ILEOSTOMY": ConceptMapping(
+        "GI_STOOL_ILEOSTOMY", "gastrointestinal", "Stool ileostomy",
+        (_fw("stoolCharacter", "Ileostomy", op="multi_add"),),
+    ),
+    "GI_BOWEL_STATUS_REGULAR": ConceptMapping(
+        "GI_BOWEL_STATUS_REGULAR", "gastrointestinal", "Bowel status: Regular",
+        (_fw("bowelStatus", "Regular"),),
+    ),
+    "GI_BOWEL_STATUS_IRREGULAR": ConceptMapping(
+        "GI_BOWEL_STATUS_IRREGULAR", "gastrointestinal", "Bowel status: Irregular",
+        (_fw("bowelStatus", "Irregular"),),
+    ),
+    "GI_BOWEL_STATUS_IMPACTION": ConceptMapping(
+        "GI_BOWEL_STATUS_IMPACTION", "gastrointestinal", "Bowel status: Impaction",
+        (_fw("bowelStatus", "Impaction"),),
+    ),
+    "GI_BOWEL_STATUS_CONTINENT": ConceptMapping(
+        "GI_BOWEL_STATUS_CONTINENT", "gastrointestinal", "Bowel status: Continent",
+        (_fw("bowelStatus", "Continent"),),
+    ),
+    "GI_BOWEL_STATUS_INCONTINENT": ConceptMapping(
+        "GI_BOWEL_STATUS_INCONTINENT", "gastrointestinal", "Bowel status: Incontinent",
+        (_fw("bowelStatus", "Incontinent"),),
+    ),
+    "GI_BOWEL_STATUS_BOWEL_BLADDER_PROGRAM": ConceptMapping(
+        "GI_BOWEL_STATUS_BOWEL_BLADDER_PROGRAM", "gastrointestinal", "Bowel status: Bowel/bladder program",
+        (_fw("bowelStatus", "Bowel/bladder program"),),
+    ),
+    "GI_FEEDING_TUBE_PRESENT": ConceptMapping(
+        "GI_FEEDING_TUBE_PRESENT", "gastrointestinal", "Feeding tube present",
+        (_fw("feedingTube.present", True),),
+    ),
+    "GI_FEEDING_TUBE_ABSENT": ConceptMapping(
+        "GI_FEEDING_TUBE_ABSENT", "gastrointestinal", "Feeding tube explicitly absent",
+        (_fw("feedingTube.present", False),),
+    ),
+    "GI_FEEDING_TUBE_TYPE_NG": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_NG", "gastrointestinal", "Feeding tube: NG",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "NG")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_PEG": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_PEG", "gastrointestinal", "Feeding tube: PEG",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "PEG")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_PEJ": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_PEJ", "gastrointestinal", "Feeding tube: PEJ",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "PEJ")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_G_TUBE": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_G_TUBE", "gastrointestinal", "Feeding tube: G-tube",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "G-tube")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_J_TUBE": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_J_TUBE", "gastrointestinal", "Feeding tube: J-tube",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "J-tube")),
+    ),
+    "GI_OSTOMY_PRESENT": ConceptMapping(
+        "GI_OSTOMY_PRESENT", "gastrointestinal", "Ostomy present",
+        (_fw("ostomy.present", True),),
+    ),
+    "GI_OSTOMY_ABSENT": ConceptMapping(
+        "GI_OSTOMY_ABSENT", "gastrointestinal", "Ostomy explicitly absent",
+        (_fw("ostomy.present", False),),
+    ),
+    "GI_OSTOMY_TYPE_COLOSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_COLOSTOMY", "gastrointestinal", "Ostomy: Colostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Colostomy")),
+    ),
+    "GI_OSTOMY_TYPE_ILEOSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_ILEOSTOMY", "gastrointestinal", "Ostomy: Ileostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Ileostomy")),
+    ),
+    "GI_OSTOMY_TYPE_UROSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_UROSTOMY", "gastrointestinal", "Ostomy: Urostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Urostomy")),
+    ),
+
+    # ═══════════════════════════ GENITOURINARY (coverage expansion) ═══
+    "GU_URINARY_STATUS_CONTINENT": ConceptMapping(
+        "GU_URINARY_STATUS_CONTINENT", "genitourinary", "Urinary status: Continent",
+        (_fw("urinaryStatus", "Continent"),),
+    ),
+    "GU_URINARY_STATUS_STRESS_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_STRESS_INCONTINENCE", "genitourinary", "Urinary status: Stress incontinence",
+        (_fw("urinaryStatus", "Stress incontinence"),),
+    ),
+    "GU_URINARY_STATUS_URGE_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_URGE_INCONTINENCE", "genitourinary", "Urinary status: Urge incontinence",
+        (_fw("urinaryStatus", "Urge incontinence"),),
+    ),
+    "GU_URINARY_STATUS_FUNCTIONAL_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_FUNCTIONAL_INCONTINENCE", "genitourinary", "Urinary status: Functional incontinence",
+        (_fw("urinaryStatus", "Functional incontinence"),),
+    ),
+    "GU_URINARY_STATUS_TOTAL_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_TOTAL_INCONTINENCE", "genitourinary", "Urinary status: Total incontinence",
+        (_fw("urinaryStatus", "Total incontinence"),),
+    ),
+    "GU_URINARY_STATUS_CATHETERIZED": ConceptMapping(
+        "GU_URINARY_STATUS_CATHETERIZED", "genitourinary", "Urinary status: Catheterized",
+        (_fw("urinaryStatus", "Catheterized"),),
+    ),
+    "GU_URINARY_STATUS_BLADDER_PROGRAM": ConceptMapping(
+        "GU_URINARY_STATUS_BLADDER_PROGRAM", "genitourinary", "Urinary status: Bladder program",
+        (_fw("urinaryStatus", "Bladder program"),),
+    ),
+    "GU_URINARY_STATUS_UROSTOMY": ConceptMapping(
+        "GU_URINARY_STATUS_UROSTOMY", "genitourinary", "Urinary status: Urostomy",
+        (_fw("urinaryStatus", "Urostomy"),),
+    ),
+    "GU_URINARY_STATUS_RETENTION": ConceptMapping(
+        "GU_URINARY_STATUS_RETENTION", "genitourinary", "Urinary status: Retention",
+        (_fw("urinaryStatus", "Retention"),),
+    ),
+    "GU_URINARY_STATUS_PAINFUL_URINATION": ConceptMapping(
+        "GU_URINARY_STATUS_PAINFUL_URINATION", "genitourinary", "Urinary status: Painful urination",
+        (_fw("urinaryStatus", "Painful urination"),),
+    ),
+    "GU_URINARY_STATUS_NOCTURIA": ConceptMapping(
+        "GU_URINARY_STATUS_NOCTURIA", "genitourinary", "Urinary status: Nocturia",
+        (_fw("urinaryStatus", "Nocturia"),),
+    ),
+    "GU_URINE_CHAR_CLEAR": ConceptMapping(
+        "GU_URINE_CHAR_CLEAR", "genitourinary", "Urine: clear",
+        (_fw("urineCharacteristics", "Clear", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_CLOUDY": ConceptMapping(
+        "GU_URINE_CHAR_CLOUDY", "genitourinary", "Urine: cloudy",
+        (_fw("urineCharacteristics", "Cloudy", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_PALE": ConceptMapping(
+        "GU_URINE_CHAR_PALE", "genitourinary", "Urine: pale",
+        (_fw("urineCharacteristics", "Pale", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_BLOOD": ConceptMapping(
+        "GU_URINE_CHAR_BLOOD", "genitourinary", "Urine: blood",
+        (_fw("urineCharacteristics", "Blood", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_ODOR": ConceptMapping(
+        "GU_URINE_CHAR_ODOR", "genitourinary", "Urine: odor",
+        (_fw("urineCharacteristics", "Odor", op="multi_add"),),
+    ),
+    "GU_CATHETER_PRESENT": ConceptMapping(
+        "GU_CATHETER_PRESENT", "genitourinary", "Catheter present",
+        (_fw("catheter.present", True),),
+    ),
+    "GU_CATHETER_ABSENT": ConceptMapping(
+        "GU_CATHETER_ABSENT", "genitourinary", "Catheter explicitly absent",
+        (_fw("catheter.present", False),),
+    ),
+    "GU_CATHETER_TYPE_FOLEY": ConceptMapping(
+        "GU_CATHETER_TYPE_FOLEY", "genitourinary", "Catheter: Foley",
+        (_fw("catheter.present", True), _fw("catheter.type", "Foley")),
+    ),
+    "GU_CATHETER_TYPE_SUPRAPUBIC": ConceptMapping(
+        "GU_CATHETER_TYPE_SUPRAPUBIC", "genitourinary", "Catheter: Suprapubic",
+        (_fw("catheter.present", True), _fw("catheter.type", "Suprapubic")),
+    ),
+    "GU_CATHETER_TYPE_CONDOM": ConceptMapping(
+        "GU_CATHETER_TYPE_CONDOM", "genitourinary", "Catheter: Condom",
+        (_fw("catheter.present", True), _fw("catheter.type", "Condom")),
+    ),
+    "GU_CATHETER_TYPE_INTERMITTENT": ConceptMapping(
+        "GU_CATHETER_TYPE_INTERMITTENT", "genitourinary", "Catheter: Intermittent",
+        (_fw("catheter.present", True), _fw("catheter.type", "Intermittent")),
+    ),
+    "GU_CATHETER_TYPE_UROSTOMY": ConceptMapping(
+        "GU_CATHETER_TYPE_UROSTOMY", "genitourinary", "Catheter: Urostomy",
+        (_fw("catheter.present", True), _fw("catheter.type", "Urostomy")),
+    ),
+    "GU_CATHETER_CONDITION_PATENT": ConceptMapping(
+        "GU_CATHETER_CONDITION_PATENT", "genitourinary", "Catheter condition: patent",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Patent")),
+    ),
+    "GU_CATHETER_CONDITION_BLOCKED": ConceptMapping(
+        "GU_CATHETER_CONDITION_BLOCKED", "genitourinary", "Catheter condition: blocked",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Blocked")),
+    ),
+    "GU_CATHETER_CONDITION_LEAKING": ConceptMapping(
+        "GU_CATHETER_CONDITION_LEAKING", "genitourinary", "Catheter condition: leaking",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Leaking")),
+    ),
+    "GU_CATHETER_URINE_CLEAR": ConceptMapping(
+        "GU_CATHETER_URINE_CLEAR", "genitourinary", "Catheter urine: clear",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Clear", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_CLOUDY": ConceptMapping(
+        "GU_CATHETER_URINE_CLOUDY", "genitourinary", "Catheter urine: cloudy",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Cloudy", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_AMBER": ConceptMapping(
+        "GU_CATHETER_URINE_AMBER", "genitourinary", "Catheter urine: amber",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Amber", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_DARK": ConceptMapping(
+        "GU_CATHETER_URINE_DARK", "genitourinary", "Catheter urine: dark",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Dark", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_HEMATURIA": ConceptMapping(
+        "GU_CATHETER_URINE_HEMATURIA", "genitourinary", "Catheter urine: hematuria",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Hematuria", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_SEDIMENT": ConceptMapping(
+        "GU_CATHETER_URINE_SEDIMENT", "genitourinary", "Catheter urine: sediment",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Sediment", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_FOUL_ODOR": ConceptMapping(
+        "GU_CATHETER_URINE_FOUL_ODOR", "genitourinary", "Catheter urine: foul odor",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Foul odor", op="multi_add")),
+    ),
+    "GU_URINE_OUTPUT_ADEQUATE": ConceptMapping(
+        "GU_URINE_OUTPUT_ADEQUATE", "genitourinary", "Urine output: adequate",
+        (_fw("urineOutput", "Adequate"),),
+    ),
+    "GU_URINE_OUTPUT_DECREASED": ConceptMapping(
+        "GU_URINE_OUTPUT_DECREASED", "genitourinary", "Urine output: decreased",
+        (_fw("urineOutput", "Decreased"),),
+    ),
+    "GU_URINE_OUTPUT_ANURIA": ConceptMapping(
+        "GU_URINE_OUTPUT_ANURIA", "genitourinary", "Urine output: anuria",
+        (_fw("urineOutput", "Anuria"),),
+    ),
+    "GU_URINE_OUTPUT_POLYURIA": ConceptMapping(
+        "GU_URINE_OUTPUT_POLYURIA", "genitourinary", "Urine output: polyuria",
+        (_fw("urineOutput", "Polyuria"),),
+    ),
+    "GU_24H_VOLUME": ConceptMapping(
+        "GU_24H_VOLUME", "genitourinary", "24-hour urine volume",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="twentyFourHourVolume", min_value=0, max_value=6000),
+    ),
+    "GU_REPRO_VAGINAL_BLEEDING": ConceptMapping(
+        "GU_REPRO_VAGINAL_BLEEDING", "genitourinary", "Vaginal bleeding",
+        (_fw("reproductive.concerns", "Vaginal bleeding", op="multi_add"),),
+    ),
+    "GU_REPRO_VAGINAL_DISCHARGE": ConceptMapping(
+        "GU_REPRO_VAGINAL_DISCHARGE", "genitourinary", "Vaginal discharge",
+        (_fw("reproductive.concerns", "Vaginal discharge", op="multi_add"),),
+    ),
+    "GU_REPRO_PENILE_DISCHARGE": ConceptMapping(
+        "GU_REPRO_PENILE_DISCHARGE", "genitourinary", "Penile discharge",
+        (_fw("reproductive.concerns", "Penile discharge", op="multi_add"),),
+    ),
+    "GU_REPRO_SCROTAL_EDEMA": ConceptMapping(
+        "GU_REPRO_SCROTAL_EDEMA", "genitourinary", "Scrotal edema",
+        (_fw("reproductive.concerns", "Scrotal edema", op="multi_add"),),
+    ),
+    "GU_REPRO_TESTICULAR_MASS": ConceptMapping(
+        "GU_REPRO_TESTICULAR_MASS", "genitourinary", "Testicular mass",
+        (_fw("reproductive.concerns", "Testicular mass", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_BLADDER_TRAINING": ConceptMapping(
+        "GU_BLADDER_MGMT_BLADDER_TRAINING", "genitourinary", "Bladder training",
+        (_fw("bladderManagement", "Bladder training", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_SCHEDULED_TOILETING": ConceptMapping(
+        "GU_BLADDER_MGMT_SCHEDULED_TOILETING", "genitourinary", "Scheduled toileting",
+        (_fw("bladderManagement", "Scheduled toileting", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_PELVIC_FLOOR_EXERCISES": ConceptMapping(
+        "GU_BLADDER_MGMT_PELVIC_FLOOR_EXERCISES", "genitourinary", "Pelvic floor exercises",
+        (_fw("bladderManagement", "Pelvic floor exercises", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_EXTERNAL_COLLECTION_DEVICE": ConceptMapping(
+        "GU_BLADDER_MGMT_EXTERNAL_COLLECTION_DEVICE", "genitourinary", "External collection device",
+        (_fw("bladderManagement", "External collection device", op="multi_add"),),
+    ),
+
+    # ═══════════════════════════ NUTRITION (coverage expansion) ═══
+    "NUTR_DENTURES_UPPER": ConceptMapping(
+        "NUTR_DENTURES_UPPER", "nutrition", "Upper dentures present",
+        (_fw("dentures.upper", True),),
+    ),
+    "NUTR_DENTURES_LOWER": ConceptMapping(
+        "NUTR_DENTURES_LOWER", "nutrition", "Lower dentures present",
+        (_fw("dentures.lower", True),),
+    ),
+
+    # ═══════════════════════════ SKIN (coverage expansion) ═══
+    "SKIN_RELIEF_PRESSURE_RELIEF_MATTRESS": ConceptMapping(
+        "SKIN_RELIEF_PRESSURE_RELIEF_MATTRESS", "skin", "Pressure-relief mattress",
+        (_fw("pressureReliefMeasures", "Pressure-relief mattress", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_HEEL_PROTECTORS_FLOATING_HEELS": ConceptMapping(
+        "SKIN_RELIEF_HEEL_PROTECTORS_FLOATING_HEELS", "skin", "Heel protectors/floating heels",
+        (_fw("pressureReliefMeasures", "Heel protectors/floating heels", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_CUSHIONED_WHEELCHAIR_SEAT": ConceptMapping(
+        "SKIN_RELIEF_CUSHIONED_WHEELCHAIR_SEAT", "skin", "Cushioned wheelchair seat",
+        (_fw("pressureReliefMeasures", "Cushioned wheelchair seat", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_FOAM_GEL_POSITIONING_DEVICES": ConceptMapping(
+        "SKIN_RELIEF_FOAM_GEL_POSITIONING_DEVICES", "skin", "Foam/gel positioning devices",
+        (_fw("pressureReliefMeasures", "Foam/gel positioning devices", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_FREQUENT_POSITION_CHANGES": ConceptMapping(
+        "SKIN_RELIEF_FREQUENT_POSITION_CHANGES", "skin", "Frequent position changes",
+        (_fw("pressureReliefMeasures", "Frequent position changes", op="multi_add"),),
+    ),
+
+    # ═══════════════════════════ RESPIRATORY (coverage expansion) ═══
+    "RESP_OXYGEN_HOURS_PER_DAY": ConceptMapping(
+        "RESP_OXYGEN_HOURS_PER_DAY", "respiratory", "Oxygen hours per day",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="oxygenTherapy.hoursPerDay", min_value=0, max_value=24),
+    ),
+    "RESP_SAT_ON_O2": ConceptMapping(
+        "RESP_SAT_ON_O2", "respiratory", "SpO2 while on oxygen",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="oxygenTherapy.satOnO2", min_value=0, max_value=100),
+    ),
+
+    # ═══════════════════════════ NEUROLOGICAL (coverage expansion) ═══
+    "NEURO_N0500_0": ConceptMapping(
+        "NEURO_N0500_0", "neurological", "N0500: None",
+        (_fw("hopeItems.n0500", "0"),),
+    ),
+    "NEURO_N0500_1": ConceptMapping(
+        "NEURO_N0500_1", "neurological", "N0500: One word",
+        (_fw("hopeItems.n0500", "1"),),
+    ),
+    "NEURO_N0500_2": ConceptMapping(
+        "NEURO_N0500_2", "neurological", "N0500: Two words",
+        (_fw("hopeItems.n0500", "2"),),
+    ),
+    "NEURO_N0500_3": ConceptMapping(
+        "NEURO_N0500_3", "neurological", "N0500: Three words",
+        (_fw("hopeItems.n0500", "3"),),
+    ),
+    "NEURO_N0510_0": ConceptMapping(
+        "NEURO_N0510_0", "neurological", "N0510: None",
+        (_fw("hopeItems.n0510", "0"),),
+    ),
+    "NEURO_N0510_1": ConceptMapping(
+        "NEURO_N0510_1", "neurological", "N0510: One",
+        (_fw("hopeItems.n0510", "1"),),
+    ),
+    "NEURO_N0510_2": ConceptMapping(
+        "NEURO_N0510_2", "neurological", "N0510: Two",
+        (_fw("hopeItems.n0510", "2"),),
+    ),
+    "NEURO_N0510_3": ConceptMapping(
+        "NEURO_N0510_3", "neurological", "N0510: Three",
+        (_fw("hopeItems.n0510", "3"),),
+    ),
+    "NEURO_N0520_0": ConceptMapping(
+        "NEURO_N0520_0", "neurological", "N0520: None correct",
+        (_fw("hopeItems.n0520", "0"),),
+    ),
+    "NEURO_N0520_1": ConceptMapping(
+        "NEURO_N0520_1", "neurological", "N0520: Year correct",
+        (_fw("hopeItems.n0520", "1"),),
+    ),
+    "NEURO_N0520_2": ConceptMapping(
+        "NEURO_N0520_2", "neurological", "N0520: Month correct",
+        (_fw("hopeItems.n0520", "2"),),
+    ),
+    "NEURO_N0520_3": ConceptMapping(
+        "NEURO_N0520_3", "neurological", "N0520: Day of week correct",
+        (_fw("hopeItems.n0520", "3"),),
+    ),
+    "NEURO_SENSORY_AID_GLASSES": ConceptMapping(
+        "NEURO_SENSORY_AID_GLASSES", "neurological", "Glasses",
+        (_fw("sensoryAids", "Glasses", op="multi_add"),),
+    ),
+    "NEURO_SENSORY_AID_HEARING_AIDS": ConceptMapping(
+        "NEURO_SENSORY_AID_HEARING_AIDS", "neurological", "Hearing aids",
+        (_fw("sensoryAids", "Hearing aids", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_BIPOLAR_DISORDER": ConceptMapping(
+        "NEURO_PSYCH_HX_BIPOLAR_DISORDER", "neurological", "Psychiatric history: Bipolar disorder",
+        (_fw("psychiatricHistoryType", "Bipolar disorder", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_OCD": ConceptMapping(
+        "NEURO_PSYCH_HX_OCD", "neurological", "Psychiatric history: OCD",
+        (_fw("psychiatricHistoryType", "OCD", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_SCHIZOPHRENIA": ConceptMapping(
+        "NEURO_PSYCH_HX_SCHIZOPHRENIA", "neurological", "Psychiatric history: Schizophrenia",
+        (_fw("psychiatricHistoryType", "Schizophrenia", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_DEPRESSION": ConceptMapping(
+        "NEURO_PSYCH_HX_DEPRESSION", "neurological", "Psychiatric history: Depression",
+        (_fw("psychiatricHistoryType", "Depression", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_PATTERN_NORMAL": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_NORMAL", "neurological", "Sleep pattern: normal",
+        (_fw("sleepRest.sleepPattern", "Normal"),),
+    ),
+    "NEURO_SLEEP_PATTERN_INSOMNIA": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_INSOMNIA", "neurological", "Sleep pattern: insomnia",
+        (_fw("sleepRest.sleepPattern", "Insomnia"),),
+    ),
+    "NEURO_SLEEP_PATTERN_HYPERSOMNIA": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_HYPERSOMNIA", "neurological", "Sleep pattern: hypersomnia",
+        (_fw("sleepRest.sleepPattern", "Hypersomnia"),),
+    ),
+    "NEURO_SLEEP_PATTERN_FRAGMENTED": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_FRAGMENTED", "neurological", "Sleep pattern: fragmented",
+        (_fw("sleepRest.sleepPattern", "Fragmented"),),
+    ),
+    "NEURO_SLEEP_PATTERN_SOMNOLENCE": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_SOMNOLENCE", "neurological", "Sleep pattern: somnolence",
+        (_fw("sleepRest.sleepPattern", "Somnolence"),),
+    ),
+    "NEURO_AVG_SLEEP_HOURS": ConceptMapping(
+        "NEURO_AVG_SLEEP_HOURS", "neurological", "Average sleep hours",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="sleepRest.averageSleepHours", min_value=0, max_value=24),
+    ),
+    "NEURO_NIGHT_SYMPTOM_PAIN": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_PAIN", "neurological", "Nighttime pain",
+        (_fw("sleepRest.nighttimeSymptoms", "Pain", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_DYSPNEA": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_DYSPNEA", "neurological", "Nighttime dyspnea",
+        (_fw("sleepRest.nighttimeSymptoms", "Dyspnea", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_RESTLESSNESS": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_RESTLESSNESS", "neurological", "Nighttime restlessness",
+        (_fw("sleepRest.nighttimeSymptoms", "Restlessness", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_CONFUSION": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_CONFUSION", "neurological", "Nighttime confusion",
+        (_fw("sleepRest.nighttimeSymptoms", "Confusion", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_ANXIETY": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_ANXIETY", "neurological", "Nighttime anxiety",
+        (_fw("sleepRest.nighttimeSymptoms", "Anxiety", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_NAUSEA": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_NAUSEA", "neurological", "Nighttime nausea",
+        (_fw("sleepRest.nighttimeSymptoms", "Nausea", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_MEDICATION": ConceptMapping(
+        "NEURO_SLEEP_AID_MEDICATION", "neurological", "Sleep aid: Medication",
+        (_fw("sleepRest.sleepAids", "Medication", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_POSITIONING": ConceptMapping(
+        "NEURO_SLEEP_AID_POSITIONING", "neurological", "Sleep aid: Positioning",
+        (_fw("sleepRest.sleepAids", "Positioning", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_WHITE_NOISE": ConceptMapping(
+        "NEURO_SLEEP_AID_WHITE_NOISE", "neurological", "Sleep aid: White noise",
+        (_fw("sleepRest.sleepAids", "White noise", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_WARM_MILK_TEA": ConceptMapping(
+        "NEURO_SLEEP_AID_WARM_MILK_TEA", "neurological", "Sleep aid: Warm milk/tea",
+        (_fw("sleepRest.sleepAids", "Warm milk/tea", op="multi_add"),),
+    ),
 }
 
 
