@@ -2801,4 +2801,60 @@ export const CONCEPT_REGISTRY = {
     section: "personalCare",
     writes: [{ path: "equipmentSupplyNeeds", value: "E-tank", op: "multi_add", section: null }],
   },
+  TEACH_PRIMARY_LEARNER_PATIENT: {
+    section: "teachingNeeds",
+    writes: [{ path: "primaryLearner", value: "Patient", op: "set", section: null }],
+  },
+  TEACH_PRIMARY_LEARNER_CAREGIVER: {
+    section: "teachingNeeds",
+    writes: [{ path: "primaryLearner", value: "Caregiver", op: "set", section: null }],
+  },
+  TEACH_PRIMARY_LEARNER_BOTH: {
+    section: "teachingNeeds",
+    writes: [{ path: "primaryLearner", value: "Both", op: "set", section: null }],
+  },
+  TEACH_LEARNING_STYLE_VISUAL: {
+    section: "teachingNeeds",
+    writes: [{ path: "learningStylePreference", value: "Visual", op: "set", section: null }],
+  },
+  TEACH_LEARNING_STYLE_AUDITORY: {
+    section: "teachingNeeds",
+    writes: [{ path: "learningStylePreference", value: "Auditory", op: "set", section: null }],
+  },
+  TEACH_LEARNING_STYLE_HANDS_ON: {
+    section: "teachingNeeds",
+    writes: [{ path: "learningStylePreference", value: "Hands-on", op: "set", section: null }],
+  },
+  TEACH_LEARNING_STYLE_WRITTEN: {
+    section: "teachingNeeds",
+    writes: [{ path: "learningStylePreference", value: "Written materials", op: "set", section: null }],
+  },
+  TEACH_BARRIER_LANGUAGE: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Language", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_LITERACY: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Literacy", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_COGNITIVE_IMPAIRMENT: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Cognitive impairment", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_HEARING_DEFICIT: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Hearing deficit", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_VISION_DEFICIT: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Vision deficit", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_CULTURAL_CONSIDERATIONS: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Cultural considerations", op: "multi_add", section: null }],
+  },
+  TEACH_BARRIER_DENIAL_OF_DIAGNOSIS: {
+    section: "teachingNeeds",
+    writes: [{ path: "barriersToLearning", value: "Denial of diagnosis", op: "multi_add", section: null }],
+  },
 };

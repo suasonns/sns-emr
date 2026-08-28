@@ -1668,6 +1668,28 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "PERSONALCARE_EQUIP_SUCTION_MACHINE": ConceptMapping("PERSONALCARE_EQUIP_SUCTION_MACHINE", "personalCare", "Equipment need: suction machine", (_fw("equipmentSupplyNeeds", "Suction machine", op="multi_add"),)),
     "PERSONALCARE_EQUIP_O2_CONCENTRATOR": ConceptMapping("PERSONALCARE_EQUIP_O2_CONCENTRATOR", "personalCare", "Equipment need: O2 concentrator", (_fw("equipmentSupplyNeeds", "O2 concentrator", op="multi_add"),)),
     "PERSONALCARE_EQUIP_E_TANK": ConceptMapping("PERSONALCARE_EQUIP_E_TANK", "personalCare", "Equipment need: E-tank", (_fw("equipmentSupplyNeeds", "E-tank", op="multi_add"),)),
+
+    # ═══════════════════════ TEACHING NEEDS (real gaps) ═════════════════════
+    # `teachingTopics`/`teachingMethods`/`patientFamilyResponse`/
+    # `followUpPlan` document what THIS VISIT's RN actually taught and how
+    # the patient/family responded -- that is a this-visit workflow record,
+    # not an admission fact, and is excluded. Only the learner
+    # CHARACTERISTICS (who the learner is, how they learn best, and any
+    # documented barriers) are admission-document facts worth capturing.
+    "TEACH_PRIMARY_LEARNER_PATIENT": ConceptMapping("TEACH_PRIMARY_LEARNER_PATIENT", "teachingNeeds", "Primary learner: patient", (_fw("primaryLearner", "Patient"),)),
+    "TEACH_PRIMARY_LEARNER_CAREGIVER": ConceptMapping("TEACH_PRIMARY_LEARNER_CAREGIVER", "teachingNeeds", "Primary learner: caregiver", (_fw("primaryLearner", "Caregiver"),)),
+    "TEACH_PRIMARY_LEARNER_BOTH": ConceptMapping("TEACH_PRIMARY_LEARNER_BOTH", "teachingNeeds", "Primary learner: both patient and caregiver", (_fw("primaryLearner", "Both"),)),
+    "TEACH_LEARNING_STYLE_VISUAL": ConceptMapping("TEACH_LEARNING_STYLE_VISUAL", "teachingNeeds", "Learning style: visual", (_fw("learningStylePreference", "Visual"),)),
+    "TEACH_LEARNING_STYLE_AUDITORY": ConceptMapping("TEACH_LEARNING_STYLE_AUDITORY", "teachingNeeds", "Learning style: auditory", (_fw("learningStylePreference", "Auditory"),)),
+    "TEACH_LEARNING_STYLE_HANDS_ON": ConceptMapping("TEACH_LEARNING_STYLE_HANDS_ON", "teachingNeeds", "Learning style: hands-on", (_fw("learningStylePreference", "Hands-on"),)),
+    "TEACH_LEARNING_STYLE_WRITTEN": ConceptMapping("TEACH_LEARNING_STYLE_WRITTEN", "teachingNeeds", "Learning style: written materials", (_fw("learningStylePreference", "Written materials"),)),
+    "TEACH_BARRIER_LANGUAGE": ConceptMapping("TEACH_BARRIER_LANGUAGE", "teachingNeeds", "Learning barrier: language", (_fw("barriersToLearning", "Language", op="multi_add"),)),
+    "TEACH_BARRIER_LITERACY": ConceptMapping("TEACH_BARRIER_LITERACY", "teachingNeeds", "Learning barrier: literacy", (_fw("barriersToLearning", "Literacy", op="multi_add"),)),
+    "TEACH_BARRIER_COGNITIVE_IMPAIRMENT": ConceptMapping("TEACH_BARRIER_COGNITIVE_IMPAIRMENT", "teachingNeeds", "Learning barrier: cognitive impairment", (_fw("barriersToLearning", "Cognitive impairment", op="multi_add"),)),
+    "TEACH_BARRIER_HEARING_DEFICIT": ConceptMapping("TEACH_BARRIER_HEARING_DEFICIT", "teachingNeeds", "Learning barrier: hearing deficit", (_fw("barriersToLearning", "Hearing deficit", op="multi_add"),)),
+    "TEACH_BARRIER_VISION_DEFICIT": ConceptMapping("TEACH_BARRIER_VISION_DEFICIT", "teachingNeeds", "Learning barrier: vision deficit", (_fw("barriersToLearning", "Vision deficit", op="multi_add"),)),
+    "TEACH_BARRIER_CULTURAL_CONSIDERATIONS": ConceptMapping("TEACH_BARRIER_CULTURAL_CONSIDERATIONS", "teachingNeeds", "Learning barrier: cultural considerations", (_fw("barriersToLearning", "Cultural considerations", op="multi_add"),)),
+    "TEACH_BARRIER_DENIAL_OF_DIAGNOSIS": ConceptMapping("TEACH_BARRIER_DENIAL_OF_DIAGNOSIS", "teachingNeeds", "Learning barrier: denial of diagnosis", (_fw("barriersToLearning", "Denial of diagnosis", op="multi_add"),)),
 }
 
 

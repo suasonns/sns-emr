@@ -79,6 +79,11 @@ def test_registry_covers_all_eight_requested_sections():
         "bereavement",
         "personalCare",
         "imminentDeath",
+        # Coverage Expansion Phase 3 cont'd: teachingNeeds learner-
+        # characteristic facts (who the learner is, how they learn, and
+        # documented barriers) -- this-visit teaching delivered/response is
+        # excluded as a workflow record, not an admission fact.
+        "teachingNeeds",
     }
 
 
