@@ -9,6 +9,11 @@ type AssessmentPayload = {
   // Assessment save, which is how the backend tells the two apart (see
   // save_rnica_assessment in app/api/visits.py).
   assessmentSubtype?: "update" | "recert";
+  // Client-generated idempotency key. Lets the offline sync manager safely
+  // retry a queued "create" after a dropped connection: the server returns
+  // the existing assessment for a repeated clientRequestId instead of
+  // creating a duplicate DRAFT (see save_rnica_assessment).
+  clientRequestId?: string;
 };
 
 type AssessmentQueryOptions = {
@@ -84,7 +89,12 @@ async function unwrap<T>(promise: Promise<{ data: T }>, fallback: string): Promi
     const response = await promise;
     return response.data;
   } catch (error) {
-    throw new Error(getErrorMessage(error, fallback));
+    // Preserve the original AxiosError via `cause` so callers that need to
+    // distinguish a connectivity failure (offline queueing) from a real
+    // server rejection can still inspect the underlying response/status --
+    // otherwise it's lost the moment it's wrapped into this friendlier
+    // message-only Error.
+    throw new Error(getErrorMessage(error, fallback), { cause: error });
   }
 }
 

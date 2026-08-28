@@ -2,6 +2,7 @@ import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
 
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
 const apiTarget =
@@ -84,7 +85,41 @@ function buildApiProxy() {
 
 export default defineConfig({
   root: frontendRoot,
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "autoUpdate",
+      // Precache ONLY the app shell (JS/CSS/HTML) so the SPA itself can
+      // load with zero connectivity -- this deliberately does NOT cache
+      // any API/data traffic. Caching patient chart data in the service
+      // worker would risk an RN looking at stale clinical data without
+      // realizing it; all API calls always go to the network (or into the
+      // durable IndexedDB queue on failure -- see src/offline/), never to
+      // a service-worker cache.
+      workbox: {
+        navigateFallback: "/index.html",
+        // Never let workbox intercept API calls -- explicitly exclude
+        // every backend prefix the proxy config above knows about, in
+        // addition to the default precache-only behavior.
+        navigateFallbackDenylist: [/^\/documents\//, /^\/visits\//, /^\/api\//],
+        globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
+      },
+      manifest: {
+        name: "SNS Hospice Solutions",
+        short_name: "SNS EMR",
+        start_url: "/login",
+        display: "standalone",
+        background_color: "#0b1220",
+        theme_color: "#0b1220",
+        icons: [],
+      },
+      // Service worker only ships in production builds. In dev, offline
+      // capture/sync is still fully functional (see src/offline/) --
+      // only the "load the app shell with zero connectivity" capability
+      // requires the built/preview artifact.
+      devOptions: { enabled: false },
+    }),
+  ],
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setupTests.js",

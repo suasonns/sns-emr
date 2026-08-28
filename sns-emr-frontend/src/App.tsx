@@ -35,6 +35,10 @@ import ReportsPage from "./pages/billing/ReportsPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
+import { useEffect } from "react";
+import OfflineStatusBadge from "./offline/OfflineStatusBadge";
+import { startConnectivityMonitor } from "./offline/networkStatus";
+import { startSyncManager } from "./offline/syncManager";
 
 const tenantRoute = (element: ReactNode) => (
   <RequireRoleAccess access="tenant">{element}</RequireRoleAccess>
@@ -42,8 +46,17 @@ const tenantRoute = (element: ReactNode) => (
 
 // ✅ ENTERPRISE ROUTER (FIXED JSX)
 export default function App() {
+  useEffect(() => {
+    // Started once for the whole app: watches connectivity and drains any
+    // durable offline queue (RN ICA saves/updates, document uploads) the
+    // instant a signal is available again -- no per-page wiring needed.
+    startConnectivityMonitor();
+    startSyncManager();
+  }, []);
+
   return (
     <BrowserRouter>
+      <OfflineStatusBadge />
       <Routes>
 
         {/* Default route */}

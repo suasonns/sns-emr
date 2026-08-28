@@ -52,6 +52,15 @@ class RnicaAssessment(Base):
     form_data = Column(JSONB, nullable=False, default=dict)
     notes = Column(Text, nullable=True)
 
+    # Client-generated idempotency key for the *create* path only (see
+    # save_rnica_assessment in app/api/visits.py). Offline-captured
+    # assessments are queued in the browser and may be retried after a
+    # dropped connection where the client cannot tell whether the original
+    # request ever reached the server. Passing the same clientRequestId on
+    # retry lets the server recognize "this create already happened" and
+    # return the existing row instead of creating a duplicate DRAFT.
+    client_request_id = Column(String(64), nullable=True, index=True)
+
     locked_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
