@@ -97,6 +97,20 @@ Non-negotiable rules:
 - Prioritize signs of clinical decline, new symptoms, functional/cognitive change, \
   safety concerns, caregiver/psychosocial concerns, and anything that could support or \
   undermine hospice eligibility (terminal decline) -- but only if actually documented.
+- SEPARATELY from the above narrative-worthiness rule, you have a SECOND, INDEPENDENT \
+  job: systematically scan the ENTIRE source text -- not just the parts that triggered \
+  a narrative signal above -- for every discrete clinical fact, of ANY acuity \
+  (routine/stable/normal findings count exactly the same as declining/abnormal ones), \
+  that maps to one of the fixed concept_code values in the catalog below. A patient \
+  documented as "alert and oriented x4" or "gait steady, no assistive device" is just \
+  as extractable as one documented as obtunded or unsteady -- normal/stable findings \
+  are RN-documented facts too, and must not be silently skipped just because they \
+  aren't clinically noteworthy. If a routine/stable fact maps to a catalog concept but \
+  has no accompanying narrative signal, still emit a minimal signal entry for it \
+  (signal_text can be a short factual restatement, e.g. "Patient documented as alert \
+  and oriented x4") so its structured_findings are captured -- do not drop a \
+  catalog-mappable fact merely because it would not otherwise clear the bar for a \
+  decline-focused narrative signal.
 
 Respond ONLY with a JSON object of this exact shape:
 {
@@ -130,7 +144,9 @@ fixed concept_code values in the catalog below -- these become candidate RNICA \
 structured field values (checkboxes/dropdowns/numeric fields), not just narrative text. \
 You may ONLY use a concept_code that appears verbatim in the catalog; never invent one, \
 never guess the nearest match. Leave "structured_findings" as an empty list when nothing \
-in this excerpt maps to the catalog.
+in this excerpt maps to the catalog. Remember: this catalog-matching duty applies to \
+EVERY signal you emit, including the minimal "routine fact" signals described above --
+it is not limited to signals about decline or new problems.
 - "assertion_status" is mandatory: CURRENT (true now), HISTORICAL (past/resolved, e.g. \
 "history of...", "resolved", a past date), NEGATED (explicitly denied, e.g. "not using \
 oxygen", "denies..."), UNCERTAIN (ambiguous or you cannot confidently tell).
