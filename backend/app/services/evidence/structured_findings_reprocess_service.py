@@ -53,6 +53,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
+from app.services.audit_logger import log_event
 from app.services.evidence.ai_extraction_service import extract_signals_with_diagnostics
 
 logger = logging.getLogger("sns_emr")
@@ -104,6 +105,33 @@ class ReprocessReport:
         return self
 
 
+def _audit(
+    db: Session,
+    signal: PatientHarvestedSignal,
+    *,
+    action: str,
+    metadata: Optional[dict] = None,
+) -> None:
+    """Record one append-only audit entry for a reprocess decision on this
+    row (completed, failed, or any skip reason). This is the only place a
+    reprocess pass is observable outside of application logs / the
+    ReprocessReport, which matters for RN-reviewed skips in particular --
+    compliance needs proof that a row an RN already acted on was never
+    touched, not just a log line. Never raises: audit_logger.log_event
+    already swallows its own failures so a broken audit write can't abort
+    an in-progress reprocess batch."""
+
+    log_event(
+        db=db,
+        tenant_id=str(signal.tenant_id),
+        action=action,
+        entity_type="patient_harvested_signal",
+        entity_id=str(signal.id),
+        metadata={"patient_id": str(signal.patient_id), **(metadata or {})},
+        commit=False,
+    )
+
+
 def _reprocess_signal(
     db: Session,
     signal: PatientHarvestedSignal,
@@ -119,10 +147,17 @@ def _reprocess_signal(
     # RN disposition always wins, no exceptions -- not even with force=True.
     if signal.review_status != "NEW":
         report.skipped_rn_reviewed_count += 1
+        _audit(
+            db,
+            signal,
+            action="structured_findings.reprocess_skip_rn_reviewed",
+            metadata={"review_status": signal.review_status},
+        )
         return
 
     if signal.structured_findings_status == "COMPLETED" and not force:
         report.skipped_already_completed_count += 1
+        _audit(db, signal, action="structured_findings.reprocess_skip_completed")
         return
 
     if signal.structured_findings_status not in REPROCESSABLE_STATUSES and not (
@@ -131,6 +166,12 @@ def _reprocess_signal(
         # Defensive: any status this module doesn't recognize is left alone
         # rather than guessed at.
         report.skipped_other_count += 1
+        _audit(
+            db,
+            signal,
+            action="structured_findings.reprocess_skip_other",
+            metadata={"structured_findings_status": signal.structured_findings_status},
+        )
         return
 
     text = (signal.original_text_excerpt or "").strip()
@@ -161,6 +202,12 @@ def _reprocess_signal(
             "structured_findings_reprocess: unexpected error harvested_signal_id=%s",
             signal.id,
         )
+        _audit(
+            db,
+            signal,
+            action="structured_findings.reprocess_failed",
+            metadata={"error": str(exc)[:500]},
+        )
         return
 
     if not diagnostics.succeeded:
@@ -172,6 +219,12 @@ def _reprocess_signal(
         signal.structured_findings_status = "FAILED"
         signal.structured_findings_last_error = (diagnostics.error or "extraction did not complete")[:MAX_ERROR_LEN]
         report.failed_count += 1
+        _audit(
+            db,
+            signal,
+            action="structured_findings.reprocess_failed",
+            metadata={"error": (diagnostics.error or "extraction did not complete")[:500]},
+        )
         return
 
     # The excerpt fed in is exactly this row's own excerpt (one isolated
@@ -193,6 +246,15 @@ def _reprocess_signal(
     report.completed_count += 1
     report.structured_findings_generated_count += len(new_findings)
     report.rejected_count += diagnostics.rejected_findings_count
+    _audit(
+        db,
+        signal,
+        action="structured_findings.reprocess_completed",
+        metadata={
+            "findings_generated": len(new_findings),
+            "findings_rejected": diagnostics.rejected_findings_count,
+        },
+    )
 
 
 def _scope_query(
