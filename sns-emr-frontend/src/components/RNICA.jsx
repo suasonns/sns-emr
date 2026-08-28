@@ -9858,6 +9858,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // new backend field, model, or write path. See
   // docs/SNS_RNICA_SECTION_1_IMPLEMENTATION_CONTRACT.md.
   const [facesheetData, setFacesheetData] = useState(null);
+  // True once the "load existing assessment" fetch has resolved (success or
+  // failure). The facesheet-driven demographics prefill below must wait for
+  // this so it always applies AFTER any saved draft is loaded into
+  // formData -- otherwise, whichever of the two independent async fetches
+  // (assessment draft vs. facesheet) happens to resolve second wins the
+  // race and can silently wipe out the other's data.
+  const [assessmentLoaded, setAssessmentLoaded] = useState(false);
   const [facesheetError, setFacesheetError] = useState("");
   const [performanceHistory, setPerformanceHistory] = useState([]);
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
@@ -10403,6 +10410,76 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     });
   }, [patientSummary, assessmentId]);
 
+  // Fill demographics/diagnosis identity fields from the same authoritative
+  // Facesheet data Section 1 already displays read-only, whenever it becomes
+  // available. Unlike the patientSummary prefill above, this deliberately
+  // runs on every facesheet load (not just "new assessment, no assessmentId
+  // yet") -- an already-in-progress assessment that still shows these as
+  // blank/required (e.g. because it was started before the facesheet was
+  // completed, or before this prefill existed) should self-heal the next
+  // time its Facesheet data loads, rather than staying permanently blank.
+  // Every field write is guarded by "only if currently empty" so an RN's
+  // own entry (including one that deliberately differs from the facesheet)
+  // is never overwritten -- this only fills gaps, never replaces values.
+  useEffect(() => {
+    if (!facesheetData || !assessmentLoaded) {
+      return;
+    }
+    const identity = facesheetData.identity || {};
+    const primaryDx = facesheetData.clinical?.active_primary_diagnosis || null;
+
+    setFormData((prev) => {
+      let changed = false;
+      const next = JSON.parse(JSON.stringify(prev));
+      const d = next.demographics;
+
+      if (!d.dob && identity.dob) {
+        d.dob = identity.dob;
+        changed = true;
+      }
+      if (!d.gender && identity.gender) {
+        d.gender = identity.gender;
+        changed = true;
+      }
+      if ((!d.race || d.race.length === 0) && identity.race) {
+        d.race = [identity.race];
+        changed = true;
+      }
+      if ((!d.ethnicity || d.ethnicity.length === 0) && identity.ethnicity) {
+        d.ethnicity = [identity.ethnicity];
+        changed = true;
+      }
+      if (!d.preferredLanguage && identity.language) {
+        d.preferredLanguage = identity.language;
+        changed = true;
+      }
+      if (!d.religion && identity.religion) {
+        d.religion = identity.religion;
+        changed = true;
+      }
+      if (!d.maritalStatus && identity.marital_status) {
+        d.maritalStatus = identity.marital_status;
+        changed = true;
+      }
+      if (!d.phone && identity.phone) {
+        d.phone = identity.phone;
+        changed = true;
+      }
+
+      const dx = next.diagnoses.primaryDiagnosis;
+      if (!dx.icd10 && primaryDx?.icd10_code) {
+        dx.icd10 = primaryDx.icd10_code;
+        changed = true;
+      }
+      if (!dx.description && primaryDx?.description) {
+        dx.description = primaryDx.description;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [facesheetData, assessmentLoaded]);
+
   const refreshIntelligence = useCallback(async (currentAssessmentId) => {
     if (!currentAssessmentId) {
       setIntelligence(null);
@@ -10448,10 +10525,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
     if (!existingAssessmentId && !activePatientId) {
+      setAssessmentLoaded(true);
       return undefined;
     }
 
     let mounted = true;
+    setAssessmentLoaded(false);
     const loadAssessment = existingAssessmentId
       ? api.getRNICAAssessment(existingAssessmentId)
       : api.getRNICAAssessmentByPatient(activePatientId, isOngoing ? assessmentType : undefined);
@@ -10486,6 +10565,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         if (!mounted) return;
         console.error("Failed to load assessment:", err);
         setPageError(err instanceof Error ? err.message : "Unable to load RN ICA assessment.");
+      })
+      .finally(() => {
+        if (mounted) {
+          setAssessmentLoaded(true);
+        }
       });
 
     return () => {
