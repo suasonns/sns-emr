@@ -60,6 +60,25 @@ def test_registry_covers_all_eight_requested_sections():
         # neurological). See RNICA Coverage Expansion Matrix.
         "gastrointestinal",
         "genitourinary",
+        # Coverage Expansion Phase 2 (2026-08-28): Vitals, Pain, and Endocrine
+        # were previously 0% mapped whole sections despite being bounded
+        # numeric/enum facts routinely stated in H&P/referral text -- added
+        # as their own sections per the RNICA Completion Matrix follow-up.
+        "vitals",
+        "pain",
+        "endocrine",
+        # Coverage Expansion Phase 3 (2026-08-28): full gap-analysis matrix
+        # sweep -- safety, psychosocial, spiritual, bereavement, personal
+        # care, and imminent death were previously 0% mapped; closed every
+        # legitimate documented-fact gap while excluding RN/discipline
+        # judgment calls (fall-risk/bereavement-risk *scoring*, coping
+        # assessment, intervention/referral plans, prognosis judgment).
+        "safety",
+        "psychosocial",
+        "spiritual",
+        "bereavement",
+        "personalCare",
+        "imminentDeath",
     }
 
 

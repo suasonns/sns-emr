@@ -1660,4 +1660,1145 @@ export const CONCEPT_REGISTRY = {
     section: "neurological",
     writes: [{ path: "sleepRest.sleepAids", value: "Warm milk/tea", op: "multi_add", section: null }],
   },
+  VITALS_TEMPERATURE: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "temperature", minValue: 90, maxValue: 110, maxLen: null },
+  },
+  VITALS_PULSE: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "pulse", minValue: 20, maxValue: 220, maxLen: null },
+  },
+  VITALS_PULSE_QUALITY_STRONG: {
+    section: "vitals",
+    writes: [{ path: "pulseQuality", value: "Strong", op: "set", section: null }],
+  },
+  VITALS_PULSE_QUALITY_WEAK: {
+    section: "vitals",
+    writes: [{ path: "pulseQuality", value: "Weak", op: "set", section: null }],
+  },
+  VITALS_PULSE_QUALITY_THREADY: {
+    section: "vitals",
+    writes: [{ path: "pulseQuality", value: "Thready", op: "set", section: null }],
+  },
+  VITALS_PULSE_QUALITY_BOUNDING: {
+    section: "vitals",
+    writes: [{ path: "pulseQuality", value: "Bounding", op: "set", section: null }],
+  },
+  VITALS_PULSE_QUALITY_IRREGULAR: {
+    section: "vitals",
+    writes: [{ path: "pulseQuality", value: "Irregular", op: "set", section: null }],
+  },
+  VITALS_RESPIRATIONS: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "respirations", minValue: 4, maxValue: 60, maxLen: null },
+  },
+  VITALS_BP_SYSTOLIC: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "bloodPressure.systolic", minValue: 40, maxValue: 260, maxLen: null },
+  },
+  VITALS_BP_DIASTOLIC: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "bloodPressure.diastolic", minValue: 20, maxValue: 160, maxLen: null },
+  },
+  VITALS_O2_SATURATION: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "oxygenSaturation", minValue: 50, maxValue: 100, maxLen: null },
+  },
+  VITALS_O2_SAT_ON_ROOM_AIR: {
+    section: "vitals",
+    writes: [{ path: "oxygenSaturationOnRA", value: true, op: "set", section: null }],
+  },
+  VITALS_HEIGHT: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "height", minValue: 20, maxValue: 96, maxLen: null },
+  },
+  VITALS_WEIGHT: {
+    section: "vitals",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "weight", minValue: 20, maxValue: 600, maxLen: null },
+  },
+  VITALS_IV_ACCESS_PRESENT: {
+    section: "vitals",
+    writes: [{ path: "ivAssessment.hasIV", value: true, op: "set", section: null }],
+  },
+  VITALS_IV_TYPE_PERIPHERAL: {
+    section: "vitals",
+    writes: [{ path: "ivAssessment.hasIV", value: true, op: "set", section: null }, { path: "ivAssessment.type", value: "Peripheral", op: "set", section: null }],
+  },
+  VITALS_IV_TYPE_CENTRAL: {
+    section: "vitals",
+    writes: [{ path: "ivAssessment.hasIV", value: true, op: "set", section: null }, { path: "ivAssessment.type", value: "Central", op: "set", section: null }],
+  },
+  VITALS_IV_TYPE_PICC: {
+    section: "vitals",
+    writes: [{ path: "ivAssessment.hasIV", value: true, op: "set", section: null }, { path: "ivAssessment.type", value: "PICC", op: "set", section: null }],
+  },
+  VITALS_IV_TYPE_PORT: {
+    section: "vitals",
+    writes: [{ path: "ivAssessment.hasIV", value: true, op: "set", section: null }, { path: "ivAssessment.type", value: "Port", op: "set", section: null }],
+  },
+  PAIN_SCREENED_YES: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }],
+  },
+  PAIN_SEVERITY_NONE: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "0", op: "set", section: null }],
+  },
+  PAIN_SEVERITY_MILD: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "1", op: "set", section: null }],
+  },
+  PAIN_SEVERITY_MODERATE: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "2", op: "set", section: null }],
+  },
+  PAIN_SEVERITY_SEVERE: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "3", op: "set", section: null }],
+  },
+  PAIN_TOOL_NUMERIC: {
+    section: "pain",
+    writes: [{ path: "standardizedPainToolType", value: "1", op: "set", section: null }],
+  },
+  PAIN_TOOL_VERBAL_DESCRIPTOR: {
+    section: "pain",
+    writes: [{ path: "standardizedPainToolType", value: "2", op: "set", section: null }],
+  },
+  PAIN_TOOL_PATIENT_VISUAL: {
+    section: "pain",
+    writes: [{ path: "standardizedPainToolType", value: "3", op: "set", section: null }],
+  },
+  PAIN_TOOL_STAFF_OBSERVATION: {
+    section: "pain",
+    writes: [{ path: "standardizedPainToolType", value: "4", op: "set", section: null }],
+  },
+  PAIN_VERBALIZES_NO: {
+    section: "pain",
+    writes: [{ path: "verbalizesPain", value: "0", op: "set", section: null }],
+  },
+  PAIN_VERBALIZES_RELIABLY: {
+    section: "pain",
+    writes: [{ path: "verbalizesPain", value: "1", op: "set", section: null }],
+  },
+  PAIN_VERBALIZES_SOMETIMES: {
+    section: "pain",
+    writes: [{ path: "verbalizesPain", value: "2", op: "set", section: null }],
+  },
+  PAIN_UNCOMFORTABLE_YES: {
+    section: "pain",
+    writes: [{ path: "uncomfortableBecauseOfPain", value: "1", op: "set", section: null }],
+  },
+  PAIN_UNCOMFORTABLE_NO: {
+    section: "pain",
+    writes: [{ path: "uncomfortableBecauseOfPain", value: "0", op: "set", section: null }],
+  },
+  PAIN_NEUROPATHIC_PRESENT: {
+    section: "pain",
+    writes: [{ path: "neuropathicPain", value: "1", op: "set", section: null }],
+  },
+  PAIN_NEUROPATHIC_ABSENT: {
+    section: "pain",
+    writes: [{ path: "neuropathicPain", value: "0", op: "set", section: null }],
+  },
+  PAIN_INTENSITY_CURRENT: {
+    section: "pain",
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }],
+    valueSlot: { kind: "numeric", path: "painIntensity.current", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  PAIN_INTENSITY_WORST: {
+    section: "pain",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "painIntensity.worst", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  PAIN_INTENSITY_BEST: {
+    section: "pain",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "painIntensity.best", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  PAIN_INTENSITY_ACCEPTABLE: {
+    section: "pain",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "painIntensity.acceptable", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  PAIN_LOCATION_HEAD: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Head", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_NECK: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Neck", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_CHEST: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Chest", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_ABDOMEN: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Abdomen", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_BACK: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Back", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_UPPER_EXTREMITIES: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Upper extremities", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_LOWER_EXTREMITIES: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Lower extremities", op: "multi_add", section: null }],
+  },
+  PAIN_LOCATION_GENERALIZED: {
+    section: "pain",
+    writes: [{ path: "painLocation", value: "Generalized", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_SHARP: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Sharp", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_DULL: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Dull", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_ACHING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Aching", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_BURNING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Burning", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_STABBING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Stabbing", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_THROBBING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Throbbing", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_CRAMPING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Cramping", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_SHOOTING: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Shooting", op: "multi_add", section: null }],
+  },
+  PAIN_CHARACTER_PRESSURE: {
+    section: "pain",
+    writes: [{ path: "painCharacter", value: "Pressure", op: "multi_add", section: null }],
+  },
+  PAIN_AGGRAVATING_MOVEMENT: {
+    section: "pain",
+    writes: [{ path: "aggravatingFactors", value: "Movement", op: "multi_add", section: null }],
+  },
+  PAIN_AGGRAVATING_COUGHING: {
+    section: "pain",
+    writes: [{ path: "aggravatingFactors", value: "Coughing", op: "multi_add", section: null }],
+  },
+  PAIN_AGGRAVATING_EATING: {
+    section: "pain",
+    writes: [{ path: "aggravatingFactors", value: "Eating", op: "multi_add", section: null }],
+  },
+  PAIN_AGGRAVATING_POSITION_CHANGE: {
+    section: "pain",
+    writes: [{ path: "aggravatingFactors", value: "Position change", op: "multi_add", section: null }],
+  },
+  PAIN_AGGRAVATING_TOUCH: {
+    section: "pain",
+    writes: [{ path: "aggravatingFactors", value: "Touch", op: "multi_add", section: null }],
+  },
+  PAIN_RELIEVING_MEDICATION: {
+    section: "pain",
+    writes: [{ path: "relievingFactors", value: "Medication", op: "multi_add", section: null }],
+  },
+  PAIN_RELIEVING_REST: {
+    section: "pain",
+    writes: [{ path: "relievingFactors", value: "Rest", op: "multi_add", section: null }],
+  },
+  PAIN_RELIEVING_HEAT: {
+    section: "pain",
+    writes: [{ path: "relievingFactors", value: "Heat", op: "multi_add", section: null }],
+  },
+  PAIN_RELIEVING_COLD: {
+    section: "pain",
+    writes: [{ path: "relievingFactors", value: "Cold", op: "multi_add", section: null }],
+  },
+  PAIN_RELIEVING_POSITION_CHANGE: {
+    section: "pain",
+    writes: [{ path: "relievingFactors", value: "Position change", op: "multi_add", section: null }],
+  },
+  PAIN_NONPHARM_REPOSITIONING: {
+    section: "pain",
+    writes: [{ path: "nonPharmInterventions", value: "Repositioning", op: "multi_add", section: null }],
+  },
+  PAIN_NONPHARM_HEAT_THERAPY: {
+    section: "pain",
+    writes: [{ path: "nonPharmInterventions", value: "Heat therapy", op: "multi_add", section: null }],
+  },
+  PAIN_NONPHARM_COLD_THERAPY: {
+    section: "pain",
+    writes: [{ path: "nonPharmInterventions", value: "Cold therapy", op: "multi_add", section: null }],
+  },
+  PAIN_NONPHARM_MASSAGE: {
+    section: "pain",
+    writes: [{ path: "nonPharmInterventions", value: "Massage", op: "multi_add", section: null }],
+  },
+  PAIN_NONPHARM_TENS_UNIT: {
+    section: "pain",
+    writes: [{ path: "nonPharmInterventions", value: "TENS unit", op: "multi_add", section: null }],
+  },
+  ENDO_IMPAIRMENT_THYROID: {
+    section: "endocrine",
+    writes: [{ path: "endocrineImpairment", value: "Thyroid", op: "multi_add", section: null }],
+  },
+  ENDO_IMPAIRMENT_PARATHYROID: {
+    section: "endocrine",
+    writes: [{ path: "endocrineImpairment", value: "Parathyroid", op: "multi_add", section: null }],
+  },
+  ENDO_IMPAIRMENT_PITUITARY: {
+    section: "endocrine",
+    writes: [{ path: "endocrineImpairment", value: "Pituitary", op: "multi_add", section: null }],
+  },
+  ENDO_IMPAIRMENT_ADRENAL: {
+    section: "endocrine",
+    writes: [{ path: "endocrineImpairment", value: "Adrenal", op: "multi_add", section: null }],
+  },
+  ENDO_IMPAIRMENT_PANCREAS: {
+    section: "endocrine",
+    writes: [{ path: "endocrineImpairment", value: "Pancreas", op: "multi_add", section: null }],
+  },
+  ENDO_THYROID_NORMAL: {
+    section: "endocrine",
+    writes: [{ path: "thyroid.assessment", value: "Normal", op: "set", section: null }],
+  },
+  ENDO_THYROID_ENLARGED: {
+    section: "endocrine",
+    writes: [{ path: "thyroid.assessment", value: "Enlarged", op: "set", section: null }],
+  },
+  ENDO_THYROID_TENDER: {
+    section: "endocrine",
+    writes: [{ path: "thyroid.assessment", value: "Tender", op: "set", section: null }],
+  },
+  ENDO_THYROID_NODULAR: {
+    section: "endocrine",
+    writes: [{ path: "thyroid.assessment", value: "Nodular", op: "set", section: null }],
+  },
+  ENDO_DIABETES_TYPE1: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.type", value: "Type 1", op: "set", section: null }],
+  },
+  ENDO_DIABETES_TYPE2: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.type", value: "Type 2", op: "set", section: null }],
+  },
+  ENDO_NOT_DIABETIC: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.type", value: "Not diabetic", op: "set", section: null }],
+  },
+  ENDO_DIABETES_INSULIN_DEPENDENT: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.dependency", value: "Insulin-dependent", op: "set", section: null }],
+  },
+  ENDO_DIABETES_NON_INSULIN_DEPENDENT: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.dependency", value: "Non-insulin-dependent", op: "set", section: null }],
+  },
+  ENDO_DIABETES_GLUCOSE_MGMT_CONCERN: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.dependency", value: "Glucose-management concern", op: "set", section: null }],
+  },
+  ENDO_GLUCOSE_MONITORING_DAILY: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.glucoseMonitoring", value: "Daily", op: "set", section: null }],
+  },
+  ENDO_GLUCOSE_MONITORING_BID: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.glucoseMonitoring", value: "BID", op: "set", section: null }],
+  },
+  ENDO_GLUCOSE_MONITORING_TID: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.glucoseMonitoring", value: "TID", op: "set", section: null }],
+  },
+  ENDO_GLUCOSE_MONITORING_QID: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.glucoseMonitoring", value: "QID", op: "set", section: null }],
+  },
+  ENDO_GLUCOSE_MONITORING_WEEKLY: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.glucoseMonitoring", value: "Weekly", op: "set", section: null }],
+  },
+  ENDO_HBA1C_VALUE: {
+    section: "endocrine",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "diabetes.lastHbA1c", minValue: 3, maxValue: 20, maxLen: null },
+  },
+  ENDO_ORAL_HYPOGLYCEMIC_METFORMIN: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.oralHypoglycemics", value: "Metformin", op: "multi_add", section: null }],
+  },
+  ENDO_ORAL_HYPOGLYCEMIC_SULFONYLUREA: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.oralHypoglycemics", value: "Sulfonylurea", op: "multi_add", section: null }],
+  },
+  ENDO_ORAL_HYPOGLYCEMIC_DPP4: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.oralHypoglycemics", value: "DPP-4 inhibitor", op: "multi_add", section: null }],
+  },
+  ENDO_ORAL_HYPOGLYCEMIC_SGLT2: {
+    section: "endocrine",
+    writes: [{ path: "diabetes.oralHypoglycemics", value: "SGLT2 inhibitor", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_FATIGUE: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Fatigue", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_WEIGHT_CHANGES: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Weight changes", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_TEMPERATURE_INTOLERANCE: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Temperature intolerance", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_HAIR_SKIN_CHANGES: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Hair/skin changes", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_POLYDIPSIA: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Polydipsia", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_POLYURIA: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Polyuria", op: "multi_add", section: null }],
+  },
+  ENDO_SYMPTOM_TREMORS: {
+    section: "endocrine",
+    writes: [{ path: "endocrineSymptoms", value: "Tremors", op: "multi_add", section: null }],
+  },
+  ENDO_MED_LEVOTHYROXINE: {
+    section: "endocrine",
+    writes: [{ path: "currentEndocrineMeds", value: "Levothyroxine", op: "multi_add", section: null }],
+  },
+  ENDO_MED_INSULIN: {
+    section: "endocrine",
+    writes: [{ path: "currentEndocrineMeds", value: "Insulin", op: "multi_add", section: null }],
+  },
+  ENDO_MED_ORAL_HYPOGLYCEMICS: {
+    section: "endocrine",
+    writes: [{ path: "currentEndocrineMeds", value: "Oral hypoglycemics", op: "multi_add", section: null }],
+  },
+  ENDO_MED_CORTICOSTEROID_REPLACEMENT: {
+    section: "endocrine",
+    writes: [{ path: "currentEndocrineMeds", value: "Corticosteroid replacement", op: "multi_add", section: null }],
+  },
+  INFECT_HISTORY_MRSA: {
+    section: "infection",
+    writes: [{ path: "historyOfResistantInfections", value: "MRSA", op: "multi_add", section: null }],
+  },
+  INFECT_HISTORY_C_DIFF: {
+    section: "infection",
+    writes: [{ path: "historyOfResistantInfections", value: "C. difficile", op: "multi_add", section: null }],
+  },
+  INFECT_TEMPERATURE_DOCUMENTED: {
+    section: "infection",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "temperature", minValue: 90, maxValue: 110, maxLen: null },
+  },
+  GI_LAST_BM_DATE: {
+    section: "gastrointestinal",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "lastBM", minValue: null, maxValue: null, maxLen: 10 },
+  },
+  NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS: {
+    section: "nutrition",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "weightLossPastSixMonths", minValue: null, maxValue: null, maxLen: 30 },
+  },
+  NUTRITION_DIET_TYPE: {
+    section: "nutrition",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "dietType", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  NUTRITION_ORAL_MUCOSA: {
+    section: "nutrition",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "oralMucosa", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  GU_URINARY_FREQUENCY: {
+    section: "genitourinary",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "frequency", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  GU_URINE_COLOR: {
+    section: "genitourinary",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "urineColor", minValue: null, maxValue: null, maxLen: 30 },
+  },
+  RESP_SPUTUM_CHARACTER: {
+    section: "respiratory",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "sputumCharacter", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  RESP_TRACH_TYPE: {
+    section: "respiratory",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "ventilator.tracheostomyType", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  RESP_TRACH_SIZE: {
+    section: "respiratory",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "ventilator.tracheostomySize", minValue: null, maxValue: null, maxLen: 20 },
+  },
+  SKIN_SITE_SACRUM: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "sacrum", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_COCCYX: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "coccyx", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_LEFT_HEEL: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "left_heel", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_RIGHT_HEEL: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "right_heel", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_LEFT_ISCHIAL: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "left_ischial", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_RIGHT_ISCHIAL: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "right_ischial", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_LEFT_TROCHANTER: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "left_trochanter", op: "multi_add", section: null }],
+  },
+  SKIN_SITE_RIGHT_TROCHANTER: {
+    section: "skin",
+    writes: [{ path: "skinBodySites", value: "right_trochanter", op: "multi_add", section: null }],
+  },
+  IMMINENT_MOTTLING: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Mottling of extremities", op: "multi_add", section: null }],
+  },
+  IMMINENT_MANDIBULAR_BREATHING: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Mandibular breathing", op: "multi_add", section: null }],
+  },
+  IMMINENT_APNEIC_PERIODS: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Apneic periods", op: "multi_add", section: null }],
+  },
+  IMMINENT_CYANOSIS: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Cyanosis", op: "multi_add", section: null }],
+  },
+  IMMINENT_NO_URINE_OUTPUT: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "No urine output", op: "multi_add", section: null }],
+  },
+  IMMINENT_UNRESPONSIVE: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Unresponsive", op: "multi_add", section: null }],
+  },
+  IMMINENT_DEATH_RATTLE: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Death rattle", op: "multi_add", section: null }],
+  },
+  IMMINENT_CHEYNE_STOKES: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Cheyne-Stokes breathing", op: "multi_add", section: null }],
+  },
+  IMMINENT_COOL_COLD_EXTREMITIES: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Cool/cold extremities", op: "multi_add", section: null }],
+  },
+  IMMINENT_DECREASED_LOC: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Decreased level of consciousness", op: "multi_add", section: null }],
+  },
+  IMMINENT_INABILITY_TO_SWALLOW: {
+    section: "imminentDeath",
+    writes: [{ path: "indicators", value: "Inability to swallow", op: "multi_add", section: null }],
+  },
+  IMMINENT_COMFORT_MEASURES_IN_PLACE: {
+    section: "imminentDeath",
+    writes: [{ path: "comfortMeasuresInPlace", value: true, op: "set", section: null }],
+  },
+  IMMINENT_FAMILY_NOTIFIED: {
+    section: "imminentDeath",
+    writes: [{ path: "familyNotified", value: true, op: "set", section: null }],
+  },
+  SAFETY_HOME_ADEQUATE_LIGHTING: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Adequate lighting", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_HANDRAILS: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Handrails present", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_THROW_RUGS: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Throw rugs", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_CLUTTER: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Clutter/obstacles", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_STAIRS_NO_RAILING: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Stairs without railing", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_PETS: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Pets", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_WEAPONS_FIREARMS: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Weapons/firearms", op: "multi_add", section: null }, { path: "firearmInHome", value: true, op: "set", section: null }],
+  },
+  SAFETY_HOME_PEST_INFESTATION: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Pest infestation", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_INADEQUATE_HEATING_COOLING: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Inadequate heating/cooling", op: "multi_add", section: null }],
+  },
+  SAFETY_HOME_SMOKE_DETECTORS: {
+    section: "safety",
+    writes: [{ path: "homeEnvironment", value: "Smoke detectors present", op: "multi_add", section: null }],
+  },
+  SAFETY_FALL_RISK_LOW: {
+    section: "safety",
+    writes: [{ path: "fallRiskLevel", value: "Low", op: "set", section: null }],
+  },
+  SAFETY_FALL_RISK_MODERATE: {
+    section: "safety",
+    writes: [{ path: "fallRiskLevel", value: "Moderate", op: "set", section: null }],
+  },
+  SAFETY_FALL_RISK_HIGH: {
+    section: "safety",
+    writes: [{ path: "fallRiskLevel", value: "High", op: "set", section: null }],
+  },
+  SAFETY_TRANSFER_INDEPENDENT: {
+    section: "safety",
+    writes: [{ path: "transferSafetyLevel", value: "Independent", op: "set", section: null }],
+  },
+  SAFETY_TRANSFER_ASSIST_X1: {
+    section: "safety",
+    writes: [{ path: "transferSafetyLevel", value: "Needs assist x1", op: "set", section: null }],
+  },
+  SAFETY_TRANSFER_ASSIST_X2: {
+    section: "safety",
+    writes: [{ path: "transferSafetyLevel", value: "Needs assist x2", op: "set", section: null }],
+  },
+  SAFETY_TRANSFER_MECHANICAL_LIFT: {
+    section: "safety",
+    writes: [{ path: "transferSafetyLevel", value: "Mechanical lift required", op: "set", section: null }],
+  },
+  SAFETY_TRANSFER_UNSAFE: {
+    section: "safety",
+    writes: [{ path: "transferSafetyLevel", value: "Unsafe/high risk", op: "set", section: null }],
+  },
+  SAFETY_OXYGEN_IN_USE: {
+    section: "safety",
+    writes: [{ path: "oxygenInUse", value: true, op: "set", section: null }],
+  },
+  PSYCH_SUPPORT_STRONG: {
+    section: "psychosocial",
+    writes: [{ path: "familySocialSupport", value: "Strong support", op: "set", section: null }],
+  },
+  PSYCH_SUPPORT_ADEQUATE: {
+    section: "psychosocial",
+    writes: [{ path: "familySocialSupport", value: "Adequate support", op: "set", section: null }],
+  },
+  PSYCH_SUPPORT_LIMITED: {
+    section: "psychosocial",
+    writes: [{ path: "familySocialSupport", value: "Limited support", op: "set", section: null }],
+  },
+  PSYCH_SUPPORT_NONE: {
+    section: "psychosocial",
+    writes: [{ path: "familySocialSupport", value: "No support", op: "set", section: null }],
+  },
+  PSYCH_PRIMARY_SUPPORT_PERSON: {
+    section: "psychosocial",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "primarySupportPerson", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  PSYCH_SUPPORT_RELATIONSHIP: {
+    section: "psychosocial",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "supportRelationship", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  PSYCH_CONCERN_ANXIETY_ABOUT_ILLNESS: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Anxiety about illness", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_DEPRESSION: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Depression", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_GRIEF_LOSS: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Grief/loss", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_FINANCIAL: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Financial concerns", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_FAMILY_CONFLICT: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Family conflict", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_CAREGIVER_BURDEN: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Caregiver burden", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_SOCIAL_ISOLATION: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Social isolation", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_ROLE_CHANGES: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Role changes", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_UNFINISHED_BUSINESS: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Unfinished business", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_FEAR_OF_DYING: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Fear of dying", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_LOSS_OF_INDEPENDENCE: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Loss of independence", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_NON_ACCEPTANCE_OF_DIAGNOSIS: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Non-acceptance of diagnosis", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_SUICIDE: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Suicide concerns", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_SUBSTANCE_ABUSE: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Substance abuse concerns", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_HISTORY_EMOTIONAL_ILLNESS: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "History of emotional illness", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_CULTURAL: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Cultural concerns", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_BURIAL: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Burial concerns", op: "multi_add", section: null }],
+  },
+  PSYCH_CONCERN_ANGER: {
+    section: "psychosocial",
+    writes: [{ path: "patientConcerns", value: "Anger", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_ANTICIPATORY_GRIEF: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Anticipatory grief", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_FATIGUE: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Caregiver fatigue", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_FINANCIAL_STRESS: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Financial stress", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_WORK_LIFE_BALANCE: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Work-life balance", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_CHILDREN_FAMILY_COPING: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Children/family coping", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_FUNERAL_PLANNING: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Funeral planning", op: "multi_add", section: null }],
+  },
+  PSYCH_CAREGIVER_ESTATE_LEGAL: {
+    section: "psychosocial",
+    writes: [{ path: "caregiverFamilyConcerns", value: "Estate/legal matters", op: "multi_add", section: null }],
+  },
+  PSYCH_DISTRESS_RATING: {
+    section: "psychosocial",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "distressRating", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  PSYCH_HISTORY_DEPRESSION: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "History of depression", op: "multi_add", section: null }],
+  },
+  PSYCH_HISTORY_ANXIETY: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "History of anxiety", op: "multi_add", section: null }],
+  },
+  PSYCH_HISTORY_SUBSTANCE_ABUSE: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "History of substance abuse", op: "multi_add", section: null }],
+  },
+  PSYCH_CURRENT_MH_TREATMENT: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "Current mental health treatment", op: "multi_add", section: null }],
+  },
+  PSYCH_PSYCHIATRIC_MEDICATIONS: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "Psychiatric medications", op: "multi_add", section: null }],
+  },
+  PSYCH_PREVIOUS_COUNSELING: {
+    section: "psychosocial",
+    writes: [{ path: "psychosocialHistory", value: "Previous counseling/therapy", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_PATIENT_ACTIVE_IN_FAITH: {
+    section: "spiritual",
+    writes: [{ path: "patientActiveInFaithTradition", value: true, op: "set", section: null }],
+  },
+  SPIRITUAL_PATIENT_FAITH: {
+    section: "spiritual",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "patientFaith", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  SPIRITUAL_CAREGIVER_ACTIVE_IN_FAITH: {
+    section: "spiritual",
+    writes: [{ path: "caregiverActiveInFaithTradition", value: true, op: "set", section: null }],
+  },
+  SPIRITUAL_CAREGIVER_FAITH: {
+    section: "spiritual",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "caregiverFaith", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  SPIRITUAL_CONCERN_MEANING_OF_ILLNESS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Meaning of illness", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_FORGIVENESS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Forgiveness", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_HOPE: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Hope", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_LEGACY: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Legacy", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_PRAYER_REQUESTS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Prayer requests", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_RELIGIOUS_RITUALS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Religious rituals", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_AFTERLIFE: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Afterlife concerns", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_ANGER_AT_GOD: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Anger at God", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_SPIRITUAL_DISTRESS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Spiritual distress", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_FEAR: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Fear", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_CONCERN_HOPELESSNESS: {
+    section: "spiritual",
+    writes: [{ path: "spiritualConcerns", value: "Hopelessness", op: "multi_add", section: null }],
+  },
+  SPIRITUAL_DISTRESS_RATING: {
+    section: "spiritual",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "spiritualDistressRating", minValue: 0, maxValue: 10, maxLen: null },
+  },
+  SPIRITUAL_CONCERNS_ASKED_YES_DISCUSSED: {
+    section: "spiritual",
+    writes: [{ path: "concernsAskedStatus", value: "1", op: "set", section: null }, { path: "concernsDiscussed", value: true, op: "set", section: null }],
+  },
+  SPIRITUAL_CONCERNS_ASKED_YES_REFUSED: {
+    section: "spiritual",
+    writes: [{ path: "concernsAskedStatus", value: "2", op: "set", section: null }],
+  },
+  SPIRITUAL_CONCERNS_NOT_ASKED: {
+    section: "spiritual",
+    writes: [{ path: "concernsAskedStatus", value: "0", op: "set", section: null }],
+  },
+  SPIRITUAL_CHAPLAIN_NEEDED: {
+    section: "spiritual",
+    writes: [{ path: "chaplainNeeded", value: true, op: "set", section: null }],
+  },
+  BEREAVEMENT_PATIENT_FEAR_OF_DEATH: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Fear of death", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_UNRESOLVED_GRIEF: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Unresolved grief", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_EXISTENTIAL_DISTRESS: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Existential distress", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_LEGACY_CONCERNS: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Legacy concerns", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_FAMILY_PREPAREDNESS: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Family preparedness", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_MULTIPLE_LOSSES: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Multiple losses", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_PATIENT_ACTIVE_GRIEVING: {
+    section: "bereavement",
+    writes: [{ path: "patientConcerns", value: "Active grieving", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_ANTICIPATORY_GRIEF: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Anticipatory grief", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_PREVIOUS_LOSSES: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Previous losses", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_COMPLICATED_GRIEF_HISTORY: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Complicated grief history", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_MENTAL_HEALTH_CONCERNS: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Mental health concerns", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_SUBSTANCE_ABUSE_HISTORY: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Substance abuse history", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_SOCIAL_ISOLATION: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Social isolation", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_CONCURRENT_STRESSORS: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Concurrent stressors", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_MULTIPLE_LOSSES: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Multiple losses", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_CAREGIVER_ACTIVE_GRIEVING: {
+    section: "bereavement",
+    writes: [{ path: "caregiverConcerns", value: "Active grieving", op: "multi_add", section: null }],
+  },
+  BEREAVEMENT_RISK_LOW: {
+    section: "bereavement",
+    writes: [{ path: "bereavementRisk", value: "Low", op: "set", section: null }],
+  },
+  BEREAVEMENT_RISK_MODERATE: {
+    section: "bereavement",
+    writes: [{ path: "bereavementRisk", value: "Moderate", op: "set", section: null }],
+  },
+  BEREAVEMENT_RISK_HIGH: {
+    section: "bereavement",
+    writes: [{ path: "bereavementRisk", value: "High", op: "set", section: null }],
+  },
+  PERSONALCARE_AIDE_BATHING: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Bathing/showering", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_HAIR_GROOMING: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Hair care/grooming", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_ORAL_HYGIENE: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Oral hygiene", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_SKIN_CARE: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Skin care", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_DRESSING: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Dressing", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_TOILETING: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Toileting assistance", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_TRANSFERS_MOBILITY: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Transfers/mobility", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_LIGHT_MEAL_PREP: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Light meal preparation", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_LIGHT_HOUSEKEEPING: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Light housekeeping", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_AIDE_LAUNDRY: {
+    section: "personalCare",
+    writes: [{ path: "aideTasks", value: "Laundry", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_COMPANIONSHIP: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Companionship/visits", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_RESPITE: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Respite care", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_ERRANDS: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Errand assistance", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_TRANSPORTATION: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Transportation", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_VIGIL: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Vigil/11th hour", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_VOLUNTEER_PET_CARE: {
+    section: "personalCare",
+    writes: [{ path: "volunteerServices", value: "Pet care", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_MEALS_ON_WHEELS: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Meals on Wheels", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_ADULT_DAY_CARE: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Adult day care", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_TRANSPORTATION: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Transportation services", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_LEGAL_AID: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Legal aid", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_FINANCIAL_ASSISTANCE: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Financial assistance programs", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_FAITH_SUPPORT: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Faith community support", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_COMMUNITY_VETERAN_SERVICES: {
+    section: "personalCare",
+    writes: [{ path: "communityResources", value: "Veteran services", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_HOSPITAL_BED: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Hospital bed", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_WHEELCHAIR: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Wheelchair", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_WALKER: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Walker", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_COMMODE: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Commode", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_SHOWER_CHAIR: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Shower chair", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_HOYER_LIFT: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Hoyer lift", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_EGG_CRATE_MATTRESS: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Egg crate mattress", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_INCONTINENCE_SUPPLIES: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Incontinence supplies", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_WOUND_CARE_SUPPLIES: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Wound care supplies", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_AIR_MATTRESS: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Air mattress", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_BEDPAN: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Bedpan", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_OVERBED_TABLE: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Overbed table", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_CANE: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Cane", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_GERI_CHAIR: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Geri-chair/recliner", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_URINAL: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Urinal", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_NEBULIZER: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Nebulizer", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_SUCTION_MACHINE: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "Suction machine", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_O2_CONCENTRATOR: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "O2 concentrator", op: "multi_add", section: null }],
+  },
+  PERSONALCARE_EQUIP_E_TANK: {
+    section: "personalCare",
+    writes: [{ path: "equipmentSupplyNeeds", value: "E-tank", op: "multi_add", section: null }],
+  },
 };
