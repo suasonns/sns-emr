@@ -2857,4 +2857,172 @@ export const CONCEPT_REGISTRY = {
     section: "teachingNeeds",
     writes: [{ path: "barriersToLearning", value: "Denial of diagnosis", op: "multi_add", section: null }],
   },
+  CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Fully capable", op: "set", section: null }],
+  },
+  CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Capable with limitations", op: "set", section: null }],
+  },
+  CAREGIVER_PHYSICAL_ABILITY_LIMITED: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Limited capability", op: "set", section: null }],
+  },
+  CAREGIVER_PHYSICAL_ABILITY_UNABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Unable", op: "set", section: null }],
+  },
+  CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.cognitiveAbility", value: "Fully understands", op: "set", section: null }],
+  },
+  CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.cognitiveAbility", value: "Understands with reinforcement", op: "set", section: null }],
+  },
+  CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.cognitiveAbility", value: "Difficulty understanding", op: "set", section: null }],
+  },
+  CAREGIVER_COGNITIVE_ABILITY_UNABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.cognitiveAbility", value: "Unable to understand", op: "set", section: null }],
+  },
+  CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.emotionalReadiness", value: "Ready and engaged", op: "set", section: null }],
+  },
+  CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.emotionalReadiness", value: "Ambivalent but willing", op: "set", section: null }],
+  },
+  CAREGIVER_EMOTIONAL_READINESS_RELUCTANT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.emotionalReadiness", value: "Reluctant", op: "set", section: null }],
+  },
+  CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.emotionalReadiness", value: "Overwhelmed/resistant", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_24_7: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "24/7 available", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_16_23_HOURS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "16-23 hours", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_8_15_HOURS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "8-15 hours", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_4_7_HOURS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "4-7 hours", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Less than 4 hours", op: "set", section: null }],
+  },
+  CAREGIVER_AVAILABILITY_NOT_AVAILABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Not available", op: "set", section: null }],
+  },
+  CAREGIVER_TRAINING_MEDICATION_ADMIN: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Medication administration", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_WOUND_CARE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Wound care", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Symptom management", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_EMERGENCY_PROCEDURES: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Emergency procedures", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Body mechanics/transfers", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_NUTRITION_FEEDING: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Nutrition/feeding", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_SKIN_CARE_POSITIONING: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Skin care/positioning", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_EQUIPMENT_USE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Equipment use", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_INFECTION_CONTROL: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Infection control", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_PAIN_ASSESSMENT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Pain assessment", op: "multi_add", section: null }],
+  },
+  CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "When to call hospice", op: "multi_add", section: null }],
+  },
+  CAREGIVER_WILLINGNESS_1_UNWILLING: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "1", op: "set", section: null }],
+  },
+  CAREGIVER_WILLINGNESS_2_RELUCTANT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "2", op: "set", section: null }],
+  },
+  CAREGIVER_WILLINGNESS_3_AMBIVALENT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "3", op: "set", section: null }],
+  },
+  CAREGIVER_WILLINGNESS_4_WILLING: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "4", op: "set", section: null }],
+  },
+  CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "5", op: "set", section: null }],
+  },
+  CAREGIVER_CAPABILITY_1_UNABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "1", op: "set", section: null }],
+  },
+  CAREGIVER_CAPABILITY_2_MINIMAL: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "2", op: "set", section: null }],
+  },
+  CAREGIVER_CAPABILITY_3_MODERATE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "3", op: "set", section: null }],
+  },
+  CAREGIVER_CAPABILITY_4_CAPABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "4", op: "set", section: null }],
+  },
+  CAREGIVER_CAPABILITY_5_FULLY_CAPABLE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "5", op: "set", section: null }],
+  },
+  CAREGIVER_SUPPORT_SYSTEM_ADEQUATE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.supportSystemAdequacy", value: "Adequate", op: "set", section: null }],
+  },
+  CAREGIVER_SUPPORT_SYSTEM_INADEQUATE: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.supportSystemAdequacy", value: "Inadequate", op: "set", section: null }],
+  },
+  CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT: {
+    section: "demographics",
+    writes: [{ path: "pcg.caregiverEvaluation.supportSystemAdequacy", value: "Needs reinforcement", op: "set", section: null }],
+  },
 };

@@ -1690,6 +1690,58 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "TEACH_BARRIER_VISION_DEFICIT": ConceptMapping("TEACH_BARRIER_VISION_DEFICIT", "teachingNeeds", "Learning barrier: vision deficit", (_fw("barriersToLearning", "Vision deficit", op="multi_add"),)),
     "TEACH_BARRIER_CULTURAL_CONSIDERATIONS": ConceptMapping("TEACH_BARRIER_CULTURAL_CONSIDERATIONS", "teachingNeeds", "Learning barrier: cultural considerations", (_fw("barriersToLearning", "Cultural considerations", op="multi_add"),)),
     "TEACH_BARRIER_DENIAL_OF_DIAGNOSIS": ConceptMapping("TEACH_BARRIER_DENIAL_OF_DIAGNOSIS", "teachingNeeds", "Learning barrier: denial of diagnosis", (_fw("barriersToLearning", "Denial of diagnosis", op="multi_add"),)),
+
+    # ═══════════════ CAREGIVER ASSESSMENT (Phase 3 completion) ═══════════════
+    # Lives under demographics.pcg.caregiverEvaluation (CDPH-required
+    # Caregiver Willingness & Capability Evaluation), not its own top-level
+    # RNICA section. `evaluationNotes` is unbounded free text -- excluded.
+    # willingnessScore/capabilityScore are 1-5 CATEGORICAL determinations
+    # with fixed labels (e.g. "fully committed" = 5) -- mapped like
+    # PAIN_SEVERITY_* when the source document already states an explicit
+    # categorical conclusion (e.g. an MSW/referral note), not when the RN
+    # would need to perform the rating live during this visit.
+    "CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE", "demographics", "Caregiver physical ability: fully capable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Fully capable"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS", "demographics", "Caregiver physical ability: capable with limitations", (_fw("pcg.caregiverEvaluation.physicalAbility", "Capable with limitations"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_LIMITED": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_LIMITED", "demographics", "Caregiver physical ability: limited capability", (_fw("pcg.caregiverEvaluation.physicalAbility", "Limited capability"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_UNABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_UNABLE", "demographics", "Caregiver physical ability: unable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Unable"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS", "demographics", "Caregiver cognitive ability: fully understands", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Fully understands"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT", "demographics", "Caregiver cognitive ability: understands with reinforcement", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Understands with reinforcement"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY", "demographics", "Caregiver cognitive ability: difficulty understanding", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Difficulty understanding"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_UNABLE": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNABLE", "demographics", "Caregiver cognitive ability: unable to understand", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Unable to understand"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED", "demographics", "Caregiver emotional readiness: ready and engaged", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ready and engaged"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING", "demographics", "Caregiver emotional readiness: ambivalent but willing", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ambivalent but willing"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_RELUCTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_RELUCTANT", "demographics", "Caregiver emotional readiness: reluctant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Reluctant"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT", "demographics", "Caregiver emotional readiness: overwhelmed/resistant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Overwhelmed/resistant"),)),
+    "CAREGIVER_AVAILABILITY_24_7": ConceptMapping("CAREGIVER_AVAILABILITY_24_7", "demographics", "Caregiver availability: 24/7 available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "24/7 available"),)),
+    "CAREGIVER_AVAILABILITY_16_23_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_16_23_HOURS", "demographics", "Caregiver availability: 16-23 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "16-23 hours"),)),
+    "CAREGIVER_AVAILABILITY_8_15_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_8_15_HOURS", "demographics", "Caregiver availability: 8-15 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "8-15 hours"),)),
+    "CAREGIVER_AVAILABILITY_4_7_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_4_7_HOURS", "demographics", "Caregiver availability: 4-7 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "4-7 hours"),)),
+    "CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS", "demographics", "Caregiver availability: less than 4 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Less than 4 hours"),)),
+    "CAREGIVER_AVAILABILITY_NOT_AVAILABLE": ConceptMapping("CAREGIVER_AVAILABILITY_NOT_AVAILABLE", "demographics", "Caregiver availability: not available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Not available"),)),
+    "CAREGIVER_TRAINING_MEDICATION_ADMIN": ConceptMapping("CAREGIVER_TRAINING_MEDICATION_ADMIN", "demographics", "Caregiver training need: medication administration", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Medication administration", op="multi_add"),)),
+    "CAREGIVER_TRAINING_WOUND_CARE": ConceptMapping("CAREGIVER_TRAINING_WOUND_CARE", "demographics", "Caregiver training need: wound care", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Wound care", op="multi_add"),)),
+    "CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT": ConceptMapping("CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT", "demographics", "Caregiver training need: symptom management", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Symptom management", op="multi_add"),)),
+    "CAREGIVER_TRAINING_EMERGENCY_PROCEDURES": ConceptMapping("CAREGIVER_TRAINING_EMERGENCY_PROCEDURES", "demographics", "Caregiver training need: emergency procedures", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Emergency procedures", op="multi_add"),)),
+    "CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS": ConceptMapping("CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS", "demographics", "Caregiver training need: body mechanics/transfers", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Body mechanics/transfers", op="multi_add"),)),
+    "CAREGIVER_TRAINING_NUTRITION_FEEDING": ConceptMapping("CAREGIVER_TRAINING_NUTRITION_FEEDING", "demographics", "Caregiver training need: nutrition/feeding", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Nutrition/feeding", op="multi_add"),)),
+    "CAREGIVER_TRAINING_SKIN_CARE_POSITIONING": ConceptMapping("CAREGIVER_TRAINING_SKIN_CARE_POSITIONING", "demographics", "Caregiver training need: skin care/positioning", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Skin care/positioning", op="multi_add"),)),
+    "CAREGIVER_TRAINING_EQUIPMENT_USE": ConceptMapping("CAREGIVER_TRAINING_EQUIPMENT_USE", "demographics", "Caregiver training need: equipment use", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Equipment use", op="multi_add"),)),
+    "CAREGIVER_TRAINING_INFECTION_CONTROL": ConceptMapping("CAREGIVER_TRAINING_INFECTION_CONTROL", "demographics", "Caregiver training need: infection control", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Infection control", op="multi_add"),)),
+    "CAREGIVER_TRAINING_PAIN_ASSESSMENT": ConceptMapping("CAREGIVER_TRAINING_PAIN_ASSESSMENT", "demographics", "Caregiver training need: pain assessment", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Pain assessment", op="multi_add"),)),
+    "CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE": ConceptMapping("CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE", "demographics", "Caregiver training need: when to call hospice", (_fw("pcg.caregiverEvaluation.trainingNeeds", "When to call hospice", op="multi_add"),)),
+    "CAREGIVER_WILLINGNESS_1_UNWILLING": ConceptMapping("CAREGIVER_WILLINGNESS_1_UNWILLING", "demographics", "Caregiver willingness score: 1 (unwilling)", (_fw("pcg.caregiverEvaluation.willingnessScore", "1"),)),
+    "CAREGIVER_WILLINGNESS_2_RELUCTANT": ConceptMapping("CAREGIVER_WILLINGNESS_2_RELUCTANT", "demographics", "Caregiver willingness score: 2 (reluctant)", (_fw("pcg.caregiverEvaluation.willingnessScore", "2"),)),
+    "CAREGIVER_WILLINGNESS_3_AMBIVALENT": ConceptMapping("CAREGIVER_WILLINGNESS_3_AMBIVALENT", "demographics", "Caregiver willingness score: 3 (ambivalent)", (_fw("pcg.caregiverEvaluation.willingnessScore", "3"),)),
+    "CAREGIVER_WILLINGNESS_4_WILLING": ConceptMapping("CAREGIVER_WILLINGNESS_4_WILLING", "demographics", "Caregiver willingness score: 4 (willing)", (_fw("pcg.caregiverEvaluation.willingnessScore", "4"),)),
+    "CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED": ConceptMapping("CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED", "demographics", "Caregiver willingness score: 5 (fully committed)", (_fw("pcg.caregiverEvaluation.willingnessScore", "5"),)),
+    "CAREGIVER_CAPABILITY_1_UNABLE": ConceptMapping("CAREGIVER_CAPABILITY_1_UNABLE", "demographics", "Caregiver capability score: 1 (unable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "1"),)),
+    "CAREGIVER_CAPABILITY_2_MINIMAL": ConceptMapping("CAREGIVER_CAPABILITY_2_MINIMAL", "demographics", "Caregiver capability score: 2 (minimal)", (_fw("pcg.caregiverEvaluation.capabilityScore", "2"),)),
+    "CAREGIVER_CAPABILITY_3_MODERATE": ConceptMapping("CAREGIVER_CAPABILITY_3_MODERATE", "demographics", "Caregiver capability score: 3 (moderate)", (_fw("pcg.caregiverEvaluation.capabilityScore", "3"),)),
+    "CAREGIVER_CAPABILITY_4_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_4_CAPABLE", "demographics", "Caregiver capability score: 4 (capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "4"),)),
+    "CAREGIVER_CAPABILITY_5_FULLY_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_5_FULLY_CAPABLE", "demographics", "Caregiver capability score: 5 (fully capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "5"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_ADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_ADEQUATE", "demographics", "Caregiver support system: adequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Adequate"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_INADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_INADEQUATE", "demographics", "Caregiver support system: inadequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Inadequate"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT", "demographics", "Caregiver support system: needs reinforcement", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Needs reinforcement"),)),
 }
 
 

@@ -84,6 +84,11 @@ def test_registry_covers_all_eight_requested_sections():
         # documented barriers) -- this-visit teaching delivered/response is
         # excluded as a workflow record, not an admission fact.
         "teachingNeeds",
+        # Coverage Expansion Phase 3 completion: CDPH-required Caregiver
+        # Willingness & Capability Evaluation lives under
+        # demographics.pcg.caregiverEvaluation, not its own top-level
+        # section -- evaluationNotes (unbounded free text) is excluded.
+        "demographics",
     }
 
 
