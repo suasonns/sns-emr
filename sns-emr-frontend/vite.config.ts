@@ -27,6 +27,61 @@ const BUILD_COMMIT = gitInfo("git rev-parse --short HEAD");
 process.env.VITE_BUILD_BRANCH = BUILD_BRANCH;
 process.env.VITE_BUILD_COMMIT = BUILD_COMMIT;
 
+// Single source of truth for every backend API path prefix the frontend
+// calls (see backend/app/api/registry.py for the full router list). Both
+// the dev server and preview proxy are built from this list so a prefix
+// added here never silently drifts out of sync between the two — a
+// missing entry causes the dev server to fall back to serving index.html
+// for that API call (200 OK, HTML body), which downstream code then
+// mis-parses as JSON, producing hard-to-diagnose runtime crashes.
+const PROXIED_API_PREFIXES = [
+  "/api",
+  "/auth",
+  "/dashboard",
+  "/audit-dashboard",
+  "/visits",
+  "/patient-charts",
+  "/patients",
+  "/medications",
+  "/agency-profile",
+  "/benefits",
+  "/bereavement-assessments",
+  "/bereavement-letters",
+  "/bereavement-poc",
+  "/bereavement-support",
+  "/billing",
+  "/certifications",
+  "/communications-log",
+  "/documents",
+  "/eligibility",
+  "/f2f",
+  "/fax",
+  "/icd10",
+  "/idg",
+  "/lab-catalog",
+  "/order-templates",
+  "/patient-assignments",
+  "/patient-issues",
+  "/patient-orders",
+  "/physician-orders",
+  "/physicians",
+  "/plan-of-care",
+  "/post-death-bereavement",
+  "/referrals",
+  "/staff",
+  "/vendors",
+  "/visit-recordings",
+];
+
+function buildApiProxy() {
+  return Object.fromEntries(
+    PROXIED_API_PREFIXES.map((prefix) => [
+      prefix,
+      { target: apiTarget, changeOrigin: true },
+    ]),
+  );
+}
+
 export default defineConfig({
   root: frontendRoot,
   plugins: [react()],
@@ -40,63 +95,13 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    proxy: {
-      "/api": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/auth": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/dashboard": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/audit-dashboard": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/visits": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/patient-charts": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-    },
+    proxy: buildApiProxy(),
   },
   preview: {
     port: 4173,
     host: true,
     allowedHosts: true,
-    proxy: {
-      "/api": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/auth": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/dashboard": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/audit-dashboard": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/visits": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-      "/patient-charts": {
-        target: apiTarget,
-        changeOrigin: true,
-      },
-    },
+    proxy: buildApiProxy(),
   },
   build: {
     chunkSizeWarningLimit: 1000,

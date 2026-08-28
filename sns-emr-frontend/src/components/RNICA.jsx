@@ -1389,6 +1389,67 @@ function getValueByPath(obj, path) {
   return path.split(".").reduce((curr, key) => curr?.[key], obj);
 }
 
+// Recursively counts, for a section's saved data vs. its blank INITIAL_FORM
+// default, how many individual leaf fields (scalars/booleans/flat arrays)
+// actually hold RN-entered content vs. how many total leaf fields the
+// section defines. This replaces the old "does ANYTHING differ from
+// blank" check (which marked a 30-field section "Complete" because 1
+// field changed) with a real documentation-completeness ratio, without
+// hardcoding per-section field lists -- it walks whatever shape
+// INITIAL_FORM[section] defines, so it stays correct as sections evolve.
+//
+// - Plain objects: recurse into each key and sum leaf counts.
+// - Arrays of objects with a stable default length (e.g. the 16-item HOPE
+//   education-topics scaffold, or per-item DME/equipment lists) are walked
+//   element-by-element so real per-row documentation (a topic actually
+//   marked taught/understood, an item's status actually set) counts,
+//   instead of the array's mere existence counting as "populated."
+// - Any other array is one leaf field, populated if it has any entries.
+// - Scalars/booleans/strings are one leaf field each, populated if they
+//   differ from the blank default (non-empty string, non-null, etc).
+function countSectionCompletion(current, initial) {
+  if (Array.isArray(initial)) {
+    const allObjects = initial.length > 0 && initial.every((item) => item && typeof item === "object" && !Array.isArray(item));
+    if (allObjects && Array.isArray(current) && current.length === initial.length) {
+      return initial.reduce(
+        (acc, initialItem, idx) => {
+          const sub = countSectionCompletion(current[idx], initialItem);
+          return { total: acc.total + sub.total, populated: acc.populated + sub.populated };
+        },
+        { total: 0, populated: 0 }
+      );
+    }
+    const hasEntries = Array.isArray(current) && current.length > 0;
+    return { total: 1, populated: hasEntries ? 1 : 0 };
+  }
+  if (initial && typeof initial === "object") {
+    return Object.keys(initial).reduce(
+      (acc, key) => {
+        const sub = countSectionCompletion(current?.[key], initial[key]);
+        return { total: acc.total + sub.total, populated: acc.populated + sub.populated };
+      },
+      { total: 0, populated: 0 }
+    );
+  }
+  const isBlank = current === initial || current === "" || current === null || current === undefined;
+  return { total: 1, populated: isBlank ? 0 : 1 };
+}
+
+// A section only earns the "Complete" badge once a meaningful share of its
+// fields are actually documented -- not merely different from blank in one
+// spot. 0.5 (half the section's fields) is the bar for "Complete"; any
+// nonzero-but-below-threshold documentation is surfaced as "In Progress"
+// instead of silently staying "Not started" or falsely reading "Complete".
+const SECTION_COMPLETION_RATIO_THRESHOLD = 0.5;
+
+function getSectionCompletionState(current, initial) {
+  const { total, populated } = countSectionCompletion(current, initial);
+  const ratio = total > 0 ? populated / total : 0;
+  if (populated === 0) return { status: "not_started", ratio, populated, total };
+  if (ratio >= SECTION_COMPLETION_RATIO_THRESHOLD) return { status: "complete", ratio, populated, total };
+  return { status: "in_progress", ratio, populated, total };
+}
+
 function formatLcdRule(rule) {
   switch ((rule || "").toUpperCase()) {
     case "ALL_REQUIRED": return "ALL must be met";
@@ -9858,6 +9919,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // new backend field, model, or write path. See
   // docs/SNS_RNICA_SECTION_1_IMPLEMENTATION_CONTRACT.md.
   const [facesheetData, setFacesheetData] = useState(null);
+  // True once the "load existing assessment" fetch has resolved (success or
+  // failure). The facesheet-driven demographics prefill below must wait for
+  // this so it always applies AFTER any saved draft is loaded into
+  // formData -- otherwise, whichever of the two independent async fetches
+  // (assessment draft vs. facesheet) happens to resolve second wins the
+  // race and can silently wipe out the other's data.
+  const [assessmentLoaded, setAssessmentLoaded] = useState(false);
   const [facesheetError, setFacesheetError] = useState("");
   const [performanceHistory, setPerformanceHistory] = useState([]);
   const [formData, setFormData] = useState(JSON.parse(JSON.stringify(INITIAL_FORM)));
@@ -9971,6 +10039,28 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           formData,
           signal.structured_findings || []
         );
+
+        // Persist the field values durably BEFORE marking the source signal
+        // "APPLIED" (reviewed/consumed). These two writes must land
+        // together: relying on the 30s autosave timer to eventually notice
+        // the local `formData` change was the root cause of signals being
+        // marked applied while their destination fields silently never
+        // reached the saved chart (lost on tab close/nav/reload). If this
+        // save fails, we throw before marking anything applied or touching
+        // visible state, so the RN can safely retry with no data loss.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
         if (appliedFields.length > 0) {
@@ -10023,7 +10113,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setStructuredFindingsBusyId(null);
       }
     },
-    [formData]
+    // NOTE: isOngoing / assessmentType / markPersisted are intentionally
+    // omitted here even though they're read in the body above -- they (and
+    // the useAssessmentAutosave() call that produces markPersisted) are
+    // declared further down in this component, so including them in this
+    // array would evaluate a not-yet-initialized binding on first render
+    // (TDZ ReferenceError). assessmentId/patientId/setAssessmentId ARE
+    // declared earlier and are safe to depend on. markPersisted has a
+    // permanently stable identity ([] deps in useAssessmentAutosave), and
+    // isOngoing/assessmentType are only read on the rare "no assessmentId
+    // yet" create-path, so omitting them from deps carries no meaningful
+    // staleness risk in practice.
+    [formData, assessmentId, patientId, setAssessmentId]
   );
 
   const handleDismissStructuredSignal = useCallback(async (signal) => {
@@ -10096,6 +10197,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return;
         }
 
+        // Persist the merged field values durably BEFORE marking any signal
+        // "APPLIED". This must land before the review-status write below --
+        // otherwise a signal can be permanently marked consumed while its
+        // fields only ever existed in this tab's memory, silently lost on
+        // tab close/navigation/reload (the exact gap that produced the
+        // "57 populated in the UI, 21 populated in the DB" discrepancy).
+        // If this save fails we throw here, before touching any visible
+        // state or marking anything applied, so the RN can safely retry.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
         const provenanceEntries = [];
@@ -10142,7 +10264,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setStructuredFindingsBulkBusy(false);
       }
     },
-    [formData]
+    // See note on handleApplyStructuredSignal above: isOngoing /
+    // assessmentType / markPersisted are declared later in this component
+    // (after useAssessmentAutosave()), so they cannot appear in this array
+    // without a TDZ ReferenceError on first render, even though they are
+    // safely read in the body (deferred execution). markPersisted is
+    // permanently stable-identity; isOngoing/assessmentType only affect the
+    // rare "no assessmentId yet" create-path.
+    [formData, assessmentId, patientId, setAssessmentId]
   );
 
   const handleApplyAllNonConflicting = useCallback(() => {
@@ -10403,6 +10532,76 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     });
   }, [patientSummary, assessmentId]);
 
+  // Fill demographics/diagnosis identity fields from the same authoritative
+  // Facesheet data Section 1 already displays read-only, whenever it becomes
+  // available. Unlike the patientSummary prefill above, this deliberately
+  // runs on every facesheet load (not just "new assessment, no assessmentId
+  // yet") -- an already-in-progress assessment that still shows these as
+  // blank/required (e.g. because it was started before the facesheet was
+  // completed, or before this prefill existed) should self-heal the next
+  // time its Facesheet data loads, rather than staying permanently blank.
+  // Every field write is guarded by "only if currently empty" so an RN's
+  // own entry (including one that deliberately differs from the facesheet)
+  // is never overwritten -- this only fills gaps, never replaces values.
+  useEffect(() => {
+    if (!facesheetData || !assessmentLoaded) {
+      return;
+    }
+    const identity = facesheetData.identity || {};
+    const primaryDx = facesheetData.clinical?.active_primary_diagnosis || null;
+
+    setFormData((prev) => {
+      let changed = false;
+      const next = JSON.parse(JSON.stringify(prev));
+      const d = next.demographics;
+
+      if (!d.dob && identity.dob) {
+        d.dob = identity.dob;
+        changed = true;
+      }
+      if (!d.gender && identity.gender) {
+        d.gender = identity.gender;
+        changed = true;
+      }
+      if ((!d.race || d.race.length === 0) && identity.race) {
+        d.race = [identity.race];
+        changed = true;
+      }
+      if ((!d.ethnicity || d.ethnicity.length === 0) && identity.ethnicity) {
+        d.ethnicity = [identity.ethnicity];
+        changed = true;
+      }
+      if (!d.preferredLanguage && identity.language) {
+        d.preferredLanguage = identity.language;
+        changed = true;
+      }
+      if (!d.religion && identity.religion) {
+        d.religion = identity.religion;
+        changed = true;
+      }
+      if (!d.maritalStatus && identity.marital_status) {
+        d.maritalStatus = identity.marital_status;
+        changed = true;
+      }
+      if (!d.phone && identity.phone) {
+        d.phone = identity.phone;
+        changed = true;
+      }
+
+      const dx = next.diagnoses.primaryDiagnosis;
+      if (!dx.icd10 && primaryDx?.icd10_code) {
+        dx.icd10 = primaryDx.icd10_code;
+        changed = true;
+      }
+      if (!dx.description && primaryDx?.description) {
+        dx.description = primaryDx.description;
+        changed = true;
+      }
+
+      return changed ? next : prev;
+    });
+  }, [facesheetData, assessmentLoaded]);
+
   const refreshIntelligence = useCallback(async (currentAssessmentId) => {
     if (!currentAssessmentId) {
       setIntelligence(null);
@@ -10448,10 +10647,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
     if (!existingAssessmentId && !activePatientId) {
+      setAssessmentLoaded(true);
       return undefined;
     }
 
     let mounted = true;
+    setAssessmentLoaded(false);
     const loadAssessment = existingAssessmentId
       ? api.getRNICAAssessment(existingAssessmentId)
       : api.getRNICAAssessmentByPatient(activePatientId, isOngoing ? assessmentType : undefined);
@@ -10486,6 +10687,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         if (!mounted) return;
         console.error("Failed to load assessment:", err);
         setPageError(err instanceof Error ? err.message : "Unable to load RN ICA assessment.");
+      })
+      .finally(() => {
+        if (mounted) {
+          setAssessmentLoaded(true);
+        }
       });
 
     return () => {
@@ -10686,8 +10892,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [assessmentId, resolvedPatientId, patientId, navigate]);
 
   // Section completion tracker
-  const completedSections = useMemo(() => {
-    const completed = [];
+  const sectionCompletionStates = useMemo(() => {
+    const states = {};
     routes.forEach((route) => {
       let sectionData = route.completionPath
         ? getValueByPath(formData[route.formSection], route.completionPath)
@@ -10702,12 +10908,24 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         initialSectionData = initialPatientDemographics;
       }
       if (sectionData) {
-        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(initialSectionData);
-        if (hasContent) completed.push(route.key);
+        states[route.key] = getSectionCompletionState(sectionData, initialSectionData);
       }
     });
-    return completed;
+    return states;
   }, [formData, routes, workspacePilot]);
+
+  // Kept for existing callers that only need the complete/not-complete
+  // list (e.g. the top-level "8 / 27" progress bar) -- now driven by the
+  // same meaningful-documentation threshold as the per-section badges,
+  // instead of the old "any field changed" check.
+  const completedSections = useMemo(
+    () => Object.keys(sectionCompletionStates).filter((key) => sectionCompletionStates[key].status === "complete"),
+    [sectionCompletionStates]
+  );
+  const inProgressSections = useMemo(
+    () => Object.keys(sectionCompletionStates).filter((key) => sectionCompletionStates[key].status === "in_progress"),
+    [sectionCompletionStates]
+  );
 
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
@@ -10757,6 +10975,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const sectionData = formData[route.formSection];
     const open = isSectionOpen(route.key);
     const isComplete = completedSections.includes(route.key);
+    const isInProgress = inProgressSections.includes(route.key);
     const cfg = sidebarConfigItems.find((s) => s.key === route.key);
 
     return (
@@ -10780,10 +10999,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             <span style={{ fontSize: 14, fontWeight: 700 }}>{cfg?.label || route.key}</span>
             {cfg?.cdphRequired && <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.teal }}>CDPH</span>}
             {isComplete && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.success }}>&#10003; Complete</span>}
+            {!isComplete && isInProgress && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.warning || "#b45309" }}>&#9679; In Progress</span>}
           </div>
           {!open && (
             <span style={{ fontSize: 11, color: COLORS.gray }}>
-              {isComplete ? "Documented — tap to review" : "Not started — tap to document"}
+              {isComplete ? "Documented — tap to review" : isInProgress ? "Partially documented — tap to continue" : "Not started — tap to document"}
             </span>
           )}
         </div>

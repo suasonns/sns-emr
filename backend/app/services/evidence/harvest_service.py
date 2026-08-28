@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
@@ -72,6 +73,32 @@ def harvest_from_source(
         # Nothing to harvest from an empty note; not an error.
         return None
 
+    # Idempotency guard: if this exact source was already harvested (e.g. a
+    # recovery-sweep retry racing a request that already succeeded, or a
+    # document reprocessed after an interrupted first attempt), reuse the
+    # existing evidence record instead of creating a second one. This is
+    # backed by a DB-level unique constraint on
+    # (tenant_id, source_type, source_record_id), so it also holds under
+    # concurrent retries, not just this in-process check.
+    existing = (
+        db.query(PatientEvidenceRecord)
+        .filter(
+            PatientEvidenceRecord.tenant_id == tenant_id,
+            PatientEvidenceRecord.source_type == source_type,
+            PatientEvidenceRecord.source_record_id == source_record_id,
+        )
+        .one_or_none()
+    )
+    if existing is not None:
+        logger.info(
+            "evidence_harvester: source_type=%s source_record_id=%s already harvested "
+            "(evidence_record_id=%s) -- skipping duplicate harvest",
+            source_type,
+            source_record_id,
+            existing.id,
+        )
+        return existing
+
     try:
         with db.begin_nested():
             evidence_record = PatientEvidenceRecord(
@@ -101,6 +128,24 @@ def harvest_from_source(
         if commit:
             db.commit()
         return evidence_record
+    except IntegrityError:
+        # Lost a race against a concurrent harvest of the exact same
+        # source (e.g. a recovery-sweep retry overlapping a live request).
+        # The unique constraint on (tenant_id, source_type,
+        # source_record_id) means the other caller's row is the durable
+        # one -- fetch and return it rather than reporting failure for
+        # documentation that was, in fact, successfully harvested.
+        if commit:
+            db.rollback()
+        return (
+            db.query(PatientEvidenceRecord)
+            .filter(
+                PatientEvidenceRecord.tenant_id == tenant_id,
+                PatientEvidenceRecord.source_type == source_type,
+                PatientEvidenceRecord.source_record_id == source_record_id,
+            )
+            .one_or_none()
+        )
     except Exception:
         if commit:
             db.rollback()

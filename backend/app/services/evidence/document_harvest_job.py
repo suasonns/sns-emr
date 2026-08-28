@@ -15,11 +15,23 @@ failure partway through (extraction error, AI error, DB error) only means
 the document keeps its pre-existing document_text/extracted_values (most
 likely empty) -- the uploaded file and its DocumentRecord row are
 completely unaffected either way.
+
+Durability contract (Phase A): a failure here is never terminal. Every
+run transitions DocumentRecord.processing_status through
+PENDING -> PROCESSING -> COMPLETE | FAILED, and this function is
+idempotent -- calling it again on the same document_id is a safe no-op
+once COMPLETE, and safely resumes/retries otherwise. This is what lets
+`recovery_service.find_recoverable_documents()` re-drive any document
+that got interrupted (server restart mid-processing) or failed
+transiently (AI service timeout), without ever requiring the source file
+to be re-uploaded, and without ever double-harvesting it.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from app.core.database import SessionLocal
@@ -34,13 +46,23 @@ from app.services.evidence.harvest_service import harvest_from_source
 
 logger = logging.getLogger("sns_emr")
 
+# Bounded retry count for the recovery sweep (see recovery_service.py) --
+# a document that has genuinely failed this many times (e.g. a corrupt
+# file the extractor can never parse) stops being auto-retried and needs
+# a human to look at last_processing_error, rather than being hammered
+# forever.
+MAX_PROCESSING_ATTEMPTS = 5
+
 
 def run_document_intelligence(*, document_id: UUID) -> None:
     """Extract text, classify via AI, and harvest one uploaded document.
 
-    Never raises -- any failure is logged and simply leaves the document
-    without AI-derived text/findings (it remains fully usable/downloadable
-    either way).
+    Idempotent and safe to call more than once for the same document_id
+    (the recovery sweep in recovery_service.py relies on this): a document
+    already in processing_status == "COMPLETE" is a no-op. Every attempt
+    is tracked via processing_status/processing_attempts/
+    last_processing_error so a stuck or failed document is always
+    recoverable without requiring the source file to be re-uploaded.
     """
 
     db = SessionLocal()
@@ -49,16 +71,35 @@ def run_document_intelligence(*, document_id: UUID) -> None:
         if not doc or not doc.file_path:
             return
 
+        if doc.processing_status == "COMPLETE":
+            # Already fully processed -- nothing to do. Guards against a
+            # recovery-sweep retry re-running work that already finished
+            # (e.g. it raced a normal in-flight BackgroundTasks run).
+            return
+
+        doc.processing_status = "PROCESSING"
+        doc.processing_started_at = datetime.now(timezone.utc)
+        doc.processing_attempts = (doc.processing_attempts or 0) + 1
+        db.add(doc)
+        db.commit()
+
         try:
             storage = get_document_storage()
             stored_object = storage.open(doc.file_path)
             file_bytes = stored_object.body.read()
-        except (DocumentStorageError, DocumentObjectNotFound):
+        except (DocumentStorageError, DocumentObjectNotFound) as exc:
             logger.exception(
                 "document_intelligence_job: failed to read stored file document_id=%s",
                 document_id,
             )
+            doc.processing_status = "FAILED"
+            doc.last_processing_error = f"storage read failed: {exc}"
+            db.add(doc)
+            db.commit()
             return
+
+        if not doc.content_hash:
+            doc.content_hash = hashlib.sha256(file_bytes).hexdigest()
 
         content_type = _guess_content_type(doc.file_path)
         extraction = extract_text_from_file(
@@ -106,15 +147,32 @@ def run_document_intelligence(*, document_id: UUID) -> None:
             doc.flag_tier = flag_result.tier
             doc.matched_rule_ids = flag_result.matched_rule_ids
 
+        doc.processing_status = "COMPLETE"
+        doc.processing_completed_at = datetime.now(timezone.utc)
+        doc.last_processing_error = None
+
         db.add(doc)
         db.commit()
         db.refresh(doc)
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
         logger.exception(
             "document_intelligence_job: failed to process document_id=%s", document_id
         )
+        try:
+            doc = db.query(DocumentRecord).filter(DocumentRecord.id == document_id).one_or_none()
+            if doc is not None:
+                doc.processing_status = "FAILED"
+                doc.last_processing_error = str(exc)[:2000]
+                db.add(doc)
+                db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "document_intelligence_job: failed to record FAILED status document_id=%s",
+                document_id,
+            )
         return
     finally:
         db.close()
@@ -122,7 +180,9 @@ def run_document_intelligence(*, document_id: UUID) -> None:
     # ------------------------------
     # AI EVIDENCE HARVESTER -- separate try/except, own DB session, so a
     # harvesting failure can never affect the document-intelligence work
-    # already committed above.
+    # already committed above. harvest_from_source() is itself idempotent
+    # (see harvest_service.py), so re-running this on an already-harvested
+    # document is a safe no-op, not a duplicate.
     # ------------------------------
     harvest_db = SessionLocal()
     try:
