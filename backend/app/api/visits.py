@@ -793,6 +793,30 @@ def save_rnica_assessment(
         raise HTTPException(status_code=422, detail="patientId must be a valid UUID") from None
     patient = get_authorized_patient(db, patient_uuid, current_user)
     current_admission = _get_current_admission_for_patient(db, patient_uuid, patient.tenant_id)
+
+    # Idempotency guard for offline-captured creates: a client that queued
+    # this save while offline (see the frontend offline sync manager) may
+    # retry it after a dropped connection without knowing whether the first
+    # attempt ever reached the server. If it did, return that same row
+    # instead of creating a duplicate DRAFT assessment.
+    client_request_id = (payload or {}).get("clientRequestId")
+    if client_request_id:
+        existing_for_request = (
+            db.query(RnicaAssessment)
+            .filter(
+                RnicaAssessment.patient_id == patient_uuid,
+                RnicaAssessment.client_request_id == str(client_request_id),
+            )
+            .first()
+        )
+        if existing_for_request:
+            return {
+                "assessmentId": str(existing_for_request.id),
+                "status": "saved",
+                "assessmentType": existing_for_request.assessment_type,
+                "deduplicated": True,
+            }
+
     if normalized_assessment_type == RNICA_ADMISSION_TYPE:
         # RN ICA (initial comprehensive assessment) is a one-time document
         # per admission episode. If this admission already has one locked,
@@ -829,6 +853,7 @@ def save_rnica_assessment(
         assessment_type=normalized_assessment_type,
         status="DRAFT",
         locked=False,
+        client_request_id=str(client_request_id) if client_request_id else None,
     )
     rnica_hope_workflow_service.sync_submission_fields_from_form_data(assessment, form_data)
     db.add(assessment)

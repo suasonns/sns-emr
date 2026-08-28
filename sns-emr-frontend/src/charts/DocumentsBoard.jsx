@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { COLORS, S } from "../tenant/design";
 import {
-  uploadDocument,
   listPatientDocuments,
   getDocumentDownloadUrl,
 } from "../api/documents";
+import { uploadDocumentOffline } from "../api/offlineDocumentApi";
 
 const input = {
   width: "100%",
@@ -199,9 +199,19 @@ export default function DocumentsBoard({ patientId, sectionKey = "all-docs" }) {
     setError("");
     setMessage("");
     try {
-      const uploaded = await uploadDocument(patientId, uploadType, file, "EXTERNAL", password);
-      setDocuments((prev) => [uploaded, ...prev]);
-      setMessage(`"${file.name}" uploaded. AI classification runs in the background and will appear shortly.`);
+      const uploaded = await uploadDocumentOffline(patientId, uploadType, file, "EXTERNAL", password);
+      if (uploaded.status === "queued") {
+        // No connectivity right now -- the file is safely stored on this
+        // device and will upload automatically once a signal returns. Do
+        // not add a placeholder row to the document list: the real record
+        // (with its real id) only exists once the queued upload syncs.
+        setMessage(
+          `"${file.name}" saved on this device. It will upload and process automatically once you're back online — no need to re-upload.`
+        );
+      } else {
+        setDocuments((prev) => [uploaded, ...prev]);
+        setMessage(`"${file.name}" uploaded. AI classification runs in the background and will appear shortly.`);
+      }
       setPendingPasswordFile(null);
       setPasswordInput("");
     } catch (err) {

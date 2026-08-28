@@ -33,6 +33,10 @@ import {
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import {
+  saveRnicaAssessmentOffline,
+  updateRnicaAssessmentOffline,
+} from "../api/offlineAssessmentApi";
+import {
   saveRnicaAssessment,
   getRnicaAssessment,
   getRnicaAssessmentByPatient,
@@ -912,7 +916,7 @@ function normalizeLoadedRnicaFormData(loadedFormData) {
 // Delegates to the shared client so requests carry the auth token.
 const api = {
   saveRNICAAssessment: (patientId, formData, assessmentSubtype) =>
-    saveRnicaAssessment(
+    saveRnicaAssessmentOffline(
       assessmentSubtype ? { patientId, formData, assessmentSubtype } : { patientId, formData }
     ),
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
@@ -921,7 +925,7 @@ const api = {
       ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
       : getRnicaAssessmentByPatient(patientId),
   updateRNICAAssessment: (assessmentId, formData) =>
-    updateRnicaAssessment(assessmentId, formData),
+    updateRnicaAssessmentOffline(assessmentId, formData),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
   deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
