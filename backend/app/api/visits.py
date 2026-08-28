@@ -147,6 +147,7 @@ def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool
         finalization["hopeAlreadySubmitted"] = bool(workflow["alreadySubmitted"])
         form_data["finalization"] = finalization
         payload["formData"] = form_data
+        payload["fieldProvenance"] = record.field_provenance or []
     return payload
 
 
@@ -850,6 +851,7 @@ def save_rnica_assessment(
         tenant_id=getattr(patient, "tenant_id", None),
         admission_id=current_admission.id if current_admission else None,
         form_data=form_data,
+        field_provenance=(payload or {}).get("fieldProvenance") or [],
         assessment_type=normalized_assessment_type,
         status="DRAFT",
         locked=False,
@@ -1114,6 +1116,13 @@ def update_rnica_assessment(
     form_data = _normalize_rnica_lcd_detection((payload or {}).get("formData") or record.form_data or {})
     record.form_data = form_data
     record.status = "DRAFT"
+    incoming_provenance = (payload or {}).get("fieldProvenance")
+    if isinstance(incoming_provenance, list):
+        # Client sends its full accumulated provenance list on every save
+        # (same convention as formData itself) -- this is a full replace,
+        # not an append, so a stale/partial client never has to guess how
+        # to merge with server state.
+        record.field_provenance = incoming_provenance
     rnica_hope_workflow_service.sync_submission_fields_from_form_data(record, form_data)
     db.commit()
     patient = (

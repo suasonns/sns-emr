@@ -926,8 +926,8 @@ const api = {
     assessmentSubtype
       ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
       : getRnicaAssessmentByPatient(patientId),
-  updateRNICAAssessment: (assessmentId, formData) =>
-    updateRnicaAssessmentOffline(assessmentId, formData),
+  updateRNICAAssessment: (assessmentId, formData, fieldProvenance) =>
+    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
   deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
@@ -10046,17 +10046,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           signal.structured_findings || []
         );
 
-        // Persist the field values durably BEFORE marking the source signal
-        // "APPLIED" (reviewed/consumed). These two writes must land
-        // together: relying on the 30s autosave timer to eventually notice
-        // the local `formData` change was the root cause of signals being
-        // marked applied while their destination fields silently never
-        // reached the saved chart (lost on tab close/nav/reload). If this
-        // save fails, we throw before marking anything applied or touching
+        const provenanceEntries = appliedFields.map((f) => ({
+          section: f.section,
+          path: f.path,
+          value: f.value,
+          concept_code: f.concept_code,
+          source_type: signal.source_type,
+          source_excerpt: signal.original_text_excerpt,
+          recorded_at: signal.recorded_at,
+          confidence: f.finding?.confidence,
+          signal_id: signal.id,
+        }));
+        const nextProvenance =
+          provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+
+        // Persist the field values AND their provenance durably BEFORE
+        // marking the source signal "APPLIED" (reviewed/consumed). These
+        // writes must land together: relying on the 30s autosave timer to
+        // eventually notice the local `formData` change was the root cause
+        // of signals being marked applied while their destination fields
+        // silently never reached the saved chart (lost on tab close/nav/
+        // reload). Persisting fieldProvenance in this same call (not just
+        // React state) is what lets the RN still see WHY a field was
+        // populated after a refresh, logout, or reconnect. If this save
+        // fails, we throw before marking anything applied or touching
         // visible state, so the RN can safely retry with no data loss.
         let persistedAssessmentId = assessmentId;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10069,19 +10086,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
-        if (appliedFields.length > 0) {
-          const provenanceEntries = appliedFields.map((f) => ({
-            section: f.section,
-            path: f.path,
-            value: f.value,
-            concept_code: f.concept_code,
-            source_type: signal.source_type,
-            source_excerpt: signal.original_text_excerpt,
-            recorded_at: signal.recorded_at,
-            confidence: f.finding?.confidence,
-            signal_id: signal.id,
-          }));
-          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+        if (provenanceEntries.length > 0) {
+          setStructuredFieldProvenance(nextProvenance);
         }
         if (conflicts.length > 0) {
           const conflictEntries = conflicts.map((c) => ({
@@ -10130,7 +10136,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     // isOngoing/assessmentType are only read on the rare "no assessmentId
     // yet" create-path, so omitting them from deps carries no meaningful
     // staleness risk in practice.
-    [formData, assessmentId, patientId, setAssessmentId]
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
   );
 
   const handleDismissStructuredSignal = useCallback(async (signal) => {
@@ -10203,29 +10209,6 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return;
         }
 
-        // Persist the merged field values durably BEFORE marking any signal
-        // "APPLIED". This must land before the review-status write below --
-        // otherwise a signal can be permanently marked consumed while its
-        // fields only ever existed in this tab's memory, silently lost on
-        // tab close/navigation/reload (the exact gap that produced the
-        // "57 populated in the UI, 21 populated in the DB" discrepancy).
-        // If this save fails we throw here, before touching any visible
-        // state or marking anything applied, so the RN can safely retry.
-        let persistedAssessmentId = assessmentId;
-        if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
-        } else {
-          const result = await api.saveRNICAAssessment(
-            patientId,
-            nextFormData,
-            isOngoing ? assessmentType : undefined
-          );
-          persistedAssessmentId = result.assessmentId;
-          setAssessmentId(persistedAssessmentId);
-        }
-        markPersisted(nextFormData, persistedAssessmentId);
-        setFormData(nextFormData);
-
         const provenanceEntries = [];
         for (const signal of targetSignals) {
           if (!appliedSignalIds.includes(signal.id)) continue;
@@ -10244,8 +10227,37 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             });
           }
         }
+        const nextProvenance =
+          provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+
+        // Persist the merged field values AND their provenance durably
+        // BEFORE marking any signal "APPLIED". This must land before the
+        // review-status write below -- otherwise a signal can be
+        // permanently marked consumed while its fields (and the record of
+        // why they were populated) only ever existed in this tab's memory,
+        // silently lost on tab close/navigation/reload/logout (the exact
+        // gap that produced the "57 populated in the UI, 21 populated in
+        // the DB" discrepancy, and the analogous gap where provenance
+        // vanished on refresh even though the fields themselves persisted).
+        // If this save fails we throw here, before touching any visible
+        // state or marking anything applied, so the RN can safely retry.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+
         if (provenanceEntries.length > 0) {
-          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+          setStructuredFieldProvenance(nextProvenance);
         }
 
         await batchReviewHarvestedSignalsOffline(appliedSignalIds, "APPLIED", { reason: reasonLabel });
@@ -10284,7 +10296,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     // safely read in the body (deferred execution). markPersisted is
     // permanently stable-identity; isOngoing/assessmentType only affect the
     // rare "no assessmentId yet" create-path.
-    [formData, assessmentId, patientId, setAssessmentId]
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
   );
 
   const handleApplyAllNonConflicting = useCallback(() => {
@@ -10680,6 +10692,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setFormData(JSON.parse(JSON.stringify(INITIAL_FORM)));
           setIntelligence(null);
           setIntelligenceError("");
+          setStructuredFieldProvenance([]);
           return null;
         }
         if (data.formData) {
@@ -10687,6 +10700,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setFormData(merged);
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
+        // Rehydrate applied-field provenance from the server so an RN can
+        // still see why a field was populated after a refresh, logout, or
+        // reconnect -- not only within the same browser session the Apply
+        // happened in.
+        setStructuredFieldProvenance(Array.isArray(data.fieldProvenance) ? data.fieldProvenance : []);
         setLocked(!!data.locked);
         setLockedAt(data.lockedAt || null);
         return data;

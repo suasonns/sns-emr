@@ -82,7 +82,8 @@ export async function saveRnicaAssessmentOffline(args: SaveArgs): Promise<Offlin
 /** Offline-safe replacement for RN ICA assessment updates. */
 export async function updateRnicaAssessmentOffline(
   assessmentId: string,
-  formData: Record<string, unknown>
+  formData: Record<string, unknown>,
+  fieldProvenance?: Array<Record<string, unknown>>
 ): Promise<OfflineSaveResult> {
   // Still-unsynced local draft: fold this edit into the queued create
   // instead of queuing a PUT against an assessmentId the server has never
@@ -92,7 +93,7 @@ export async function updateRnicaAssessmentOffline(
     const existing = await getMutation(mutationId);
     if (existing) {
       await updateMutation(mutationId, {
-        payload: { ...existing.payload, formData },
+        payload: { ...existing.payload, formData, ...(fieldProvenance ? { fieldProvenance } : {}) },
       });
       triggerSync();
       return { assessmentId, status: "queued", queuedMutationId: mutationId };
@@ -108,7 +109,7 @@ export async function updateRnicaAssessmentOffline(
   }
 
   try {
-    await updateRnicaAssessment(assessmentId, formData);
+    await updateRnicaAssessment(assessmentId, formData, fieldProvenance);
     return { assessmentId, status: "saved" };
   } catch (error) {
     if (!isConnectivityFailure(error)) throw error;
@@ -120,7 +121,7 @@ export async function updateRnicaAssessmentOffline(
       createdAt: new Date().toISOString(),
       status: "pending",
       attempts: 0,
-      payload: { assessmentId, formData },
+      payload: { assessmentId, formData, ...(fieldProvenance ? { fieldProvenance } : {}) },
     };
     await enqueueMutation(mutation);
     triggerSync();
@@ -139,11 +140,12 @@ export async function replayRnicaMutation(mutation: {
     return;
   }
   if (mutation.kind === "rnica_update") {
-    const { assessmentId, formData } = mutation.payload as {
+    const { assessmentId, formData, fieldProvenance } = mutation.payload as {
       assessmentId: string;
       formData: Record<string, unknown>;
+      fieldProvenance?: Array<Record<string, unknown>>;
     };
-    await updateRnicaAssessment(assessmentId, formData);
+    await updateRnicaAssessment(assessmentId, formData, fieldProvenance);
     return;
   }
   throw new Error(`Unknown RNICA mutation kind: ${mutation.kind}`);
