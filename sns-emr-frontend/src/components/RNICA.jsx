@@ -1389,6 +1389,67 @@ function getValueByPath(obj, path) {
   return path.split(".").reduce((curr, key) => curr?.[key], obj);
 }
 
+// Recursively counts, for a section's saved data vs. its blank INITIAL_FORM
+// default, how many individual leaf fields (scalars/booleans/flat arrays)
+// actually hold RN-entered content vs. how many total leaf fields the
+// section defines. This replaces the old "does ANYTHING differ from
+// blank" check (which marked a 30-field section "Complete" because 1
+// field changed) with a real documentation-completeness ratio, without
+// hardcoding per-section field lists -- it walks whatever shape
+// INITIAL_FORM[section] defines, so it stays correct as sections evolve.
+//
+// - Plain objects: recurse into each key and sum leaf counts.
+// - Arrays of objects with a stable default length (e.g. the 16-item HOPE
+//   education-topics scaffold, or per-item DME/equipment lists) are walked
+//   element-by-element so real per-row documentation (a topic actually
+//   marked taught/understood, an item's status actually set) counts,
+//   instead of the array's mere existence counting as "populated."
+// - Any other array is one leaf field, populated if it has any entries.
+// - Scalars/booleans/strings are one leaf field each, populated if they
+//   differ from the blank default (non-empty string, non-null, etc).
+function countSectionCompletion(current, initial) {
+  if (Array.isArray(initial)) {
+    const allObjects = initial.length > 0 && initial.every((item) => item && typeof item === "object" && !Array.isArray(item));
+    if (allObjects && Array.isArray(current) && current.length === initial.length) {
+      return initial.reduce(
+        (acc, initialItem, idx) => {
+          const sub = countSectionCompletion(current[idx], initialItem);
+          return { total: acc.total + sub.total, populated: acc.populated + sub.populated };
+        },
+        { total: 0, populated: 0 }
+      );
+    }
+    const hasEntries = Array.isArray(current) && current.length > 0;
+    return { total: 1, populated: hasEntries ? 1 : 0 };
+  }
+  if (initial && typeof initial === "object") {
+    return Object.keys(initial).reduce(
+      (acc, key) => {
+        const sub = countSectionCompletion(current?.[key], initial[key]);
+        return { total: acc.total + sub.total, populated: acc.populated + sub.populated };
+      },
+      { total: 0, populated: 0 }
+    );
+  }
+  const isBlank = current === initial || current === "" || current === null || current === undefined;
+  return { total: 1, populated: isBlank ? 0 : 1 };
+}
+
+// A section only earns the "Complete" badge once a meaningful share of its
+// fields are actually documented -- not merely different from blank in one
+// spot. 0.5 (half the section's fields) is the bar for "Complete"; any
+// nonzero-but-below-threshold documentation is surfaced as "In Progress"
+// instead of silently staying "Not started" or falsely reading "Complete".
+const SECTION_COMPLETION_RATIO_THRESHOLD = 0.5;
+
+function getSectionCompletionState(current, initial) {
+  const { total, populated } = countSectionCompletion(current, initial);
+  const ratio = total > 0 ? populated / total : 0;
+  if (populated === 0) return { status: "not_started", ratio, populated, total };
+  if (ratio >= SECTION_COMPLETION_RATIO_THRESHOLD) return { status: "complete", ratio, populated, total };
+  return { status: "in_progress", ratio, populated, total };
+}
+
 function formatLcdRule(rule) {
   switch ((rule || "").toUpperCase()) {
     case "ALL_REQUIRED": return "ALL must be met";
@@ -10770,8 +10831,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [assessmentId, resolvedPatientId, patientId, navigate]);
 
   // Section completion tracker
-  const completedSections = useMemo(() => {
-    const completed = [];
+  const sectionCompletionStates = useMemo(() => {
+    const states = {};
     routes.forEach((route) => {
       let sectionData = route.completionPath
         ? getValueByPath(formData[route.formSection], route.completionPath)
@@ -10786,12 +10847,24 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         initialSectionData = initialPatientDemographics;
       }
       if (sectionData) {
-        const hasContent = JSON.stringify(sectionData) !== JSON.stringify(initialSectionData);
-        if (hasContent) completed.push(route.key);
+        states[route.key] = getSectionCompletionState(sectionData, initialSectionData);
       }
     });
-    return completed;
+    return states;
   }, [formData, routes, workspacePilot]);
+
+  // Kept for existing callers that only need the complete/not-complete
+  // list (e.g. the top-level "8 / 27" progress bar) -- now driven by the
+  // same meaningful-documentation threshold as the per-section badges,
+  // instead of the old "any field changed" check.
+  const completedSections = useMemo(
+    () => Object.keys(sectionCompletionStates).filter((key) => sectionCompletionStates[key].status === "complete"),
+    [sectionCompletionStates]
+  );
+  const inProgressSections = useMemo(
+    () => Object.keys(sectionCompletionStates).filter((key) => sectionCompletionStates[key].status === "in_progress"),
+    [sectionCompletionStates]
+  );
 
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
@@ -10841,6 +10914,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const sectionData = formData[route.formSection];
     const open = isSectionOpen(route.key);
     const isComplete = completedSections.includes(route.key);
+    const isInProgress = inProgressSections.includes(route.key);
     const cfg = sidebarConfigItems.find((s) => s.key === route.key);
 
     return (
@@ -10864,10 +10938,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             <span style={{ fontSize: 14, fontWeight: 700 }}>{cfg?.label || route.key}</span>
             {cfg?.cdphRequired && <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.teal }}>CDPH</span>}
             {isComplete && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.success }}>&#10003; Complete</span>}
+            {!isComplete && isInProgress && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.warning || "#b45309" }}>&#9679; In Progress</span>}
           </div>
           {!open && (
             <span style={{ fontSize: 11, color: COLORS.gray }}>
-              {isComplete ? "Documented — tap to review" : "Not started — tap to document"}
+              {isComplete ? "Documented — tap to review" : isInProgress ? "Partially documented — tap to continue" : "Not started — tap to document"}
             </span>
           )}
         </div>
