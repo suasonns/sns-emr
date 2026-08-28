@@ -10039,6 +10039,28 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           formData,
           signal.structured_findings || []
         );
+
+        // Persist the field values durably BEFORE marking the source signal
+        // "APPLIED" (reviewed/consumed). These two writes must land
+        // together: relying on the 30s autosave timer to eventually notice
+        // the local `formData` change was the root cause of signals being
+        // marked applied while their destination fields silently never
+        // reached the saved chart (lost on tab close/nav/reload). If this
+        // save fails, we throw before marking anything applied or touching
+        // visible state, so the RN can safely retry with no data loss.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
         if (appliedFields.length > 0) {
@@ -10091,7 +10113,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setStructuredFindingsBusyId(null);
       }
     },
-    [formData]
+    // NOTE: isOngoing / assessmentType / markPersisted are intentionally
+    // omitted here even though they're read in the body above -- they (and
+    // the useAssessmentAutosave() call that produces markPersisted) are
+    // declared further down in this component, so including them in this
+    // array would evaluate a not-yet-initialized binding on first render
+    // (TDZ ReferenceError). assessmentId/patientId/setAssessmentId ARE
+    // declared earlier and are safe to depend on. markPersisted has a
+    // permanently stable identity ([] deps in useAssessmentAutosave), and
+    // isOngoing/assessmentType are only read on the rare "no assessmentId
+    // yet" create-path, so omitting them from deps carries no meaningful
+    // staleness risk in practice.
+    [formData, assessmentId, patientId, setAssessmentId]
   );
 
   const handleDismissStructuredSignal = useCallback(async (signal) => {
@@ -10164,6 +10197,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return;
         }
 
+        // Persist the merged field values durably BEFORE marking any signal
+        // "APPLIED". This must land before the review-status write below --
+        // otherwise a signal can be permanently marked consumed while its
+        // fields only ever existed in this tab's memory, silently lost on
+        // tab close/navigation/reload (the exact gap that produced the
+        // "57 populated in the UI, 21 populated in the DB" discrepancy).
+        // If this save fails we throw here, before touching any visible
+        // state or marking anything applied, so the RN can safely retry.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
         const provenanceEntries = [];
@@ -10210,7 +10264,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setStructuredFindingsBulkBusy(false);
       }
     },
-    [formData]
+    // See note on handleApplyStructuredSignal above: isOngoing /
+    // assessmentType / markPersisted are declared later in this component
+    // (after useAssessmentAutosave()), so they cannot appear in this array
+    // without a TDZ ReferenceError on first render, even though they are
+    // safely read in the body (deferred execution). markPersisted is
+    // permanently stable-identity; isOngoing/assessmentType only affect the
+    // rare "no assessmentId yet" create-path.
+    [formData, assessmentId, patientId, setAssessmentId]
   );
 
   const handleApplyAllNonConflicting = useCallback(() => {
