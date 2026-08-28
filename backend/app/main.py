@@ -467,6 +467,7 @@ async def lifespan(app: FastAPI):
     STARTUP_STATUS["started_at_utc"] = datetime.now(timezone.utc).isoformat()
 
     scheduler_task = None
+    document_recovery_task = None
 
     try:
         # -------------------------------------------------------------
@@ -501,7 +502,47 @@ async def lifespan(app: FastAPI):
                 scheduler_exc,
             )
 
+        # -------------------------------------------------------------
+        # PHASE A DURABILITY: recover any document stuck in
+        # PENDING/PROCESSING/FAILED from before this restart, then start
+        # the periodic sweep so structured-finding generation + RNICA
+        # population always eventually complete, even after a crash or
+        # a transient AI-service outage.
+        # -------------------------------------------------------------
+        try:
+            from app.db.session import SessionLocal as _SessionLocal
+            from app.services.evidence.recovery_service import recover_documents
+            from app.services.document_recovery_scheduler import document_recovery_scheduler
+
+            startup_recovery_db = _SessionLocal()
+            try:
+                startup_recovery_result = recover_documents(startup_recovery_db)
+                if startup_recovery_result["examined"]:
+                    logger.info(
+                        "✅ Startup document recovery: examined=%s recovered=%s still_failed=%s",
+                        startup_recovery_result["examined"],
+                        len(startup_recovery_result["recovered"]),
+                        len(startup_recovery_result["still_failed"]),
+                    )
+            finally:
+                startup_recovery_db.close()
+
+            document_recovery_task = asyncio.create_task(document_recovery_scheduler())
+            STARTUP_STATUS["document_recovery_scheduler_started"] = True
+            logger.info("✅ Document recovery scheduler started")
+
+        except Exception as recovery_exc:
+            document_recovery_task = None
+            STARTUP_STATUS["warnings"].append(
+                {"document_recovery_scheduler_start_failed": str(recovery_exc)}
+            )
+            logger.warning(
+                "⚠️ Document recovery scheduler failed to start (non-blocking): %s",
+                recovery_exc,
+            )
+
         yield
+
 
     except Exception as e:
         # -------------------------------------------------------------
@@ -527,6 +568,21 @@ async def lifespan(app: FastAPI):
                 )
                 logger.warning(
                     "⚠️ Overdue scheduler shutdown issue: %s",
+                    shutdown_exc,
+                )
+
+        if document_recovery_task is not None:
+            document_recovery_task.cancel()
+            try:
+                await document_recovery_task
+            except asyncio.CancelledError:
+                logger.info("✅ Document recovery scheduler stopped")
+            except Exception as shutdown_exc:
+                STARTUP_STATUS["warnings"].append(
+                    {"document_recovery_scheduler_shutdown_failed": str(shutdown_exc)}
+                )
+                logger.warning(
+                    "⚠️ Document recovery scheduler shutdown issue: %s",
                     shutdown_exc,
                 )
 
