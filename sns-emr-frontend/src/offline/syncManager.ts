@@ -33,6 +33,7 @@ import {
 import { probeConnectivity, subscribeConnectivity, isOnline } from "./networkStatus";
 import { replayRnicaMutation } from "../api/offlineAssessmentApi";
 import { replayDocumentMutation } from "../api/offlineDocumentApi";
+import { replaySignalReviewMutation } from "../api/offlineSignalReviewApi";
 
 const MAX_ATTEMPTS_BEFORE_BACKOFF_CAP = 6;
 const BASE_BACKOFF_MS = 5_000;
@@ -96,6 +97,8 @@ async function replayOne(mutation: QueuedMutation): Promise<void> {
   try {
     if (mutation.kind === "document_upload") {
       await replayDocumentMutation(mutation);
+    } else if (mutation.kind === "signal_review") {
+      await replaySignalReviewMutation(mutation);
     } else {
       await replayRnicaMutation(mutation);
     }

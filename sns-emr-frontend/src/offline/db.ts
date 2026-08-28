@@ -20,7 +20,11 @@ const DB_VERSION = 1;
 const MUTATIONS_STORE = "mutations";
 const AUDIT_STORE = "audit_log";
 
-export type MutationKind = "rnica_create" | "rnica_update" | "document_upload";
+export type MutationKind =
+  | "rnica_create"
+  | "rnica_update"
+  | "document_upload"
+  | "signal_review";
 
 export type MutationStatus = "pending" | "syncing" | "failed" | "synced";
 

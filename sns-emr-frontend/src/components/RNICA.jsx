@@ -37,6 +37,10 @@ import {
   updateRnicaAssessmentOffline,
 } from "../api/offlineAssessmentApi";
 import {
+  reviewHarvestedSignalOffline,
+  batchReviewHarvestedSignalsOffline,
+} from "../api/offlineSignalReviewApi";
+import {
   saveRnicaAssessment,
   getRnicaAssessment,
   getRnicaAssessmentByPatient,
@@ -59,8 +63,6 @@ import {
   getRnicaSectionPocProblemHistory,
   linkExistingRnicaSectionPocProblem,
   mergeRnicaPocDuplicateProblems,
-  reviewHarvestedSignal,
-  batchReviewHarvestedSignals,
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
 } from "../api/icaAssessments";
@@ -10098,7 +10100,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         const reasonParts = [];
         if (appliedFields.length > 0) reasonParts.push(`applied ${appliedFields.length} field(s)`);
         if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
-        await reviewHarvestedSignal(
+        await reviewHarvestedSignalOffline(
           signal.id,
           "APPLIED",
           reasonParts.length > 0 ? reasonParts.join("; ") : "No blank fields to populate"
@@ -10135,7 +10137,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setStructuredFindingsError("");
     setStructuredFindingsBusyId(signal.id);
     try {
-      await reviewHarvestedSignal(signal.id, "DISMISSED", "Reviewed — not applied by RN");
+      await reviewHarvestedSignalOffline(signal.id, "DISMISSED", "Reviewed — not applied by RN");
       setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
       setSelectedStructuredSignalIds((prev) => {
         if (!prev.has(signal.id)) return prev;
@@ -10246,7 +10248,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
         }
 
-        await batchReviewHarvestedSignals(appliedSignalIds, "APPLIED", { reason: reasonLabel });
+        await batchReviewHarvestedSignalsOffline(appliedSignalIds, "APPLIED", { reason: reasonLabel });
         setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
         setSelectedStructuredSignalIds((prev) => {
           if (prev.size === 0) return prev;
@@ -10298,7 +10300,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setStructuredFindingsBulkBusy(true);
     try {
       const ids = targetSignals.map((s) => s.id);
-      await batchReviewHarvestedSignals(ids, "DISMISSED", { reason: reasonLabel });
+      await batchReviewHarvestedSignalsOffline(ids, "DISMISSED", { reason: reasonLabel });
       setPendingStructuredSignals((prev) => prev.filter((s) => !ids.includes(s.id)));
       setSelectedStructuredSignalIds((prev) => {
         if (prev.size === 0) return prev;
