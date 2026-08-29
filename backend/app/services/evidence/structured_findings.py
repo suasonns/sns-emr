@@ -412,6 +412,50 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].location", max_len=60),
         draft_row_field="location",
     ),
+    # RNICA Completion Sprint (Skin/Wounds, 15 fields): every field below
+    # enriches the SAME wound row SKIN_WOUND_PRESENT already created -- it
+    # must NEVER create a second row (op="set_row_field", not
+    # "push_draft_row"). Closed-vocabulary fields (stage/woundType/
+    # drainage/odor) use fixed field-writes per enum value, exactly like
+    # every other severity ladder in this registry. Free-text fields that
+    # are genuinely free text in the RN-facing form itself (dressing,
+    # dressingFrequency, currentTreatment, periwoundCondition) use the same
+    # bounded `free_text_bounded` value_slot pattern already proven safe
+    # for `location` -- never invented, always the clinician's own words.
+    # Numeric measurements (length/width/depth) use a bounded numeric
+    # value_slot -- clinician-stated-number only, never estimated.
+    "SKIN_WOUND_STAGE_1": ConceptMapping("SKIN_WOUND_STAGE_1", "skin", "Wound stage 1", (_fw("wounds[].stage", "Stage 1", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_2": ConceptMapping("SKIN_WOUND_STAGE_2", "skin", "Wound stage 2", (_fw("wounds[].stage", "Stage 2", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_3": ConceptMapping("SKIN_WOUND_STAGE_3", "skin", "Wound stage 3", (_fw("wounds[].stage", "Stage 3", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_4": ConceptMapping("SKIN_WOUND_STAGE_4", "skin", "Wound stage 4", (_fw("wounds[].stage", "Stage 4", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_UNSTAGEABLE": ConceptMapping("SKIN_WOUND_STAGE_UNSTAGEABLE", "skin", "Wound unstageable", (_fw("wounds[].stage", "Unstageable", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_DTI": ConceptMapping("SKIN_WOUND_STAGE_DTI", "skin", "Deep tissue injury", (_fw("wounds[].stage", "Deep Tissue Injury", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_PRESSURE_INJURY": ConceptMapping("SKIN_WOUND_TYPE_PRESSURE_INJURY", "skin", "Wound type: pressure injury", (_fw("wounds[].woundType", "Pressure injury", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_SKIN_TEAR": ConceptMapping("SKIN_WOUND_TYPE_SKIN_TEAR", "skin", "Wound type: skin tear", (_fw("wounds[].woundType", "Skin tear", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_SURGICAL": ConceptMapping("SKIN_WOUND_TYPE_SURGICAL", "skin", "Wound type: surgical wound", (_fw("wounds[].woundType", "Surgical wound", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_VENOUS_ULCER": ConceptMapping("SKIN_WOUND_TYPE_VENOUS_ULCER", "skin", "Wound type: venous ulcer", (_fw("wounds[].woundType", "Venous ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_ARTERIAL_ULCER": ConceptMapping("SKIN_WOUND_TYPE_ARTERIAL_ULCER", "skin", "Wound type: arterial ulcer", (_fw("wounds[].woundType", "Arterial ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_DIABETIC_ULCER": ConceptMapping("SKIN_WOUND_TYPE_DIABETIC_ULCER", "skin", "Wound type: diabetic ulcer", (_fw("wounds[].woundType", "Diabetic ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_NONHEALING": ConceptMapping("SKIN_WOUND_TYPE_NONHEALING", "skin", "Wound type: nonhealing wound", (_fw("wounds[].woundType", "Nonhealing wound", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_NONE": ConceptMapping("SKIN_WOUND_DRAINAGE_NONE", "skin", "Wound drainage: none", (_fw("wounds[].drainage", "None", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_SCANT": ConceptMapping("SKIN_WOUND_DRAINAGE_SCANT", "skin", "Wound drainage: scant", (_fw("wounds[].drainage", "Scant", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_SMALL": ConceptMapping("SKIN_WOUND_DRAINAGE_SMALL", "skin", "Wound drainage: small", (_fw("wounds[].drainage", "Small", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_MODERATE": ConceptMapping("SKIN_WOUND_DRAINAGE_MODERATE", "skin", "Wound drainage: moderate", (_fw("wounds[].drainage", "Moderate", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_LARGE": ConceptMapping("SKIN_WOUND_DRAINAGE_LARGE", "skin", "Wound drainage: large", (_fw("wounds[].drainage", "Large", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_NONE": ConceptMapping("SKIN_WOUND_ODOR_NONE", "skin", "Wound odor: none", (_fw("wounds[].odor", "None", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_MILD": ConceptMapping("SKIN_WOUND_ODOR_MILD", "skin", "Wound odor: mild", (_fw("wounds[].odor", "Mild", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_FOUL": ConceptMapping("SKIN_WOUND_ODOR_FOUL", "skin", "Wound odor: foul", (_fw("wounds[].odor", "Foul", op="set_row_field"),)),
+    "SKIN_WOUND_PRESSURE_INJURY_FLAG": ConceptMapping("SKIN_WOUND_PRESSURE_INJURY_FLAG", "skin", "Wound is a pressure injury", (_fw("wounds[].presentAsPressureInjury", True, op="set_row_field"),)),
+    "SKIN_WOUND_SKIN_TEAR_FLAG": ConceptMapping("SKIN_WOUND_SKIN_TEAR_FLAG", "skin", "Wound is a skin tear", (_fw("wounds[].isSkinTear", True, op="set_row_field"),)),
+    "SKIN_WOUND_SURGICAL_FLAG": ConceptMapping("SKIN_WOUND_SURGICAL_FLAG", "skin", "Wound is a surgical wound", (_fw("wounds[].isSurgicalWound", True, op="set_row_field"),)),
+    "SKIN_WOUND_NONHEALING_FLAG": ConceptMapping("SKIN_WOUND_NONHEALING_FLAG", "skin", "Nonhealing wound", (_fw("wounds[].isNonhealingWound", True, op="set_row_field"),)),
+    "SKIN_WOUND_LENGTH_CM": ConceptMapping("SKIN_WOUND_LENGTH_CM", "skin", "Wound length (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].length", min_value=0, max_value=30)),
+    "SKIN_WOUND_WIDTH_CM": ConceptMapping("SKIN_WOUND_WIDTH_CM", "skin", "Wound width (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].width", min_value=0, max_value=30)),
+    "SKIN_WOUND_DEPTH_CM": ConceptMapping("SKIN_WOUND_DEPTH_CM", "skin", "Wound depth (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].depth", min_value=0, max_value=15)),
+    "SKIN_WOUND_DRESSING": ConceptMapping("SKIN_WOUND_DRESSING", "skin", "Wound dressing", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].dressing", max_len=80)),
+    "SKIN_WOUND_DRESSING_FREQUENCY": ConceptMapping("SKIN_WOUND_DRESSING_FREQUENCY", "skin", "Dressing change frequency", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].dressingFrequency", max_len=40)),
+    "SKIN_WOUND_CURRENT_TREATMENT": ConceptMapping("SKIN_WOUND_CURRENT_TREATMENT", "skin", "Current wound treatment", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].currentTreatment", max_len=120)),
+    "SKIN_WOUND_PERIWOUND_CONDITION": ConceptMapping("SKIN_WOUND_PERIWOUND_CONDITION", "skin", "Periwound skin condition", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].periwoundCondition", max_len=80)),
     "SKIN_STATUS_DRY": ConceptMapping("SKIN_STATUS_DRY", "skin", "Skin dry", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Dry", op="multi_add"))),
     "SKIN_STATUS_FRAGILE": ConceptMapping("SKIN_STATUS_FRAGILE", "skin", "Skin fragile", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Fragile", op="multi_add"))),
     "SKIN_STATUS_EDEMATOUS": ConceptMapping("SKIN_STATUS_EDEMATOUS", "skin", "Skin edematous", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Edematous", op="multi_add"))),

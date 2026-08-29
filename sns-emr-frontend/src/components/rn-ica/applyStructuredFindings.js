@@ -163,38 +163,118 @@ export function applyStructuredFindings(formData, findings) {
           concept_code: finding.concept_code,
           finding,
         });
+      } else if (write.op === "set_row_field") {
+        // Enriches an already-created draft row (e.g. the wound row
+        // SKIN_WOUND_PRESENT created) with one more attribute -- it must
+        // NEVER create a new row itself (that would fragment one wound
+        // into multiple rows). Always targets the LAST row in the array,
+        // since concepts are applied in the order the evidence was
+        // extracted and a wound's attributes are documented together.
+        // Blank-only, same as every other write: never overwrites a value
+        // the RN (or an earlier finding) already set.
+        const split = splitDraftRowPath(write.path);
+        if (!split) continue;
+        const current = getNested(next[targetSection], split.arrayPath);
+        const arr = Array.isArray(current) ? current : [];
+        if (arr.length === 0) continue; // no row exists yet to attach to -- never fabricate one
+        const lastIdx = arr.length - 1;
+        const lastRow = arr[lastIdx] || {};
+        const existingValue = lastRow[split.rowField];
+        if (!isBlank(existingValue)) {
+          if (existingValue !== write.value) {
+            conflicts.push({
+              section: targetSection,
+              path: `${split.arrayPath}[${lastIdx}].${split.rowField}`,
+              existingValue,
+              suggestedValue: write.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
+          continue;
+        }
+        const updatedRow = { ...lastRow, [split.rowField]: write.value };
+        const updatedArr = [...arr];
+        updatedArr[lastIdx] = updatedRow;
+        next = { ...next, [targetSection]: setNested(next[targetSection], split.arrayPath, updatedArr) };
+        appliedFields.push({
+          section: targetSection,
+          path: `${split.arrayPath}[${lastIdx}].${split.rowField}`,
+          value: write.value,
+          concept_code: finding.concept_code,
+          finding,
+        });
       }
     }
 
-    // A concept's bounded numeric secondary value (e.g. oxygen liters/min)
-    // is not part of `writes` -- it is the finding's own `value`, written
-    // to value_slot.path within the concept's own section, blank-only,
-    // exactly like a "set" write. Skipped here for push_draft_row concepts
-    // (handled above as part of the new row) and free_text_bounded
-    // wound-location concepts (same reason).
-    if (concept.valueSlot && concept.valueSlot.kind === "numeric") {
-      const targetSection = concept.section;
-      const sectionData = next[targetSection];
-      if (sectionData) {
-        const current = getNested(sectionData, concept.valueSlot.path);
-        if (isBlank(current)) {
-          next = { ...next, [targetSection]: setNested(sectionData, concept.valueSlot.path, finding.value) };
-          appliedFields.push({
-            section: targetSection,
-            path: concept.valueSlot.path,
-            value: finding.value,
-            concept_code: finding.concept_code,
-            finding,
-          });
-        } else if (current !== finding.value) {
-          conflicts.push({
-            section: targetSection,
-            path: concept.valueSlot.path,
-            existingValue: current,
-            suggestedValue: finding.value,
-            concept_code: finding.concept_code,
-            finding,
-          });
+    // A concept's bounded secondary value (e.g. oxygen liters/min, or a
+    // free_text_bounded wound row field like `dressing`) is not part of
+    // `writes` -- it is the finding's own `value`, written to
+    // value_slot.path, blank-only, exactly like a "set"/"set_row_field"
+    // write. Skipped here for push_draft_row concepts (handled above as
+    // part of the new row, e.g. SKIN_WOUND_PRESENT's `location`).
+    const hasOwnRowCreatingWrite = (concept.writes || []).some((w) => w.op === "push_draft_row");
+    if (concept.valueSlot && !hasOwnRowCreatingWrite) {
+      const rowSplit = splitDraftRowPath(concept.valueSlot.path);
+      if (rowSplit) {
+        // Row-scoped secondary value (e.g. wounds[].length, wounds[].dressing)
+        // -- enrich the LAST existing row only, same rule as set_row_field:
+        // never fabricate a row, never overwrite a non-blank value.
+        const targetSection = concept.section;
+        const sectionData = next[targetSection];
+        const current = sectionData ? getNested(sectionData, rowSplit.arrayPath) : null;
+        const arr = Array.isArray(current) ? current : [];
+        if (arr.length > 0) {
+          const lastIdx = arr.length - 1;
+          const lastRow = arr[lastIdx] || {};
+          const existingValue = lastRow[rowSplit.rowField];
+          if (isBlank(existingValue)) {
+            const updatedRow = { ...lastRow, [rowSplit.rowField]: finding.value };
+            const updatedArr = [...arr];
+            updatedArr[lastIdx] = updatedRow;
+            next = { ...next, [targetSection]: setNested(sectionData, rowSplit.arrayPath, updatedArr) };
+            appliedFields.push({
+              section: targetSection,
+              path: `${rowSplit.arrayPath}[${lastIdx}].${rowSplit.rowField}`,
+              value: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          } else if (existingValue !== finding.value) {
+            conflicts.push({
+              section: targetSection,
+              path: `${rowSplit.arrayPath}[${lastIdx}].${rowSplit.rowField}`,
+              existingValue,
+              suggestedValue: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
+        }
+      } else if (concept.valueSlot.kind === "numeric") {
+        const targetSection = concept.section;
+        const sectionData = next[targetSection];
+        if (sectionData) {
+          const current = getNested(sectionData, concept.valueSlot.path);
+          if (isBlank(current)) {
+            next = { ...next, [targetSection]: setNested(sectionData, concept.valueSlot.path, finding.value) };
+            appliedFields.push({
+              section: targetSection,
+              path: concept.valueSlot.path,
+              value: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          } else if (current !== finding.value) {
+            conflicts.push({
+              section: targetSection,
+              path: concept.valueSlot.path,
+              existingValue: current,
+              suggestedValue: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
         }
       }
     }
@@ -221,6 +301,12 @@ export function getPendingFindingTargetSections(findings) {
     if (!concept) continue;
     for (const write of concept.writes || []) {
       sections.add(write.section || concept.section);
+    }
+    // A concept with only a value_slot and no writes (e.g. temperature,
+    // or a bounded wound row field like `dressing`) still targets its own
+    // section -- must count as pending too, not just concepts with writes.
+    if (concept.valueSlot) {
+      sections.add(concept.section);
     }
   }
   return sections;

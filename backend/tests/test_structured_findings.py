@@ -555,3 +555,56 @@ def test_symptom_impact_severity_findings_validate_and_apply_when_current():
     assert len(findings) == 4
     assert all(f.assertion_status == "CURRENT" for f in findings)
 
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Skin/Wounds (15 fields, wired onto the existing
+# wound draft row rather than fabricating a second row per attribute)
+# ---------------------------------------------------------------------------
+
+def test_wound_sub_field_concepts_use_set_row_field_not_push_draft_row():
+    # Every new wound attribute concept must enrich the SAME row
+    # SKIN_WOUND_PRESENT created -- never create a second row for one wound.
+    enum_flag_codes = [
+        "SKIN_WOUND_STAGE_2", "SKIN_WOUND_TYPE_PRESSURE_INJURY",
+        "SKIN_WOUND_DRAINAGE_MODERATE", "SKIN_WOUND_ODOR_FOUL",
+        "SKIN_WOUND_PRESSURE_INJURY_FLAG", "SKIN_WOUND_SKIN_TEAR_FLAG",
+        "SKIN_WOUND_SURGICAL_FLAG", "SKIN_WOUND_NONHEALING_FLAG",
+    ]
+    for code in enum_flag_codes:
+        mapping = CONCEPT_REGISTRY[code]
+        assert len(mapping.writes) == 1, code
+        assert mapping.writes[0].op == "set_row_field", code
+        assert mapping.writes[0].path.startswith("wounds[]."), code
+
+
+def test_wound_measurement_and_free_text_concepts_use_bounded_row_value_slots():
+    for code, path, kind in [
+        ("SKIN_WOUND_LENGTH_CM", "wounds[].length", "numeric"),
+        ("SKIN_WOUND_WIDTH_CM", "wounds[].width", "numeric"),
+        ("SKIN_WOUND_DEPTH_CM", "wounds[].depth", "numeric"),
+        ("SKIN_WOUND_DRESSING", "wounds[].dressing", "free_text_bounded"),
+        ("SKIN_WOUND_DRESSING_FREQUENCY", "wounds[].dressingFrequency", "free_text_bounded"),
+        ("SKIN_WOUND_CURRENT_TREATMENT", "wounds[].currentTreatment", "free_text_bounded"),
+        ("SKIN_WOUND_PERIWOUND_CONDITION", "wounds[].periwoundCondition", "free_text_bounded"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.writes == (), code  # no fixed FieldWrite -- value comes from the finding itself
+        assert mapping.value_slot is not None, code
+        assert mapping.value_slot.kind == kind, code
+        assert mapping.value_slot.path == path, code
+
+
+def test_wound_stage_enum_covers_all_clinically_assertable_cms_stages():
+    # N/A is intentionally excluded -- never an AI-asserted value.
+    stage_codes = {c for c in CONCEPT_REGISTRY if c.startswith("SKIN_WOUND_STAGE_")}
+    assert stage_codes == {
+        "SKIN_WOUND_STAGE_1", "SKIN_WOUND_STAGE_2", "SKIN_WOUND_STAGE_3",
+        "SKIN_WOUND_STAGE_4", "SKIN_WOUND_STAGE_UNSTAGEABLE", "SKIN_WOUND_STAGE_DTI",
+    }
+
+
+def test_wound_bounded_measurements_respect_clinical_ranges():
+    length = CONCEPT_REGISTRY["SKIN_WOUND_LENGTH_CM"].value_slot
+    assert length.min_value == 0
+    assert length.max_value == 30
+

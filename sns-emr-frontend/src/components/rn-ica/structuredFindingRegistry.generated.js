@@ -642,6 +642,141 @@ export const CONCEPT_REGISTRY = {
     writes: [{ path: "skinConditionsPresent", value: true, op: "set", section: null }, { path: "wounds", value: {}, op: "push_draft_row", section: null }],
     valueSlot: { kind: "free_text_bounded", path: "wounds[].location", minValue: null, maxValue: null, maxLen: 60 },
   },
+  SKIN_WOUND_STAGE_1: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Stage 1", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_STAGE_2: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Stage 2", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_STAGE_3: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Stage 3", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_STAGE_4: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Stage 4", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_STAGE_UNSTAGEABLE: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Unstageable", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_STAGE_DTI: {
+    section: "skin",
+    writes: [{ path: "wounds[].stage", value: "Deep Tissue Injury", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_PRESSURE_INJURY: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Pressure injury", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_SKIN_TEAR: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Skin tear", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_SURGICAL: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Surgical wound", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_VENOUS_ULCER: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Venous ulcer", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_ARTERIAL_ULCER: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Arterial ulcer", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_DIABETIC_ULCER: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Diabetic ulcer", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_TYPE_NONHEALING: {
+    section: "skin",
+    writes: [{ path: "wounds[].woundType", value: "Nonhealing wound", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_DRAINAGE_NONE: {
+    section: "skin",
+    writes: [{ path: "wounds[].drainage", value: "None", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_DRAINAGE_SCANT: {
+    section: "skin",
+    writes: [{ path: "wounds[].drainage", value: "Scant", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_DRAINAGE_SMALL: {
+    section: "skin",
+    writes: [{ path: "wounds[].drainage", value: "Small", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_DRAINAGE_MODERATE: {
+    section: "skin",
+    writes: [{ path: "wounds[].drainage", value: "Moderate", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_DRAINAGE_LARGE: {
+    section: "skin",
+    writes: [{ path: "wounds[].drainage", value: "Large", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_ODOR_NONE: {
+    section: "skin",
+    writes: [{ path: "wounds[].odor", value: "None", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_ODOR_MILD: {
+    section: "skin",
+    writes: [{ path: "wounds[].odor", value: "Mild", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_ODOR_FOUL: {
+    section: "skin",
+    writes: [{ path: "wounds[].odor", value: "Foul", op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_PRESSURE_INJURY_FLAG: {
+    section: "skin",
+    writes: [{ path: "wounds[].presentAsPressureInjury", value: true, op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_SKIN_TEAR_FLAG: {
+    section: "skin",
+    writes: [{ path: "wounds[].isSkinTear", value: true, op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_SURGICAL_FLAG: {
+    section: "skin",
+    writes: [{ path: "wounds[].isSurgicalWound", value: true, op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_NONHEALING_FLAG: {
+    section: "skin",
+    writes: [{ path: "wounds[].isNonhealingWound", value: true, op: "set_row_field", section: null }],
+  },
+  SKIN_WOUND_LENGTH_CM: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "wounds[].length", minValue: 0, maxValue: 30, maxLen: null },
+  },
+  SKIN_WOUND_WIDTH_CM: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "wounds[].width", minValue: 0, maxValue: 30, maxLen: null },
+  },
+  SKIN_WOUND_DEPTH_CM: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "numeric", path: "wounds[].depth", minValue: 0, maxValue: 15, maxLen: null },
+  },
+  SKIN_WOUND_DRESSING: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "wounds[].dressing", minValue: null, maxValue: null, maxLen: 80 },
+  },
+  SKIN_WOUND_DRESSING_FREQUENCY: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "wounds[].dressingFrequency", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  SKIN_WOUND_CURRENT_TREATMENT: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "wounds[].currentTreatment", minValue: null, maxValue: null, maxLen: 120 },
+  },
+  SKIN_WOUND_PERIWOUND_CONDITION: {
+    section: "skin",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "wounds[].periwoundCondition", minValue: null, maxValue: null, maxLen: 80 },
+  },
   SKIN_STATUS_DRY: {
     section: "skin",
     writes: [{ path: "skinConditionsPresent", value: true, op: "set", section: null }, { path: "skinStatus", value: "Dry", op: "multi_add", section: null }],

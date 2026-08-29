@@ -109,6 +109,75 @@ describe("applyStructuredFindings", () => {
     expect(sectionsWithAppliedStructuredFields(applied)).toEqual(new Set(["cardiovascular", "infection"]));
     expect(sectionsWithAppliedStructuredFields([])).toEqual(new Set());
   });
+
+  // -------------------------------------------------------------------------
+  // RNICA Completion Sprint: Skin/Wounds row-field enrichment
+  // (SKIN_WOUND_PRESENT creates the row; every attribute concept below must
+  // enrich that SAME row, never fabricate a second one for one wound).
+  // -------------------------------------------------------------------------
+
+  it("enriches the existing wound row's stage/type/drainage/odor/flags without creating a second row", () => {
+    const { formData } = applyStructuredFindings(
+      { skin: { wounds: [] } },
+      [
+        findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "sacrum", source_excerpt: "sacral wound" }),
+        findingOf({ concept_code: "SKIN_WOUND_STAGE_2", value: true }),
+        findingOf({ concept_code: "SKIN_WOUND_DRAINAGE_MODERATE", value: true }),
+        findingOf({ concept_code: "SKIN_WOUND_ODOR_NONE", value: true }),
+        findingOf({ concept_code: "SKIN_WOUND_PRESSURE_INJURY_FLAG", value: true }),
+      ]
+    );
+
+    expect(formData.skin.wounds).toHaveLength(1);
+    expect(formData.skin.wounds[0]).toMatchObject({
+      location: "sacrum",
+      stage: "Stage 2",
+      drainage: "Moderate",
+      odor: "None",
+      presentAsPressureInjury: true,
+    });
+  });
+
+  it("enriches the existing wound row's bounded numeric and free-text measurements", () => {
+    const { formData } = applyStructuredFindings(
+      { skin: { wounds: [] } },
+      [
+        findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "right heel", source_excerpt: "right heel wound" }),
+        findingOf({ concept_code: "SKIN_WOUND_LENGTH_CM", value: 3.5 }),
+        findingOf({ concept_code: "SKIN_WOUND_WIDTH_CM", value: 2 }),
+        findingOf({ concept_code: "SKIN_WOUND_DRESSING", value: "foam dressing" }),
+        findingOf({ concept_code: "SKIN_WOUND_CURRENT_TREATMENT", value: "cleanse and pack daily" }),
+      ]
+    );
+
+    expect(formData.skin.wounds[0]).toMatchObject({
+      location: "right heel",
+      length: 3.5,
+      width: 2,
+      dressing: "foam dressing",
+      currentTreatment: "cleanse and pack daily",
+    });
+  });
+
+  it("never fabricates a wound row for a set_row_field concept when no wound row exists yet", () => {
+    const { formData, appliedFields } = applyStructuredFindings(
+      { skin: { wounds: [] } },
+      [findingOf({ concept_code: "SKIN_WOUND_STAGE_2", value: true })]
+    );
+
+    expect(formData.skin.wounds).toEqual([]);
+    expect(appliedFields).toEqual([]);
+  });
+
+  it("never overwrites an RN-entered wound attribute and records a conflict instead", () => {
+    const { formData, conflicts } = applyStructuredFindings(
+      { skin: { wounds: [{ location: "sacrum", stage: "Stage 3" }] } },
+      [findingOf({ concept_code: "SKIN_WOUND_STAGE_2", value: true })]
+    );
+
+    expect(formData.skin.wounds[0].stage).toBe("Stage 3");
+    expect(conflicts.some((c) => c.path.endsWith(".stage") && c.existingValue === "Stage 3")).toBe(true);
+  });
 });
 
 describe("applyAllNonConflicting", () => {
