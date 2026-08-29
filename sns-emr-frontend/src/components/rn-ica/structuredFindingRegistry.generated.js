@@ -1595,6 +1595,41 @@ export const CONCEPT_REGISTRY = {
     section: "genitourinary",
     writes: [{ path: "catheter.present", value: true, op: "set", section: null }, { path: "catheter.urineCharacteristics", value: "Foul odor", op: "multi_add", section: null }],
   },
+  GU_CATHETER_SIZE: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "free_text_bounded", path: "catheter.size", minValue: null, maxValue: null, maxLen: 20 },
+  },
+  GU_CATHETER_INSERTION_DATE: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "date_bounded", path: "catheter.insertionDate", minValue: null, maxValue: null, maxLen: null },
+  },
+  GU_CATHETER_LAST_CHANGE_DATE: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "date_bounded", path: "catheter.lastChangeDate", minValue: null, maxValue: null, maxLen: null },
+  },
+  GU_CATHETER_IRRIGATION_SOLUTION: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "free_text_bounded", path: "catheter.irrigation.solution", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  GU_CATHETER_IRRIGATION_FREQUENCY: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "free_text_bounded", path: "catheter.irrigation.frequency", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  GU_CATHETER_IRRIGATION_DURATION: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "free_text_bounded", path: "catheter.irrigation.duration", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  GU_CATHETER_CARE_NOTES: {
+    section: "genitourinary",
+    writes: [{ path: "catheter.present", value: true, op: "set", section: null }],
+    valueSlot: { kind: "free_text_bounded", path: "catheterCare", minValue: null, maxValue: null, maxLen: 250 },
+  },
   GU_URINE_OUTPUT_ADEQUATE: {
     section: "genitourinary",
     writes: [{ path: "urineOutput", value: "Adequate", op: "set", section: null }],

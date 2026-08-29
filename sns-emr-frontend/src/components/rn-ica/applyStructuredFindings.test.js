@@ -178,6 +178,48 @@ describe("applyStructuredFindings", () => {
     expect(formData.skin.wounds[0].stage).toBe("Stage 3");
     expect(conflicts.some((c) => c.path.endsWith(".stage") && c.existingValue === "Stage 3")).toBe(true);
   });
+
+  // -------------------------------------------------------------------------
+  // Regression: non-row-scoped free_text_bounded/date_bounded value_slot
+  // concepts (no push_draft_row, no FieldWrite of their own) were silently
+  // never applied before this sprint -- only kind === "numeric" was handled.
+  // -------------------------------------------------------------------------
+
+  it("applies a non-row free_text_bounded value_slot concept that has no writes of its own", () => {
+    const { formData, appliedFields } = applyStructuredFindings(
+      { nutrition: {} },
+      [findingOf({ concept_code: "NUTRITION_DIET_TYPE", value: "Pureed, low-sodium" })]
+    );
+
+    expect(formData.nutrition.dietType).toBe("Pureed, low-sodium");
+    expect(appliedFields.some((f) => f.path === "dietType")).toBe(true);
+  });
+
+  it("applies GU catheter free-text and date value_slot fields onto plain (non-array) nested paths", () => {
+    const { formData } = applyStructuredFindings(
+      { genitourinary: { catheter: { irrigation: {} } } },
+      [
+        findingOf({ concept_code: "GU_CATHETER_SIZE", value: "16 Fr" }),
+        findingOf({ concept_code: "GU_CATHETER_INSERTION_DATE", value: "2024-03-15" }),
+        findingOf({ concept_code: "GU_CATHETER_IRRIGATION_SOLUTION", value: "Normal saline" }),
+      ]
+    );
+
+    expect(formData.genitourinary.catheter.present).toBe(true);
+    expect(formData.genitourinary.catheter.size).toBe("16 Fr");
+    expect(formData.genitourinary.catheter.insertionDate).toBe("2024-03-15");
+    expect(formData.genitourinary.catheter.irrigation.solution).toBe("Normal saline");
+  });
+
+  it("never overwrites an RN-entered non-row value_slot value -- records a conflict instead", () => {
+    const { formData, conflicts } = applyStructuredFindings(
+      { genitourinary: { catheter: { size: "18 Fr" } } },
+      [findingOf({ concept_code: "GU_CATHETER_SIZE", value: "16 Fr" })]
+    );
+
+    expect(formData.genitourinary.catheter.size).toBe("18 Fr");
+    expect(conflicts.some((c) => c.path === "catheter.size" && c.existingValue === "18 Fr")).toBe(true);
+  });
 });
 
 describe("applyAllNonConflicting", () => {

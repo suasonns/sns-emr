@@ -251,7 +251,17 @@ export function applyStructuredFindings(formData, findings) {
             });
           }
         }
-      } else if (concept.valueSlot.kind === "numeric") {
+      } else {
+        // Non-row-scoped secondary value of ANY value_slot kind (numeric,
+        // free_text_bounded, or date_bounded) -- e.g. oxygen liters/min,
+        // a diet-type free-text string, or a catheter insertion date.
+        // Blank-only, same rule as "set": never overwrites a value already
+        // present (RN-entered or from an earlier finding).
+        //
+        // NOTE: prior to this fix, this branch only ran for kind ===
+        // "numeric" -- every free_text_bounded/date_bounded concept with
+        // no row-array path and no FieldWrite (e.g. NUTRITION_DIET_TYPE,
+        // GU_URINE_COLOR, RESP_TRACH_TYPE) was silently never applied.
         const targetSection = concept.section;
         const sectionData = next[targetSection];
         if (sectionData) {

@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any
 
 SOURCE_TYPES = {"TRANSCRIPT", "REFERRAL_HNP", "UPLOADED_DOCUMENT", "CLINICAL_NOTE"}
@@ -89,7 +90,7 @@ class ValueSlot:
     value_slot are pure presence facts -- `value` must be truthy to apply.
     """
 
-    kind: str  # "numeric" | "free_text_bounded"
+    kind: str  # "numeric" | "free_text_bounded" | "date_bounded"
     path: str  # dotted field path (relative to the concept's section) this parameter is written to
     min_value: float | None = None
     max_value: float | None = None
@@ -1049,6 +1050,43 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "GU_CATHETER_URINE_FOUL_ODOR", "genitourinary", "Catheter urine: foul odor",
         (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Foul odor", op="multi_add")),
     ),
+    # RNICA Completion Sprint (Genitourinary, 7 fields): catheter.size and
+    # catheter.irrigation.* are genuinely plain free-text inputs in the real
+    # RNICA.jsx form (not a select), matching the RESP_TRACH_SIZE/TYPE
+    # precedent above -- a closed Fr-size enum would misrepresent the real
+    # UI and add a vocabulary the RN was never given. insertionDate /
+    # lastChangeDate use the new date_bounded value_slot kind: only an
+    # explicit, parseable, non-future ISO date is ever accepted -- never
+    # estimated. All non-row (catheter is a single object, not an array on
+    # this section), so no push_draft_row/set_row_field needed.
+    "GU_CATHETER_SIZE": ConceptMapping(
+        "GU_CATHETER_SIZE", "genitourinary", "Catheter size",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.size", max_len=20),
+    ),
+    "GU_CATHETER_INSERTION_DATE": ConceptMapping(
+        "GU_CATHETER_INSERTION_DATE", "genitourinary", "Catheter insertion date",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="date_bounded", path="catheter.insertionDate"),
+    ),
+    "GU_CATHETER_LAST_CHANGE_DATE": ConceptMapping(
+        "GU_CATHETER_LAST_CHANGE_DATE", "genitourinary", "Catheter last change date",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="date_bounded", path="catheter.lastChangeDate"),
+    ),
+    "GU_CATHETER_IRRIGATION_SOLUTION": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_SOLUTION", "genitourinary", "Catheter irrigation solution",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.solution", max_len=40),
+    ),
+    "GU_CATHETER_IRRIGATION_FREQUENCY": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_FREQUENCY", "genitourinary", "Catheter irrigation frequency",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.frequency", max_len=40),
+    ),
+    "GU_CATHETER_IRRIGATION_DURATION": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_DURATION", "genitourinary", "Catheter irrigation duration",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.duration", max_len=40),
+    ),
+    "GU_CATHETER_CARE_NOTES": ConceptMapping(
+        "GU_CATHETER_CARE_NOTES", "genitourinary", "Catheter care instructions",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheterCare", max_len=250),
+    ),
     "GU_URINE_OUTPUT_ADEQUATE": ConceptMapping(
         "GU_URINE_OUTPUT_ADEQUATE", "genitourinary", "Urine output: adequate",
         (_fw("urineOutput", "Adequate"),),
@@ -1895,6 +1933,21 @@ def validate_finding(
                 if slot.max_len is not None and len(text_value) > slot.max_len:
                     text_value = text_value[: slot.max_len]
                 value = text_value
+            elif slot.kind == "date_bounded":
+                # A device/catheter insertion or change date is a real
+                # clinical fact when the source states one explicitly, but
+                # never inferred/estimated -- reject anything that isn't a
+                # clean ISO calendar date, and reject a future date (a
+                # documentation date, never a data-entry error masquerading
+                # as fact).
+                text_value = str(value or "").strip()
+                try:
+                    parsed_date = datetime.strptime(text_value, "%Y-%m-%d").date()
+                except (TypeError, ValueError):
+                    return None
+                if parsed_date > date.today():
+                    return None
+                value = parsed_date.isoformat()
             else:
                 return None
         else:
@@ -2012,6 +2065,8 @@ def concept_prompt_catalog() -> str:
             if mapping.value_slot is not None:
                 if mapping.value_slot.kind == "numeric":
                     slot_hint = " (requires a numeric \"value\", e.g. liters/min)"
+                elif mapping.value_slot.kind == "date_bounded":
+                    slot_hint = " (requires \"value\" as an explicit calendar date in YYYY-MM-DD format, never estimated)"
                 else:
                     slot_hint = " (requires a short \"value\" string, e.g. anatomic location)"
             lines.append(f"  {mapping.concept_code} -- {mapping.label}{slot_hint}")

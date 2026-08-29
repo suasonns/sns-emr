@@ -608,3 +608,55 @@ def test_wound_bounded_measurements_respect_clinical_ranges():
     assert length.min_value == 0
     assert length.max_value == 30
 
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Genitourinary (7 fields) -- catheter detail
+# ---------------------------------------------------------------------------
+
+def test_gu_catheter_free_text_fields_are_bounded_not_fabricated_enums():
+    # catheter.size and irrigation.* are plain free-text inputs in the real
+    # RNICA.jsx form -- must not be reinvented as a closed enum.
+    for code, path, max_len in [
+        ("GU_CATHETER_SIZE", "catheter.size", 20),
+        ("GU_CATHETER_IRRIGATION_SOLUTION", "catheter.irrigation.solution", 40),
+        ("GU_CATHETER_IRRIGATION_FREQUENCY", "catheter.irrigation.frequency", 40),
+        ("GU_CATHETER_IRRIGATION_DURATION", "catheter.irrigation.duration", 40),
+        ("GU_CATHETER_CARE_NOTES", "catheterCare", 250),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+        # Also flags catheter.present, since documenting catheter detail
+        # implies a catheter is present.
+        assert any(fw.path == "catheter.present" for fw in mapping.writes), code
+
+
+def test_gu_catheter_dates_use_date_bounded_value_slot():
+    for code, path in [
+        ("GU_CATHETER_INSERTION_DATE", "catheter.insertionDate"),
+        ("GU_CATHETER_LAST_CHANGE_DATE", "catheter.lastChangeDate"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "date_bounded", code
+        assert mapping.value_slot.path == path, code
+
+
+def test_date_bounded_accepts_valid_past_iso_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="2024-03-15")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-7")
+    assert len(findings) == 1
+    assert findings[0].value == "2024-03-15"
+
+
+def test_date_bounded_rejects_unparseable_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="March 2024")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-8")
+    assert findings == []
+
+
+def test_date_bounded_rejects_future_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="2099-01-01")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-9")
+    assert findings == []
+
