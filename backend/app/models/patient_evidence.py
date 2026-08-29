@@ -36,9 +36,11 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -116,6 +118,9 @@ class PatientEvidenceRecord(Base):
     __table_args__ = (
         Index("ix_evidence_records_patient_source", "patient_id", "source_type"),
         Index("ix_evidence_records_tenant_recorded_at", "tenant_id", "recorded_at"),
+        UniqueConstraint(
+            "tenant_id", "source_type", "source_record_id", name="uq_evidence_records_tenant_source"
+        ),
     )
 
 
@@ -183,6 +188,20 @@ class PatientHarvestedSignal(Base):
     requires_poc_review = Column(Boolean, nullable=False, server_default=text("false"))
 
     # -----------------------------------------------------------
+    # STRUCTURED-FINDINGS PROCESSING STATE (added by migration
+    # b6c7d8e9f0a1; PENDING/COMPLETED/FAILED lets a reprocess sweep tell
+    # "never attempted by the concept-aware pipeline" apart from
+    # "attempted, model found nothing" -- see
+    # app.services.evidence.structured_findings_reprocess_service).
+    # -----------------------------------------------------------
+    structured_findings_status = Column(
+        String(24), nullable=False, server_default=text("'PENDING'")
+    )
+    structured_findings_attempts = Column(Integer, nullable=False, server_default=text("0"))
+    structured_findings_last_attempted_at = Column(DateTime(timezone=True), nullable=True)
+    structured_findings_last_error = Column(Text, nullable=True)
+
+    # -----------------------------------------------------------
     # REVIEW STATE MACHINE (doubles as Phase 2 signal registry)
     # -----------------------------------------------------------
     # NEW -> PENDING_REVIEW -> ACKNOWLEDGED | DISMISSED | ESCALATED
@@ -193,7 +212,6 @@ class PatientHarvestedSignal(Base):
         server_default=text("'NEW'"),
         index=True,
     )
-
     reviewed_by_user_id = Column(UUID(as_uuid=True), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     review_disposition_reason = Column(Text, nullable=True)
@@ -217,4 +235,5 @@ class PatientHarvestedSignal(Base):
     __table_args__ = (
         Index("ix_harvested_signals_patient_status", "patient_id", "review_status"),
         Index("ix_harvested_signals_tenant_recorded_at", "tenant_id", "recorded_at"),
+        Index("ix_harvested_signals_structured_findings_status", "structured_findings_status"),
     )

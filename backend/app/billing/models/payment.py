@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, Numeric, Boolean, ForeignKey, Index, DateTime, Text
+from sqlalchemy import Column, String, Numeric, Boolean, ForeignKey, Index, DateTime, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -43,7 +43,7 @@ class Payment(Base):
         index=True,
     )
 
-    claim_control_number = Column(String(64), nullable=True, index=True)
+    claim_control_number = Column(String(64), nullable=True)
 
     patient_name = Column(String(255), nullable=True, doc="Raw NM1*QC name from the 835 (fallback display when unmatched)")
 
@@ -57,12 +57,13 @@ class Payment(Base):
 
     payment_date = Column(String(16), nullable=True, doc="Raw 835 CCYYMMDD date")
 
-    is_denied = Column(Boolean, nullable=False, default=False)
+    is_denied = Column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     match_status = Column(
         String(32),
         nullable=False,
         default="UNMATCHED",
+        server_default=text("'UNMATCHED'"),
         doc="MATCHED / UNMATCHED / MANUAL_REVIEW",
     )
 

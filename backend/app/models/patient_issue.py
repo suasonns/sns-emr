@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -46,10 +46,16 @@ class PatientIssue(Base):
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
     )
     updated_at = Column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
+
+    __table_args__ = (
+        Index("ix_patient_issues_tenant_patient_identified_date", "tenant_id", "patient_id", "identified_date"),
     )

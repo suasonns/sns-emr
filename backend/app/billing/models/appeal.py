@@ -12,6 +12,7 @@ from sqlalchemy import (
     Index,
     DateTime,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -51,6 +52,7 @@ class Appeal(Base):
         Integer,
         nullable=False,
         default=1,
+        server_default=text("1"),
         doc="1 = first-level reconsideration, 2 = second-level formal appeal, 3+ = ALJ/external review",
     )
 
@@ -58,6 +60,7 @@ class Appeal(Base):
         String(32),
         nullable=False,
         default="DRAFT",
+        server_default=text("'DRAFT'"),
         index=True,
         doc="DRAFT / SUBMITTED / IN_REVIEW / APPROVED / DENIED / WITHDRAWN",
     )

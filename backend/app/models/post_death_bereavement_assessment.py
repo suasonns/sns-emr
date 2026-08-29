@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -68,7 +68,7 @@ class PostDeathBereavementAssessment(Base):
     # supplied explicitly (same field set/naming as BereavementAssessment and
     # BereavementPOC for consistency).
     # ---------------------------------------------------------
-    no_family = Column(Boolean, nullable=False, default=False)
+    no_family = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     primary_first_name = Column(String(128), nullable=True)
     primary_last_name = Column(String(128), nullable=True)
     primary_relationship_to_patient = Column(String(128), nullable=True)
@@ -118,7 +118,7 @@ class PostDeathBereavementAssessment(Base):
     # ---------------------------------------------------------
     risk_items = Column(JSONB, nullable=False)
     risk_other_note = Column(Text, nullable=True)
-    risk_total_score = Column(Integer, nullable=False, default=0)
+    risk_total_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
     risk_level = Column(String(16), nullable=True)  # LOW | MODERATE | HIGH
 
     # ---------------------------------------------------------

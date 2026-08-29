@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -40,7 +40,7 @@ class VisitRecording(Base):
     # upload retry -- or a flaky-connection retry -- safely resend the
     # exact same recording after reconnect without ever creating a second
     # row/object/transcription/harvest for the one visit that was recorded.
-    client_recording_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
+    client_recording_id = Column(UUID(as_uuid=True), nullable=True)
 
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -109,3 +109,13 @@ class VisitRecording(Base):
     # A future policy-driven purge job must delete the object before the row.
     deleted_at = Column(DateTime(timezone=True), nullable=True)
     deleted_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="RESTRICT"), nullable=True)
+
+    __table_args__ = (
+        # Historical artifact: client_recording_id uniqueness is enforced by
+        # both an explicit unique constraint (from the original migration)
+        # and a separately-created plain index of the same name. Declared as
+        # two objects here to match the DB exactly and keep the CI drift
+        # check green without an unnecessary destructive migration.
+        UniqueConstraint("client_recording_id", name="uq_visit_recordings_client_recording_id"),
+        Index("ix_visit_recordings_client_recording_id", "client_recording_id"),
+    )

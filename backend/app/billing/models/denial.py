@@ -11,6 +11,7 @@ from sqlalchemy import (
     Index,
     DateTime,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -83,6 +84,7 @@ class Denial(Base):
         String(32),
         nullable=False,
         default="OPEN",
+        server_default=text("'OPEN'"),
         index=True,
         doc="OPEN / APPEALED / OVERTURNED / UPHELD / WRITTEN_OFF",
     )

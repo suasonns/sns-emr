@@ -23,7 +23,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.db.base import Base
@@ -51,3 +51,8 @@ class BereavementCommunicationNote(Base):
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        Index("ix_bereavement_communication_notes_patient_date", "patient_id", "contact_date"),
+        Index("ix_bereavement_communication_notes_tracker_id", "bereavement_letter_tracker_id"),
+    )

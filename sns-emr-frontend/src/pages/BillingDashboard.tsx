@@ -27,12 +27,7 @@ type BillingQueueRow = {
   risk_score?: number | null;
   status: string;
   service_date?: string | null;
-};
-
-type TenantOption = {
-  tenant_id: string;
-  display_name?: string;
-  legal_name?: string;
+  last_status_reason?: string | null;
 };
 
 type BillingView =
@@ -203,7 +198,10 @@ export default function BillingDashboard() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [tenantFilter, setTenantFilter] = useState("ALL");
+  // No UI control currently sets this beyond "ALL" (tenant filtering happens
+  // via the agency selector instead); kept as read-only state so the
+  // filteredRows tenant check above still compiles and remains a no-op.
+  const [tenantFilter] = useState("ALL");
   const [activeView, setActiveView] = useState<BillingView>("uncollected-unbilled");
   const [selectedClaim, setSelectedClaim] = useState<{ patient_id: string; billing_cycle_id: string } | null>(null);
 

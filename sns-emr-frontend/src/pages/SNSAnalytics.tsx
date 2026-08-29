@@ -1039,7 +1039,7 @@ function QAPITab({ analytics }: { analytics: AnalyticsViewModel }) {
             humanize(incident.incident_type),
             analytics.patientNameById.get(incident.patient_id) ?? incident.patient_id,
             formatDate(incident.incident_date),
-            badge(humanize(incident.incident_severity), ...(incident.incident_severity || "").toLowerCase() === "high" ? [C.redLight, C.red] : [C.amberLight, C.amberDark]),
+            badge(humanize(incident.incident_severity), ...((incident.incident_severity || "").toLowerCase() === "high" ? [C.redLight, C.red] as const : [C.amberLight, C.amberDark] as const)),
           ]))}
           emptyMessage={analytics.dashboardError ? "Unable to load live incident rows." : "No pending incidents are currently open."}
         />

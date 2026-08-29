@@ -37,7 +37,7 @@ class PaymentAdjustment(Base):
         doc="CO (Contractual Obligation) / PR (Patient Responsibility) / OA / PI / CR",
     )
 
-    carc_code = Column(String(8), nullable=False, index=True)
+    carc_code = Column(String(8), nullable=False)
 
     amount = Column(Numeric(12, 2), nullable=True)
 

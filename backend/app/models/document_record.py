@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -63,7 +63,7 @@ class DocumentRecord(Base):
     # -----------------------------------------------------------
     # PHASE A DURABILITY: processing state machine, idempotency, retry
     # -----------------------------------------------------------
-    processing_status = Column(String(24), nullable=False, default="PENDING")
+    processing_status = Column(String(24), nullable=False, default="PENDING", server_default=text("'PENDING'"))
 
     # sha256 of the uploaded bytes. Combined with (tenant_id, patient_id)
     # at the API layer, this lets a byte-identical re-upload (e.g. an RN's
@@ -72,7 +72,12 @@ class DocumentRecord(Base):
     # would be harvested twice.
     content_hash = Column(String(64), nullable=True)
 
-    processing_attempts = Column(Integer, nullable=False, default=0)
+    processing_attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
     last_processing_error = Column(Text, nullable=True)
     processing_started_at = Column(DateTime(timezone=True), nullable=True)
     processing_completed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_document_records_patient_content_hash", "patient_id", "content_hash"),
+        Index("ix_document_records_processing_status", "processing_status"),
+    )

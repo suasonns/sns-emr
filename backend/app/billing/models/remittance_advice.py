@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, Index, DateTime, Text
+from sqlalchemy import Column, String, Numeric, Integer, ForeignKey, Index, DateTime, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -34,7 +34,7 @@ class RemittanceAdvice(Base):
 
     payment_date = Column(String(16), nullable=True, doc="Raw 835 CCYYMMDD payment date")
 
-    claim_count = Column(Integer, nullable=False, default=0)
+    claim_count = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
     file_name = Column(String(255), nullable=True)
 
@@ -44,6 +44,7 @@ class RemittanceAdvice(Base):
         String(32),
         nullable=False,
         default="RECEIVED",
+        server_default=text("'RECEIVED'"),
         doc="RECEIVED / POSTED / PARTIALLY_POSTED",
     )
 

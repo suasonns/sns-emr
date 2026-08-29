@@ -19,7 +19,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -70,7 +70,7 @@ class BereavementPOC(Base):
     # are not explicitly supplied, they are copied from the linked
     # assessment at create time.
     # ---------------------------------------------------------
-    no_family = Column(Boolean, nullable=False, default=False)
+    no_family = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     primary_first_name = Column(String(128), nullable=True)
     primary_last_name = Column(String(128), nullable=True)
     primary_relationship_to_patient = Column(String(128), nullable=True)
@@ -97,7 +97,7 @@ class BereavementPOC(Base):
 
     narrative = Column(Text, nullable=True)
 
-    closed_early = Column(Boolean, nullable=False, default=False)
+    closed_early = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     closed_reason = Column(Text, nullable=True)
 
     signed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

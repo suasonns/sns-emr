@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -85,16 +86,17 @@ class Claim(Base):
 
     service_date = Column(Date, nullable=True)
 
-    total_charge = Column(Numeric(12, 2), nullable=False, default=0)
+    total_charge = Column(Numeric(12, 2), nullable=False, default=0, server_default=text("0"))
 
-    total_units = Column(Integer, nullable=False, default=0)
+    total_units = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
-    risk_score = Column(Integer, nullable=False, default=0)
+    risk_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
 
     status = Column(
         String(32),
         nullable=False,
         default="READY",
+        server_default=text("'READY'"),
         index=True,
         doc="READY / SENT / ACCEPTED / DENIED / PAID",
     )

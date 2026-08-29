@@ -35,7 +35,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Integer, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -54,7 +54,7 @@ class BereavementAssessment(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
 
-    status = Column(String(16), nullable=False, index=True)  # DRAFT | SIGNED
+    status = Column(String(16), nullable=False, server_default=text("'DRAFT'"), index=True)  # DRAFT | SIGNED
 
     # ---------------------------------------------------------
     # Visit metadata
@@ -73,7 +73,7 @@ class BereavementAssessment(Base):
     # ---------------------------------------------------------
     # Primary bereaved
     # ---------------------------------------------------------
-    no_family = Column(Boolean, nullable=False, default=False)
+    no_family = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     primary_first_name = Column(String(128), nullable=True)
     primary_last_name = Column(String(128), nullable=True)
     primary_age = Column(Integer, nullable=True)
@@ -93,15 +93,15 @@ class BereavementAssessment(Base):
     # Risk scoring -- see BEREAVEMENT_RISK_ITEMS for the item catalog.
     # risk_items: {item_key: {"checked": bool, "note": str | None}}
     # ---------------------------------------------------------
-    risk_items = Column(JSONB, nullable=False)
+    risk_items = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
     risk_other_note = Column(Text, nullable=True)
-    risk_total_score = Column(Integer, nullable=False, default=0)
+    risk_total_score = Column(Integer, nullable=False, default=0, server_default=text("0"))
     risk_level = Column(String(16), nullable=True)  # LOW | MODERATE | HIGH
 
     # ---------------------------------------------------------
     # Additional bereaved: [{name, relationship_to_patient, address, phone, specific_concerns}]
     # ---------------------------------------------------------
-    additional_bereaved = Column(JSONB, nullable=False)
+    additional_bereaved = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
 
     narrative = Column(Text, nullable=True)
 
@@ -112,6 +112,11 @@ class BereavementAssessment(Base):
     signed_at = Column(DateTime(timezone=True), nullable=True)
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
     updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)

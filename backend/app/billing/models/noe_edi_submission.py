@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -75,6 +76,7 @@ class NoeEdiSubmission(Base):
         String(32),
         nullable=False,
         default="GENERATED",
+        server_default=text("'GENERATED'"),
         index=True,
         doc="GENERATED / SUBMITTED / ACCEPTED / REJECTED",
     )

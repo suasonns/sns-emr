@@ -31,7 +31,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
@@ -73,7 +73,7 @@ class BereavementLetterTracker(Base):
     # finished) | DISCONTINUED (family opted out / patient family
     # unreachable -- stops generating alerts, but the record and its
     # history are retained for the compliance audit trail).
-    status = Column(String(16), nullable=False, index=True)
+    status = Column(String(16), nullable=False, server_default=text("'ACTIVE'"), index=True)
     discontinued_reason = Column(Text, nullable=True)
     discontinued_at = Column(DateTime(timezone=True), nullable=True)
     discontinued_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -91,9 +91,18 @@ class BereavementLetterTracker(Base):
     #   sent_by,             # user id
     #   notes,
     # }, ...]
-    items = Column(JSONB, nullable=False)
+    items = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
 
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        server_default=text("now()"),
+    )
     updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        Index("ix_bereavement_letter_trackers_tenant_status", "tenant_id", "status"),
+    )

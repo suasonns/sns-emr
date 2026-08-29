@@ -10,6 +10,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Text,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -61,6 +62,7 @@ class PayerEligibilityCheck(Base):
         String(32),
         nullable=False,
         default="MANUAL",
+        server_default=text("'MANUAL'"),
         doc="MANUAL (biller-recorded phone/portal check) / BATCH_270_271 (future automated clearinghouse check)",
     )
 
@@ -68,6 +70,7 @@ class PayerEligibilityCheck(Base):
         String(32),
         nullable=False,
         default="UNKNOWN",
+        server_default=text("'UNKNOWN'"),
         index=True,
         doc="ACTIVE / INACTIVE / UNKNOWN / ERROR",
     )
