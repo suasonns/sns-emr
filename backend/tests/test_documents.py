@@ -88,13 +88,34 @@ def document_storage_env(monkeypatch):
         shutil.rmtree(root, ignore_errors=True)
 
 
+def _minimal_valid_pdf_bytes() -> bytes:
+    """A real, parseable single-page PDF (not a fake header + text body).
+
+    The upload endpoint (app/api/documents.py) opens every uploaded PDF with
+    pypdf's PdfReader and rejects anything it can't parse (422 "Uploaded PDF
+    could not be read") -- added 2026-08-26. A fake payload like
+    b"%PDF-1.4\n...\n%%EOF" merely *looks* like a PDF by prefix/suffix; pypdf
+    correctly refuses it. Build a genuinely valid minimal PDF via PdfWriter
+    instead of hand-crafting byte offsets.
+    """
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
 @pytest.mark.integration
 def test_document_upload_list_and_download_round_trip(
     client, db_session, document_storage_env
 ):
     tenant_id = uuid.UUID(db_session.info["tenant_id"])
     patient = _make_patient(db_session, tenant_id)
-    payload = b"%PDF-1.4\nreal-document-bytes\n%%EOF"
+    payload = _minimal_valid_pdf_bytes()
 
     upload_response = client.post(
         "/documents/",
@@ -176,7 +197,7 @@ def test_document_download_rejects_cross_tenant_access(
             "patient_id": str(patient.id),
             "document_type": "ELIGIBILITY_SUBMISSION",
         },
-        files={"file": ("eligibility.pdf", b"tenant-private", "application/pdf")},
+        files={"file": ("eligibility.pdf", _minimal_valid_pdf_bytes(), "application/pdf")},
     )
     assert upload_response.status_code == 201, upload_response.text
     document_id = upload_response.json()["document_id"]

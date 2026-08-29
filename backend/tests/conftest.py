@@ -102,6 +102,116 @@ _assert_tests_are_isolated_from_dev_db()
 
 
 # ---------------------------------------------------------------------
+# Automated catalog seed data (form_modules / form_registry /
+# form_package_modules)
+#
+# backend/seed_catalog.sql has, since 4ba6a9a, contained the reference
+# catalog rows (including the RN_ASSESS and HHA_VISIT form_key entries)
+# that form_resolution_service.resolve_form_package() requires -- but no
+# automated test-setup path ever loaded it, so any test exercising visit
+# creation for a discipline/event_type that resolves to one of these
+# form_keys failed with "Configured form_key '...' does not exist or is
+# inactive" against an empty form_registry table. seed_catalog.sql uses
+# native psql `COPY ... FROM stdin` syntax (no psql CLI is available in
+# this environment), so parse its COPY blocks here and load them via
+# psycopg2's copy_expert against the isolated test engine.
+#
+# Safe to run every session: none of these 3 tables have a tenant_id
+# column, so they are never touched by db_session's per-test tenant-scoped
+# cleanup sweep, and this loader only inserts when a table is empty.
+# ---------------------------------------------------------------------
+
+def _load_seed_catalog_data() -> None:
+    import io
+    import re
+    from pathlib import Path
+
+    seed_path = Path(__file__).resolve().parents[1] / "seed_catalog.sql"
+    if not seed_path.exists():
+        return
+
+    sql_text = seed_path.read_text(encoding="utf-8")
+    blocks = re.findall(
+        r"COPY (public\.\w+) \(([^)]*)\) FROM stdin;\n(.*?)\n\\\.",
+        sql_text,
+        flags=re.DOTALL,
+    )
+    if not blocks:
+        return
+
+    raw_conn = _test_engine.raw_connection()
+    try:
+        cursor = raw_conn.cursor()
+        for table, columns_raw, data in blocks:
+            table_name = table.split(".", 1)[-1]
+            cursor.execute(f"SELECT COUNT(*) FROM {table}")
+            (existing,) = cursor.fetchone()
+            if existing:
+                continue
+
+            cursor.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = %s",
+                (table_name,),
+            )
+            real_columns = {row[0] for row in cursor.fetchall()}
+
+            seed_columns = [c.strip() for c in columns_raw.split(",")]
+            keep_indexes = [
+                i for i, col in enumerate(seed_columns) if col in real_columns
+            ]
+            if not keep_indexes:
+                continue
+
+            kept_columns = ", ".join(seed_columns[i] for i in keep_indexes)
+            display_order_pos = None
+            if "display_order" in real_columns:
+                try:
+                    display_order_pos = seed_columns.index("display_order")
+                except ValueError:
+                    display_order_pos = None
+
+            filtered_lines = []
+            for row_num, line in enumerate(data.split("\n"), start=1):
+                if not line:
+                    continue
+                fields = line.split("\t")
+                # form_package_modules.display_order is NOT NULL in the
+                # current schema, but seed_catalog.sql predates that
+                # constraint and stores \N (NULL) for every row. Fill in a
+                # synthetic sequential value rather than dropping the row.
+                if display_order_pos is not None and fields[display_order_pos] == "\\N":
+                    fields[display_order_pos] = str(row_num)
+                filtered_lines.append(
+                    "\t".join(fields[i] for i in keep_indexes)
+                )
+            filtered_data = "\n".join(filtered_lines) + "\n"
+
+            # Each block runs in its own savepoint: form_package_modules'
+            # seed rows predate a display_order NOT NULL tightening and can
+            # legitimately fail to load without that dooming the
+            # form_registry rows the visit-creation tests actually need.
+            cursor.execute("SAVEPOINT seed_block")
+            try:
+                cursor.copy_expert(
+                    f"COPY {table} ({kept_columns}) FROM STDIN",
+                    io.StringIO(filtered_data),
+                )
+            except Exception as exc:
+                cursor.execute("ROLLBACK TO SAVEPOINT seed_block")
+                print(f"[seed] Skipped {table_name} seed data: {exc}")
+            else:
+                cursor.execute("RELEASE SAVEPOINT seed_block")
+                print(f"[seed] Loaded catalog seed data into {table_name}.")
+        raw_conn.commit()
+    finally:
+        raw_conn.close()
+
+
+_load_seed_catalog_data()
+
+
+# ---------------------------------------------------------------------
 # Redirect EVERY SessionLocal() call, app-wide, to the isolated test engine.
 #
 # The codebase has ~15 separate ad-hoc "get_db"-style dependencies scattered
