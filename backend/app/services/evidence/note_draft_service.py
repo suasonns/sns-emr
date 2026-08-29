@@ -35,7 +35,18 @@ from app.services.evidence.structured_findings import concept_prompt_catalog, va
 
 logger = logging.getLogger("sns_emr")
 
-DEFAULT_TIMEOUT_SECONDS = 30.0
+# 30s was measured to be too short for this model/prompt combination in
+# practice: a real RNICA-scoped note-draft call (transcript + admission +
+# harvested-context) against gpt-5.4 was observed to legitimately need more
+# than 30s and less than 120s to complete. A too-short timeout here doesn't
+# raise -- generate_note_draft() catches every exception and returns None,
+# so the caller (_generate_and_harvest_note_draft) silently treats a slow
+# model response identically to "not configured," and the transcript's
+# structured findings (including any explicit wound/pressure-injury
+# language) are dropped without any error surfaced anywhere. 90s gives
+# real headroom above the observed ~30-120s range without hanging a
+# background task indefinitely.
+DEFAULT_TIMEOUT_SECONDS = 90.0
 MAX_TRANSCRIPT_CHARS = 12000
 
 

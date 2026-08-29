@@ -24,6 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -33,8 +34,23 @@ from app.services.evidence.structured_findings import concept_prompt_catalog, va
 
 logger = logging.getLogger("sns_emr")
 
-DEFAULT_TIMEOUT_SECONDS = 30.0
-MAX_SOURCE_TEXT_CHARS = 12000  # generous ceiling; well within model context window
+DEFAULT_TIMEOUT_SECONDS = 90.0
+# 30s was found (2026-08-29) to be too short in practice for this model on
+# a real chunked-document call, causing the same class of silent failure
+# fixed in note_draft_service.py: a slow-but-successful model response is
+# indistinguishable from "not configured" once it times out, so a chunk
+# can silently produce zero signals with no visible error.
+# Per-call ceiling sent to the model. NOTE: this used to be applied as a
+# single hard truncation of the WHOLE source text (`text[:12000]`), which
+# silently discarded everything past character 12,000 -- for a real,
+# multi-encounter document export (tens of thousands of characters), that
+# is the majority of the document, dropped with no signal to anyone. Real
+# case: a 63KB H&P/referral export where an explicit wound-care order
+# ("wound care order for L side of buttocks and R foot") sat at character
+# offset ~58,735 -- structurally unreachable under the old single-slice
+# call, on every run, forever. `_split_into_chunks` below now walks the
+# FULL text in windows of this size instead of throwing the rest away.
+MAX_SOURCE_TEXT_CHARS = 12000
 
 
 @dataclass(frozen=True)
@@ -191,6 +207,19 @@ class ExtractionDiagnostics:
     succeeded: bool = True
     error: str | None = None
 
+    # ── Full-document coverage audit ─────────────────────────────────────
+    # The document is walked in full via `_split_into_chunks` -- these
+    # counts are the receipt that 100% of the source text was actually
+    # sent to the model, not silently discarded past a hard-coded
+    # truncation limit (see MAX_SOURCE_TEXT_CHARS). `succeeded` is set
+    # False and `error` records which chunks failed whenever ANY chunk
+    # could not be processed -- completion is never reported as clean when
+    # coverage was partial, even if some chunks did succeed.
+    total_chars: int = 0
+    chunk_count: int = 0
+    chunks_processed: int = 0
+    chunks_skipped: int = 0
+
 
 def extract_signals(
     *,
@@ -227,34 +256,48 @@ def extract_signals_with_diagnostics(
     )
 
 
-def _extract_signals_impl(
-    *,
-    text: str,
-    discipline: str | None,
-    note_type: str | None,
-    source_type: str,
-) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
+def _split_into_chunks(text: str, max_chars: int) -> list[str]:
+    """Split `text` into consecutive windows of at most `max_chars`, covering
+    100% of the input (unlike the old single `text[:max_chars]` truncation).
+    Prefers to break at a paragraph or sentence boundary near the end of a
+    window so a single clinical statement isn't split mid-sentence, but
+    always makes forward progress even if no such boundary exists.
+    """
+
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    n = len(text)
+    while start < n:
+        end = min(start + max_chars, n)
+        if end < n:
+            candidate = text.rfind("\n\n", start, end)
+            if candidate == -1 or candidate <= start + max_chars // 2:
+                candidate = text.rfind(". ", start, end)
+            if candidate != -1 and candidate > start + max_chars // 2:
+                end = candidate + 1
+        chunks.append(text[start:end])
+        start = end
+    return chunks
+
+
+def _call_model(
+    chunk_text: str, *, discipline: str | None, note_type: str | None, source_type: str
+) -> tuple[list[Any] | None, str | None]:
+    """Call the model for one chunk. Returns (signals_raw list, error) --
+    signals_raw is None only on failure (never raises)."""
+
     config = _azure_openai_config()
     if config is None:
-        logger.info(
-            "evidence_harvester: AI extraction skipped (Azure OpenAI not configured) "
-            "source_type=%s",
-            source_type,
-        )
-        return [], ExtractionDiagnostics(succeeded=False, error="Azure OpenAI not configured")
-
-    cleaned_text = (text or "").strip()
-    if not cleaned_text:
-        # Nothing to extract from -- a legitimate (not a failure) empty result.
-        return [], ExtractionDiagnostics()
-
-    truncated_text = cleaned_text[:MAX_SOURCE_TEXT_CHARS]
+        return None, "Azure OpenAI not configured"
 
     user_context = (
         f"source_type: {source_type}\n"
         f"discipline: {discipline or 'unknown'}\n"
         f"note_type: {note_type or 'unknown'}\n"
-        f"--- DOCUMENTATION TEXT ---\n{truncated_text}"
+        f"--- DOCUMENTATION TEXT ---\n{chunk_text}"
     )
 
     url = (
@@ -283,41 +326,607 @@ def _extract_signals_impl(
         raw_content = body["choices"][0]["message"]["content"]
         parsed = json.loads(raw_content)
     except Exception as exc:
-        logger.exception(
-            "evidence_harvester: AI extraction call failed source_type=%s", source_type
-        )
-        return [], ExtractionDiagnostics(succeeded=False, error=str(exc)[:500])
+        logger.exception("evidence_harvester: AI extraction call failed source_type=%s", source_type)
+        return None, str(exc)[:500]
 
     signals_raw = parsed.get("signals") if isinstance(parsed, dict) else None
     if not isinstance(signals_raw, list):
-        return [], ExtractionDiagnostics(
-            succeeded=False, error="Model response missing a 'signals' list"
-        )
+        return None, "Model response missing a 'signals' list"
+    return signals_raw, None
+
+
+def _extract_signals_impl(
+    *,
+    text: str,
+    discipline: str | None,
+    note_type: str | None,
+    source_type: str,
+) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
+    cleaned_text = (text or "").strip()
+    if not cleaned_text:
+        # Nothing to extract from -- a legitimate (not a failure) empty result.
+        return [], ExtractionDiagnostics()
 
     finding_source_type = _resolve_finding_source_type(source_type, note_type)
 
+    config = _azure_openai_config()
     signals: list[ExtractedSignal] = []
+    seen_signal_keys: set[str] = set()
+    seen_finding_keys: set[tuple[str, str]] = set()
     raw_findings_count = 0
     validated_findings_count = 0
-    for item in signals_raw:
-        if isinstance(item, dict) and isinstance(item.get("structured_findings"), list):
-            raw_findings_count += len(item["structured_findings"])
-        try:
-            signal = _parse_signal(item, finding_source_type=finding_source_type)
-        except Exception:
-            logger.warning(
-                "evidence_harvester: skipping malformed signal item=%r", item
+    any_chunk_succeeded = False
+    last_error: str | None = None
+
+    total_chars = len(cleaned_text)
+    chunks = _split_into_chunks(cleaned_text, MAX_SOURCE_TEXT_CHARS)
+    chunk_count = len(chunks)
+    chunks_processed = 0
+    chunks_skipped = 0
+    skipped_chunk_errors: list[str] = []
+
+    if config is None:
+        # The LLM pass is unavailable, but the deterministic safety net
+        # below must NOT depend on it -- explicit wound-care language is
+        # still detected without any model call at all. Every chunk counts
+        # as skipped -- coverage was NOT achieved, and this must not be
+        # reported as a clean completion.
+        logger.info(
+            "evidence_harvester: AI extraction skipped (Azure OpenAI not configured) "
+            "source_type=%s -- deterministic safety net still runs",
+            source_type,
+        )
+        last_error = "Azure OpenAI not configured"
+        chunks_skipped = chunk_count
+        skipped_chunk_errors.append(last_error)
+    else:
+        for chunk in chunks:
+            signals_raw, error = _call_model(
+                chunk, discipline=discipline, note_type=note_type, source_type=source_type
             )
+            if signals_raw is None:
+                last_error = error
+                chunks_skipped += 1
+                skipped_chunk_errors.append(error or "unknown error")
+                logger.error(
+                    "evidence_harvester: chunk skipped (coverage incomplete) "
+                    "source_type=%s chunk_chars=%d error=%s",
+                    source_type,
+                    len(chunk),
+                    error,
+                )
+                continue
+            chunks_processed += 1
+            any_chunk_succeeded = True
+
+            for item in signals_raw:
+                if isinstance(item, dict) and isinstance(item.get("structured_findings"), list):
+                    raw_findings_count += len(item["structured_findings"])
+                try:
+                    signal = _parse_signal(item, finding_source_type=finding_source_type)
+                except Exception:
+                    logger.warning("evidence_harvester: skipping malformed signal item=%r", item)
+                    continue
+                if signal is None:
+                    continue
+                # De-dupe repeated signals across chunks/boilerplate (e.g. the
+                # same demographic header or a fact restated in multiple visit
+                # notes concatenated into one document) by signal_key, keeping
+                # only the first occurrence's structured_findings.
+                if signal.signal_key in seen_signal_keys:
+                    continue
+                seen_signal_keys.add(signal.signal_key)
+                signals.append(signal)
+                for f in signal.structured_findings:
+                    fkey = (f.get("concept_code"), str(f.get("value")))
+                    if fkey not in seen_finding_keys:
+                        seen_finding_keys.add(fkey)
+                        validated_findings_count += 1
+
+    # Deterministic wound-language safety net -- runs on the FULL,
+    # untruncated original text regardless of chunking/model coverage/
+    # configuration, so explicit clinical wound-care language can never be
+    # silently dropped again (see MAX_SOURCE_TEXT_CHARS comment above for
+    # the real incident this fixes). Only ever adds a candidate when the
+    # LLM pass(es) above did not already surface the same concept+location.
+    deterministic_signals = _detect_deterministic_wound_signals(
+        cleaned_text, finding_source_type=finding_source_type, seen_finding_keys=seen_finding_keys
+    )
+    for signal in deterministic_signals:
+        if signal.signal_key in seen_signal_keys:
             continue
-        if signal is not None:
-            signals.append(signal)
-            validated_findings_count += len(signal.structured_findings)
+        seen_signal_keys.add(signal.signal_key)
+        signals.append(signal)
+        for f in signal.structured_findings:
+            fkey = (f.get("concept_code"), str(f.get("value")))
+            seen_finding_keys.add(fkey)
+        raw_findings_count += len(signal.structured_findings)
+        validated_findings_count += len(signal.structured_findings)
+
+    # Hospice-priority deterministic pre-scan (falls, oxygen, weight loss,
+    # dysphagia, infections backstop -- see section docstring for the full
+    # 13-category priority list and disclosed gaps for categories with no
+    # existing chart destination).
+    priority_signals = _detect_priority_deterministic_signals(
+        cleaned_text, finding_source_type=finding_source_type, seen_finding_keys=seen_finding_keys
+    )
+    for signal in priority_signals:
+        if signal.signal_key in seen_signal_keys:
+            continue
+        seen_signal_keys.add(signal.signal_key)
+        signals.append(signal)
+        for f in signal.structured_findings:
+            fkey = (f.get("concept_code"), str(f.get("value")))
+            seen_finding_keys.add(fkey)
+        raw_findings_count += len(signal.structured_findings)
+        validated_findings_count += len(signal.structured_findings)
+
+    # Refuse to report clean completion when coverage was partial. Findings
+    # already extracted (from successful chunks and/or the deterministic
+    # safety net) are ALWAYS still returned -- partial coverage must never
+    # cause already-found evidence to be discarded, only the "everything
+    # was checked" claim to be withheld.
+    coverage_complete = config is not None and chunks_skipped == 0 and chunk_count > 0
+    if not any_chunk_succeeded and not deterministic_signals and not priority_signals and not coverage_complete:
+        return [], ExtractionDiagnostics(
+            succeeded=False,
+            error=last_error,
+            total_chars=total_chars,
+            chunk_count=chunk_count,
+            chunks_processed=chunks_processed,
+            chunks_skipped=chunks_skipped,
+        )
 
     diagnostics = ExtractionDiagnostics(
         raw_findings_count=raw_findings_count,
         rejected_findings_count=max(0, raw_findings_count - validated_findings_count),
+        succeeded=coverage_complete,
+        error=None if coverage_complete else "; ".join(skipped_chunk_errors)[:500] or last_error,
+        total_chars=total_chars,
+        chunk_count=chunk_count,
+        chunks_processed=chunks_processed,
+        chunks_skipped=chunks_skipped,
     )
     return signals, diagnostics
+
+
+# ═══════════════════════ Deterministic wound safety net ═══════════════════
+# The LLM extraction above is the primary path, but it is a probabilistic
+# model and must never be the ONLY thing standing between explicit,
+# unambiguous clinical wound-care language and a structured finding. This
+# section is a small, rule-based (non-LLM) scanner that runs on every
+# extraction call and independently detects the same small set of
+# unambiguous wound-related terms every time, with no model variance.
+#
+# It deliberately does the bare minimum: SKIN_WOUND_PRESENT + a
+# source-supported anatomic location, nothing else. It never invents
+# stage/type/dimensions/drainage/odor/treatment -- those remain blank for
+# RN assessment, exactly like the LLM path.
+
+_WOUND_TRIGGER_RE = re.compile(
+    r"wound[\s-]*care|pressure\s*injur\w*|pressure\s*ulcer\w*|skin\s*ulcer\w*|decubitus|\bwound\b",
+    re.IGNORECASE,
+)
+
+# Ordered (most specific first) anatomic-site patterns. Written to tolerate
+# real-world OCR/EHR-export text where words are glued together with no
+# whitespace (e.g. "L sideof buttocksandRfoot" for "L side of buttocks and
+# R foot") -- `\s*` matches zero-or-more spaces at each junction so the same
+# pattern matches both normally-spaced and glued text.
+# (regex, location_label, family) -- `family` groups patterns that describe
+# the same anatomic region at different specificity (e.g. "left buttock"
+# vs. the bare "buttock" fallback) so only the FIRST (most specific) match
+# per family is kept per trigger window -- otherwise a single documented
+# site (e.g. "left buttock") would also fire the generic "buttock"
+# fallback and create a second, redundant wound candidate for the same
+# site.
+_SITE_PATTERNS: tuple[tuple[re.Pattern, str, str], ...] = tuple(
+    (re.compile(pattern, re.IGNORECASE), location, family)
+    for pattern, location, family in [
+        (r"\bL\s*side\s*of\s*buttock\w*", "left buttock", "buttock"),
+        (r"\bR\s*side\s*of\s*buttock\w*", "right buttock", "buttock"),
+        (r"\bleft\s*(?:side\s*of\s*)?buttock\w*", "left buttock", "buttock"),
+        (r"\bright\s*(?:side\s*of\s*)?buttock\w*", "right buttock", "buttock"),
+        (r"and\s*R\s*foot\b", "right foot", "foot"),
+        (r"and\s*L\s*foot\b", "left foot", "foot"),
+        (r"\bright\s*foot\b|\bR\s*foot\b", "right foot", "foot"),
+        (r"\bleft\s*foot\b|\bL\s*foot\b", "left foot", "foot"),
+        (r"\bright\s*heel\b|\bR\s*heel\b", "right heel", "heel"),
+        (r"\bleft\s*heel\b|\bL\s*heel\b", "left heel", "heel"),
+        (r"\bsacrum\b", "sacrum", "sacrum"),
+        (r"\bcoccyx\b", "coccyx", "coccyx"),
+        (r"\bright\s*ankle\b", "right ankle", "ankle"),
+        (r"\bleft\s*ankle\b", "left ankle", "ankle"),
+        (r"\bbuttock\w*", "buttock", "buttock"),
+        (r"\bfoot\b|\bfeet\b", "foot", "foot"),
+    ]
+)
+
+_NEGATION_TERMS = ("denies", "no wound", "without wound", "not present", "no evidence of", "ruled out")
+_HISTORICAL_TERMS = ("history of", "resolved", "healed", "previously had", "prior wound", "old wound")
+_UNCERTAIN_TERMS = ("possible", "suspect", "questionable", "uncertain", "?wound", "rule out")
+
+
+def _classify_assertion(window_lower: str) -> str:
+    if any(t in window_lower for t in _NEGATION_TERMS):
+        return "NEGATED"
+    if any(t in window_lower for t in _HISTORICAL_TERMS):
+        return "HISTORICAL"
+    if any(t in window_lower for t in _UNCERTAIN_TERMS):
+        return "UNCERTAIN"
+    return "CURRENT"
+
+
+@dataclass(frozen=True)
+class WoundCandidate:
+    location: str | None  # None when trigger language found but no site identified
+    assertion_status: str
+    source_excerpt: str
+    outcome: str  # diagnostic outcome, see module docstring item 8 in the fix request
+
+
+def detect_wound_candidates(text: str) -> list[WoundCandidate]:
+    """Scan `text` for explicit wound-related clinical language and return
+    one candidate per distinct (location, assertion_status) pair found.
+    Every candidate ends in a recorded outcome -- nothing is silently
+    dropped. Never raises; returns [] for empty/None text.
+    """
+
+    if not text:
+        return []
+
+    candidates: dict[tuple[str | None, str], WoundCandidate] = {}
+    for trigger in _WOUND_TRIGGER_RE.finditer(text):
+        window_start = max(0, trigger.start() - 80)
+        window_end = min(len(text), trigger.end() + 250)
+        window = text[window_start:window_end]
+        assertion = _classify_assertion(window.lower())
+
+        found_any_site = False
+        matched_families: set[str] = set()
+        for site_re, location, family in _SITE_PATTERNS:
+            if family in matched_families:
+                continue
+            m = site_re.search(window)
+            if not m:
+                continue
+            found_any_site = True
+            matched_families.add(family)
+            key = (location, assertion)
+            if key in candidates:
+                continue
+            excerpt_start = max(0, window_start + m.start() - 40)
+            excerpt_end = min(len(text), window_start + m.end() + 40)
+            excerpt = text[excerpt_start:excerpt_end].strip()
+            outcome = "STRUCTURED_FINDING_CREATED" if assertion == "CURRENT" else f"REJECTED_{assertion}"
+            candidates[key] = WoundCandidate(
+                location=location,
+                assertion_status=assertion,
+                source_excerpt=excerpt[:300],
+                outcome=outcome,
+            )
+
+        if not found_any_site:
+            key = (None, assertion)
+            if key not in candidates:
+                candidates[key] = WoundCandidate(
+                    location=None,
+                    assertion_status=assertion,
+                    source_excerpt=window.strip()[:300],
+                    outcome="REJECTED_NO_DESTINATION",
+                )
+
+    return list(candidates.values())
+
+
+def _detect_deterministic_wound_signals(
+    text: str,
+    *,
+    finding_source_type: str,
+    seen_finding_keys: set[tuple[str, str]],
+) -> list[ExtractedSignal]:
+    signals: list[ExtractedSignal] = []
+    for candidate in detect_wound_candidates(text):
+        if candidate.location is None or candidate.assertion_status != "CURRENT":
+            # Explicit wound language exists but is negated/historical/
+            # uncertain, or has no identifiable site -- logged via
+            # `candidate.outcome` for diagnostics, never silently dropped,
+            # but does NOT create a chart write (nothing invented).
+            logger.info(
+                "evidence_harvester: deterministic wound scan outcome=%s assertion=%s "
+                "excerpt=%r",
+                candidate.outcome,
+                candidate.assertion_status,
+                candidate.source_excerpt,
+            )
+            continue
+
+        fkey = ("SKIN_WOUND_PRESENT", candidate.location)
+        if fkey in seen_finding_keys:
+            logger.info(
+                "evidence_harvester: deterministic wound candidate location=%r already "
+                "found by model pass -- DUPLICATE_SUPPRESSED",
+                candidate.location,
+            )
+            continue
+
+        raw_finding = {
+            "concept_code": "SKIN_WOUND_PRESENT",
+            "value": candidate.location,
+            "source_excerpt": candidate.source_excerpt,
+            "confidence": 0.9,
+            "assertion_status": "CURRENT",
+            "subject": "PATIENT",
+        }
+        validated = validate_findings([raw_finding], source_type=finding_source_type)
+        if not validated:
+            continue
+
+        location_slug = re.sub(r"[^a-z0-9]+", "_", candidate.location.lower()).strip("_")
+        signals.append(
+            ExtractedSignal(
+                signal_key=f"deterministic_wound_{location_slug}"[:128],
+                signal_text=(
+                    f"Deterministic wound-care language detected for {candidate.location} "
+                    "(rule-based safety net, independent of the AI model pass)."
+                ),
+                original_text_excerpt=candidate.source_excerpt,
+                trend=None,
+                confidence=0.9,
+                clinical_system="skin",
+                requires_idg_review=True,
+                requires_poc_review=False,
+                structured_findings=tuple(f.to_dict() for f in validated),
+            )
+        )
+    return signals
+
+
+# ═══════════════ Hospice-priority deterministic pre-scan ═══════════════
+# Not all clinical content is equally decision-critical for hospice. This
+# section runs a small set of rule-based (non-LLM) detectors for the
+# categories that most directly affect eligibility/plan-of-care and are
+# too clinically important to depend solely on an LLM's coverage of a
+# large multi-page document. They run BEFORE/alongside the model pass, on
+# the FULL untruncated text, in this priority order:
+#   1 Wounds (see detect_wound_candidates above)  2 Falls  3 Oxygen
+#   4 PPS  5 KPS  6 ADLs  7 Weight loss  8 Dysphagia  9 Tube feeding
+#   10 CHF EF  11 COPD oxygen needs  12 Infections  13 Hospitalizations
+#
+# Categories 4/5/9/10/13 (PPS, KPS, tube feeding, CHF ejection fraction,
+# hospitalizations) and 6 (ADLs) have NO existing CONCEPT_REGISTRY
+# destination / are too context-dependent to safely infer a discrete
+# value from a keyword match alone (e.g. ADL assistance level is a 5-point
+# scale that cannot be guessed from a keyword). For those, this scanner
+# still detects and logs the trigger (so the evidence is never silently
+# missed) but deliberately creates NO structured finding -- inventing a
+# value here would violate the "never invent unsupported facts" rule just
+# as badly as skipping it silently. This is a real, disclosed gap, not a
+# claim of full coverage.
+_FALLS_COUNT_RE = re.compile(
+    r"(\d+)\s*falls?\b(?:[^.]{0,40}?(?:90\s*day|past|last)\s*(?:\d+\s*)?(?:day|month))?",
+    re.IGNORECASE,
+)
+_OXYGEN_LPM_RE = re.compile(
+    r"(?:(\d+(?:\.\d+)?)\s*(?:l|liters?|lpm)\b[^.]{0,40}?(?:oxygen|o2\b|nasal\s*cannula))"
+    r"|(?:(?:oxygen|o2\b|nasal\s*cannula)[^.]{0,40}?(\d+(?:\.\d+)?)\s*(?:l|liters?|lpm)\b)",
+    re.IGNORECASE,
+)
+_WEIGHT_LOSS_RE = re.compile(r"weight\s*loss", re.IGNORECASE)
+_WEIGHT_AMOUNT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:lb|lbs|pounds|kg)\b", re.IGNORECASE)
+_DYSPHAGIA_RE = re.compile(r"\bdysphagia\b|difficulty\s+swallowing|trouble\s+swallowing", re.IGNORECASE)
+_UTI_RE = re.compile(r"\bUTI\b|urinary\s*tract\s*infection", re.IGNORECASE)
+_RESPIRATORY_INFECTION_RE = re.compile(r"\bpneumonia\b|respiratory\s*(?:tract\s*)?infection|bronchitis", re.IGNORECASE)
+_SEPSIS_RE = re.compile(r"\bsepsis\b|\bseptic\b", re.IGNORECASE)
+_WOUND_INFECTION_RE = re.compile(r"infected\s*wound|wound\s*infection", re.IGNORECASE)
+
+# Detected but no safe CONCEPT_REGISTRY destination exists yet -- logged
+# only, never a structured finding. Flagged to the user as a real gap.
+_PPS_TRIGGER_RE = re.compile(r"\bPPS\b|palliative\s*performance\s*scale", re.IGNORECASE)
+_KPS_TRIGGER_RE = re.compile(r"\bKPS\b|karnofsky", re.IGNORECASE)
+_TUBE_FEEDING_RE = re.compile(r"\bPEG\s*tube\b|feeding\s*tube|tube\s*feeding|\bG-?tube\b", re.IGNORECASE)
+_CHF_EF_RE = re.compile(r"ejection\s*fraction|\bEF\s*\d{1,3}\s*%|\bEF\s*\d{1,3}\s*-\s*\d{1,3}\s*%", re.IGNORECASE)
+_HOSPITALIZATION_RE = re.compile(
+    r"hospitali[sz]ation|admitted\s*to\s*(?:the\s*)?hospital|\bER\s*visit\b|emergency\s*(?:room|department)\s*visit",
+    re.IGNORECASE,
+)
+
+
+def _simple_presence_signal(
+    *,
+    signal_key: str,
+    label: str,
+    clinical_system: str,
+    concept_code: str,
+    excerpt: str,
+    finding_source_type: str,
+    seen_finding_keys: set[tuple[str, str]],
+    value: Any = True,
+) -> ExtractedSignal | None:
+    fkey = (concept_code, str(value))
+    if fkey in seen_finding_keys:
+        return None
+    raw_finding = {
+        "concept_code": concept_code,
+        "value": value,
+        "source_excerpt": excerpt,
+        "confidence": 0.85,
+        "assertion_status": "CURRENT",
+        "subject": "PATIENT",
+    }
+    validated = validate_findings([raw_finding], source_type=finding_source_type)
+    if not validated:
+        return None
+    return ExtractedSignal(
+        signal_key=signal_key[:128],
+        signal_text=f"Deterministic hospice-priority detector: {label}.",
+        original_text_excerpt=excerpt,
+        trend=None,
+        confidence=0.85,
+        clinical_system=clinical_system,
+        requires_idg_review=True,
+        requires_poc_review=False,
+        structured_findings=tuple(f.to_dict() for f in validated),
+    )
+
+
+def _detect_priority_deterministic_signals(
+    text: str,
+    *,
+    finding_source_type: str,
+    seen_finding_keys: set[tuple[str, str]],
+) -> list[ExtractedSignal]:
+    """Rule-based pre-scan for the hospice-priority categories (falls,
+    oxygen, weight loss, dysphagia, infections -- see module docstring
+    above for full priority list and the disclosed gaps). Never raises;
+    returns [] on empty text.
+    """
+
+    if not text:
+        return []
+
+    signals: list[ExtractedSignal] = []
+    seen_keys_local = set(seen_finding_keys)
+
+    def _add(signal: ExtractedSignal | None) -> None:
+        if signal is None:
+            return
+        for f in signal.structured_findings:
+            seen_keys_local.add((f.get("concept_code"), str(f.get("value"))))
+        signals.append(signal)
+
+    # 2. Falls
+    for m in _FALLS_COUNT_RE.finditer(text):
+        window = text[max(0, m.start() - 60) : min(len(text), m.end() + 60)]
+        assertion = _classify_assertion(window.lower())
+        if assertion != "CURRENT":
+            continue
+        count = int(m.group(1))
+        _add(
+            _simple_presence_signal(
+                signal_key=f"deterministic_falls_{count}",
+                label=f"{count} fall(s) documented",
+                clinical_system="functional",
+                concept_code="MSK_FALLS_LAST_90_DAYS",
+                excerpt=window.strip()[:300],
+                finding_source_type=finding_source_type,
+                seen_finding_keys=seen_keys_local,
+                value=count,
+            )
+        )
+
+    # 3. Oxygen (liters per minute via nasal cannula -- the common case)
+    for m in _OXYGEN_LPM_RE.finditer(text):
+        window = text[max(0, m.start() - 60) : min(len(text), m.end() + 60)]
+        assertion = _classify_assertion(window.lower())
+        if assertion != "CURRENT":
+            continue
+        lpm_raw = m.group(1) or m.group(2)
+        try:
+            lpm = float(lpm_raw)
+        except (TypeError, ValueError):
+            continue
+        excerpt = window.strip()[:300]
+        _add(
+            _simple_presence_signal(
+                signal_key="deterministic_oxygen_in_use",
+                label="Supplemental oxygen use documented",
+                clinical_system="respiratory",
+                concept_code="RESP_OXYGEN_NASAL_CANNULA",
+                excerpt=excerpt,
+                finding_source_type=finding_source_type,
+                seen_finding_keys=seen_keys_local,
+                value=lpm,
+            )
+        )
+
+    # 7. Weight loss
+    for m in _WEIGHT_LOSS_RE.finditer(text):
+        window_start = max(0, m.start() - 40)
+        window_end = min(len(text), m.end() + 80)
+        window = text[window_start:window_end]
+        assertion = _classify_assertion(window.lower())
+        if assertion != "CURRENT":
+            continue
+        amount_match = _WEIGHT_AMOUNT_RE.search(window)
+        value = amount_match.group(0) if amount_match else "Weight loss documented"
+        _add(
+            _simple_presence_signal(
+                signal_key="deterministic_weight_loss",
+                label="Weight loss documented",
+                clinical_system="nutrition",
+                concept_code="NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS",
+                excerpt=window.strip()[:300],
+                finding_source_type=finding_source_type,
+                seen_finding_keys=seen_keys_local,
+                value=value[:30],
+            )
+        )
+
+    # 8. Dysphagia
+    for m in _DYSPHAGIA_RE.finditer(text):
+        window = text[max(0, m.start() - 60) : min(len(text), m.end() + 60)]
+        assertion = _classify_assertion(window.lower())
+        if assertion != "CURRENT":
+            continue
+        _add(
+            _simple_presence_signal(
+                signal_key="deterministic_dysphagia",
+                label="Dysphagia documented",
+                clinical_system="nutrition",
+                concept_code="NUTR_DYSPHAGIA",
+                excerpt=window.strip()[:300],
+                finding_source_type=finding_source_type,
+                seen_finding_keys=seen_keys_local,
+            )
+        )
+
+    # 12. Infections (deterministic backstop alongside the LLM catalog)
+    for pattern, concept_code, label in (
+        (_UTI_RE, "INFECT_CURRENT_UTI", "Current UTI documented"),
+        (_RESPIRATORY_INFECTION_RE, "INFECT_CURRENT_RESPIRATORY", "Current respiratory infection documented"),
+        (_SEPSIS_RE, "INFECT_CURRENT_SEPSIS", "Current sepsis documented"),
+        (_WOUND_INFECTION_RE, "INFECT_CURRENT_WOUND_INFECTION", "Current wound infection documented"),
+    ):
+        for m in pattern.finditer(text):
+            window = text[max(0, m.start() - 60) : min(len(text), m.end() + 60)]
+            assertion = _classify_assertion(window.lower())
+            if assertion != "CURRENT":
+                continue
+            _add(
+                _simple_presence_signal(
+                    signal_key=f"deterministic_{concept_code.lower()}",
+                    label=label,
+                    clinical_system="infection",
+                    concept_code=concept_code,
+                    excerpt=window.strip()[:300],
+                    finding_source_type=finding_source_type,
+                    seen_finding_keys=seen_keys_local,
+                )
+            )
+            break  # one candidate per concept is enough for this backstop
+
+    # 4/5/9/10/13 -- PPS, KPS, tube feeding, CHF EF, hospitalizations: no
+    # safe CONCEPT_REGISTRY destination exists today. Detect and log only
+    # -- never fabricate a value/field for these. This is a disclosed gap.
+    for pattern, name in (
+        (_PPS_TRIGGER_RE, "PPS"),
+        (_KPS_TRIGGER_RE, "KPS"),
+        (_TUBE_FEEDING_RE, "tube feeding"),
+        (_CHF_EF_RE, "CHF ejection fraction"),
+        (_HOSPITALIZATION_RE, "hospitalization"),
+    ):
+        m = pattern.search(text)
+        if m:
+            window = text[max(0, m.start() - 60) : min(len(text), m.end() + 60)].strip()
+            logger.info(
+                "evidence_harvester: hospice-priority scan detected %s language but no "
+                "CONCEPT_REGISTRY destination exists -- REJECTED_NO_DESTINATION excerpt=%r",
+                name,
+                window[:300],
+            )
+
+    return signals
 
 
 # Every evidence source that reaches this module's `extract_signals()` is
