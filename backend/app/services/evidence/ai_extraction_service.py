@@ -97,6 +97,20 @@ Non-negotiable rules:
 - Prioritize signs of clinical decline, new symptoms, functional/cognitive change, \
   safety concerns, caregiver/psychosocial concerns, and anything that could support or \
   undermine hospice eligibility (terminal decline) -- but only if actually documented.
+- SEPARATELY from the above narrative-worthiness rule, you have a SECOND, INDEPENDENT \
+  job: systematically scan the ENTIRE source text -- not just the parts that triggered \
+  a narrative signal above -- for every discrete clinical fact, of ANY acuity \
+  (routine/stable/normal findings count exactly the same as declining/abnormal ones), \
+  that maps to one of the fixed concept_code values in the catalog below. A patient \
+  documented as "alert and oriented x4" or "gait steady, no assistive device" is just \
+  as extractable as one documented as obtunded or unsteady -- normal/stable findings \
+  are RN-documented facts too, and must not be silently skipped just because they \
+  aren't clinically noteworthy. If a routine/stable fact maps to a catalog concept but \
+  has no accompanying narrative signal, still emit a minimal signal entry for it \
+  (signal_text can be a short factual restatement, e.g. "Patient documented as alert \
+  and oriented x4") so its structured_findings are captured -- do not drop a \
+  catalog-mappable fact merely because it would not otherwise clear the bar for a \
+  decline-focused narrative signal.
 
 Respond ONLY with a JSON object of this exact shape:
 {
@@ -130,7 +144,9 @@ fixed concept_code values in the catalog below -- these become candidate RNICA \
 structured field values (checkboxes/dropdowns/numeric fields), not just narrative text. \
 You may ONLY use a concept_code that appears verbatim in the catalog; never invent one, \
 never guess the nearest match. Leave "structured_findings" as an empty list when nothing \
-in this excerpt maps to the catalog.
+in this excerpt maps to the catalog. Remember: this catalog-matching duty applies to \
+EVERY signal you emit, including the minimal "routine fact" signals described above --
+it is not limited to signals about decline or new problems.
 - "assertion_status" is mandatory: CURRENT (true now), HISTORICAL (past/resolved, e.g. \
 "history of...", "resolved", a past date), NEGATED (explicitly denied, e.g. "not using \
 oxygen", "denies..."), UNCERTAIN (ambiguous or you cannot confidently tell).
@@ -155,6 +171,27 @@ CONCEPT CATALOG (the only concept_code values structured_findings may ever use):
 _SYSTEM_PROMPT = _SYSTEM_PROMPT.replace("%%CONCEPT_CATALOG%%", concept_prompt_catalog())
 
 
+@dataclass(frozen=True)
+class ExtractionDiagnostics:
+    """Raw-vs-validated structured_findings counts for one extract_signals()
+    call. Used by structured_findings_reprocess_service to report how many
+    model-proposed findings were discarded by validate_findings() (unknown
+    concept_code, out-of-range value, malformed shape, etc) -- observability
+    that plain `extract_signals()` callers (harvest_service) don't need.
+    """
+
+    raw_findings_count: int = 0
+    rejected_findings_count: int = 0
+    # False when the call could not actually be evaluated by the model at
+    # all (missing Azure OpenAI config, network/HTTP error, unparsable
+    # response) -- as opposed to a genuine "model ran, found nothing"
+    # result, which is `succeeded=True` with 0 signals/findings. Callers
+    # that need to distinguish a real failure from a legitimate empty
+    # result (structured_findings_reprocess_service) must check this.
+    succeeded: bool = True
+    error: str | None = None
+
+
 def extract_signals(
     *,
     text: str,
@@ -168,6 +205,35 @@ def extract_signals(
     the model output cannot be parsed.
     """
 
+    signals, _diagnostics = _extract_signals_impl(
+        text=text, discipline=discipline, note_type=note_type, source_type=source_type
+    )
+    return signals
+
+
+def extract_signals_with_diagnostics(
+    *,
+    text: str,
+    discipline: str | None = None,
+    note_type: str | None = None,
+    source_type: str,
+) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
+    """Same as `extract_signals`, but also returns raw-vs-validated
+    structured_findings counts. Never raises -- see `extract_signals`.
+    """
+
+    return _extract_signals_impl(
+        text=text, discipline=discipline, note_type=note_type, source_type=source_type
+    )
+
+
+def _extract_signals_impl(
+    *,
+    text: str,
+    discipline: str | None,
+    note_type: str | None,
+    source_type: str,
+) -> tuple[list[ExtractedSignal], ExtractionDiagnostics]:
     config = _azure_openai_config()
     if config is None:
         logger.info(
@@ -175,11 +241,12 @@ def extract_signals(
             "source_type=%s",
             source_type,
         )
-        return []
+        return [], ExtractionDiagnostics(succeeded=False, error="Azure OpenAI not configured")
 
     cleaned_text = (text or "").strip()
     if not cleaned_text:
-        return []
+        # Nothing to extract from -- a legitimate (not a failure) empty result.
+        return [], ExtractionDiagnostics()
 
     truncated_text = cleaned_text[:MAX_SOURCE_TEXT_CHARS]
 
@@ -215,20 +282,26 @@ def extract_signals(
         body = response.json()
         raw_content = body["choices"][0]["message"]["content"]
         parsed = json.loads(raw_content)
-    except Exception:
+    except Exception as exc:
         logger.exception(
             "evidence_harvester: AI extraction call failed source_type=%s", source_type
         )
-        return []
+        return [], ExtractionDiagnostics(succeeded=False, error=str(exc)[:500])
 
     signals_raw = parsed.get("signals") if isinstance(parsed, dict) else None
     if not isinstance(signals_raw, list):
-        return []
+        return [], ExtractionDiagnostics(
+            succeeded=False, error="Model response missing a 'signals' list"
+        )
 
     finding_source_type = _resolve_finding_source_type(source_type, note_type)
 
     signals: list[ExtractedSignal] = []
+    raw_findings_count = 0
+    validated_findings_count = 0
     for item in signals_raw:
+        if isinstance(item, dict) and isinstance(item.get("structured_findings"), list):
+            raw_findings_count += len(item["structured_findings"])
         try:
             signal = _parse_signal(item, finding_source_type=finding_source_type)
         except Exception:
@@ -238,8 +311,13 @@ def extract_signals(
             continue
         if signal is not None:
             signals.append(signal)
+            validated_findings_count += len(signal.structured_findings)
 
-    return signals
+    diagnostics = ExtractionDiagnostics(
+        raw_findings_count=raw_findings_count,
+        rejected_findings_count=max(0, raw_findings_count - validated_findings_count),
+    )
+    return signals, diagnostics
 
 
 # Every evidence source that reaches this module's `extract_signals()` is

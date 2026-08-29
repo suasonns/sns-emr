@@ -169,6 +169,8 @@ def _run_ai_extraction(
 ) -> None:
     """Run AI extraction and persist resulting signals. Isolated failure handling."""
 
+    now = datetime.now(timezone.utc)
+
     try:
         extracted = extract_signals(
             text=text,
@@ -177,6 +179,8 @@ def _run_ai_extraction(
             source_type=evidence_record.source_type,
         )
         evidence_record.ai_extraction_completed = True
+        structured_findings_status = "COMPLETED"
+        structured_findings_error = None
     except Exception as exc:  # pragma: no cover - extract_signals never raises, defense in depth
         evidence_record.ai_extraction_completed = False
         evidence_record.ai_extraction_error = str(exc)[:2000]
@@ -205,6 +209,10 @@ def _run_ai_extraction(
                 requires_poc_review=signal.requires_poc_review,
                 review_status="NEW",
                 structured_findings=list(signal.structured_findings),
+                structured_findings_status=structured_findings_status,
+                structured_findings_attempts=1,
+                structured_findings_last_attempted_at=now,
+                structured_findings_last_error=structured_findings_error,
             )
         )
 
