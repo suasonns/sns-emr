@@ -102,6 +102,49 @@ def get_physician_assignments(
     return {row.role: row for row in query.all()}
 
 
+def get_agency_medical_director(db: Session, *, tenant_id) -> dict | None:
+    """Agency-level Medical Director, resolved by tenant-wide oversight
+    role membership - NOT by any per-patient assignment.
+
+    A hospice agency has an agency Medical Director who has oversight of
+    every patient by role (see physician_identity_service.
+    TENANT_WIDE_OVERSIGHT_ROLES / is_tenant_wide_oversight_role). Patients
+    do not need to be individually assigned to this person for the role
+    to exist - "no patient-specific assignment" is not the same thing as
+    "no Medical Director exists".
+
+    A patient_physician_assignments MEDICAL_DIRECTOR row remains an
+    explicit per-patient override (e.g. a multi-site agency where one
+    patient's medical director differs from the agency default) and takes
+    priority over this fallback wherever it is consulted.
+    """
+    from app.models.user import User
+    from app.services.physician_identity_service import TENANT_WIDE_OVERSIGHT_ROLES
+
+    if tenant_id is None:
+        return None
+
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.role.in_(TENANT_WIDE_OVERSIGHT_ROLES),
+            User.active.is_(True),
+        )
+        .order_by(User.created_at.asc())
+        .first()
+    )
+    if user is None:
+        return None
+
+    return {
+        "name": user.full_name,
+        "npi": None,
+        "source": "AGENCY_CONFIGURATION",
+        "user_id": str(user.id),
+    }
+
+
 def set_physician_assignment(
     db: Session,
     *,

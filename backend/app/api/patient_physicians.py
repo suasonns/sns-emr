@@ -24,6 +24,7 @@ from app.models.patient_physician_assignment import PatientPhysicianAssignment
 from app.services.audit_logger import log_event
 from app.services.physician_sync_service import (
     ALLOWED_PHYSICIAN_ROLES,
+    get_agency_medical_director,
     get_physician_assignments,
     set_physician_assignment,
 )
@@ -57,9 +58,31 @@ def get_physicians(
 
     assignments = get_physician_assignments(db, patient_id=patient.id, tenant_id=tenant_id)
 
+    # Medical Director: explicit per-patient override (if one exists) wins;
+    # otherwise fall back to the agency-wide Medical Director role - patients
+    # do not need to be individually assigned for this field to display.
+    medical_director_payload = (
+        _payload(assignments["MEDICAL_DIRECTOR"]) if "MEDICAL_DIRECTOR" in assignments else None
+    )
+    if medical_director_payload is None:
+        agency_md = get_agency_medical_director(db, tenant_id=tenant_id)
+        if agency_md is not None:
+            medical_director_payload = {
+                "role": "MEDICAL_DIRECTOR",
+                "name": agency_md["name"],
+                "address": None,
+                "phone": None,
+                "fax": None,
+                "npi": agency_md["npi"],
+                "will_follow_in_hospice": None,
+                "source": agency_md["source"],
+                "updated_at": None,
+                "created_at": None,
+            }
+
     return {
         "attending": _payload(assignments["ATTENDING"]) if "ATTENDING" in assignments else None,
-        "medical_director": _payload(assignments["MEDICAL_DIRECTOR"]) if "MEDICAL_DIRECTOR" in assignments else None,
+        "medical_director": medical_director_payload,
         "associate_medical_director": (
             _payload(assignments["ASSOCIATE_MEDICAL_DIRECTOR"])
             if "ASSOCIATE_MEDICAL_DIRECTOR" in assignments

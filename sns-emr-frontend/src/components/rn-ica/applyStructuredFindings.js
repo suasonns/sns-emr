@@ -96,6 +96,32 @@ function setNested(obj, path, value) {
   return clone;
 }
 
+// Lightweight free-text similarity helpers, shared by the classification
+// engine (classifyConflict, below) and the wound near-duplicate detector
+// in applyStructuredFindings' push_draft_row branch -- deliberately dumb
+// (word-overlap only, no semantic/clinical knowledge) so it never silently
+// decides "these are the same fact"; it only ever flags "these look
+// similar enough that a human should decide."
+const STOPWORDS = new Set(["of", "in", "a", "an", "the", "per", "on", "at", "to", "and", "or", "documented"]);
+
+function significantWords(str) {
+  return new Set(
+    String(str || "")
+      .toLowerCase()
+      .replace(/%/g, "") // "5%" and "5 %" must tokenize identically
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w && !STOPWORDS.has(w))
+  );
+}
+
+function jaccardOverlap(a, b) {
+  if (a.size === 0 && b.size === 0) return 1;
+  let intersection = 0;
+  for (const w of a) if (b.has(w)) intersection++;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 1 : intersection / union;
+}
+
 // value_slot.path is written in the "wounds[].location" convention -- the
 // array field name, then the row field the value is written into. Splits
 // that into { arrayPath: "wounds", rowField: "location" }.
@@ -128,6 +154,7 @@ export function applyStructuredFindings(formData, findings, initialFormData) {
   const appliedFields = [];
   const conflicts = [];
   const reviewNeeded = [];
+  const woundReviewItems = [];
   // Computed lazily, once per section, from the ORIGINAL (pre-this-call)
   // formData -- never from `next`, so a boolean applied earlier in this
   // same batch never makes a later, unrelated field in the same section
@@ -220,6 +247,46 @@ export function applyStructuredFindings(formData, findings, initialFormData) {
         if (split && rowValue !== null && rowValue !== undefined) {
           newRow[split.rowField] = rowValue;
         }
+
+        // Not an exact duplicate of an existing row, but if its
+        // identifying value (e.g. wound location -- "Coccyx" vs "Sacral/
+        // coccygeal area") is a close wording match to one already on the
+        // form, this might be the SAME wound described differently by a
+        // separate source/extraction pass -- or it might genuinely be a
+        // second, distinct wound. Never guess either way: never silently
+        // add it as an independent new row, and never silently merge it
+        // into the existing one. Surface it for an explicit RN decision
+        // (New Wound / Merge Existing Wound / Reject / Modify) instead.
+        // A location with NO similarity to anything already on the form
+        // (the common case -- e.g. "Coccyx" vs "Right Heel") is clearly a
+        // new, independent wound and is still added automatically, same
+        // as always.
+        if (split && rowValue) {
+          const rowValueWords = significantWords(rowValue);
+          const fuzzyMatchIdx = arr.findIndex((row) => {
+            const existingRowValue = row?.[split.rowField];
+            if (!existingRowValue || existingRowValue === rowValue) return false;
+            return jaccardOverlap(significantWords(existingRowValue), rowValueWords) >= 0.3;
+          });
+          if (fuzzyMatchIdx !== -1) {
+            woundReviewItems.push({
+              section: targetSection,
+              arrayPath,
+              rowField: split.rowField,
+              newRow,
+              newValue: rowValue,
+              existingRowIndex: fuzzyMatchIdx,
+              existingValue: arr[fuzzyMatchIdx][split.rowField],
+              concept_code: finding.concept_code,
+              source_type: finding.source_type,
+              source_excerpt: finding.source_excerpt,
+              confidence: finding.confidence,
+              finding,
+            });
+            continue;
+          }
+        }
+
         const updatedArr = [...arr, newRow];
         next = { ...next, [targetSection]: setNested(next[targetSection], arrayPath, updatedArr) };
         appliedFields.push({
@@ -360,7 +427,7 @@ export function applyStructuredFindings(formData, findings, initialFormData) {
     }
   }
 
-  return { formData: next, appliedFields, conflicts, reviewNeeded };
+  return { formData: next, appliedFields, conflicts, reviewNeeded, woundReviewItems };
 }
 
 /**
@@ -449,11 +516,16 @@ export function applyAllNonConflicting(formData, signals, initialFormData) {
   const appliedFields = [];
   const appliedFieldsBySignal = {};
   const skippedConflicts = [];
+  const skippedWoundReviewItems = [];
 
   for (const signal of signals || []) {
     if (!signal || !signal.id) continue;
-    const { formData: candidate, appliedFields: candidateApplied, conflicts: candidateConflicts } =
-      applyStructuredFindings(next, signal.structured_findings || [], initialFormData);
+    const {
+      formData: candidate,
+      appliedFields: candidateApplied,
+      conflicts: candidateConflicts,
+      woundReviewItems: candidateWoundReviewItems,
+    } = applyStructuredFindings(next, signal.structured_findings || [], initialFormData);
 
     // Always merge -- applyStructuredFindings() never overwrites a
     // non-blank field itself, so merging is safe even when this signal
@@ -465,17 +537,25 @@ export function applyAllNonConflicting(formData, signals, initialFormData) {
         ...candidateConflicts.map((c) => ({ ...c, signal_id: signal.id }))
       );
     }
+    if (candidateWoundReviewItems.length > 0) {
+      skippedWoundReviewItems.push(
+        ...candidateWoundReviewItems.map((w) => ({ ...w, signal_id: signal.id }))
+      );
+    }
 
+    const hasUnresolved = candidateConflicts.length > 0 || candidateWoundReviewItems.length > 0;
     if (candidateApplied.length > 0) {
       // At least one finding in this signal genuinely wrote a value --
       // count the signal as applied even if some of its other findings
-      // conflicted and are still pending individual RN review.
+      // conflicted (or produced an ambiguous wound match) and are still
+      // pending individual RN review.
       appliedSignalIds.push(signal.id);
       appliedFieldsBySignal[signal.id] = candidateApplied;
       appliedFields.push(...candidateApplied);
-    } else if (candidateConflicts.length > 0) {
-      // Nothing applied and something conflicted -- this signal is
-      // entirely pending RN review.
+    } else if (hasUnresolved) {
+      // Nothing applied and something conflicted (or an ambiguous wound
+      // match needs a decision) -- this signal is entirely pending RN
+      // review.
       skippedSignalIds.push(signal.id);
     } else {
       // Nothing to write (e.g. every finding was HISTORICAL/NEGATED and
@@ -486,6 +566,299 @@ export function applyAllNonConflicting(formData, signals, initialFormData) {
     }
   }
 
-  return { formData: next, appliedSignalIds, skippedSignalIds, appliedFields, appliedFieldsBySignal, skippedConflicts };
+  return {
+    formData: next,
+    appliedSignalIds,
+    skippedSignalIds,
+    appliedFields,
+    appliedFieldsBySignal,
+    skippedConflicts,
+    skippedWoundReviewItems,
+  };
 }
+
+// Combine an existing free-text value with a suggested one into a single
+// human-readable string, e.g. "Pre Dialysis" + "Diabetic Consistent
+// Carbohydrate" -> "Pre Dialysis, Diabetic Consistent Carbohydrate". Used
+// only by the RN-driven "Merge" action below -- never by automatic Apply,
+// which must never guess at combining two values on its own.
+function mergeTextValues(existingValue, suggestedValue) {
+  const existingStr = existingValue === null || existingValue === undefined ? "" : String(existingValue);
+  const suggestedStr = suggestedValue === null || suggestedValue === undefined ? "" : String(suggestedValue);
+  if (!existingStr) return suggestedStr;
+  if (!suggestedStr) return existingStr;
+  // Never duplicate a fragment that's already part of the combined string
+  // (e.g. re-merging the same conflict twice, or the suggestion already
+  // being a substring of what's there).
+  if (existingStr.toLowerCase().includes(suggestedStr.toLowerCase())) return existingStr;
+  return `${existingStr}, ${suggestedStr}`;
+}
+
+/**
+ * Resolve a single field-level conflict surfaced by applyAllNonConflicting
+ * (an { section, path, existingValue, suggestedValue, concept_code, finding,
+ * signal_id } entry) via an explicit RN decision. This is the ONLY place a
+ * conflicting field is ever written after the fact -- Apply-All itself
+ * never overwrites a non-blank field; a human must choose one of:
+ *
+ *   - "accept": overwrite the field with the AI-suggested value outright.
+ *   - "reject": keep the existing value; nothing is written (the RN has
+ *     decided the suggestion does not apply / is not correct).
+ *   - "modify": overwrite the field with an RN-typed value that may differ
+ *     from both the existing and suggested values.
+ *   - "merge" (free-text fields only): combine existing + suggested into a
+ *     single value via mergeTextValues, for cases where both are
+ *     legitimate, non-contradicting fragments of the same fact.
+ *
+ * Never usable on boolean fields for "merge" (there's nothing to combine)
+ * -- callers should not offer that action for a boolean conflict.
+ *
+ * @returns {{ formData: object, resolvedValue: any, path: string, section: string } | null}
+ *   null if the action is invalid for this conflict (e.g. merge on a boolean).
+ */
+export function resolveFieldConflict(formData, conflict, action, customValue) {
+  const { section, path, existingValue, suggestedValue } = conflict;
+  const sectionData = formData?.[section] || {};
+  let resolvedValue;
+  if (action === "reject") {
+    return { formData, resolvedValue: existingValue, path, section, noop: true };
+  } else if (action === "accept") {
+    resolvedValue = suggestedValue;
+  } else if (action === "modify") {
+    resolvedValue = customValue;
+  } else if (action === "merge") {
+    if (typeof existingValue === "boolean" || typeof suggestedValue === "boolean") return null; // merging booleans is meaningless
+    resolvedValue = mergeTextValues(existingValue, suggestedValue);
+  } else {
+    return null;
+  }
+  const nextFormData = { ...formData, [section]: setNested(sectionData, path, resolvedValue) };
+  return { formData: nextFormData, resolvedValue, path, section, noop: false };
+}
+
+/**
+ * Resolve a single wound-review item (a candidate wound row whose location
+ * fuzzily matched an existing row -- see applyStructuredFindings'
+ * push_draft_row branch) via an explicit RN decision. This is the ONLY
+ * place an ambiguous wound candidate is ever committed -- Apply-All never
+ * silently adds it as a new row NOR silently folds it into an existing
+ * one.
+ *
+ *   - "new_wound": the RN confirms this is a genuinely separate wound.
+ *     Adds it as its own new row, exactly as an unambiguous new-location
+ *     finding would have been added automatically.
+ *   - "merge_existing": the RN confirms this is the SAME wound, just
+ *     worded differently by a different source/extraction pass. Enriches
+ *     the existing row with any blank fields the candidate provides
+ *     (never overwrites a field the existing row already has a value
+ *     for) -- the existing row's location text is kept as the RN has
+ *     already validated it, only newly-offered attributes are folded in.
+ *   - "reject": the candidate is discarded entirely -- not added as a row,
+ *     not merged into anything. Nothing is written.
+ *   - "modify": the RN provides a corrected location string for a NEW row
+ *     (e.g. neither the existing wording nor the suggested wording was
+ *     quite right) -- added as an additional, distinct row.
+ *
+ * @returns {{ formData: object, section: string, arrayPath: string, noop: boolean } | null}
+ *   null if the action is not recognized.
+ */
+export function resolveWoundReview(formData, item, action, customValue) {
+  const { section, arrayPath, rowField, newRow, newValue } = item;
+  const sectionData = formData?.[section] || {};
+  const current = getNested(sectionData, arrayPath);
+  const arr = Array.isArray(current) ? current : [];
+
+  if (action === "reject") {
+    return { formData, section, arrayPath, noop: true };
+  }
+
+  if (action === "new_wound" || action === "modify") {
+    const rowToAdd = { ...newRow };
+    if (action === "modify") {
+      rowToAdd[rowField] = customValue;
+    }
+    const updatedArr = [...arr, rowToAdd];
+    const nextFormData = { ...formData, [section]: setNested(sectionData, arrayPath, updatedArr) };
+    return { formData: nextFormData, section, arrayPath, rowIndex: updatedArr.length - 1, row: rowToAdd, noop: false };
+  }
+
+  if (action === "merge_existing") {
+    const { existingRowIndex } = item;
+    if (existingRowIndex == null || !arr[existingRowIndex]) return null;
+    const existingRow = arr[existingRowIndex];
+    // Fold in any attribute the candidate row provides that the existing
+    // row doesn't already have -- never overwrite something already
+    // documented, and never touch the existing row's own location text
+    // (the RN has just confirmed it's the correct description of this
+    // wound; the candidate's differently-worded location is discarded,
+    // not written).
+    const mergedRow = { ...existingRow };
+    for (const [key, value] of Object.entries(newRow || {})) {
+      if (key === rowField) continue; // never overwrite the validated location
+      if (isBlank(mergedRow[key]) && !isBlank(value)) {
+        mergedRow[key] = value;
+      }
+    }
+    const updatedArr = [...arr];
+    updatedArr[existingRowIndex] = mergedRow;
+    const nextFormData = { ...formData, [section]: setNested(sectionData, arrayPath, updatedArr) };
+    return { formData: nextFormData, section, arrayPath, rowIndex: existingRowIndex, row: mergedRow, noop: false };
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Classification engine (RN review workflow)
+// ---------------------------------------------------------------------------
+//
+// A field-level conflict left over from applyAllNonConflicting is NOT
+// automatically a "software conflict" requiring developer attention. Most
+// are one of:
+//
+//   2. Already Present   -- the suggestion is a strictly vaguer/less
+//      specific restatement of what the chart already has. Nothing new.
+//   3. Duplicate          -- the same fact, re-worded/re-truncated across
+//      separate extraction passes (chunking overlap, re-harvest, etc.).
+//   4. Enrichment         -- multiple genuinely distinct, non-contradicting
+//      fragments of ONE compound clinical order competing for a single
+//      free-text field (e.g. a diet order split into base diet + texture
+//      + carb-control by the extractor). Needs an RN Merge, not a silent
+//      auto-combine.
+//   5. Clinical Discrepancy -- two genuinely different, mutually exclusive
+//      clinical facts (a boolean flip, or a severity/status change like
+//      hemiparesis -> hemiplegia). Only a clinician can adjudicate.
+//   6. Safety-Critical    -- any of the above, but for a concept whose
+//      section/code is safety-relevant (wounds, falls, aspiration,
+//      allergies, oxygen). Same actions as 4/5, but routed to an urgent
+//      queue instead of the regular one.
+//
+// Category 1 (Auto Apply) and Category 7 (Technical Error) are NOT
+// produced here -- Auto Apply already happens upstream in
+// applyAllNonConflicting (any blank/already-satisfied field never reaches
+// this list at all), and Technical Error is a code-path/schema defect
+// (e.g. the diet/supplement one-field-many-fragments registry mismatch
+// this classifier works around for now), not a per-finding classification
+// -- those are tracked and fixed separately in the concept registry.
+//
+// IMPORTANT, and deliberately conservative: distinguishing "these two
+// different strings are complementary fragments of one order" (Enrichment)
+// from "these two different strings are a genuine contradiction" (Clinical
+// Discrepancy) is NOT something a generic string heuristic can safely
+// decide -- "Right hemiparesis" vs "Right hemiplegia" look just as
+// "different" as "Pre Dialysis" vs "Diabetic Consistent Carbohydrate" by
+// any edit-distance/overlap measure, but one is a contradiction and the
+// other isn't. Rather than guess and silently misclassify a real clinical
+// contradiction as safe-to-merge, only concepts explicitly listed here as
+// "combinable" (i.e. known, by design, to describe simultaneous rather
+// than mutually-exclusive facts) are ever classified as Enrichment on that
+// basis. Everything else defaults to Clinical Discrepancy, which always
+// requires an explicit RN decision -- the safe default.
+const COMBINABLE_FREE_TEXT_CONCEPTS = new Set(["NUTRITION_DIET_TYPE", "NUTRITION_SUPPLEMENTS"]);
+
+const SAFETY_CRITICAL_SECTIONS = new Set(["safety"]);
+const SAFETY_CRITICAL_CODE_KEYWORDS = ["WOUND", "PRESSURE_INJURY", "FALL_RISK", "ASPIRATION", "ALLERGY", "OXYGEN"];
+
+function isSafetyCriticalConcept(conceptCode, conceptEntry) {
+  if (conceptEntry?.section && SAFETY_CRITICAL_SECTIONS.has(conceptEntry.section)) return true;
+  const code = conceptCode || "";
+  return SAFETY_CRITICAL_CODE_KEYWORDS.some((kw) => code.includes(kw));
+}
+
+/**
+ * Classify a single field-level conflict (from applyAllNonConflicting's
+ * skippedConflicts / structuredFieldConflicts) into the RN-facing category
+ * model above, BEFORE it is ever shown to a reviewer.
+ *
+ * @param {object} conflict - { section, path, existingValue, suggestedValue, concept_code }
+ * @param {object} [conceptEntry] - the CONCEPT_REGISTRY entry for concept_code, if available (used only for section-based safety-critical detection).
+ * @returns {{ category: number, label: string, rnReviewRequired: boolean, urgent: boolean, queue: "auto_resolved"|"rn_review"|"urgent_rn_review", reason: string }}
+ */
+export function classifyConflict(conflict, conceptEntry) {
+  const { existingValue, suggestedValue, concept_code } = conflict;
+  const urgent = isSafetyCriticalConcept(concept_code, conceptEntry);
+  const isBooleanConflict = typeof existingValue === "boolean" || typeof suggestedValue === "boolean";
+
+  if (isBooleanConflict) {
+    return urgent
+      ? { category: 6, label: "Safety-Critical", rnReviewRequired: true, urgent: true, queue: "urgent_rn_review", reason: "Boolean safety-relevant fact disagrees between chart and source; requires clinician confirmation." }
+      : { category: 5, label: "Clinical Discrepancy", rnReviewRequired: true, urgent: false, queue: "rn_review", reason: "Chart and source document disagree on a yes/no clinical fact." };
+  }
+
+  const existingStr = existingValue == null ? "" : String(existingValue).trim();
+  const suggestedStr = suggestedValue == null ? "" : String(suggestedValue).trim();
+
+  if (!existingStr || !suggestedStr) {
+    // One side is empty -- applyAllNonConflicting only reaches "conflict"
+    // when the field is non-blank, so this should be rare, but if it
+    // happens there's nothing to compare; treat conservatively as a
+    // discrepancy needing review rather than guessing.
+    return { category: 5, label: "Clinical Discrepancy", rnReviewRequired: true, urgent, queue: urgent ? "urgent_rn_review" : "rn_review", reason: "Unable to compare values automatically." };
+  }
+
+  const existingLower = existingStr.toLowerCase();
+  const suggestedLower = suggestedStr.toLowerCase();
+
+  if (existingLower === suggestedLower) {
+    return { category: 3, label: "Duplicate", rnReviewRequired: false, urgent: false, queue: "auto_resolved", reason: "Identical value re-detected; safe to auto-resolve." };
+  }
+
+  const existingWords = significantWords(existingStr);
+  const suggestedWords = significantWords(suggestedStr);
+  const overlap = jaccardOverlap(existingWords, suggestedWords);
+
+  // High word overlap (differing only by whitespace/truncation/minor
+  // rewording) = the same underlying fact restated, not a new fact.
+  if (overlap >= 0.5) {
+    return { category: 3, label: "Duplicate", rnReviewRequired: false, urgent: false, queue: "auto_resolved", reason: "Near-identical restatement of the same fact (high word overlap); safe to auto-resolve." };
+  }
+
+  const existingHasNumber = /\d/.test(existingStr);
+  const suggestedHasNumber = /\d/.test(suggestedStr);
+
+  // Existing already has a specific, measurable fact; the suggestion is a
+  // generic restatement with no new number/detail -- adds nothing.
+  if (existingHasNumber && !suggestedHasNumber) {
+    return { category: 2, label: "Already Present", rnReviewRequired: false, urgent: false, queue: "auto_resolved", reason: "Suggested value is a vaguer restatement with no new specific detail than what the chart already has." };
+  }
+
+  if (urgent) {
+    return { category: 6, label: "Safety-Critical", rnReviewRequired: true, urgent: true, queue: "urgent_rn_review", reason: "Safety-relevant field with a genuinely differing value; requires urgent clinician review." };
+  }
+
+  if (COMBINABLE_FREE_TEXT_CONCEPTS.has(concept_code)) {
+    return { category: 4, label: "Enrichment", rnReviewRequired: true, urgent: false, queue: "rn_review", reason: "Distinct, non-contradicting fragment of a known compound order (this field type combines multiple simultaneous facts); safe to offer Merge." };
+  }
+
+  // Default, deliberately conservative: two genuinely different values on
+  // a field NOT known to hold multiple simultaneous facts. Do not assume
+  // they're compatible -- require an explicit clinician decision.
+  return { category: 5, label: "Clinical Discrepancy", rnReviewRequired: true, urgent: false, queue: "rn_review", reason: "Two distinct values for a single-fact field; only a clinician can determine which (if either) is correct." };
+}
+
+/**
+ * Group a full list of field-level conflicts by classification category,
+ * for the "Nurse Queue Metrics" summary (never "16 Pending" -- always
+ * broken out by what kind of review, if any, each item actually needs).
+ */
+export function summarizeConflictsByCategory(conflicts, conceptRegistry) {
+  const summary = {
+    clinicalDiscrepancies: [],
+    enrichmentSuggestions: [],
+    safetyCritical: [],
+    alreadyPresent: [],
+    duplicatesAutoResolved: [],
+  };
+  for (const c of conflicts) {
+    const classification = classifyConflict(c, conceptRegistry?.[c.concept_code]);
+    const entry = { ...c, classification };
+    if (classification.category === 6) summary.safetyCritical.push(entry);
+    else if (classification.category === 5) summary.clinicalDiscrepancies.push(entry);
+    else if (classification.category === 4) summary.enrichmentSuggestions.push(entry);
+    else if (classification.category === 2) summary.alreadyPresent.push(entry);
+    else if (classification.category === 3) summary.duplicatesAutoResolved.push(entry);
+  }
+  return summary;
+}
+
 

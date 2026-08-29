@@ -66,7 +66,7 @@ import {
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
 } from "../api/icaAssessments";
-import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
+import { applyStructuredFindings, applyAllNonConflicting, resolveFieldConflict, classifyConflict, summarizeConflictsByCategory, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -9996,6 +9996,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // the AI-suggested value — the clinician value is never overwritten;
   // these are surfaced for explicit RN review/resolution instead.
   const [structuredFieldConflicts, setStructuredFieldConflicts] = useState([]);
+  // Ambiguous wound candidates: a new wound row's location fuzzily matched
+  // an existing row's location closely enough that it might be the SAME
+  // wound described differently -- never silently added as a new row,
+  // never silently merged. Requires an explicit RN decision (New Wound /
+  // Merge Existing / Reject / Modify) via resolveWound below.
+  const [woundReviewItems, setWoundReviewItems] = useState([]);
   // Acceptance Analytics (read-only): counts by status/application rate
   // for this patient's structured findings, computed entirely from
   // persisted review_status data on the backend (no new schema). Refetched
@@ -10416,9 +10422,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           skippedSignalIds,
           appliedFieldsBySignal,
           skippedConflicts,
+          skippedWoundReviewItems,
         } = applyAllNonConflicting(formData, targetSignals, INITIAL_FORM);
 
         if (appliedSignalIds.length === 0) {
+          // Even when nothing new was applied (every targeted signal
+          // fully conflicts), the conflicts themselves must still reach
+          // the RN review queue -- returning here silently discarded them
+          // before, leaving the RN stuck looking at "N pending" forever
+          // with no path forward.
+          if (skippedConflicts.length > 0) {
+            setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
+          }
+          if (skippedWoundReviewItems.length > 0) {
+            setWoundReviewItems((prev) => [...prev, ...skippedWoundReviewItems]);
+          }
           setStructuredFindingsError(
             skippedSignalIds.length > 0
               ? "Every selected signal has at least one conflicting field — review them individually below."
@@ -10546,6 +10564,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             `Applied ${appliedSignalIds.length} signal(s). ${skippedConflicts.length} field(s) across ${skippedSignalIds.length} fully-conflicting signal(s) (plus any partially-applied signals) still need individual review.`
           );
         }
+        if (skippedWoundReviewItems.length > 0) {
+          // Same partial-success pattern: a signal's OTHER writes (e.g.
+          // skinConditionsPresent) can apply cleanly even while its wound
+          // row is ambiguous -- the ambiguous row still needs an explicit
+          // RN decision, never a silent write.
+          setWoundReviewItems((prev) => [...prev, ...skippedWoundReviewItems]);
+        }
       } catch (err) {
         console.error(`${reasonLabel} error:`, err);
         setStructuredFindingsError(err instanceof Error ? err.message : "Unable to apply structured findings.");
@@ -10571,6 +10596,134 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const selected = pendingStructuredSignals.filter((s) => selectedStructuredSignalIds.has(s.id));
     return applyStructuredSignalsBulk(selected, "Apply Selected");
   }, [applyStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
+
+  // RN review workflow for a single field-level conflict left over from
+  // Apply-All (structuredFieldConflicts). Not every conflicting field is a
+  // software bug -- most are either duplicate/near-duplicate re-extractions
+  // of the same fact (safe to reject), complementary fragments of one
+  // clinical order (fit for merge), or a genuine clinical discrepancy that
+  // only a clinician can adjudicate (accept the new value, or modify to
+  // something else entirely). This is the ONLY place a conflicting field
+  // is written after Apply-All has already run -- always an explicit,
+  // attributable RN decision, never automatic.
+  const [conflictActionBusyKey, setConflictActionBusyKey] = useState(null);
+  const [conflictModifyDraft, setConflictModifyDraft] = useState({});
+
+  const resolveConflict = useCallback(
+    async (conflict, idx, action, customValue) => {
+      const key = `${conflict.signal_id}-${conflict.path}-${idx}`;
+      setConflictActionBusyKey(key);
+      try {
+        const result = resolveFieldConflict(formData, conflict, action, customValue);
+        if (!result) {
+          setStructuredFindingsError(`"${action}" is not available for this field.`);
+          return;
+        }
+        if (!result.noop) {
+          let persistedAssessmentId = assessmentId;
+          const provenanceEntry = {
+            section: conflict.section,
+            path: conflict.path,
+            value: result.resolvedValue,
+            concept_code: conflict.concept_code,
+            source_type: conflict.source_type,
+            source_excerpt: conflict.source_excerpt,
+            recorded_at: conflict.recorded_at,
+            signal_id: conflict.signal_id,
+            kind: `rn_review_${action}`,
+          };
+          const fieldWrite = {
+            signal_id: conflict.signal_id,
+            section: conflict.section,
+            path: conflict.path,
+            value: result.resolvedValue,
+            concept_code: conflict.concept_code,
+            kind: `rn_review_${action}`,
+          };
+          if (persistedAssessmentId) {
+            await api.updateRNICAAssessment(
+              persistedAssessmentId,
+              result.formData,
+              [...structuredFieldProvenance, provenanceEntry],
+              [fieldWrite]
+            );
+          }
+          markPersisted(result.formData, persistedAssessmentId);
+          setFormData(result.formData);
+          setStructuredFieldProvenance((prev) => [...prev, provenanceEntry]);
+        }
+
+        // Remove this specific conflict from the pending review list --
+        // resolved either way (rejected = keep as-is, the other three =
+        // written above).
+        setStructuredFieldConflicts((prev) => prev.filter((c, i) => `${c.signal_id}-${c.path}-${i}` !== key));
+
+        // Once every conflict for this signal has been individually
+        // resolved, the signal itself is done being reviewed -- mark it so
+        // it never resurfaces in "Apply All" again. "reject" alone (with
+        // nothing else ever applied for the signal) counts as DISMISSED;
+        // accept/modify/merge count as APPLIED.
+        const remainingForSignal = structuredFieldConflicts.filter(
+          (c, i) => c.signal_id === conflict.signal_id && `${c.signal_id}-${c.path}-${i}` !== key
+        );
+        if (remainingForSignal.length === 0) {
+          await batchReviewHarvestedSignalsOffline(
+            [conflict.signal_id],
+            action === "reject" ? "DISMISSED" : "APPLIED",
+            { reason: `RN review: ${action}` }
+          );
+        }
+      } catch (err) {
+        console.error("resolveConflict error:", err);
+        setStructuredFindingsError(err instanceof Error ? err.message : "Unable to resolve this finding.");
+      } finally {
+        setConflictActionBusyKey(null);
+      }
+    },
+    // markPersisted is declared later in this component (after
+    // useAssessmentAutosave()), same TDZ constraint documented above on
+    // applyStructuredSignalsBulk -- it's stable-identity and safe to read
+    // in the body without appearing in this dependency array.
+    [formData, assessmentId, structuredFieldProvenance, structuredFieldConflicts]
+  );
+
+  // Classification engine: before any of these field-level conflicts are
+  // ever shown to an RN, sort them into the real category model (Already
+  // Present / Duplicate / Enrichment / Clinical Discrepancy /
+  // Safety-Critical) instead of lumping everything into one generic
+  // "conflicts" bucket. Categories 2 (Already Present) and 3 (Duplicate)
+  // never require a human decision -- they're auto-resolved below and
+  // never rendered as "pending" at all.
+  const conflictSummary = useMemo(
+    () => summarizeConflictsByCategory(structuredFieldConflicts, CONCEPT_REGISTRY),
+    [structuredFieldConflicts]
+  );
+
+  useEffect(() => {
+    if (structuredFieldConflicts.length === 0) return;
+    const classified = structuredFieldConflicts.map((c) => ({
+      c,
+      classification: classifyConflict(c, CONCEPT_REGISTRY[c.concept_code]),
+    }));
+    const toAutoResolve = classified.filter((x) => x.classification.queue === "auto_resolved");
+    if (toAutoResolve.length === 0) return;
+
+    const remaining = classified.filter((x) => x.classification.queue !== "auto_resolved").map((x) => x.c);
+    const remainingSignalIds = new Set(remaining.map((c) => c.signal_id));
+    // A signal is only fully done (safe to mark DISMISSED so it never
+    // resurfaces) once every conflict entry it produced -- not just this
+    // one -- has been auto-resolved.
+    const autoResolvedSignalIds = Array.from(new Set(toAutoResolve.map((x) => x.c.signal_id))).filter(
+      (sid) => !remainingSignalIds.has(sid)
+    );
+
+    setStructuredFieldConflicts(remaining);
+    if (autoResolvedSignalIds.length > 0) {
+      batchReviewHarvestedSignalsOffline(autoResolvedSignalIds, "DISMISSED", {
+        reason: "Auto-resolved: already present in chart or duplicate re-detection, no new clinical information",
+      }).catch((err) => console.error("Auto-resolve signal review failed:", err));
+    }
+  }, [structuredFieldConflicts]);
 
   // Shared core for "Dismiss Selected" and "Dismiss All" -- both just
   // record every target signal's disposition as DISMISSED in one call.
@@ -11498,12 +11651,31 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <div style={styles.bannerMeta}>
             {patientSummary
               ? `MRN: ${patientSummary.patient.mrn} | ${patientSummary.patient.primary_diagnosis}`
-              : "MRN: 94731 | DOB: 11/15/1941 (84F) | Lung Cancer (C34.90), CHF, COPD"}
+              : resolvedPatientId
+              ? "Loading patient record…"
+              : "No patient selected"}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>RN ICA</div>
-          <div style={styles.bannerMeta}>Dr. James Olsen | Sarah Mitchell, RN, BSN</div>
+          <div style={styles.bannerMeta}>
+            {(() => {
+              // Authoritative sources, same pattern as Section1CareTeamGrid:
+              // physicians.attending.name comes from PatientPhysicianAssignment
+              // (falling back to the legacy facesheet column server-side);
+              // care_team.assignments.primary_rn_name comes from the shared
+              // PatientAssignment (discipline=RN) table (falling back to the
+              // legacy facesheet.primary_rn_name string). Never the current
+              // logged-in user, never a fabricated name — "Unassigned" if
+              // nothing is on record.
+              const attending = facesheetData?.physicians?.attending?.name;
+              const primaryRn =
+                facesheetData?.care_team?.assignments?.primary_rn_name?.name ||
+                facesheetData?.care_team?.primary_rn_name;
+              if (!attending && !primaryRn) return "Unassigned";
+              return `${attending || "Unassigned"} | ${primaryRn || "Unassigned"}`;
+            })()}
+          </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
             <button
               type="button"
@@ -12164,15 +12336,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
               )}
 
-              {structuredFieldConflicts.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
-                    Conflicts requiring RN review ({structuredFieldConflicts.length})
-                  </div>
-                  {structuredFieldConflicts.map((c, idx) => (
+              {(() => {
+                const metrics = {
+                  clinicalDiscrepancies: conflictSummary.clinicalDiscrepancies.length,
+                  enrichmentSuggestions: conflictSummary.enrichmentSuggestions.length,
+                  safetyCritical: conflictSummary.safetyCritical.length,
+                  alreadyPresent: conflictSummary.alreadyPresent.length,
+                  duplicatesAutoResolved: conflictSummary.duplicatesAutoResolved.length,
+                };
+                const totalNeedingReview = metrics.clinicalDiscrepancies + metrics.enrichmentSuggestions + metrics.safetyCritical;
+                if (structuredFieldConflicts.length === 0 && totalNeedingReview === 0) return null;
+
+                const renderConflictItem = (c, idx, borderColor) => {
+                  const key = `${c.signal_id}-${c.path}-${idx}`;
+                  const busy = conflictActionBusyKey === key;
+                  const isBooleanConflict = typeof c.existingValue === "boolean" || typeof c.suggestedValue === "boolean";
+                  return (
                     <div
-                      key={`${c.signal_id}-${c.path}-${idx}`}
-                      style={{ fontSize: 10, color: COLORS.dark, marginBottom: 6, padding: 6, borderRadius: 6, background: COLORS.sfvTagBg, border: `1px solid ${COLORS.error}` }}
+                      key={key}
+                      style={{ fontSize: 10, color: COLORS.dark, marginBottom: 6, padding: 6, borderRadius: 6, background: COLORS.sfvTagBg, border: `1px solid ${borderColor}` }}
                     >
                       <strong>{c.section}.{c.path}</strong>
                       <div>Current value: {JSON.stringify(c.existingValue)}</div>
@@ -12180,10 +12362,108 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       <div style={{ fontStyle: "italic" }}>
                         from {c.source_type}{c.source_excerpt ? `: "${c.source_excerpt}"` : ""}
                       </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolveConflict(c, idx, "accept")}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: "none", background: COLORS.success || "#16a34a", color: "#fff", cursor: busy ? "default" : "pointer" }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolveConflict(c, idx, "reject")}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "#fff", color: COLORS.dark, cursor: busy ? "default" : "pointer" }}
+                        >
+                          Reject
+                        </button>
+                        {!isBooleanConflict && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => resolveConflict(c, idx, "merge")}
+                            style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: "none", background: "#2563eb", color: "#fff", cursor: busy ? "default" : "pointer" }}
+                            title="Combine current + suggested into one value"
+                          >
+                            Merge
+                          </button>
+                        )}
+                        <input
+                          type="text"
+                          placeholder="Modify..."
+                          value={conflictModifyDraft[key] ?? ""}
+                          onChange={(e) => setConflictModifyDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                          style={{ fontSize: 10, padding: "3px 6px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, width: 140 }}
+                        />
+                        <button
+                          type="button"
+                          disabled={busy || !conflictModifyDraft[key]}
+                          onClick={() => resolveConflict(c, idx, "modify", conflictModifyDraft[key])}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "#fff", color: COLORS.dark, cursor: busy ? "default" : "pointer" }}
+                        >
+                          Save custom value
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                };
+
+                // Original index within structuredFieldConflicts must be
+                // preserved per-item (not the sub-group position) because
+                // resolveConflict's removal key is built from that index.
+                const withOriginalIndex = structuredFieldConflicts.map((c, idx) => ({
+                  c,
+                  idx,
+                  classification: classifyConflict(c, CONCEPT_REGISTRY[c.concept_code]),
+                }));
+                const safetyItems = withOriginalIndex.filter((x) => x.classification.category === 6);
+                const discrepancyItems = withOriginalIndex.filter((x) => x.classification.category === 5);
+                const enrichmentItems = withOriginalIndex.filter((x) => x.classification.category === 4);
+
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.dark, marginBottom: 8 }}>
+                      Findings Requiring Review
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, marginBottom: 10 }}>
+                      <span style={{ color: COLORS.error, fontWeight: metrics.safetyCritical > 0 ? 700 : 400 }}>Safety-Critical: {metrics.safetyCritical}</span>
+                      <span style={{ color: COLORS.error }}>Clinical Discrepancies: {metrics.clinicalDiscrepancies}</span>
+                      <span style={{ color: "#2563eb" }}>Enrichment Suggestions: {metrics.enrichmentSuggestions}</span>
+                      <span style={{ color: COLORS.gray }}>Already Present (auto-resolved): {metrics.alreadyPresent}</span>
+                      <span style={{ color: COLORS.gray }}>Duplicates (auto-resolved): {metrics.duplicatesAutoResolved}</span>
+                    </div>
+
+                    {safetyItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                          🚨 Urgent RN Review — Safety-Critical ({safetyItems.length})
+                        </div>
+                        {safetyItems.map(({ c, idx }) => renderConflictItem(c, idx, "#b91c1c"))}
+                      </div>
+                    )}
+
+                    {discrepancyItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                          Clinical Discrepancies ({discrepancyItems.length})
+                        </div>
+                        {discrepancyItems.map(({ c, idx }) => renderConflictItem(c, idx, COLORS.error))}
+                      </div>
+                    )}
+
+                    {enrichmentItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>
+                          Enrichment Suggestions ({enrichmentItems.length})
+                        </div>
+                        {enrichmentItems.map(({ c, idx }) => renderConflictItem(c, idx, "#2563eb"))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
