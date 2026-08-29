@@ -76,10 +76,35 @@ prompt (gated on `is_rnica`, never for RN_RECERT). Live-verified against real DB
 data for the demo patient — returns only resolved facts, correctly omits absent
 fields (no fabrication).
 
-## Remaining known gaps (not blockers, documented honestly)
-- 43 unmapped fields listed in the completion matrix (HOPE symptomImpact.*, wound
-  detail fields, GI/GU device details, endocrine insulin details, CV/respiratory
-  detail fields).
+## Remaining known gaps — classified (2026-08-28 audit)
+
+Every one of the 43 "Not implemented" rows in `RNICA_COMPLETION_MATRIX.md` was
+individually re-read and classified using its own "Reason for exclusion" text.
+All 43 share the identical reason: *"structured/objective field with no
+concept/apply wiring yet"* — none were marked RN-judgment-only or excluded.
+
+| Category | Count | Fields |
+|---|---|---|
+| 1. Clinical field (auto-populatable, unmapped) | **43** | Symptom Impact HOPE ×8 (pain, shortnessOfBreath, anxiety, nausea, vomiting, diarrhea, constipation, agitation); Skin/Wounds ×15 (stage, depth, length, width, drainage, odor, dressing, dressingFrequency, currentTreatment, periwoundCondition, woundType, isNonhealingWound, isSkinTear, isSurgicalWound, presentAsPressureInjury); Genitourinary ×7 (catheter.size, catheter.insertionDate, catheter.lastChangeDate, catheter.irrigation.solution/frequency/duration, catheterCare); Gastrointestinal ×5 (feedingTube.site, ostomy.condition, abdominalGirth, bowelFrequency, continence); Endocrine ×3 (diabetes.insulinType, diabetes.insulinDose, diabetes.lastHbA1cDate); Nutrition ×2 (dentures.condition, nutritionalSupplements); Cardiovascular ×1 (edema.pitting); Respiratory ×1 (ventilator.ventilatorTypeAndSettings); Musculoskeletal ×1 (fallHistory.fallInjuries) |
+| 2. Workflow/system field | **0** | — |
+| 3. Signature/attestation field | **0** | — |
+| 4. RN judgment field | **0** | — |
+| 5. Explicitly excluded field | **0** | — |
+
+**Per the completion rule: RNICA is NOT yet fully certifiable.** All 43 remaining
+gaps are genuine auto-populatable clinical fields with no concept/apply mapping
+built — zero are judgment-only or intentionally excluded. These are returned to
+the active RNICA backlog (`rnica-43-unmapped-clinical-fields`), prioritized:
+1. HOPE Symptom Impact (8 fields — directly CMS-reportable, highest priority)
+2. Skin/Wounds (15 fields — largest single group)
+3. Genitourinary catheter detail (7 fields)
+4. Gastrointestinal device/output detail (5 fields)
+5. Endocrine insulin detail (3 fields)
+6. Nutrition (2 fields)
+7. Cardiovascular edema pitting, Respiratory ventilator settings, Musculoskeletal
+   fall injuries (1 field each)
+
+Other non-blocking items, unaffected by the above:
 - No standalone `/reprocess` admin endpoint (reprocessing is implicit/automatic
   per-layer, not an explicit admin action) — flagged as a product decision, not a
   defect.
@@ -88,8 +113,12 @@ fields (no fabrication).
   Tracked separately as tech debt (see `tech-debt-lint-test-ci`), explicitly
   non-blocking per direct instruction.
 
-## Certification status: **PASS**
+## Certification status: **CONDITIONAL — NOT YET COMPLETE**
 Real (non-synthetic) admission packet validated end-to-end in the live browser:
 extraction → structured findings → Apply All → field population → provenance →
-persistence across reload, with honest documentation of the 43 remaining field
-gaps and the 3-layer reprocess coverage.
+persistence across reload — this part passed cleanly. However, per explicit
+completion criteria, RNICA certification cannot be declared final while 43
+auto-populatable clinical fields remain unmapped with zero of them qualifying as
+intentional exclusions or RN-judgment-only. Certification will be re-evaluated
+once `rnica-43-unmapped-clinical-fields` is resolved (fields wired, or each
+individually reclassified with documented justification).
