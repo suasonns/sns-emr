@@ -73,6 +73,35 @@ describe("applyStructuredFindings", () => {
     expect(conflicts.some((c) => c.path === "heartFailurePresent")).toBe(true);
   });
 
+  it("treats a field already set to the EXACT suggested value as already-satisfied, not a conflict (regression: chunked/overlapping extraction re-detecting the same fact across multiple findings must not flood the conflict queue)", () => {
+    // A field previously applied (or documented by an earlier chunk's
+    // finding) already holds true -- the concept's own write value is
+    // also true. This must be recognized as "nothing to do here", not a
+    // disagreement requiring RN review.
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: true, heartFailureType: ["Systolic"] } },
+      [findingOf()]
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(true);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent" && f.writeKind === "already_satisfied")).toBe(true);
+    expect(conflicts.some((c) => c.path === "heartFailurePresent")).toBe(false);
+  });
+
+  it("still records a conflict when the existing value DIFFERS from the suggested value (a real disagreement, not a duplicate)", () => {
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { endocrine: { diabetes: { type: "Type 1" } } },
+      [findingOf({ concept_code: "ENDO_DIABETES_TYPE2", value: "Type 2" })]
+    );
+
+    expect(formData.endocrine.diabetes.type).toBe("Type 1");
+    expect(appliedFields.some((f) => f.path === "diabetes.type")).toBe(false);
+    const conflict = conflicts.find((c) => c.path === "diabetes.type");
+    expect(conflict).toBeDefined();
+    expect(conflict.existingValue).toBe("Type 1");
+    expect(conflict.suggestedValue).toBe("Type 2");
+  });
+
   it("never overwrites any RN-entered value on a blank-only set field, regardless of type", () => {
     const { formData, conflicts } = applyStructuredFindings(
       { performanceStatus: { nyha: "II" } },

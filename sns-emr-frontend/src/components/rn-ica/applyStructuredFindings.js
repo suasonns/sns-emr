@@ -170,7 +170,20 @@ export function applyStructuredFindings(formData, findings, initialFormData) {
         // RN has already engaged with) keeps the normal isBlank() rule.
         const isUntouchedBooleanDefault =
           typeof write.value === "boolean" && current === false && sectionWasUntouched(targetSection);
+        // A field that is already set to the EXACT value this finding is
+        // suggesting is not a conflict at all -- it's evidence the same
+        // fact was already applied (very common with chunked/overlapping
+        // extraction re-detecting one clinical fact from multiple chunks,
+        // or the same fact mentioned in both the H&P and a later note).
+        // Route it to "already applied" (counted as applied, no duplicate
+        // write) instead of piling it into `conflicts` for the RN to
+        // review a fact that was never actually in dispute.
+        const alreadySatisfied = !isBlank(current) && current === write.value;
         const blank = isUntouchedBooleanDefault ? true : isBlank(current);
+        if (alreadySatisfied) {
+          appliedFields.push({ section: targetSection, path: write.path, value: write.value, concept_code: finding.concept_code, finding, writeKind: "already_satisfied" });
+          continue;
+        }
         if (!blank) {
           conflicts.push({
             section: targetSection,
