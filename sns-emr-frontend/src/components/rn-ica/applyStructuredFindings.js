@@ -203,6 +203,29 @@ export function applyStructuredFindings(formData, findings) {
   return { formData: next, appliedFields, conflicts, reviewNeeded };
 }
 
+/**
+ * Which RNICA form sections a set of CURRENT findings would target if
+ * applied -- WITHOUT touching formData or requiring formData at all. Used
+ * to drive the per-section "Ready for RN Review" status badge: a section
+ * with pending unresolved structured findings needs the RN's attention
+ * even before any Apply is clicked, so this must not require an apply
+ * pass to know which sections are affected. Read-only, pure, safe to call
+ * on every render for every pending signal.
+ */
+export function getPendingFindingTargetSections(findings) {
+  const sections = new Set();
+  for (const finding of findings || []) {
+    if (!finding || !finding.concept_code) continue;
+    if (finding.assertion_status && finding.assertion_status !== "CURRENT") continue;
+    const concept = CONCEPT_REGISTRY[finding.concept_code];
+    if (!concept) continue;
+    for (const write of concept.writes || []) {
+      sections.add(write.section || concept.section);
+    }
+  }
+  return sections;
+}
+
 // A concept "counts" toward ASSESSMENT_DRAFTED status for a section only
 // when at least one of its writes actually landed a value on the real
 // form (i.e. appears in `appliedFields`). EVIDENCE_FOUND-only sections

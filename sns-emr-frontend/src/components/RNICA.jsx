@@ -66,7 +66,7 @@ import {
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
 } from "../api/icaAssessments";
-import { applyStructuredFindings, applyAllNonConflicting } from "./rn-ica/applyStructuredFindings";
+import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -11114,6 +11114,57 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     [sectionCompletionStates]
   );
 
+  // Which formData sections have at least one pending (not yet applied or
+  // dismissed) structured finding aimed at them -- computed WITHOUT
+  // requiring an apply pass, so this stays accurate the instant a signal
+  // arrives, not only after the RN clicks Apply. Keyed by formSection
+  // (e.g. "pain"), since that's what CONCEPT_REGISTRY writes target, not
+  // by the sidebar route key.
+  const pendingReviewFormSections = useMemo(() => {
+    const counts = {};
+    for (const signal of pendingStructuredSignals) {
+      const sections = getPendingFindingTargetSections(signal.structured_findings || []);
+      sections.forEach((section) => {
+        counts[section] = (counts[section] || 0) + 1;
+      });
+    }
+    return counts;
+  }, [pendingStructuredSignals]);
+
+  // Four-stage section status (per the RNICA Phase 4 certification
+  // requirement): Not Started / Partially Populated / Ready for RN Review
+  // / Complete. "Ready for RN Review" takes priority over a documentation
+  // ratio that would otherwise read "Complete" -- new AI-suggested
+  // findings still awaiting Apply/Dismiss mean the section isn't truly
+  // settled yet, even if it already has enough manually-documented fields
+  // to clear the completion threshold.
+  const sectionStatuses = useMemo(() => {
+    const statuses = {};
+    routes.forEach((route) => {
+      const completion = sectionCompletionStates[route.key];
+      const pendingCount = pendingReviewFormSections[route.formSection] || 0;
+      let status;
+      if (pendingCount > 0) {
+        status = "ready_for_review";
+      } else if (!completion || completion.status === "not_started") {
+        status = "not_started";
+      } else if (completion.status === "complete") {
+        status = "complete";
+      } else {
+        status = "partially_populated";
+      }
+      statuses[route.key] = { status, pendingCount, completion };
+    });
+    return statuses;
+  }, [routes, sectionCompletionStates, pendingReviewFormSections]);
+
+  const SECTION_STATUS_LABELS = {
+    not_started: { label: "Not Started", color: "gray" },
+    partially_populated: { label: "Partially Populated", color: "warning" },
+    ready_for_review: { label: "Ready for RN Review", color: "teal" },
+    complete: { label: "Complete", color: "success" },
+  };
+
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
       setActiveSection(routes[0]?.key || "demographics");
@@ -11161,8 +11212,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const config = SECTION_CONFIGS[route.formSection];
     const sectionData = formData[route.formSection];
     const open = isSectionOpen(route.key);
-    const isComplete = completedSections.includes(route.key);
-    const isInProgress = inProgressSections.includes(route.key);
+    const statusEntry = sectionStatuses[route.key] || { status: "not_started", pendingCount: 0 };
+    const statusMeta = SECTION_STATUS_LABELS[statusEntry.status];
+    const statusColor = COLORS[statusMeta.color] || COLORS.gray;
     const cfg = sidebarConfigItems.find((s) => s.key === route.key);
 
     return (
@@ -11185,12 +11237,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             <span style={{ fontSize: 12, color: COLORS.gray, width: 14, display: "inline-block" }}>{open ? "▾" : "▸"}</span>
             <span style={{ fontSize: 14, fontWeight: 700 }}>{cfg?.label || route.key}</span>
             {cfg?.cdphRequired && <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.teal }}>CDPH</span>}
-            {isComplete && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.success }}>&#10003; Complete</span>}
-            {!isComplete && isInProgress && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.warning || "#b45309" }}>&#9679; In Progress</span>}
+            {statusEntry.status === "complete" && <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>&#10003; Complete</span>}
+            {statusEntry.status === "ready_for_review" && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>
+                &#9679; Ready for RN Review{statusEntry.pendingCount > 1 ? ` (${statusEntry.pendingCount})` : ""}
+              </span>
+            )}
+            {statusEntry.status === "partially_populated" && <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>&#9679; Partially Populated</span>}
           </div>
           {!open && (
             <span style={{ fontSize: 11, color: COLORS.gray }}>
-              {isComplete ? "Documented — tap to review" : isInProgress ? "Partially documented — tap to continue" : "Not started — tap to document"}
+              {statusEntry.status === "complete"
+                ? "Documented — tap to review"
+                : statusEntry.status === "ready_for_review"
+                  ? "AI findings awaiting review — tap to review"
+                  : statusEntry.status === "partially_populated"
+                    ? "Partially documented — tap to continue"
+                    : "Not started — tap to document"}
             </span>
           )}
         </div>

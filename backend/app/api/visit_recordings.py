@@ -34,7 +34,11 @@ from app.core.patient_access import get_authorized_patient
 from app.core.security import get_current_user, CurrentUser
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
 from app.models.visit_recording import VisitRecording
-from app.services.evidence.note_draft_service import build_harvested_findings_context, generate_note_draft
+from app.services.evidence.note_draft_service import (
+    build_admission_narrative_context,
+    build_harvested_findings_context,
+    generate_note_draft,
+)
 from app.services.evidence.transcription_service import azure_speech_configured, transcribe_audio_bytes
 from app.services.recording_storage import (
     RecordingObject,
@@ -468,11 +472,15 @@ def _generate_and_harvest_note_draft(db: Session, rec: VisitRecording, transcrip
     """
     try:
         harvested_context = build_harvested_findings_context(db, rec.patient_id)
+        admission_context = build_admission_narrative_context(
+            db, rec.patient_id, assessment_type=rec.assessment_type or "RNICA"
+        )
         draft = generate_note_draft(
             transcript_text=transcript_text,
             assessment_type=rec.assessment_type or "RNICA",
             discipline="RN",
             harvested_context=harvested_context,
+            admission_context=admission_context,
         )
     except Exception:
         logger.exception("visit_recordings: note draft generation raised recording_id=%s", rec.id)
