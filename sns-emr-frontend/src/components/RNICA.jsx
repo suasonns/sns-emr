@@ -10257,6 +10257,64 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
   );
 
+  // --- AI narrative-draft insertion (from a visit recording's note draft)
+  // --------------------------------------------------------------------
+  // Same blank-only-write + durable-provenance-persist contract as
+  // handleInsertAiSymptomSeverity above: never overwrites an RN's own
+  // Clinical Narrative entry. Returns true if the narrative was written,
+  // false if a narrative already existed (so the calling VisitRecorderCard
+  // button can tell the RN their existing text was preserved).
+  const handleInsertAiNarrative = useCallback(
+    async (narrativeText, sourceRecordingId) => {
+      if (!narrativeText || !narrativeText.trim()) return false;
+      if (formData.finalization?.clinicalNarrative) return false;
+
+      const nextFormData = {
+        ...formData,
+        finalization: { ...formData.finalization, clinicalNarrative: narrativeText },
+      };
+
+      const provenanceEntry = {
+        section: "finalization",
+        path: "clinicalNarrative",
+        value: narrativeText,
+        concept_code: "AI_NOTE_DRAFT_NARRATIVE",
+        source_type: "TRANSCRIPT",
+        source_excerpt: `AI-generated note draft narrative from visit recording ${sourceRecordingId}`,
+        recorded_at: new Date().toISOString(),
+        confidence: null,
+        signal_id: `visit_recording:${sourceRecordingId}`,
+      };
+      const nextProvenance = [...structuredFieldProvenance, provenanceEntry];
+
+      try {
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+        setStructuredFieldProvenance(nextProvenance);
+        return true;
+      } catch (err) {
+        console.error("Insert AI narrative draft error:", err);
+        setStructuredFindingsError(
+          err instanceof Error ? err.message : "Unable to insert AI-generated note draft into Clinical Narrative."
+        );
+        return false;
+      }
+    },
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
+  );
+
   // --- Bulk actions: "Apply All Non-Conflicting" / "Apply Selected" /
   // "Dismiss Selected" / "Dismiss All" -------------------------------------
   // Kept as a separate busy/loading flag from the per-signal
@@ -11228,6 +11286,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               COLORS={COLORS}
               styles={styles}
               onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
+              onInsertNarrative={handleInsertAiNarrative}
             />
           )}
           alerts={(
@@ -11447,6 +11506,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               COLORS={COLORS}
               styles={styles}
               onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
+              onInsertNarrative={handleInsertAiNarrative}
             />
             {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>

@@ -7,6 +7,21 @@ import {
   saveRecordingTranscript,
   retryRecordingTranscription,
 } from "../api/visitRecordings";
+import {
+  queueRecording,
+  removeQueuedRecording,
+  listQueuedRecordings,
+  markQueuedAttempt,
+} from "../api/offlineRecordingQueue";
+
+// A request that never reached the server (offline, DNS failure, dropped
+// connection, simulated network outage) has no `response` on the axios
+// error. A request the server actively rejected (validation error, auth
+// failure) does have one. Only the former is worth queuing for automatic
+// retry — the latter would just fail the same way again.
+function isNetworkError(err) {
+  return !err?.response;
+}
 
 // Visit audio capture + staff review panel.
 //
@@ -34,7 +49,7 @@ function formatDateTime(iso) {
   }
 }
 
-export default function VisitRecorderCard({ patientId, assessmentId, assessmentType = "RNICA", COLORS, styles, onInsertSymptomSeverity }) {
+export default function VisitRecorderCard({ patientId, assessmentId, assessmentType = "RNICA", COLORS, styles, onInsertSymptomSeverity, onInsertNarrative }) {
   const [consentConfirmed, setConsentConfirmed] = useState(false);
   const [recording, setRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -49,12 +64,17 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
   const [transcriptSavingId, setTranscriptSavingId] = useState(null);
   const [retryingId, setRetryingId] = useState(null);
   const [insertedSeverityIds, setInsertedSeverityIds] = useState({}); // recordingId -> inserted symptom keys[]
+  const [insertedNarrativeIds, setInsertedNarrativeIds] = useState({}); // recordingId -> true once narrative inserted
+  const [narrativeInserting, setNarrativeInserting] = useState(null);
+  const [pendingQueue, setPendingQueue] = useState([]); // recordings saved on-device, not yet uploaded
+  const [queueProcessing, setQueueProcessing] = useState({}); // clientRecordingId -> true while (re)uploading
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const startedAtRef = useRef(null);
+  const queueProcessingRef = useRef({});
 
   const loadHistory = useCallback(() => {
     if (!patientId) return;
@@ -64,6 +84,86 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
       .catch((err) => console.error("Failed to load visit recordings:", err))
       .finally(() => setHistoryLoading(false));
   }, [patientId]);
+
+  const refreshQueue = useCallback(() => {
+    if (!patientId) return;
+    listQueuedRecordings(patientId)
+      .then(setPendingQueue)
+      .catch((err) => console.error("Failed to read offline recording queue:", err));
+  }, [patientId]);
+
+  // Attempts to upload one queued (previously failed/offline) recording.
+  // Reuses the same clientRecordingId every time, so even if this fires more
+  // than once (e.g. an 'online' event plus a manual "Retry now" click racing
+  // each other) the backend's idempotency key prevents a duplicate
+  // recording/transcript/RNICA write — only the first successful attempt
+  // actually creates anything server-side.
+  const uploadQueuedEntry = useCallback(async (entry) => {
+    if (queueProcessingRef.current[entry.clientRecordingId]) return;
+    queueProcessingRef.current[entry.clientRecordingId] = true;
+    setQueueProcessing((prev) => ({ ...prev, [entry.clientRecordingId]: true }));
+    try {
+      await uploadVisitRecording({
+        patientId: entry.patientId,
+        audioBlob: entry.blob,
+        consentConfirmed: entry.consentConfirmed,
+        assessmentId: entry.assessmentId || null,
+        assessmentType: entry.assessmentType,
+        durationSeconds: entry.durationSeconds,
+        mimeType: entry.mimeType,
+        clientRecordingId: entry.clientRecordingId,
+      });
+      await removeQueuedRecording(entry.clientRecordingId);
+      refreshQueue();
+      loadHistory();
+      setExpanded(true);
+    } catch (err) {
+      console.error("Queued recording upload still failing:", err);
+      await markQueuedAttempt(entry.clientRecordingId, err?.message || "Upload failed");
+      refreshQueue();
+    } finally {
+      delete queueProcessingRef.current[entry.clientRecordingId];
+      setQueueProcessing((prev) => {
+        const next = { ...prev };
+        delete next[entry.clientRecordingId];
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshQueue, loadHistory]);
+
+  const processQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const queued = await listQueuedRecordings(patientId).catch(() => []);
+    for (const entry of queued) {
+      // eslint-disable-next-line no-await-in-loop
+      await uploadQueuedEntry(entry);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, uploadQueuedEntry]);
+
+  // Pick up anything left over from a previous page load (tab/browser closed
+  // while offline, or with the connection down) and try again automatically —
+  // staff never has to notice, re-record, or manually resume anything.
+  useEffect(() => {
+    refreshQueue();
+    processQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  // Resume automatically the moment connectivity returns, and also poll
+  // periodically as a fallback for flaky connections where the browser's
+  // 'online' event doesn't fire reliably.
+  useEffect(() => {
+    window.addEventListener("online", processQueue);
+    const interval = window.setInterval(() => {
+      if (pendingQueue.length > 0) processQueue();
+    }, 15000);
+    return () => {
+      window.removeEventListener("online", processQueue);
+      window.clearInterval(interval);
+    };
+  }, [processQueue, pendingQueue.length]);
 
   useEffect(() => {
     if (expanded) loadHistory();
@@ -146,6 +246,29 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
     setUploading(true);
     setError("");
     const clientRecordingId = crypto.randomUUID();
+
+    // Persist the audio durably on this device BEFORE attempting the
+    // network call. If the upload fails because the connection is down
+    // (not because the server rejected it), the recording stays here and
+    // gets retried automatically — the RN never has to re-record.
+    try {
+      await queueRecording({
+        clientRecordingId,
+        patientId,
+        assessmentId: assessmentId || null,
+        assessmentType,
+        blob,
+        durationSeconds,
+        mimeType: blob.type,
+        consentConfirmed: true,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+      });
+      refreshQueue();
+    } catch (queueErr) {
+      console.error("Failed to persist recording locally before upload:", queueErr);
+    }
+
     try {
       await uploadVisitRecording({
         patientId,
@@ -157,11 +280,19 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
         mimeType: blob.type,
         clientRecordingId,
       });
+      await removeQueuedRecording(clientRecordingId).catch(() => {});
+      refreshQueue();
       setExpanded(true);
       loadHistory();
     } catch (err) {
       console.error("Failed to upload recording:", err);
-      setError(err?.response?.data?.detail || "Failed to upload the recording. It was not saved.");
+      if (isNetworkError(err)) {
+        await markQueuedAttempt(clientRecordingId, err?.message || "Network error").catch(() => {});
+        refreshQueue();
+        setError("No connection — the recording is saved on this device and will upload automatically once you're back online.");
+      } else {
+        setError(err?.response?.data?.detail || "Failed to upload the recording. It's saved on this device; use Retry in the Pending Upload list below.");
+      }
     } finally {
       setUploading(false);
     }
@@ -243,6 +374,26 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
     }
   };
 
+  const handleInsertNarrative = async (rec) => {
+    if (!onInsertNarrative || !rec?.ai_note_draft?.narrative) return;
+    setNarrativeInserting(rec.id);
+    try {
+      const inserted = await onInsertNarrative(rec.ai_note_draft.narrative, rec.id);
+      if (inserted) {
+        setInsertedNarrativeIds((prev) => ({ ...prev, [rec.id]: true }));
+      } else {
+        setError(
+          "Clinical Narrative already has content — the AI draft was not inserted so your existing text is preserved. Copy from the draft above if you want to incorporate it."
+        );
+      }
+    } catch (err) {
+      console.error("Failed to insert AI narrative draft:", err);
+      setError("Failed to insert the AI-generated note draft into the Clinical Narrative.");
+    } finally {
+      setNarrativeInserting(null);
+    }
+  };
+
   const box = styles?.infoBox || { fontSize: 12, padding: 8, borderRadius: 6, background: COLORS?.bg };
 
   return (
@@ -312,6 +463,38 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
           </div>
 
           {error && <div className="visit-recorder-card__message" role="alert" aria-live="assertive" aria-atomic="true" style={{ ...box, marginTop: 10, color: COLORS?.error || "#dc2626" }}>{error}</div>}
+
+          {pendingQueue.length > 0 && (
+            <div className="visit-recorder-card__pending-queue" style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Pending Upload — saved on this device
+              </div>
+              {pendingQueue.map((entry) => (
+                <div key={entry.clientRecordingId} style={{ ...box, marginTop: 6, background: "#fffbeb", border: "1px solid #fcd34d", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    {formatDateTime(entry.createdAt)} — {formatDuration(entry.durationSeconds)}
+                    {" — "}
+                    {navigator.onLine ? "waiting to upload" : "offline, will upload when reconnected"}
+                    {entry.attempts > 0 ? ` (${entry.attempts} attempt${entry.attempts === 1 ? "" : "s"} so far)` : ""}
+                    {entry.lastError ? <div style={{ color: COLORS?.error || "#dc2626", marginTop: 2 }}>{entry.lastError}</div> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => uploadQueuedEntry(entry)}
+                    disabled={!!queueProcessing[entry.clientRecordingId]}
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, border: "1px solid #b45309",
+                      background: "transparent", color: "#b45309", fontWeight: 700, fontSize: 12,
+                      cursor: queueProcessing[entry.clientRecordingId] ? "default" : "pointer",
+                      opacity: queueProcessing[entry.clientRecordingId] ? 0.6 : 1,
+                    }}
+                  >
+                    {queueProcessing[entry.clientRecordingId] ? "Uploading…" : "Retry now"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="visit-recorder-card__history-title" style={{ marginTop: 16, fontSize: 12, fontWeight: 800, color: COLORS?.gray, textTransform: "uppercase", letterSpacing: "0.03em" }}>
             Past Recordings
@@ -394,6 +577,22 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
                   </div>
                   {rec.ai_note_draft.narrative && (
                     <div style={{ whiteSpace: "pre-wrap", marginBottom: 6 }}>{rec.ai_note_draft.narrative}</div>
+                  )}
+                  {rec.ai_note_draft.narrative && onInsertNarrative && (
+                    <div style={{ marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleInsertNarrative(rec)}
+                        disabled={narrativeInserting === rec.id}
+                        style={{ fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: narrativeInserting === rec.id ? "default" : "pointer", opacity: narrativeInserting === rec.id ? 0.6 : 1 }}
+                      >
+                        {narrativeInserting === rec.id
+                          ? "Inserting…"
+                          : insertedNarrativeIds[rec.id]
+                            ? "✓ Inserted into Clinical Narrative"
+                            : "Insert into Clinical Narrative (blank only)"}
+                      </button>
+                    </div>
                   )}
                   {rec.ai_note_draft.symptom_severity && Object.keys(rec.ai_note_draft.symptom_severity).length > 0 && (
                     <div style={{ marginTop: 6 }}>

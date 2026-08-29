@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import datetime, timezone
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -12,7 +13,7 @@ from app.core.auth import CurrentUser, get_current_user
 from app.core.database import get_db
 from app.core.names import format_person_name
 from app.core.roles import access_scope_for_role
-from app.core.security import create_access_token, hash_password, verify_password_hash
+from app.core.security import create_access_token, create_refresh_token, decode_refresh_token, hash_password, verify_password_hash
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.services.audit_logger import log_event
@@ -38,6 +39,10 @@ class LoginRequest(BaseModel):
 class SwitchAgencyRequest(BaseModel):
     target_user_id: str = Field(min_length=1)
     password: str = Field(min_length=1)
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
 
 
 class ChangePasswordRequest(BaseModel):
@@ -146,6 +151,12 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
             tenant_id=user.tenant_id,
             email=user.email,
         )
+        refresh_token = create_refresh_token(
+            user_id=user.id,
+            role=str(user.role),
+            tenant_id=user.tenant_id,
+            email=user.email,
+        )
         log_event(
             user_id=str(user.id),
             tenant_id=str(user.tenant_id),
@@ -159,6 +170,7 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         )
         return {
             "access_token": token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": _user_payload(user, tenant),
         }
@@ -220,6 +232,12 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
         tenant_id=user.tenant_id,
         email=user.email,
     )
+    refresh_token = create_refresh_token(
+        user_id=user.id,
+        role=str(user.role),
+        tenant_id=user.tenant_id,
+        email=user.email,
+    )
 
     log_event(
         user_id=str(user.id),
@@ -235,9 +253,65 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
 
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": _user_payload(user, tenant),
     }
+
+
+@router.post("/refresh")
+def refresh_access_token(payload: RefreshRequest, db: Session = Depends(get_db)):
+    """Exchanges a still-valid refresh token for a new access token (and a
+    rotated refresh token) without requiring the password again. This is
+    what lets a long clinical encounter (e.g. an in-progress visit
+    recording) survive the access token's shorter expiry -- the frontend
+    calls this transparently on a 401 instead of forcing a re-login.
+    Re-validates the user/tenant are still active on every call so a
+    deactivated account or suspended agency can't keep refreshing forever.
+    """
+    token_payload = decode_refresh_token(payload.refresh_token)
+
+    try:
+        user_id = _uuid_from_claim(token_payload.get("sub"))
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    user = db.get(User, user_id)
+    if user is None or not getattr(user, "active", True):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is not active")
+
+    tenant = db.get(Tenant, user.tenant_id)
+    if tenant is not None and tenant.status != "ACTIVE":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This agency's platform access is currently suspended",
+        )
+
+    new_access_token = create_access_token(
+        user_id=user.id,
+        role=str(user.role),
+        tenant_id=user.tenant_id,
+        email=user.email,
+    )
+    new_refresh_token = create_refresh_token(
+        user_id=user.id,
+        role=str(user.role),
+        tenant_id=user.tenant_id,
+        email=user.email,
+    )
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "user": _user_payload(user, tenant),
+    }
+
+
+def _uuid_from_claim(value: object) -> UUID:
+    if not value:
+        raise ValueError("missing claim")
+    return UUID(str(value))
 
 
 @router.get("/me")
@@ -357,6 +431,12 @@ def switch_agency(
         tenant_id=target.tenant_id,
         email=target.email,
     )
+    refresh_token = create_refresh_token(
+        user_id=target.id,
+        role=str(target.role),
+        tenant_id=target.tenant_id,
+        email=target.email,
+    )
     log_event(
         user_id=str(target.id),
         tenant_id=str(target.tenant_id),
@@ -370,6 +450,7 @@ def switch_agency(
     )
     return {
         "access_token": token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "user": _user_payload(target, tenant),
     }

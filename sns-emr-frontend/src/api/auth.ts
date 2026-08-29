@@ -1,11 +1,19 @@
-import { clearAccessToken, clearCurrentUser, setAccessToken, setCurrentUser, type SessionUser } from "./session";
+import {
+  clearAccessToken,
+  clearCurrentUser,
+  clearRefreshToken,
+  setAccessToken,
+  setCurrentUser,
+  setRefreshToken,
+  type SessionUser,
+} from "./session";
 
 export type AuthenticatedUser = SessionUser;
 
 export type LoginAgencyOption = { tenant_id: string; tenant_name: string; email: string };
 
 export type LoginResult =
-  | { access_token: string; token_type: string; user: AuthenticatedUser }
+  | { access_token: string; refresh_token: string; token_type: string; user: AuthenticatedUser }
   | { requires_agency_selection: true; agencies: LoginAgencyOption[] };
 
 export async function login(email: string, password: string, tenantId?: string): Promise<LoginResult> {
@@ -29,6 +37,7 @@ export async function login(email: string, password: string, tenantId?: string):
   }
 
   setAccessToken(data.access_token);
+  setRefreshToken(data.refresh_token);
   setCurrentUser(data.user);
   return data;
 }
@@ -61,6 +70,7 @@ export async function changePassword(currentPassword: string, newPassword: strin
 
 export function logout() {
   clearAccessToken();
+  clearRefreshToken();
   clearCurrentUser();
   localStorage.removeItem("sns-active-agency");
   localStorage.removeItem("sns-agency-options");
@@ -141,6 +151,7 @@ export async function switchAgency(targetUserId: string, password: string) {
   }
 
   setAccessToken(data.access_token);
+  setRefreshToken(data.refresh_token);
   setCurrentUser(data.user);
-  return data as { access_token: string; token_type: string; user: AuthenticatedUser };
+  return data as { access_token: string; refresh_token: string; token_type: string; user: AuthenticatedUser };
 }
