@@ -41,16 +41,43 @@ function isBlank(value) {
   if (value === null || value === undefined) return true;
   if (value === "") return true;
   if (Array.isArray(value) && value.length === 0) return true;
-  // NOTE: `false` is intentionally NOT treated as blank. RNICA boolean
-  // presence fields (e.g. heartFailurePresent, contracturesPresent,
+  // `false` is never treated as blank by this generic helper. RNICA
+  // boolean presence fields (e.g. heartFailurePresent, contracturesPresent,
   // skinConditionsPresent) default to `false`, and an RN who has actually
   // examined the patient and left a box unchecked has made a real clinical
   // assertion -- it must never be silently flipped to `true` by an AI
-  // suggestion. Every boolean-presence concept therefore always routes
-  // through the conflict path below for explicit RN confirmation, whether
-  // the field is untouched-default or RN-confirmed-false. Only a truly
-  // unset field (null/undefined/""/[]) is eligible for blank-only auto-apply.
+  // suggestion. Top-level boolean "set" writes use isBooleanWriteBlank()
+  // below instead, which can tell an untouched default apart from an
+  // RN-confirmed value; every other write kind (set_row_field, bounded
+  // value_slot writes) keeps this conservative "false is never blank"
+  // behavior and always routes through the conflict path.
   return false;
+}
+
+// Distinguish an untouched-default boolean from an RN-entered one for a
+// top-level "set" write whose value is a boolean and whose current value
+// is `false`. A boolean-presence field's default is indistinguishable from
+// an RN's deliberate "false" confirmation by looking at the field alone --
+// both are just `false`. The reliable signal is the surrounding SECTION:
+// if every field in that section still exactly matches its pristine
+// INITIAL_FORM default, the RN has never engaged with the section at all,
+// so this field's `false` can only be the untouched default and is safe to
+// auto-populate. If ANY other field in the section already differs from
+// its default, the RN has been in this section -- this boolean's `false`
+// is now ambiguous (could be a deliberate confirmation or simply not yet
+// reached), so it is treated conservatively as RN-entered and routed to
+// `conflicts` for explicit review, never silently overwritten.
+//
+// `initialFormData` is optional (older/direct callers may omit it) -- with
+// no baseline to compare against, this always reports "touched" so the
+// safe, pre-existing conflict-routing behavior is preserved.
+function isSectionUntouched(sectionData, initialSectionData) {
+  if (!initialSectionData || typeof initialSectionData !== "object") return false;
+  try {
+    return JSON.stringify(sectionData ?? null) === JSON.stringify(initialSectionData);
+  } catch {
+    return false;
+  }
 }
 
 function getNested(obj, path) {
@@ -85,6 +112,10 @@ function splitDraftRowPath(valueSlotPath) {
  *
  * @param {object} formData - the full RNICA form state ({ sectionKey: {...} }).
  * @param {Array} findings - StructuredFinding dicts (already backend-validated).
+ * @param {object} [initialFormData] - the pristine INITIAL_FORM defaults, used
+ *   only to distinguish an untouched-default boolean from an RN-entered one
+ *   (see isSectionUntouched above). Omit to always treat boolean `false`
+ *   values as RN-entered (the prior, more conservative behavior).
  * @returns {{
  *   formData: object,
  *   appliedFields: Array<{section, path, value, concept_code, finding}>,
@@ -92,11 +123,25 @@ function splitDraftRowPath(valueSlotPath) {
  *   reviewNeeded: Array<object>,
  * }}
  */
-export function applyStructuredFindings(formData, findings) {
+export function applyStructuredFindings(formData, findings, initialFormData) {
   let next = formData;
   const appliedFields = [];
   const conflicts = [];
   const reviewNeeded = [];
+  // Computed lazily, once per section, from the ORIGINAL (pre-this-call)
+  // formData -- never from `next`, so a boolean applied earlier in this
+  // same batch never makes a later, unrelated field in the same section
+  // look "touched" purely because of this run's own writes.
+  const untouchedSectionCache = {};
+  const sectionWasUntouched = (section) => {
+    if (!(section in untouchedSectionCache)) {
+      untouchedSectionCache[section] = isSectionUntouched(
+        formData?.[section],
+        initialFormData?.[section]
+      );
+    }
+    return untouchedSectionCache[section];
+  };
 
   for (const finding of findings || []) {
     if (!finding || !finding.concept_code) continue;
@@ -118,7 +163,15 @@ export function applyStructuredFindings(formData, findings) {
 
       if (write.op === "set") {
         const current = getNested(sectionData, write.path);
-        if (!isBlank(current)) {
+        // A boolean-presence field currently at its default `false`: only
+        // treat it as blank/eligible-for-auto-apply when the WHOLE section
+        // is still untouched (see isSectionUntouched). Any other value
+        // (including a boolean already `true`, or `false` in a section the
+        // RN has already engaged with) keeps the normal isBlank() rule.
+        const isUntouchedBooleanDefault =
+          typeof write.value === "boolean" && current === false && sectionWasUntouched(targetSection);
+        const blank = isUntouchedBooleanDefault ? true : isBlank(current);
+        if (!blank) {
           conflicts.push({
             section: targetSection,
             path: write.path,
@@ -130,14 +183,14 @@ export function applyStructuredFindings(formData, findings) {
           continue;
         }
         next = { ...next, [targetSection]: setNested(sectionData, write.path, write.value) };
-        appliedFields.push({ section: targetSection, path: write.path, value: write.value, concept_code: finding.concept_code, finding });
+        appliedFields.push({ section: targetSection, path: write.path, value: write.value, concept_code: finding.concept_code, finding, writeKind: "scalar" });
       } else if (write.op === "multi_add") {
         const current = getNested(next[targetSection], write.path);
         const arr = Array.isArray(current) ? current : [];
         if (arr.includes(write.value)) continue; // already checked -- nothing to do, never duplicated
         const updatedArr = [...arr, write.value];
         next = { ...next, [targetSection]: setNested(next[targetSection], write.path, updatedArr) };
-        appliedFields.push({ section: targetSection, path: write.path, value: write.value, concept_code: finding.concept_code, finding });
+        appliedFields.push({ section: targetSection, path: write.path, value: write.value, concept_code: finding.concept_code, finding, writeKind: "array_member" });
       } else if (write.op === "push_draft_row") {
         const slot = concept.valueSlot;
         const split = slot ? splitDraftRowPath(slot.path) : null;
@@ -162,6 +215,7 @@ export function applyStructuredFindings(formData, findings) {
           value: newRow,
           concept_code: finding.concept_code,
           finding,
+          writeKind: "scalar",
         });
       } else if (write.op === "set_row_field") {
         // Enriches an already-created draft row (e.g. the wound row
@@ -203,6 +257,7 @@ export function applyStructuredFindings(formData, findings) {
           value: write.value,
           concept_code: finding.concept_code,
           finding,
+          writeKind: "scalar",
         });
       }
     }
@@ -239,6 +294,7 @@ export function applyStructuredFindings(formData, findings) {
               value: finding.value,
               concept_code: finding.concept_code,
               finding,
+              writeKind: "scalar",
             });
           } else if (existingValue !== finding.value) {
             conflicts.push({
@@ -274,6 +330,7 @@ export function applyStructuredFindings(formData, findings) {
               value: finding.value,
               concept_code: finding.concept_code,
               finding,
+              writeKind: "scalar",
             });
           } else if (current !== finding.value) {
             conflicts.push({
@@ -359,6 +416,10 @@ export function sectionsWithAppliedStructuredFields(appliedFields) {
  * @param {Array} signals - pending structured-findings signals, each with
  *   `.id` and `.structured_findings` (as returned by
  *   list_pending_structured_findings / GET .../intelligence).
+ * @param {object} [initialFormData] - see applyStructuredFindings; forwarded
+ *   unchanged to every per-signal apply pass so the untouched-boolean-
+ *   section check is evaluated against the SAME pristine baseline for
+ *   every signal in the batch, not a per-signal moving target.
  * @returns {{
  *   formData: object,
  *   appliedSignalIds: string[],
@@ -368,7 +429,7 @@ export function sectionsWithAppliedStructuredFields(appliedFields) {
  *   skippedConflicts: Array,
  * }}
  */
-export function applyAllNonConflicting(formData, signals) {
+export function applyAllNonConflicting(formData, signals, initialFormData) {
   let next = formData;
   const appliedSignalIds = [];
   const skippedSignalIds = [];
@@ -379,7 +440,7 @@ export function applyAllNonConflicting(formData, signals) {
   for (const signal of signals || []) {
     if (!signal || !signal.id) continue;
     const { formData: candidate, appliedFields: candidateApplied, conflicts: candidateConflicts } =
-      applyStructuredFindings(next, signal.structured_findings || []);
+      applyStructuredFindings(next, signal.structured_findings || [], initialFormData);
 
     // Always merge -- applyStructuredFindings() never overwrites a
     // non-blank field itself, so merging is safe even when this signal

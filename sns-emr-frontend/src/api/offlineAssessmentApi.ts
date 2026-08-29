@@ -46,6 +46,8 @@ export type OfflineSaveResult = {
   status: "saved" | "queued";
   assessmentType?: string;
   queuedMutationId?: string;
+  signalStatuses?: Record<string, string>;
+  fieldWriteResults?: unknown[];
 };
 
 /** Offline-safe replacement for the initial-create RN ICA save. */
@@ -83,7 +85,8 @@ export async function saveRnicaAssessmentOffline(args: SaveArgs): Promise<Offlin
 export async function updateRnicaAssessmentOffline(
   assessmentId: string,
   formData: Record<string, unknown>,
-  fieldProvenance?: Array<Record<string, unknown>>
+  fieldProvenance?: Array<Record<string, unknown>>,
+  fieldWrites?: Array<Record<string, unknown>>
 ): Promise<OfflineSaveResult> {
   // Still-unsynced local draft: fold this edit into the queued create
   // instead of queuing a PUT against an assessmentId the server has never
@@ -109,8 +112,20 @@ export async function updateRnicaAssessmentOffline(
   }
 
   try {
-    await updateRnicaAssessment(assessmentId, formData, fieldProvenance);
-    return { assessmentId, status: "saved" };
+    // `fieldWrites`, when present, is NOT queued/replayed like formData --
+    // it's a verification-only request-time hint (see visits.py's
+    // update_rnica_assessment). When online, the response's
+    // `signalStatuses` reports each signal's VERIFIED disposition, read
+    // back from a fresh DB read taken right after this same commit --
+    // the caller (RNICA.jsx) uses that verified value, never an assumed
+    // "APPLIED", to decide what to record on the harvested signal next.
+    const result = await updateRnicaAssessment(assessmentId, formData, fieldProvenance, fieldWrites);
+    return {
+      assessmentId,
+      status: "saved",
+      signalStatuses: (result as { signalStatuses?: Record<string, string> })?.signalStatuses,
+      fieldWriteResults: (result as { fieldWriteResults?: unknown[] })?.fieldWriteResults,
+    };
   } catch (error) {
     if (!isConnectivityFailure(error)) throw error;
 
@@ -126,6 +141,10 @@ export async function updateRnicaAssessmentOffline(
     await enqueueMutation(mutation);
     triggerSync();
 
+    // Offline: verification cannot happen until this replays online later
+    // (no network round trip to read back a fresh persisted value). The
+    // caller falls back to its own conservative, non-assuming disposition
+    // for this case -- see RNICA.jsx's handleApplyStructuredSignal.
     return { assessmentId, status: "queued", queuedMutationId: mutationId };
   }
 }

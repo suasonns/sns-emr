@@ -47,6 +47,32 @@ describe("applyStructuredFindings", () => {
     expect(conflict.concept_code).toBe("CV_HEART_FAILURE_SYSTOLIC");
   });
 
+  it("auto-populates an untouched-default boolean `false` when initialFormData proves the whole section is pristine", () => {
+    const initialFormData = { cardiovascular: { heartFailurePresent: false, heartFailureType: [] } };
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: false, heartFailureType: [] } },
+      [findingOf()],
+      initialFormData
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(true);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent")).toBe(true);
+    expect(conflicts).toEqual([]);
+  });
+
+  it("still records a conflict for boolean `false` even with initialFormData when the section has already been engaged (another field differs from its default)", () => {
+    const initialFormData = { cardiovascular: { heartFailurePresent: false, pacemaker: false } };
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: false, pacemaker: true } }, // RN already documented pacemaker=true
+      [findingOf()],
+      initialFormData
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(false);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent")).toBe(false);
+    expect(conflicts.some((c) => c.path === "heartFailurePresent")).toBe(true);
+  });
+
   it("never overwrites any RN-entered value on a blank-only set field, regardless of type", () => {
     const { formData, conflicts } = applyStructuredFindings(
       { performanceStatus: { nyha: "II" } },

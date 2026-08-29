@@ -926,8 +926,8 @@ const api = {
     assessmentSubtype
       ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
       : getRnicaAssessmentByPatient(patientId),
-  updateRNICAAssessment: (assessmentId, formData, fieldProvenance) =>
-    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance),
+  updateRNICAAssessment: (assessmentId, formData, fieldProvenance, fieldWrites) =>
+    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance, fieldWrites),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
   deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
@@ -10043,7 +10043,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       try {
         const { formData: nextFormData, appliedFields, conflicts } = applyStructuredFindings(
           formData,
-          signal.structured_findings || []
+          signal.structured_findings || [],
+          INITIAL_FORM
         );
 
         const provenanceEntries = appliedFields.map((f) => ({
@@ -10056,24 +10057,48 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           recorded_at: signal.recorded_at,
           confidence: f.finding?.confidence,
           signal_id: signal.id,
+          kind: f.writeKind || "scalar",
         }));
         const nextProvenance =
           provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
 
+        // Every field this apply pass claims to have written, tagged with
+        // this signal's id and its write kind (scalar vs array-member) --
+        // sent alongside the save so the backend can verify, from a FRESH
+        // post-commit DB read, that each one actually landed (see
+        // rnica_apply_verification.py). A signal is NEVER told to the
+        // backend as "APPLIED" from client assumption below -- only from
+        // this verified result (or the offline fallback, clearly weaker,
+        // documented at that branch).
+        const fieldWrites = appliedFields.map((f) => ({
+          signal_id: signal.id,
+          section: f.section,
+          path: f.path,
+          value: f.value,
+          concept_code: f.concept_code,
+          kind: f.writeKind || "scalar",
+        }));
+
         // Persist the field values AND their provenance durably BEFORE
-        // marking the source signal "APPLIED" (reviewed/consumed). These
-        // writes must land together: relying on the 30s autosave timer to
-        // eventually notice the local `formData` change was the root cause
-        // of signals being marked applied while their destination fields
-        // silently never reached the saved chart (lost on tab close/nav/
-        // reload). Persisting fieldProvenance in this same call (not just
-        // React state) is what lets the RN still see WHY a field was
-        // populated after a refresh, logout, or reconnect. If this save
-        // fails, we throw before marking anything applied or touching
-        // visible state, so the RN can safely retry with no data loss.
+        // marking the source signal reviewed (consumed). These writes must
+        // land together: relying on the 30s autosave timer to eventually
+        // notice the local `formData` change was the root cause of signals
+        // being marked applied while their destination fields silently
+        // never reached the saved chart (lost on tab close/nav/reload).
+        // Persisting fieldProvenance in this same call (not just React
+        // state) is what lets the RN still see WHY a field was populated
+        // after a refresh, logout, or reconnect. If this save fails, we
+        // throw before marking anything applied or touching visible
+        // state, so the RN can safely retry with no data loss.
         let persistedAssessmentId = assessmentId;
+        let saveResult = null;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+          saveResult = await api.updateRNICAAssessment(
+            persistedAssessmentId,
+            nextFormData,
+            nextProvenance,
+            fieldWrites.length > 0 ? fieldWrites : undefined
+          );
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10103,14 +10128,51 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFieldConflicts((prev) => [...prev, ...conflictEntries]);
         }
 
-        const reasonParts = [];
-        if (appliedFields.length > 0) reasonParts.push(`applied ${appliedFields.length} field(s)`);
-        if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
-        await reviewHarvestedSignalOffline(
-          signal.id,
-          "APPLIED",
-          reasonParts.length > 0 ? reasonParts.join("; ") : "No blank fields to populate"
-        );
+        // Determine the VERIFIED disposition to record on the signal --
+        // never assume "APPLIED". Preference order:
+        //   1. The backend's verified per-signal status (saveResult came
+        //      back online with fieldWrites -- computed from a fresh,
+        //      post-commit DB read; see compute_signal_dispositions).
+        //   2. Zero writes attempted and zero conflicts: nothing was
+        //      actionable (e.g. every finding was HISTORICAL) -- DISMISSED
+        //      (matches the closed vocabulary this reason has always used;
+        //      never claim it was "applied" when nothing was written).
+        //   3. Zero writes attempted, but conflicts exist: every finding
+        //      was blocked before anything was attempted -- CONFLICT.
+        //   4. The save was queued (offline) -- verification cannot happen
+        //      until the queued mutation replays online later. Fall back
+        //      to the pre-fix conservative behavior (assume applied only
+        //      when something was actually attempted) so this documented
+        //      gap does not regress an already-offline-safe write; this is
+        //      a known, reported limitation -- see the Apply-fix report.
+        const verifiedStatus = saveResult?.signalStatuses?.[signal.id];
+        let disposition;
+        let reasonParts = [];
+        if (verifiedStatus) {
+          disposition = verifiedStatus;
+          reasonParts.push(`verified: ${verifiedStatus}`);
+        } else if (appliedFields.length === 0 && conflicts.length === 0) {
+          disposition = "DISMISSED";
+          reasonParts.push("No actionable destination fields for this finding");
+        } else if (appliedFields.length === 0 && conflicts.length > 0) {
+          disposition = "CONFLICT";
+          reasonParts.push(`${conflicts.length} conflict(s) for review`);
+        } else if (saveResult?.status === "queued") {
+          disposition = conflicts.length > 0 ? "PARTIALLY_APPLIED" : "APPLIED";
+          reasonParts.push(`queued offline — applied ${appliedFields.length} field(s) unverified until sync`);
+        } else {
+          // Online save happened but returned no signalStatuses (e.g. the
+          // create-new-assessment branch above, which never sends
+          // fieldWrites) -- fields were written in the SAME formData just
+          // saved, so this is as verified as the pre-fix behavior ever
+          // was; not a regression, but also not yet the fully verified
+          // path (only the update branch supports fieldWrites today).
+          disposition = conflicts.length > 0 ? "PARTIALLY_APPLIED" : "APPLIED";
+          reasonParts.push(`applied ${appliedFields.length} field(s)`);
+          if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
+        }
+
+        await reviewHarvestedSignalOffline(signal.id, disposition, reasonParts.join("; "));
         setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
         setSelectedStructuredSignalIds((prev) => {
           if (!prev.has(signal.id)) return prev;
@@ -10354,7 +10416,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           skippedSignalIds,
           appliedFieldsBySignal,
           skippedConflicts,
-        } = applyAllNonConflicting(formData, targetSignals);
+        } = applyAllNonConflicting(formData, targetSignals, INITIAL_FORM);
 
         if (appliedSignalIds.length === 0) {
           setStructuredFindingsError(
@@ -10366,6 +10428,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         }
 
         const provenanceEntries = [];
+        const fieldWrites = [];
         for (const signal of targetSignals) {
           if (!appliedSignalIds.includes(signal.id)) continue;
           const applied = appliedFieldsBySignal[signal.id] || [];
@@ -10380,14 +10443,28 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               recorded_at: signal.recorded_at,
               confidence: f.finding?.confidence,
               signal_id: signal.id,
+              kind: f.writeKind || "scalar",
+            });
+            fieldWrites.push({
+              signal_id: signal.id,
+              section: f.section,
+              path: f.path,
+              value: f.value,
+              concept_code: f.concept_code,
+              kind: f.writeKind || "scalar",
             });
           }
         }
         const nextProvenance =
           provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+        // Every signal that produced conflicts (whether fully skipped or
+        // partially applied alongside a clean write) -- passed through so
+        // the backend can report CONFLICT for a signal with zero field
+        // writes attempted, instead of silently leaving it unaccounted for.
+        const conflictSignalIds = Array.from(new Set(skippedConflicts.map((c) => c.signal_id)));
 
         // Persist the merged field values AND their provenance durably
-        // BEFORE marking any signal "APPLIED". This must land before the
+        // BEFORE marking any signal reviewed. This must land before the
         // review-status write below -- otherwise a signal can be
         // permanently marked consumed while its fields (and the record of
         // why they were populated) only ever existed in this tab's memory,
@@ -10398,8 +10475,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         // If this save fails we throw here, before touching any visible
         // state or marking anything applied, so the RN can safely retry.
         let persistedAssessmentId = assessmentId;
+        let saveResult = null;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+          saveResult = await api.updateRNICAAssessment(
+            persistedAssessmentId,
+            nextFormData,
+            nextProvenance,
+            fieldWrites.length > 0 ? fieldWrites : undefined
+          );
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10416,7 +10499,32 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFieldProvenance(nextProvenance);
         }
 
-        await batchReviewHarvestedSignalsOffline(appliedSignalIds, "APPLIED", { reason: reasonLabel });
+        // Group signals by their VERIFIED disposition (never assume
+        // "APPLIED" for the whole batch) and issue one batch-review call
+        // per distinct disposition -- almost always 1-2 calls in practice
+        // (e.g. all APPLIED, or APPLIED + a few PARTIALLY_APPLIED), never
+        // one per signal.
+        const verifiedStatuses = saveResult?.signalStatuses || {};
+        const bySignalDisposition = new Map();
+        for (const signalId of appliedSignalIds) {
+          const hadConflict = conflictSignalIds.includes(signalId);
+          let disposition = verifiedStatuses[signalId];
+          if (!disposition) {
+            // Fallback (offline-queued save, or a signal with zero fields
+            // to write at all -- e.g. every finding was HISTORICAL):
+            const applied = appliedFieldsBySignal[signalId] || [];
+            if (applied.length === 0) {
+              disposition = hadConflict ? "CONFLICT" : "DISMISSED";
+            } else {
+              disposition = hadConflict ? "PARTIALLY_APPLIED" : "APPLIED";
+            }
+          }
+          if (!bySignalDisposition.has(disposition)) bySignalDisposition.set(disposition, []);
+          bySignalDisposition.get(disposition).push(signalId);
+        }
+        for (const [disposition, ids] of bySignalDisposition) {
+          await batchReviewHarvestedSignalsOffline(ids, disposition, { reason: reasonLabel });
+        }
         setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
         setSelectedStructuredSignalIds((prev) => {
           if (prev.size === 0) return prev;

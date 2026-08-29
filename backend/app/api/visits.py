@@ -58,6 +58,12 @@ from app.services.evidence.harvest_service import (
     review_harvested_signal,
     review_harvested_signals_batch,
 )
+from app.services.evidence.rnica_apply_verification import (
+    FieldWriteClaim,
+    compute_signal_dispositions,
+    fetch_fresh_form_data,
+    verify_field_writes,
+)
 from app.services.msw_ica_intelligence import build_msw_ica_intelligence
 from app.services.chha_outcome_service import upsert_chha_outcome
 from app.services.diagnosis_sync_service import sync_official_primary_diagnosis
@@ -1136,12 +1142,56 @@ def update_rnica_assessment(
         patient_id=record.patient_id,
         form_data=form_data,
     )
-    return {
+    response = {
         "assessmentId": str(record.id),
         "status": "updated",
         "locked": record.locked,
         "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
     }
+
+    # ── Verified structured-findings apply (Apply-All data-loss fix) ──
+    # The client optionally attaches `fieldWrites` -- the exact destination
+    # writes its apply pass (applyStructuredFindings.js) claims to have
+    # made in the formData just saved above, tagged with the harvested
+    # signal id each write came from. When present, re-read form_data with
+    # a FRESH, uncached SQL SELECT (bypassing the ORM identity map -- see
+    # fetch_fresh_form_data) and verify each claimed write actually landed.
+    # This is what lets the caller (RNICA.jsx) mark a signal APPLIED only
+    # when its intended value was successfully written, committed, AND
+    # verified from the persisted record -- never from client-side
+    # assumption. A signal with zero verified writes is never reported here
+    # as APPLIED (see compute_signal_dispositions).
+    raw_field_writes = (payload or {}).get("fieldWrites")
+    if isinstance(raw_field_writes, list) and raw_field_writes:
+        claims = []
+        for w in raw_field_writes:
+            if not isinstance(w, dict):
+                continue
+            signal_id = w.get("signal_id")
+            section = w.get("section")
+            path = w.get("path")
+            if not signal_id or not section or not path:
+                continue
+            claims.append(
+                FieldWriteClaim(
+                    signal_id=str(signal_id),
+                    section=str(section),
+                    path=str(path),
+                    value=w.get("value"),
+                    concept_code=w.get("concept_code"),
+                    kind=w.get("kind") or "scalar",
+                )
+            )
+        conflict_signal_ids = {
+            str(sid) for sid in ((payload or {}).get("conflictSignalIds") or []) if sid
+        }
+        persisted_form_data = fetch_fresh_form_data(db, assessment_uuid)
+        field_results = verify_field_writes(persisted_form_data, claims)
+        signal_dispositions = compute_signal_dispositions(field_results, conflict_signal_ids)
+        response["fieldWriteResults"] = [r.to_dict() for r in field_results]
+        response["signalStatuses"] = signal_dispositions
+
+    return response
 @router.delete("/rnica/{assessment_id}")
 def delete_rnica_assessment(
     assessment_id: str,

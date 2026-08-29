@@ -263,7 +263,24 @@ def list_pending_structured_findings(db: Session, patient_id: UUID) -> list[dict
     return results
 
 
-VALID_SIGNAL_REVIEW_DISPOSITIONS = {"APPLIED", "DISMISSED"}
+VALID_SIGNAL_REVIEW_DISPOSITIONS = {
+    "APPLIED",
+    "DISMISSED",
+    # Added for the verified-apply engine (see visits.update_rnica_assessment's
+    # fieldWrites handling and rnica_apply_verification.py): a signal must be
+    # able to land in one of these outcomes too, since blindly forcing every
+    # apply into APPLIED/DISMISSED is exactly the data-loss defect this fixes.
+    # PARTIALLY_APPLIED: some of the signal's destination writes verified as
+    #   persisted, others did not (or other findings in the same signal are
+    #   still blocked by a conflict).
+    # CONFLICT: every finding in the signal was blocked by an existing
+    #   non-blank/RN-entered value -- nothing was ever attempted.
+    # FAILED: at least one destination write was attempted but did not verify
+    #   as persisted (mapping bug, concurrent overwrite, etc.).
+    "PARTIALLY_APPLIED",
+    "CONFLICT",
+    "FAILED",
+}
 
 
 def review_harvested_signal(
@@ -277,17 +294,23 @@ def review_harvested_signal(
 ) -> PatientHarvestedSignal:
     """Record an RN's disposition of one structured-finding-bearing signal.
 
-    `disposition` must be "APPLIED" (the RN used the structured findings to
-    populate RNICA field(s) -- the apply itself already happened
-    client-side via applyStructuredFindings.js; this call only records
-    that it happened) or "DISMISSED" (the RN reviewed the finding(s) and
-    chose not to apply them). Combined with the "NEW" default set at
-    harvest time, review_status is always exactly one of NEW / APPLIED /
-    DISMISSED -- never a broader narrative-signal review vocabulary.
+    `disposition` must be one of VALID_SIGNAL_REVIEW_DISPOSITIONS:
+    "APPLIED" (every destination write this signal's findings resolved to
+    was verified persisted -- see rnica_apply_verification.py, which
+    computes this disposition from a fresh DB read, never assumed),
+    "PARTIALLY_APPLIED" (some but not all verified, or some findings still
+    blocked by a conflict), "CONFLICT" (every finding was blocked by an
+    existing value, nothing was ever attempted), "FAILED" (a write was
+    attempted but did not verify as persisted), or "DISMISSED" (the RN
+    reviewed the finding(s) and chose not to apply them, or the finding had
+    no actionable destination field at all). Combined with the "NEW"
+    default set at harvest time, review_status is always exactly one of
+    these values -- never a broader narrative-signal review vocabulary.
 
-    Never applies anything to a chart itself. Scoped to `tenant_id` so a
-    signal from one tenant can never be reviewed via another tenant's
-    session.
+    Never applies anything to a chart itself -- this only records a
+    disposition the caller has ALREADY verified (or explicitly chosen, for
+    DISMISSED). Scoped to `tenant_id` so a signal from one tenant can never
+    be reviewed via another tenant's session.
     """
 
     if disposition not in VALID_SIGNAL_REVIEW_DISPOSITIONS:
@@ -366,7 +389,7 @@ def review_harvested_signals_batch(
 # anywhere on the signal today. If those are needed later, that is a
 # separate schema/design decision, not something this function should
 # approximate from ephemeral, non-persisted state.
-_KNOWN_REVIEW_STATUSES = ("NEW", "APPLIED", "DISMISSED")
+_KNOWN_REVIEW_STATUSES = ("NEW", "APPLIED", "DISMISSED", "PARTIALLY_APPLIED", "CONFLICT", "FAILED")
 
 
 def get_structured_findings_acceptance_analytics(
