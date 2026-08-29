@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.db.base import Base
 
@@ -20,11 +20,27 @@ class VisitRecording(Base):
     `transcript_text`/`transcript_status`/`transcript_provider` stay nullable
     until a real STT integration is wired up. The recording + review pipeline
     (capture, storage, playback, consent) works standalone before that.
+
+    `transcript_status` state machine (automatic pipeline, see
+    app.services.evidence.transcription_service /
+    app.api.visit_recordings._process_transcription):
+        QUEUED -> PROCESSING -> COMPLETED
+                              -> RETRYING -> PROCESSING -> ... -> COMPLETED
+                                                                -> FAILED (terminal, after max attempts)
+    FAILED is the only state where a clinician's manual transcript entry is
+    offered as a fallback (never the normal path).
     """
 
     __tablename__ = "visit_recordings"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    # Client-generated idempotency key (set by the frontend at
+    # record-stop time, BEFORE the upload attempt). Lets an offline-queued
+    # upload retry -- or a flaky-connection retry -- safely resend the
+    # exact same recording after reconnect without ever creating a second
+    # row/object/transcription/harvest for the one visit that was recorded.
+    client_recording_id = Column(UUID(as_uuid=True), nullable=True, unique=True, index=True)
 
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="RESTRICT"), nullable=False, index=True)
@@ -51,17 +67,33 @@ class VisitRecording(Base):
     duration_seconds = Column(Integer, nullable=True)
     size_bytes = Column(Integer, nullable=True)
 
-    # Transcription — filled in later by whichever STT vendor is wired up
-    # (Azure Speech, per current plan). Left blank/pending until then.
+    # Transcription state machine -- see class docstring. Automatically
+    # advanced by the background transcription pipeline immediately after
+    # upload; "manual_entry" is only ever used as an explicit FAILED-state
+    # fallback, never the default path.
     transcript_status = Column(
         String(24),
         nullable=False,
-        default="not_transcribed",
-        server_default=text("'not_transcribed'"),
-    )  # not_transcribed | pending | complete | failed
-    transcript_provider = Column(String(32), nullable=True)
+        default="QUEUED",
+        server_default=text("'QUEUED'"),
+    )  # QUEUED | PROCESSING | COMPLETED | FAILED | RETRYING
+    transcript_provider = Column(String(32), nullable=True)  # "azure_speech" | "manual_entry"
     transcript_text = Column(Text, nullable=True)
     transcribed_at = Column(DateTime(timezone=True), nullable=True)
+    transcription_attempts = Column(Integer, nullable=False, default=0, server_default=text("0"))
+    transcription_error = Column(Text, nullable=True)
+
+    # AI-drafted note derived from transcript_text once transcription
+    # completes (see app.services.evidence.note_draft_service.generate_note_draft).
+    # Full NoteDraft.to_dict() shape: narrative, section_notes,
+    # detected_topics, symptom_severity, structured_findings, generated_at,
+    # model. structured_findings are ALSO fanned out into a
+    # PatientHarvestedSignal (source_type="TRANSCRIPT") so they go through
+    # the same Apply/Apply All + provenance pipeline as every other
+    # evidence source -- this column is only the narrative/symptom_severity
+    # candidate surface a clinician reviews before inserting. Never
+    # auto-applied; purely a candidate for human review/insertion.
+    ai_note_draft = Column(JSONB, nullable=True)
 
     # Staff review of the recording/transcript (separate from transcription
     # itself) — lets a supervisor/QA mark that they listened/reviewed.

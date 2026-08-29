@@ -10159,6 +10159,104 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     }
   }, []);
 
+  // --- AI symptom_severity insertion (from a visit recording's note draft)
+  // --------------------------------------------------------------------
+  // Maps the 6 HOPE J2051 symptom_severity keys note_draft_service.py
+  // produces (pain, shortnessOfBreath, nausea, vomiting, diarrhea,
+  // constipation, each "0"-"3") onto the actual RNICA fields those same
+  // symptoms are graded on elsewhere in this form (pain.painSeverityCategory
+  // is numeric "0"-"3"; respiratory.sobSeverity and the GI fields use the
+  // None/Mild/Moderate/Severe words) -- same blank-only-write +
+  // durable-provenance-persist contract as handleApplyStructuredSignal
+  // above, so an AI-suggested severity never overwrites an RN's own entry
+  // and always survives refresh/logout/reconnect. Returns the list of
+  // symptom keys actually written (for the calling VisitRecorderCard button
+  // to show which suggestions were applied vs. already blocked by an
+  // existing RN entry).
+  const SEVERITY_WORD_BY_NUMBER = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
+  const handleInsertAiSymptomSeverity = useCallback(
+    async (symptomSeverity, sourceRecordingId) => {
+      if (!symptomSeverity || Object.keys(symptomSeverity).length === 0) return [];
+
+      const writes = []; // { section, path, value, symptomKey }
+      const painVal = symptomSeverity.pain;
+      if (painVal && !formData.pain?.painSeverityCategory) {
+        writes.push({ section: "pain", path: "painSeverityCategory", value: painVal, symptomKey: "pain" });
+      }
+      const sobVal = symptomSeverity.shortnessOfBreath;
+      if (sobVal && !formData.respiratory?.sobSeverity) {
+        writes.push({
+          section: "respiratory",
+          path: "sobSeverity",
+          value: SEVERITY_WORD_BY_NUMBER[sobVal] || sobVal,
+          symptomKey: "shortnessOfBreath",
+        });
+      }
+      for (const giKey of ["nausea", "vomiting", "diarrhea", "constipation"]) {
+        const val = symptomSeverity[giKey];
+        if (val && !formData.gastrointestinal?.[giKey]) {
+          writes.push({
+            section: "gastrointestinal",
+            path: giKey,
+            value: SEVERITY_WORD_BY_NUMBER[val] || val,
+            symptomKey: giKey,
+          });
+        }
+      }
+
+      if (writes.length === 0) return [];
+
+      let nextFormData = formData;
+      for (const w of writes) {
+        nextFormData = {
+          ...nextFormData,
+          [w.section]: { ...nextFormData[w.section], [w.path]: w.value },
+        };
+      }
+
+      const provenanceEntries = writes.map((w) => ({
+        section: w.section,
+        path: w.path,
+        value: w.value,
+        concept_code: `AI_SYMPTOM_SEVERITY_${w.symptomKey.toUpperCase()}`,
+        source_type: "TRANSCRIPT",
+        source_excerpt: `AI-suggested HOPE J2051 severity from visit recording ${sourceRecordingId}`,
+        recorded_at: new Date().toISOString(),
+        confidence: null,
+        signal_id: `visit_recording:${sourceRecordingId}`,
+      }));
+      const nextProvenance = [...structuredFieldProvenance, ...provenanceEntries];
+
+      try {
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+        setStructuredFieldProvenance(nextProvenance);
+        return writes.map((w) => w.symptomKey);
+      } catch (err) {
+        console.error("Insert AI symptom severity error:", err);
+        setStructuredFindingsError(
+          err instanceof Error ? err.message : "Unable to insert AI-suggested symptom severity."
+        );
+        return [];
+      }
+    },
+    // Same TDZ caveat as handleApplyStructuredSignal above: isOngoing/
+    // assessmentType/markPersisted are declared later in this component.
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
+  );
+
   // --- Bulk actions: "Apply All Non-Conflicting" / "Apply Selected" /
   // "Dismiss Selected" / "Dismiss All" -------------------------------------
   // Kept as a separate busy/loading flag from the per-signal
@@ -11129,6 +11227,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
+              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
             />
           )}
           alerts={(
@@ -11347,6 +11446,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
+              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
             />
             {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
