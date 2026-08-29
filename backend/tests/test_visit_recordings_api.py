@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException, UploadFile
+from fastapi import BackgroundTasks, HTTPException, UploadFile
 from starlette.requests import Request
 
 from app.api import visit_recordings
@@ -125,6 +125,7 @@ def test_upload_rejects_unsupported_mime_before_storage(monkeypatch):
                 db=_Db(),
                 current_user=USER,
                 storage=storage,
+                background_tasks=BackgroundTasks(),
             )
         )
 
@@ -156,6 +157,7 @@ def test_upload_limit_error_is_explicit(monkeypatch):
                 db=_Db(),
                 current_user=USER,
                 storage=storage,
+                background_tasks=BackgroundTasks(),
             )
         )
     assert exc_info.value.status_code == 413
@@ -184,6 +186,7 @@ def test_database_failure_rolls_back_and_removes_uploaded_object(monkeypatch):
                 db=db,
                 current_user=USER,
                 storage=storage,
+                background_tasks=BackgroundTasks(),
             )
         )
 

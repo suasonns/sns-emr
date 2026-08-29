@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -51,6 +51,15 @@ class RnicaAssessment(Base):
 
     form_data = Column(JSONB, nullable=False, default=dict)
     notes = Column(Text, nullable=True)
+
+    # Durable record of every structured field ever populated by the
+    # AI-extraction Apply/Apply-All layer (see applyStructuredFindings.js).
+    # Each entry: {section, path, value, concept_code, source_type,
+    # source_excerpt, recorded_at, confidence, signal_id}. Persisted here
+    # (not just held in frontend React state) so an RN can see exactly why
+    # a field was populated after a page refresh, logout, or reconnect --
+    # not only during the same browser session the Apply happened in.
+    field_provenance = Column(JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb"))
 
     # Client-generated idempotency key for the *create* path only (see
     # save_rnica_assessment in app/api/visits.py). Offline-captured

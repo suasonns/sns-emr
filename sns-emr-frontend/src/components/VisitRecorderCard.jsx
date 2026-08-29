@@ -4,7 +4,24 @@ import {
   fetchPatientRecordings,
   fetchRecordingAudioBlobUrl,
   markRecordingReviewed,
+  saveRecordingTranscript,
+  retryRecordingTranscription,
 } from "../api/visitRecordings";
+import {
+  queueRecording,
+  removeQueuedRecording,
+  listQueuedRecordings,
+  markQueuedAttempt,
+} from "../api/offlineRecordingQueue";
+
+// A request that never reached the server (offline, DNS failure, dropped
+// connection, simulated network outage) has no `response` on the axios
+// error. A request the server actively rejected (validation error, auth
+// failure) does have one. Only the former is worth queuing for automatic
+// retry — the latter would just fail the same way again.
+function isNetworkError(err) {
+  return !err?.response;
+}
 
 // Visit audio capture + staff review panel.
 //
@@ -32,7 +49,7 @@ function formatDateTime(iso) {
   }
 }
 
-export default function VisitRecorderCard({ patientId, assessmentId, assessmentType = "RNICA", COLORS, styles }) {
+export default function VisitRecorderCard({ patientId, assessmentId, assessmentType = "RNICA", COLORS, styles, onInsertSymptomSeverity, onInsertNarrative }) {
   const [consentConfirmed, setConsentConfirmed] = useState(false);
   const [recording, setRecording] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -43,12 +60,21 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
   const [historyLoading, setHistoryLoading] = useState(false);
   const [playingId, setPlayingId] = useState(null);
   const [playingUrl, setPlayingUrl] = useState("");
+  const [transcriptDrafts, setTranscriptDrafts] = useState({}); // recordingId -> in-progress textarea value
+  const [transcriptSavingId, setTranscriptSavingId] = useState(null);
+  const [retryingId, setRetryingId] = useState(null);
+  const [insertedSeverityIds, setInsertedSeverityIds] = useState({}); // recordingId -> inserted symptom keys[]
+  const [insertedNarrativeIds, setInsertedNarrativeIds] = useState({}); // recordingId -> true once narrative inserted
+  const [narrativeInserting, setNarrativeInserting] = useState(null);
+  const [pendingQueue, setPendingQueue] = useState([]); // recordings saved on-device, not yet uploaded
+  const [queueProcessing, setQueueProcessing] = useState({}); // clientRecordingId -> true while (re)uploading
 
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
   const startedAtRef = useRef(null);
+  const queueProcessingRef = useRef({});
 
   const loadHistory = useCallback(() => {
     if (!patientId) return;
@@ -59,9 +85,100 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
       .finally(() => setHistoryLoading(false));
   }, [patientId]);
 
+  const refreshQueue = useCallback(() => {
+    if (!patientId) return;
+    listQueuedRecordings(patientId)
+      .then(setPendingQueue)
+      .catch((err) => console.error("Failed to read offline recording queue:", err));
+  }, [patientId]);
+
+  // Attempts to upload one queued (previously failed/offline) recording.
+  // Reuses the same clientRecordingId every time, so even if this fires more
+  // than once (e.g. an 'online' event plus a manual "Retry now" click racing
+  // each other) the backend's idempotency key prevents a duplicate
+  // recording/transcript/RNICA write — only the first successful attempt
+  // actually creates anything server-side.
+  const uploadQueuedEntry = useCallback(async (entry) => {
+    if (queueProcessingRef.current[entry.clientRecordingId]) return;
+    queueProcessingRef.current[entry.clientRecordingId] = true;
+    setQueueProcessing((prev) => ({ ...prev, [entry.clientRecordingId]: true }));
+    try {
+      await uploadVisitRecording({
+        patientId: entry.patientId,
+        audioBlob: entry.blob,
+        consentConfirmed: entry.consentConfirmed,
+        assessmentId: entry.assessmentId || null,
+        assessmentType: entry.assessmentType,
+        durationSeconds: entry.durationSeconds,
+        mimeType: entry.mimeType,
+        clientRecordingId: entry.clientRecordingId,
+      });
+      await removeQueuedRecording(entry.clientRecordingId);
+      refreshQueue();
+      loadHistory();
+      setExpanded(true);
+    } catch (err) {
+      console.error("Queued recording upload still failing:", err);
+      await markQueuedAttempt(entry.clientRecordingId, err?.message || "Upload failed");
+      refreshQueue();
+    } finally {
+      delete queueProcessingRef.current[entry.clientRecordingId];
+      setQueueProcessing((prev) => {
+        const next = { ...prev };
+        delete next[entry.clientRecordingId];
+        return next;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshQueue, loadHistory]);
+
+  const processQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+    const queued = await listQueuedRecordings(patientId).catch(() => []);
+    for (const entry of queued) {
+      // eslint-disable-next-line no-await-in-loop
+      await uploadQueuedEntry(entry);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId, uploadQueuedEntry]);
+
+  // Pick up anything left over from a previous page load (tab/browser closed
+  // while offline, or with the connection down) and try again automatically —
+  // staff never has to notice, re-record, or manually resume anything.
+  useEffect(() => {
+    refreshQueue();
+    processQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  // Resume automatically the moment connectivity returns, and also poll
+  // periodically as a fallback for flaky connections where the browser's
+  // 'online' event doesn't fire reliably.
+  useEffect(() => {
+    window.addEventListener("online", processQueue);
+    const interval = window.setInterval(() => {
+      if (pendingQueue.length > 0) processQueue();
+    }, 15000);
+    return () => {
+      window.removeEventListener("online", processQueue);
+      window.clearInterval(interval);
+    };
+  }, [processQueue, pendingQueue.length]);
+
   useEffect(() => {
     if (expanded) loadHistory();
   }, [expanded, loadHistory]);
+
+  // Automatic transcription runs server-side after upload; poll while any
+  // recording is still in flight (QUEUED/PROCESSING/RETRYING) so staff see
+  // it complete without needing to manually refresh or re-record anything.
+  useEffect(() => {
+    if (!expanded) return undefined;
+    const hasInFlight = history.some((r) => ["QUEUED", "PROCESSING", "RETRYING"].includes(r.transcript_status));
+    if (!hasInFlight) return undefined;
+    const interval = window.setInterval(loadHistory, 4000);
+    return () => window.clearInterval(interval);
+  }, [expanded, history, loadHistory]);
 
   useEffect(() => {
     return () => {
@@ -128,6 +245,30 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
 
     setUploading(true);
     setError("");
+    const clientRecordingId = crypto.randomUUID();
+
+    // Persist the audio durably on this device BEFORE attempting the
+    // network call. If the upload fails because the connection is down
+    // (not because the server rejected it), the recording stays here and
+    // gets retried automatically — the RN never has to re-record.
+    try {
+      await queueRecording({
+        clientRecordingId,
+        patientId,
+        assessmentId: assessmentId || null,
+        assessmentType,
+        blob,
+        durationSeconds,
+        mimeType: blob.type,
+        consentConfirmed: true,
+        createdAt: new Date().toISOString(),
+        attempts: 0,
+      });
+      refreshQueue();
+    } catch (queueErr) {
+      console.error("Failed to persist recording locally before upload:", queueErr);
+    }
+
     try {
       await uploadVisitRecording({
         patientId,
@@ -137,12 +278,21 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
         assessmentType,
         durationSeconds,
         mimeType: blob.type,
+        clientRecordingId,
       });
+      await removeQueuedRecording(clientRecordingId).catch(() => {});
+      refreshQueue();
       setExpanded(true);
       loadHistory();
     } catch (err) {
       console.error("Failed to upload recording:", err);
-      setError(err?.response?.data?.detail || "Failed to upload the recording. It was not saved.");
+      if (isNetworkError(err)) {
+        await markQueuedAttempt(clientRecordingId, err?.message || "Network error").catch(() => {});
+        refreshQueue();
+        setError("No connection — the recording is saved on this device and will upload automatically once you're back online.");
+      } else {
+        setError(err?.response?.data?.detail || "Failed to upload the recording. It's saved on this device; use Retry in the Pending Upload list below.");
+      }
     } finally {
       setUploading(false);
     }
@@ -172,6 +322,75 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
       loadHistory();
     } catch (err) {
       console.error("Failed to mark recording reviewed:", err);
+    }
+  };
+
+  const handleSaveTranscript = async (recordingId) => {
+    const text = (transcriptDrafts[recordingId] || "").trim();
+    if (!text) {
+      setError("Enter the transcript text before saving.");
+      return;
+    }
+    setTranscriptSavingId(recordingId);
+    setError("");
+    try {
+      await saveRecordingTranscript(recordingId, text);
+      setTranscriptDrafts((prev) => {
+        const next = { ...prev };
+        delete next[recordingId];
+        return next;
+      });
+      loadHistory();
+    } catch (err) {
+      console.error("Failed to save transcript:", err);
+      setError(err?.response?.data?.detail || "Failed to save the transcript.");
+    } finally {
+      setTranscriptSavingId(null);
+    }
+  };
+
+  const handleRetryTranscription = async (recordingId) => {
+    setRetryingId(recordingId);
+    setError("");
+    try {
+      await retryRecordingTranscription(recordingId);
+      loadHistory();
+    } catch (err) {
+      console.error("Failed to retry transcription:", err);
+      setError(err?.response?.data?.detail || "Failed to retry transcription.");
+    } finally {
+      setRetryingId(null);
+    }
+  };
+
+  const handleInsertSeverity = async (rec) => {
+    if (!onInsertSymptomSeverity || !rec?.ai_note_draft?.symptom_severity) return;
+    try {
+      const insertedKeys = (await onInsertSymptomSeverity(rec.ai_note_draft.symptom_severity, rec.id)) || [];
+      setInsertedSeverityIds((prev) => ({ ...prev, [rec.id]: insertedKeys }));
+    } catch (err) {
+      console.error("Failed to insert AI symptom severity:", err);
+      setError("Failed to insert AI-suggested symptom severity into RNICA.");
+    }
+  };
+
+  const handleInsertNarrative = async (rec) => {
+    if (!onInsertNarrative || !rec?.ai_note_draft?.narrative) return;
+    setNarrativeInserting(rec.id);
+    try {
+      const inserted = await onInsertNarrative(rec.ai_note_draft.narrative, rec.id);
+      if (inserted) {
+        setInsertedNarrativeIds((prev) => ({ ...prev, [rec.id]: true }));
+      } else {
+        setError(
+          "Clinical Narrative already has content — the AI draft was not inserted so your existing text is preserved. Copy from the draft above if you want to incorporate it."
+        );
+      }
+    } catch (err) {
+      console.error("Failed to insert AI narrative draft:", err);
+      setError("Failed to insert the AI-generated note draft into the Clinical Narrative.");
+    } finally {
+      setNarrativeInserting(null);
     }
   };
 
@@ -245,6 +464,38 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
 
           {error && <div className="visit-recorder-card__message" role="alert" aria-live="assertive" aria-atomic="true" style={{ ...box, marginTop: 10, color: COLORS?.error || "#dc2626" }}>{error}</div>}
 
+          {pendingQueue.length > 0 && (
+            <div className="visit-recorder-card__pending-queue" style={{ marginTop: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: "0.03em" }}>
+                Pending Upload — saved on this device
+              </div>
+              {pendingQueue.map((entry) => (
+                <div key={entry.clientRecordingId} style={{ ...box, marginTop: 6, background: "#fffbeb", border: "1px solid #fcd34d", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+                  <div>
+                    {formatDateTime(entry.createdAt)} — {formatDuration(entry.durationSeconds)}
+                    {" — "}
+                    {navigator.onLine ? "waiting to upload" : "offline, will upload when reconnected"}
+                    {entry.attempts > 0 ? ` (${entry.attempts} attempt${entry.attempts === 1 ? "" : "s"} so far)` : ""}
+                    {entry.lastError ? <div style={{ color: COLORS?.error || "#dc2626", marginTop: 2 }}>{entry.lastError}</div> : null}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => uploadQueuedEntry(entry)}
+                    disabled={!!queueProcessing[entry.clientRecordingId]}
+                    style={{
+                      padding: "4px 10px", borderRadius: 6, border: "1px solid #b45309",
+                      background: "transparent", color: "#b45309", fontWeight: 700, fontSize: 12,
+                      cursor: queueProcessing[entry.clientRecordingId] ? "default" : "pointer",
+                      opacity: queueProcessing[entry.clientRecordingId] ? 0.6 : 1,
+                    }}
+                  >
+                    {queueProcessing[entry.clientRecordingId] ? "Uploading…" : "Retry now"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="visit-recorder-card__history-title" style={{ marginTop: 16, fontSize: 12, fontWeight: 800, color: COLORS?.gray, textTransform: "uppercase", letterSpacing: "0.03em" }}>
             Past Recordings
           </div>
@@ -262,11 +513,11 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                   <span className="visit-recorder-card__recording-status" style={{
                     fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4,
-                    color: rec.transcript_status === "complete" ? "#166534" : COLORS?.gray,
-                    background: rec.transcript_status === "complete" ? "#f0fdf4" : "transparent",
-                    border: `1px solid ${rec.transcript_status === "complete" ? "#bbf7d0" : COLORS?.border}`,
+                    color: STATUS_COLORS[rec.transcript_status]?.fg || COLORS?.gray,
+                    background: STATUS_COLORS[rec.transcript_status]?.bg || "transparent",
+                    border: `1px solid ${STATUS_COLORS[rec.transcript_status]?.border || COLORS?.border}`,
                   }}>
-                    {rec.transcript_status === "not_transcribed" ? "Not yet transcribed" : rec.transcript_status}
+                    {STATUS_LABELS[rec.transcript_status] || rec.transcript_status}
                   </span>
                   <button type="button" onClick={() => handlePlay(rec.id)} style={{ fontSize: 12, padding: "3px 10px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: "pointer" }}>
                     {playingId === rec.id ? "Close" : "▶ Play"}
@@ -287,6 +538,86 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
               {rec.transcript_text && (
                 <div className="visit-recorder-card__message" style={{ ...box, marginTop: 8, whiteSpace: "pre-wrap" }}>{rec.transcript_text}</div>
               )}
+              {rec.transcript_status === "FAILED" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ ...box, color: COLORS?.error || "#dc2626", marginBottom: 6 }}>
+                    Automatic transcription failed{rec.transcription_error ? `: ${rec.transcription_error}` : "."}
+                    {" "}The recording is safe — retry, or enter the transcript manually below as a fallback.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRetryTranscription(rec.id)}
+                    disabled={retryingId === rec.id}
+                    style={{ marginBottom: 8, fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: retryingId === rec.id ? "default" : "pointer", opacity: retryingId === rec.id ? 0.6 : 1 }}
+                  >
+                    {retryingId === rec.id ? "Retrying…" : "↻ Retry Automatic Transcription"}
+                  </button>
+                  <textarea
+                    className="visit-recorder-card__transcript-input"
+                    placeholder="Fallback manual transcript entry (automatic speech-to-text failed for this recording). Saving generates an AI note draft for review."
+                    value={transcriptDrafts[rec.id] || ""}
+                    onChange={(e) => setTranscriptDrafts((prev) => ({ ...prev, [rec.id]: e.target.value }))}
+                    rows={3}
+                    style={{ width: "100%", fontSize: 12, padding: 6, borderRadius: 6, border: `1px solid ${COLORS?.border || "#ddd"}`, fontFamily: "inherit" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleSaveTranscript(rec.id)}
+                    disabled={transcriptSavingId === rec.id}
+                    style={{ marginTop: 6, fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: transcriptSavingId === rec.id ? "default" : "pointer", opacity: transcriptSavingId === rec.id ? 0.6 : 1 }}
+                  >
+                    {transcriptSavingId === rec.id ? "Saving & generating draft…" : "Save Transcript & Generate AI Draft"}
+                  </button>
+                </div>
+              )}
+              {rec.ai_note_draft && (
+                <div className="visit-recorder-card__note-draft" style={{ ...box, marginTop: 8, background: COLORS?.bgAlt || "#f8fafc" }}>
+                  <div style={{ fontWeight: 700, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.03em", color: COLORS?.gray, marginBottom: 4 }}>
+                    AI Note Draft — clinician review required before use
+                  </div>
+                  {rec.ai_note_draft.narrative && (
+                    <div style={{ whiteSpace: "pre-wrap", marginBottom: 6 }}>{rec.ai_note_draft.narrative}</div>
+                  )}
+                  {rec.ai_note_draft.narrative && onInsertNarrative && (
+                    <div style={{ marginBottom: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleInsertNarrative(rec)}
+                        disabled={narrativeInserting === rec.id}
+                        style={{ fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: narrativeInserting === rec.id ? "default" : "pointer", opacity: narrativeInserting === rec.id ? 0.6 : 1 }}
+                      >
+                        {narrativeInserting === rec.id
+                          ? "Inserting…"
+                          : insertedNarrativeIds[rec.id]
+                            ? "✓ Inserted into Clinical Narrative"
+                            : "Insert into Clinical Narrative (blank only)"}
+                      </button>
+                    </div>
+                  )}
+                  {rec.ai_note_draft.symptom_severity && Object.keys(rec.ai_note_draft.symptom_severity).length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ fontWeight: 700, marginBottom: 2 }}>Suggested HOPE J2051 Symptom Severity:</div>
+                      <ul style={{ margin: 0, paddingLeft: 18 }}>
+                        {Object.entries(rec.ai_note_draft.symptom_severity).map(([key, val]) => (
+                          <li key={key}>
+                            {SYMPTOM_SEVERITY_LABELS[key] || key}: {SEVERITY_WORDS[val] || val}
+                            {insertedSeverityIds[rec.id]?.includes(key) && <span style={{ color: COLORS?.teal || "#0d9488", fontWeight: 700 }}> — inserted</span>}
+                          </li>
+                        ))}
+                      </ul>
+                      {onInsertSymptomSeverity && (
+                        <button
+                          type="button"
+                          onClick={() => handleInsertSeverity(rec)}
+                          style={{ marginTop: 6, fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: "pointer" }}
+                        >
+                          Insert Symptom Severities into RNICA (blank fields only)
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -294,3 +625,30 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
     </div>
   );
 }
+
+const SYMPTOM_SEVERITY_LABELS = {
+  pain: "Pain",
+  shortnessOfBreath: "Shortness of Breath",
+  nausea: "Nausea",
+  vomiting: "Vomiting",
+  diarrhea: "Diarrhea",
+  constipation: "Constipation",
+};
+
+const SEVERITY_WORDS = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
+
+const STATUS_LABELS = {
+  QUEUED: "Queued for transcription",
+  PROCESSING: "Transcribing…",
+  RETRYING: "Retrying transcription…",
+  COMPLETED: "Transcribed",
+  FAILED: "Transcription failed",
+};
+
+const STATUS_COLORS = {
+  COMPLETED: { fg: "#166534", bg: "#f0fdf4", border: "#bbf7d0" },
+  PROCESSING: { fg: "#92400e", bg: "#fffbeb", border: "#fde68a" },
+  RETRYING: { fg: "#92400e", bg: "#fffbeb", border: "#fde68a" },
+  QUEUED: { fg: "#475569", bg: "#f8fafc", border: "#e2e8f0" },
+  FAILED: { fg: "#991b1b", bg: "#fef2f2", border: "#fecaca" },
+};

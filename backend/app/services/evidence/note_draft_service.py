@@ -462,6 +462,7 @@ def generate_note_draft(
     assessment_type: str | None = None,
     discipline: str | None = None,
     harvested_context: str | None = None,
+    admission_context: str | None = None,
 ) -> NoteDraft | None:
     """Generate a candidate clinical narrative from a recording's transcript.
 
@@ -487,6 +488,14 @@ def generate_note_draft(
     visit conversation, so the voice-recording draft should build on/confirm
     that prior record rather than pretend it doesn't exist. Purely additive
     context; never required, never fabricated if absent.
+
+    `admission_context` is an optional compact fact block (patient name,
+    DOB, primary/terminal diagnosis, comorbidities, decision maker, and
+    certifying physician) built by `build_admission_narrative_context`.
+    When present (admission/RNICA assessments only -- never RN_RECERT),
+    the narrative should open by framing this as an admission, using only
+    the facts actually supplied here. Purely additive; never required,
+    never fabricated if absent.
 
     Returns None if not configured, transcript is empty, or generation
     fails for any reason -- never raises.
@@ -537,6 +546,20 @@ def generate_note_draft(
         f"/chat/completions?api-version={config['api_version']}"
     )
     user_content_parts = [f"--- VISIT RECORDING TRANSCRIPT ---\n{truncated}"]
+    cleaned_admission = (admission_context or "").strip()
+    if cleaned_admission and is_rnica:
+        user_content_parts.append(
+            "--- ADMISSION FACTS (this is an ADMISSION assessment -- the patient is being newly "
+            "admitted to hospice, not a routine follow-up) ---\n"
+            f"{cleaned_admission[:MAX_TRANSCRIPT_CHARS]}\n\n"
+            "Open the narrative by framing this visit as the hospice admission, analogous to: "
+            "\"Admitted [name]... under [level of care]... with terminal diagnosis of [dx] with "
+            "comorbidities of [list]... referred to hospice with [MD] certifying... consents signed "
+            "by [decision maker].\" Use ONLY the facts actually listed above -- if a fact (e.g. "
+            "certifying physician, decision maker) is not listed here, omit that clause entirely "
+            "rather than inventing a name or guessing. After that opening framing, continue with the "
+            "rest of the narrative built from the transcript and prior findings as usual."
+        )
     cleaned_harvested = (harvested_context or "").strip()
     if cleaned_harvested:
         user_content_parts.append(
@@ -637,6 +660,159 @@ def generate_note_draft(
         symptom_severity=symptom_severity,
         structured_findings=structured_findings,
     )
+
+
+def build_admission_narrative_context(db: Any, patient_id: Any, *, assessment_type: str | None = None) -> str:
+    """Build a compact "admission framing" fact block (name, DOB, primary
+    diagnosis, comorbidities, decision maker, certifying MD) so an ADMISSION
+    voice-recording draft (RNICA, never RN_RECERT) can open the way a real
+    admission note does -- "Admitted <name>... with terminal diagnosis of
+    <dx> with comorbidities of <list>... referred to hospice with <MD>
+    certifying... consents signed by <DPOA>" -- instead of reading like a
+    routine follow-up visit.
+
+    Only ever includes facts actually resolved from real records; a field
+    that can't be found is simply omitted (never fabricated, never a
+    placeholder like "Unknown"). Returns "" for non-admission assessment
+    types (RN_RECERT and anything else) or on any failure -- never raises,
+    always safe to call best-effort.
+    """
+    normalized_type = (assessment_type or "").upper()
+    if normalized_type != "RNICA":
+        # Only the admission assessment gets admission framing -- a
+        # recertification visit is NOT an admission and must not be
+        # narrated as one.
+        return ""
+    try:
+        from app.models.certification import Certification
+        from app.models.patient import Patient
+        from app.models.patient_contact import PatientContact
+        from app.models.patient_diagnosis import PatientDiagnosis
+        from app.models.patient_facesheet import PatientFaceSheet
+        from app.models.rnica_assessment import RnicaAssessment
+        from app.models.user import User
+
+        facesheet = (
+            db.query(PatientFaceSheet).filter(PatientFaceSheet.patient_id == patient_id).one_or_none()
+        )
+        patient = db.query(Patient).filter(Patient.id == patient_id).one_or_none()
+
+        lines: list[str] = []
+
+        full_name = ""
+        if facesheet:
+            name_parts = [facesheet.first_name, facesheet.middle_name, facesheet.last_name]
+            full_name = " ".join(p.strip() for p in name_parts if p and p.strip())
+        if full_name:
+            lines.append(f"- Patient full name: {full_name}")
+        if facesheet and facesheet.dob:
+            lines.append(f"- Date of birth: {facesheet.dob.isoformat()}")
+
+        # Primary diagnosis: prefer the structured PatientDiagnosis(type=PRIMARY)
+        # record; fall back to the plain Patient.primary_diagnosis string.
+        primary_dx_row = (
+            db.query(PatientDiagnosis)
+            .filter(PatientDiagnosis.patient_id == patient_id, PatientDiagnosis.diagnosis_type == "PRIMARY")
+            .order_by(PatientDiagnosis.created_at.desc())
+            .first()
+        )
+        primary_dx = ""
+        if primary_dx_row:
+            primary_dx = primary_dx_row.display_name or primary_dx_row.diagnosis_description or ""
+        if not primary_dx and patient and patient.primary_diagnosis:
+            primary_dx = patient.primary_diagnosis
+        if primary_dx:
+            lines.append(f"- Primary/terminal diagnosis: {primary_dx}")
+
+        # Secondary diagnoses / comorbidities: structured PatientDiagnosis
+        # rows first, falling back to the RNICA form_data lists (same
+        # flattening rules used elsewhere in the app for these two keys).
+        secondary_rows = (
+            db.query(PatientDiagnosis)
+            .filter(
+                PatientDiagnosis.patient_id == patient_id,
+                PatientDiagnosis.diagnosis_type.in_(["SECONDARY", "COMORBIDITY"]),
+            )
+            .order_by(PatientDiagnosis.created_at.desc())
+            .limit(10)
+            .all()
+        )
+        comorbidities = [
+            (row.display_name or row.diagnosis_description or "").strip()
+            for row in secondary_rows
+            if (row.display_name or row.diagnosis_description)
+        ]
+        if not comorbidities:
+            assessment = (
+                db.query(RnicaAssessment)
+                .filter(RnicaAssessment.patient_id == patient_id, RnicaAssessment.assessment_type == "RNICA")
+                .order_by(RnicaAssessment.created_at.desc())
+                .first()
+            )
+            if assessment and isinstance(assessment.form_data, dict):
+                diagnoses_section = assessment.form_data.get("diagnoses") or {}
+                raw_list = list(diagnoses_section.get("secondaryDiagnoses") or []) + list(
+                    diagnoses_section.get("comorbidities") or []
+                )
+                for item in raw_list:
+                    if isinstance(item, str) and item.strip():
+                        comorbidities.append(item.strip())
+                    elif isinstance(item, dict):
+                        text = (item.get("description") or item.get("name") or item.get("label") or "").strip()
+                        if text:
+                            comorbidities.append(text)
+        comorbidities = [c for c in dict.fromkeys(comorbidities) if c][:8]
+        if comorbidities:
+            lines.append(f"- Comorbidities: {', '.join(comorbidities)}")
+
+        # Decision maker / DPOA: PatientContact role first, facesheet
+        # responsible-party name as fallback.
+        decision_maker_contact = (
+            db.query(PatientContact)
+            .filter(
+                PatientContact.patient_id == patient_id,
+                PatientContact.role.in_(["DPOA", "DECISION_MAKER", "HEALTHCARE_AGENT"]),
+            )
+            .order_by(PatientContact.created_at.desc())
+            .first()
+        )
+        decision_maker = ""
+        if decision_maker_contact and decision_maker_contact.name:
+            role_label = (decision_maker_contact.role or "").replace("_", " ").title()
+            decision_maker = f"{decision_maker_contact.name} ({role_label})"
+        elif facesheet and facesheet.responsible_party_name:
+            decision_maker = facesheet.responsible_party_name
+        if decision_maker:
+            lines.append(f"- Decision maker / DPOA who signed consent: {decision_maker}")
+
+        # Certifying/admitting MD: initial Certification.signed_by_user_id
+        # first (most authoritative -- the physician who actually certified
+        # the terminal prognosis), falling back to facesheet attending/
+        # medical director name fields.
+        certifying_md = ""
+        cert_row = (
+            db.query(Certification)
+            .filter(Certification.patient_id == patient_id, Certification.cert_type == "INITIAL")
+            .order_by(Certification.created_at.desc())
+            .first()
+        )
+        if cert_row and cert_row.signed_by_user_id:
+            user = db.query(User).filter(User.id == cert_row.signed_by_user_id).one_or_none()
+            if user:
+                certifying_md = getattr(user, "full_name", None) or " ".join(
+                    p for p in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if p
+                )
+        if not certifying_md and facesheet:
+            certifying_md = facesheet.attending_physician_name or facesheet.medical_director_name or ""
+        if certifying_md:
+            lines.append(f"- Certifying/admitting physician: {certifying_md}")
+
+        if not lines:
+            return ""
+        return "\n".join(lines)
+    except Exception:
+        logger.exception("note_draft_service: failed to build admission narrative context")
+        return ""
 
 
 def build_harvested_findings_context(db: Any, patient_id: Any, *, limit: int = 60) -> str:

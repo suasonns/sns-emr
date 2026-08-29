@@ -66,7 +66,7 @@ import {
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
 } from "../api/icaAssessments";
-import { applyStructuredFindings, applyAllNonConflicting } from "./rn-ica/applyStructuredFindings";
+import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -926,8 +926,8 @@ const api = {
     assessmentSubtype
       ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
       : getRnicaAssessmentByPatient(patientId),
-  updateRNICAAssessment: (assessmentId, formData) =>
-    updateRnicaAssessmentOffline(assessmentId, formData),
+  updateRNICAAssessment: (assessmentId, formData, fieldProvenance) =>
+    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
   deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
@@ -10046,17 +10046,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           signal.structured_findings || []
         );
 
-        // Persist the field values durably BEFORE marking the source signal
-        // "APPLIED" (reviewed/consumed). These two writes must land
-        // together: relying on the 30s autosave timer to eventually notice
-        // the local `formData` change was the root cause of signals being
-        // marked applied while their destination fields silently never
-        // reached the saved chart (lost on tab close/nav/reload). If this
-        // save fails, we throw before marking anything applied or touching
+        const provenanceEntries = appliedFields.map((f) => ({
+          section: f.section,
+          path: f.path,
+          value: f.value,
+          concept_code: f.concept_code,
+          source_type: signal.source_type,
+          source_excerpt: signal.original_text_excerpt,
+          recorded_at: signal.recorded_at,
+          confidence: f.finding?.confidence,
+          signal_id: signal.id,
+        }));
+        const nextProvenance =
+          provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+
+        // Persist the field values AND their provenance durably BEFORE
+        // marking the source signal "APPLIED" (reviewed/consumed). These
+        // writes must land together: relying on the 30s autosave timer to
+        // eventually notice the local `formData` change was the root cause
+        // of signals being marked applied while their destination fields
+        // silently never reached the saved chart (lost on tab close/nav/
+        // reload). Persisting fieldProvenance in this same call (not just
+        // React state) is what lets the RN still see WHY a field was
+        // populated after a refresh, logout, or reconnect. If this save
+        // fails, we throw before marking anything applied or touching
         // visible state, so the RN can safely retry with no data loss.
         let persistedAssessmentId = assessmentId;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10069,19 +10086,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         markPersisted(nextFormData, persistedAssessmentId);
         setFormData(nextFormData);
 
-        if (appliedFields.length > 0) {
-          const provenanceEntries = appliedFields.map((f) => ({
-            section: f.section,
-            path: f.path,
-            value: f.value,
-            concept_code: f.concept_code,
-            source_type: signal.source_type,
-            source_excerpt: signal.original_text_excerpt,
-            recorded_at: signal.recorded_at,
-            confidence: f.finding?.confidence,
-            signal_id: signal.id,
-          }));
-          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+        if (provenanceEntries.length > 0) {
+          setStructuredFieldProvenance(nextProvenance);
         }
         if (conflicts.length > 0) {
           const conflictEntries = conflicts.map((c) => ({
@@ -10130,7 +10136,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     // isOngoing/assessmentType are only read on the rare "no assessmentId
     // yet" create-path, so omitting them from deps carries no meaningful
     // staleness risk in practice.
-    [formData, assessmentId, patientId, setAssessmentId]
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
   );
 
   const handleDismissStructuredSignal = useCallback(async (signal) => {
@@ -10152,6 +10158,162 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       setStructuredFindingsBusyId(null);
     }
   }, []);
+
+  // --- AI symptom_severity insertion (from a visit recording's note draft)
+  // --------------------------------------------------------------------
+  // Maps the 6 HOPE J2051 symptom_severity keys note_draft_service.py
+  // produces (pain, shortnessOfBreath, nausea, vomiting, diarrhea,
+  // constipation, each "0"-"3") onto the actual RNICA fields those same
+  // symptoms are graded on elsewhere in this form (pain.painSeverityCategory
+  // is numeric "0"-"3"; respiratory.sobSeverity and the GI fields use the
+  // None/Mild/Moderate/Severe words) -- same blank-only-write +
+  // durable-provenance-persist contract as handleApplyStructuredSignal
+  // above, so an AI-suggested severity never overwrites an RN's own entry
+  // and always survives refresh/logout/reconnect. Returns the list of
+  // symptom keys actually written (for the calling VisitRecorderCard button
+  // to show which suggestions were applied vs. already blocked by an
+  // existing RN entry).
+  const SEVERITY_WORD_BY_NUMBER = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
+  const handleInsertAiSymptomSeverity = useCallback(
+    async (symptomSeverity, sourceRecordingId) => {
+      if (!symptomSeverity || Object.keys(symptomSeverity).length === 0) return [];
+
+      const writes = []; // { section, path, value, symptomKey }
+      const painVal = symptomSeverity.pain;
+      if (painVal && !formData.pain?.painSeverityCategory) {
+        writes.push({ section: "pain", path: "painSeverityCategory", value: painVal, symptomKey: "pain" });
+      }
+      const sobVal = symptomSeverity.shortnessOfBreath;
+      if (sobVal && !formData.respiratory?.sobSeverity) {
+        writes.push({
+          section: "respiratory",
+          path: "sobSeverity",
+          value: SEVERITY_WORD_BY_NUMBER[sobVal] || sobVal,
+          symptomKey: "shortnessOfBreath",
+        });
+      }
+      for (const giKey of ["nausea", "vomiting", "diarrhea", "constipation"]) {
+        const val = symptomSeverity[giKey];
+        if (val && !formData.gastrointestinal?.[giKey]) {
+          writes.push({
+            section: "gastrointestinal",
+            path: giKey,
+            value: SEVERITY_WORD_BY_NUMBER[val] || val,
+            symptomKey: giKey,
+          });
+        }
+      }
+
+      if (writes.length === 0) return [];
+
+      let nextFormData = formData;
+      for (const w of writes) {
+        nextFormData = {
+          ...nextFormData,
+          [w.section]: { ...nextFormData[w.section], [w.path]: w.value },
+        };
+      }
+
+      const provenanceEntries = writes.map((w) => ({
+        section: w.section,
+        path: w.path,
+        value: w.value,
+        concept_code: `AI_SYMPTOM_SEVERITY_${w.symptomKey.toUpperCase()}`,
+        source_type: "TRANSCRIPT",
+        source_excerpt: `AI-suggested HOPE J2051 severity from visit recording ${sourceRecordingId}`,
+        recorded_at: new Date().toISOString(),
+        confidence: null,
+        signal_id: `visit_recording:${sourceRecordingId}`,
+      }));
+      const nextProvenance = [...structuredFieldProvenance, ...provenanceEntries];
+
+      try {
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+        setStructuredFieldProvenance(nextProvenance);
+        return writes.map((w) => w.symptomKey);
+      } catch (err) {
+        console.error("Insert AI symptom severity error:", err);
+        setStructuredFindingsError(
+          err instanceof Error ? err.message : "Unable to insert AI-suggested symptom severity."
+        );
+        return [];
+      }
+    },
+    // Same TDZ caveat as handleApplyStructuredSignal above: isOngoing/
+    // assessmentType/markPersisted are declared later in this component.
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
+  );
+
+  // --- AI narrative-draft insertion (from a visit recording's note draft)
+  // --------------------------------------------------------------------
+  // Same blank-only-write + durable-provenance-persist contract as
+  // handleInsertAiSymptomSeverity above: never overwrites an RN's own
+  // Clinical Narrative entry. Returns true if the narrative was written,
+  // false if a narrative already existed (so the calling VisitRecorderCard
+  // button can tell the RN their existing text was preserved).
+  const handleInsertAiNarrative = useCallback(
+    async (narrativeText, sourceRecordingId) => {
+      if (!narrativeText || !narrativeText.trim()) return false;
+      if (formData.finalization?.clinicalNarrative) return false;
+
+      const nextFormData = {
+        ...formData,
+        finalization: { ...formData.finalization, clinicalNarrative: narrativeText },
+      };
+
+      const provenanceEntry = {
+        section: "finalization",
+        path: "clinicalNarrative",
+        value: narrativeText,
+        concept_code: "AI_NOTE_DRAFT_NARRATIVE",
+        source_type: "TRANSCRIPT",
+        source_excerpt: `AI-generated note draft narrative from visit recording ${sourceRecordingId}`,
+        recorded_at: new Date().toISOString(),
+        confidence: null,
+        signal_id: `visit_recording:${sourceRecordingId}`,
+      };
+      const nextProvenance = [...structuredFieldProvenance, provenanceEntry];
+
+      try {
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+        setStructuredFieldProvenance(nextProvenance);
+        return true;
+      } catch (err) {
+        console.error("Insert AI narrative draft error:", err);
+        setStructuredFindingsError(
+          err instanceof Error ? err.message : "Unable to insert AI-generated note draft into Clinical Narrative."
+        );
+        return false;
+      }
+    },
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
+  );
 
   // --- Bulk actions: "Apply All Non-Conflicting" / "Apply Selected" /
   // "Dismiss Selected" / "Dismiss All" -------------------------------------
@@ -10203,29 +10365,6 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return;
         }
 
-        // Persist the merged field values durably BEFORE marking any signal
-        // "APPLIED". This must land before the review-status write below --
-        // otherwise a signal can be permanently marked consumed while its
-        // fields only ever existed in this tab's memory, silently lost on
-        // tab close/navigation/reload (the exact gap that produced the
-        // "57 populated in the UI, 21 populated in the DB" discrepancy).
-        // If this save fails we throw here, before touching any visible
-        // state or marking anything applied, so the RN can safely retry.
-        let persistedAssessmentId = assessmentId;
-        if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData);
-        } else {
-          const result = await api.saveRNICAAssessment(
-            patientId,
-            nextFormData,
-            isOngoing ? assessmentType : undefined
-          );
-          persistedAssessmentId = result.assessmentId;
-          setAssessmentId(persistedAssessmentId);
-        }
-        markPersisted(nextFormData, persistedAssessmentId);
-        setFormData(nextFormData);
-
         const provenanceEntries = [];
         for (const signal of targetSignals) {
           if (!appliedSignalIds.includes(signal.id)) continue;
@@ -10244,8 +10383,37 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             });
           }
         }
+        const nextProvenance =
+          provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+
+        // Persist the merged field values AND their provenance durably
+        // BEFORE marking any signal "APPLIED". This must land before the
+        // review-status write below -- otherwise a signal can be
+        // permanently marked consumed while its fields (and the record of
+        // why they were populated) only ever existed in this tab's memory,
+        // silently lost on tab close/navigation/reload/logout (the exact
+        // gap that produced the "57 populated in the UI, 21 populated in
+        // the DB" discrepancy, and the analogous gap where provenance
+        // vanished on refresh even though the fields themselves persisted).
+        // If this save fails we throw here, before touching any visible
+        // state or marking anything applied, so the RN can safely retry.
+        let persistedAssessmentId = assessmentId;
+        if (persistedAssessmentId) {
+          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+        } else {
+          const result = await api.saveRNICAAssessment(
+            patientId,
+            nextFormData,
+            isOngoing ? assessmentType : undefined
+          );
+          persistedAssessmentId = result.assessmentId;
+          setAssessmentId(persistedAssessmentId);
+        }
+        markPersisted(nextFormData, persistedAssessmentId);
+        setFormData(nextFormData);
+
         if (provenanceEntries.length > 0) {
-          setStructuredFieldProvenance((prev) => [...prev, ...provenanceEntries]);
+          setStructuredFieldProvenance(nextProvenance);
         }
 
         await batchReviewHarvestedSignalsOffline(appliedSignalIds, "APPLIED", { reason: reasonLabel });
@@ -10257,10 +10425,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return next;
         });
 
-        if (skippedSignalIds.length > 0) {
+        if (skippedConflicts.length > 0) {
+          // A signal can land in `appliedSignalIds` (its non-conflicting
+          // findings were written) while STILL producing conflicts for
+          // its other bundled findings -- e.g. a new wound mention and an
+          // unrelated already-set duplicate finding harvested together.
+          // Those conflicts must always reach the RN review queue,
+          // regardless of whether the signal itself ended up fully
+          // skipped or partially applied.
           setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
           setStructuredFindingsError(
-            `Applied ${appliedSignalIds.length} non-conflicting signal(s). ${skippedSignalIds.length} signal(s) had a conflicting field and still need individual review.`
+            `Applied ${appliedSignalIds.length} signal(s). ${skippedConflicts.length} field(s) across ${skippedSignalIds.length} fully-conflicting signal(s) (plus any partially-applied signals) still need individual review.`
           );
         }
       } catch (err) {
@@ -10277,7 +10452,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     // safely read in the body (deferred execution). markPersisted is
     // permanently stable-identity; isOngoing/assessmentType only affect the
     // rare "no assessmentId yet" create-path.
-    [formData, assessmentId, patientId, setAssessmentId]
+    [formData, assessmentId, patientId, setAssessmentId, structuredFieldProvenance]
   );
 
   const handleApplyAllNonConflicting = useCallback(() => {
@@ -10673,6 +10848,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setFormData(JSON.parse(JSON.stringify(INITIAL_FORM)));
           setIntelligence(null);
           setIntelligenceError("");
+          setStructuredFieldProvenance([]);
           return null;
         }
         if (data.formData) {
@@ -10680,6 +10856,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setFormData(merged);
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
+        // Rehydrate applied-field provenance from the server so an RN can
+        // still see why a field was populated after a refresh, logout, or
+        // reconnect -- not only within the same browser session the Apply
+        // happened in.
+        setStructuredFieldProvenance(Array.isArray(data.fieldProvenance) ? data.fieldProvenance : []);
         setLocked(!!data.locked);
         setLockedAt(data.lockedAt || null);
         return data;
@@ -10933,6 +11114,57 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     [sectionCompletionStates]
   );
 
+  // Which formData sections have at least one pending (not yet applied or
+  // dismissed) structured finding aimed at them -- computed WITHOUT
+  // requiring an apply pass, so this stays accurate the instant a signal
+  // arrives, not only after the RN clicks Apply. Keyed by formSection
+  // (e.g. "pain"), since that's what CONCEPT_REGISTRY writes target, not
+  // by the sidebar route key.
+  const pendingReviewFormSections = useMemo(() => {
+    const counts = {};
+    for (const signal of pendingStructuredSignals) {
+      const sections = getPendingFindingTargetSections(signal.structured_findings || []);
+      sections.forEach((section) => {
+        counts[section] = (counts[section] || 0) + 1;
+      });
+    }
+    return counts;
+  }, [pendingStructuredSignals]);
+
+  // Four-stage section status (per the RNICA Phase 4 certification
+  // requirement): Not Started / Partially Populated / Ready for RN Review
+  // / Complete. "Ready for RN Review" takes priority over a documentation
+  // ratio that would otherwise read "Complete" -- new AI-suggested
+  // findings still awaiting Apply/Dismiss mean the section isn't truly
+  // settled yet, even if it already has enough manually-documented fields
+  // to clear the completion threshold.
+  const sectionStatuses = useMemo(() => {
+    const statuses = {};
+    routes.forEach((route) => {
+      const completion = sectionCompletionStates[route.key];
+      const pendingCount = pendingReviewFormSections[route.formSection] || 0;
+      let status;
+      if (pendingCount > 0) {
+        status = "ready_for_review";
+      } else if (!completion || completion.status === "not_started") {
+        status = "not_started";
+      } else if (completion.status === "complete") {
+        status = "complete";
+      } else {
+        status = "partially_populated";
+      }
+      statuses[route.key] = { status, pendingCount, completion };
+    });
+    return statuses;
+  }, [routes, sectionCompletionStates, pendingReviewFormSections]);
+
+  const SECTION_STATUS_LABELS = {
+    not_started: { label: "Not Started", color: "gray" },
+    partially_populated: { label: "Partially Populated", color: "warning" },
+    ready_for_review: { label: "Ready for RN Review", color: "teal" },
+    complete: { label: "Complete", color: "success" },
+  };
+
   useEffect(() => {
     if (!routes.some((route) => route.key === activeSection)) {
       setActiveSection(routes[0]?.key || "demographics");
@@ -10980,8 +11212,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const config = SECTION_CONFIGS[route.formSection];
     const sectionData = formData[route.formSection];
     const open = isSectionOpen(route.key);
-    const isComplete = completedSections.includes(route.key);
-    const isInProgress = inProgressSections.includes(route.key);
+    const statusEntry = sectionStatuses[route.key] || { status: "not_started", pendingCount: 0 };
+    const statusMeta = SECTION_STATUS_LABELS[statusEntry.status];
+    const statusColor = COLORS[statusMeta.color] || COLORS.gray;
     const cfg = sidebarConfigItems.find((s) => s.key === route.key);
 
     return (
@@ -11004,12 +11237,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             <span style={{ fontSize: 12, color: COLORS.gray, width: 14, display: "inline-block" }}>{open ? "▾" : "▸"}</span>
             <span style={{ fontSize: 14, fontWeight: 700 }}>{cfg?.label || route.key}</span>
             {cfg?.cdphRequired && <span style={{ fontSize: 10, fontWeight: 700, color: COLORS.teal }}>CDPH</span>}
-            {isComplete && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.success }}>&#10003; Complete</span>}
-            {!isComplete && isInProgress && <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.warning || "#b45309" }}>&#9679; In Progress</span>}
+            {statusEntry.status === "complete" && <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>&#10003; Complete</span>}
+            {statusEntry.status === "ready_for_review" && (
+              <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>
+                &#9679; Ready for RN Review{statusEntry.pendingCount > 1 ? ` (${statusEntry.pendingCount})` : ""}
+              </span>
+            )}
+            {statusEntry.status === "partially_populated" && <span style={{ fontSize: 11, fontWeight: 700, color: statusColor }}>&#9679; Partially Populated</span>}
           </div>
           {!open && (
             <span style={{ fontSize: 11, color: COLORS.gray }}>
-              {isComplete ? "Documented — tap to review" : isInProgress ? "Partially documented — tap to continue" : "Not started — tap to document"}
+              {statusEntry.status === "complete"
+                ? "Documented — tap to review"
+                : statusEntry.status === "ready_for_review"
+                  ? "AI findings awaiting review — tap to review"
+                  : statusEntry.status === "partially_populated"
+                    ? "Partially documented — tap to continue"
+                    : "Not started — tap to document"}
             </span>
           )}
         </div>
@@ -11104,6 +11348,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
+              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
+              onInsertNarrative={handleInsertAiNarrative}
             />
           )}
           alerts={(
@@ -11322,6 +11568,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
+              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
+              onInsertNarrative={handleInsertAiNarrative}
             />
             {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>

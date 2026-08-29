@@ -52,6 +52,43 @@ def test_registry_covers_all_eight_requested_sections():
         "skin",
         "nutrition",
         "musculoskeletal",
+        # Coverage Expansion (2026-08-28): GI and GU were added as their own
+        # sections, in addition to closing remaining gaps within the
+        # original eight (ADLs/functional status under musculoskeletal,
+        # dentures under nutrition, pressure-relief measures under skin,
+        # oxygen hours/SpO2 under respiratory, HOPE BIMS/sleep under
+        # neurological). See RNICA Coverage Expansion Matrix.
+        "gastrointestinal",
+        "genitourinary",
+        # Coverage Expansion Phase 2 (2026-08-28): Vitals, Pain, and Endocrine
+        # were previously 0% mapped whole sections despite being bounded
+        # numeric/enum facts routinely stated in H&P/referral text -- added
+        # as their own sections per the RNICA Completion Matrix follow-up.
+        "vitals",
+        "pain",
+        "endocrine",
+        # Coverage Expansion Phase 3 (2026-08-28): full gap-analysis matrix
+        # sweep -- safety, psychosocial, spiritual, bereavement, personal
+        # care, and imminent death were previously 0% mapped; closed every
+        # legitimate documented-fact gap while excluding RN/discipline
+        # judgment calls (fall-risk/bereavement-risk *scoring*, coping
+        # assessment, intervention/referral plans, prognosis judgment).
+        "safety",
+        "psychosocial",
+        "spiritual",
+        "bereavement",
+        "personalCare",
+        "imminentDeath",
+        # Coverage Expansion Phase 3 cont'd: teachingNeeds learner-
+        # characteristic facts (who the learner is, how they learn, and
+        # documented barriers) -- this-visit teaching delivered/response is
+        # excluded as a workflow record, not an admission fact.
+        "teachingNeeds",
+        # Coverage Expansion Phase 3 completion: CDPH-required Caregiver
+        # Willingness & Capability Evaluation lives under
+        # demographics.pcg.caregiverEvaluation, not its own top-level
+        # section -- evaluationNotes (unbounded free text) is excluded.
+        "demographics",
     }
 
 
@@ -449,4 +486,286 @@ def test_multi_site_split_does_not_affect_non_free_text_concepts():
     findings = validate_findings(raw, source_type="TRANSCRIPT", source_record_id="rec-5")
     assert len(findings) == 1
     assert findings[0].value is True
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Symptom Impact (HOPE J2051) cross-writes
+# ---------------------------------------------------------------------------
+
+def test_pain_severity_cross_writes_symptom_impact_with_0_to_3_vocabulary():
+    mapping = CONCEPT_REGISTRY["PAIN_SEVERITY_MODERATE"]
+    symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+    assert len(symptom_writes) == 1
+    assert symptom_writes[0].path == "pain"
+    assert symptom_writes[0].value == "2"
+
+
+def test_sob_severity_cross_writes_symptom_impact_but_dyspnea_at_rest_does_not():
+    mapping = CONCEPT_REGISTRY["RESP_SOB_SEVERE"]
+    symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+    assert len(symptom_writes) == 1
+    assert symptom_writes[0].path == "shortnessOfBreath"
+    assert symptom_writes[0].value == "3"
+    # RESP_DYSPNEA_AT_REST is an exertion-level fact, not a clean 0-3 severity
+    # -- it must NOT cross-write symptomImpact.
+    at_rest = CONCEPT_REGISTRY["RESP_DYSPNEA_AT_REST"]
+    assert not any(fw.section == "symptomImpact" for fw in at_rest.writes)
+
+
+def test_gi_symptom_severities_cross_write_symptom_impact_with_0_to_3_vocabulary():
+    cases = [
+        ("GI_NAUSEA_MILD", "nausea", "1"),
+        ("GI_VOMITING_SEVERE", "vomiting", "3"),
+        ("GI_DIARRHEA_NONE", "diarrhea", "0"),
+        ("GI_CONSTIPATION_MODERATE", "constipation", "2"),
+    ]
+    for concept_code, path, expected_value in cases:
+        mapping = CONCEPT_REGISTRY[concept_code]
+        symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+        assert len(symptom_writes) == 1, concept_code
+        assert symptom_writes[0].path == path
+        assert symptom_writes[0].value == expected_value
+        # The original word-vocabulary section write must still be intact.
+        own_section_writes = [fw for fw in mapping.writes if fw.section is None]
+        assert any(fw.path == path for fw in own_section_writes)
+
+
+def test_new_anxiety_and_agitation_severity_concepts_write_only_symptom_impact():
+    for code, path, value in [
+        ("SYMPTOM_ANXIETY_SEVERITY_NONE", "anxiety", "0"),
+        ("SYMPTOM_ANXIETY_SEVERITY_SEVERE", "anxiety", "3"),
+        ("SYMPTOM_AGITATION_SEVERITY_MILD", "agitation", "1"),
+        ("SYMPTOM_AGITATION_SEVERITY_MODERATE", "agitation", "2"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert len(mapping.writes) == 1
+        assert mapping.writes[0].section == "symptomImpact"
+        assert mapping.writes[0].path == path
+        assert mapping.writes[0].value == value
+
+
+def test_symptom_impact_severity_findings_validate_and_apply_when_current():
+    raw = [
+        _raw("PAIN_SEVERITY_SEVERE"),
+        _raw("SYMPTOM_ANXIETY_SEVERITY_MILD"),
+        _raw("SYMPTOM_AGITATION_SEVERITY_NONE"),
+        _raw("GI_NAUSEA_MODERATE"),
+    ]
+    findings = validate_findings(raw, source_type="TRANSCRIPT", source_record_id="rec-6")
+    assert len(findings) == 4
+    assert all(f.assertion_status == "CURRENT" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Skin/Wounds (15 fields, wired onto the existing
+# wound draft row rather than fabricating a second row per attribute)
+# ---------------------------------------------------------------------------
+
+def test_wound_sub_field_concepts_use_set_row_field_not_push_draft_row():
+    # Every new wound attribute concept must enrich the SAME row
+    # SKIN_WOUND_PRESENT created -- never create a second row for one wound.
+    enum_flag_codes = [
+        "SKIN_WOUND_STAGE_2", "SKIN_WOUND_TYPE_PRESSURE_INJURY",
+        "SKIN_WOUND_DRAINAGE_MODERATE", "SKIN_WOUND_ODOR_FOUL",
+        "SKIN_WOUND_PRESSURE_INJURY_FLAG", "SKIN_WOUND_SKIN_TEAR_FLAG",
+        "SKIN_WOUND_SURGICAL_FLAG", "SKIN_WOUND_NONHEALING_FLAG",
+    ]
+    for code in enum_flag_codes:
+        mapping = CONCEPT_REGISTRY[code]
+        assert len(mapping.writes) == 1, code
+        assert mapping.writes[0].op == "set_row_field", code
+        assert mapping.writes[0].path.startswith("wounds[]."), code
+
+
+def test_wound_measurement_and_free_text_concepts_use_bounded_row_value_slots():
+    for code, path, kind in [
+        ("SKIN_WOUND_LENGTH_CM", "wounds[].length", "numeric"),
+        ("SKIN_WOUND_WIDTH_CM", "wounds[].width", "numeric"),
+        ("SKIN_WOUND_DEPTH_CM", "wounds[].depth", "numeric"),
+        ("SKIN_WOUND_DRESSING", "wounds[].dressing", "free_text_bounded"),
+        ("SKIN_WOUND_DRESSING_FREQUENCY", "wounds[].dressingFrequency", "free_text_bounded"),
+        ("SKIN_WOUND_CURRENT_TREATMENT", "wounds[].currentTreatment", "free_text_bounded"),
+        ("SKIN_WOUND_PERIWOUND_CONDITION", "wounds[].periwoundCondition", "free_text_bounded"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.writes == (), code  # no fixed FieldWrite -- value comes from the finding itself
+        assert mapping.value_slot is not None, code
+        assert mapping.value_slot.kind == kind, code
+        assert mapping.value_slot.path == path, code
+
+
+def test_wound_stage_enum_covers_all_clinically_assertable_cms_stages():
+    # N/A is intentionally excluded -- never an AI-asserted value.
+    stage_codes = {c for c in CONCEPT_REGISTRY if c.startswith("SKIN_WOUND_STAGE_")}
+    assert stage_codes == {
+        "SKIN_WOUND_STAGE_1", "SKIN_WOUND_STAGE_2", "SKIN_WOUND_STAGE_3",
+        "SKIN_WOUND_STAGE_4", "SKIN_WOUND_STAGE_UNSTAGEABLE", "SKIN_WOUND_STAGE_DTI",
+    }
+
+
+def test_wound_bounded_measurements_respect_clinical_ranges():
+    length = CONCEPT_REGISTRY["SKIN_WOUND_LENGTH_CM"].value_slot
+    assert length.min_value == 0
+    assert length.max_value == 30
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Genitourinary (7 fields) -- catheter detail
+# ---------------------------------------------------------------------------
+
+def test_gu_catheter_free_text_fields_are_bounded_not_fabricated_enums():
+    # catheter.size and irrigation.* are plain free-text inputs in the real
+    # RNICA.jsx form -- must not be reinvented as a closed enum.
+    for code, path, max_len in [
+        ("GU_CATHETER_SIZE", "catheter.size", 20),
+        ("GU_CATHETER_IRRIGATION_SOLUTION", "catheter.irrigation.solution", 40),
+        ("GU_CATHETER_IRRIGATION_FREQUENCY", "catheter.irrigation.frequency", 40),
+        ("GU_CATHETER_IRRIGATION_DURATION", "catheter.irrigation.duration", 40),
+        ("GU_CATHETER_CARE_NOTES", "catheterCare", 250),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+        # Also flags catheter.present, since documenting catheter detail
+        # implies a catheter is present.
+        assert any(fw.path == "catheter.present" for fw in mapping.writes), code
+
+
+def test_gu_catheter_dates_use_date_bounded_value_slot():
+    for code, path in [
+        ("GU_CATHETER_INSERTION_DATE", "catheter.insertionDate"),
+        ("GU_CATHETER_LAST_CHANGE_DATE", "catheter.lastChangeDate"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "date_bounded", code
+        assert mapping.value_slot.path == path, code
+
+
+def test_date_bounded_accepts_valid_past_iso_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="2024-03-15")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-7")
+    assert len(findings) == 1
+    assert findings[0].value == "2024-03-15"
+
+
+def test_date_bounded_rejects_unparseable_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="March 2024")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-8")
+    assert findings == []
+
+
+def test_date_bounded_rejects_future_date():
+    raw = [_raw("GU_CATHETER_INSERTION_DATE", value="2099-01-01")]
+    findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-9")
+    assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Gastrointestinal (5 requested fields)
+#
+# Only 2 of the 5 needed new concepts. The other 3 required no new work:
+#   - continence: already covered by GI_BOWEL_STATUS_CONTINENT/INCONTINENT,
+#     which write the real rendered field (`bowelStatus`); the dead
+#     `formData.gastrointestinal.continence` path has no SECTION_CONFIGS
+#     entry and can't be reviewed by an RN, so it must never be targeted.
+#   - ostomy.condition / feedingTube.site: both dead INITIAL_FORM fields
+#     with no SECTION_CONFIGS entry -- intentionally excluded, not backlog.
+# ---------------------------------------------------------------------------
+
+def test_gi_abdominal_girth_and_bowel_frequency_are_bounded_free_text():
+    for code, path, max_len in [
+        ("GI_ABDOMINAL_GIRTH", "abdominalGirth", 20),
+        ("GI_BOWEL_FREQUENCY", "bowelFrequency", 40),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+        assert mapping.writes == (), code
+
+
+def test_gi_continence_is_already_covered_by_bowel_status_not_a_new_concept():
+    # There must be no GI_CONTINENCE_* concept -- continence is satisfied
+    # via the existing bowelStatus concepts, not a separate new field.
+    assert not any(code.startswith("GI_CONTINENCE") for code in CONCEPT_REGISTRY)
+    assert CONCEPT_REGISTRY["GI_BOWEL_STATUS_CONTINENT"].writes[0].path == "bowelStatus"
+    assert CONCEPT_REGISTRY["GI_BOWEL_STATUS_INCONTINENT"].writes[0].path == "bowelStatus"
+
+
+def test_gi_ostomy_condition_and_feeding_tube_site_are_not_registered_concepts():
+    # These are dead formData fields with no rendered UI -- must never be
+    # targeted by a concept (an RN could never see/review/sign them).
+    assert not any(code.startswith("GI_OSTOMY_CONDITION") for code in CONCEPT_REGISTRY)
+    assert not any(code.startswith("GI_FEEDING_TUBE_SITE") for code in CONCEPT_REGISTRY)
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Endocrine (3 fields)
+# ---------------------------------------------------------------------------
+
+def test_endo_insulin_type_and_dose_are_bounded_free_text():
+    for code, path, max_len in [
+        ("ENDO_INSULIN_TYPE", "diabetes.insulinType", 40),
+        ("ENDO_INSULIN_DOSE", "diabetes.insulinDose", 60),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+
+
+def test_endo_last_hba1c_date_is_date_bounded():
+    mapping = CONCEPT_REGISTRY["ENDO_LAST_HBA1C_DATE"]
+    assert mapping.value_slot.kind == "date_bounded"
+    assert mapping.value_slot.path == "diabetes.lastHbA1cDate"
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Nutrition (2 requested fields)
+#
+# Only 1 of 2 needed a new concept -- dentures.condition is a dead
+# INITIAL_FORM field with no SECTION_CONFIGS entry.
+# ---------------------------------------------------------------------------
+
+def test_nutrition_supplements_is_bounded_free_text():
+    mapping = CONCEPT_REGISTRY["NUTRITION_SUPPLEMENTS"]
+    assert mapping.value_slot.kind == "free_text_bounded"
+    assert mapping.value_slot.path == "nutritionalSupplements"
+    assert mapping.value_slot.max_len == 100
+
+
+def test_dentures_condition_is_not_a_registered_concept():
+    assert not any(code.startswith("NUTR_DENTURES_CONDITION") for code in CONCEPT_REGISTRY)
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Respiratory / MSK / Cardio (3 requested fields)
+#
+# Only 2 of 3 needed a new concept -- edema.pitting is a dead INITIAL_FORM
+# field with no SECTION_CONFIGS entry.
+# ---------------------------------------------------------------------------
+
+def test_ventilator_settings_and_fall_injuries_are_bounded_free_text():
+    for code, path, max_len in [
+        ("RESP_VENTILATOR_SETTINGS", "ventilator.ventilatorTypeAndSettings", 150),
+        ("MSK_FALL_INJURIES", "fallHistory.fallInjuries", 150),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+
+
+def test_edema_pitting_is_not_a_registered_concept():
+    assert not any(code.startswith("CV_EDEMA_PITTING") for code in CONCEPT_REGISTRY)
+
+
+def test_rnica_sprint_registry_reaches_799_concepts():
+    # Guards against silent regressions in the sprint total across all
+    # 7 sections (Symptom Impact 8, Skin/Wounds 15/32-codes, GU 7,
+    # GI 2-new-of-5, Endocrine 3, Nutrition 1-new-of-2,
+    # Respiratory/MSK/Cardio 2-new-of-3).
+    assert len(CONCEPT_REGISTRY) == 799
+
 

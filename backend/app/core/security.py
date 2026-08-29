@@ -25,6 +25,14 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")
 )
 
+# Refresh tokens outlive access tokens so a staff member mid-visit (e.g.
+# recording a long encounter) is never suddenly logged out with unsaved
+# work -- the frontend silently exchanges an expired access token for a
+# new one via POST /auth/refresh instead of hard-failing with a 401.
+REFRESH_TOKEN_EXPIRE_MINUTES = int(
+    os.getenv("REFRESH_TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7))  # 7 days
+)
+
 JWT_ISSUER = os.getenv("JWT_ISSUER", "sns-hospice-solutions")
 JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "sns-hospice-solutions-users")
 
@@ -156,6 +164,68 @@ def create_access_token(
         SECRET_KEY,
         algorithm=ALGORITHM,
     )
+
+
+def create_refresh_token(
+    *,
+    user_id: UUID,
+    role: str,
+    tenant_id: UUID,
+    email: Optional[str] = None,
+) -> str:
+    """Long-lived token whose ONLY purpose is exchanging for a new access
+    token via POST /auth/refresh. Never accepted by get_current_user
+    (typ != "access"), so it can't be used directly against clinical
+    endpoints even if intercepted from storage."""
+    _require_secret_key()
+
+    now = datetime.now(timezone.utc)
+    expire = now + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+
+    payload: Dict[str, Any] = {
+        "sub": str(user_id),
+        "tenant_id": str(tenant_id),
+        "role": str(role).strip().upper(),
+        "typ": "refresh",
+        "jti": str(uuid4()),
+        "iss": JWT_ISSUER,
+        "aud": JWT_AUDIENCE,
+        "iat": int(now.timestamp()),
+        "exp": int(expire.timestamp()),
+    }
+    if email:
+        payload["email"] = email
+
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decode_refresh_token(token: str) -> Dict[str, Any]:
+    """Decodes and validates a refresh token (typ == "refresh" only)."""
+    _require_secret_key()
+
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            audience=JWT_AUDIENCE,
+            issuer=JWT_ISSUER,
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if payload.get("typ") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    return payload
 
 
 def hash_password(password: str) -> str:

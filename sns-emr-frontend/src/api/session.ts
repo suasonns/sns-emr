@@ -1,4 +1,5 @@
 const AUTH_TOKEN_KEY = "sns-hospice-solutions-access-token";
+const REFRESH_TOKEN_KEY = "sns-hospice-solutions-refresh-token";
 const AUTH_USER_KEY = "sns-hospice-solutions-auth-user";
 
 export type SessionUser = {
@@ -24,6 +25,23 @@ export function setAccessToken(token: string): void {
 
 export function clearAccessToken(): void {
   localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+// Refresh token -- exchanged (via POST /auth/refresh, see api/client.ts's
+// response interceptor) for a new access token when the access token
+// expires, so a long clinical encounter is never suddenly logged out with
+// unsaved work (e.g. mid visit-recording). Never sent to any endpoint
+// except /auth/refresh itself.
+export function getRefreshToken(): string | null {
+  return localStorage.getItem(REFRESH_TOKEN_KEY);
+}
+
+export function setRefreshToken(token: string): void {
+  localStorage.setItem(REFRESH_TOKEN_KEY, token);
+}
+
+export function clearRefreshToken(): void {
+  localStorage.removeItem(REFRESH_TOKEN_KEY);
 }
 
 export function getCurrentUser(): SessionUser | null {

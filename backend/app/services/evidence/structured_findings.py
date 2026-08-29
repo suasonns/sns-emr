@@ -1,4 +1,4 @@
-"""Shared StructuredFinding contract for AI -> RNICA structured-field mapping.
+﻿"""Shared StructuredFinding contract for AI -> RNICA structured-field mapping.
 
 Both AI extraction pipelines (the document/note harvester in
 ai_extraction_service.py, and the visit-recording transcript drafter in
@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from typing import Any
 
 SOURCE_TYPES = {"TRANSCRIPT", "REFERRAL_HNP", "UPLOADED_DOCUMENT", "CLINICAL_NOTE"}
@@ -89,7 +90,7 @@ class ValueSlot:
     value_slot are pure presence facts -- `value` must be truthy to apply.
     """
 
-    kind: str  # "numeric" | "free_text_bounded"
+    kind: str  # "numeric" | "free_text_bounded" | "date_bounded"
     path: str  # dotted field path (relative to the concept's section) this parameter is written to
     min_value: float | None = None
     max_value: float | None = None
@@ -199,6 +200,9 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "CV_EDEMA_SEVERITY_2PLUS": ConceptMapping("CV_EDEMA_SEVERITY_2PLUS", "cardiovascular", "Edema, 2+", (_fw("edema.present", "Yes"), _fw("edema.severity", "2+"))),
     "CV_EDEMA_SEVERITY_3PLUS": ConceptMapping("CV_EDEMA_SEVERITY_3PLUS", "cardiovascular", "Edema, 3+", (_fw("edema.present", "Yes"), _fw("edema.severity", "3+"))),
     "CV_EDEMA_SEVERITY_4PLUS": ConceptMapping("CV_EDEMA_SEVERITY_4PLUS", "cardiovascular", "Edema, 4+", (_fw("edema.present", "Yes"), _fw("edema.severity", "4+"))),
+    # RNICA Completion Sprint (Respiratory/MSK/Cardio, 3 requested fields):
+    # edema.pitting -> EXCLUDED. Dead INITIAL_FORM field, no
+    # SECTION_CONFIGS entry (only edema.location/edema.severity render).
     "CV_CHEST_PAIN_PRESENT": ConceptMapping("CV_CHEST_PAIN_PRESENT", "cardiovascular", "Chest pain present", (_fw("chestPain.present", "Yes"),)),
     "CV_CHEST_PAIN_ABSENT": ConceptMapping("CV_CHEST_PAIN_ABSENT", "cardiovascular", "Chest pain explicitly denied", (_fw("chestPain.present", "No"),)),
     "CV_JVD_PRESENT": ConceptMapping("CV_JVD_PRESENT", "cardiovascular", "JVD present", (_fw("jvd", "Yes"),)),
@@ -225,10 +229,15 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "CV_HEART_FAILURE_ABSENT": ConceptMapping("CV_HEART_FAILURE_ABSENT", "cardiovascular", "Heart failure explicitly absent/ruled out", (_fw("heartFailurePresent", False),)),
 
     # ═══════════════════════════ RESPIRATORY ═══════════════════════════════
-    "RESP_SOB_NONE": ConceptMapping("RESP_SOB_NONE", "respiratory", "SOB explicitly denied", (_fw("sobSeverity", "None"),)),
-    "RESP_SOB_MILD": ConceptMapping("RESP_SOB_MILD", "respiratory", "SOB mild", (_fw("sobSeverity", "Mild"),)),
-    "RESP_SOB_MODERATE": ConceptMapping("RESP_SOB_MODERATE", "respiratory", "SOB moderate", (_fw("sobSeverity", "Moderate"),)),
-    "RESP_SOB_SEVERE": ConceptMapping("RESP_SOB_SEVERE", "respiratory", "SOB severe", (_fw("sobSeverity", "Severe"),)),
+    # RESP_SOB_NONE/MILD/MODERATE/SEVERE also cross-write symptomImpact.
+    # shortnessOfBreath (HOPE J2051B, 0-3 vocabulary) alongside the word-
+    # vocabulary respiratory.sobSeverity field. RESP_DYSPNEA_AT_REST is
+    # deliberately NOT cross-written -- "at rest" is a distinct exertion-
+    # level fact, not a clean 0-3 severity mapping.
+    "RESP_SOB_NONE": ConceptMapping("RESP_SOB_NONE", "respiratory", "SOB explicitly denied", (_fw("sobSeverity", "None"), _fw("shortnessOfBreath", "0", section="symptomImpact"))),
+    "RESP_SOB_MILD": ConceptMapping("RESP_SOB_MILD", "respiratory", "SOB mild", (_fw("sobSeverity", "Mild"), _fw("shortnessOfBreath", "1", section="symptomImpact"))),
+    "RESP_SOB_MODERATE": ConceptMapping("RESP_SOB_MODERATE", "respiratory", "SOB moderate", (_fw("sobSeverity", "Moderate"), _fw("shortnessOfBreath", "2", section="symptomImpact"))),
+    "RESP_SOB_SEVERE": ConceptMapping("RESP_SOB_SEVERE", "respiratory", "SOB severe", (_fw("sobSeverity", "Severe"), _fw("shortnessOfBreath", "3", section="symptomImpact"))),
     "RESP_DYSPNEA_AT_REST": ConceptMapping("RESP_DYSPNEA_AT_REST", "respiratory", "Dyspnea at rest", (_fw("sobSeverity", "At rest"), _fw("exertionLevel", "At rest"))),
     "RESP_DYSPNEA_MINIMAL_EXERTION": ConceptMapping("RESP_DYSPNEA_MINIMAL_EXERTION", "respiratory", "Dyspnea, minimal exertion", (_fw("exertionLevel", "Minimal exertion"),)),
     "RESP_DYSPNEA_MODERATE_EXERTION": ConceptMapping("RESP_DYSPNEA_MODERATE_EXERTION", "respiratory", "Dyspnea, moderate exertion", (_fw("exertionLevel", "Moderate exertion"),)),
@@ -286,6 +295,10 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "RESP_OXYGEN_PRN": ConceptMapping("RESP_OXYGEN_PRN", "respiratory", "Oxygen delivery PRN", (_fw("oxygenTherapy.inUse", True), _fw("oxygenTherapy.deliveryMode", "PRN"))),
     "RESP_VENTILATOR_SHORT_TERM": ConceptMapping("RESP_VENTILATOR_SHORT_TERM", "respiratory", "Short-term ventilator", (_fw("ventilator.shortTermVentilator", True),)),
     "RESP_VENTILATOR_LONG_TERM": ConceptMapping("RESP_VENTILATOR_LONG_TERM", "respiratory", "Long-term ventilator", (_fw("ventilator.longTermVentilator", True),)),
+    "RESP_VENTILATOR_SETTINGS": ConceptMapping(
+        "RESP_VENTILATOR_SETTINGS", "respiratory", "Ventilator type and settings",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="ventilator.ventilatorTypeAndSettings", max_len=150),
+    ),
 
     # ═══════════════════════════ NEUROLOGICAL ══════════════════════════════
     # motorDeficit/affectedSide/deficitType are new structured fields added
@@ -356,6 +369,19 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "NEURO_SEIZURE_HISTORY": ConceptMapping("NEURO_SEIZURE_HISTORY", "neurological", "Seizure history", (_fw("seizureHistory", True),)),
     "NEURO_DEMEANOR_ANXIETY": ConceptMapping("NEURO_DEMEANOR_ANXIETY", "neurological", "Anxiety", (_fw("symptomsDemeanor", "Anxiety", op="multi_add"),)),
     "NEURO_DEMEANOR_AGITATION": ConceptMapping("NEURO_DEMEANOR_AGITATION", "neurological", "Agitation", (_fw("symptomsDemeanor", "Agitation", op="multi_add"),)),
+    # Distinct from the demeanor flags above -- these represent an explicit
+    # graded severity (HOPE J2051C/H, 0-3 vocabulary), only accepted when the
+    # source states a specific level, never inferred from a bare presence
+    # flag. Both write only to symptomImpact (no other RNICA section models
+    # a graded current-anxiety/current-agitation severity today).
+    "SYMPTOM_ANXIETY_SEVERITY_NONE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_NONE", "neurological", "Anxiety severity: none (HOPE J2051C)", (_fw("anxiety", "0", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_MILD": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_MILD", "neurological", "Anxiety severity: mild (HOPE J2051C)", (_fw("anxiety", "1", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_MODERATE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_MODERATE", "neurological", "Anxiety severity: moderate (HOPE J2051C)", (_fw("anxiety", "2", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_SEVERE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_SEVERE", "neurological", "Anxiety severity: severe (HOPE J2051C)", (_fw("anxiety", "3", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_NONE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_NONE", "neurological", "Agitation severity: none (HOPE J2051H)", (_fw("agitation", "0", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_MILD": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_MILD", "neurological", "Agitation severity: mild (HOPE J2051H)", (_fw("agitation", "1", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_MODERATE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_MODERATE", "neurological", "Agitation severity: moderate (HOPE J2051H)", (_fw("agitation", "2", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_SEVERE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_SEVERE", "neurological", "Agitation severity: severe (HOPE J2051H)", (_fw("agitation", "3", section="symptomImpact"),)),
     "NEURO_DEMEANOR_PEACEFUL": ConceptMapping("NEURO_DEMEANOR_PEACEFUL", "neurological", "Peaceful", (_fw("symptomsDemeanor", "Peaceful", op="multi_add"),)),
     "NEURO_DEMEANOR_CONFUSED": ConceptMapping("NEURO_DEMEANOR_CONFUSED", "neurological", "Confused", (_fw("symptomsDemeanor", "Confused", op="multi_add"),)),
     "NEURO_DEMEANOR_RESTLESS": ConceptMapping("NEURO_DEMEANOR_RESTLESS", "neurological", "Restless", (_fw("symptomsDemeanor", "Restless", op="multi_add"),)),
@@ -394,6 +420,50 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].location", max_len=60),
         draft_row_field="location",
     ),
+    # RNICA Completion Sprint (Skin/Wounds, 15 fields): every field below
+    # enriches the SAME wound row SKIN_WOUND_PRESENT already created -- it
+    # must NEVER create a second row (op="set_row_field", not
+    # "push_draft_row"). Closed-vocabulary fields (stage/woundType/
+    # drainage/odor) use fixed field-writes per enum value, exactly like
+    # every other severity ladder in this registry. Free-text fields that
+    # are genuinely free text in the RN-facing form itself (dressing,
+    # dressingFrequency, currentTreatment, periwoundCondition) use the same
+    # bounded `free_text_bounded` value_slot pattern already proven safe
+    # for `location` -- never invented, always the clinician's own words.
+    # Numeric measurements (length/width/depth) use a bounded numeric
+    # value_slot -- clinician-stated-number only, never estimated.
+    "SKIN_WOUND_STAGE_1": ConceptMapping("SKIN_WOUND_STAGE_1", "skin", "Wound stage 1", (_fw("wounds[].stage", "Stage 1", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_2": ConceptMapping("SKIN_WOUND_STAGE_2", "skin", "Wound stage 2", (_fw("wounds[].stage", "Stage 2", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_3": ConceptMapping("SKIN_WOUND_STAGE_3", "skin", "Wound stage 3", (_fw("wounds[].stage", "Stage 3", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_4": ConceptMapping("SKIN_WOUND_STAGE_4", "skin", "Wound stage 4", (_fw("wounds[].stage", "Stage 4", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_UNSTAGEABLE": ConceptMapping("SKIN_WOUND_STAGE_UNSTAGEABLE", "skin", "Wound unstageable", (_fw("wounds[].stage", "Unstageable", op="set_row_field"),)),
+    "SKIN_WOUND_STAGE_DTI": ConceptMapping("SKIN_WOUND_STAGE_DTI", "skin", "Deep tissue injury", (_fw("wounds[].stage", "Deep Tissue Injury", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_PRESSURE_INJURY": ConceptMapping("SKIN_WOUND_TYPE_PRESSURE_INJURY", "skin", "Wound type: pressure injury", (_fw("wounds[].woundType", "Pressure injury", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_SKIN_TEAR": ConceptMapping("SKIN_WOUND_TYPE_SKIN_TEAR", "skin", "Wound type: skin tear", (_fw("wounds[].woundType", "Skin tear", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_SURGICAL": ConceptMapping("SKIN_WOUND_TYPE_SURGICAL", "skin", "Wound type: surgical wound", (_fw("wounds[].woundType", "Surgical wound", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_VENOUS_ULCER": ConceptMapping("SKIN_WOUND_TYPE_VENOUS_ULCER", "skin", "Wound type: venous ulcer", (_fw("wounds[].woundType", "Venous ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_ARTERIAL_ULCER": ConceptMapping("SKIN_WOUND_TYPE_ARTERIAL_ULCER", "skin", "Wound type: arterial ulcer", (_fw("wounds[].woundType", "Arterial ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_DIABETIC_ULCER": ConceptMapping("SKIN_WOUND_TYPE_DIABETIC_ULCER", "skin", "Wound type: diabetic ulcer", (_fw("wounds[].woundType", "Diabetic ulcer", op="set_row_field"),)),
+    "SKIN_WOUND_TYPE_NONHEALING": ConceptMapping("SKIN_WOUND_TYPE_NONHEALING", "skin", "Wound type: nonhealing wound", (_fw("wounds[].woundType", "Nonhealing wound", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_NONE": ConceptMapping("SKIN_WOUND_DRAINAGE_NONE", "skin", "Wound drainage: none", (_fw("wounds[].drainage", "None", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_SCANT": ConceptMapping("SKIN_WOUND_DRAINAGE_SCANT", "skin", "Wound drainage: scant", (_fw("wounds[].drainage", "Scant", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_SMALL": ConceptMapping("SKIN_WOUND_DRAINAGE_SMALL", "skin", "Wound drainage: small", (_fw("wounds[].drainage", "Small", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_MODERATE": ConceptMapping("SKIN_WOUND_DRAINAGE_MODERATE", "skin", "Wound drainage: moderate", (_fw("wounds[].drainage", "Moderate", op="set_row_field"),)),
+    "SKIN_WOUND_DRAINAGE_LARGE": ConceptMapping("SKIN_WOUND_DRAINAGE_LARGE", "skin", "Wound drainage: large", (_fw("wounds[].drainage", "Large", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_NONE": ConceptMapping("SKIN_WOUND_ODOR_NONE", "skin", "Wound odor: none", (_fw("wounds[].odor", "None", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_MILD": ConceptMapping("SKIN_WOUND_ODOR_MILD", "skin", "Wound odor: mild", (_fw("wounds[].odor", "Mild", op="set_row_field"),)),
+    "SKIN_WOUND_ODOR_FOUL": ConceptMapping("SKIN_WOUND_ODOR_FOUL", "skin", "Wound odor: foul", (_fw("wounds[].odor", "Foul", op="set_row_field"),)),
+    "SKIN_WOUND_PRESSURE_INJURY_FLAG": ConceptMapping("SKIN_WOUND_PRESSURE_INJURY_FLAG", "skin", "Wound is a pressure injury", (_fw("wounds[].presentAsPressureInjury", True, op="set_row_field"),)),
+    "SKIN_WOUND_SKIN_TEAR_FLAG": ConceptMapping("SKIN_WOUND_SKIN_TEAR_FLAG", "skin", "Wound is a skin tear", (_fw("wounds[].isSkinTear", True, op="set_row_field"),)),
+    "SKIN_WOUND_SURGICAL_FLAG": ConceptMapping("SKIN_WOUND_SURGICAL_FLAG", "skin", "Wound is a surgical wound", (_fw("wounds[].isSurgicalWound", True, op="set_row_field"),)),
+    "SKIN_WOUND_NONHEALING_FLAG": ConceptMapping("SKIN_WOUND_NONHEALING_FLAG", "skin", "Nonhealing wound", (_fw("wounds[].isNonhealingWound", True, op="set_row_field"),)),
+    "SKIN_WOUND_LENGTH_CM": ConceptMapping("SKIN_WOUND_LENGTH_CM", "skin", "Wound length (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].length", min_value=0, max_value=30)),
+    "SKIN_WOUND_WIDTH_CM": ConceptMapping("SKIN_WOUND_WIDTH_CM", "skin", "Wound width (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].width", min_value=0, max_value=30)),
+    "SKIN_WOUND_DEPTH_CM": ConceptMapping("SKIN_WOUND_DEPTH_CM", "skin", "Wound depth (cm)", (), value_slot=ValueSlot(kind="numeric", path="wounds[].depth", min_value=0, max_value=15)),
+    "SKIN_WOUND_DRESSING": ConceptMapping("SKIN_WOUND_DRESSING", "skin", "Wound dressing", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].dressing", max_len=80)),
+    "SKIN_WOUND_DRESSING_FREQUENCY": ConceptMapping("SKIN_WOUND_DRESSING_FREQUENCY", "skin", "Dressing change frequency", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].dressingFrequency", max_len=40)),
+    "SKIN_WOUND_CURRENT_TREATMENT": ConceptMapping("SKIN_WOUND_CURRENT_TREATMENT", "skin", "Current wound treatment", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].currentTreatment", max_len=120)),
+    "SKIN_WOUND_PERIWOUND_CONDITION": ConceptMapping("SKIN_WOUND_PERIWOUND_CONDITION", "skin", "Periwound skin condition", (), value_slot=ValueSlot(kind="free_text_bounded", path="wounds[].periwoundCondition", max_len=80)),
     "SKIN_STATUS_DRY": ConceptMapping("SKIN_STATUS_DRY", "skin", "Skin dry", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Dry", op="multi_add"))),
     "SKIN_STATUS_FRAGILE": ConceptMapping("SKIN_STATUS_FRAGILE", "skin", "Skin fragile", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Fragile", op="multi_add"))),
     "SKIN_STATUS_EDEMATOUS": ConceptMapping("SKIN_STATUS_EDEMATOUS", "skin", "Skin edematous", (_fw("skinConditionsPresent", True), _fw("skinStatus", "Edematous", op="multi_add"))),
@@ -477,6 +547,1377 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "MSK_PAIN_WITH_MOVEMENT_MILD": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MILD", "musculoskeletal", "Mild pain with movement", (_fw("painWithMovement", "Mild"),)),
     "MSK_PAIN_WITH_MOVEMENT_MODERATE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MODERATE", "musculoskeletal", "Moderate pain with movement", (_fw("painWithMovement", "Moderate"),)),
     "MSK_PAIN_WITH_MOVEMENT_SEVERE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_SEVERE", "musculoskeletal", "Severe pain with movement", (_fw("painWithMovement", "Severe"),)),
+
+    # ═══════════════════════════ MUSCULOSKELETAL (coverage expansion) ═══
+    "ADL_BATHING_INDEPENDENT": ConceptMapping(
+        "ADL_BATHING_INDEPENDENT", "musculoskeletal", "Bathing: Independent",
+        (_fw("adl.bathing", "0"),),
+    ),
+    "ADL_BATHING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_BATHING_SETUP_ASSIST_ONLY", "musculoskeletal", "Bathing: Setup assist only",
+        (_fw("adl.bathing", "1"),),
+    ),
+    "ADL_BATHING_SUPERVISION": ConceptMapping(
+        "ADL_BATHING_SUPERVISION", "musculoskeletal", "Bathing: Supervision",
+        (_fw("adl.bathing", "2"),),
+    ),
+    "ADL_BATHING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_BATHING_LIMITED_ASSISTANCE", "musculoskeletal", "Bathing: Limited assistance",
+        (_fw("adl.bathing", "3"),),
+    ),
+    "ADL_BATHING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_BATHING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Bathing: Extensive assistance",
+        (_fw("adl.bathing", "4"),),
+    ),
+    "ADL_BATHING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_BATHING_TOTAL_DEPENDENCE", "musculoskeletal", "Bathing: Total dependence",
+        (_fw("adl.bathing", "5"),),
+    ),
+    "ADL_DRESSING_INDEPENDENT": ConceptMapping(
+        "ADL_DRESSING_INDEPENDENT", "musculoskeletal", "Dressing: Independent",
+        (_fw("adl.dressing", "0"),),
+    ),
+    "ADL_DRESSING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_DRESSING_SETUP_ASSIST_ONLY", "musculoskeletal", "Dressing: Setup assist only",
+        (_fw("adl.dressing", "1"),),
+    ),
+    "ADL_DRESSING_SUPERVISION": ConceptMapping(
+        "ADL_DRESSING_SUPERVISION", "musculoskeletal", "Dressing: Supervision",
+        (_fw("adl.dressing", "2"),),
+    ),
+    "ADL_DRESSING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_DRESSING_LIMITED_ASSISTANCE", "musculoskeletal", "Dressing: Limited assistance",
+        (_fw("adl.dressing", "3"),),
+    ),
+    "ADL_DRESSING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_DRESSING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Dressing: Extensive assistance",
+        (_fw("adl.dressing", "4"),),
+    ),
+    "ADL_DRESSING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_DRESSING_TOTAL_DEPENDENCE", "musculoskeletal", "Dressing: Total dependence",
+        (_fw("adl.dressing", "5"),),
+    ),
+    "ADL_TOILETING_INDEPENDENT": ConceptMapping(
+        "ADL_TOILETING_INDEPENDENT", "musculoskeletal", "Toileting: Independent",
+        (_fw("adl.toileting", "0"),),
+    ),
+    "ADL_TOILETING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_TOILETING_SETUP_ASSIST_ONLY", "musculoskeletal", "Toileting: Setup assist only",
+        (_fw("adl.toileting", "1"),),
+    ),
+    "ADL_TOILETING_SUPERVISION": ConceptMapping(
+        "ADL_TOILETING_SUPERVISION", "musculoskeletal", "Toileting: Supervision",
+        (_fw("adl.toileting", "2"),),
+    ),
+    "ADL_TOILETING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_TOILETING_LIMITED_ASSISTANCE", "musculoskeletal", "Toileting: Limited assistance",
+        (_fw("adl.toileting", "3"),),
+    ),
+    "ADL_TOILETING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_TOILETING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Toileting: Extensive assistance",
+        (_fw("adl.toileting", "4"),),
+    ),
+    "ADL_TOILETING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_TOILETING_TOTAL_DEPENDENCE", "musculoskeletal", "Toileting: Total dependence",
+        (_fw("adl.toileting", "5"),),
+    ),
+    "ADL_TRANSFERRING_INDEPENDENT": ConceptMapping(
+        "ADL_TRANSFERRING_INDEPENDENT", "musculoskeletal", "Transferring: Independent",
+        (_fw("adl.transferring", "0"),),
+    ),
+    "ADL_TRANSFERRING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_TRANSFERRING_SETUP_ASSIST_ONLY", "musculoskeletal", "Transferring: Setup assist only",
+        (_fw("adl.transferring", "1"),),
+    ),
+    "ADL_TRANSFERRING_SUPERVISION": ConceptMapping(
+        "ADL_TRANSFERRING_SUPERVISION", "musculoskeletal", "Transferring: Supervision",
+        (_fw("adl.transferring", "2"),),
+    ),
+    "ADL_TRANSFERRING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_TRANSFERRING_LIMITED_ASSISTANCE", "musculoskeletal", "Transferring: Limited assistance",
+        (_fw("adl.transferring", "3"),),
+    ),
+    "ADL_TRANSFERRING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_TRANSFERRING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Transferring: Extensive assistance",
+        (_fw("adl.transferring", "4"),),
+    ),
+    "ADL_TRANSFERRING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_TRANSFERRING_TOTAL_DEPENDENCE", "musculoskeletal", "Transferring: Total dependence",
+        (_fw("adl.transferring", "5"),),
+    ),
+    "ADL_EATING_INDEPENDENT": ConceptMapping(
+        "ADL_EATING_INDEPENDENT", "musculoskeletal", "Eating: Independent",
+        (_fw("adl.eating", "0"),),
+    ),
+    "ADL_EATING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_EATING_SETUP_ASSIST_ONLY", "musculoskeletal", "Eating: Setup assist only",
+        (_fw("adl.eating", "1"),),
+    ),
+    "ADL_EATING_SUPERVISION": ConceptMapping(
+        "ADL_EATING_SUPERVISION", "musculoskeletal", "Eating: Supervision",
+        (_fw("adl.eating", "2"),),
+    ),
+    "ADL_EATING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_EATING_LIMITED_ASSISTANCE", "musculoskeletal", "Eating: Limited assistance",
+        (_fw("adl.eating", "3"),),
+    ),
+    "ADL_EATING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_EATING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Eating: Extensive assistance",
+        (_fw("adl.eating", "4"),),
+    ),
+    "ADL_EATING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_EATING_TOTAL_DEPENDENCE", "musculoskeletal", "Eating: Total dependence",
+        (_fw("adl.eating", "5"),),
+    ),
+    "ADL_GROOMING_INDEPENDENT": ConceptMapping(
+        "ADL_GROOMING_INDEPENDENT", "musculoskeletal", "Grooming: Independent",
+        (_fw("adl.grooming", "0"),),
+    ),
+    "ADL_GROOMING_SETUP_ASSIST_ONLY": ConceptMapping(
+        "ADL_GROOMING_SETUP_ASSIST_ONLY", "musculoskeletal", "Grooming: Setup assist only",
+        (_fw("adl.grooming", "1"),),
+    ),
+    "ADL_GROOMING_SUPERVISION": ConceptMapping(
+        "ADL_GROOMING_SUPERVISION", "musculoskeletal", "Grooming: Supervision",
+        (_fw("adl.grooming", "2"),),
+    ),
+    "ADL_GROOMING_LIMITED_ASSISTANCE": ConceptMapping(
+        "ADL_GROOMING_LIMITED_ASSISTANCE", "musculoskeletal", "Grooming: Limited assistance",
+        (_fw("adl.grooming", "3"),),
+    ),
+    "ADL_GROOMING_EXTENSIVE_ASSISTANCE": ConceptMapping(
+        "ADL_GROOMING_EXTENSIVE_ASSISTANCE", "musculoskeletal", "Grooming: Extensive assistance",
+        (_fw("adl.grooming", "4"),),
+    ),
+    "ADL_GROOMING_TOTAL_DEPENDENCE": ConceptMapping(
+        "ADL_GROOMING_TOTAL_DEPENDENCE", "musculoskeletal", "Grooming: Total dependence",
+        (_fw("adl.grooming", "5"),),
+    ),
+    "MSK_ENDURANCE_GOOD": ConceptMapping(
+        "MSK_ENDURANCE_GOOD", "musculoskeletal", "Endurance: good",
+        (_fw("mobility.endurance", "Good"),),
+    ),
+    "MSK_ENDURANCE_FAIR": ConceptMapping(
+        "MSK_ENDURANCE_FAIR", "musculoskeletal", "Endurance: fair",
+        (_fw("mobility.endurance", "Fair"),),
+    ),
+    "MSK_ENDURANCE_POOR": ConceptMapping(
+        "MSK_ENDURANCE_POOR", "musculoskeletal", "Endurance: poor",
+        (_fw("mobility.endurance", "Poor"),),
+    ),
+    "MSK_FALLS_LAST_90_DAYS": ConceptMapping(
+        "MSK_FALLS_LAST_90_DAYS", "musculoskeletal", "Falls in last 90 days",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="fallHistory.fallsLast90Days", min_value=0, max_value=365),
+    ),
+    "MSK_FALL_INJURIES": ConceptMapping(
+        "MSK_FALL_INJURIES", "musculoskeletal", "Fall injuries",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="fallHistory.fallInjuries", max_len=150),
+    ),
+
+    # ═══════════════════════════ GASTROINTESTINAL (coverage expansion) ═══
+    # These also cross-write symptomImpact.* (HOPE J2051D-G, 0-3 vocabulary)
+    # alongside the word-vocabulary gastrointestinal.* fields.
+    "GI_NAUSEA_NONE": ConceptMapping(
+        "GI_NAUSEA_NONE", "gastrointestinal", "Nausea, none",
+        (_fw("nausea", "None"), _fw("nausea", "0", section="symptomImpact")),
+    ),
+    "GI_NAUSEA_MILD": ConceptMapping(
+        "GI_NAUSEA_MILD", "gastrointestinal", "Nausea, mild",
+        (_fw("nausea", "Mild"), _fw("nausea", "1", section="symptomImpact")),
+    ),
+    "GI_NAUSEA_MODERATE": ConceptMapping(
+        "GI_NAUSEA_MODERATE", "gastrointestinal", "Nausea, moderate",
+        (_fw("nausea", "Moderate"), _fw("nausea", "2", section="symptomImpact")),
+    ),
+    "GI_NAUSEA_SEVERE": ConceptMapping(
+        "GI_NAUSEA_SEVERE", "gastrointestinal", "Nausea, severe",
+        (_fw("nausea", "Severe"), _fw("nausea", "3", section="symptomImpact")),
+    ),
+    "GI_VOMITING_NONE": ConceptMapping(
+        "GI_VOMITING_NONE", "gastrointestinal", "Vomiting, none",
+        (_fw("vomiting", "None"), _fw("vomiting", "0", section="symptomImpact")),
+    ),
+    "GI_VOMITING_MILD": ConceptMapping(
+        "GI_VOMITING_MILD", "gastrointestinal", "Vomiting, mild",
+        (_fw("vomiting", "Mild"), _fw("vomiting", "1", section="symptomImpact")),
+    ),
+    "GI_VOMITING_MODERATE": ConceptMapping(
+        "GI_VOMITING_MODERATE", "gastrointestinal", "Vomiting, moderate",
+        (_fw("vomiting", "Moderate"), _fw("vomiting", "2", section="symptomImpact")),
+    ),
+    "GI_VOMITING_SEVERE": ConceptMapping(
+        "GI_VOMITING_SEVERE", "gastrointestinal", "Vomiting, severe",
+        (_fw("vomiting", "Severe"), _fw("vomiting", "3", section="symptomImpact")),
+    ),
+    "GI_DIARRHEA_NONE": ConceptMapping(
+        "GI_DIARRHEA_NONE", "gastrointestinal", "Diarrhea, none",
+        (_fw("diarrhea", "None"), _fw("diarrhea", "0", section="symptomImpact")),
+    ),
+    "GI_DIARRHEA_MILD": ConceptMapping(
+        "GI_DIARRHEA_MILD", "gastrointestinal", "Diarrhea, mild",
+        (_fw("diarrhea", "Mild"), _fw("diarrhea", "1", section="symptomImpact")),
+    ),
+    "GI_DIARRHEA_MODERATE": ConceptMapping(
+        "GI_DIARRHEA_MODERATE", "gastrointestinal", "Diarrhea, moderate",
+        (_fw("diarrhea", "Moderate"), _fw("diarrhea", "2", section="symptomImpact")),
+    ),
+    "GI_DIARRHEA_SEVERE": ConceptMapping(
+        "GI_DIARRHEA_SEVERE", "gastrointestinal", "Diarrhea, severe",
+        (_fw("diarrhea", "Severe"), _fw("diarrhea", "3", section="symptomImpact")),
+    ),
+    "GI_CONSTIPATION_NONE": ConceptMapping(
+        "GI_CONSTIPATION_NONE", "gastrointestinal", "Constipation, none",
+        (_fw("constipation", "None"), _fw("constipation", "0", section="symptomImpact")),
+    ),
+    "GI_CONSTIPATION_MILD": ConceptMapping(
+        "GI_CONSTIPATION_MILD", "gastrointestinal", "Constipation, mild",
+        (_fw("constipation", "Mild"), _fw("constipation", "1", section="symptomImpact")),
+    ),
+    "GI_CONSTIPATION_MODERATE": ConceptMapping(
+        "GI_CONSTIPATION_MODERATE", "gastrointestinal", "Constipation, moderate",
+        (_fw("constipation", "Moderate"), _fw("constipation", "2", section="symptomImpact")),
+    ),
+    "GI_CONSTIPATION_SEVERE": ConceptMapping(
+        "GI_CONSTIPATION_SEVERE", "gastrointestinal", "Constipation, severe",
+        (_fw("constipation", "Severe"), _fw("constipation", "3", section="symptomImpact")),
+    ),
+    "GI_VOMITING_OCCURRENCES_24H": ConceptMapping(
+        "GI_VOMITING_OCCURRENCES_24H", "gastrointestinal", "Vomiting occurrences in 24h",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="vomitingOccurrences24h", min_value=0, max_value=20),
+    ),
+    "GI_BOWEL_SOUNDS_NORMAL": ConceptMapping(
+        "GI_BOWEL_SOUNDS_NORMAL", "gastrointestinal", "Bowel sounds normal",
+        (_fw("bowelSounds", "Normal"),),
+    ),
+    "GI_BOWEL_SOUNDS_HYPERACTIVE": ConceptMapping(
+        "GI_BOWEL_SOUNDS_HYPERACTIVE", "gastrointestinal", "Bowel sounds hyperactive",
+        (_fw("bowelSounds", "Hyperactive"),),
+    ),
+    "GI_BOWEL_SOUNDS_HYPOACTIVE": ConceptMapping(
+        "GI_BOWEL_SOUNDS_HYPOACTIVE", "gastrointestinal", "Bowel sounds hypoactive",
+        (_fw("bowelSounds", "Hypoactive"),),
+    ),
+    "GI_BOWEL_SOUNDS_ABSENT": ConceptMapping(
+        "GI_BOWEL_SOUNDS_ABSENT", "gastrointestinal", "Bowel sounds absent",
+        (_fw("bowelSounds", "Absent"),),
+    ),
+    "GI_ABDOMEN_SOFT": ConceptMapping(
+        "GI_ABDOMEN_SOFT", "gastrointestinal", "Abdomen soft",
+        (_fw("abdomen", "Soft"),),
+    ),
+    "GI_ABDOMEN_FIRM": ConceptMapping(
+        "GI_ABDOMEN_FIRM", "gastrointestinal", "Abdomen firm",
+        (_fw("abdomen", "Firm"),),
+    ),
+    "GI_ABDOMEN_TYMPANIC": ConceptMapping(
+        "GI_ABDOMEN_TYMPANIC", "gastrointestinal", "Abdomen tympanic",
+        (_fw("abdomen", "Tympanic"),),
+    ),
+    "GI_ABDOMEN_DISTENDED": ConceptMapping(
+        "GI_ABDOMEN_DISTENDED", "gastrointestinal", "Abdomen distended",
+        (_fw("abdomen", "Distended"),),
+    ),
+    "GI_ABDOMEN_TENDER": ConceptMapping(
+        "GI_ABDOMEN_TENDER", "gastrointestinal", "Abdomen tender",
+        (_fw("abdomen", "Tender"),),
+    ),
+    "GI_ABDOMEN_NONTENDER": ConceptMapping(
+        "GI_ABDOMEN_NONTENDER", "gastrointestinal", "Abdomen nontender",
+        (_fw("abdomen", "Nontender"),),
+    ),
+    "GI_ABDOMEN_RIGID": ConceptMapping(
+        "GI_ABDOMEN_RIGID", "gastrointestinal", "Abdomen rigid",
+        (_fw("abdomen", "Rigid"),),
+    ),
+    "GI_ASCITES_PRESENT": ConceptMapping(
+        "GI_ASCITES_PRESENT", "gastrointestinal", "Ascites present",
+        (_fw("ascites", True),),
+    ),
+    "GI_ASCITES_ABSENT": ConceptMapping(
+        "GI_ASCITES_ABSENT", "gastrointestinal", "Ascites explicitly absent",
+        (_fw("ascites", False),),
+    ),
+    # RNICA Completion Sprint (Gastrointestinal, 5 requested fields):
+    # abdominalGirth and bowelFrequency are genuinely plain free-text
+    # `input` elements in the real RNICA.jsx form (no numeric/enum type
+    # attribute) -- bounded free-text, same precedent as catheter.size.
+    # `continence` and `ostomy.condition`/`feedingTube.site` are NOT new
+    # work: see the design-boundary note directly below.
+    "GI_ABDOMINAL_GIRTH": ConceptMapping(
+        "GI_ABDOMINAL_GIRTH", "gastrointestinal", "Abdominal girth",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="abdominalGirth", max_len=20),
+    ),
+    "GI_BOWEL_FREQUENCY": ConceptMapping(
+        "GI_BOWEL_FREQUENCY", "gastrointestinal", "Bowel frequency",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="bowelFrequency", max_len=40),
+    ),
+    "GI_STOOL_NORMAL": ConceptMapping(
+        "GI_STOOL_NORMAL", "gastrointestinal", "Stool normal",
+        (_fw("stoolCharacter", "Normal", op="multi_add"),),
+    ),
+    "GI_STOOL_BLOODY": ConceptMapping(
+        "GI_STOOL_BLOODY", "gastrointestinal", "Stool bloody",
+        (_fw("stoolCharacter", "Bloody", op="multi_add"),),
+    ),
+    "GI_STOOL_COLOSTOMY": ConceptMapping(
+        "GI_STOOL_COLOSTOMY", "gastrointestinal", "Stool colostomy",
+        (_fw("stoolCharacter", "Colostomy", op="multi_add"),),
+    ),
+    "GI_STOOL_ILEOSTOMY": ConceptMapping(
+        "GI_STOOL_ILEOSTOMY", "gastrointestinal", "Stool ileostomy",
+        (_fw("stoolCharacter", "Ileostomy", op="multi_add"),),
+    ),
+    "GI_BOWEL_STATUS_REGULAR": ConceptMapping(
+        "GI_BOWEL_STATUS_REGULAR", "gastrointestinal", "Bowel status: Regular",
+        (_fw("bowelStatus", "Regular"),),
+    ),
+    "GI_BOWEL_STATUS_IRREGULAR": ConceptMapping(
+        "GI_BOWEL_STATUS_IRREGULAR", "gastrointestinal", "Bowel status: Irregular",
+        (_fw("bowelStatus", "Irregular"),),
+    ),
+    "GI_BOWEL_STATUS_IMPACTION": ConceptMapping(
+        "GI_BOWEL_STATUS_IMPACTION", "gastrointestinal", "Bowel status: Impaction",
+        (_fw("bowelStatus", "Impaction"),),
+    ),
+    "GI_BOWEL_STATUS_CONTINENT": ConceptMapping(
+        "GI_BOWEL_STATUS_CONTINENT", "gastrointestinal", "Bowel status: Continent",
+        (_fw("bowelStatus", "Continent"),),
+    ),
+    "GI_BOWEL_STATUS_INCONTINENT": ConceptMapping(
+        "GI_BOWEL_STATUS_INCONTINENT", "gastrointestinal", "Bowel status: Incontinent",
+        (_fw("bowelStatus", "Incontinent"),),
+    ),
+    "GI_BOWEL_STATUS_BOWEL_BLADDER_PROGRAM": ConceptMapping(
+        "GI_BOWEL_STATUS_BOWEL_BLADDER_PROGRAM", "gastrointestinal", "Bowel status: Bowel/bladder program",
+        (_fw("bowelStatus", "Bowel/bladder program"),),
+    ),
+    "GI_FEEDING_TUBE_PRESENT": ConceptMapping(
+        "GI_FEEDING_TUBE_PRESENT", "gastrointestinal", "Feeding tube present",
+        (_fw("feedingTube.present", True),),
+    ),
+    "GI_FEEDING_TUBE_ABSENT": ConceptMapping(
+        "GI_FEEDING_TUBE_ABSENT", "gastrointestinal", "Feeding tube explicitly absent",
+        (_fw("feedingTube.present", False),),
+    ),
+    "GI_FEEDING_TUBE_TYPE_NG": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_NG", "gastrointestinal", "Feeding tube: NG",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "NG")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_PEG": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_PEG", "gastrointestinal", "Feeding tube: PEG",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "PEG")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_PEJ": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_PEJ", "gastrointestinal", "Feeding tube: PEJ",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "PEJ")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_G_TUBE": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_G_TUBE", "gastrointestinal", "Feeding tube: G-tube",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "G-tube")),
+    ),
+    "GI_FEEDING_TUBE_TYPE_J_TUBE": ConceptMapping(
+        "GI_FEEDING_TUBE_TYPE_J_TUBE", "gastrointestinal", "Feeding tube: J-tube",
+        (_fw("feedingTube.present", True), _fw("feedingTube.type", "J-tube")),
+    ),
+    "GI_OSTOMY_PRESENT": ConceptMapping(
+        "GI_OSTOMY_PRESENT", "gastrointestinal", "Ostomy present",
+        (_fw("ostomy.present", True),),
+    ),
+    "GI_OSTOMY_ABSENT": ConceptMapping(
+        "GI_OSTOMY_ABSENT", "gastrointestinal", "Ostomy explicitly absent",
+        (_fw("ostomy.present", False),),
+    ),
+    "GI_OSTOMY_TYPE_COLOSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_COLOSTOMY", "gastrointestinal", "Ostomy: Colostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Colostomy")),
+    ),
+    "GI_OSTOMY_TYPE_ILEOSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_ILEOSTOMY", "gastrointestinal", "Ostomy: Ileostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Ileostomy")),
+    ),
+    "GI_OSTOMY_TYPE_UROSTOMY": ConceptMapping(
+        "GI_OSTOMY_TYPE_UROSTOMY", "gastrointestinal", "Ostomy: Urostomy",
+        (_fw("ostomy.present", True), _fw("ostomy.type", "Urostomy")),
+    ),
+
+    # ═══════════════════════════ GENITOURINARY (coverage expansion) ═══
+    "GU_URINARY_STATUS_CONTINENT": ConceptMapping(
+        "GU_URINARY_STATUS_CONTINENT", "genitourinary", "Urinary status: Continent",
+        (_fw("urinaryStatus", "Continent"),),
+    ),
+    "GU_URINARY_STATUS_STRESS_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_STRESS_INCONTINENCE", "genitourinary", "Urinary status: Stress incontinence",
+        (_fw("urinaryStatus", "Stress incontinence"),),
+    ),
+    "GU_URINARY_STATUS_URGE_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_URGE_INCONTINENCE", "genitourinary", "Urinary status: Urge incontinence",
+        (_fw("urinaryStatus", "Urge incontinence"),),
+    ),
+    "GU_URINARY_STATUS_FUNCTIONAL_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_FUNCTIONAL_INCONTINENCE", "genitourinary", "Urinary status: Functional incontinence",
+        (_fw("urinaryStatus", "Functional incontinence"),),
+    ),
+    "GU_URINARY_STATUS_TOTAL_INCONTINENCE": ConceptMapping(
+        "GU_URINARY_STATUS_TOTAL_INCONTINENCE", "genitourinary", "Urinary status: Total incontinence",
+        (_fw("urinaryStatus", "Total incontinence"),),
+    ),
+    "GU_URINARY_STATUS_CATHETERIZED": ConceptMapping(
+        "GU_URINARY_STATUS_CATHETERIZED", "genitourinary", "Urinary status: Catheterized",
+        (_fw("urinaryStatus", "Catheterized"),),
+    ),
+    "GU_URINARY_STATUS_BLADDER_PROGRAM": ConceptMapping(
+        "GU_URINARY_STATUS_BLADDER_PROGRAM", "genitourinary", "Urinary status: Bladder program",
+        (_fw("urinaryStatus", "Bladder program"),),
+    ),
+    "GU_URINARY_STATUS_UROSTOMY": ConceptMapping(
+        "GU_URINARY_STATUS_UROSTOMY", "genitourinary", "Urinary status: Urostomy",
+        (_fw("urinaryStatus", "Urostomy"),),
+    ),
+    "GU_URINARY_STATUS_RETENTION": ConceptMapping(
+        "GU_URINARY_STATUS_RETENTION", "genitourinary", "Urinary status: Retention",
+        (_fw("urinaryStatus", "Retention"),),
+    ),
+    "GU_URINARY_STATUS_PAINFUL_URINATION": ConceptMapping(
+        "GU_URINARY_STATUS_PAINFUL_URINATION", "genitourinary", "Urinary status: Painful urination",
+        (_fw("urinaryStatus", "Painful urination"),),
+    ),
+    "GU_URINARY_STATUS_NOCTURIA": ConceptMapping(
+        "GU_URINARY_STATUS_NOCTURIA", "genitourinary", "Urinary status: Nocturia",
+        (_fw("urinaryStatus", "Nocturia"),),
+    ),
+    "GU_URINE_CHAR_CLEAR": ConceptMapping(
+        "GU_URINE_CHAR_CLEAR", "genitourinary", "Urine: clear",
+        (_fw("urineCharacteristics", "Clear", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_CLOUDY": ConceptMapping(
+        "GU_URINE_CHAR_CLOUDY", "genitourinary", "Urine: cloudy",
+        (_fw("urineCharacteristics", "Cloudy", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_PALE": ConceptMapping(
+        "GU_URINE_CHAR_PALE", "genitourinary", "Urine: pale",
+        (_fw("urineCharacteristics", "Pale", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_BLOOD": ConceptMapping(
+        "GU_URINE_CHAR_BLOOD", "genitourinary", "Urine: blood",
+        (_fw("urineCharacteristics", "Blood", op="multi_add"),),
+    ),
+    "GU_URINE_CHAR_ODOR": ConceptMapping(
+        "GU_URINE_CHAR_ODOR", "genitourinary", "Urine: odor",
+        (_fw("urineCharacteristics", "Odor", op="multi_add"),),
+    ),
+    "GU_CATHETER_PRESENT": ConceptMapping(
+        "GU_CATHETER_PRESENT", "genitourinary", "Catheter present",
+        (_fw("catheter.present", True),),
+    ),
+    "GU_CATHETER_ABSENT": ConceptMapping(
+        "GU_CATHETER_ABSENT", "genitourinary", "Catheter explicitly absent",
+        (_fw("catheter.present", False),),
+    ),
+    "GU_CATHETER_TYPE_FOLEY": ConceptMapping(
+        "GU_CATHETER_TYPE_FOLEY", "genitourinary", "Catheter: Foley",
+        (_fw("catheter.present", True), _fw("catheter.type", "Foley")),
+    ),
+    "GU_CATHETER_TYPE_SUPRAPUBIC": ConceptMapping(
+        "GU_CATHETER_TYPE_SUPRAPUBIC", "genitourinary", "Catheter: Suprapubic",
+        (_fw("catheter.present", True), _fw("catheter.type", "Suprapubic")),
+    ),
+    "GU_CATHETER_TYPE_CONDOM": ConceptMapping(
+        "GU_CATHETER_TYPE_CONDOM", "genitourinary", "Catheter: Condom",
+        (_fw("catheter.present", True), _fw("catheter.type", "Condom")),
+    ),
+    "GU_CATHETER_TYPE_INTERMITTENT": ConceptMapping(
+        "GU_CATHETER_TYPE_INTERMITTENT", "genitourinary", "Catheter: Intermittent",
+        (_fw("catheter.present", True), _fw("catheter.type", "Intermittent")),
+    ),
+    "GU_CATHETER_TYPE_UROSTOMY": ConceptMapping(
+        "GU_CATHETER_TYPE_UROSTOMY", "genitourinary", "Catheter: Urostomy",
+        (_fw("catheter.present", True), _fw("catheter.type", "Urostomy")),
+    ),
+    "GU_CATHETER_CONDITION_PATENT": ConceptMapping(
+        "GU_CATHETER_CONDITION_PATENT", "genitourinary", "Catheter condition: patent",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Patent")),
+    ),
+    "GU_CATHETER_CONDITION_BLOCKED": ConceptMapping(
+        "GU_CATHETER_CONDITION_BLOCKED", "genitourinary", "Catheter condition: blocked",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Blocked")),
+    ),
+    "GU_CATHETER_CONDITION_LEAKING": ConceptMapping(
+        "GU_CATHETER_CONDITION_LEAKING", "genitourinary", "Catheter condition: leaking",
+        (_fw("catheter.present", True), _fw("catheter.condition", "Leaking")),
+    ),
+    "GU_CATHETER_URINE_CLEAR": ConceptMapping(
+        "GU_CATHETER_URINE_CLEAR", "genitourinary", "Catheter urine: clear",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Clear", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_CLOUDY": ConceptMapping(
+        "GU_CATHETER_URINE_CLOUDY", "genitourinary", "Catheter urine: cloudy",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Cloudy", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_AMBER": ConceptMapping(
+        "GU_CATHETER_URINE_AMBER", "genitourinary", "Catheter urine: amber",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Amber", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_DARK": ConceptMapping(
+        "GU_CATHETER_URINE_DARK", "genitourinary", "Catheter urine: dark",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Dark", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_HEMATURIA": ConceptMapping(
+        "GU_CATHETER_URINE_HEMATURIA", "genitourinary", "Catheter urine: hematuria",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Hematuria", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_SEDIMENT": ConceptMapping(
+        "GU_CATHETER_URINE_SEDIMENT", "genitourinary", "Catheter urine: sediment",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Sediment", op="multi_add")),
+    ),
+    "GU_CATHETER_URINE_FOUL_ODOR": ConceptMapping(
+        "GU_CATHETER_URINE_FOUL_ODOR", "genitourinary", "Catheter urine: foul odor",
+        (_fw("catheter.present", True), _fw("catheter.urineCharacteristics", "Foul odor", op="multi_add")),
+    ),
+    # RNICA Completion Sprint (Genitourinary, 7 fields): catheter.size and
+    # catheter.irrigation.* are genuinely plain free-text inputs in the real
+    # RNICA.jsx form (not a select), matching the RESP_TRACH_SIZE/TYPE
+    # precedent above -- a closed Fr-size enum would misrepresent the real
+    # UI and add a vocabulary the RN was never given. insertionDate /
+    # lastChangeDate use the new date_bounded value_slot kind: only an
+    # explicit, parseable, non-future ISO date is ever accepted -- never
+    # estimated. All non-row (catheter is a single object, not an array on
+    # this section), so no push_draft_row/set_row_field needed.
+    "GU_CATHETER_SIZE": ConceptMapping(
+        "GU_CATHETER_SIZE", "genitourinary", "Catheter size",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.size", max_len=20),
+    ),
+    "GU_CATHETER_INSERTION_DATE": ConceptMapping(
+        "GU_CATHETER_INSERTION_DATE", "genitourinary", "Catheter insertion date",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="date_bounded", path="catheter.insertionDate"),
+    ),
+    "GU_CATHETER_LAST_CHANGE_DATE": ConceptMapping(
+        "GU_CATHETER_LAST_CHANGE_DATE", "genitourinary", "Catheter last change date",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="date_bounded", path="catheter.lastChangeDate"),
+    ),
+    "GU_CATHETER_IRRIGATION_SOLUTION": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_SOLUTION", "genitourinary", "Catheter irrigation solution",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.solution", max_len=40),
+    ),
+    "GU_CATHETER_IRRIGATION_FREQUENCY": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_FREQUENCY", "genitourinary", "Catheter irrigation frequency",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.frequency", max_len=40),
+    ),
+    "GU_CATHETER_IRRIGATION_DURATION": ConceptMapping(
+        "GU_CATHETER_IRRIGATION_DURATION", "genitourinary", "Catheter irrigation duration",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheter.irrigation.duration", max_len=40),
+    ),
+    "GU_CATHETER_CARE_NOTES": ConceptMapping(
+        "GU_CATHETER_CARE_NOTES", "genitourinary", "Catheter care instructions",
+        (_fw("catheter.present", True),), value_slot=ValueSlot(kind="free_text_bounded", path="catheterCare", max_len=250),
+    ),
+    "GU_URINE_OUTPUT_ADEQUATE": ConceptMapping(
+        "GU_URINE_OUTPUT_ADEQUATE", "genitourinary", "Urine output: adequate",
+        (_fw("urineOutput", "Adequate"),),
+    ),
+    "GU_URINE_OUTPUT_DECREASED": ConceptMapping(
+        "GU_URINE_OUTPUT_DECREASED", "genitourinary", "Urine output: decreased",
+        (_fw("urineOutput", "Decreased"),),
+    ),
+    "GU_URINE_OUTPUT_ANURIA": ConceptMapping(
+        "GU_URINE_OUTPUT_ANURIA", "genitourinary", "Urine output: anuria",
+        (_fw("urineOutput", "Anuria"),),
+    ),
+    "GU_URINE_OUTPUT_POLYURIA": ConceptMapping(
+        "GU_URINE_OUTPUT_POLYURIA", "genitourinary", "Urine output: polyuria",
+        (_fw("urineOutput", "Polyuria"),),
+    ),
+    "GU_24H_VOLUME": ConceptMapping(
+        "GU_24H_VOLUME", "genitourinary", "24-hour urine volume",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="twentyFourHourVolume", min_value=0, max_value=6000),
+    ),
+    "GU_REPRO_VAGINAL_BLEEDING": ConceptMapping(
+        "GU_REPRO_VAGINAL_BLEEDING", "genitourinary", "Vaginal bleeding",
+        (_fw("reproductive.concerns", "Vaginal bleeding", op="multi_add"),),
+    ),
+    "GU_REPRO_VAGINAL_DISCHARGE": ConceptMapping(
+        "GU_REPRO_VAGINAL_DISCHARGE", "genitourinary", "Vaginal discharge",
+        (_fw("reproductive.concerns", "Vaginal discharge", op="multi_add"),),
+    ),
+    "GU_REPRO_PENILE_DISCHARGE": ConceptMapping(
+        "GU_REPRO_PENILE_DISCHARGE", "genitourinary", "Penile discharge",
+        (_fw("reproductive.concerns", "Penile discharge", op="multi_add"),),
+    ),
+    "GU_REPRO_SCROTAL_EDEMA": ConceptMapping(
+        "GU_REPRO_SCROTAL_EDEMA", "genitourinary", "Scrotal edema",
+        (_fw("reproductive.concerns", "Scrotal edema", op="multi_add"),),
+    ),
+    "GU_REPRO_TESTICULAR_MASS": ConceptMapping(
+        "GU_REPRO_TESTICULAR_MASS", "genitourinary", "Testicular mass",
+        (_fw("reproductive.concerns", "Testicular mass", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_BLADDER_TRAINING": ConceptMapping(
+        "GU_BLADDER_MGMT_BLADDER_TRAINING", "genitourinary", "Bladder training",
+        (_fw("bladderManagement", "Bladder training", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_SCHEDULED_TOILETING": ConceptMapping(
+        "GU_BLADDER_MGMT_SCHEDULED_TOILETING", "genitourinary", "Scheduled toileting",
+        (_fw("bladderManagement", "Scheduled toileting", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_PELVIC_FLOOR_EXERCISES": ConceptMapping(
+        "GU_BLADDER_MGMT_PELVIC_FLOOR_EXERCISES", "genitourinary", "Pelvic floor exercises",
+        (_fw("bladderManagement", "Pelvic floor exercises", op="multi_add"),),
+    ),
+    "GU_BLADDER_MGMT_EXTERNAL_COLLECTION_DEVICE": ConceptMapping(
+        "GU_BLADDER_MGMT_EXTERNAL_COLLECTION_DEVICE", "genitourinary", "External collection device",
+        (_fw("bladderManagement", "External collection device", op="multi_add"),),
+    ),
+
+    # ═══════════════════════════ NUTRITION (coverage expansion) ═══
+    "NUTR_DENTURES_UPPER": ConceptMapping(
+        "NUTR_DENTURES_UPPER", "nutrition", "Upper dentures present",
+        (_fw("dentures.upper", True),),
+    ),
+    "NUTR_DENTURES_LOWER": ConceptMapping(
+        "NUTR_DENTURES_LOWER", "nutrition", "Lower dentures present",
+        (_fw("dentures.lower", True),),
+    ),
+    # RNICA Completion Sprint (Nutrition, 2 requested fields):
+    # dentures.condition -> EXCLUDED. Dead INITIAL_FORM field, no
+    # SECTION_CONFIGS entry (only dentures.upper/dentures.lower render).
+    # nutritionalSupplements -> NEW: NUTRITION_SUPPLEMENTS below (free-text
+    # `input` in the real form, matches the Loren Shields H&P's own
+    # "Boost Glucose Control" language).
+
+    # ═══════════════════════════ SKIN (coverage expansion) ═══
+    "SKIN_RELIEF_PRESSURE_RELIEF_MATTRESS": ConceptMapping(
+        "SKIN_RELIEF_PRESSURE_RELIEF_MATTRESS", "skin", "Pressure-relief mattress",
+        (_fw("pressureReliefMeasures", "Pressure-relief mattress", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_HEEL_PROTECTORS_FLOATING_HEELS": ConceptMapping(
+        "SKIN_RELIEF_HEEL_PROTECTORS_FLOATING_HEELS", "skin", "Heel protectors/floating heels",
+        (_fw("pressureReliefMeasures", "Heel protectors/floating heels", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_CUSHIONED_WHEELCHAIR_SEAT": ConceptMapping(
+        "SKIN_RELIEF_CUSHIONED_WHEELCHAIR_SEAT", "skin", "Cushioned wheelchair seat",
+        (_fw("pressureReliefMeasures", "Cushioned wheelchair seat", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_FOAM_GEL_POSITIONING_DEVICES": ConceptMapping(
+        "SKIN_RELIEF_FOAM_GEL_POSITIONING_DEVICES", "skin", "Foam/gel positioning devices",
+        (_fw("pressureReliefMeasures", "Foam/gel positioning devices", op="multi_add"),),
+    ),
+    "SKIN_RELIEF_FREQUENT_POSITION_CHANGES": ConceptMapping(
+        "SKIN_RELIEF_FREQUENT_POSITION_CHANGES", "skin", "Frequent position changes",
+        (_fw("pressureReliefMeasures", "Frequent position changes", op="multi_add"),),
+    ),
+
+    # ═══════════════════════════ RESPIRATORY (coverage expansion) ═══
+    "RESP_OXYGEN_HOURS_PER_DAY": ConceptMapping(
+        "RESP_OXYGEN_HOURS_PER_DAY", "respiratory", "Oxygen hours per day",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="oxygenTherapy.hoursPerDay", min_value=0, max_value=24),
+    ),
+    "RESP_SAT_ON_O2": ConceptMapping(
+        "RESP_SAT_ON_O2", "respiratory", "SpO2 while on oxygen",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="oxygenTherapy.satOnO2", min_value=0, max_value=100),
+    ),
+
+    # ═══════════════════════════ NEUROLOGICAL (coverage expansion) ═══
+    "NEURO_N0500_0": ConceptMapping(
+        "NEURO_N0500_0", "neurological", "N0500: None",
+        (_fw("hopeItems.n0500", "0"),),
+    ),
+    "NEURO_N0500_1": ConceptMapping(
+        "NEURO_N0500_1", "neurological", "N0500: One word",
+        (_fw("hopeItems.n0500", "1"),),
+    ),
+    "NEURO_N0500_2": ConceptMapping(
+        "NEURO_N0500_2", "neurological", "N0500: Two words",
+        (_fw("hopeItems.n0500", "2"),),
+    ),
+    "NEURO_N0500_3": ConceptMapping(
+        "NEURO_N0500_3", "neurological", "N0500: Three words",
+        (_fw("hopeItems.n0500", "3"),),
+    ),
+    "NEURO_N0510_0": ConceptMapping(
+        "NEURO_N0510_0", "neurological", "N0510: None",
+        (_fw("hopeItems.n0510", "0"),),
+    ),
+    "NEURO_N0510_1": ConceptMapping(
+        "NEURO_N0510_1", "neurological", "N0510: One",
+        (_fw("hopeItems.n0510", "1"),),
+    ),
+    "NEURO_N0510_2": ConceptMapping(
+        "NEURO_N0510_2", "neurological", "N0510: Two",
+        (_fw("hopeItems.n0510", "2"),),
+    ),
+    "NEURO_N0510_3": ConceptMapping(
+        "NEURO_N0510_3", "neurological", "N0510: Three",
+        (_fw("hopeItems.n0510", "3"),),
+    ),
+    "NEURO_N0520_0": ConceptMapping(
+        "NEURO_N0520_0", "neurological", "N0520: None correct",
+        (_fw("hopeItems.n0520", "0"),),
+    ),
+    "NEURO_N0520_1": ConceptMapping(
+        "NEURO_N0520_1", "neurological", "N0520: Year correct",
+        (_fw("hopeItems.n0520", "1"),),
+    ),
+    "NEURO_N0520_2": ConceptMapping(
+        "NEURO_N0520_2", "neurological", "N0520: Month correct",
+        (_fw("hopeItems.n0520", "2"),),
+    ),
+    "NEURO_N0520_3": ConceptMapping(
+        "NEURO_N0520_3", "neurological", "N0520: Day of week correct",
+        (_fw("hopeItems.n0520", "3"),),
+    ),
+    "NEURO_SENSORY_AID_GLASSES": ConceptMapping(
+        "NEURO_SENSORY_AID_GLASSES", "neurological", "Glasses",
+        (_fw("sensoryAids", "Glasses", op="multi_add"),),
+    ),
+    "NEURO_SENSORY_AID_HEARING_AIDS": ConceptMapping(
+        "NEURO_SENSORY_AID_HEARING_AIDS", "neurological", "Hearing aids",
+        (_fw("sensoryAids", "Hearing aids", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_BIPOLAR_DISORDER": ConceptMapping(
+        "NEURO_PSYCH_HX_BIPOLAR_DISORDER", "neurological", "Psychiatric history: Bipolar disorder",
+        (_fw("psychiatricHistoryType", "Bipolar disorder", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_OCD": ConceptMapping(
+        "NEURO_PSYCH_HX_OCD", "neurological", "Psychiatric history: OCD",
+        (_fw("psychiatricHistoryType", "OCD", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_SCHIZOPHRENIA": ConceptMapping(
+        "NEURO_PSYCH_HX_SCHIZOPHRENIA", "neurological", "Psychiatric history: Schizophrenia",
+        (_fw("psychiatricHistoryType", "Schizophrenia", op="multi_add"),),
+    ),
+    "NEURO_PSYCH_HX_DEPRESSION": ConceptMapping(
+        "NEURO_PSYCH_HX_DEPRESSION", "neurological", "Psychiatric history: Depression",
+        (_fw("psychiatricHistoryType", "Depression", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_PATTERN_NORMAL": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_NORMAL", "neurological", "Sleep pattern: normal",
+        (_fw("sleepRest.sleepPattern", "Normal"),),
+    ),
+    "NEURO_SLEEP_PATTERN_INSOMNIA": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_INSOMNIA", "neurological", "Sleep pattern: insomnia",
+        (_fw("sleepRest.sleepPattern", "Insomnia"),),
+    ),
+    "NEURO_SLEEP_PATTERN_HYPERSOMNIA": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_HYPERSOMNIA", "neurological", "Sleep pattern: hypersomnia",
+        (_fw("sleepRest.sleepPattern", "Hypersomnia"),),
+    ),
+    "NEURO_SLEEP_PATTERN_FRAGMENTED": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_FRAGMENTED", "neurological", "Sleep pattern: fragmented",
+        (_fw("sleepRest.sleepPattern", "Fragmented"),),
+    ),
+    "NEURO_SLEEP_PATTERN_SOMNOLENCE": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_SOMNOLENCE", "neurological", "Sleep pattern: somnolence",
+        (_fw("sleepRest.sleepPattern", "Somnolence"),),
+    ),
+    "NEURO_AVG_SLEEP_HOURS": ConceptMapping(
+        "NEURO_AVG_SLEEP_HOURS", "neurological", "Average sleep hours",
+        (),
+        value_slot=ValueSlot(kind="numeric", path="sleepRest.averageSleepHours", min_value=0, max_value=24),
+    ),
+    "NEURO_NIGHT_SYMPTOM_PAIN": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_PAIN", "neurological", "Nighttime pain",
+        (_fw("sleepRest.nighttimeSymptoms", "Pain", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_DYSPNEA": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_DYSPNEA", "neurological", "Nighttime dyspnea",
+        (_fw("sleepRest.nighttimeSymptoms", "Dyspnea", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_RESTLESSNESS": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_RESTLESSNESS", "neurological", "Nighttime restlessness",
+        (_fw("sleepRest.nighttimeSymptoms", "Restlessness", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_CONFUSION": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_CONFUSION", "neurological", "Nighttime confusion",
+        (_fw("sleepRest.nighttimeSymptoms", "Confusion", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_ANXIETY": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_ANXIETY", "neurological", "Nighttime anxiety",
+        (_fw("sleepRest.nighttimeSymptoms", "Anxiety", op="multi_add"),),
+    ),
+    "NEURO_NIGHT_SYMPTOM_NAUSEA": ConceptMapping(
+        "NEURO_NIGHT_SYMPTOM_NAUSEA", "neurological", "Nighttime nausea",
+        (_fw("sleepRest.nighttimeSymptoms", "Nausea", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_MEDICATION": ConceptMapping(
+        "NEURO_SLEEP_AID_MEDICATION", "neurological", "Sleep aid: Medication",
+        (_fw("sleepRest.sleepAids", "Medication", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_POSITIONING": ConceptMapping(
+        "NEURO_SLEEP_AID_POSITIONING", "neurological", "Sleep aid: Positioning",
+        (_fw("sleepRest.sleepAids", "Positioning", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_WHITE_NOISE": ConceptMapping(
+        "NEURO_SLEEP_AID_WHITE_NOISE", "neurological", "Sleep aid: White noise",
+        (_fw("sleepRest.sleepAids", "White noise", op="multi_add"),),
+    ),
+    "NEURO_SLEEP_AID_WARM_MILK_TEA": ConceptMapping(
+        "NEURO_SLEEP_AID_WARM_MILK_TEA", "neurological", "Sleep aid: Warm milk/tea",
+        (_fw("sleepRest.sleepAids", "Warm milk/tea", op="multi_add"),),
+    ),
+
+    # ═══════════════════════════ VITALS (coverage expansion) ═══════════════
+    # Numeric vital signs and IV-access facts routinely stated in H&P/referral
+    # vitals lines (e.g. "T 98.6, HR 82, RR 16, BP 128/76, SpO2 96% RA").
+    # Deliberately EXCLUDED: bmi (computed from height/weight, never a raw
+    # fact), mac/temperatureUnit/heightUnit/weightUnit (unit fields already
+    # default to the correct US convention; MAC is essentially never narrated
+    # in prose), and every ivAssessment.* logistics field except
+    # hasIV/type (size/site/dressingType/insertion+change dates/condition/
+    # flushSchedule/notes are line-care documentation, not something an H&P
+    # states as a fact to transcribe).
+    "VITALS_TEMPERATURE": ConceptMapping(
+        "VITALS_TEMPERATURE", "vitals", "Temperature documented",
+        (), value_slot=ValueSlot(kind="numeric", path="temperature", min_value=90, max_value=110),
+    ),
+    "VITALS_PULSE": ConceptMapping(
+        "VITALS_PULSE", "vitals", "Pulse documented",
+        (), value_slot=ValueSlot(kind="numeric", path="pulse", min_value=20, max_value=220),
+    ),
+    "VITALS_PULSE_QUALITY_STRONG": ConceptMapping("VITALS_PULSE_QUALITY_STRONG", "vitals", "Pulse strong", (_fw("pulseQuality", "Strong"),)),
+    "VITALS_PULSE_QUALITY_WEAK": ConceptMapping("VITALS_PULSE_QUALITY_WEAK", "vitals", "Pulse weak", (_fw("pulseQuality", "Weak"),)),
+    "VITALS_PULSE_QUALITY_THREADY": ConceptMapping("VITALS_PULSE_QUALITY_THREADY", "vitals", "Pulse thready", (_fw("pulseQuality", "Thready"),)),
+    "VITALS_PULSE_QUALITY_BOUNDING": ConceptMapping("VITALS_PULSE_QUALITY_BOUNDING", "vitals", "Pulse bounding", (_fw("pulseQuality", "Bounding"),)),
+    "VITALS_PULSE_QUALITY_IRREGULAR": ConceptMapping("VITALS_PULSE_QUALITY_IRREGULAR", "vitals", "Pulse irregular", (_fw("pulseQuality", "Irregular"),)),
+    "VITALS_RESPIRATIONS": ConceptMapping(
+        "VITALS_RESPIRATIONS", "vitals", "Respirations documented",
+        (), value_slot=ValueSlot(kind="numeric", path="respirations", min_value=4, max_value=60),
+    ),
+    "VITALS_BP_SYSTOLIC": ConceptMapping(
+        "VITALS_BP_SYSTOLIC", "vitals", "BP systolic documented",
+        (), value_slot=ValueSlot(kind="numeric", path="bloodPressure.systolic", min_value=40, max_value=260),
+    ),
+    "VITALS_BP_DIASTOLIC": ConceptMapping(
+        "VITALS_BP_DIASTOLIC", "vitals", "BP diastolic documented",
+        (), value_slot=ValueSlot(kind="numeric", path="bloodPressure.diastolic", min_value=20, max_value=160),
+    ),
+    "VITALS_O2_SATURATION": ConceptMapping(
+        "VITALS_O2_SATURATION", "vitals", "O2 saturation documented",
+        (), value_slot=ValueSlot(kind="numeric", path="oxygenSaturation", min_value=50, max_value=100),
+    ),
+    "VITALS_O2_SAT_ON_ROOM_AIR": ConceptMapping("VITALS_O2_SAT_ON_ROOM_AIR", "vitals", "SpO2 reading taken on room air", (_fw("oxygenSaturationOnRA", True),)),
+    "VITALS_HEIGHT": ConceptMapping(
+        "VITALS_HEIGHT", "vitals", "Height documented",
+        (), value_slot=ValueSlot(kind="numeric", path="height", min_value=20, max_value=96),
+    ),
+    "VITALS_WEIGHT": ConceptMapping(
+        "VITALS_WEIGHT", "vitals", "Weight documented",
+        (), value_slot=ValueSlot(kind="numeric", path="weight", min_value=20, max_value=600),
+    ),
+    "VITALS_IV_ACCESS_PRESENT": ConceptMapping("VITALS_IV_ACCESS_PRESENT", "vitals", "IV access present", (_fw("ivAssessment.hasIV", True),)),
+    "VITALS_IV_TYPE_PERIPHERAL": ConceptMapping("VITALS_IV_TYPE_PERIPHERAL", "vitals", "Peripheral IV", (_fw("ivAssessment.hasIV", True), _fw("ivAssessment.type", "Peripheral"))),
+    "VITALS_IV_TYPE_CENTRAL": ConceptMapping("VITALS_IV_TYPE_CENTRAL", "vitals", "Central line", (_fw("ivAssessment.hasIV", True), _fw("ivAssessment.type", "Central"))),
+    "VITALS_IV_TYPE_PICC": ConceptMapping("VITALS_IV_TYPE_PICC", "vitals", "PICC line", (_fw("ivAssessment.hasIV", True), _fw("ivAssessment.type", "PICC"))),
+    "VITALS_IV_TYPE_PORT": ConceptMapping("VITALS_IV_TYPE_PORT", "vitals", "Port", (_fw("ivAssessment.hasIV", True), _fw("ivAssessment.type", "Port"))),
+
+    # ═══════════════════════════ PAIN (coverage expansion) ══════════════════
+    # Deliberately EXCLUDED: flacc.*/painad.* (bedside observation tools the
+    # RN scores live during the visit, never a fact stated in a document),
+    # comprehensiveAssessmentCompleted/Date and screeningDate (workflow
+    # timestamps, not clinical facts), assessmentTool (auto-derived by UI
+    # logic from communication status, not evidence), painMapMode (UI toggle),
+    # painManagementPlan (RN's own plan, free text).
+    "PAIN_SCREENED_YES": ConceptMapping("PAIN_SCREENED_YES", "pain", "Pain screening documented (HOPE J0900.A)", (_fw("screenedForPain", "1"),)),
+    # symptomImpact.pain shares the same 0-3 (None/Mild/Moderate/Severe) HOPE
+    # J2051A vocabulary as painSeverityCategory's HOPE J0900.C vocabulary, so
+    # these concepts also cross-write the Symptom Impact section directly.
+    "PAIN_SEVERITY_NONE": ConceptMapping("PAIN_SEVERITY_NONE", "pain", "Pain severity: none (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "0"), _fw("pain", "0", section="symptomImpact"))),
+    "PAIN_SEVERITY_MILD": ConceptMapping("PAIN_SEVERITY_MILD", "pain", "Pain severity: mild (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "1"), _fw("pain", "1", section="symptomImpact"))),
+    "PAIN_SEVERITY_MODERATE": ConceptMapping("PAIN_SEVERITY_MODERATE", "pain", "Pain severity: moderate (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "2"), _fw("pain", "2", section="symptomImpact"))),
+    "PAIN_SEVERITY_SEVERE": ConceptMapping("PAIN_SEVERITY_SEVERE", "pain", "Pain severity: severe (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "3"), _fw("pain", "3", section="symptomImpact"))),
+    "PAIN_TOOL_NUMERIC": ConceptMapping("PAIN_TOOL_NUMERIC", "pain", "Pain tool: numeric (HOPE J0900.D)", (_fw("standardizedPainToolType", "1"),)),
+    "PAIN_TOOL_VERBAL_DESCRIPTOR": ConceptMapping("PAIN_TOOL_VERBAL_DESCRIPTOR", "pain", "Pain tool: verbal descriptor (HOPE J0900.D)", (_fw("standardizedPainToolType", "2"),)),
+    "PAIN_TOOL_PATIENT_VISUAL": ConceptMapping("PAIN_TOOL_PATIENT_VISUAL", "pain", "Pain tool: patient visual (HOPE J0900.D)", (_fw("standardizedPainToolType", "3"),)),
+    "PAIN_TOOL_STAFF_OBSERVATION": ConceptMapping("PAIN_TOOL_STAFF_OBSERVATION", "pain", "Pain tool: staff observation (HOPE J0900.D)", (_fw("standardizedPainToolType", "4"),)),
+    "PAIN_VERBALIZES_NO": ConceptMapping("PAIN_VERBALIZES_NO", "pain", "Unable/does not verbalize pain", (_fw("verbalizesPain", "0"),)),
+    "PAIN_VERBALIZES_RELIABLY": ConceptMapping("PAIN_VERBALIZES_RELIABLY", "pain", "Verbalizes pain reliably", (_fw("verbalizesPain", "1"),)),
+    "PAIN_VERBALIZES_SOMETIMES": ConceptMapping("PAIN_VERBALIZES_SOMETIMES", "pain", "Verbalizes pain sometimes", (_fw("verbalizesPain", "2"),)),
+    "PAIN_UNCOMFORTABLE_YES": ConceptMapping("PAIN_UNCOMFORTABLE_YES", "pain", "Uncomfortable because of pain", (_fw("uncomfortableBecauseOfPain", "1"),)),
+    "PAIN_UNCOMFORTABLE_NO": ConceptMapping("PAIN_UNCOMFORTABLE_NO", "pain", "Not uncomfortable because of pain", (_fw("uncomfortableBecauseOfPain", "0"),)),
+    "PAIN_NEUROPATHIC_PRESENT": ConceptMapping("PAIN_NEUROPATHIC_PRESENT", "pain", "Neuropathic pain present (HOPE J0915)", (_fw("neuropathicPain", "1"),)),
+    "PAIN_NEUROPATHIC_ABSENT": ConceptMapping("PAIN_NEUROPATHIC_ABSENT", "pain", "Neuropathic pain absent (HOPE J0915)", (_fw("neuropathicPain", "0"),)),
+    "PAIN_INTENSITY_CURRENT": ConceptMapping(
+        "PAIN_INTENSITY_CURRENT", "pain", "Current pain intensity documented",
+        (_fw("screenedForPain", "1"),), value_slot=ValueSlot(kind="numeric", path="painIntensity.current", min_value=0, max_value=10),
+    ),
+    "PAIN_INTENSITY_WORST": ConceptMapping(
+        "PAIN_INTENSITY_WORST", "pain", "Worst pain in 24h documented",
+        (), value_slot=ValueSlot(kind="numeric", path="painIntensity.worst", min_value=0, max_value=10),
+    ),
+    "PAIN_INTENSITY_BEST": ConceptMapping(
+        "PAIN_INTENSITY_BEST", "pain", "Best pain in 24h documented",
+        (), value_slot=ValueSlot(kind="numeric", path="painIntensity.best", min_value=0, max_value=10),
+    ),
+    "PAIN_INTENSITY_ACCEPTABLE": ConceptMapping(
+        "PAIN_INTENSITY_ACCEPTABLE", "pain", "Acceptable pain level documented",
+        (), value_slot=ValueSlot(kind="numeric", path="painIntensity.acceptable", min_value=0, max_value=10),
+    ),
+    "PAIN_LOCATION_HEAD": ConceptMapping("PAIN_LOCATION_HEAD", "pain", "Pain location: head", (_fw("painLocation", "Head", op="multi_add"),)),
+    "PAIN_LOCATION_NECK": ConceptMapping("PAIN_LOCATION_NECK", "pain", "Pain location: neck", (_fw("painLocation", "Neck", op="multi_add"),)),
+    "PAIN_LOCATION_CHEST": ConceptMapping("PAIN_LOCATION_CHEST", "pain", "Pain location: chest", (_fw("painLocation", "Chest", op="multi_add"),)),
+    "PAIN_LOCATION_ABDOMEN": ConceptMapping("PAIN_LOCATION_ABDOMEN", "pain", "Pain location: abdomen", (_fw("painLocation", "Abdomen", op="multi_add"),)),
+    "PAIN_LOCATION_BACK": ConceptMapping("PAIN_LOCATION_BACK", "pain", "Pain location: back", (_fw("painLocation", "Back", op="multi_add"),)),
+    "PAIN_LOCATION_UPPER_EXTREMITIES": ConceptMapping("PAIN_LOCATION_UPPER_EXTREMITIES", "pain", "Pain location: upper extremities", (_fw("painLocation", "Upper extremities", op="multi_add"),)),
+    "PAIN_LOCATION_LOWER_EXTREMITIES": ConceptMapping("PAIN_LOCATION_LOWER_EXTREMITIES", "pain", "Pain location: lower extremities", (_fw("painLocation", "Lower extremities", op="multi_add"),)),
+    "PAIN_LOCATION_GENERALIZED": ConceptMapping("PAIN_LOCATION_GENERALIZED", "pain", "Pain location: generalized", (_fw("painLocation", "Generalized", op="multi_add"),)),
+    "PAIN_CHARACTER_SHARP": ConceptMapping("PAIN_CHARACTER_SHARP", "pain", "Pain character: sharp", (_fw("painCharacter", "Sharp", op="multi_add"),)),
+    "PAIN_CHARACTER_DULL": ConceptMapping("PAIN_CHARACTER_DULL", "pain", "Pain character: dull", (_fw("painCharacter", "Dull", op="multi_add"),)),
+    "PAIN_CHARACTER_ACHING": ConceptMapping("PAIN_CHARACTER_ACHING", "pain", "Pain character: aching", (_fw("painCharacter", "Aching", op="multi_add"),)),
+    "PAIN_CHARACTER_BURNING": ConceptMapping("PAIN_CHARACTER_BURNING", "pain", "Pain character: burning", (_fw("painCharacter", "Burning", op="multi_add"),)),
+    "PAIN_CHARACTER_STABBING": ConceptMapping("PAIN_CHARACTER_STABBING", "pain", "Pain character: stabbing", (_fw("painCharacter", "Stabbing", op="multi_add"),)),
+    "PAIN_CHARACTER_THROBBING": ConceptMapping("PAIN_CHARACTER_THROBBING", "pain", "Pain character: throbbing", (_fw("painCharacter", "Throbbing", op="multi_add"),)),
+    "PAIN_CHARACTER_CRAMPING": ConceptMapping("PAIN_CHARACTER_CRAMPING", "pain", "Pain character: cramping", (_fw("painCharacter", "Cramping", op="multi_add"),)),
+    "PAIN_CHARACTER_SHOOTING": ConceptMapping("PAIN_CHARACTER_SHOOTING", "pain", "Pain character: shooting", (_fw("painCharacter", "Shooting", op="multi_add"),)),
+    "PAIN_CHARACTER_PRESSURE": ConceptMapping("PAIN_CHARACTER_PRESSURE", "pain", "Pain character: pressure", (_fw("painCharacter", "Pressure", op="multi_add"),)),
+    "PAIN_AGGRAVATING_MOVEMENT": ConceptMapping("PAIN_AGGRAVATING_MOVEMENT", "pain", "Aggravated by movement", (_fw("aggravatingFactors", "Movement", op="multi_add"),)),
+    "PAIN_AGGRAVATING_COUGHING": ConceptMapping("PAIN_AGGRAVATING_COUGHING", "pain", "Aggravated by coughing", (_fw("aggravatingFactors", "Coughing", op="multi_add"),)),
+    "PAIN_AGGRAVATING_EATING": ConceptMapping("PAIN_AGGRAVATING_EATING", "pain", "Aggravated by eating", (_fw("aggravatingFactors", "Eating", op="multi_add"),)),
+    "PAIN_AGGRAVATING_POSITION_CHANGE": ConceptMapping("PAIN_AGGRAVATING_POSITION_CHANGE", "pain", "Aggravated by position change", (_fw("aggravatingFactors", "Position change", op="multi_add"),)),
+    "PAIN_AGGRAVATING_TOUCH": ConceptMapping("PAIN_AGGRAVATING_TOUCH", "pain", "Aggravated by touch", (_fw("aggravatingFactors", "Touch", op="multi_add"),)),
+    "PAIN_RELIEVING_MEDICATION": ConceptMapping("PAIN_RELIEVING_MEDICATION", "pain", "Relieved by medication", (_fw("relievingFactors", "Medication", op="multi_add"),)),
+    "PAIN_RELIEVING_REST": ConceptMapping("PAIN_RELIEVING_REST", "pain", "Relieved by rest", (_fw("relievingFactors", "Rest", op="multi_add"),)),
+    "PAIN_RELIEVING_HEAT": ConceptMapping("PAIN_RELIEVING_HEAT", "pain", "Relieved by heat", (_fw("relievingFactors", "Heat", op="multi_add"),)),
+    "PAIN_RELIEVING_COLD": ConceptMapping("PAIN_RELIEVING_COLD", "pain", "Relieved by cold", (_fw("relievingFactors", "Cold", op="multi_add"),)),
+    "PAIN_RELIEVING_POSITION_CHANGE": ConceptMapping("PAIN_RELIEVING_POSITION_CHANGE", "pain", "Relieved by position change", (_fw("relievingFactors", "Position change", op="multi_add"),)),
+    "PAIN_NONPHARM_REPOSITIONING": ConceptMapping("PAIN_NONPHARM_REPOSITIONING", "pain", "Non-pharm: repositioning", (_fw("nonPharmInterventions", "Repositioning", op="multi_add"),)),
+    "PAIN_NONPHARM_HEAT_THERAPY": ConceptMapping("PAIN_NONPHARM_HEAT_THERAPY", "pain", "Non-pharm: heat therapy", (_fw("nonPharmInterventions", "Heat therapy", op="multi_add"),)),
+    "PAIN_NONPHARM_COLD_THERAPY": ConceptMapping("PAIN_NONPHARM_COLD_THERAPY", "pain", "Non-pharm: cold therapy", (_fw("nonPharmInterventions", "Cold therapy", op="multi_add"),)),
+    "PAIN_NONPHARM_MASSAGE": ConceptMapping("PAIN_NONPHARM_MASSAGE", "pain", "Non-pharm: massage", (_fw("nonPharmInterventions", "Massage", op="multi_add"),)),
+    "PAIN_NONPHARM_TENS_UNIT": ConceptMapping("PAIN_NONPHARM_TENS_UNIT", "pain", "Non-pharm: TENS unit", (_fw("nonPharmInterventions", "TENS unit", op="multi_add"),)),
+
+    # ═══════════════════════════ ENDOCRINE (coverage expansion) ═════════════
+    # Deliberately EXCLUDED: symptomSeverity (unbounded free-form dict),
+    # diabetes.insulinType/insulinDose (unbounded free-text dosing detail --
+    # a medication-list concern, not a structured-finding fact), thyroid.notes
+    # /notes (free text), diabetes.lastHbA1cDate (workflow date).
+    "ENDO_IMPAIRMENT_THYROID": ConceptMapping("ENDO_IMPAIRMENT_THYROID", "endocrine", "Thyroid impairment", (_fw("endocrineImpairment", "Thyroid", op="multi_add"),)),
+    "ENDO_IMPAIRMENT_PARATHYROID": ConceptMapping("ENDO_IMPAIRMENT_PARATHYROID", "endocrine", "Parathyroid impairment", (_fw("endocrineImpairment", "Parathyroid", op="multi_add"),)),
+    "ENDO_IMPAIRMENT_PITUITARY": ConceptMapping("ENDO_IMPAIRMENT_PITUITARY", "endocrine", "Pituitary impairment", (_fw("endocrineImpairment", "Pituitary", op="multi_add"),)),
+    "ENDO_IMPAIRMENT_ADRENAL": ConceptMapping("ENDO_IMPAIRMENT_ADRENAL", "endocrine", "Adrenal impairment", (_fw("endocrineImpairment", "Adrenal", op="multi_add"),)),
+    "ENDO_IMPAIRMENT_PANCREAS": ConceptMapping("ENDO_IMPAIRMENT_PANCREAS", "endocrine", "Pancreatic impairment", (_fw("endocrineImpairment", "Pancreas", op="multi_add"),)),
+    "ENDO_THYROID_NORMAL": ConceptMapping("ENDO_THYROID_NORMAL", "endocrine", "Thyroid normal", (_fw("thyroid.assessment", "Normal"),)),
+    "ENDO_THYROID_ENLARGED": ConceptMapping("ENDO_THYROID_ENLARGED", "endocrine", "Thyroid enlarged", (_fw("thyroid.assessment", "Enlarged"),)),
+    "ENDO_THYROID_TENDER": ConceptMapping("ENDO_THYROID_TENDER", "endocrine", "Thyroid tender", (_fw("thyroid.assessment", "Tender"),)),
+    "ENDO_THYROID_NODULAR": ConceptMapping("ENDO_THYROID_NODULAR", "endocrine", "Thyroid nodular", (_fw("thyroid.assessment", "Nodular"),)),
+    "ENDO_DIABETES_TYPE1": ConceptMapping("ENDO_DIABETES_TYPE1", "endocrine", "Diabetes Type 1", (_fw("diabetes.type", "Type 1"),)),
+    "ENDO_DIABETES_TYPE2": ConceptMapping("ENDO_DIABETES_TYPE2", "endocrine", "Diabetes Type 2", (_fw("diabetes.type", "Type 2"),)),
+    "ENDO_NOT_DIABETIC": ConceptMapping("ENDO_NOT_DIABETIC", "endocrine", "Not diabetic", (_fw("diabetes.type", "Not diabetic"),)),
+    "ENDO_DIABETES_INSULIN_DEPENDENT": ConceptMapping("ENDO_DIABETES_INSULIN_DEPENDENT", "endocrine", "Insulin-dependent diabetes", (_fw("diabetes.dependency", "Insulin-dependent"),)),
+    "ENDO_DIABETES_NON_INSULIN_DEPENDENT": ConceptMapping("ENDO_DIABETES_NON_INSULIN_DEPENDENT", "endocrine", "Non-insulin-dependent diabetes", (_fw("diabetes.dependency", "Non-insulin-dependent"),)),
+    "ENDO_DIABETES_GLUCOSE_MGMT_CONCERN": ConceptMapping("ENDO_DIABETES_GLUCOSE_MGMT_CONCERN", "endocrine", "Glucose-management concern", (_fw("diabetes.dependency", "Glucose-management concern"),)),
+    "ENDO_GLUCOSE_MONITORING_DAILY": ConceptMapping("ENDO_GLUCOSE_MONITORING_DAILY", "endocrine", "Glucose monitoring: daily", (_fw("diabetes.glucoseMonitoring", "Daily"),)),
+    "ENDO_GLUCOSE_MONITORING_BID": ConceptMapping("ENDO_GLUCOSE_MONITORING_BID", "endocrine", "Glucose monitoring: BID", (_fw("diabetes.glucoseMonitoring", "BID"),)),
+    "ENDO_GLUCOSE_MONITORING_TID": ConceptMapping("ENDO_GLUCOSE_MONITORING_TID", "endocrine", "Glucose monitoring: TID", (_fw("diabetes.glucoseMonitoring", "TID"),)),
+    "ENDO_GLUCOSE_MONITORING_QID": ConceptMapping("ENDO_GLUCOSE_MONITORING_QID", "endocrine", "Glucose monitoring: QID", (_fw("diabetes.glucoseMonitoring", "QID"),)),
+    "ENDO_GLUCOSE_MONITORING_WEEKLY": ConceptMapping("ENDO_GLUCOSE_MONITORING_WEEKLY", "endocrine", "Glucose monitoring: weekly", (_fw("diabetes.glucoseMonitoring", "Weekly"),)),
+    "ENDO_HBA1C_VALUE": ConceptMapping(
+        "ENDO_HBA1C_VALUE", "endocrine", "HbA1c value documented",
+        (), value_slot=ValueSlot(kind="numeric", path="diabetes.lastHbA1c", min_value=3, max_value=20),
+    ),
+    # RNICA Completion Sprint (Endocrine, 3 fields). insulinType/insulinDose
+    # are plain free-text `input` elements in the real RNICA.jsx form (no
+    # closed vocabulary, no numeric-only type) -- bounded free-text, same
+    # precedent as catheter.size/GI bowelFrequency. lastHbA1cDate is an
+    # inputType="date" field, paired with the existing ENDO_HBA1C_VALUE.
+    "ENDO_INSULIN_TYPE": ConceptMapping(
+        "ENDO_INSULIN_TYPE", "endocrine", "Insulin type",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="diabetes.insulinType", max_len=40),
+    ),
+    "ENDO_INSULIN_DOSE": ConceptMapping(
+        "ENDO_INSULIN_DOSE", "endocrine", "Insulin dose",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="diabetes.insulinDose", max_len=60),
+    ),
+    "ENDO_LAST_HBA1C_DATE": ConceptMapping(
+        "ENDO_LAST_HBA1C_DATE", "endocrine", "Last HbA1c date",
+        (), value_slot=ValueSlot(kind="date_bounded", path="diabetes.lastHbA1cDate"),
+    ),
+    "ENDO_ORAL_HYPOGLYCEMIC_METFORMIN": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_METFORMIN", "endocrine", "Metformin", (_fw("diabetes.oralHypoglycemics", "Metformin", op="multi_add"),)),
+    "ENDO_ORAL_HYPOGLYCEMIC_SULFONYLUREA": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_SULFONYLUREA", "endocrine", "Sulfonylurea", (_fw("diabetes.oralHypoglycemics", "Sulfonylurea", op="multi_add"),)),
+    "ENDO_ORAL_HYPOGLYCEMIC_DPP4": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_DPP4", "endocrine", "DPP-4 inhibitor", (_fw("diabetes.oralHypoglycemics", "DPP-4 inhibitor", op="multi_add"),)),
+    "ENDO_ORAL_HYPOGLYCEMIC_SGLT2": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_SGLT2", "endocrine", "SGLT2 inhibitor", (_fw("diabetes.oralHypoglycemics", "SGLT2 inhibitor", op="multi_add"),)),
+    "ENDO_SYMPTOM_FATIGUE": ConceptMapping("ENDO_SYMPTOM_FATIGUE", "endocrine", "Endocrine fatigue", (_fw("endocrineSymptoms", "Fatigue", op="multi_add"),)),
+    "ENDO_SYMPTOM_WEIGHT_CHANGES": ConceptMapping("ENDO_SYMPTOM_WEIGHT_CHANGES", "endocrine", "Weight changes", (_fw("endocrineSymptoms", "Weight changes", op="multi_add"),)),
+    "ENDO_SYMPTOM_TEMPERATURE_INTOLERANCE": ConceptMapping("ENDO_SYMPTOM_TEMPERATURE_INTOLERANCE", "endocrine", "Temperature intolerance", (_fw("endocrineSymptoms", "Temperature intolerance", op="multi_add"),)),
+    "ENDO_SYMPTOM_HAIR_SKIN_CHANGES": ConceptMapping("ENDO_SYMPTOM_HAIR_SKIN_CHANGES", "endocrine", "Hair/skin changes", (_fw("endocrineSymptoms", "Hair/skin changes", op="multi_add"),)),
+    "ENDO_SYMPTOM_POLYDIPSIA": ConceptMapping("ENDO_SYMPTOM_POLYDIPSIA", "endocrine", "Polydipsia", (_fw("endocrineSymptoms", "Polydipsia", op="multi_add"),)),
+    "ENDO_SYMPTOM_POLYURIA": ConceptMapping("ENDO_SYMPTOM_POLYURIA", "endocrine", "Polyuria", (_fw("endocrineSymptoms", "Polyuria", op="multi_add"),)),
+    "ENDO_SYMPTOM_TREMORS": ConceptMapping("ENDO_SYMPTOM_TREMORS", "endocrine", "Tremors", (_fw("endocrineSymptoms", "Tremors", op="multi_add"),)),
+    "ENDO_MED_LEVOTHYROXINE": ConceptMapping("ENDO_MED_LEVOTHYROXINE", "endocrine", "Levothyroxine", (_fw("currentEndocrineMeds", "Levothyroxine", op="multi_add"),)),
+    "ENDO_MED_INSULIN": ConceptMapping("ENDO_MED_INSULIN", "endocrine", "Insulin", (_fw("currentEndocrineMeds", "Insulin", op="multi_add"),)),
+    "ENDO_MED_ORAL_HYPOGLYCEMICS": ConceptMapping("ENDO_MED_ORAL_HYPOGLYCEMICS", "endocrine", "Oral hypoglycemics", (_fw("currentEndocrineMeds", "Oral hypoglycemics", op="multi_add"),)),
+    "ENDO_MED_CORTICOSTEROID_REPLACEMENT": ConceptMapping("ENDO_MED_CORTICOSTEROID_REPLACEMENT", "endocrine", "Corticosteroid replacement", (_fw("currentEndocrineMeds", "Corticosteroid replacement", op="multi_add"),)),
+
+    # ═══════════════════════════ INFECTION / ALLERGIES (coverage expansion) ═
+    # `allergies`/`allergyDetails` in INITIAL_FORM are dead formData fields --
+    # the rendered Allergies card (AllergiesCard) is backed by its own
+    # separate patient-level allergy record/API, not this JSONB blob, so they
+    # are intentionally never targeted here (see RNICA.jsx SECTION_CONFIGS.
+    # infection -- customRenderer: "patientAllergies").
+    "INFECT_HISTORY_MRSA": ConceptMapping("INFECT_HISTORY_MRSA", "infection", "History of MRSA", (_fw("historyOfResistantInfections", "MRSA", op="multi_add"),)),
+    "INFECT_HISTORY_C_DIFF": ConceptMapping("INFECT_HISTORY_C_DIFF", "infection", "History of C. difficile", (_fw("historyOfResistantInfections", "C. difficile", op="multi_add"),)),
+    "INFECT_TEMPERATURE_DOCUMENTED": ConceptMapping(
+        "INFECT_TEMPERATURE_DOCUMENTED", "infection", "Temperature documented (infection context)",
+        (), value_slot=ValueSlot(kind="numeric", path="temperature", min_value=90, max_value=110),
+    ),
+
+    # ═══════════════════════ GI / NUTRITION / GU (remaining real gaps) ══════
+    # RNICA Completion Sprint 4/7 (Gastrointestinal, 5 requested fields)
+    # resolution -- verified directly against RNICA.jsx SECTION_CONFIGS.gastrointestinal:
+    #   - abdominalGirth  -> NEW: GI_ABDOMINAL_GIRTH (implemented above, free_text_bounded)
+    #   - bowelFrequency  -> NEW: GI_BOWEL_FREQUENCY (implemented above, free_text_bounded)
+    #   - continence      -> NOT new work. The rendered continence-equivalent
+    #                        field is `bowelStatus` (radio: Continent/
+    #                        Incontinent/...), already fully covered by
+    #                        GI_BOWEL_STATUS_CONTINENT/INCONTINENT above.
+    #                        `formData.gastrointestinal.continence` itself is a
+    #                        dead INITIAL_FORM field with no SECTION_CONFIGS
+    #                        entry -- there is nothing in the live RN screen to
+    #                        populate.
+    #   - ostomy.condition   -> EXCLUDED. Dead INITIAL_FORM field, no
+    #                          SECTION_CONFIGS entry (only ostomy.present/
+    #                          ostomy.type render).
+    #   - feedingTube.site   -> EXCLUDED. Dead INITIAL_FORM field, no
+    #                          SECTION_CONFIGS entry (only feedingTube.present/
+    #                          feedingTube.type render).
+    # A concept must never write to a formData path the RN cannot see/review --
+    # doing so would violate the apply/review governance model. If a future
+    # RNICA.jsx redesign adds a rendered field for ostomy.condition or
+    # feedingTube.site, re-open this as new sprint work at that time.
+    "GI_LAST_BM_DATE": ConceptMapping(
+        "GI_LAST_BM_DATE", "gastrointestinal", "Last bowel movement date",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="lastBM", max_len=10),
+    ),
+    "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS": ConceptMapping(
+        "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS", "nutrition", "Weight loss (past 6 months)",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="weightLossPastSixMonths", max_len=30),
+    ),
+    "NUTRITION_DIET_TYPE": ConceptMapping(
+        "NUTRITION_DIET_TYPE", "nutrition", "Diet type",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="dietType", max_len=60),
+    ),
+    "NUTRITION_SUPPLEMENTS": ConceptMapping(
+        "NUTRITION_SUPPLEMENTS", "nutrition", "Nutritional supplements",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="nutritionalSupplements", max_len=100),
+    ),
+    "NUTRITION_ORAL_MUCOSA": ConceptMapping(
+        "NUTRITION_ORAL_MUCOSA", "nutrition", "Oral mucosa finding",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="oralMucosa", max_len=60),
+    ),
+    "GU_URINARY_FREQUENCY": ConceptMapping(
+        "GU_URINARY_FREQUENCY", "genitourinary", "Urinary frequency",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="frequency", max_len=40),
+    ),
+    "GU_URINE_COLOR": ConceptMapping(
+        "GU_URINE_COLOR", "genitourinary", "Urine color",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="urineColor", max_len=30),
+    ),
+
+    # ═══════════════════════ RESPIRATORY (remaining real gaps) ═════════════
+    "RESP_SPUTUM_CHARACTER": ConceptMapping(
+        "RESP_SPUTUM_CHARACTER", "respiratory", "Sputum character",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="sputumCharacter", max_len=60),
+    ),
+    "RESP_TRACH_TYPE": ConceptMapping(
+        "RESP_TRACH_TYPE", "respiratory", "Tracheostomy type",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="ventilator.tracheostomyType", max_len=40),
+    ),
+    "RESP_TRACH_SIZE": ConceptMapping(
+        "RESP_TRACH_SIZE", "respiratory", "Tracheostomy size",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="ventilator.tracheostomySize", max_len=20),
+    ),
+
+    # ═══════════════════════ SKIN (remaining real gap) ═════════════════════
+    # `skinBodySites` is a BodyMap of ~90 micro-region IDs (e.g. "left_heel",
+    # "sacrum") -- mapping every micro-region is not viable from prose, so
+    # only the classic pressure-injury sites that H&P/nursing narrative
+    # names explicitly are mapped (the same sites already used as free-text
+    # `wounds[].location` values, now also driving the visual body map).
+    "SKIN_SITE_SACRUM": ConceptMapping("SKIN_SITE_SACRUM", "skin", "Skin finding at sacrum", (_fw("skinBodySites", "sacrum", op="multi_add"),)),
+    "SKIN_SITE_COCCYX": ConceptMapping("SKIN_SITE_COCCYX", "skin", "Skin finding at coccyx", (_fw("skinBodySites", "coccyx", op="multi_add"),)),
+    "SKIN_SITE_LEFT_HEEL": ConceptMapping("SKIN_SITE_LEFT_HEEL", "skin", "Skin finding at left heel", (_fw("skinBodySites", "left_heel", op="multi_add"),)),
+    "SKIN_SITE_RIGHT_HEEL": ConceptMapping("SKIN_SITE_RIGHT_HEEL", "skin", "Skin finding at right heel", (_fw("skinBodySites", "right_heel", op="multi_add"),)),
+    "SKIN_SITE_LEFT_ISCHIAL": ConceptMapping("SKIN_SITE_LEFT_ISCHIAL", "skin", "Skin finding at left ischial tuberosity", (_fw("skinBodySites", "left_ischial", op="multi_add"),)),
+    "SKIN_SITE_RIGHT_ISCHIAL": ConceptMapping("SKIN_SITE_RIGHT_ISCHIAL", "skin", "Skin finding at right ischial tuberosity", (_fw("skinBodySites", "right_ischial", op="multi_add"),)),
+    "SKIN_SITE_LEFT_TROCHANTER": ConceptMapping("SKIN_SITE_LEFT_TROCHANTER", "skin", "Skin finding at left greater trochanter", (_fw("skinBodySites", "left_trochanter", op="multi_add"),)),
+    "SKIN_SITE_RIGHT_TROCHANTER": ConceptMapping("SKIN_SITE_RIGHT_TROCHANTER", "skin", "Skin finding at right greater trochanter", (_fw("skinBodySites", "right_trochanter", op="multi_add"),)),
+
+    # ═══════════════════════ IMMINENT DEATH (real gaps) ═════════════════════
+    # `appearsThreeDaysOrLess` (HOPE J0050) is an RN prognosis judgment call,
+    # not a fact to auto-populate -- excluded like PPS/KPS/ECOG.
+    "IMMINENT_MOTTLING": ConceptMapping("IMMINENT_MOTTLING", "imminentDeath", "Mottling of extremities", (_fw("indicators", "Mottling of extremities", op="multi_add"),)),
+    "IMMINENT_MANDIBULAR_BREATHING": ConceptMapping("IMMINENT_MANDIBULAR_BREATHING", "imminentDeath", "Mandibular breathing", (_fw("indicators", "Mandibular breathing", op="multi_add"),)),
+    "IMMINENT_APNEIC_PERIODS": ConceptMapping("IMMINENT_APNEIC_PERIODS", "imminentDeath", "Apneic periods", (_fw("indicators", "Apneic periods", op="multi_add"),)),
+    "IMMINENT_CYANOSIS": ConceptMapping("IMMINENT_CYANOSIS", "imminentDeath", "Cyanosis", (_fw("indicators", "Cyanosis", op="multi_add"),)),
+    "IMMINENT_NO_URINE_OUTPUT": ConceptMapping("IMMINENT_NO_URINE_OUTPUT", "imminentDeath", "No urine output", (_fw("indicators", "No urine output", op="multi_add"),)),
+    "IMMINENT_UNRESPONSIVE": ConceptMapping("IMMINENT_UNRESPONSIVE", "imminentDeath", "Unresponsive", (_fw("indicators", "Unresponsive", op="multi_add"),)),
+    "IMMINENT_DEATH_RATTLE": ConceptMapping("IMMINENT_DEATH_RATTLE", "imminentDeath", "Death rattle", (_fw("indicators", "Death rattle", op="multi_add"),)),
+    "IMMINENT_CHEYNE_STOKES": ConceptMapping("IMMINENT_CHEYNE_STOKES", "imminentDeath", "Cheyne-Stokes breathing", (_fw("indicators", "Cheyne-Stokes breathing", op="multi_add"),)),
+    "IMMINENT_COOL_COLD_EXTREMITIES": ConceptMapping("IMMINENT_COOL_COLD_EXTREMITIES", "imminentDeath", "Cool/cold extremities", (_fw("indicators", "Cool/cold extremities", op="multi_add"),)),
+    "IMMINENT_DECREASED_LOC": ConceptMapping("IMMINENT_DECREASED_LOC", "imminentDeath", "Decreased level of consciousness", (_fw("indicators", "Decreased level of consciousness", op="multi_add"),)),
+    "IMMINENT_INABILITY_TO_SWALLOW": ConceptMapping("IMMINENT_INABILITY_TO_SWALLOW", "imminentDeath", "Inability to swallow", (_fw("indicators", "Inability to swallow", op="multi_add"),)),
+    "IMMINENT_COMFORT_MEASURES_IN_PLACE": ConceptMapping("IMMINENT_COMFORT_MEASURES_IN_PLACE", "imminentDeath", "Comfort measures in place", (_fw("comfortMeasuresInPlace", True),)),
+    "IMMINENT_FAMILY_NOTIFIED": ConceptMapping("IMMINENT_FAMILY_NOTIFIED", "imminentDeath", "Family notified", (_fw("familyNotified", True),)),
+
+    # ═══════════════════════ SAFETY (real gaps) ═════════════════════════════
+    # `safetyAssessmentCompleted`/`fallRiskAssessmentCompleted`/
+    # `oxygenSafetyReviewed`/`incidentOccurrenceReported(+Notes)` are
+    # workflow-completion attestations for THIS visit, not admission facts --
+    # excluded per the RN-owned workflow-action rule. `disasterLevel` and its
+    # three condition checklists are a computed CMS triage classification
+    # (protocol-derived, not a source-document fact) -- excluded; `supplies.*`
+    # and the DME custom renderer are plan/order items, not extraction scope.
+    "SAFETY_HOME_ADEQUATE_LIGHTING": ConceptMapping("SAFETY_HOME_ADEQUATE_LIGHTING", "safety", "Adequate lighting", (_fw("homeEnvironment", "Adequate lighting", op="multi_add"),)),
+    "SAFETY_HOME_HANDRAILS": ConceptMapping("SAFETY_HOME_HANDRAILS", "safety", "Handrails present", (_fw("homeEnvironment", "Handrails present", op="multi_add"),)),
+    "SAFETY_HOME_THROW_RUGS": ConceptMapping("SAFETY_HOME_THROW_RUGS", "safety", "Throw rugs", (_fw("homeEnvironment", "Throw rugs", op="multi_add"),)),
+    "SAFETY_HOME_CLUTTER": ConceptMapping("SAFETY_HOME_CLUTTER", "safety", "Clutter/obstacles", (_fw("homeEnvironment", "Clutter/obstacles", op="multi_add"),)),
+    "SAFETY_HOME_STAIRS_NO_RAILING": ConceptMapping("SAFETY_HOME_STAIRS_NO_RAILING", "safety", "Stairs without railing", (_fw("homeEnvironment", "Stairs without railing", op="multi_add"),)),
+    "SAFETY_HOME_PETS": ConceptMapping("SAFETY_HOME_PETS", "safety", "Pets", (_fw("homeEnvironment", "Pets", op="multi_add"),)),
+    "SAFETY_HOME_WEAPONS_FIREARMS": ConceptMapping("SAFETY_HOME_WEAPONS_FIREARMS", "safety", "Weapons/firearms", (_fw("homeEnvironment", "Weapons/firearms", op="multi_add"), _fw("firearmInHome", True))),
+    "SAFETY_HOME_PEST_INFESTATION": ConceptMapping("SAFETY_HOME_PEST_INFESTATION", "safety", "Pest infestation", (_fw("homeEnvironment", "Pest infestation", op="multi_add"),)),
+    "SAFETY_HOME_INADEQUATE_HEATING_COOLING": ConceptMapping("SAFETY_HOME_INADEQUATE_HEATING_COOLING", "safety", "Inadequate heating/cooling", (_fw("homeEnvironment", "Inadequate heating/cooling", op="multi_add"),)),
+    "SAFETY_HOME_SMOKE_DETECTORS": ConceptMapping("SAFETY_HOME_SMOKE_DETECTORS", "safety", "Smoke detectors present", (_fw("homeEnvironment", "Smoke detectors present", op="multi_add"),)),
+    "SAFETY_FALL_RISK_LOW": ConceptMapping("SAFETY_FALL_RISK_LOW", "safety", "Fall risk documented as low", (_fw("fallRiskLevel", "Low"),)),
+    "SAFETY_FALL_RISK_MODERATE": ConceptMapping("SAFETY_FALL_RISK_MODERATE", "safety", "Fall risk documented as moderate", (_fw("fallRiskLevel", "Moderate"),)),
+    "SAFETY_FALL_RISK_HIGH": ConceptMapping("SAFETY_FALL_RISK_HIGH", "safety", "Fall risk documented as high", (_fw("fallRiskLevel", "High"),)),
+    "SAFETY_TRANSFER_INDEPENDENT": ConceptMapping("SAFETY_TRANSFER_INDEPENDENT", "safety", "Transfers independently", (_fw("transferSafetyLevel", "Independent"),)),
+    "SAFETY_TRANSFER_ASSIST_X1": ConceptMapping("SAFETY_TRANSFER_ASSIST_X1", "safety", "Transfers with assist x1", (_fw("transferSafetyLevel", "Needs assist x1"),)),
+    "SAFETY_TRANSFER_ASSIST_X2": ConceptMapping("SAFETY_TRANSFER_ASSIST_X2", "safety", "Transfers with assist x2", (_fw("transferSafetyLevel", "Needs assist x2"),)),
+    "SAFETY_TRANSFER_MECHANICAL_LIFT": ConceptMapping("SAFETY_TRANSFER_MECHANICAL_LIFT", "safety", "Requires mechanical lift for transfer", (_fw("transferSafetyLevel", "Mechanical lift required"),)),
+    "SAFETY_TRANSFER_UNSAFE": ConceptMapping("SAFETY_TRANSFER_UNSAFE", "safety", "Transfers documented as unsafe/high risk", (_fw("transferSafetyLevel", "Unsafe/high risk"),)),
+    "SAFETY_OXYGEN_IN_USE": ConceptMapping("SAFETY_OXYGEN_IN_USE", "safety", "Oxygen in use", (_fw("oxygenInUse", True),)),
+
+    # ═══════════════════════ PSYCHOSOCIAL (real gaps) ═══════════════════════
+    # `copingAssessment` (Effective/Developing/Ineffective/Crisis) is an
+    # RN/MSW clinical judgment call, not a fact -- excluded. `interventionPlan`
+    # and `socialWorkVisitNeeded` are plan/referral decisions the discipline
+    # makes, not facts present in admission documents -- excluded.
+    "PSYCH_SUPPORT_STRONG": ConceptMapping("PSYCH_SUPPORT_STRONG", "psychosocial", "Strong family/social support", (_fw("familySocialSupport", "Strong support"),)),
+    "PSYCH_SUPPORT_ADEQUATE": ConceptMapping("PSYCH_SUPPORT_ADEQUATE", "psychosocial", "Adequate family/social support", (_fw("familySocialSupport", "Adequate support"),)),
+    "PSYCH_SUPPORT_LIMITED": ConceptMapping("PSYCH_SUPPORT_LIMITED", "psychosocial", "Limited family/social support", (_fw("familySocialSupport", "Limited support"),)),
+    "PSYCH_SUPPORT_NONE": ConceptMapping("PSYCH_SUPPORT_NONE", "psychosocial", "No family/social support", (_fw("familySocialSupport", "No support"),)),
+    "PSYCH_PRIMARY_SUPPORT_PERSON": ConceptMapping(
+        "PSYCH_PRIMARY_SUPPORT_PERSON", "psychosocial", "Primary support person named",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="primarySupportPerson", max_len=60),
+    ),
+    "PSYCH_SUPPORT_RELATIONSHIP": ConceptMapping(
+        "PSYCH_SUPPORT_RELATIONSHIP", "psychosocial", "Support person relationship",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="supportRelationship", max_len=40),
+    ),
+    "PSYCH_CONCERN_ANXIETY_ABOUT_ILLNESS": ConceptMapping("PSYCH_CONCERN_ANXIETY_ABOUT_ILLNESS", "psychosocial", "Anxiety about illness", (_fw("patientConcerns", "Anxiety about illness", op="multi_add"),)),
+    "PSYCH_CONCERN_DEPRESSION": ConceptMapping("PSYCH_CONCERN_DEPRESSION", "psychosocial", "Depression concern", (_fw("patientConcerns", "Depression", op="multi_add"),)),
+    "PSYCH_CONCERN_GRIEF_LOSS": ConceptMapping("PSYCH_CONCERN_GRIEF_LOSS", "psychosocial", "Grief/loss concern", (_fw("patientConcerns", "Grief/loss", op="multi_add"),)),
+    "PSYCH_CONCERN_FINANCIAL": ConceptMapping("PSYCH_CONCERN_FINANCIAL", "psychosocial", "Financial concerns", (_fw("patientConcerns", "Financial concerns", op="multi_add"),)),
+    "PSYCH_CONCERN_FAMILY_CONFLICT": ConceptMapping("PSYCH_CONCERN_FAMILY_CONFLICT", "psychosocial", "Family conflict", (_fw("patientConcerns", "Family conflict", op="multi_add"),)),
+    "PSYCH_CONCERN_CAREGIVER_BURDEN": ConceptMapping("PSYCH_CONCERN_CAREGIVER_BURDEN", "psychosocial", "Caregiver burden", (_fw("patientConcerns", "Caregiver burden", op="multi_add"),)),
+    "PSYCH_CONCERN_SOCIAL_ISOLATION": ConceptMapping("PSYCH_CONCERN_SOCIAL_ISOLATION", "psychosocial", "Social isolation", (_fw("patientConcerns", "Social isolation", op="multi_add"),)),
+    "PSYCH_CONCERN_ROLE_CHANGES": ConceptMapping("PSYCH_CONCERN_ROLE_CHANGES", "psychosocial", "Role changes", (_fw("patientConcerns", "Role changes", op="multi_add"),)),
+    "PSYCH_CONCERN_UNFINISHED_BUSINESS": ConceptMapping("PSYCH_CONCERN_UNFINISHED_BUSINESS", "psychosocial", "Unfinished business", (_fw("patientConcerns", "Unfinished business", op="multi_add"),)),
+    "PSYCH_CONCERN_FEAR_OF_DYING": ConceptMapping("PSYCH_CONCERN_FEAR_OF_DYING", "psychosocial", "Fear of dying", (_fw("patientConcerns", "Fear of dying", op="multi_add"),)),
+    "PSYCH_CONCERN_LOSS_OF_INDEPENDENCE": ConceptMapping("PSYCH_CONCERN_LOSS_OF_INDEPENDENCE", "psychosocial", "Loss of independence", (_fw("patientConcerns", "Loss of independence", op="multi_add"),)),
+    "PSYCH_CONCERN_NON_ACCEPTANCE_OF_DIAGNOSIS": ConceptMapping("PSYCH_CONCERN_NON_ACCEPTANCE_OF_DIAGNOSIS", "psychosocial", "Non-acceptance of diagnosis", (_fw("patientConcerns", "Non-acceptance of diagnosis", op="multi_add"),)),
+    "PSYCH_CONCERN_SUICIDE": ConceptMapping("PSYCH_CONCERN_SUICIDE", "psychosocial", "Suicide concerns", (_fw("patientConcerns", "Suicide concerns", op="multi_add"),)),
+    "PSYCH_CONCERN_SUBSTANCE_ABUSE": ConceptMapping("PSYCH_CONCERN_SUBSTANCE_ABUSE", "psychosocial", "Substance abuse concerns", (_fw("patientConcerns", "Substance abuse concerns", op="multi_add"),)),
+    "PSYCH_CONCERN_HISTORY_EMOTIONAL_ILLNESS": ConceptMapping("PSYCH_CONCERN_HISTORY_EMOTIONAL_ILLNESS", "psychosocial", "History of emotional illness", (_fw("patientConcerns", "History of emotional illness", op="multi_add"),)),
+    "PSYCH_CONCERN_CULTURAL": ConceptMapping("PSYCH_CONCERN_CULTURAL", "psychosocial", "Cultural concerns", (_fw("patientConcerns", "Cultural concerns", op="multi_add"),)),
+    "PSYCH_CONCERN_BURIAL": ConceptMapping("PSYCH_CONCERN_BURIAL", "psychosocial", "Burial concerns", (_fw("patientConcerns", "Burial concerns", op="multi_add"),)),
+    "PSYCH_CONCERN_ANGER": ConceptMapping("PSYCH_CONCERN_ANGER", "psychosocial", "Anger", (_fw("patientConcerns", "Anger", op="multi_add"),)),
+    "PSYCH_CAREGIVER_ANTICIPATORY_GRIEF": ConceptMapping("PSYCH_CAREGIVER_ANTICIPATORY_GRIEF", "psychosocial", "Anticipatory grief (caregiver)", (_fw("caregiverFamilyConcerns", "Anticipatory grief", op="multi_add"),)),
+    "PSYCH_CAREGIVER_FATIGUE": ConceptMapping("PSYCH_CAREGIVER_FATIGUE", "psychosocial", "Caregiver fatigue", (_fw("caregiverFamilyConcerns", "Caregiver fatigue", op="multi_add"),)),
+    "PSYCH_CAREGIVER_FINANCIAL_STRESS": ConceptMapping("PSYCH_CAREGIVER_FINANCIAL_STRESS", "psychosocial", "Financial stress (caregiver)", (_fw("caregiverFamilyConcerns", "Financial stress", op="multi_add"),)),
+    "PSYCH_CAREGIVER_WORK_LIFE_BALANCE": ConceptMapping("PSYCH_CAREGIVER_WORK_LIFE_BALANCE", "psychosocial", "Work-life balance concern (caregiver)", (_fw("caregiverFamilyConcerns", "Work-life balance", op="multi_add"),)),
+    "PSYCH_CAREGIVER_CHILDREN_FAMILY_COPING": ConceptMapping("PSYCH_CAREGIVER_CHILDREN_FAMILY_COPING", "psychosocial", "Children/family coping concern", (_fw("caregiverFamilyConcerns", "Children/family coping", op="multi_add"),)),
+    "PSYCH_CAREGIVER_FUNERAL_PLANNING": ConceptMapping("PSYCH_CAREGIVER_FUNERAL_PLANNING", "psychosocial", "Funeral planning concern (caregiver)", (_fw("caregiverFamilyConcerns", "Funeral planning", op="multi_add"),)),
+    "PSYCH_CAREGIVER_ESTATE_LEGAL": ConceptMapping("PSYCH_CAREGIVER_ESTATE_LEGAL", "psychosocial", "Estate/legal matters concern (caregiver)", (_fw("caregiverFamilyConcerns", "Estate/legal matters", op="multi_add"),)),
+    "PSYCH_DISTRESS_RATING": ConceptMapping(
+        "PSYCH_DISTRESS_RATING", "psychosocial", "Distress Thermometer score documented",
+        (), value_slot=ValueSlot(kind="numeric", path="distressRating", min_value=0, max_value=10),
+    ),
+    "PSYCH_HISTORY_DEPRESSION": ConceptMapping("PSYCH_HISTORY_DEPRESSION", "psychosocial", "History of depression", (_fw("psychosocialHistory", "History of depression", op="multi_add"),)),
+    "PSYCH_HISTORY_ANXIETY": ConceptMapping("PSYCH_HISTORY_ANXIETY", "psychosocial", "History of anxiety", (_fw("psychosocialHistory", "History of anxiety", op="multi_add"),)),
+    "PSYCH_HISTORY_SUBSTANCE_ABUSE": ConceptMapping("PSYCH_HISTORY_SUBSTANCE_ABUSE", "psychosocial", "History of substance abuse", (_fw("psychosocialHistory", "History of substance abuse", op="multi_add"),)),
+    "PSYCH_CURRENT_MH_TREATMENT": ConceptMapping("PSYCH_CURRENT_MH_TREATMENT", "psychosocial", "Current mental health treatment", (_fw("psychosocialHistory", "Current mental health treatment", op="multi_add"),)),
+    "PSYCH_PSYCHIATRIC_MEDICATIONS": ConceptMapping("PSYCH_PSYCHIATRIC_MEDICATIONS", "psychosocial", "Psychiatric medications", (_fw("psychosocialHistory", "Psychiatric medications", op="multi_add"),)),
+    "PSYCH_PREVIOUS_COUNSELING": ConceptMapping("PSYCH_PREVIOUS_COUNSELING", "psychosocial", "Previous counseling/therapy", (_fw("psychosocialHistory", "Previous counseling/therapy", op="multi_add"),)),
+
+    # ═══════════════════════ SPIRITUAL (real gaps) ══════════════════════════
+    # `concernsDiscussedDate` is a completion date for an action, not a fact
+    # about the patient -- excluded. `chaplainNeeded` is a referral decision,
+    # not an extraction target -- excluded.
+    "SPIRITUAL_PATIENT_ACTIVE_IN_FAITH": ConceptMapping("SPIRITUAL_PATIENT_ACTIVE_IN_FAITH", "spiritual", "Patient active in faith tradition", (_fw("patientActiveInFaithTradition", True),)),
+    "SPIRITUAL_PATIENT_FAITH": ConceptMapping(
+        "SPIRITUAL_PATIENT_FAITH", "spiritual", "Patient faith tradition named",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="patientFaith", max_len=60),
+    ),
+    "SPIRITUAL_CAREGIVER_ACTIVE_IN_FAITH": ConceptMapping("SPIRITUAL_CAREGIVER_ACTIVE_IN_FAITH", "spiritual", "Caregiver active in faith tradition", (_fw("caregiverActiveInFaithTradition", True),)),
+    "SPIRITUAL_CAREGIVER_FAITH": ConceptMapping(
+        "SPIRITUAL_CAREGIVER_FAITH", "spiritual", "Caregiver faith tradition named",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="caregiverFaith", max_len=60),
+    ),
+    "SPIRITUAL_CONCERN_MEANING_OF_ILLNESS": ConceptMapping("SPIRITUAL_CONCERN_MEANING_OF_ILLNESS", "spiritual", "Meaning of illness concern", (_fw("spiritualConcerns", "Meaning of illness", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_FORGIVENESS": ConceptMapping("SPIRITUAL_CONCERN_FORGIVENESS", "spiritual", "Forgiveness concern", (_fw("spiritualConcerns", "Forgiveness", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_HOPE": ConceptMapping("SPIRITUAL_CONCERN_HOPE", "spiritual", "Hope concern", (_fw("spiritualConcerns", "Hope", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_LEGACY": ConceptMapping("SPIRITUAL_CONCERN_LEGACY", "spiritual", "Legacy concern", (_fw("spiritualConcerns", "Legacy", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_PRAYER_REQUESTS": ConceptMapping("SPIRITUAL_CONCERN_PRAYER_REQUESTS", "spiritual", "Prayer requests", (_fw("spiritualConcerns", "Prayer requests", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_RELIGIOUS_RITUALS": ConceptMapping("SPIRITUAL_CONCERN_RELIGIOUS_RITUALS", "spiritual", "Religious rituals concern", (_fw("spiritualConcerns", "Religious rituals", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_AFTERLIFE": ConceptMapping("SPIRITUAL_CONCERN_AFTERLIFE", "spiritual", "Afterlife concerns", (_fw("spiritualConcerns", "Afterlife concerns", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_ANGER_AT_GOD": ConceptMapping("SPIRITUAL_CONCERN_ANGER_AT_GOD", "spiritual", "Anger at God", (_fw("spiritualConcerns", "Anger at God", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_SPIRITUAL_DISTRESS": ConceptMapping("SPIRITUAL_CONCERN_SPIRITUAL_DISTRESS", "spiritual", "Spiritual distress", (_fw("spiritualConcerns", "Spiritual distress", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_FEAR": ConceptMapping("SPIRITUAL_CONCERN_FEAR", "spiritual", "Fear (spiritual)", (_fw("spiritualConcerns", "Fear", op="multi_add"),)),
+    "SPIRITUAL_CONCERN_HOPELESSNESS": ConceptMapping("SPIRITUAL_CONCERN_HOPELESSNESS", "spiritual", "Hopelessness", (_fw("spiritualConcerns", "Hopelessness", op="multi_add"),)),
+    "SPIRITUAL_DISTRESS_RATING": ConceptMapping(
+        "SPIRITUAL_DISTRESS_RATING", "spiritual", "Spiritual distress rating documented",
+        (), value_slot=ValueSlot(kind="numeric", path="spiritualDistressRating", min_value=0, max_value=10),
+    ),
+    "SPIRITUAL_CONCERNS_ASKED_YES_DISCUSSED": ConceptMapping("SPIRITUAL_CONCERNS_ASKED_YES_DISCUSSED", "spiritual", "F3000: asked, discussion occurred", (_fw("concernsAskedStatus", "1"), _fw("concernsDiscussed", True))),
+    "SPIRITUAL_CONCERNS_ASKED_YES_REFUSED": ConceptMapping("SPIRITUAL_CONCERNS_ASKED_YES_REFUSED", "spiritual", "F3000: asked, patient refused to discuss", (_fw("concernsAskedStatus", "2"),)),
+    "SPIRITUAL_CONCERNS_NOT_ASKED": ConceptMapping("SPIRITUAL_CONCERNS_NOT_ASKED", "spiritual", "F3000: not asked", (_fw("concernsAskedStatus", "0"),)),
+    "SPIRITUAL_CHAPLAIN_NEEDED": ConceptMapping("SPIRITUAL_CHAPLAIN_NEEDED", "spiritual", "Chaplain referral explicitly requested/documented", (_fw("chaplainNeeded", True),)),
+
+    # ═══════════════════════ BEREAVEMENT (real gaps) ════════════════════════
+    # `bereavementVisitNeeded` is a referral/plan decision -- excluded.
+    "BEREAVEMENT_PATIENT_FEAR_OF_DEATH": ConceptMapping("BEREAVEMENT_PATIENT_FEAR_OF_DEATH", "bereavement", "Fear of death (patient)", (_fw("patientConcerns", "Fear of death", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_UNRESOLVED_GRIEF": ConceptMapping("BEREAVEMENT_PATIENT_UNRESOLVED_GRIEF", "bereavement", "Unresolved grief (patient)", (_fw("patientConcerns", "Unresolved grief", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_EXISTENTIAL_DISTRESS": ConceptMapping("BEREAVEMENT_PATIENT_EXISTENTIAL_DISTRESS", "bereavement", "Existential distress (patient)", (_fw("patientConcerns", "Existential distress", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_LEGACY_CONCERNS": ConceptMapping("BEREAVEMENT_PATIENT_LEGACY_CONCERNS", "bereavement", "Legacy concerns (patient)", (_fw("patientConcerns", "Legacy concerns", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_FAMILY_PREPAREDNESS": ConceptMapping("BEREAVEMENT_PATIENT_FAMILY_PREPAREDNESS", "bereavement", "Family preparedness concern", (_fw("patientConcerns", "Family preparedness", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_MULTIPLE_LOSSES": ConceptMapping("BEREAVEMENT_PATIENT_MULTIPLE_LOSSES", "bereavement", "Multiple losses (patient)", (_fw("patientConcerns", "Multiple losses", op="multi_add"),)),
+    "BEREAVEMENT_PATIENT_ACTIVE_GRIEVING": ConceptMapping("BEREAVEMENT_PATIENT_ACTIVE_GRIEVING", "bereavement", "Active grieving (patient)", (_fw("patientConcerns", "Active grieving", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_ANTICIPATORY_GRIEF": ConceptMapping("BEREAVEMENT_CAREGIVER_ANTICIPATORY_GRIEF", "bereavement", "Anticipatory grief (caregiver)", (_fw("caregiverConcerns", "Anticipatory grief", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_PREVIOUS_LOSSES": ConceptMapping("BEREAVEMENT_CAREGIVER_PREVIOUS_LOSSES", "bereavement", "Previous losses (caregiver)", (_fw("caregiverConcerns", "Previous losses", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_COMPLICATED_GRIEF_HISTORY": ConceptMapping("BEREAVEMENT_CAREGIVER_COMPLICATED_GRIEF_HISTORY", "bereavement", "Complicated grief history (caregiver)", (_fw("caregiverConcerns", "Complicated grief history", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_MENTAL_HEALTH_CONCERNS": ConceptMapping("BEREAVEMENT_CAREGIVER_MENTAL_HEALTH_CONCERNS", "bereavement", "Mental health concerns (caregiver)", (_fw("caregiverConcerns", "Mental health concerns", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_SUBSTANCE_ABUSE_HISTORY": ConceptMapping("BEREAVEMENT_CAREGIVER_SUBSTANCE_ABUSE_HISTORY", "bereavement", "Substance abuse history (caregiver)", (_fw("caregiverConcerns", "Substance abuse history", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_SOCIAL_ISOLATION": ConceptMapping("BEREAVEMENT_CAREGIVER_SOCIAL_ISOLATION", "bereavement", "Social isolation (caregiver)", (_fw("caregiverConcerns", "Social isolation", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_CONCURRENT_STRESSORS": ConceptMapping("BEREAVEMENT_CAREGIVER_CONCURRENT_STRESSORS", "bereavement", "Concurrent stressors (caregiver)", (_fw("caregiverConcerns", "Concurrent stressors", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_MULTIPLE_LOSSES": ConceptMapping("BEREAVEMENT_CAREGIVER_MULTIPLE_LOSSES", "bereavement", "Multiple losses (caregiver)", (_fw("caregiverConcerns", "Multiple losses", op="multi_add"),)),
+    "BEREAVEMENT_CAREGIVER_ACTIVE_GRIEVING": ConceptMapping("BEREAVEMENT_CAREGIVER_ACTIVE_GRIEVING", "bereavement", "Active grieving (caregiver)", (_fw("caregiverConcerns", "Active grieving", op="multi_add"),)),
+    "BEREAVEMENT_RISK_LOW": ConceptMapping("BEREAVEMENT_RISK_LOW", "bereavement", "Bereavement risk documented as low", (_fw("bereavementRisk", "Low"),)),
+    "BEREAVEMENT_RISK_MODERATE": ConceptMapping("BEREAVEMENT_RISK_MODERATE", "bereavement", "Bereavement risk documented as moderate", (_fw("bereavementRisk", "Moderate"),)),
+    "BEREAVEMENT_RISK_HIGH": ConceptMapping("BEREAVEMENT_RISK_HIGH", "bereavement", "Bereavement risk documented as high", (_fw("bereavementRisk", "High"),)),
+
+    # ═══════════════════════ PERSONAL CARE (real gaps) ══════════════════════
+    # `aideVisitPreferences.*` (frequency/preferredTime/duration) are
+    # scheduling/logistics preferences, not clinical facts -- deferred, not
+    # in scope of this pass.
+    "PERSONALCARE_AIDE_BATHING": ConceptMapping("PERSONALCARE_AIDE_BATHING", "personalCare", "Aide task: bathing/showering", (_fw("aideTasks", "Bathing/showering", op="multi_add"),)),
+    "PERSONALCARE_AIDE_HAIR_GROOMING": ConceptMapping("PERSONALCARE_AIDE_HAIR_GROOMING", "personalCare", "Aide task: hair care/grooming", (_fw("aideTasks", "Hair care/grooming", op="multi_add"),)),
+    "PERSONALCARE_AIDE_ORAL_HYGIENE": ConceptMapping("PERSONALCARE_AIDE_ORAL_HYGIENE", "personalCare", "Aide task: oral hygiene", (_fw("aideTasks", "Oral hygiene", op="multi_add"),)),
+    "PERSONALCARE_AIDE_SKIN_CARE": ConceptMapping("PERSONALCARE_AIDE_SKIN_CARE", "personalCare", "Aide task: skin care", (_fw("aideTasks", "Skin care", op="multi_add"),)),
+    "PERSONALCARE_AIDE_DRESSING": ConceptMapping("PERSONALCARE_AIDE_DRESSING", "personalCare", "Aide task: dressing", (_fw("aideTasks", "Dressing", op="multi_add"),)),
+    "PERSONALCARE_AIDE_TOILETING": ConceptMapping("PERSONALCARE_AIDE_TOILETING", "personalCare", "Aide task: toileting assistance", (_fw("aideTasks", "Toileting assistance", op="multi_add"),)),
+    "PERSONALCARE_AIDE_TRANSFERS_MOBILITY": ConceptMapping("PERSONALCARE_AIDE_TRANSFERS_MOBILITY", "personalCare", "Aide task: transfers/mobility", (_fw("aideTasks", "Transfers/mobility", op="multi_add"),)),
+    "PERSONALCARE_AIDE_LIGHT_MEAL_PREP": ConceptMapping("PERSONALCARE_AIDE_LIGHT_MEAL_PREP", "personalCare", "Aide task: light meal preparation", (_fw("aideTasks", "Light meal preparation", op="multi_add"),)),
+    "PERSONALCARE_AIDE_LIGHT_HOUSEKEEPING": ConceptMapping("PERSONALCARE_AIDE_LIGHT_HOUSEKEEPING", "personalCare", "Aide task: light housekeeping", (_fw("aideTasks", "Light housekeeping", op="multi_add"),)),
+    "PERSONALCARE_AIDE_LAUNDRY": ConceptMapping("PERSONALCARE_AIDE_LAUNDRY", "personalCare", "Aide task: laundry", (_fw("aideTasks", "Laundry", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_COMPANIONSHIP": ConceptMapping("PERSONALCARE_VOLUNTEER_COMPANIONSHIP", "personalCare", "Volunteer service: companionship/visits", (_fw("volunteerServices", "Companionship/visits", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_RESPITE": ConceptMapping("PERSONALCARE_VOLUNTEER_RESPITE", "personalCare", "Volunteer service: respite care", (_fw("volunteerServices", "Respite care", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_ERRANDS": ConceptMapping("PERSONALCARE_VOLUNTEER_ERRANDS", "personalCare", "Volunteer service: errand assistance", (_fw("volunteerServices", "Errand assistance", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_TRANSPORTATION": ConceptMapping("PERSONALCARE_VOLUNTEER_TRANSPORTATION", "personalCare", "Volunteer service: transportation", (_fw("volunteerServices", "Transportation", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_VIGIL": ConceptMapping("PERSONALCARE_VOLUNTEER_VIGIL", "personalCare", "Volunteer service: vigil/11th hour", (_fw("volunteerServices", "Vigil/11th hour", op="multi_add"),)),
+    "PERSONALCARE_VOLUNTEER_PET_CARE": ConceptMapping("PERSONALCARE_VOLUNTEER_PET_CARE", "personalCare", "Volunteer service: pet care", (_fw("volunteerServices", "Pet care", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_MEALS_ON_WHEELS": ConceptMapping("PERSONALCARE_COMMUNITY_MEALS_ON_WHEELS", "personalCare", "Community resource: Meals on Wheels", (_fw("communityResources", "Meals on Wheels", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_ADULT_DAY_CARE": ConceptMapping("PERSONALCARE_COMMUNITY_ADULT_DAY_CARE", "personalCare", "Community resource: adult day care", (_fw("communityResources", "Adult day care", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_TRANSPORTATION": ConceptMapping("PERSONALCARE_COMMUNITY_TRANSPORTATION", "personalCare", "Community resource: transportation services", (_fw("communityResources", "Transportation services", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_LEGAL_AID": ConceptMapping("PERSONALCARE_COMMUNITY_LEGAL_AID", "personalCare", "Community resource: legal aid", (_fw("communityResources", "Legal aid", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_FINANCIAL_ASSISTANCE": ConceptMapping("PERSONALCARE_COMMUNITY_FINANCIAL_ASSISTANCE", "personalCare", "Community resource: financial assistance programs", (_fw("communityResources", "Financial assistance programs", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_FAITH_SUPPORT": ConceptMapping("PERSONALCARE_COMMUNITY_FAITH_SUPPORT", "personalCare", "Community resource: faith community support", (_fw("communityResources", "Faith community support", op="multi_add"),)),
+    "PERSONALCARE_COMMUNITY_VETERAN_SERVICES": ConceptMapping("PERSONALCARE_COMMUNITY_VETERAN_SERVICES", "personalCare", "Community resource: veteran services", (_fw("communityResources", "Veteran services", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_HOSPITAL_BED": ConceptMapping("PERSONALCARE_EQUIP_HOSPITAL_BED", "personalCare", "Equipment need: hospital bed", (_fw("equipmentSupplyNeeds", "Hospital bed", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_WHEELCHAIR": ConceptMapping("PERSONALCARE_EQUIP_WHEELCHAIR", "personalCare", "Equipment need: wheelchair", (_fw("equipmentSupplyNeeds", "Wheelchair", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_WALKER": ConceptMapping("PERSONALCARE_EQUIP_WALKER", "personalCare", "Equipment need: walker", (_fw("equipmentSupplyNeeds", "Walker", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_COMMODE": ConceptMapping("PERSONALCARE_EQUIP_COMMODE", "personalCare", "Equipment need: commode", (_fw("equipmentSupplyNeeds", "Commode", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_SHOWER_CHAIR": ConceptMapping("PERSONALCARE_EQUIP_SHOWER_CHAIR", "personalCare", "Equipment need: shower chair", (_fw("equipmentSupplyNeeds", "Shower chair", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_HOYER_LIFT": ConceptMapping("PERSONALCARE_EQUIP_HOYER_LIFT", "personalCare", "Equipment need: Hoyer lift", (_fw("equipmentSupplyNeeds", "Hoyer lift", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_EGG_CRATE_MATTRESS": ConceptMapping("PERSONALCARE_EQUIP_EGG_CRATE_MATTRESS", "personalCare", "Equipment need: egg crate mattress", (_fw("equipmentSupplyNeeds", "Egg crate mattress", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_INCONTINENCE_SUPPLIES": ConceptMapping("PERSONALCARE_EQUIP_INCONTINENCE_SUPPLIES", "personalCare", "Equipment need: incontinence supplies", (_fw("equipmentSupplyNeeds", "Incontinence supplies", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_WOUND_CARE_SUPPLIES": ConceptMapping("PERSONALCARE_EQUIP_WOUND_CARE_SUPPLIES", "personalCare", "Equipment need: wound care supplies", (_fw("equipmentSupplyNeeds", "Wound care supplies", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_AIR_MATTRESS": ConceptMapping("PERSONALCARE_EQUIP_AIR_MATTRESS", "personalCare", "Equipment need: air mattress", (_fw("equipmentSupplyNeeds", "Air mattress", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_BEDPAN": ConceptMapping("PERSONALCARE_EQUIP_BEDPAN", "personalCare", "Equipment need: bedpan", (_fw("equipmentSupplyNeeds", "Bedpan", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_OVERBED_TABLE": ConceptMapping("PERSONALCARE_EQUIP_OVERBED_TABLE", "personalCare", "Equipment need: overbed table", (_fw("equipmentSupplyNeeds", "Overbed table", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_CANE": ConceptMapping("PERSONALCARE_EQUIP_CANE", "personalCare", "Equipment need: cane", (_fw("equipmentSupplyNeeds", "Cane", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_GERI_CHAIR": ConceptMapping("PERSONALCARE_EQUIP_GERI_CHAIR", "personalCare", "Equipment need: geri-chair/recliner", (_fw("equipmentSupplyNeeds", "Geri-chair/recliner", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_URINAL": ConceptMapping("PERSONALCARE_EQUIP_URINAL", "personalCare", "Equipment need: urinal", (_fw("equipmentSupplyNeeds", "Urinal", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_NEBULIZER": ConceptMapping("PERSONALCARE_EQUIP_NEBULIZER", "personalCare", "Equipment need: nebulizer", (_fw("equipmentSupplyNeeds", "Nebulizer", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_SUCTION_MACHINE": ConceptMapping("PERSONALCARE_EQUIP_SUCTION_MACHINE", "personalCare", "Equipment need: suction machine", (_fw("equipmentSupplyNeeds", "Suction machine", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_O2_CONCENTRATOR": ConceptMapping("PERSONALCARE_EQUIP_O2_CONCENTRATOR", "personalCare", "Equipment need: O2 concentrator", (_fw("equipmentSupplyNeeds", "O2 concentrator", op="multi_add"),)),
+    "PERSONALCARE_EQUIP_E_TANK": ConceptMapping("PERSONALCARE_EQUIP_E_TANK", "personalCare", "Equipment need: E-tank", (_fw("equipmentSupplyNeeds", "E-tank", op="multi_add"),)),
+
+    # ═══════════════════════ TEACHING NEEDS (real gaps) ═════════════════════
+    # `teachingTopics`/`teachingMethods`/`patientFamilyResponse`/
+    # `followUpPlan` document what THIS VISIT's RN actually taught and how
+    # the patient/family responded -- that is a this-visit workflow record,
+    # not an admission fact, and is excluded. Only the learner
+    # CHARACTERISTICS (who the learner is, how they learn best, and any
+    # documented barriers) are admission-document facts worth capturing.
+    "TEACH_PRIMARY_LEARNER_PATIENT": ConceptMapping("TEACH_PRIMARY_LEARNER_PATIENT", "teachingNeeds", "Primary learner: patient", (_fw("primaryLearner", "Patient"),)),
+    "TEACH_PRIMARY_LEARNER_CAREGIVER": ConceptMapping("TEACH_PRIMARY_LEARNER_CAREGIVER", "teachingNeeds", "Primary learner: caregiver", (_fw("primaryLearner", "Caregiver"),)),
+    "TEACH_PRIMARY_LEARNER_BOTH": ConceptMapping("TEACH_PRIMARY_LEARNER_BOTH", "teachingNeeds", "Primary learner: both patient and caregiver", (_fw("primaryLearner", "Both"),)),
+    "TEACH_LEARNING_STYLE_VISUAL": ConceptMapping("TEACH_LEARNING_STYLE_VISUAL", "teachingNeeds", "Learning style: visual", (_fw("learningStylePreference", "Visual"),)),
+    "TEACH_LEARNING_STYLE_AUDITORY": ConceptMapping("TEACH_LEARNING_STYLE_AUDITORY", "teachingNeeds", "Learning style: auditory", (_fw("learningStylePreference", "Auditory"),)),
+    "TEACH_LEARNING_STYLE_HANDS_ON": ConceptMapping("TEACH_LEARNING_STYLE_HANDS_ON", "teachingNeeds", "Learning style: hands-on", (_fw("learningStylePreference", "Hands-on"),)),
+    "TEACH_LEARNING_STYLE_WRITTEN": ConceptMapping("TEACH_LEARNING_STYLE_WRITTEN", "teachingNeeds", "Learning style: written materials", (_fw("learningStylePreference", "Written materials"),)),
+    "TEACH_BARRIER_LANGUAGE": ConceptMapping("TEACH_BARRIER_LANGUAGE", "teachingNeeds", "Learning barrier: language", (_fw("barriersToLearning", "Language", op="multi_add"),)),
+    "TEACH_BARRIER_LITERACY": ConceptMapping("TEACH_BARRIER_LITERACY", "teachingNeeds", "Learning barrier: literacy", (_fw("barriersToLearning", "Literacy", op="multi_add"),)),
+    "TEACH_BARRIER_COGNITIVE_IMPAIRMENT": ConceptMapping("TEACH_BARRIER_COGNITIVE_IMPAIRMENT", "teachingNeeds", "Learning barrier: cognitive impairment", (_fw("barriersToLearning", "Cognitive impairment", op="multi_add"),)),
+    "TEACH_BARRIER_HEARING_DEFICIT": ConceptMapping("TEACH_BARRIER_HEARING_DEFICIT", "teachingNeeds", "Learning barrier: hearing deficit", (_fw("barriersToLearning", "Hearing deficit", op="multi_add"),)),
+    "TEACH_BARRIER_VISION_DEFICIT": ConceptMapping("TEACH_BARRIER_VISION_DEFICIT", "teachingNeeds", "Learning barrier: vision deficit", (_fw("barriersToLearning", "Vision deficit", op="multi_add"),)),
+    "TEACH_BARRIER_CULTURAL_CONSIDERATIONS": ConceptMapping("TEACH_BARRIER_CULTURAL_CONSIDERATIONS", "teachingNeeds", "Learning barrier: cultural considerations", (_fw("barriersToLearning", "Cultural considerations", op="multi_add"),)),
+    "TEACH_BARRIER_DENIAL_OF_DIAGNOSIS": ConceptMapping("TEACH_BARRIER_DENIAL_OF_DIAGNOSIS", "teachingNeeds", "Learning barrier: denial of diagnosis", (_fw("barriersToLearning", "Denial of diagnosis", op="multi_add"),)),
+
+    # ═══════════════ CAREGIVER ASSESSMENT (Phase 3 completion) ═══════════════
+    # Lives under demographics.pcg.caregiverEvaluation (CDPH-required
+    # Caregiver Willingness & Capability Evaluation), not its own top-level
+    # RNICA section. `evaluationNotes` is unbounded free text -- excluded.
+    # willingnessScore/capabilityScore are 1-5 CATEGORICAL determinations
+    # with fixed labels (e.g. "fully committed" = 5) -- mapped like
+    # PAIN_SEVERITY_* when the source document already states an explicit
+    # categorical conclusion (e.g. an MSW/referral note), not when the RN
+    # would need to perform the rating live during this visit.
+    "CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE", "demographics", "Caregiver physical ability: fully capable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Fully capable"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS", "demographics", "Caregiver physical ability: capable with limitations", (_fw("pcg.caregiverEvaluation.physicalAbility", "Capable with limitations"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_LIMITED": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_LIMITED", "demographics", "Caregiver physical ability: limited capability", (_fw("pcg.caregiverEvaluation.physicalAbility", "Limited capability"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_UNABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_UNABLE", "demographics", "Caregiver physical ability: unable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Unable"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS", "demographics", "Caregiver cognitive ability: fully understands", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Fully understands"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT", "demographics", "Caregiver cognitive ability: understands with reinforcement", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Understands with reinforcement"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY", "demographics", "Caregiver cognitive ability: difficulty understanding", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Difficulty understanding"),)),
+    "CAREGIVER_COGNITIVE_ABILITY_UNABLE": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNABLE", "demographics", "Caregiver cognitive ability: unable to understand", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Unable to understand"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED", "demographics", "Caregiver emotional readiness: ready and engaged", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ready and engaged"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING", "demographics", "Caregiver emotional readiness: ambivalent but willing", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ambivalent but willing"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_RELUCTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_RELUCTANT", "demographics", "Caregiver emotional readiness: reluctant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Reluctant"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT", "demographics", "Caregiver emotional readiness: overwhelmed/resistant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Overwhelmed/resistant"),)),
+    "CAREGIVER_AVAILABILITY_24_7": ConceptMapping("CAREGIVER_AVAILABILITY_24_7", "demographics", "Caregiver availability: 24/7 available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "24/7 available"),)),
+    "CAREGIVER_AVAILABILITY_16_23_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_16_23_HOURS", "demographics", "Caregiver availability: 16-23 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "16-23 hours"),)),
+    "CAREGIVER_AVAILABILITY_8_15_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_8_15_HOURS", "demographics", "Caregiver availability: 8-15 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "8-15 hours"),)),
+    "CAREGIVER_AVAILABILITY_4_7_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_4_7_HOURS", "demographics", "Caregiver availability: 4-7 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "4-7 hours"),)),
+    "CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS", "demographics", "Caregiver availability: less than 4 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Less than 4 hours"),)),
+    "CAREGIVER_AVAILABILITY_NOT_AVAILABLE": ConceptMapping("CAREGIVER_AVAILABILITY_NOT_AVAILABLE", "demographics", "Caregiver availability: not available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Not available"),)),
+    "CAREGIVER_TRAINING_MEDICATION_ADMIN": ConceptMapping("CAREGIVER_TRAINING_MEDICATION_ADMIN", "demographics", "Caregiver training need: medication administration", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Medication administration", op="multi_add"),)),
+    "CAREGIVER_TRAINING_WOUND_CARE": ConceptMapping("CAREGIVER_TRAINING_WOUND_CARE", "demographics", "Caregiver training need: wound care", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Wound care", op="multi_add"),)),
+    "CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT": ConceptMapping("CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT", "demographics", "Caregiver training need: symptom management", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Symptom management", op="multi_add"),)),
+    "CAREGIVER_TRAINING_EMERGENCY_PROCEDURES": ConceptMapping("CAREGIVER_TRAINING_EMERGENCY_PROCEDURES", "demographics", "Caregiver training need: emergency procedures", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Emergency procedures", op="multi_add"),)),
+    "CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS": ConceptMapping("CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS", "demographics", "Caregiver training need: body mechanics/transfers", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Body mechanics/transfers", op="multi_add"),)),
+    "CAREGIVER_TRAINING_NUTRITION_FEEDING": ConceptMapping("CAREGIVER_TRAINING_NUTRITION_FEEDING", "demographics", "Caregiver training need: nutrition/feeding", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Nutrition/feeding", op="multi_add"),)),
+    "CAREGIVER_TRAINING_SKIN_CARE_POSITIONING": ConceptMapping("CAREGIVER_TRAINING_SKIN_CARE_POSITIONING", "demographics", "Caregiver training need: skin care/positioning", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Skin care/positioning", op="multi_add"),)),
+    "CAREGIVER_TRAINING_EQUIPMENT_USE": ConceptMapping("CAREGIVER_TRAINING_EQUIPMENT_USE", "demographics", "Caregiver training need: equipment use", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Equipment use", op="multi_add"),)),
+    "CAREGIVER_TRAINING_INFECTION_CONTROL": ConceptMapping("CAREGIVER_TRAINING_INFECTION_CONTROL", "demographics", "Caregiver training need: infection control", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Infection control", op="multi_add"),)),
+    "CAREGIVER_TRAINING_PAIN_ASSESSMENT": ConceptMapping("CAREGIVER_TRAINING_PAIN_ASSESSMENT", "demographics", "Caregiver training need: pain assessment", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Pain assessment", op="multi_add"),)),
+    "CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE": ConceptMapping("CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE", "demographics", "Caregiver training need: when to call hospice", (_fw("pcg.caregiverEvaluation.trainingNeeds", "When to call hospice", op="multi_add"),)),
+    "CAREGIVER_WILLINGNESS_1_UNWILLING": ConceptMapping("CAREGIVER_WILLINGNESS_1_UNWILLING", "demographics", "Caregiver willingness score: 1 (unwilling)", (_fw("pcg.caregiverEvaluation.willingnessScore", "1"),)),
+    "CAREGIVER_WILLINGNESS_2_RELUCTANT": ConceptMapping("CAREGIVER_WILLINGNESS_2_RELUCTANT", "demographics", "Caregiver willingness score: 2 (reluctant)", (_fw("pcg.caregiverEvaluation.willingnessScore", "2"),)),
+    "CAREGIVER_WILLINGNESS_3_AMBIVALENT": ConceptMapping("CAREGIVER_WILLINGNESS_3_AMBIVALENT", "demographics", "Caregiver willingness score: 3 (ambivalent)", (_fw("pcg.caregiverEvaluation.willingnessScore", "3"),)),
+    "CAREGIVER_WILLINGNESS_4_WILLING": ConceptMapping("CAREGIVER_WILLINGNESS_4_WILLING", "demographics", "Caregiver willingness score: 4 (willing)", (_fw("pcg.caregiverEvaluation.willingnessScore", "4"),)),
+    "CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED": ConceptMapping("CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED", "demographics", "Caregiver willingness score: 5 (fully committed)", (_fw("pcg.caregiverEvaluation.willingnessScore", "5"),)),
+    "CAREGIVER_CAPABILITY_1_UNABLE": ConceptMapping("CAREGIVER_CAPABILITY_1_UNABLE", "demographics", "Caregiver capability score: 1 (unable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "1"),)),
+    "CAREGIVER_CAPABILITY_2_MINIMAL": ConceptMapping("CAREGIVER_CAPABILITY_2_MINIMAL", "demographics", "Caregiver capability score: 2 (minimal)", (_fw("pcg.caregiverEvaluation.capabilityScore", "2"),)),
+    "CAREGIVER_CAPABILITY_3_MODERATE": ConceptMapping("CAREGIVER_CAPABILITY_3_MODERATE", "demographics", "Caregiver capability score: 3 (moderate)", (_fw("pcg.caregiverEvaluation.capabilityScore", "3"),)),
+    "CAREGIVER_CAPABILITY_4_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_4_CAPABLE", "demographics", "Caregiver capability score: 4 (capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "4"),)),
+    "CAREGIVER_CAPABILITY_5_FULLY_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_5_FULLY_CAPABLE", "demographics", "Caregiver capability score: 5 (fully capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "5"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_ADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_ADEQUATE", "demographics", "Caregiver support system: adequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Adequate"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_INADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_INADEQUATE", "demographics", "Caregiver support system: inadequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Inadequate"),)),
+    "CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT", "demographics", "Caregiver support system: needs reinforcement", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Needs reinforcement"),)),
 }
 
 
@@ -563,6 +2004,21 @@ def validate_finding(
                 if slot.max_len is not None and len(text_value) > slot.max_len:
                     text_value = text_value[: slot.max_len]
                 value = text_value
+            elif slot.kind == "date_bounded":
+                # A device/catheter insertion or change date is a real
+                # clinical fact when the source states one explicitly, but
+                # never inferred/estimated -- reject anything that isn't a
+                # clean ISO calendar date, and reject a future date (a
+                # documentation date, never a data-entry error masquerading
+                # as fact).
+                text_value = str(value or "").strip()
+                try:
+                    parsed_date = datetime.strptime(text_value, "%Y-%m-%d").date()
+                except (TypeError, ValueError):
+                    return None
+                if parsed_date > date.today():
+                    return None
+                value = parsed_date.isoformat()
             else:
                 return None
         else:
@@ -680,6 +2136,8 @@ def concept_prompt_catalog() -> str:
             if mapping.value_slot is not None:
                 if mapping.value_slot.kind == "numeric":
                     slot_hint = " (requires a numeric \"value\", e.g. liters/min)"
+                elif mapping.value_slot.kind == "date_bounded":
+                    slot_hint = " (requires \"value\" as an explicit calendar date in YYYY-MM-DD format, never estimated)"
                 else:
                     slot_hint = " (requires a short \"value\" string, e.g. anatomic location)"
             lines.append(f"  {mapping.concept_code} -- {mapping.label}{slot_hint}")

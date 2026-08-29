@@ -122,6 +122,67 @@ def test_harvest_from_source_returns_none_for_blank_text(db_session):
     assert result is None
 
 
+def test_harvest_from_source_is_idempotent_when_reprocessed(db_session, monkeypatch):
+    """RNICA Phase 4 reprocess validation: a document/source can legitimately
+    be re-harvested (e.g. a recovery sweep retrying after an interrupted
+    first attempt, or an operator explicitly re-running extraction).
+    Calling harvest_from_source twice for the exact same
+    (tenant_id, source_type, source_record_id) must reuse the original
+    PatientEvidenceRecord rather than creating a duplicate, and must never
+    create a second, duplicate set of PatientHarvestedSignal rows -- this
+    is what the DB-level unique constraint + the existence check at the
+    top of harvest_from_source are for."""
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    source_record_id = uuid.uuid4()
+    recorded_at = datetime.now(timezone.utc)
+    text = "Patient reports increasing pain and decreased appetite over the past week."
+
+    first = harvest_from_source(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        source_type="CLINICAL_NOTE",
+        source_record_id=source_record_id,
+        recorded_at=recorded_at,
+        text=text,
+        recorded_by_user_id=TEST_USER_ID,
+        recorded_by_name="Test User",
+    )
+    assert first is not None
+
+    # Simulate a reprocess: the exact same source is harvested again.
+    second = harvest_from_source(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        source_type="CLINICAL_NOTE",
+        source_record_id=source_record_id,
+        recorded_at=recorded_at,
+        text=text,
+        recorded_by_user_id=TEST_USER_ID,
+        recorded_by_name="Test User",
+    )
+    assert second is not None
+    assert second.id == first.id, "reprocessing the same source must reuse the existing evidence record, not duplicate it"
+
+    all_records = (
+        db_session.query(PatientEvidenceRecord)
+        .filter(
+            PatientEvidenceRecord.tenant_id == tenant_id,
+            PatientEvidenceRecord.source_type == "CLINICAL_NOTE",
+            PatientEvidenceRecord.source_record_id == source_record_id,
+        )
+        .all()
+    )
+    assert len(all_records) == 1, "reprocessing must never create a second evidence record for the same source"
+
+
 def test_extract_signals_parses_well_formed_model_response(monkeypatch):
     monkeypatch.setenv("AZURE_OPENAI_ENDPOINT", "https://fake-resource.openai.azure.com/openai/v1")
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "fake-key")

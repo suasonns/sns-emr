@@ -163,44 +163,163 @@ export function applyStructuredFindings(formData, findings) {
           concept_code: finding.concept_code,
           finding,
         });
+      } else if (write.op === "set_row_field") {
+        // Enriches an already-created draft row (e.g. the wound row
+        // SKIN_WOUND_PRESENT created) with one more attribute -- it must
+        // NEVER create a new row itself (that would fragment one wound
+        // into multiple rows). Always targets the LAST row in the array,
+        // since concepts are applied in the order the evidence was
+        // extracted and a wound's attributes are documented together.
+        // Blank-only, same as every other write: never overwrites a value
+        // the RN (or an earlier finding) already set.
+        const split = splitDraftRowPath(write.path);
+        if (!split) continue;
+        const current = getNested(next[targetSection], split.arrayPath);
+        const arr = Array.isArray(current) ? current : [];
+        if (arr.length === 0) continue; // no row exists yet to attach to -- never fabricate one
+        const lastIdx = arr.length - 1;
+        const lastRow = arr[lastIdx] || {};
+        const existingValue = lastRow[split.rowField];
+        if (!isBlank(existingValue)) {
+          if (existingValue !== write.value) {
+            conflicts.push({
+              section: targetSection,
+              path: `${split.arrayPath}[${lastIdx}].${split.rowField}`,
+              existingValue,
+              suggestedValue: write.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
+          continue;
+        }
+        const updatedRow = { ...lastRow, [split.rowField]: write.value };
+        const updatedArr = [...arr];
+        updatedArr[lastIdx] = updatedRow;
+        next = { ...next, [targetSection]: setNested(next[targetSection], split.arrayPath, updatedArr) };
+        appliedFields.push({
+          section: targetSection,
+          path: `${split.arrayPath}[${lastIdx}].${split.rowField}`,
+          value: write.value,
+          concept_code: finding.concept_code,
+          finding,
+        });
       }
     }
 
-    // A concept's bounded numeric secondary value (e.g. oxygen liters/min)
-    // is not part of `writes` -- it is the finding's own `value`, written
-    // to value_slot.path within the concept's own section, blank-only,
-    // exactly like a "set" write. Skipped here for push_draft_row concepts
-    // (handled above as part of the new row) and free_text_bounded
-    // wound-location concepts (same reason).
-    if (concept.valueSlot && concept.valueSlot.kind === "numeric") {
-      const targetSection = concept.section;
-      const sectionData = next[targetSection];
-      if (sectionData) {
-        const current = getNested(sectionData, concept.valueSlot.path);
-        if (isBlank(current)) {
-          next = { ...next, [targetSection]: setNested(sectionData, concept.valueSlot.path, finding.value) };
-          appliedFields.push({
-            section: targetSection,
-            path: concept.valueSlot.path,
-            value: finding.value,
-            concept_code: finding.concept_code,
-            finding,
-          });
-        } else if (current !== finding.value) {
-          conflicts.push({
-            section: targetSection,
-            path: concept.valueSlot.path,
-            existingValue: current,
-            suggestedValue: finding.value,
-            concept_code: finding.concept_code,
-            finding,
-          });
+    // A concept's bounded secondary value (e.g. oxygen liters/min, or a
+    // free_text_bounded wound row field like `dressing`) is not part of
+    // `writes` -- it is the finding's own `value`, written to
+    // value_slot.path, blank-only, exactly like a "set"/"set_row_field"
+    // write. Skipped here for push_draft_row concepts (handled above as
+    // part of the new row, e.g. SKIN_WOUND_PRESENT's `location`).
+    const hasOwnRowCreatingWrite = (concept.writes || []).some((w) => w.op === "push_draft_row");
+    if (concept.valueSlot && !hasOwnRowCreatingWrite) {
+      const rowSplit = splitDraftRowPath(concept.valueSlot.path);
+      if (rowSplit) {
+        // Row-scoped secondary value (e.g. wounds[].length, wounds[].dressing)
+        // -- enrich the LAST existing row only, same rule as set_row_field:
+        // never fabricate a row, never overwrite a non-blank value.
+        const targetSection = concept.section;
+        const sectionData = next[targetSection];
+        const current = sectionData ? getNested(sectionData, rowSplit.arrayPath) : null;
+        const arr = Array.isArray(current) ? current : [];
+        if (arr.length > 0) {
+          const lastIdx = arr.length - 1;
+          const lastRow = arr[lastIdx] || {};
+          const existingValue = lastRow[rowSplit.rowField];
+          if (isBlank(existingValue)) {
+            const updatedRow = { ...lastRow, [rowSplit.rowField]: finding.value };
+            const updatedArr = [...arr];
+            updatedArr[lastIdx] = updatedRow;
+            next = { ...next, [targetSection]: setNested(sectionData, rowSplit.arrayPath, updatedArr) };
+            appliedFields.push({
+              section: targetSection,
+              path: `${rowSplit.arrayPath}[${lastIdx}].${rowSplit.rowField}`,
+              value: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          } else if (existingValue !== finding.value) {
+            conflicts.push({
+              section: targetSection,
+              path: `${rowSplit.arrayPath}[${lastIdx}].${rowSplit.rowField}`,
+              existingValue,
+              suggestedValue: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
+        }
+      } else {
+        // Non-row-scoped secondary value of ANY value_slot kind (numeric,
+        // free_text_bounded, or date_bounded) -- e.g. oxygen liters/min,
+        // a diet-type free-text string, or a catheter insertion date.
+        // Blank-only, same rule as "set": never overwrites a value already
+        // present (RN-entered or from an earlier finding).
+        //
+        // NOTE: prior to this fix, this branch only ran for kind ===
+        // "numeric" -- every free_text_bounded/date_bounded concept with
+        // no row-array path and no FieldWrite (e.g. NUTRITION_DIET_TYPE,
+        // GU_URINE_COLOR, RESP_TRACH_TYPE) was silently never applied.
+        const targetSection = concept.section;
+        const sectionData = next[targetSection];
+        if (sectionData) {
+          const current = getNested(sectionData, concept.valueSlot.path);
+          if (isBlank(current)) {
+            next = { ...next, [targetSection]: setNested(sectionData, concept.valueSlot.path, finding.value) };
+            appliedFields.push({
+              section: targetSection,
+              path: concept.valueSlot.path,
+              value: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          } else if (current !== finding.value) {
+            conflicts.push({
+              section: targetSection,
+              path: concept.valueSlot.path,
+              existingValue: current,
+              suggestedValue: finding.value,
+              concept_code: finding.concept_code,
+              finding,
+            });
+          }
         }
       }
     }
   }
 
   return { formData: next, appliedFields, conflicts, reviewNeeded };
+}
+
+/**
+ * Which RNICA form sections a set of CURRENT findings would target if
+ * applied -- WITHOUT touching formData or requiring formData at all. Used
+ * to drive the per-section "Ready for RN Review" status badge: a section
+ * with pending unresolved structured findings needs the RN's attention
+ * even before any Apply is clicked, so this must not require an apply
+ * pass to know which sections are affected. Read-only, pure, safe to call
+ * on every render for every pending signal.
+ */
+export function getPendingFindingTargetSections(findings) {
+  const sections = new Set();
+  for (const finding of findings || []) {
+    if (!finding || !finding.concept_code) continue;
+    if (finding.assertion_status && finding.assertion_status !== "CURRENT") continue;
+    const concept = CONCEPT_REGISTRY[finding.concept_code];
+    if (!concept) continue;
+    for (const write of concept.writes || []) {
+      sections.add(write.section || concept.section);
+    }
+    // A concept with only a value_slot and no writes (e.g. temperature,
+    // or a bounded wound row field like `dressing`) still targets its own
+    // section -- must count as pending too, not just concepts with writes.
+    if (concept.valueSlot) {
+      sections.add(concept.section);
+    }
+  }
+  return sections;
 }
 
 // A concept "counts" toward ASSESSMENT_DRAFTED status for a section only
@@ -216,13 +335,25 @@ export function sectionsWithAppliedStructuredFields(appliedFields) {
 
 /**
  * Bulk "Apply All Non-Conflicting" -- runs applyStructuredFindings() once
- * per pending signal (in the order given), but only KEEPS a signal's
- * changes if that signal produced zero conflicts. A signal that produces
- * even one conflict is left completely untouched (its writes are rolled
- * back, not partially applied) and reported in `skippedSignals` for the
- * RN to review individually -- this keeps the "never overwrite RN data"
- * guarantee intact while letting a nurse clear an entire batch of clean,
- * no-conflict findings in one click instead of clicking Apply N times.
+ * per pending signal (in the order given) and merges EVERY signal's
+ * result into the running form state.
+ *
+ * applyStructuredFindings() already guarantees write-level safety on its
+ * own: a "set"/"multi_add"/"push_draft_row" write is only ever committed
+ * when the target field is genuinely blank (or, for multi_add/push_draft_row,
+ * only adds a new option/row -- it never overwrites or removes anything).
+ * Any write that would touch a non-blank field is instead recorded in
+ * `conflicts` and left completely alone. Because that separation already
+ * happens at the individual-write level, there is no need to roll back an
+ * entire signal just because ONE of its bundled findings conflicts --
+ * doing so previously discarded genuinely non-conflicting findings (e.g.
+ * a new wound row) whenever they happened to be harvested in the same
+ * signal as an unrelated duplicate/conflicting mention. A signal is now
+ * only marked "skipped" (fully pending RN review) if it produced ZERO
+ * applied fields and at least one conflict; a signal that produced BOTH
+ * applied fields and conflicts is marked "applied" (its clean writes are
+ * kept) while its conflicting writes are still surfaced in
+ * `skippedConflicts` for individual RN review.
  *
  * @param {object} formData - the full RNICA form state.
  * @param {Array} signals - pending structured-findings signals, each with
@@ -250,21 +381,28 @@ export function applyAllNonConflicting(formData, signals) {
     const { formData: candidate, appliedFields: candidateApplied, conflicts: candidateConflicts } =
       applyStructuredFindings(next, signal.structured_findings || []);
 
+    // Always merge -- applyStructuredFindings() never overwrites a
+    // non-blank field itself, so merging is safe even when this signal
+    // also produced conflicts for its OTHER findings.
+    next = candidate;
+
     if (candidateConflicts.length > 0) {
-      // Leave this signal's fields exactly as they were -- do not merge
-      // `candidate` into `next` -- and surface why for the RN.
-      skippedSignalIds.push(signal.id);
       skippedConflicts.push(
         ...candidateConflicts.map((c) => ({ ...c, signal_id: signal.id }))
       );
-      continue;
     }
 
-    next = candidate;
     if (candidateApplied.length > 0) {
+      // At least one finding in this signal genuinely wrote a value --
+      // count the signal as applied even if some of its other findings
+      // conflicted and are still pending individual RN review.
       appliedSignalIds.push(signal.id);
       appliedFieldsBySignal[signal.id] = candidateApplied;
       appliedFields.push(...candidateApplied);
+    } else if (candidateConflicts.length > 0) {
+      // Nothing applied and something conflicted -- this signal is
+      // entirely pending RN review.
+      skippedSignalIds.push(signal.id);
     } else {
       // Nothing to write (e.g. every finding was HISTORICAL/NEGATED and
       // routed to reviewNeeded) -- still counts as "cleanly reviewed",

@@ -16,9 +16,15 @@ from app.models.enums import (
     CompletionReferenceType,
 )
 from app.services.task_completion_evidence import complete_task_with_evidence
+from tests.conftest import _test_tenant_id
 
 
-TENANT_ID = uuid.UUID("01271980-0000-0000-0000-000005101977")
+# Derived from the shared conftest fixture's current tenant model instead of
+# a private hardcoded literal. conftest.py's db_session fixture creates/uses
+# whatever tenant _test_tenant_id() returns (its default changed 2026-08-26
+# to an isolation-safe synthetic id) -- a hardcoded copy here previously drifted
+# out of sync and caused a ForeignKeyViolation on every Patient insert.
+TENANT_ID = uuid.UUID(_test_tenant_id())
 
 SYSTEM_TEST_USER_ID = uuid.UUID(
     "11111111-1111-1111-1111-111111111111"

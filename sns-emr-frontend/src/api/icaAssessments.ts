@@ -14,6 +14,11 @@ type AssessmentPayload = {
   // the existing assessment for a repeated clientRequestId instead of
   // creating a duplicate DRAFT (see save_rnica_assessment).
   clientRequestId?: string;
+  // Durable provenance for structured-finding Apply/Apply-All writes (see
+  // field_provenance on the RnicaAssessment model). Rarely present at
+  // create time (a brand-new assessment has nothing applied yet) but
+  // accepted for symmetry with the update path.
+  fieldProvenance?: Array<Record<string, unknown>>;
 };
 
 type AssessmentQueryOptions = {
@@ -160,8 +165,14 @@ export async function getRnicaAdmissionStatus(patientId: string) {
   );
 }
 
-export async function updateRnicaAssessment(assessmentId: string, formData: Record<string, unknown>) {
-  return unwrap(api.put(`/visits/rnica/${assessmentId}`, { formData }), "RN ICA update failed");
+export async function updateRnicaAssessment(
+  assessmentId: string,
+  formData: Record<string, unknown>,
+  fieldProvenance?: Array<Record<string, unknown>>
+) {
+  const body: Record<string, unknown> = { formData };
+  if (fieldProvenance) body.fieldProvenance = fieldProvenance;
+  return unwrap(api.put(`/visits/rnica/${assessmentId}`, body), "RN ICA update failed");
 }
 
 export async function lockRnicaAssessment(assessmentId: string) {
