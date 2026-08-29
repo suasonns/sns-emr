@@ -700,3 +700,72 @@ def test_gi_ostomy_condition_and_feeding_tube_site_are_not_registered_concepts()
     assert not any(code.startswith("GI_FEEDING_TUBE_SITE") for code in CONCEPT_REGISTRY)
 
 
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Endocrine (3 fields)
+# ---------------------------------------------------------------------------
+
+def test_endo_insulin_type_and_dose_are_bounded_free_text():
+    for code, path, max_len in [
+        ("ENDO_INSULIN_TYPE", "diabetes.insulinType", 40),
+        ("ENDO_INSULIN_DOSE", "diabetes.insulinDose", 60),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+
+
+def test_endo_last_hba1c_date_is_date_bounded():
+    mapping = CONCEPT_REGISTRY["ENDO_LAST_HBA1C_DATE"]
+    assert mapping.value_slot.kind == "date_bounded"
+    assert mapping.value_slot.path == "diabetes.lastHbA1cDate"
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Nutrition (2 requested fields)
+#
+# Only 1 of 2 needed a new concept -- dentures.condition is a dead
+# INITIAL_FORM field with no SECTION_CONFIGS entry.
+# ---------------------------------------------------------------------------
+
+def test_nutrition_supplements_is_bounded_free_text():
+    mapping = CONCEPT_REGISTRY["NUTRITION_SUPPLEMENTS"]
+    assert mapping.value_slot.kind == "free_text_bounded"
+    assert mapping.value_slot.path == "nutritionalSupplements"
+    assert mapping.value_slot.max_len == 100
+
+
+def test_dentures_condition_is_not_a_registered_concept():
+    assert not any(code.startswith("NUTR_DENTURES_CONDITION") for code in CONCEPT_REGISTRY)
+
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Respiratory / MSK / Cardio (3 requested fields)
+#
+# Only 2 of 3 needed a new concept -- edema.pitting is a dead INITIAL_FORM
+# field with no SECTION_CONFIGS entry.
+# ---------------------------------------------------------------------------
+
+def test_ventilator_settings_and_fall_injuries_are_bounded_free_text():
+    for code, path, max_len in [
+        ("RESP_VENTILATOR_SETTINGS", "ventilator.ventilatorTypeAndSettings", 150),
+        ("MSK_FALL_INJURIES", "fallHistory.fallInjuries", 150),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+
+
+def test_edema_pitting_is_not_a_registered_concept():
+    assert not any(code.startswith("CV_EDEMA_PITTING") for code in CONCEPT_REGISTRY)
+
+
+def test_rnica_sprint_registry_reaches_799_concepts():
+    # Guards against silent regressions in the sprint total across all
+    # 7 sections (Symptom Impact 8, Skin/Wounds 15/32-codes, GU 7,
+    # GI 2-new-of-5, Endocrine 3, Nutrition 1-new-of-2,
+    # Respiratory/MSK/Cardio 2-new-of-3).
+    assert len(CONCEPT_REGISTRY) == 799
+
+

@@ -381,6 +381,11 @@ export const CONCEPT_REGISTRY = {
     section: "respiratory",
     writes: [{ path: "ventilator.longTermVentilator", value: true, op: "set", section: null }],
   },
+  RESP_VENTILATOR_SETTINGS: {
+    section: "respiratory",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "ventilator.ventilatorTypeAndSettings", minValue: null, maxValue: null, maxLen: 150 },
+  },
   NEURO_HEMIPARESIS_RIGHT: {
     section: "neurological",
     writes: [{ path: "motorDeficit", value: true, op: "set", section: null }, { path: "affectedSide", value: "Right", op: "set", section: null }, { path: "deficitType", value: "Hemiparesis", op: "multi_add", section: null }, { path: "paralysis", value: "Right hemiparesis", op: "set", section: "musculoskeletal" }],
@@ -1253,6 +1258,11 @@ export const CONCEPT_REGISTRY = {
     section: "musculoskeletal",
     writes: [],
     valueSlot: { kind: "numeric", path: "fallHistory.fallsLast90Days", minValue: 0, maxValue: 365, maxLen: null },
+  },
+  MSK_FALL_INJURIES: {
+    section: "musculoskeletal",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "fallHistory.fallInjuries", minValue: null, maxValue: null, maxLen: 150 },
   },
   GI_NAUSEA_NONE: {
     section: "gastrointestinal",
@@ -2253,6 +2263,21 @@ export const CONCEPT_REGISTRY = {
     writes: [],
     valueSlot: { kind: "numeric", path: "diabetes.lastHbA1c", minValue: 3, maxValue: 20, maxLen: null },
   },
+  ENDO_INSULIN_TYPE: {
+    section: "endocrine",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "diabetes.insulinType", minValue: null, maxValue: null, maxLen: 40 },
+  },
+  ENDO_INSULIN_DOSE: {
+    section: "endocrine",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "diabetes.insulinDose", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  ENDO_LAST_HBA1C_DATE: {
+    section: "endocrine",
+    writes: [],
+    valueSlot: { kind: "date_bounded", path: "diabetes.lastHbA1cDate", minValue: null, maxValue: null, maxLen: null },
+  },
   ENDO_ORAL_HYPOGLYCEMIC_METFORMIN: {
     section: "endocrine",
     writes: [{ path: "diabetes.oralHypoglycemics", value: "Metformin", op: "multi_add", section: null }],
@@ -2340,6 +2365,11 @@ export const CONCEPT_REGISTRY = {
     section: "nutrition",
     writes: [],
     valueSlot: { kind: "free_text_bounded", path: "dietType", minValue: null, maxValue: null, maxLen: 60 },
+  },
+  NUTRITION_SUPPLEMENTS: {
+    section: "nutrition",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "nutritionalSupplements", minValue: null, maxValue: null, maxLen: 100 },
   },
   NUTRITION_ORAL_MUCOSA: {
     section: "nutrition",

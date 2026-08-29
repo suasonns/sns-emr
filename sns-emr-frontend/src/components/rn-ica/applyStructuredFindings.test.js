@@ -235,6 +235,28 @@ describe("applyStructuredFindings", () => {
     expect(appliedFields.some((f) => f.path === "abdominalGirth")).toBe(true);
     expect(appliedFields.some((f) => f.path === "bowelFrequency")).toBe(true);
   });
+
+  it("applies Endocrine/Nutrition/Respiratory/MSK bounded value_slot concepts (RNICA Sprint 5-7/7)", () => {
+    const { formData, appliedFields } = applyStructuredFindings(
+      { endocrine: { diabetes: {} }, nutrition: {}, respiratory: { ventilator: {} }, musculoskeletal: { fallHistory: {} } },
+      [
+        findingOf({ concept_code: "ENDO_INSULIN_TYPE", value: "Lantus" }),
+        findingOf({ concept_code: "ENDO_INSULIN_DOSE", value: "20 units qHS" }),
+        findingOf({ concept_code: "ENDO_LAST_HBA1C_DATE", value: "2024-06-01" }),
+        findingOf({ concept_code: "NUTRITION_SUPPLEMENTS", value: "Boost Glucose Control" }),
+        findingOf({ concept_code: "RESP_VENTILATOR_SETTINGS", value: "BiPAP 10/5, RA" }),
+        findingOf({ concept_code: "MSK_FALL_INJURIES", value: "Bruised hip, no fracture" }),
+      ]
+    );
+
+    expect(formData.endocrine.diabetes.insulinType).toBe("Lantus");
+    expect(formData.endocrine.diabetes.insulinDose).toBe("20 units qHS");
+    expect(formData.endocrine.diabetes.lastHbA1cDate).toBe("2024-06-01");
+    expect(formData.nutrition.nutritionalSupplements).toBe("Boost Glucose Control");
+    expect(formData.respiratory.ventilator.ventilatorTypeAndSettings).toBe("BiPAP 10/5, RA");
+    expect(formData.musculoskeletal.fallHistory.fallInjuries).toBe("Bruised hip, no fracture");
+    expect(appliedFields.length).toBe(6);
+  });
 });
 
 describe("applyAllNonConflicting", () => {

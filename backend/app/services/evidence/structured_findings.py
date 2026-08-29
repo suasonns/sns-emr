@@ -200,6 +200,9 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "CV_EDEMA_SEVERITY_2PLUS": ConceptMapping("CV_EDEMA_SEVERITY_2PLUS", "cardiovascular", "Edema, 2+", (_fw("edema.present", "Yes"), _fw("edema.severity", "2+"))),
     "CV_EDEMA_SEVERITY_3PLUS": ConceptMapping("CV_EDEMA_SEVERITY_3PLUS", "cardiovascular", "Edema, 3+", (_fw("edema.present", "Yes"), _fw("edema.severity", "3+"))),
     "CV_EDEMA_SEVERITY_4PLUS": ConceptMapping("CV_EDEMA_SEVERITY_4PLUS", "cardiovascular", "Edema, 4+", (_fw("edema.present", "Yes"), _fw("edema.severity", "4+"))),
+    # RNICA Completion Sprint (Respiratory/MSK/Cardio, 3 requested fields):
+    # edema.pitting -> EXCLUDED. Dead INITIAL_FORM field, no
+    # SECTION_CONFIGS entry (only edema.location/edema.severity render).
     "CV_CHEST_PAIN_PRESENT": ConceptMapping("CV_CHEST_PAIN_PRESENT", "cardiovascular", "Chest pain present", (_fw("chestPain.present", "Yes"),)),
     "CV_CHEST_PAIN_ABSENT": ConceptMapping("CV_CHEST_PAIN_ABSENT", "cardiovascular", "Chest pain explicitly denied", (_fw("chestPain.present", "No"),)),
     "CV_JVD_PRESENT": ConceptMapping("CV_JVD_PRESENT", "cardiovascular", "JVD present", (_fw("jvd", "Yes"),)),
@@ -292,6 +295,10 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "RESP_OXYGEN_PRN": ConceptMapping("RESP_OXYGEN_PRN", "respiratory", "Oxygen delivery PRN", (_fw("oxygenTherapy.inUse", True), _fw("oxygenTherapy.deliveryMode", "PRN"))),
     "RESP_VENTILATOR_SHORT_TERM": ConceptMapping("RESP_VENTILATOR_SHORT_TERM", "respiratory", "Short-term ventilator", (_fw("ventilator.shortTermVentilator", True),)),
     "RESP_VENTILATOR_LONG_TERM": ConceptMapping("RESP_VENTILATOR_LONG_TERM", "respiratory", "Long-term ventilator", (_fw("ventilator.longTermVentilator", True),)),
+    "RESP_VENTILATOR_SETTINGS": ConceptMapping(
+        "RESP_VENTILATOR_SETTINGS", "respiratory", "Ventilator type and settings",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="ventilator.ventilatorTypeAndSettings", max_len=150),
+    ),
 
     # ═══════════════════════════ NEUROLOGICAL ══════════════════════════════
     # motorDeficit/affectedSide/deficitType are new structured fields added
@@ -702,6 +709,10 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "MSK_FALLS_LAST_90_DAYS", "musculoskeletal", "Falls in last 90 days",
         (),
         value_slot=ValueSlot(kind="numeric", path="fallHistory.fallsLast90Days", min_value=0, max_value=365),
+    ),
+    "MSK_FALL_INJURIES": ConceptMapping(
+        "MSK_FALL_INJURIES", "musculoskeletal", "Fall injuries",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="fallHistory.fallInjuries", max_len=150),
     ),
 
     # ═══════════════════════════ GASTROINTESTINAL (coverage expansion) ═══
@@ -1168,6 +1179,12 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "NUTR_DENTURES_LOWER", "nutrition", "Lower dentures present",
         (_fw("dentures.lower", True),),
     ),
+    # RNICA Completion Sprint (Nutrition, 2 requested fields):
+    # dentures.condition -> EXCLUDED. Dead INITIAL_FORM field, no
+    # SECTION_CONFIGS entry (only dentures.upper/dentures.lower render).
+    # nutritionalSupplements -> NEW: NUTRITION_SUPPLEMENTS below (free-text
+    # `input` in the real form, matches the Loren Shields H&P's own
+    # "Boost Glucose Control" language).
 
     # ═══════════════════════════ SKIN (coverage expansion) ═══
     "SKIN_RELIEF_PRESSURE_RELIEF_MATTRESS": ConceptMapping(
@@ -1500,6 +1517,23 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "ENDO_HBA1C_VALUE", "endocrine", "HbA1c value documented",
         (), value_slot=ValueSlot(kind="numeric", path="diabetes.lastHbA1c", min_value=3, max_value=20),
     ),
+    # RNICA Completion Sprint (Endocrine, 3 fields). insulinType/insulinDose
+    # are plain free-text `input` elements in the real RNICA.jsx form (no
+    # closed vocabulary, no numeric-only type) -- bounded free-text, same
+    # precedent as catheter.size/GI bowelFrequency. lastHbA1cDate is an
+    # inputType="date" field, paired with the existing ENDO_HBA1C_VALUE.
+    "ENDO_INSULIN_TYPE": ConceptMapping(
+        "ENDO_INSULIN_TYPE", "endocrine", "Insulin type",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="diabetes.insulinType", max_len=40),
+    ),
+    "ENDO_INSULIN_DOSE": ConceptMapping(
+        "ENDO_INSULIN_DOSE", "endocrine", "Insulin dose",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="diabetes.insulinDose", max_len=60),
+    ),
+    "ENDO_LAST_HBA1C_DATE": ConceptMapping(
+        "ENDO_LAST_HBA1C_DATE", "endocrine", "Last HbA1c date",
+        (), value_slot=ValueSlot(kind="date_bounded", path="diabetes.lastHbA1cDate"),
+    ),
     "ENDO_ORAL_HYPOGLYCEMIC_METFORMIN": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_METFORMIN", "endocrine", "Metformin", (_fw("diabetes.oralHypoglycemics", "Metformin", op="multi_add"),)),
     "ENDO_ORAL_HYPOGLYCEMIC_SULFONYLUREA": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_SULFONYLUREA", "endocrine", "Sulfonylurea", (_fw("diabetes.oralHypoglycemics", "Sulfonylurea", op="multi_add"),)),
     "ENDO_ORAL_HYPOGLYCEMIC_DPP4": ConceptMapping("ENDO_ORAL_HYPOGLYCEMIC_DPP4", "endocrine", "DPP-4 inhibitor", (_fw("diabetes.oralHypoglycemics", "DPP-4 inhibitor", op="multi_add"),)),
@@ -1563,6 +1597,10 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "NUTRITION_DIET_TYPE": ConceptMapping(
         "NUTRITION_DIET_TYPE", "nutrition", "Diet type",
         (), value_slot=ValueSlot(kind="free_text_bounded", path="dietType", max_len=60),
+    ),
+    "NUTRITION_SUPPLEMENTS": ConceptMapping(
+        "NUTRITION_SUPPLEMENTS", "nutrition", "Nutritional supplements",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="nutritionalSupplements", max_len=100),
     ),
     "NUTRITION_ORAL_MUCOSA": ConceptMapping(
         "NUTRITION_ORAL_MUCOSA", "nutrition", "Oral mucosa finding",
