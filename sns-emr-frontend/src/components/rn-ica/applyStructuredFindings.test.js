@@ -220,6 +220,21 @@ describe("applyStructuredFindings", () => {
     expect(formData.genitourinary.catheter.size).toBe("18 Fr");
     expect(conflicts.some((c) => c.path === "catheter.size" && c.existingValue === "18 Fr")).toBe(true);
   });
+
+  it("applies GI abdominalGirth and bowelFrequency free-text value_slot fields (RNICA Sprint 4/7)", () => {
+    const { formData, appliedFields } = applyStructuredFindings(
+      { gastrointestinal: {} },
+      [
+        findingOf({ concept_code: "GI_ABDOMINAL_GIRTH", value: "34 in" }),
+        findingOf({ concept_code: "GI_BOWEL_FREQUENCY", value: "Every 2 days" }),
+      ]
+    );
+
+    expect(formData.gastrointestinal.abdominalGirth).toBe("34 in");
+    expect(formData.gastrointestinal.bowelFrequency).toBe("Every 2 days");
+    expect(appliedFields.some((f) => f.path === "abdominalGirth")).toBe(true);
+    expect(appliedFields.some((f) => f.path === "bowelFrequency")).toBe(true);
+  });
 });
 
 describe("applyAllNonConflicting", () => {

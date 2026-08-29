@@ -660,3 +660,43 @@ def test_date_bounded_rejects_future_date():
     findings = validate_findings(raw, source_type="REFERRAL_HNP", source_record_id="rec-9")
     assert findings == []
 
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Gastrointestinal (5 requested fields)
+#
+# Only 2 of the 5 needed new concepts. The other 3 required no new work:
+#   - continence: already covered by GI_BOWEL_STATUS_CONTINENT/INCONTINENT,
+#     which write the real rendered field (`bowelStatus`); the dead
+#     `formData.gastrointestinal.continence` path has no SECTION_CONFIGS
+#     entry and can't be reviewed by an RN, so it must never be targeted.
+#   - ostomy.condition / feedingTube.site: both dead INITIAL_FORM fields
+#     with no SECTION_CONFIGS entry -- intentionally excluded, not backlog.
+# ---------------------------------------------------------------------------
+
+def test_gi_abdominal_girth_and_bowel_frequency_are_bounded_free_text():
+    for code, path, max_len in [
+        ("GI_ABDOMINAL_GIRTH", "abdominalGirth", 20),
+        ("GI_BOWEL_FREQUENCY", "bowelFrequency", 40),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert mapping.value_slot.kind == "free_text_bounded", code
+        assert mapping.value_slot.path == path, code
+        assert mapping.value_slot.max_len == max_len, code
+        assert mapping.writes == (), code
+
+
+def test_gi_continence_is_already_covered_by_bowel_status_not_a_new_concept():
+    # There must be no GI_CONTINENCE_* concept -- continence is satisfied
+    # via the existing bowelStatus concepts, not a separate new field.
+    assert not any(code.startswith("GI_CONTINENCE") for code in CONCEPT_REGISTRY)
+    assert CONCEPT_REGISTRY["GI_BOWEL_STATUS_CONTINENT"].writes[0].path == "bowelStatus"
+    assert CONCEPT_REGISTRY["GI_BOWEL_STATUS_INCONTINENT"].writes[0].path == "bowelStatus"
+
+
+def test_gi_ostomy_condition_and_feeding_tube_site_are_not_registered_concepts():
+    # These are dead formData fields with no rendered UI -- must never be
+    # targeted by a concept (an RN could never see/review/sign them).
+    assert not any(code.startswith("GI_OSTOMY_CONDITION") for code in CONCEPT_REGISTRY)
+    assert not any(code.startswith("GI_FEEDING_TUBE_SITE") for code in CONCEPT_REGISTRY)
+
+

@@ -1375,6 +1375,16 @@ export const CONCEPT_REGISTRY = {
     section: "gastrointestinal",
     writes: [{ path: "ascites", value: false, op: "set", section: null }],
   },
+  GI_ABDOMINAL_GIRTH: {
+    section: "gastrointestinal",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "abdominalGirth", minValue: null, maxValue: null, maxLen: 20 },
+  },
+  GI_BOWEL_FREQUENCY: {
+    section: "gastrointestinal",
+    writes: [],
+    valueSlot: { kind: "free_text_bounded", path: "bowelFrequency", minValue: null, maxValue: null, maxLen: 40 },
+  },
   GI_STOOL_NORMAL: {
     section: "gastrointestinal",
     writes: [{ path: "stoolCharacter", value: "Normal", op: "multi_add", section: null }],

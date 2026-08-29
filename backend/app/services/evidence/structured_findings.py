@@ -828,6 +828,20 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "GI_ASCITES_ABSENT", "gastrointestinal", "Ascites explicitly absent",
         (_fw("ascites", False),),
     ),
+    # RNICA Completion Sprint (Gastrointestinal, 5 requested fields):
+    # abdominalGirth and bowelFrequency are genuinely plain free-text
+    # `input` elements in the real RNICA.jsx form (no numeric/enum type
+    # attribute) -- bounded free-text, same precedent as catheter.size.
+    # `continence` and `ostomy.condition`/`feedingTube.site` are NOT new
+    # work: see the design-boundary note directly below.
+    "GI_ABDOMINAL_GIRTH": ConceptMapping(
+        "GI_ABDOMINAL_GIRTH", "gastrointestinal", "Abdominal girth",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="abdominalGirth", max_len=20),
+    ),
+    "GI_BOWEL_FREQUENCY": ConceptMapping(
+        "GI_BOWEL_FREQUENCY", "gastrointestinal", "Bowel frequency",
+        (), value_slot=ValueSlot(kind="free_text_bounded", path="bowelFrequency", max_len=40),
+    ),
     "GI_STOOL_NORMAL": ConceptMapping(
         "GI_STOOL_NORMAL", "gastrointestinal", "Stool normal",
         (_fw("stoolCharacter", "Normal", op="multi_add"),),
@@ -1516,9 +1530,28 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     ),
 
     # ═══════════════════════ GI / NUTRITION / GU (remaining real gaps) ══════
-    # `gastrointestinal.continence` and `gastrointestinal.ostomy.condition` are
-    # dead INITIAL_FORM fields with no SECTION_CONFIGS entry (only
-    # ostomy.present/ostomy.type are rendered) -- intentionally excluded.
+    # RNICA Completion Sprint 4/7 (Gastrointestinal, 5 requested fields)
+    # resolution -- verified directly against RNICA.jsx SECTION_CONFIGS.gastrointestinal:
+    #   - abdominalGirth  -> NEW: GI_ABDOMINAL_GIRTH (implemented above, free_text_bounded)
+    #   - bowelFrequency  -> NEW: GI_BOWEL_FREQUENCY (implemented above, free_text_bounded)
+    #   - continence      -> NOT new work. The rendered continence-equivalent
+    #                        field is `bowelStatus` (radio: Continent/
+    #                        Incontinent/...), already fully covered by
+    #                        GI_BOWEL_STATUS_CONTINENT/INCONTINENT above.
+    #                        `formData.gastrointestinal.continence` itself is a
+    #                        dead INITIAL_FORM field with no SECTION_CONFIGS
+    #                        entry -- there is nothing in the live RN screen to
+    #                        populate.
+    #   - ostomy.condition   -> EXCLUDED. Dead INITIAL_FORM field, no
+    #                          SECTION_CONFIGS entry (only ostomy.present/
+    #                          ostomy.type render).
+    #   - feedingTube.site   -> EXCLUDED. Dead INITIAL_FORM field, no
+    #                          SECTION_CONFIGS entry (only feedingTube.present/
+    #                          feedingTube.type render).
+    # A concept must never write to a formData path the RN cannot see/review --
+    # doing so would violate the apply/review governance model. If a future
+    # RNICA.jsx redesign adds a rendered field for ostomy.condition or
+    # feedingTube.site, re-open this as new sprint work at that time.
     "GI_LAST_BM_DATE": ConceptMapping(
         "GI_LAST_BM_DATE", "gastrointestinal", "Last bowel movement date",
         (), value_slot=ValueSlot(kind="free_text_bounded", path="lastBM", max_len=10),
