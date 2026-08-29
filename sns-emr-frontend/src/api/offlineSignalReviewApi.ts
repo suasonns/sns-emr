@@ -16,7 +16,7 @@
 // write on a single signal id, not an append, so replay can never create a
 // duplicate finding or duplicate review record.
 
-import { reviewHarvestedSignal, batchReviewHarvestedSignals } from "./icaAssessments";
+import { reviewHarvestedSignal, batchReviewHarvestedSignals, type SignalReviewDisposition } from "./icaAssessments";
 import { enqueueMutation, generateClientId, type QueuedMutation } from "../offline/db";
 import { triggerSync } from "../offline/syncManager";
 import { isConnectivityFailure } from "../offline/connectivity";
@@ -26,7 +26,7 @@ export type SignalReviewResult = { status: "reviewed" | "queued"; queuedMutation
 /** Offline-safe replacement for reviewing a single structured finding. */
 export async function reviewHarvestedSignalOffline(
   signalId: string,
-  disposition: "APPLIED" | "DISMISSED",
+  disposition: SignalReviewDisposition,
   reason?: string
 ): Promise<SignalReviewResult> {
   try {
@@ -42,7 +42,7 @@ export async function reviewHarvestedSignalOffline(
  * by "Apply All Non-Conflicting" / "Apply Selected"). */
 export async function batchReviewHarvestedSignalsOffline(
   signalIds: string[],
-  disposition: "APPLIED" | "DISMISSED",
+  disposition: SignalReviewDisposition,
   options?: { reason?: string }
 ): Promise<SignalReviewResult> {
   try {
@@ -56,7 +56,7 @@ export async function batchReviewHarvestedSignalsOffline(
 
 async function queueSignalReview(
   signalIds: string[],
-  disposition: "APPLIED" | "DISMISSED",
+  disposition: SignalReviewDisposition,
   reason?: string
 ): Promise<SignalReviewResult> {
   const mutationId = generateClientId();
@@ -80,7 +80,7 @@ export async function replaySignalReviewMutation(mutation: {
 }): Promise<void> {
   const { signalIds, disposition, reason } = mutation.payload as {
     signalIds: string[];
-    disposition: "APPLIED" | "DISMISSED";
+    disposition: SignalReviewDisposition;
     reason?: string | null;
   };
   await batchReviewHarvestedSignals(signalIds, disposition, { reason: reason ?? undefined });

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { applyAllNonConflicting, applyStructuredFindings, sectionsWithAppliedStructuredFields } from "./applyStructuredFindings";
+import {
+  applyAllNonConflicting,
+  applyStructuredFindings,
+  classifyConflict,
+  resolveFieldConflict,
+  resolveWoundReview,
+  sectionsWithAppliedStructuredFields,
+  summarizeConflictsByCategory,
+} from "./applyStructuredFindings";
 
 function findingOf(overrides = {}) {
   return {
@@ -45,6 +53,61 @@ describe("applyStructuredFindings", () => {
     expect(conflict.existingValue).toBe(false);
     expect(conflict.suggestedValue).toBe(true);
     expect(conflict.concept_code).toBe("CV_HEART_FAILURE_SYSTOLIC");
+  });
+
+  it("auto-populates an untouched-default boolean `false` when initialFormData proves the whole section is pristine", () => {
+    const initialFormData = { cardiovascular: { heartFailurePresent: false, heartFailureType: [] } };
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: false, heartFailureType: [] } },
+      [findingOf()],
+      initialFormData
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(true);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent")).toBe(true);
+    expect(conflicts).toEqual([]);
+  });
+
+  it("still records a conflict for boolean `false` even with initialFormData when the section has already been engaged (another field differs from its default)", () => {
+    const initialFormData = { cardiovascular: { heartFailurePresent: false, pacemaker: false } };
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: false, pacemaker: true } }, // RN already documented pacemaker=true
+      [findingOf()],
+      initialFormData
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(false);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent")).toBe(false);
+    expect(conflicts.some((c) => c.path === "heartFailurePresent")).toBe(true);
+  });
+
+  it("treats a field already set to the EXACT suggested value as already-satisfied, not a conflict (regression: chunked/overlapping extraction re-detecting the same fact across multiple findings must not flood the conflict queue)", () => {
+    // A field previously applied (or documented by an earlier chunk's
+    // finding) already holds true -- the concept's own write value is
+    // also true. This must be recognized as "nothing to do here", not a
+    // disagreement requiring RN review.
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { cardiovascular: { heartFailurePresent: true, heartFailureType: ["Systolic"] } },
+      [findingOf()]
+    );
+
+    expect(formData.cardiovascular.heartFailurePresent).toBe(true);
+    expect(appliedFields.some((f) => f.path === "heartFailurePresent" && f.writeKind === "already_satisfied")).toBe(true);
+    expect(conflicts.some((c) => c.path === "heartFailurePresent")).toBe(false);
+  });
+
+  it("still records a conflict when the existing value DIFFERS from the suggested value (a real disagreement, not a duplicate)", () => {
+    const { formData, appliedFields, conflicts } = applyStructuredFindings(
+      { endocrine: { diabetes: { type: "Type 1" } } },
+      [findingOf({ concept_code: "ENDO_DIABETES_TYPE2", value: "Type 2" })]
+    );
+
+    expect(formData.endocrine.diabetes.type).toBe("Type 1");
+    expect(appliedFields.some((f) => f.path === "diabetes.type")).toBe(false);
+    const conflict = conflicts.find((c) => c.path === "diabetes.type");
+    expect(conflict).toBeDefined();
+    expect(conflict.existingValue).toBe("Type 1");
+    expect(conflict.suggestedValue).toBe("Type 2");
   });
 
   it("never overwrites any RN-entered value on a blank-only set field, regardless of type", () => {
@@ -374,5 +437,311 @@ describe("applyAllNonConflicting", () => {
     applyAllNonConflicting(original, signals);
 
     expect(original.cardiovascular.heartFailurePresent).toBeUndefined();
+  });
+});
+
+describe("resolveFieldConflict (RN review: Accept / Reject / Modify / Merge)", () => {
+  function conflictOf(overrides = {}) {
+    return {
+      signal_id: "sig-1",
+      section: "nutrition",
+      path: "dietType",
+      existingValue: "Pre Dialysis",
+      suggestedValue: "Diabetic Consistent Carbohydrate",
+      concept_code: "NUTRITION_DIET_TYPE",
+      source_type: "REFERRAL_HNP",
+      ...overrides,
+    };
+  }
+
+  it("accept overwrites the field with the AI-suggested value", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "accept");
+    expect(result.formData.nutrition.dietType).toBe("Diabetic Consistent Carbohydrate");
+    expect(result.noop).toBe(false);
+  });
+
+  it("reject keeps the existing value and performs no write (noop)", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "reject");
+    expect(result.formData).toBe(formData); // exact same reference, nothing written
+    expect(result.resolvedValue).toBe("Pre Dialysis");
+    expect(result.noop).toBe(true);
+  });
+
+  it("modify overwrites the field with an RN-typed custom value distinct from both existing and suggested", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "modify", "Renal diet, no added salt");
+    expect(result.formData.nutrition.dietType).toBe("Renal diet, no added salt");
+  });
+
+  it("merge combines existing + suggested free-text fragments into one value", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "merge");
+    expect(result.formData.nutrition.dietType).toBe("Pre Dialysis, Diabetic Consistent Carbohydrate");
+  });
+
+  it("merge does not duplicate a fragment already contained in the existing value", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis, Diabetic Consistent Carbohydrate" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "merge");
+    expect(result.formData.nutrition.dietType).toBe("Pre Dialysis, Diabetic Consistent Carbohydrate");
+  });
+
+  it("merge is refused (returns null) for a boolean conflict -- there is nothing to combine", () => {
+    const formData = { musculoskeletal: { contracturesPresent: false } };
+    const conflict = conflictOf({
+      section: "musculoskeletal",
+      path: "contracturesPresent",
+      existingValue: false,
+      suggestedValue: true,
+      concept_code: "MSK_CONTRACTURES_PRESENT",
+    });
+    const result = resolveFieldConflict(formData, conflict, "merge");
+    expect(result).toBeNull();
+  });
+
+  it("accept still works correctly on a boolean conflict (clinical discrepancy resolved in favor of new evidence)", () => {
+    const formData = { musculoskeletal: { contracturesPresent: false } };
+    const conflict = conflictOf({
+      section: "musculoskeletal",
+      path: "contracturesPresent",
+      existingValue: false,
+      suggestedValue: true,
+      concept_code: "MSK_CONTRACTURES_PRESENT",
+    });
+    const result = resolveFieldConflict(formData, conflict, "accept");
+    expect(result.formData.musculoskeletal.contracturesPresent).toBe(true);
+  });
+
+  it("an unrecognized action returns null without mutating anything", () => {
+    const formData = { nutrition: { dietType: "Pre Dialysis" } };
+    const result = resolveFieldConflict(formData, conflictOf(), "bogus-action");
+    expect(result).toBeNull();
+  });
+});
+
+describe("classifyConflict (findings classification engine) -- real production patterns", () => {
+  it("classifies a compound diet order fragment as Enrichment (RN review, not urgent)", () => {
+    const result = classifyConflict({
+      concept_code: "NUTRITION_DIET_TYPE",
+      existingValue: "Pre Dialysis",
+      suggestedValue: "Diabetic Consistent Carbohydrate",
+    });
+    expect(result).toMatchObject({ category: 4, label: "Enrichment", rnReviewRequired: true, urgent: false, queue: "rn_review" });
+  });
+
+  it("classifies a compound supplement order fragment as Enrichment", () => {
+    const result = classifyConflict({
+      concept_code: "NUTRITION_SUPPLEMENTS",
+      existingValue: "Boost Glucose control",
+      suggestedValue: "vanilla",
+    });
+    expect(result).toMatchObject({ category: 4, label: "Enrichment", rnReviewRequired: true });
+  });
+
+  it("classifies a vaguer restatement of an already-specific value as Already Present (auto-resolved)", () => {
+    const result = classifyConflict({
+      concept_code: "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS",
+      existingValue: "5 % of usual body weight 1 mon",
+      suggestedValue: "Weight loss documented",
+    });
+    expect(result).toMatchObject({ category: 2, label: "Already Present", rnReviewRequired: false, queue: "auto_resolved" });
+  });
+
+  it("classifies a whitespace/truncation-only restatement as Duplicate (auto-resolved)", () => {
+    const result = classifyConflict({
+      concept_code: "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS",
+      existingValue: "5 % of usual body weight 1 mon",
+      suggestedValue: "5% of usual body weight in 1 m",
+    });
+    expect(result).toMatchObject({ category: 3, label: "Duplicate", rnReviewRequired: false, queue: "auto_resolved" });
+  });
+
+  it("classifies a severity change (hemiparesis -> hemiplegia) as Clinical Discrepancy, not Enrichment", () => {
+    const result = classifyConflict({
+      concept_code: "NEURO_HEMIPLEGIA_RIGHT",
+      existingValue: "Right hemiparesis",
+      suggestedValue: "Right hemiplegia",
+    });
+    expect(result).toMatchObject({ category: 5, label: "Clinical Discrepancy", rnReviewRequired: true, urgent: false, queue: "rn_review" });
+  });
+
+  it("classifies a boolean flip (contractures false -> true) as Clinical Discrepancy", () => {
+    const result = classifyConflict({
+      concept_code: "MSK_CONTRACTURES_PRESENT",
+      existingValue: false,
+      suggestedValue: true,
+    });
+    expect(result).toMatchObject({ category: 5, label: "Clinical Discrepancy", rnReviewRequired: true, urgent: false });
+  });
+
+  it("classifies a safety-critical boolean flip (wound/pressure-injury concept) as urgent Safety-Critical", () => {
+    const result = classifyConflict({
+      concept_code: "SKIN_WOUND_PRESSURE_INJURY_FLAG",
+      existingValue: false,
+      suggestedValue: true,
+    });
+    expect(result).toMatchObject({ category: 6, label: "Safety-Critical", rnReviewRequired: true, urgent: true, queue: "urgent_rn_review" });
+  });
+
+  it("classifies a safety-critical concept via its registry section even without a keyword in the code", () => {
+    const result = classifyConflict(
+      { concept_code: "SOME_CODE_WITHOUT_KEYWORD", existingValue: "Low", suggestedValue: "High" },
+      { section: "safety" }
+    );
+    expect(result.category).toBe(6);
+    expect(result.urgent).toBe(true);
+  });
+
+  it("summarizeConflictsByCategory buckets a realistic mixed list and never leaves anything as generic 'pending'", () => {
+    const conflicts = [
+      { concept_code: "NUTRITION_DIET_TYPE", existingValue: "Pre Dialysis", suggestedValue: "Diabetic Consistent Carbohydrate" },
+      { concept_code: "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS", existingValue: "5 % of usual body weight 1 mon", suggestedValue: "Weight loss documented" },
+      { concept_code: "NUTRITION_WEIGHT_LOSS_PAST_6_MONTHS", existingValue: "5 % of usual body weight 1 mon", suggestedValue: "5% of usual body weight in 1 m" },
+      { concept_code: "NEURO_HEMIPLEGIA_RIGHT", existingValue: "Right hemiparesis", suggestedValue: "Right hemiplegia" },
+      { concept_code: "MSK_CONTRACTURES_PRESENT", existingValue: false, suggestedValue: true },
+      { concept_code: "SKIN_WOUND_PRESSURE_INJURY_FLAG", existingValue: false, suggestedValue: true },
+    ];
+    const summary = summarizeConflictsByCategory(conflicts);
+    expect(summary.enrichmentSuggestions).toHaveLength(1);
+    expect(summary.alreadyPresent).toHaveLength(1);
+    expect(summary.duplicatesAutoResolved).toHaveLength(1);
+    expect(summary.clinicalDiscrepancies).toHaveLength(2); // hemiplegia + contractures
+    expect(summary.safetyCritical).toHaveLength(1);
+    const totalBucketed =
+      summary.enrichmentSuggestions.length +
+      summary.alreadyPresent.length +
+      summary.duplicatesAutoResolved.length +
+      summary.clinicalDiscrepancies.length +
+      summary.safetyCritical.length;
+    expect(totalBucketed).toBe(conflicts.length); // nothing falls through uncategorized
+  });
+});
+
+describe("wound near-duplicate detection (RN Wound Review workflow)", () => {
+  it("does NOT silently add a new row when the location is a close wording match to an existing wound -- routes to woundReviewItems instead", () => {
+    const { formData, woundReviewItems } = applyStructuredFindings(
+      { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } },
+      [findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "Sacral/coccyx area", source_excerpt: "wound over the sacral/coccyx area" })]
+    );
+
+    // Nothing silently written -- neither a new row nor a merge.
+    expect(formData.skin.wounds).toHaveLength(1);
+    expect(woundReviewItems).toHaveLength(1);
+    expect(woundReviewItems[0]).toMatchObject({
+      section: "skin",
+      arrayPath: "wounds",
+      rowField: "location",
+      newValue: "Sacral/coccyx area",
+      existingRowIndex: 0,
+      existingValue: "Coccyx",
+      concept_code: "SKIN_WOUND_PRESENT",
+    });
+  });
+
+  it("still auto-adds a genuinely distinct wound location with zero word overlap -- no review needed", () => {
+    const { formData, woundReviewItems } = applyStructuredFindings(
+      { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } },
+      [findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "right heel", source_excerpt: "right heel pressure injury" })]
+    );
+
+    expect(woundReviewItems).toEqual([]);
+    expect(formData.skin.wounds).toHaveLength(2);
+    expect(formData.skin.wounds.map((w) => w.location)).toContain("right heel");
+  });
+
+  it("applyAllNonConflicting still surfaces the ambiguous wound match for RN review even when the signal's OTHER write (e.g. skinConditionsPresent) applies cleanly -- same partial-success pattern as field conflicts", () => {
+    const signals = [
+      {
+        id: "sig-wound-1",
+        structured_findings: [
+          findingOf({ concept_code: "SKIN_WOUND_PRESENT", value: "Sacral/coccyx area", source_excerpt: "wound near sacrum/coccyx" }),
+        ],
+      },
+    ];
+    const result = applyAllNonConflicting(
+      { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } },
+      signals
+    );
+
+    // skinConditionsPresent legitimately applies (independent, safe write) --
+    // so the signal is "applied", exactly like a partially-conflicting
+    // signal already is. What matters is that the AMBIGUOUS WOUND ROW
+    // ITSELF was never silently written either as a duplicate row or a
+    // merge -- it's still queued for an explicit RN decision.
+    expect(result.appliedSignalIds).toEqual(["sig-wound-1"]);
+    expect(result.skippedWoundReviewItems).toHaveLength(1);
+    expect(result.skippedWoundReviewItems[0].signal_id).toBe("sig-wound-1");
+    expect(result.skippedWoundReviewItems[0]).toMatchObject({ existingValue: "Coccyx", newValue: "Sacral/coccyx area" });
+    // No silent write happened to the wounds array itself.
+    expect(result.formData.skin.wounds).toHaveLength(1);
+  });
+});
+
+describe("resolveWoundReview (RN actions: New Wound / Merge Existing / Reject / Modify)", () => {
+  function woundItemOf(overrides = {}) {
+    return {
+      section: "skin",
+      arrayPath: "wounds",
+      rowField: "location",
+      newRow: { location: "Sacral/coccyx area", stage: "Stage 2", dressing: "Foam" },
+      newValue: "Sacral/coccyx area",
+      existingRowIndex: 0,
+      existingValue: "Coccyx",
+      concept_code: "SKIN_WOUND_PRESENT",
+      ...overrides,
+    };
+  }
+
+  it('"new_wound": adds the candidate as its own independent new row, leaving the existing row untouched', () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } };
+    const result = resolveWoundReview(formData, woundItemOf(), "new_wound");
+
+    expect(result.noop).toBe(false);
+    expect(result.formData.skin.wounds).toHaveLength(2);
+    expect(result.formData.skin.wounds[0]).toEqual({ location: "Coccyx", stage: "Stage 2" }); // untouched
+    expect(result.formData.skin.wounds[1]).toMatchObject({ location: "Sacral/coccyx area", dressing: "Foam" });
+  });
+
+  it('"merge_existing": enriches blank fields on the existing row, never overwrites already-documented fields or its validated location', () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2", dressing: "" }] } };
+    const result = resolveWoundReview(formData, woundItemOf(), "merge_existing");
+
+    expect(result.noop).toBe(false);
+    expect(result.formData.skin.wounds).toHaveLength(1); // no new row
+    expect(result.formData.skin.wounds[0].location).toBe("Coccyx"); // validated location preserved, not overwritten
+    expect(result.formData.skin.wounds[0].stage).toBe("Stage 2"); // already documented -- untouched
+    expect(result.formData.skin.wounds[0].dressing).toBe("Foam"); // blank field enriched from candidate
+  });
+
+  it('"merge_existing" never overwrites a non-blank field even if the candidate has a different value for it', () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx", stage: "Stage 3", dressing: "Hydrocolloid" }] } };
+    const result = resolveWoundReview(formData, woundItemOf(), "merge_existing");
+
+    expect(result.formData.skin.wounds[0].stage).toBe("Stage 3");
+    expect(result.formData.skin.wounds[0].dressing).toBe("Hydrocolloid");
+  });
+
+  it('"reject": discards the candidate entirely -- no new row, no merge, form untouched', () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } };
+    const result = resolveWoundReview(formData, woundItemOf(), "reject");
+
+    expect(result.noop).toBe(true);
+    expect(result.formData).toBe(formData); // literally unchanged
+    expect(result.formData.skin.wounds).toHaveLength(1);
+  });
+
+  it('"modify": adds a NEW row using the RN-corrected location, distinct from both the existing row and the raw candidate wording', () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx", stage: "Stage 2" }] } };
+    const result = resolveWoundReview(formData, woundItemOf(), "modify", "Sacrum, adjacent to coccyx");
+
+    expect(result.formData.skin.wounds).toHaveLength(2);
+    expect(result.formData.skin.wounds[0].location).toBe("Coccyx"); // untouched
+    expect(result.formData.skin.wounds[1]).toMatchObject({ location: "Sacrum, adjacent to coccyx", dressing: "Foam" });
+  });
+
+  it("returns null for an unrecognized action", () => {
+    const formData = { skin: { wounds: [{ location: "Coccyx" }] } };
+    expect(resolveWoundReview(formData, woundItemOf(), "bogus")).toBeNull();
   });
 });

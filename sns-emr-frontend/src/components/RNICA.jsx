@@ -66,7 +66,7 @@ import {
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
 } from "../api/icaAssessments";
-import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
+import { applyStructuredFindings, applyAllNonConflicting, resolveFieldConflict, classifyConflict, summarizeConflictsByCategory, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
 import { detectLCD, evaluateLCD, getLCDConfig } from "../api/eligibility";
 import {
@@ -926,8 +926,8 @@ const api = {
     assessmentSubtype
       ? getRnicaAssessmentByPatientType(patientId, { assessmentSubtype })
       : getRnicaAssessmentByPatient(patientId),
-  updateRNICAAssessment: (assessmentId, formData, fieldProvenance) =>
-    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance),
+  updateRNICAAssessment: (assessmentId, formData, fieldProvenance, fieldWrites) =>
+    updateRnicaAssessmentOffline(assessmentId, formData, fieldProvenance, fieldWrites),
   lockRNICAAssessment: (assessmentId) => lockRnicaAssessment(assessmentId),
   deleteRNICAAssessment: (assessmentId) => deleteRnicaAssessment(assessmentId),
   getRNICAIntelligence: (assessmentId) =>
@@ -9996,6 +9996,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // the AI-suggested value — the clinician value is never overwritten;
   // these are surfaced for explicit RN review/resolution instead.
   const [structuredFieldConflicts, setStructuredFieldConflicts] = useState([]);
+  // Ambiguous wound candidates: a new wound row's location fuzzily matched
+  // an existing row's location closely enough that it might be the SAME
+  // wound described differently -- never silently added as a new row,
+  // never silently merged. Requires an explicit RN decision (New Wound /
+  // Merge Existing / Reject / Modify) via resolveWound below.
+  const [woundReviewItems, setWoundReviewItems] = useState([]);
   // Acceptance Analytics (read-only): counts by status/application rate
   // for this patient's structured findings, computed entirely from
   // persisted review_status data on the backend (no new schema). Refetched
@@ -10043,7 +10049,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       try {
         const { formData: nextFormData, appliedFields, conflicts } = applyStructuredFindings(
           formData,
-          signal.structured_findings || []
+          signal.structured_findings || [],
+          INITIAL_FORM
         );
 
         const provenanceEntries = appliedFields.map((f) => ({
@@ -10056,24 +10063,48 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           recorded_at: signal.recorded_at,
           confidence: f.finding?.confidence,
           signal_id: signal.id,
+          kind: f.writeKind || "scalar",
         }));
         const nextProvenance =
           provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
 
+        // Every field this apply pass claims to have written, tagged with
+        // this signal's id and its write kind (scalar vs array-member) --
+        // sent alongside the save so the backend can verify, from a FRESH
+        // post-commit DB read, that each one actually landed (see
+        // rnica_apply_verification.py). A signal is NEVER told to the
+        // backend as "APPLIED" from client assumption below -- only from
+        // this verified result (or the offline fallback, clearly weaker,
+        // documented at that branch).
+        const fieldWrites = appliedFields.map((f) => ({
+          signal_id: signal.id,
+          section: f.section,
+          path: f.path,
+          value: f.value,
+          concept_code: f.concept_code,
+          kind: f.writeKind || "scalar",
+        }));
+
         // Persist the field values AND their provenance durably BEFORE
-        // marking the source signal "APPLIED" (reviewed/consumed). These
-        // writes must land together: relying on the 30s autosave timer to
-        // eventually notice the local `formData` change was the root cause
-        // of signals being marked applied while their destination fields
-        // silently never reached the saved chart (lost on tab close/nav/
-        // reload). Persisting fieldProvenance in this same call (not just
-        // React state) is what lets the RN still see WHY a field was
-        // populated after a refresh, logout, or reconnect. If this save
-        // fails, we throw before marking anything applied or touching
-        // visible state, so the RN can safely retry with no data loss.
+        // marking the source signal reviewed (consumed). These writes must
+        // land together: relying on the 30s autosave timer to eventually
+        // notice the local `formData` change was the root cause of signals
+        // being marked applied while their destination fields silently
+        // never reached the saved chart (lost on tab close/nav/reload).
+        // Persisting fieldProvenance in this same call (not just React
+        // state) is what lets the RN still see WHY a field was populated
+        // after a refresh, logout, or reconnect. If this save fails, we
+        // throw before marking anything applied or touching visible
+        // state, so the RN can safely retry with no data loss.
         let persistedAssessmentId = assessmentId;
+        let saveResult = null;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+          saveResult = await api.updateRNICAAssessment(
+            persistedAssessmentId,
+            nextFormData,
+            nextProvenance,
+            fieldWrites.length > 0 ? fieldWrites : undefined
+          );
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10103,14 +10134,51 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFieldConflicts((prev) => [...prev, ...conflictEntries]);
         }
 
-        const reasonParts = [];
-        if (appliedFields.length > 0) reasonParts.push(`applied ${appliedFields.length} field(s)`);
-        if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
-        await reviewHarvestedSignalOffline(
-          signal.id,
-          "APPLIED",
-          reasonParts.length > 0 ? reasonParts.join("; ") : "No blank fields to populate"
-        );
+        // Determine the VERIFIED disposition to record on the signal --
+        // never assume "APPLIED". Preference order:
+        //   1. The backend's verified per-signal status (saveResult came
+        //      back online with fieldWrites -- computed from a fresh,
+        //      post-commit DB read; see compute_signal_dispositions).
+        //   2. Zero writes attempted and zero conflicts: nothing was
+        //      actionable (e.g. every finding was HISTORICAL) -- DISMISSED
+        //      (matches the closed vocabulary this reason has always used;
+        //      never claim it was "applied" when nothing was written).
+        //   3. Zero writes attempted, but conflicts exist: every finding
+        //      was blocked before anything was attempted -- CONFLICT.
+        //   4. The save was queued (offline) -- verification cannot happen
+        //      until the queued mutation replays online later. Fall back
+        //      to the pre-fix conservative behavior (assume applied only
+        //      when something was actually attempted) so this documented
+        //      gap does not regress an already-offline-safe write; this is
+        //      a known, reported limitation -- see the Apply-fix report.
+        const verifiedStatus = saveResult?.signalStatuses?.[signal.id];
+        let disposition;
+        let reasonParts = [];
+        if (verifiedStatus) {
+          disposition = verifiedStatus;
+          reasonParts.push(`verified: ${verifiedStatus}`);
+        } else if (appliedFields.length === 0 && conflicts.length === 0) {
+          disposition = "DISMISSED";
+          reasonParts.push("No actionable destination fields for this finding");
+        } else if (appliedFields.length === 0 && conflicts.length > 0) {
+          disposition = "CONFLICT";
+          reasonParts.push(`${conflicts.length} conflict(s) for review`);
+        } else if (saveResult?.status === "queued") {
+          disposition = conflicts.length > 0 ? "PARTIALLY_APPLIED" : "APPLIED";
+          reasonParts.push(`queued offline — applied ${appliedFields.length} field(s) unverified until sync`);
+        } else {
+          // Online save happened but returned no signalStatuses (e.g. the
+          // create-new-assessment branch above, which never sends
+          // fieldWrites) -- fields were written in the SAME formData just
+          // saved, so this is as verified as the pre-fix behavior ever
+          // was; not a regression, but also not yet the fully verified
+          // path (only the update branch supports fieldWrites today).
+          disposition = conflicts.length > 0 ? "PARTIALLY_APPLIED" : "APPLIED";
+          reasonParts.push(`applied ${appliedFields.length} field(s)`);
+          if (conflicts.length > 0) reasonParts.push(`${conflicts.length} conflict(s) for review`);
+        }
+
+        await reviewHarvestedSignalOffline(signal.id, disposition, reasonParts.join("; "));
         setPendingStructuredSignals((prev) => prev.filter((s) => s.id !== signal.id));
         setSelectedStructuredSignalIds((prev) => {
           if (!prev.has(signal.id)) return prev;
@@ -10354,9 +10422,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           skippedSignalIds,
           appliedFieldsBySignal,
           skippedConflicts,
-        } = applyAllNonConflicting(formData, targetSignals);
+          skippedWoundReviewItems,
+        } = applyAllNonConflicting(formData, targetSignals, INITIAL_FORM);
 
         if (appliedSignalIds.length === 0) {
+          // Even when nothing new was applied (every targeted signal
+          // fully conflicts), the conflicts themselves must still reach
+          // the RN review queue -- returning here silently discarded them
+          // before, leaving the RN stuck looking at "N pending" forever
+          // with no path forward.
+          if (skippedConflicts.length > 0) {
+            setStructuredFieldConflicts((prev) => [...prev, ...skippedConflicts]);
+          }
+          if (skippedWoundReviewItems.length > 0) {
+            setWoundReviewItems((prev) => [...prev, ...skippedWoundReviewItems]);
+          }
           setStructuredFindingsError(
             skippedSignalIds.length > 0
               ? "Every selected signal has at least one conflicting field — review them individually below."
@@ -10366,6 +10446,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         }
 
         const provenanceEntries = [];
+        const fieldWrites = [];
         for (const signal of targetSignals) {
           if (!appliedSignalIds.includes(signal.id)) continue;
           const applied = appliedFieldsBySignal[signal.id] || [];
@@ -10380,14 +10461,28 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               recorded_at: signal.recorded_at,
               confidence: f.finding?.confidence,
               signal_id: signal.id,
+              kind: f.writeKind || "scalar",
+            });
+            fieldWrites.push({
+              signal_id: signal.id,
+              section: f.section,
+              path: f.path,
+              value: f.value,
+              concept_code: f.concept_code,
+              kind: f.writeKind || "scalar",
             });
           }
         }
         const nextProvenance =
           provenanceEntries.length > 0 ? [...structuredFieldProvenance, ...provenanceEntries] : structuredFieldProvenance;
+        // Every signal that produced conflicts (whether fully skipped or
+        // partially applied alongside a clean write) -- passed through so
+        // the backend can report CONFLICT for a signal with zero field
+        // writes attempted, instead of silently leaving it unaccounted for.
+        const conflictSignalIds = Array.from(new Set(skippedConflicts.map((c) => c.signal_id)));
 
         // Persist the merged field values AND their provenance durably
-        // BEFORE marking any signal "APPLIED". This must land before the
+        // BEFORE marking any signal reviewed. This must land before the
         // review-status write below -- otherwise a signal can be
         // permanently marked consumed while its fields (and the record of
         // why they were populated) only ever existed in this tab's memory,
@@ -10398,8 +10493,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         // If this save fails we throw here, before touching any visible
         // state or marking anything applied, so the RN can safely retry.
         let persistedAssessmentId = assessmentId;
+        let saveResult = null;
         if (persistedAssessmentId) {
-          await api.updateRNICAAssessment(persistedAssessmentId, nextFormData, nextProvenance);
+          saveResult = await api.updateRNICAAssessment(
+            persistedAssessmentId,
+            nextFormData,
+            nextProvenance,
+            fieldWrites.length > 0 ? fieldWrites : undefined
+          );
         } else {
           const result = await api.saveRNICAAssessment(
             patientId,
@@ -10416,7 +10517,32 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFieldProvenance(nextProvenance);
         }
 
-        await batchReviewHarvestedSignalsOffline(appliedSignalIds, "APPLIED", { reason: reasonLabel });
+        // Group signals by their VERIFIED disposition (never assume
+        // "APPLIED" for the whole batch) and issue one batch-review call
+        // per distinct disposition -- almost always 1-2 calls in practice
+        // (e.g. all APPLIED, or APPLIED + a few PARTIALLY_APPLIED), never
+        // one per signal.
+        const verifiedStatuses = saveResult?.signalStatuses || {};
+        const bySignalDisposition = new Map();
+        for (const signalId of appliedSignalIds) {
+          const hadConflict = conflictSignalIds.includes(signalId);
+          let disposition = verifiedStatuses[signalId];
+          if (!disposition) {
+            // Fallback (offline-queued save, or a signal with zero fields
+            // to write at all -- e.g. every finding was HISTORICAL):
+            const applied = appliedFieldsBySignal[signalId] || [];
+            if (applied.length === 0) {
+              disposition = hadConflict ? "CONFLICT" : "DISMISSED";
+            } else {
+              disposition = hadConflict ? "PARTIALLY_APPLIED" : "APPLIED";
+            }
+          }
+          if (!bySignalDisposition.has(disposition)) bySignalDisposition.set(disposition, []);
+          bySignalDisposition.get(disposition).push(signalId);
+        }
+        for (const [disposition, ids] of bySignalDisposition) {
+          await batchReviewHarvestedSignalsOffline(ids, disposition, { reason: reasonLabel });
+        }
         setPendingStructuredSignals((prev) => prev.filter((s) => !appliedSignalIds.includes(s.id)));
         setSelectedStructuredSignalIds((prev) => {
           if (prev.size === 0) return prev;
@@ -10437,6 +10563,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setStructuredFindingsError(
             `Applied ${appliedSignalIds.length} signal(s). ${skippedConflicts.length} field(s) across ${skippedSignalIds.length} fully-conflicting signal(s) (plus any partially-applied signals) still need individual review.`
           );
+        }
+        if (skippedWoundReviewItems.length > 0) {
+          // Same partial-success pattern: a signal's OTHER writes (e.g.
+          // skinConditionsPresent) can apply cleanly even while its wound
+          // row is ambiguous -- the ambiguous row still needs an explicit
+          // RN decision, never a silent write.
+          setWoundReviewItems((prev) => [...prev, ...skippedWoundReviewItems]);
         }
       } catch (err) {
         console.error(`${reasonLabel} error:`, err);
@@ -10463,6 +10596,134 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const selected = pendingStructuredSignals.filter((s) => selectedStructuredSignalIds.has(s.id));
     return applyStructuredSignalsBulk(selected, "Apply Selected");
   }, [applyStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
+
+  // RN review workflow for a single field-level conflict left over from
+  // Apply-All (structuredFieldConflicts). Not every conflicting field is a
+  // software bug -- most are either duplicate/near-duplicate re-extractions
+  // of the same fact (safe to reject), complementary fragments of one
+  // clinical order (fit for merge), or a genuine clinical discrepancy that
+  // only a clinician can adjudicate (accept the new value, or modify to
+  // something else entirely). This is the ONLY place a conflicting field
+  // is written after Apply-All has already run -- always an explicit,
+  // attributable RN decision, never automatic.
+  const [conflictActionBusyKey, setConflictActionBusyKey] = useState(null);
+  const [conflictModifyDraft, setConflictModifyDraft] = useState({});
+
+  const resolveConflict = useCallback(
+    async (conflict, idx, action, customValue) => {
+      const key = `${conflict.signal_id}-${conflict.path}-${idx}`;
+      setConflictActionBusyKey(key);
+      try {
+        const result = resolveFieldConflict(formData, conflict, action, customValue);
+        if (!result) {
+          setStructuredFindingsError(`"${action}" is not available for this field.`);
+          return;
+        }
+        if (!result.noop) {
+          let persistedAssessmentId = assessmentId;
+          const provenanceEntry = {
+            section: conflict.section,
+            path: conflict.path,
+            value: result.resolvedValue,
+            concept_code: conflict.concept_code,
+            source_type: conflict.source_type,
+            source_excerpt: conflict.source_excerpt,
+            recorded_at: conflict.recorded_at,
+            signal_id: conflict.signal_id,
+            kind: `rn_review_${action}`,
+          };
+          const fieldWrite = {
+            signal_id: conflict.signal_id,
+            section: conflict.section,
+            path: conflict.path,
+            value: result.resolvedValue,
+            concept_code: conflict.concept_code,
+            kind: `rn_review_${action}`,
+          };
+          if (persistedAssessmentId) {
+            await api.updateRNICAAssessment(
+              persistedAssessmentId,
+              result.formData,
+              [...structuredFieldProvenance, provenanceEntry],
+              [fieldWrite]
+            );
+          }
+          markPersisted(result.formData, persistedAssessmentId);
+          setFormData(result.formData);
+          setStructuredFieldProvenance((prev) => [...prev, provenanceEntry]);
+        }
+
+        // Remove this specific conflict from the pending review list --
+        // resolved either way (rejected = keep as-is, the other three =
+        // written above).
+        setStructuredFieldConflicts((prev) => prev.filter((c, i) => `${c.signal_id}-${c.path}-${i}` !== key));
+
+        // Once every conflict for this signal has been individually
+        // resolved, the signal itself is done being reviewed -- mark it so
+        // it never resurfaces in "Apply All" again. "reject" alone (with
+        // nothing else ever applied for the signal) counts as DISMISSED;
+        // accept/modify/merge count as APPLIED.
+        const remainingForSignal = structuredFieldConflicts.filter(
+          (c, i) => c.signal_id === conflict.signal_id && `${c.signal_id}-${c.path}-${i}` !== key
+        );
+        if (remainingForSignal.length === 0) {
+          await batchReviewHarvestedSignalsOffline(
+            [conflict.signal_id],
+            action === "reject" ? "DISMISSED" : "APPLIED",
+            { reason: `RN review: ${action}` }
+          );
+        }
+      } catch (err) {
+        console.error("resolveConflict error:", err);
+        setStructuredFindingsError(err instanceof Error ? err.message : "Unable to resolve this finding.");
+      } finally {
+        setConflictActionBusyKey(null);
+      }
+    },
+    // markPersisted is declared later in this component (after
+    // useAssessmentAutosave()), same TDZ constraint documented above on
+    // applyStructuredSignalsBulk -- it's stable-identity and safe to read
+    // in the body without appearing in this dependency array.
+    [formData, assessmentId, structuredFieldProvenance, structuredFieldConflicts]
+  );
+
+  // Classification engine: before any of these field-level conflicts are
+  // ever shown to an RN, sort them into the real category model (Already
+  // Present / Duplicate / Enrichment / Clinical Discrepancy /
+  // Safety-Critical) instead of lumping everything into one generic
+  // "conflicts" bucket. Categories 2 (Already Present) and 3 (Duplicate)
+  // never require a human decision -- they're auto-resolved below and
+  // never rendered as "pending" at all.
+  const conflictSummary = useMemo(
+    () => summarizeConflictsByCategory(structuredFieldConflicts, CONCEPT_REGISTRY),
+    [structuredFieldConflicts]
+  );
+
+  useEffect(() => {
+    if (structuredFieldConflicts.length === 0) return;
+    const classified = structuredFieldConflicts.map((c) => ({
+      c,
+      classification: classifyConflict(c, CONCEPT_REGISTRY[c.concept_code]),
+    }));
+    const toAutoResolve = classified.filter((x) => x.classification.queue === "auto_resolved");
+    if (toAutoResolve.length === 0) return;
+
+    const remaining = classified.filter((x) => x.classification.queue !== "auto_resolved").map((x) => x.c);
+    const remainingSignalIds = new Set(remaining.map((c) => c.signal_id));
+    // A signal is only fully done (safe to mark DISMISSED so it never
+    // resurfaces) once every conflict entry it produced -- not just this
+    // one -- has been auto-resolved.
+    const autoResolvedSignalIds = Array.from(new Set(toAutoResolve.map((x) => x.c.signal_id))).filter(
+      (sid) => !remainingSignalIds.has(sid)
+    );
+
+    setStructuredFieldConflicts(remaining);
+    if (autoResolvedSignalIds.length > 0) {
+      batchReviewHarvestedSignalsOffline(autoResolvedSignalIds, "DISMISSED", {
+        reason: "Auto-resolved: already present in chart or duplicate re-detection, no new clinical information",
+      }).catch((err) => console.error("Auto-resolve signal review failed:", err));
+    }
+  }, [structuredFieldConflicts]);
 
   // Shared core for "Dismiss Selected" and "Dismiss All" -- both just
   // record every target signal's disposition as DISMISSED in one call.
@@ -11390,12 +11651,31 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <div style={styles.bannerMeta}>
             {patientSummary
               ? `MRN: ${patientSummary.patient.mrn} | ${patientSummary.patient.primary_diagnosis}`
-              : "MRN: 94731 | DOB: 11/15/1941 (84F) | Lung Cancer (C34.90), CHF, COPD"}
+              : resolvedPatientId
+              ? "Loading patient record…"
+              : "No patient selected"}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>RN ICA</div>
-          <div style={styles.bannerMeta}>Dr. James Olsen | Sarah Mitchell, RN, BSN</div>
+          <div style={styles.bannerMeta}>
+            {(() => {
+              // Authoritative sources, same pattern as Section1CareTeamGrid:
+              // physicians.attending.name comes from PatientPhysicianAssignment
+              // (falling back to the legacy facesheet column server-side);
+              // care_team.assignments.primary_rn_name comes from the shared
+              // PatientAssignment (discipline=RN) table (falling back to the
+              // legacy facesheet.primary_rn_name string). Never the current
+              // logged-in user, never a fabricated name — "Unassigned" if
+              // nothing is on record.
+              const attending = facesheetData?.physicians?.attending?.name;
+              const primaryRn =
+                facesheetData?.care_team?.assignments?.primary_rn_name?.name ||
+                facesheetData?.care_team?.primary_rn_name;
+              if (!attending && !primaryRn) return "Unassigned";
+              return `${attending || "Unassigned"} | ${primaryRn || "Unassigned"}`;
+            })()}
+          </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
             <button
               type="button"
@@ -12056,15 +12336,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
               )}
 
-              {structuredFieldConflicts.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
-                    Conflicts requiring RN review ({structuredFieldConflicts.length})
-                  </div>
-                  {structuredFieldConflicts.map((c, idx) => (
+              {(() => {
+                const metrics = {
+                  clinicalDiscrepancies: conflictSummary.clinicalDiscrepancies.length,
+                  enrichmentSuggestions: conflictSummary.enrichmentSuggestions.length,
+                  safetyCritical: conflictSummary.safetyCritical.length,
+                  alreadyPresent: conflictSummary.alreadyPresent.length,
+                  duplicatesAutoResolved: conflictSummary.duplicatesAutoResolved.length,
+                };
+                const totalNeedingReview = metrics.clinicalDiscrepancies + metrics.enrichmentSuggestions + metrics.safetyCritical;
+                if (structuredFieldConflicts.length === 0 && totalNeedingReview === 0) return null;
+
+                const renderConflictItem = (c, idx, borderColor) => {
+                  const key = `${c.signal_id}-${c.path}-${idx}`;
+                  const busy = conflictActionBusyKey === key;
+                  const isBooleanConflict = typeof c.existingValue === "boolean" || typeof c.suggestedValue === "boolean";
+                  return (
                     <div
-                      key={`${c.signal_id}-${c.path}-${idx}`}
-                      style={{ fontSize: 10, color: COLORS.dark, marginBottom: 6, padding: 6, borderRadius: 6, background: COLORS.sfvTagBg, border: `1px solid ${COLORS.error}` }}
+                      key={key}
+                      style={{ fontSize: 10, color: COLORS.dark, marginBottom: 6, padding: 6, borderRadius: 6, background: COLORS.sfvTagBg, border: `1px solid ${borderColor}` }}
                     >
                       <strong>{c.section}.{c.path}</strong>
                       <div>Current value: {JSON.stringify(c.existingValue)}</div>
@@ -12072,10 +12362,108 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                       <div style={{ fontStyle: "italic" }}>
                         from {c.source_type}{c.source_excerpt ? `: "${c.source_excerpt}"` : ""}
                       </div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6, alignItems: "center" }}>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolveConflict(c, idx, "accept")}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: "none", background: COLORS.success || "#16a34a", color: "#fff", cursor: busy ? "default" : "pointer" }}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => resolveConflict(c, idx, "reject")}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "#fff", color: COLORS.dark, cursor: busy ? "default" : "pointer" }}
+                        >
+                          Reject
+                        </button>
+                        {!isBooleanConflict && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => resolveConflict(c, idx, "merge")}
+                            style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: "none", background: "#2563eb", color: "#fff", cursor: busy ? "default" : "pointer" }}
+                            title="Combine current + suggested into one value"
+                          >
+                            Merge
+                          </button>
+                        )}
+                        <input
+                          type="text"
+                          placeholder="Modify..."
+                          value={conflictModifyDraft[key] ?? ""}
+                          onChange={(e) => setConflictModifyDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                          style={{ fontSize: 10, padding: "3px 6px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, width: 140 }}
+                        />
+                        <button
+                          type="button"
+                          disabled={busy || !conflictModifyDraft[key]}
+                          onClick={() => resolveConflict(c, idx, "modify", conflictModifyDraft[key])}
+                          style={{ fontSize: 10, fontWeight: 600, padding: "4px 8px", borderRadius: 5, border: `1px solid ${COLORS.gray}`, background: "#fff", color: COLORS.dark, cursor: busy ? "default" : "pointer" }}
+                        >
+                          Save custom value
+                        </button>
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                  );
+                };
+
+                // Original index within structuredFieldConflicts must be
+                // preserved per-item (not the sub-group position) because
+                // resolveConflict's removal key is built from that index.
+                const withOriginalIndex = structuredFieldConflicts.map((c, idx) => ({
+                  c,
+                  idx,
+                  classification: classifyConflict(c, CONCEPT_REGISTRY[c.concept_code]),
+                }));
+                const safetyItems = withOriginalIndex.filter((x) => x.classification.category === 6);
+                const discrepancyItems = withOriginalIndex.filter((x) => x.classification.category === 5);
+                const enrichmentItems = withOriginalIndex.filter((x) => x.classification.category === 4);
+
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.dark, marginBottom: 8 }}>
+                      Findings Requiring Review
+                    </div>
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 10, marginBottom: 10 }}>
+                      <span style={{ color: COLORS.error, fontWeight: metrics.safetyCritical > 0 ? 700 : 400 }}>Safety-Critical: {metrics.safetyCritical}</span>
+                      <span style={{ color: COLORS.error }}>Clinical Discrepancies: {metrics.clinicalDiscrepancies}</span>
+                      <span style={{ color: "#2563eb" }}>Enrichment Suggestions: {metrics.enrichmentSuggestions}</span>
+                      <span style={{ color: COLORS.gray }}>Already Present (auto-resolved): {metrics.alreadyPresent}</span>
+                      <span style={{ color: COLORS.gray }}>Duplicates (auto-resolved): {metrics.duplicatesAutoResolved}</span>
+                    </div>
+
+                    {safetyItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                          🚨 Urgent RN Review — Safety-Critical ({safetyItems.length})
+                        </div>
+                        {safetyItems.map(({ c, idx }) => renderConflictItem(c, idx, "#b91c1c"))}
+                      </div>
+                    )}
+
+                    {discrepancyItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                          Clinical Discrepancies ({discrepancyItems.length})
+                        </div>
+                        {discrepancyItems.map(({ c, idx }) => renderConflictItem(c, idx, COLORS.error))}
+                      </div>
+                    )}
+
+                    {enrichmentItems.length > 0 && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: "#2563eb", marginBottom: 6 }}>
+                          Enrichment Suggestions ({enrichmentItems.length})
+                        </div>
+                        {enrichmentItems.map(({ c, idx }) => renderConflictItem(c, idx, "#2563eb"))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

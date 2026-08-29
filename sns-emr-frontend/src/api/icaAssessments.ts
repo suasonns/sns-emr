@@ -168,10 +168,12 @@ export async function getRnicaAdmissionStatus(patientId: string) {
 export async function updateRnicaAssessment(
   assessmentId: string,
   formData: Record<string, unknown>,
-  fieldProvenance?: Array<Record<string, unknown>>
+  fieldProvenance?: Array<Record<string, unknown>>,
+  fieldWrites?: Array<Record<string, unknown>>
 ) {
   const body: Record<string, unknown> = { formData };
   if (fieldProvenance) body.fieldProvenance = fieldProvenance;
+  if (fieldWrites) body.fieldWrites = fieldWrites;
   return unwrap(api.put(`/visits/rnica/${assessmentId}`, body), "RN ICA update failed");
 }
 
@@ -246,14 +248,20 @@ export async function getRnicaIntelligence(assessmentId: string) {
 // one evidence-harvested signal that carries structured findings
 // (source_type: REFERRAL_HNP / uploaded document / transcript / etc). This
 // is deliberately a separate, minimal contract from the broader narrative
-// AI-signal review workflow: `disposition` is exactly "APPLIED" (the RN
-// used applyStructuredFindings() to populate blank RNICA field(s) from
-// this signal) or "DISMISSED" (the RN reviewed it and chose not to apply
-// it). The apply itself happens client-side against form state before this
-// call — this endpoint only records that review happened so the signal
-// drops out of the pending-review queue (review_status: NEW -> APPLIED |
-// DISMISSED).
-export async function reviewHarvestedSignal(signalId: string, disposition: "APPLIED" | "DISMISSED", reason?: string) {
+// AI-signal review workflow: `disposition` is one of the verified-apply
+// outcomes computed by rnica_apply_verification.py (or an explicit RN
+// choice for DISMISSED) -- never a client-side assumption. The apply
+// itself happens client-side against form state before this call — this
+// endpoint only records that review happened so the signal drops out of
+// the pending-review queue (review_status: NEW -> one of these).
+export type SignalReviewDisposition =
+  | "APPLIED"
+  | "DISMISSED"
+  | "PARTIALLY_APPLIED"
+  | "CONFLICT"
+  | "FAILED";
+
+export async function reviewHarvestedSignal(signalId: string, disposition: SignalReviewDisposition, reason?: string) {
   return unwrap(
     api.post(`/visits/rnica/signals/${signalId}/review`, { disposition, reason }),
     "Unable to record structured finding review"
@@ -265,7 +273,7 @@ export async function reviewHarvestedSignal(signalId: string, disposition: "APPL
 // signal one at a time.
 export async function batchReviewHarvestedSignals(
   signalIds: string[],
-  disposition: "APPLIED" | "DISMISSED",
+  disposition: SignalReviewDisposition,
   options?: { reason?: string }
 ) {
   return unwrap(

@@ -246,3 +246,120 @@ def test_extract_signals_parses_well_formed_model_response(monkeypatch):
     assert signal.confidence == 0.82
     assert signal.requires_idg_review is True
     assert signal.requires_poc_review is False
+
+
+# ═══════════ Deterministic wound safety-net regression tests ═══════════
+# Real defect: a 63KB H&P/referral export contained an explicit wound-care
+# order ("wound care order for L side of buttocks and R foot") at char
+# offset ~58,735 -- past the old single-slice 12,000-char truncation, so it
+# was silently never sent to the model on ANY run. These tests use the
+# exact real source wording (including the OCR/export-style glued spacing)
+# and pin down that explicit wound language is now detected deterministically,
+# independent of the LLM, on every run, with no variance.
+
+_REAL_WOUND_EXCERPT = (
+    "Dr. Massey that runs the boarding care facility pt is at is req a wound care "
+    "order for L sideof buttocksandRfoot. He also was informed that home health "
+    "nurse came to facility to evaluate the pt."
+)
+
+
+def test_deterministic_wound_detector_finds_left_buttock_order():
+    candidates = ai_extraction_service.detect_wound_candidates(_REAL_WOUND_EXCERPT)
+    locations = {c.location: c.outcome for c in candidates}
+    assert locations.get("left buttock") == "STRUCTURED_FINDING_CREATED"
+
+
+def test_deterministic_wound_detector_finds_right_foot_order():
+    candidates = ai_extraction_service.detect_wound_candidates(_REAL_WOUND_EXCERPT)
+    locations = {c.location: c.outcome for c in candidates}
+    assert locations.get("right foot") == "STRUCTURED_FINDING_CREATED"
+
+
+def test_deterministic_wound_detector_two_locations_one_passage_are_separate():
+    candidates = ai_extraction_service.detect_wound_candidates(_REAL_WOUND_EXCERPT)
+    created = [c for c in candidates if c.outcome == "STRUCTURED_FINDING_CREATED"]
+    locations = sorted(c.location for c in created)
+    assert locations == ["left buttock", "right foot"]
+    # Never combined into one string.
+    assert all(";" not in loc and " and " not in loc for loc in locations)
+
+
+def test_deterministic_wound_detector_history_only_is_rejected_not_dropped():
+    candidates = ai_extraction_service.detect_wound_candidates(
+        "History of a wound to the left buttock, now resolved."
+    )
+    assert any(c.outcome == "REJECTED_HISTORICAL" and c.location == "left buttock" for c in candidates)
+    assert not any(c.outcome == "STRUCTURED_FINDING_CREATED" for c in candidates)
+
+
+def test_deterministic_wound_detector_resolved_wound_is_historical():
+    candidates = ai_extraction_service.detect_wound_candidates(
+        "Right foot wound, resolved as of last visit."
+    )
+    assert any(c.assertion_status == "HISTORICAL" for c in candidates)
+    assert not any(c.outcome == "STRUCTURED_FINDING_CREATED" for c in candidates)
+
+
+def test_deterministic_wound_detector_no_wound_produces_no_finding():
+    candidates = ai_extraction_service.detect_wound_candidates("Skin intact, no wound noted on exam.")
+    assert not any(c.outcome == "STRUCTURED_FINDING_CREATED" for c in candidates)
+
+
+def test_deterministic_wound_detector_negated_wound_is_rejected_not_dropped():
+    candidates = ai_extraction_service.detect_wound_candidates("Patient denies any wound at this time.")
+    assert any(c.assertion_status == "NEGATED" for c in candidates)
+    assert not any(c.outcome == "STRUCTURED_FINDING_CREATED" for c in candidates)
+
+
+def test_deterministic_wound_detector_uncertain_wound_is_rejected_not_dropped():
+    candidates = ai_extraction_service.detect_wound_candidates(
+        "Possible wound versus rash on the right foot, uncertain at this time."
+    )
+    assert any(c.assertion_status == "UNCERTAIN" for c in candidates)
+    assert not any(c.outcome == "STRUCTURED_FINDING_CREATED" for c in candidates)
+
+
+def test_deterministic_wound_detector_is_consistent_across_repeated_runs():
+    # Run the identical input repeatedly -- must produce the exact same
+    # result every time (this is the whole point of a deterministic,
+    # non-LLM safety net: no run-to-run variance).
+    results = [ai_extraction_service.detect_wound_candidates(_REAL_WOUND_EXCERPT) for _ in range(10)]
+    normalized = [sorted((c.location, c.assertion_status, c.outcome) for c in r) for r in results]
+    assert all(n == normalized[0] for n in normalized)
+    assert {"left buttock", "right foot"}.issubset(
+        {loc for loc, _status, outcome in normalized[0] if outcome == "STRUCTURED_FINDING_CREATED"}
+    )
+
+
+def test_extract_signals_surfaces_wound_findings_even_when_ai_unconfigured(monkeypatch):
+    # The deterministic safety net must fire independent of the LLM path --
+    # simulate the worst case (Azure OpenAI entirely unconfigured) and
+    # confirm the wound findings still make it through.
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    signals = ai_extraction_service.extract_signals(
+        text=_REAL_WOUND_EXCERPT,
+        discipline=None,
+        note_type="REFERRAL_HNP",
+        source_type="REFERRAL_HNP",
+    )
+
+    all_findings = [f for s in signals for f in s.structured_findings]
+    wound_findings = [f for f in all_findings if f["concept_code"] == "SKIN_WOUND_PRESENT"]
+    locations = sorted(f["value"] for f in wound_findings)
+    assert locations == ["left buttock", "right foot"]
+
+
+def test_split_into_chunks_covers_entire_document_no_data_lost():
+    # Regression for the root defect: the old code truncated at
+    # MAX_SOURCE_TEXT_CHARS and silently discarded everything after it.
+    long_text = ("Routine visit note text. " * 2000) + "wound care order for left heel."
+    assert len(long_text) > ai_extraction_service.MAX_SOURCE_TEXT_CHARS
+    chunks = ai_extraction_service._split_into_chunks(long_text, ai_extraction_service.MAX_SOURCE_TEXT_CHARS)
+    assert sum(len(c) for c in chunks) == len(long_text)
+    assert "wound care order for left heel" in "".join(chunks)
+

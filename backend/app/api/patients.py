@@ -60,6 +60,7 @@ from app.services.physician_sync_service import (
     ASSOCIATE_MEDICAL_DIRECTOR,
     ATTENDING,
     MEDICAL_DIRECTOR,
+    get_agency_medical_director,
     get_physician_assignments,
 )
 from app.services.contact_sync_service import (
@@ -2277,7 +2278,7 @@ def get_facesheet(
     # --------------------------------------------------
     physician_assignments = get_physician_assignments(db, patient_id=patient.id, tenant_id=tenant_id)
 
-    def _physician_dict(role: str, legacy_name, legacy_address=None, legacy_phone=None, legacy_fax=None, legacy_npi=None, legacy_following=None):
+    def _physician_dict(role: str, legacy_name, legacy_address=None, legacy_phone=None, legacy_fax=None, legacy_npi=None, legacy_following=None, legacy_source=None):
         row = physician_assignments.get(role)
         if row is not None:
             return {
@@ -2290,7 +2291,8 @@ def get_facesheet(
                 "source": row.source,
                 "updated_at": row.updated_at.isoformat() if row.updated_at else None,
             }
-        # No shared row yet - fall back to legacy facesheet-only values.
+        # No shared row yet - fall back to legacy facesheet-only values
+        # (or an agency-level default, e.g. Medical Director - see legacy_source).
         return {
             "name": legacy_name,
             "address": legacy_address,
@@ -2298,9 +2300,17 @@ def get_facesheet(
             "fax": legacy_fax,
             "npi": legacy_npi,
             "following": legacy_following,
-            "source": None,
+            "source": legacy_source,
             "updated_at": None,
         }
+
+    # Agency-level Medical Director: resolved by tenant-wide oversight ROLE,
+    # never by per-patient assignment. Patients do not need to be
+    # individually assigned to the agency Medical Director for the role
+    # to display - "no patient-specific assignment" != "no Medical Director".
+    # An explicit patient_physician_assignments MEDICAL_DIRECTOR row (checked
+    # first, inside _physician_dict above) still overrides this default.
+    agency_medical_director = get_agency_medical_director(db, tenant_id=tenant_id)
 
     # --------------------------------------------------
     # ✅ SHARED CAREGIVER / DECISION-MAKER CONTACTS (authoritative, cross-module)
@@ -2487,11 +2497,12 @@ def get_facesheet(
             ),
             "medical_director": _physician_dict(
                 MEDICAL_DIRECTOR,
-                facesheet.medical_director_name,
+                facesheet.medical_director_name or (agency_medical_director["name"] if agency_medical_director else None),
                 facesheet.medical_director_address,
                 facesheet.medical_director_phone,
                 facesheet.medical_director_fax,
-                facesheet.medical_director_npi,
+                facesheet.medical_director_npi or (agency_medical_director["npi"] if agency_medical_director else None),
+                legacy_source="AGENCY_CONFIGURATION" if (agency_medical_director and not facesheet.medical_director_name) else None,
             ),
             "medical_director_designee": {
                 "name":

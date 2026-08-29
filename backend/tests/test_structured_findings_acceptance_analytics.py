@@ -102,7 +102,14 @@ def test_analytics_counts_by_status_and_application_rate(db_session):
     result = get_structured_findings_acceptance_analytics(db_session, tenant_id=_tenant_id(), patient_id=patient.id)
 
     assert result["total_signals"] == 5
-    assert result["by_status"] == {"NEW": 1, "APPLIED": 3, "DISMISSED": 1}
+    assert result["by_status"] == {
+        "NEW": 1,
+        "APPLIED": 3,
+        "DISMISSED": 1,
+        "PARTIALLY_APPLIED": 0,
+        "CONFLICT": 0,
+        "FAILED": 0,
+    }
     assert result["reviewed_count"] == 4
     # 3 applied / 4 reviewed = 0.75
     assert result["application_rate"] == 0.75
@@ -198,7 +205,14 @@ def test_analytics_filters_by_date_range(db_session):
     )
 
     assert result["total_signals"] == 1
-    assert result["by_status"] == {"NEW": 0, "APPLIED": 0, "DISMISSED": 1}
+    assert result["by_status"] == {
+        "NEW": 0,
+        "APPLIED": 0,
+        "DISMISSED": 1,
+        "PARTIALLY_APPLIED": 0,
+        "CONFLICT": 0,
+        "FAILED": 0,
+    }
     assert old_signal.review_status == "APPLIED"  # sanity: old signal untouched, just excluded
     assert recent_signal.review_status == "DISMISSED"
 
@@ -213,7 +227,14 @@ def test_analytics_scoped_to_tenant(db_session):
     result = get_structured_findings_acceptance_analytics(db_session, tenant_id=other_tenant_id)
 
     assert result["total_signals"] == 0
-    assert result["by_status"] == {"NEW": 0, "APPLIED": 0, "DISMISSED": 0}
+    assert result["by_status"] == {
+        "NEW": 0,
+        "APPLIED": 0,
+        "DISMISSED": 0,
+        "PARTIALLY_APPLIED": 0,
+        "CONFLICT": 0,
+        "FAILED": 0,
+    }
     assert result["application_rate"] is None
 
 
