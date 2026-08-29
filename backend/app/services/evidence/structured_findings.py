@@ -225,10 +225,15 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "CV_HEART_FAILURE_ABSENT": ConceptMapping("CV_HEART_FAILURE_ABSENT", "cardiovascular", "Heart failure explicitly absent/ruled out", (_fw("heartFailurePresent", False),)),
 
     # ═══════════════════════════ RESPIRATORY ═══════════════════════════════
-    "RESP_SOB_NONE": ConceptMapping("RESP_SOB_NONE", "respiratory", "SOB explicitly denied", (_fw("sobSeverity", "None"),)),
-    "RESP_SOB_MILD": ConceptMapping("RESP_SOB_MILD", "respiratory", "SOB mild", (_fw("sobSeverity", "Mild"),)),
-    "RESP_SOB_MODERATE": ConceptMapping("RESP_SOB_MODERATE", "respiratory", "SOB moderate", (_fw("sobSeverity", "Moderate"),)),
-    "RESP_SOB_SEVERE": ConceptMapping("RESP_SOB_SEVERE", "respiratory", "SOB severe", (_fw("sobSeverity", "Severe"),)),
+    # RESP_SOB_NONE/MILD/MODERATE/SEVERE also cross-write symptomImpact.
+    # shortnessOfBreath (HOPE J2051B, 0-3 vocabulary) alongside the word-
+    # vocabulary respiratory.sobSeverity field. RESP_DYSPNEA_AT_REST is
+    # deliberately NOT cross-written -- "at rest" is a distinct exertion-
+    # level fact, not a clean 0-3 severity mapping.
+    "RESP_SOB_NONE": ConceptMapping("RESP_SOB_NONE", "respiratory", "SOB explicitly denied", (_fw("sobSeverity", "None"), _fw("shortnessOfBreath", "0", section="symptomImpact"))),
+    "RESP_SOB_MILD": ConceptMapping("RESP_SOB_MILD", "respiratory", "SOB mild", (_fw("sobSeverity", "Mild"), _fw("shortnessOfBreath", "1", section="symptomImpact"))),
+    "RESP_SOB_MODERATE": ConceptMapping("RESP_SOB_MODERATE", "respiratory", "SOB moderate", (_fw("sobSeverity", "Moderate"), _fw("shortnessOfBreath", "2", section="symptomImpact"))),
+    "RESP_SOB_SEVERE": ConceptMapping("RESP_SOB_SEVERE", "respiratory", "SOB severe", (_fw("sobSeverity", "Severe"), _fw("shortnessOfBreath", "3", section="symptomImpact"))),
     "RESP_DYSPNEA_AT_REST": ConceptMapping("RESP_DYSPNEA_AT_REST", "respiratory", "Dyspnea at rest", (_fw("sobSeverity", "At rest"), _fw("exertionLevel", "At rest"))),
     "RESP_DYSPNEA_MINIMAL_EXERTION": ConceptMapping("RESP_DYSPNEA_MINIMAL_EXERTION", "respiratory", "Dyspnea, minimal exertion", (_fw("exertionLevel", "Minimal exertion"),)),
     "RESP_DYSPNEA_MODERATE_EXERTION": ConceptMapping("RESP_DYSPNEA_MODERATE_EXERTION", "respiratory", "Dyspnea, moderate exertion", (_fw("exertionLevel", "Moderate exertion"),)),
@@ -356,6 +361,19 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "NEURO_SEIZURE_HISTORY": ConceptMapping("NEURO_SEIZURE_HISTORY", "neurological", "Seizure history", (_fw("seizureHistory", True),)),
     "NEURO_DEMEANOR_ANXIETY": ConceptMapping("NEURO_DEMEANOR_ANXIETY", "neurological", "Anxiety", (_fw("symptomsDemeanor", "Anxiety", op="multi_add"),)),
     "NEURO_DEMEANOR_AGITATION": ConceptMapping("NEURO_DEMEANOR_AGITATION", "neurological", "Agitation", (_fw("symptomsDemeanor", "Agitation", op="multi_add"),)),
+    # Distinct from the demeanor flags above -- these represent an explicit
+    # graded severity (HOPE J2051C/H, 0-3 vocabulary), only accepted when the
+    # source states a specific level, never inferred from a bare presence
+    # flag. Both write only to symptomImpact (no other RNICA section models
+    # a graded current-anxiety/current-agitation severity today).
+    "SYMPTOM_ANXIETY_SEVERITY_NONE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_NONE", "neurological", "Anxiety severity: none (HOPE J2051C)", (_fw("anxiety", "0", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_MILD": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_MILD", "neurological", "Anxiety severity: mild (HOPE J2051C)", (_fw("anxiety", "1", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_MODERATE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_MODERATE", "neurological", "Anxiety severity: moderate (HOPE J2051C)", (_fw("anxiety", "2", section="symptomImpact"),)),
+    "SYMPTOM_ANXIETY_SEVERITY_SEVERE": ConceptMapping("SYMPTOM_ANXIETY_SEVERITY_SEVERE", "neurological", "Anxiety severity: severe (HOPE J2051C)", (_fw("anxiety", "3", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_NONE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_NONE", "neurological", "Agitation severity: none (HOPE J2051H)", (_fw("agitation", "0", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_MILD": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_MILD", "neurological", "Agitation severity: mild (HOPE J2051H)", (_fw("agitation", "1", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_MODERATE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_MODERATE", "neurological", "Agitation severity: moderate (HOPE J2051H)", (_fw("agitation", "2", section="symptomImpact"),)),
+    "SYMPTOM_AGITATION_SEVERITY_SEVERE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_SEVERE", "neurological", "Agitation severity: severe (HOPE J2051H)", (_fw("agitation", "3", section="symptomImpact"),)),
     "NEURO_DEMEANOR_PEACEFUL": ConceptMapping("NEURO_DEMEANOR_PEACEFUL", "neurological", "Peaceful", (_fw("symptomsDemeanor", "Peaceful", op="multi_add"),)),
     "NEURO_DEMEANOR_CONFUSED": ConceptMapping("NEURO_DEMEANOR_CONFUSED", "neurological", "Confused", (_fw("symptomsDemeanor", "Confused", op="multi_add"),)),
     "NEURO_DEMEANOR_RESTLESS": ConceptMapping("NEURO_DEMEANOR_RESTLESS", "neurological", "Restless", (_fw("symptomsDemeanor", "Restless", op="multi_add"),)),
@@ -642,69 +660,71 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     ),
 
     # ═══════════════════════════ GASTROINTESTINAL (coverage expansion) ═══
+    # These also cross-write symptomImpact.* (HOPE J2051D-G, 0-3 vocabulary)
+    # alongside the word-vocabulary gastrointestinal.* fields.
     "GI_NAUSEA_NONE": ConceptMapping(
         "GI_NAUSEA_NONE", "gastrointestinal", "Nausea, none",
-        (_fw("nausea", "None"),),
+        (_fw("nausea", "None"), _fw("nausea", "0", section="symptomImpact")),
     ),
     "GI_NAUSEA_MILD": ConceptMapping(
         "GI_NAUSEA_MILD", "gastrointestinal", "Nausea, mild",
-        (_fw("nausea", "Mild"),),
+        (_fw("nausea", "Mild"), _fw("nausea", "1", section="symptomImpact")),
     ),
     "GI_NAUSEA_MODERATE": ConceptMapping(
         "GI_NAUSEA_MODERATE", "gastrointestinal", "Nausea, moderate",
-        (_fw("nausea", "Moderate"),),
+        (_fw("nausea", "Moderate"), _fw("nausea", "2", section="symptomImpact")),
     ),
     "GI_NAUSEA_SEVERE": ConceptMapping(
         "GI_NAUSEA_SEVERE", "gastrointestinal", "Nausea, severe",
-        (_fw("nausea", "Severe"),),
+        (_fw("nausea", "Severe"), _fw("nausea", "3", section="symptomImpact")),
     ),
     "GI_VOMITING_NONE": ConceptMapping(
         "GI_VOMITING_NONE", "gastrointestinal", "Vomiting, none",
-        (_fw("vomiting", "None"),),
+        (_fw("vomiting", "None"), _fw("vomiting", "0", section="symptomImpact")),
     ),
     "GI_VOMITING_MILD": ConceptMapping(
         "GI_VOMITING_MILD", "gastrointestinal", "Vomiting, mild",
-        (_fw("vomiting", "Mild"),),
+        (_fw("vomiting", "Mild"), _fw("vomiting", "1", section="symptomImpact")),
     ),
     "GI_VOMITING_MODERATE": ConceptMapping(
         "GI_VOMITING_MODERATE", "gastrointestinal", "Vomiting, moderate",
-        (_fw("vomiting", "Moderate"),),
+        (_fw("vomiting", "Moderate"), _fw("vomiting", "2", section="symptomImpact")),
     ),
     "GI_VOMITING_SEVERE": ConceptMapping(
         "GI_VOMITING_SEVERE", "gastrointestinal", "Vomiting, severe",
-        (_fw("vomiting", "Severe"),),
+        (_fw("vomiting", "Severe"), _fw("vomiting", "3", section="symptomImpact")),
     ),
     "GI_DIARRHEA_NONE": ConceptMapping(
         "GI_DIARRHEA_NONE", "gastrointestinal", "Diarrhea, none",
-        (_fw("diarrhea", "None"),),
+        (_fw("diarrhea", "None"), _fw("diarrhea", "0", section="symptomImpact")),
     ),
     "GI_DIARRHEA_MILD": ConceptMapping(
         "GI_DIARRHEA_MILD", "gastrointestinal", "Diarrhea, mild",
-        (_fw("diarrhea", "Mild"),),
+        (_fw("diarrhea", "Mild"), _fw("diarrhea", "1", section="symptomImpact")),
     ),
     "GI_DIARRHEA_MODERATE": ConceptMapping(
         "GI_DIARRHEA_MODERATE", "gastrointestinal", "Diarrhea, moderate",
-        (_fw("diarrhea", "Moderate"),),
+        (_fw("diarrhea", "Moderate"), _fw("diarrhea", "2", section="symptomImpact")),
     ),
     "GI_DIARRHEA_SEVERE": ConceptMapping(
         "GI_DIARRHEA_SEVERE", "gastrointestinal", "Diarrhea, severe",
-        (_fw("diarrhea", "Severe"),),
+        (_fw("diarrhea", "Severe"), _fw("diarrhea", "3", section="symptomImpact")),
     ),
     "GI_CONSTIPATION_NONE": ConceptMapping(
         "GI_CONSTIPATION_NONE", "gastrointestinal", "Constipation, none",
-        (_fw("constipation", "None"),),
+        (_fw("constipation", "None"), _fw("constipation", "0", section="symptomImpact")),
     ),
     "GI_CONSTIPATION_MILD": ConceptMapping(
         "GI_CONSTIPATION_MILD", "gastrointestinal", "Constipation, mild",
-        (_fw("constipation", "Mild"),),
+        (_fw("constipation", "Mild"), _fw("constipation", "1", section="symptomImpact")),
     ),
     "GI_CONSTIPATION_MODERATE": ConceptMapping(
         "GI_CONSTIPATION_MODERATE", "gastrointestinal", "Constipation, moderate",
-        (_fw("constipation", "Moderate"),),
+        (_fw("constipation", "Moderate"), _fw("constipation", "2", section="symptomImpact")),
     ),
     "GI_CONSTIPATION_SEVERE": ConceptMapping(
         "GI_CONSTIPATION_SEVERE", "gastrointestinal", "Constipation, severe",
-        (_fw("constipation", "Severe"),),
+        (_fw("constipation", "Severe"), _fw("constipation", "3", section="symptomImpact")),
     ),
     "GI_VOMITING_OCCURRENCES_24H": ConceptMapping(
         "GI_VOMITING_OCCURRENCES_24H", "gastrointestinal", "Vomiting occurrences in 24h",
@@ -1288,10 +1308,13 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     # logic from communication status, not evidence), painMapMode (UI toggle),
     # painManagementPlan (RN's own plan, free text).
     "PAIN_SCREENED_YES": ConceptMapping("PAIN_SCREENED_YES", "pain", "Pain screening documented (HOPE J0900.A)", (_fw("screenedForPain", "1"),)),
-    "PAIN_SEVERITY_NONE": ConceptMapping("PAIN_SEVERITY_NONE", "pain", "Pain severity: none (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "0"))),
-    "PAIN_SEVERITY_MILD": ConceptMapping("PAIN_SEVERITY_MILD", "pain", "Pain severity: mild (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "1"))),
-    "PAIN_SEVERITY_MODERATE": ConceptMapping("PAIN_SEVERITY_MODERATE", "pain", "Pain severity: moderate (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "2"))),
-    "PAIN_SEVERITY_SEVERE": ConceptMapping("PAIN_SEVERITY_SEVERE", "pain", "Pain severity: severe (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "3"))),
+    # symptomImpact.pain shares the same 0-3 (None/Mild/Moderate/Severe) HOPE
+    # J2051A vocabulary as painSeverityCategory's HOPE J0900.C vocabulary, so
+    # these concepts also cross-write the Symptom Impact section directly.
+    "PAIN_SEVERITY_NONE": ConceptMapping("PAIN_SEVERITY_NONE", "pain", "Pain severity: none (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "0"), _fw("pain", "0", section="symptomImpact"))),
+    "PAIN_SEVERITY_MILD": ConceptMapping("PAIN_SEVERITY_MILD", "pain", "Pain severity: mild (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "1"), _fw("pain", "1", section="symptomImpact"))),
+    "PAIN_SEVERITY_MODERATE": ConceptMapping("PAIN_SEVERITY_MODERATE", "pain", "Pain severity: moderate (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "2"), _fw("pain", "2", section="symptomImpact"))),
+    "PAIN_SEVERITY_SEVERE": ConceptMapping("PAIN_SEVERITY_SEVERE", "pain", "Pain severity: severe (HOPE J0900.C)", (_fw("screenedForPain", "1"), _fw("painSeverityCategory", "3"), _fw("pain", "3", section="symptomImpact"))),
     "PAIN_TOOL_NUMERIC": ConceptMapping("PAIN_TOOL_NUMERIC", "pain", "Pain tool: numeric (HOPE J0900.D)", (_fw("standardizedPainToolType", "1"),)),
     "PAIN_TOOL_VERBAL_DESCRIPTOR": ConceptMapping("PAIN_TOOL_VERBAL_DESCRIPTOR", "pain", "Pain tool: verbal descriptor (HOPE J0900.D)", (_fw("standardizedPainToolType", "2"),)),
     "PAIN_TOOL_PATIENT_VISUAL": ConceptMapping("PAIN_TOOL_PATIENT_VISUAL", "pain", "Pain tool: patient visual (HOPE J0900.D)", (_fw("standardizedPainToolType", "3"),)),

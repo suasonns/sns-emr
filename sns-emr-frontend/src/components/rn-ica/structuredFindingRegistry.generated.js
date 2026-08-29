@@ -214,19 +214,19 @@ export const CONCEPT_REGISTRY = {
   },
   RESP_SOB_NONE: {
     section: "respiratory",
-    writes: [{ path: "sobSeverity", value: "None", op: "set", section: null }],
+    writes: [{ path: "sobSeverity", value: "None", op: "set", section: null }, { path: "shortnessOfBreath", value: "0", op: "set", section: "symptomImpact" }],
   },
   RESP_SOB_MILD: {
     section: "respiratory",
-    writes: [{ path: "sobSeverity", value: "Mild", op: "set", section: null }],
+    writes: [{ path: "sobSeverity", value: "Mild", op: "set", section: null }, { path: "shortnessOfBreath", value: "1", op: "set", section: "symptomImpact" }],
   },
   RESP_SOB_MODERATE: {
     section: "respiratory",
-    writes: [{ path: "sobSeverity", value: "Moderate", op: "set", section: null }],
+    writes: [{ path: "sobSeverity", value: "Moderate", op: "set", section: null }, { path: "shortnessOfBreath", value: "2", op: "set", section: "symptomImpact" }],
   },
   RESP_SOB_SEVERE: {
     section: "respiratory",
-    writes: [{ path: "sobSeverity", value: "Severe", op: "set", section: null }],
+    writes: [{ path: "sobSeverity", value: "Severe", op: "set", section: null }, { path: "shortnessOfBreath", value: "3", op: "set", section: "symptomImpact" }],
   },
   RESP_DYSPNEA_AT_REST: {
     section: "respiratory",
@@ -528,6 +528,38 @@ export const CONCEPT_REGISTRY = {
   NEURO_DEMEANOR_AGITATION: {
     section: "neurological",
     writes: [{ path: "symptomsDemeanor", value: "Agitation", op: "multi_add", section: null }],
+  },
+  SYMPTOM_ANXIETY_SEVERITY_NONE: {
+    section: "neurological",
+    writes: [{ path: "anxiety", value: "0", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_ANXIETY_SEVERITY_MILD: {
+    section: "neurological",
+    writes: [{ path: "anxiety", value: "1", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_ANXIETY_SEVERITY_MODERATE: {
+    section: "neurological",
+    writes: [{ path: "anxiety", value: "2", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_ANXIETY_SEVERITY_SEVERE: {
+    section: "neurological",
+    writes: [{ path: "anxiety", value: "3", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_AGITATION_SEVERITY_NONE: {
+    section: "neurological",
+    writes: [{ path: "agitation", value: "0", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_AGITATION_SEVERITY_MILD: {
+    section: "neurological",
+    writes: [{ path: "agitation", value: "1", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_AGITATION_SEVERITY_MODERATE: {
+    section: "neurological",
+    writes: [{ path: "agitation", value: "2", op: "set", section: "symptomImpact" }],
+  },
+  SYMPTOM_AGITATION_SEVERITY_SEVERE: {
+    section: "neurological",
+    writes: [{ path: "agitation", value: "3", op: "set", section: "symptomImpact" }],
   },
   NEURO_DEMEANOR_PEACEFUL: {
     section: "neurological",
@@ -1089,67 +1121,67 @@ export const CONCEPT_REGISTRY = {
   },
   GI_NAUSEA_NONE: {
     section: "gastrointestinal",
-    writes: [{ path: "nausea", value: "None", op: "set", section: null }],
+    writes: [{ path: "nausea", value: "None", op: "set", section: null }, { path: "nausea", value: "0", op: "set", section: "symptomImpact" }],
   },
   GI_NAUSEA_MILD: {
     section: "gastrointestinal",
-    writes: [{ path: "nausea", value: "Mild", op: "set", section: null }],
+    writes: [{ path: "nausea", value: "Mild", op: "set", section: null }, { path: "nausea", value: "1", op: "set", section: "symptomImpact" }],
   },
   GI_NAUSEA_MODERATE: {
     section: "gastrointestinal",
-    writes: [{ path: "nausea", value: "Moderate", op: "set", section: null }],
+    writes: [{ path: "nausea", value: "Moderate", op: "set", section: null }, { path: "nausea", value: "2", op: "set", section: "symptomImpact" }],
   },
   GI_NAUSEA_SEVERE: {
     section: "gastrointestinal",
-    writes: [{ path: "nausea", value: "Severe", op: "set", section: null }],
+    writes: [{ path: "nausea", value: "Severe", op: "set", section: null }, { path: "nausea", value: "3", op: "set", section: "symptomImpact" }],
   },
   GI_VOMITING_NONE: {
     section: "gastrointestinal",
-    writes: [{ path: "vomiting", value: "None", op: "set", section: null }],
+    writes: [{ path: "vomiting", value: "None", op: "set", section: null }, { path: "vomiting", value: "0", op: "set", section: "symptomImpact" }],
   },
   GI_VOMITING_MILD: {
     section: "gastrointestinal",
-    writes: [{ path: "vomiting", value: "Mild", op: "set", section: null }],
+    writes: [{ path: "vomiting", value: "Mild", op: "set", section: null }, { path: "vomiting", value: "1", op: "set", section: "symptomImpact" }],
   },
   GI_VOMITING_MODERATE: {
     section: "gastrointestinal",
-    writes: [{ path: "vomiting", value: "Moderate", op: "set", section: null }],
+    writes: [{ path: "vomiting", value: "Moderate", op: "set", section: null }, { path: "vomiting", value: "2", op: "set", section: "symptomImpact" }],
   },
   GI_VOMITING_SEVERE: {
     section: "gastrointestinal",
-    writes: [{ path: "vomiting", value: "Severe", op: "set", section: null }],
+    writes: [{ path: "vomiting", value: "Severe", op: "set", section: null }, { path: "vomiting", value: "3", op: "set", section: "symptomImpact" }],
   },
   GI_DIARRHEA_NONE: {
     section: "gastrointestinal",
-    writes: [{ path: "diarrhea", value: "None", op: "set", section: null }],
+    writes: [{ path: "diarrhea", value: "None", op: "set", section: null }, { path: "diarrhea", value: "0", op: "set", section: "symptomImpact" }],
   },
   GI_DIARRHEA_MILD: {
     section: "gastrointestinal",
-    writes: [{ path: "diarrhea", value: "Mild", op: "set", section: null }],
+    writes: [{ path: "diarrhea", value: "Mild", op: "set", section: null }, { path: "diarrhea", value: "1", op: "set", section: "symptomImpact" }],
   },
   GI_DIARRHEA_MODERATE: {
     section: "gastrointestinal",
-    writes: [{ path: "diarrhea", value: "Moderate", op: "set", section: null }],
+    writes: [{ path: "diarrhea", value: "Moderate", op: "set", section: null }, { path: "diarrhea", value: "2", op: "set", section: "symptomImpact" }],
   },
   GI_DIARRHEA_SEVERE: {
     section: "gastrointestinal",
-    writes: [{ path: "diarrhea", value: "Severe", op: "set", section: null }],
+    writes: [{ path: "diarrhea", value: "Severe", op: "set", section: null }, { path: "diarrhea", value: "3", op: "set", section: "symptomImpact" }],
   },
   GI_CONSTIPATION_NONE: {
     section: "gastrointestinal",
-    writes: [{ path: "constipation", value: "None", op: "set", section: null }],
+    writes: [{ path: "constipation", value: "None", op: "set", section: null }, { path: "constipation", value: "0", op: "set", section: "symptomImpact" }],
   },
   GI_CONSTIPATION_MILD: {
     section: "gastrointestinal",
-    writes: [{ path: "constipation", value: "Mild", op: "set", section: null }],
+    writes: [{ path: "constipation", value: "Mild", op: "set", section: null }, { path: "constipation", value: "1", op: "set", section: "symptomImpact" }],
   },
   GI_CONSTIPATION_MODERATE: {
     section: "gastrointestinal",
-    writes: [{ path: "constipation", value: "Moderate", op: "set", section: null }],
+    writes: [{ path: "constipation", value: "Moderate", op: "set", section: null }, { path: "constipation", value: "2", op: "set", section: "symptomImpact" }],
   },
   GI_CONSTIPATION_SEVERE: {
     section: "gastrointestinal",
-    writes: [{ path: "constipation", value: "Severe", op: "set", section: null }],
+    writes: [{ path: "constipation", value: "Severe", op: "set", section: null }, { path: "constipation", value: "3", op: "set", section: "symptomImpact" }],
   },
   GI_VOMITING_OCCURRENCES_24H: {
     section: "gastrointestinal",
@@ -1750,19 +1782,19 @@ export const CONCEPT_REGISTRY = {
   },
   PAIN_SEVERITY_NONE: {
     section: "pain",
-    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "0", op: "set", section: null }],
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "0", op: "set", section: null }, { path: "pain", value: "0", op: "set", section: "symptomImpact" }],
   },
   PAIN_SEVERITY_MILD: {
     section: "pain",
-    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "1", op: "set", section: null }],
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "1", op: "set", section: null }, { path: "pain", value: "1", op: "set", section: "symptomImpact" }],
   },
   PAIN_SEVERITY_MODERATE: {
     section: "pain",
-    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "2", op: "set", section: null }],
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "2", op: "set", section: null }, { path: "pain", value: "2", op: "set", section: "symptomImpact" }],
   },
   PAIN_SEVERITY_SEVERE: {
     section: "pain",
-    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "3", op: "set", section: null }],
+    writes: [{ path: "screenedForPain", value: "1", op: "set", section: null }, { path: "painSeverityCategory", value: "3", op: "set", section: null }, { path: "pain", value: "3", op: "set", section: "symptomImpact" }],
   },
   PAIN_TOOL_NUMERIC: {
     section: "pain",

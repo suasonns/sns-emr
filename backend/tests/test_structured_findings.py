@@ -487,3 +487,71 @@ def test_multi_site_split_does_not_affect_non_free_text_concepts():
     assert len(findings) == 1
     assert findings[0].value is True
 
+
+# ---------------------------------------------------------------------------
+# RNICA Completion Sprint: Symptom Impact (HOPE J2051) cross-writes
+# ---------------------------------------------------------------------------
+
+def test_pain_severity_cross_writes_symptom_impact_with_0_to_3_vocabulary():
+    mapping = CONCEPT_REGISTRY["PAIN_SEVERITY_MODERATE"]
+    symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+    assert len(symptom_writes) == 1
+    assert symptom_writes[0].path == "pain"
+    assert symptom_writes[0].value == "2"
+
+
+def test_sob_severity_cross_writes_symptom_impact_but_dyspnea_at_rest_does_not():
+    mapping = CONCEPT_REGISTRY["RESP_SOB_SEVERE"]
+    symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+    assert len(symptom_writes) == 1
+    assert symptom_writes[0].path == "shortnessOfBreath"
+    assert symptom_writes[0].value == "3"
+    # RESP_DYSPNEA_AT_REST is an exertion-level fact, not a clean 0-3 severity
+    # -- it must NOT cross-write symptomImpact.
+    at_rest = CONCEPT_REGISTRY["RESP_DYSPNEA_AT_REST"]
+    assert not any(fw.section == "symptomImpact" for fw in at_rest.writes)
+
+
+def test_gi_symptom_severities_cross_write_symptom_impact_with_0_to_3_vocabulary():
+    cases = [
+        ("GI_NAUSEA_MILD", "nausea", "1"),
+        ("GI_VOMITING_SEVERE", "vomiting", "3"),
+        ("GI_DIARRHEA_NONE", "diarrhea", "0"),
+        ("GI_CONSTIPATION_MODERATE", "constipation", "2"),
+    ]
+    for concept_code, path, expected_value in cases:
+        mapping = CONCEPT_REGISTRY[concept_code]
+        symptom_writes = [fw for fw in mapping.writes if fw.section == "symptomImpact"]
+        assert len(symptom_writes) == 1, concept_code
+        assert symptom_writes[0].path == path
+        assert symptom_writes[0].value == expected_value
+        # The original word-vocabulary section write must still be intact.
+        own_section_writes = [fw for fw in mapping.writes if fw.section is None]
+        assert any(fw.path == path for fw in own_section_writes)
+
+
+def test_new_anxiety_and_agitation_severity_concepts_write_only_symptom_impact():
+    for code, path, value in [
+        ("SYMPTOM_ANXIETY_SEVERITY_NONE", "anxiety", "0"),
+        ("SYMPTOM_ANXIETY_SEVERITY_SEVERE", "anxiety", "3"),
+        ("SYMPTOM_AGITATION_SEVERITY_MILD", "agitation", "1"),
+        ("SYMPTOM_AGITATION_SEVERITY_MODERATE", "agitation", "2"),
+    ]:
+        mapping = CONCEPT_REGISTRY[code]
+        assert len(mapping.writes) == 1
+        assert mapping.writes[0].section == "symptomImpact"
+        assert mapping.writes[0].path == path
+        assert mapping.writes[0].value == value
+
+
+def test_symptom_impact_severity_findings_validate_and_apply_when_current():
+    raw = [
+        _raw("PAIN_SEVERITY_SEVERE"),
+        _raw("SYMPTOM_ANXIETY_SEVERITY_MILD"),
+        _raw("SYMPTOM_AGITATION_SEVERITY_NONE"),
+        _raw("GI_NAUSEA_MODERATE"),
+    ]
+    findings = validate_findings(raw, source_type="TRANSCRIPT", source_record_id="rec-6")
+    assert len(findings) == 4
+    assert all(f.assertion_status == "CURRENT" for f in findings)
+
