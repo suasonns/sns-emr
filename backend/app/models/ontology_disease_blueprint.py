@@ -193,6 +193,9 @@ class OntologyDisease(Base):
     validation_results = relationship(
         "OntologyDiseaseValidationResult", back_populates="disease", cascade="all, delete-orphan"
     )
+    variants = relationship(
+        "OntologyDiseaseVariant", back_populates="disease", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         CheckConstraint("length(trim(disease_name)) > 0", name="ck_ontology_disease_name_not_blank"),
@@ -786,5 +789,187 @@ class OntologyDiseaseValidationResult(Base):
         CheckConstraint(
             "validation_status IN ('PASS', 'FAIL', 'WARNING')",
             name="ck_ontology_disease_validation_result_status",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Section 20: FIVE-TIER FOUNDATION -- TIER 4 (DISEASE VARIANT / CLINICAL
+# CONTEXT) AND THE TIER 5 APPLICABILITY EDGE TABLE
+# ---------------------------------------------------------------------------
+#
+# Universal, body-system-agnostic extension of the ontology hierarchy:
+#
+#   Tier 1  OntologyBodySystem
+#     Tier 2  OntologyDiseaseFamily
+#       Tier 3  OntologyDisease            (canonical disease -- unchanged)
+#         Tier 4  OntologyDiseaseVariant   (disease variant / clinical context)
+#           Tier 5  existing atomic concept tables (symptom, finding, lab,
+#                   diagnostic test, complication, prognostic indicator,
+#                   treatment limitation, functional impact, nutritional
+#                   impact, end-stage finding, hospice eligibility support,
+#                   treatment, medication, psychosocial concern, spiritual
+#                   concern) -- unchanged, linked to Tier 4 only through
+#                   OntologyConceptVariantApplicability, never through a
+#                   new foreign key column on the Tier 5 tables themselves.
+#
+# Tier 4 is intentionally one generic table for every body system (Stroke
+# mechanism/territory/laterality today; Oncology primary site/histology/
+# stage/metastatic destination tomorrow) -- never a disease-specific or
+# system-specific column or table. A Tier 4 row may recursively nest under
+# another Tier 4 row via parent_variant_id (e.g. "Middle Cerebral Artery
+# Stroke" as a child of "Ischemic Stroke") without requiring a new table.
+#
+# A single Tier 5 concept may be clinically applicable to more than one
+# Tier 4 variant at once (e.g. a finding that is both left-hemisphere- and
+# MCA-territory-specific) -- so the association is stored as a many-to-many
+# edge (OntologyConceptVariantApplicability), never as a single variant_id
+# column bolted onto each Tier 5 table.
+#
+# Both tables carry the same evidence/patient-fact safeguard as the rest of
+# the ontology: they store general clinical-reasoning knowledge only.
+# `evidence_requirement` documents what patient-record evidence would be
+# needed before treating the association as a documented patient fact --
+# consistent with `patient_fact_requires_evidence = true` on
+# OntologyEvidenceRule for every Tier 5 concept row.
+# ---------------------------------------------------------------------------
+
+
+class OntologyDiseaseVariant(Base):
+    """
+    Tier 4: Disease Variant / Clinical Context. A universal, dimension-
+    tagged sub-classification of a Tier 3 canonical disease (mechanism,
+    anatomical location, vascular territory, hemisphere, dominance,
+    laterality, disease phase, stage, histology, molecular subtype, etc.)
+    Never a new canonical disease row, never a body-system- or disease-
+    specific column/table.
+    """
+
+    __tablename__ = "ontology_disease_variant"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    disease_id = Column(
+        UUID(as_uuid=True), ForeignKey("ontology_disease.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    parent_variant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ontology_disease_variant.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    variant_name = Column(String(255), nullable=False)
+    normalized_name = Column(String(255), nullable=False, index=True)
+
+    # MECHANISM | PATHOLOGICAL_SUBTYPE | HISTOLOGY | MOLECULAR_SUBTYPE |
+    # ANATOMICAL_LOCATION | PRIMARY_SITE | VASCULAR_TERRITORY | HEMISPHERE |
+    # DOMINANCE | LATERALITY | CORTICAL_LOCATION | SUBCORTICAL_LOCATION |
+    # DEEP_STRUCTURE | BRAINSTEM_LEVEL | CEREBELLAR_LOCATION | CARDIAC_SIDE |
+    # CARDIAC_CHAMBER | PHYSIOLOGICAL_PHENOTYPE | SEVERITY_CLASS | STAGE |
+    # GRADE | DISEASE_PHASE | RECURRENCE_STATE | METASTATIC_STATE |
+    # METASTATIC_DESTINATION | TREATMENT_STATE | RESIDUAL_DEFICIT_STATE
+    variant_dimension = Column(String(32), nullable=False, index=True)
+    variant_code = Column(String(64), nullable=True)
+
+    description = Column(Text, nullable=True)
+    clinical_significance = Column(Text, nullable=True)
+    hospice_relevance = Column(Text, nullable=True)
+    evidence_requirement = Column(Text, nullable=True)
+    source_reference = Column(Text, nullable=True)
+
+    active = Column(Boolean, nullable=False, server_default=text("true"), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    disease = relationship("OntologyDisease", back_populates="variants")
+    parent_variant = relationship("OntologyDiseaseVariant", remote_side=[id], back_populates="child_variants")
+    child_variants = relationship(
+        "OntologyDiseaseVariant", back_populates="parent_variant", cascade="all, delete-orphan"
+    )
+    applicability_edges = relationship(
+        "OntologyConceptVariantApplicability", back_populates="variant", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "disease_id", "variant_dimension", "normalized_name",
+            name="uq_ontology_disease_variant_disease_dimension_name",
+        ),
+        CheckConstraint("length(trim(variant_name)) > 0", name="ck_ontology_disease_variant_name_not_blank"),
+        CheckConstraint(
+            "variant_dimension IN ("
+            "'MECHANISM', 'PATHOLOGICAL_SUBTYPE', 'HISTOLOGY', 'MOLECULAR_SUBTYPE', "
+            "'ANATOMICAL_LOCATION', 'PRIMARY_SITE', 'VASCULAR_TERRITORY', 'HEMISPHERE', "
+            "'DOMINANCE', 'LATERALITY', 'CORTICAL_LOCATION', 'SUBCORTICAL_LOCATION', "
+            "'DEEP_STRUCTURE', 'BRAINSTEM_LEVEL', 'CEREBELLAR_LOCATION', 'CARDIAC_SIDE', "
+            "'CARDIAC_CHAMBER', 'PHYSIOLOGICAL_PHENOTYPE', 'SEVERITY_CLASS', 'STAGE', "
+            "'GRADE', 'DISEASE_PHASE', 'RECURRENCE_STATE', 'METASTATIC_STATE', "
+            "'METASTATIC_DESTINATION', 'TREATMENT_STATE', 'RESIDUAL_DEFICIT_STATE'"
+            ")",
+            name="ck_ontology_disease_variant_dimension",
+        ),
+    )
+
+
+class OntologyConceptVariantApplicability(Base):
+    """
+    Tier 5 <-> Tier 4 many-to-many applicability edge. Links an existing
+    atomic concept row (identified generically by concept_type/concept_id,
+    the same pattern already used by OntologyRelationship and
+    OntologyEvidenceRule) to one or more OntologyDiseaseVariant rows.
+
+    Stores general AI clinical-knowledge applicability only -- never a
+    patient fact. `evidence_requirement` documents what patient-record
+    evidence would be needed before the applicability could ever be
+    treated as a documented patient-specific finding.
+    """
+
+    __tablename__ = "ontology_concept_variant_applicability"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    disease_id = Column(
+        UUID(as_uuid=True), ForeignKey("ontology_disease.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # SYMPTOM | FINDING | LAB | DIAGNOSTIC_TEST | COMPLICATION |
+    # PROGNOSTIC_INDICATOR | TREATMENT_LIMITATION | FUNCTIONAL_IMPACT |
+    # NUTRITIONAL_IMPACT | END_STAGE_FINDING | HOSPICE_ELIGIBILITY_SUPPORT |
+    # TREATMENT | MEDICATION | PSYCHOSOCIAL_CONCERN | SPIRITUAL_CONCERN
+    concept_type = Column(String(64), nullable=False, index=True)
+    concept_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+
+    variant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ontology_disease_variant.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    # APPLIES_TO | EXPECTED_WITH | STRONGLY_ASSOCIATED_WITH | MAY_OCCUR_WITH |
+    # SUPPORTS_DIFFERENTIATION | CONTRAINDICATED_FOR | TREATMENT_SPECIFIC_TO |
+    # PROGNOSTIC_FOR | END_STAGE_SUPPORT_FOR | HOSPICE_SUPPORT_FOR
+    applicability_type = Column(String(32), nullable=False, index=True)
+
+    description = Column(Text, nullable=True)
+    evidence_requirement = Column(Text, nullable=True)
+
+    active = Column(Boolean, nullable=False, server_default=text("true"), index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=True, onupdate=func.now())
+
+    variant = relationship("OntologyDiseaseVariant", back_populates="applicability_edges")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "concept_type", "concept_id", "variant_id", "applicability_type",
+            name="uq_ontology_concept_variant_applicability_edge",
+        ),
+        CheckConstraint(
+            "applicability_type IN ("
+            "'APPLIES_TO', 'EXPECTED_WITH', 'STRONGLY_ASSOCIATED_WITH', 'MAY_OCCUR_WITH', "
+            "'SUPPORTS_DIFFERENTIATION', 'CONTRAINDICATED_FOR', 'TREATMENT_SPECIFIC_TO', "
+            "'PROGNOSTIC_FOR', 'END_STAGE_SUPPORT_FOR', 'HOSPICE_SUPPORT_FOR'"
+            ")",
+            name="ck_ontology_concept_variant_applicability_type",
         ),
     )
