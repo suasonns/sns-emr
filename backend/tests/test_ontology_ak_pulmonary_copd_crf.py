@@ -22,6 +22,8 @@ from app.models.ontology_disease_blueprint import (
     OntologyDiseaseEndStageFinding,
     OntologyDiseaseFamily,
     OntologyDiseaseFinding,
+    OntologyDiseaseInterdisciplinaryTrigger,
+    OntologyDiseaseTreatment,
     OntologyDiseaseTreatmentLimitation,
     OntologyDiseaseValidationResult,
     OntologyEvidenceRule,
@@ -260,6 +262,57 @@ def test_copd_may_progress_to_crf_relationship_exists(db_session, clean_pulmonar
         .one_or_none()
     )
     assert rel is not None
+
+
+def test_respiratory_therapy_supportive_treatment_knowledge_rows_exist(
+    db_session, clean_pulmonary_state
+):
+    """Respiratory Therapy is represented as general supportive-treatment
+    clinical knowledge only (ontology_disease_treatment, SUPPORTIVE), never
+    as a discipline/staffing assignment, order, or completed-treatment
+    record, and never mislabeled as PT/OT."""
+    for disease_key in (COPD, CRF):
+        disease = clean_pulmonary_state[disease_key]
+        row = (
+            db_session.query(OntologyDiseaseTreatment)
+            .filter_by(
+                disease_id=disease.id,
+                treatment_name="Respiratory Therapy Evaluation and Support",
+            )
+            .one_or_none()
+        )
+        assert row is not None, f"missing Respiratory Therapy treatment knowledge row for {disease_key}"
+        assert row.treatment_category == "SUPPORTIVE"
+        assert "may be relevant for review" in row.description
+        assert "does not mean Respiratory Therapy was ordered, provided, required, or assigned" in row.description
+        assert "patient-record evidence and human clinical review" in row.description
+
+
+def test_no_respiratory_therapy_discipline_substitution_or_trigger(
+    db_session, clean_pulmonary_state
+):
+    """RT must never be represented via PT/OT substitution, and no
+    Respiratory-Therapy interdisciplinary-trigger row may exist while RT
+    remains outside the discipline enum (BLOCKED_BY_MISSING_ENUM_VALUE)."""
+    disease_ids = [d.id for d in clean_pulmonary_state.values()]
+
+    triggers = (
+        db_session.query(OntologyDiseaseInterdisciplinaryTrigger)
+        .filter(OntologyDiseaseInterdisciplinaryTrigger.disease_id.in_(disease_ids))
+        .all()
+    )
+    for t in triggers:
+        assert t.discipline not in ("PT", "OT", "RT")
+        assert "respiratory" not in t.trigger_condition.lower()
+
+    treatments = (
+        db_session.query(OntologyDiseaseTreatment)
+        .filter(OntologyDiseaseTreatment.disease_id.in_(disease_ids))
+        .all()
+    )
+    for tr in treatments:
+        assert "PT" != tr.treatment_name
+        assert "OT" != tr.treatment_name
 
 
 def test_duplicate_finding_rejected_by_unique_constraint(db_session, clean_pulmonary_state):

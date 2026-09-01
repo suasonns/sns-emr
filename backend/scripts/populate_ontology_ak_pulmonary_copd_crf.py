@@ -426,11 +426,22 @@ TREATMENTS: Dict[str, List[Tuple[str, str, str]]] = {
         ("Pulmonary Rehabilitation", "SUPPORTIVE", "Structured exercise and education program to improve function."),
         ("Long-Term Oxygen Therapy", "SUPPORTIVE", "Supplemental oxygen for chronic hypoxemia."),
         ("Comfort-Focused Symptom Management", "HOSPICE", "Symptom-focused care when disease-directed treatment is limited."),
+        ("Respiratory Therapy Evaluation and Support", "SUPPORTIVE",
+         "Respiratory Therapy involvement may be relevant for review when documented pulmonary evidence, "
+         "including dyspnea, hypoxemia, or declining spirometry, supports it. This is general clinical "
+         "knowledge only. It does not mean Respiratory Therapy was ordered, provided, required, or assigned "
+         "for a specific patient. Patient-level use requires patient-record evidence and human clinical review."),
     ],
     CRF: [
         ("Noninvasive Ventilation (BiPAP)", "DISEASE_DIRECTED", "Ventilatory support for hypercapnic respiratory failure."),
         ("Comfort-Focused Symptom Management", "HOSPICE",
          "Symptom-focused care when mechanical ventilation is declined or discontinued."),
+        ("Respiratory Therapy Evaluation and Support", "SUPPORTIVE",
+         "Respiratory Therapy involvement may be relevant for review when documented end-stage pulmonary "
+         "evidence, including hypoxemia at rest, hypercapnia, or ventilatory decline, supports it. This is "
+         "general clinical knowledge only. It does not mean Respiratory Therapy was ordered, provided, "
+         "required, or assigned for a specific patient. Patient-level use requires patient-record evidence "
+         "and human clinical review."),
     ],
 }
 
