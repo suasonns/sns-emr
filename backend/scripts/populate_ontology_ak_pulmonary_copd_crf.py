@@ -492,14 +492,22 @@ SPIRITUAL_CONCERNS: Dict[str, List[Tuple[str, str]]] = {
 # Interdisciplinary Triggers (Section 14)
 # (discipline, trigger_condition)
 # ---------------------------------------------------------------------------
+#
+# NOTE: Respiratory Therapy (RT) is the clinically accurate discipline for
+# pulmonary rehabilitation, oxygen-therapy, and ventilatory-support triggers,
+# but "RT" is not a permitted value in the
+# ck_ontology_disease_interdisciplinary_trigger_discipline CHECK constraint
+# (allowed: RN, PHYSICIAN, MSW, BSW, CHAPLAIN, VOLUNTEER, BEREAVEMENT,
+# DIETICIAN, PT, OT, IDG). Substituting a different discipline (e.g. PT)
+# would misrepresent the underlying clinical knowledge, so those trigger
+# facts are intentionally omitted here rather than mislabeled. See backlog:
+# add RT to the discipline enum, then populate the omitted RT triggers.
 INTERDISCIPLINARY_TRIGGERS: Dict[str, List[Tuple[str, str]]] = {
     COPD: [
         ("RN", "Decline monitoring and stage-progression care coordination."),
-        ("PT", "Pulmonary rehabilitation and oxygen-therapy support."),
     ],
     CRF: [
         ("RN", "End-stage symptom monitoring and care coordination."),
-        ("PT", "Ventilatory-support and oxygen-therapy management at end stage."),
         ("MSW", "Psychosocial support for family conflict or treatment-decision distress."),
         ("CHAPLAIN", "Spiritual support for ventilatory-support withdrawal and end-of-life meaning-making."),
     ],
