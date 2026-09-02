@@ -1,0 +1,1924 @@
+{
+  "manifest_version": "1.0",
+  "status": "AUTHORITATIVE",
+  "scope": {
+    "body_system": "Renal System",
+    "families": [
+      "Chronic Renal Failure and Acute Renal Failure"
+    ]
+  },
+  "rules": [
+    "No concept is renamed, substituted, combined, split, or omitted.",
+    "No additional concept is invented beyond what this manifest declares.",
+    "patient_fact_requires_evidence is always true for every Tier 5 concept.",
+    "Do not infer terminal prognosis from diagnosis alone -- renal diagnosis alone is insufficient; every hospice-support concept requires evidence.",
+    "Variant identity is always (disease, variant_dimension, variant_name); no name-only variant matching is permitted for applicability resolution."
+  ],
+  "sources": [
+    {
+      "source_id": "RENAL-PDF-1",
+      "title": "hospice_terminal_prog_renal_failure.pdf"
+    },
+    {
+      "source_id": "CMS-GUIDE-1",
+      "title": "cms guidelines.pdf"
+    },
+    {
+      "source_id": "SRC-1",
+      "title": "1.pdf"
+    },
+    {
+      "source_id": "NONDISEASE-1",
+      "title": "hospice_terminal_prog_non-disease_specific.pdf"
+    }
+  ],
+  "diseases": [
+    {
+      "disease": "Chronic Renal Failure",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "End Stage Renal Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Stable Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Renal Failure"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Pursuing Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Dialysis Discontinued"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Candidate For Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Renal Transplant Not Pursued"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Renal Transplant Declined"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Uremic Complications"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Uremic Syndrome"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Oliguric Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Anuric Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Volume Overload Renal Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Weakness",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Pruritus",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Nausea",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Vomiting",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Anorexia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Cognitive Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "GFR Less Than 15 mL Per Minute",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated Serum Creatinine",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Renal Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Fluid Overload",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Electrolyte Abnormality",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Uremia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Oliguria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Anuria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Uremic Encephalopathy",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Volume Overload",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Hyperkalemia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Acidosis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Hospitalization",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Protein Calorie Malnutrition",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "GFR Less Than 15 mL Per Minute",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Elevated Serum Creatinine",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Pursuing Dialysis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Dialysis Discontinued",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Candidate For Dialysis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Uremia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Oliguria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Anuria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "GFR Less Than 15 mL Per Minute",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Elevated Serum Creatinine",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Not Pursuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Dialysis Discontinued",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Not Candidate For Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Uremia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Oliguria",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Anuria",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Progressive Functional Decline",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Weight Loss",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Uremic Syndrome",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Uremic Encephalopathy",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Oliguric Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Oliguria",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anuric Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Anuria",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Volume Overload Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Volume Overload",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Renal Failure",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Renal Functional Decline",
+          "concept_domain": "FINDING",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Renal Failure",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Hospitalization",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Recurrent Hospitalization",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "PROGNOSTIC_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Uremic Complications",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Uremic Encephalopathy",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Pursuing Dialysis",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Not Pursuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dialysis Discontinued",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Dialysis Discontinued",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Candidate For Dialysis",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Not Candidate For Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    },
+    {
+      "disease": "Acute Renal Failure",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "End Stage Renal Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Stable Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Renal Failure"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Pursuing Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Dialysis Discontinued"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Candidate For Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Renal Transplant Not Pursued"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Renal Transplant Declined"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Uremic Complications"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Uremic Syndrome"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Oliguric Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Anuric Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Volume Overload Renal Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Weakness",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Pruritus",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Nausea",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Vomiting",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Anorexia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Cognitive Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "GFR Less Than 15 mL Per Minute",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated Serum Creatinine",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Renal Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Fluid Overload",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Electrolyte Abnormality",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Uremia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Oliguria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Anuria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Uremic Encephalopathy",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Volume Overload",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Hyperkalemia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Acidosis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Hospitalization",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Protein Calorie Malnutrition",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "GFR Less Than 15 mL Per Minute",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Elevated Serum Creatinine",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Pursuing Dialysis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Dialysis Discontinued",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Candidate For Dialysis",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Uremia",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Oliguria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Anuria",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "GFR Less Than 15 mL Per Minute",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Elevated Serum Creatinine",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Not Pursuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Dialysis Discontinued",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Not Candidate For Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Uremia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Oliguria",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Anuria",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Progressive Functional Decline",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Weight Loss",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Renal Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Uremic Syndrome",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Uremic Encephalopathy",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Oliguric Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Oliguria",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anuric Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Anuria",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Volume Overload Renal Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Volume Overload",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Renal Failure",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Renal Functional Decline",
+          "concept_domain": "FINDING",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Renal Failure",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Hospitalization",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Recurrent Hospitalization",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "PROGNOSTIC_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Uremic Complications",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Uremic Encephalopathy",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Pursuing Dialysis",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Not Pursuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dialysis Discontinued",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Dialysis Discontinued",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Candidate For Dialysis",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Not Candidate For Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "RENAL-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "left": "Chronic Renal Failure",
+      "right": "Acute Renal Failure",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    }
+  ],
+  "summary": {
+    "disease_count": 2,
+    "variant_count": 36,
+    "concept_count": 92,
+    "explicit_applicability_count": 50
+  }
+}
