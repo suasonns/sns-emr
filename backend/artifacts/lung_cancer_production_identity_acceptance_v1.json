@@ -1,0 +1,152 @@
+{
+  "manifest_id": "lung_cancer_production_identity_manifest_v1",
+  "canonical_disease_count": {
+    "expected": 1,
+    "stored": 1
+  },
+  "duplicate_canonical_disease_count": 0,
+  "variants_by_dimension": {
+    "METASTATIC_STATE": 2,
+    "PATHOLOGICAL_SUBTYPE": 5,
+    "PRIMARY_SITE": 1,
+    "RECURRENCE_STATE": 1
+  },
+  "concepts_by_domain": {
+    "FINDING": 12
+  },
+  "applicability_by_type": {
+    "MAY_OCCUR_WITH": 1,
+    "APPLIES_TO": 8
+  },
+  "expected_new_variants_count": 5,
+  "stored_new_variants_count": 5,
+  "missing_variants": [],
+  "unsupported_variants": [],
+  "unsupported_variant_count": 0,
+  "expected_concepts_count": 9,
+  "stored_concepts_count": 14,
+  "missing_concepts": [],
+  "unexpected_concepts": [
+    [
+      "PROGNOSTIC_INDICATOR",
+      "progressive disease"
+    ],
+    [
+      "PROGNOSTIC_INDICATOR",
+      "worsening clinical status"
+    ]
+  ],
+  "pre_existing_foundation_concepts": [
+    [
+      "FINDING",
+      "distant metastatic disease"
+    ],
+    [
+      "FINDING",
+      "metastatic disease"
+    ],
+    [
+      "FINDING",
+      "regional spread"
+    ]
+  ],
+  "expected_applicability_count": 8,
+  "stored_applicability_count": 9,
+  "missing_applicability": [],
+  "undeclared_applicability": [],
+  "undeclared_applicability_count": 0,
+  "pre_existing_foundation_applicability": [
+    [
+      "METASTATIC_STATE",
+      "Metastatic Disease",
+      "FINDING",
+      "Metastatic Disease",
+      "MAY_OCCUR_WITH"
+    ]
+  ],
+  "pulmonary_lcd_inheritance_count": 0,
+  "evidence_rule_coverage": {
+    "covered": 9,
+    "expected": 9,
+    "missing": []
+  },
+  "source_provenance_coverage": {
+    "covered": 9,
+    "expected": 9
+  },
+  "source_classification_coverage": {
+    "covered": 9,
+    "expected": 9
+  },
+  "differentiation_guard_results": [
+    {
+      "guard_name": "Lung Cancer IS_NOT Lung Primary Site",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer IS_NOT Lung Metastasis",
+      "passed": true
+    },
+    {
+      "guard_name": "Primary Lung Cancer IS_NOT Metastatic Disease To Lung",
+      "passed": true
+    },
+    {
+      "guard_name": "Non-Small Cell Lung Cancer IS_NOT Small Cell Lung Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Pleuropulmonary Blastoma IS_NOT Non-Small Cell Lung Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Pleuropulmonary Blastoma IS_NOT Small Cell Lung Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Tracheobronchial Tumor IS_NOT Automatically Bronchial Tumor",
+      "passed": true
+    },
+    {
+      "guard_name": "Localized Lung Cancer IS_NOT Metastatic Lung Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Recurrent Lung Cancer IS_NOT Automatically Metastatic Lung Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Metastatic Lung Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer DOES_NOT_INHERIT Pulmonary LCD Criteria",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Grade",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Treatment",
+      "passed": true
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "passed": true
+    }
+  ],
+  "orphan_count": 0,
+  "cycle_count": 0,
+  "unresolved_concept_count": 0,
+  "second_run_new_rows": 0,
+  "changes_outside_oncology": []
+}

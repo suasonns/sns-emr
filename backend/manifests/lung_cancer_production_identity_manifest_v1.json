@@ -1,0 +1,389 @@
+{
+  "manifest_version": 1,
+  "title": "Lung Cancer Production Identity Manifest v1",
+  "description": "A disease-specific Oncology manifest. Resolves the existing canonical 'Lung Cancer' disease created by the Oncology Foundation (PR #45) and adds ONLY source-supported identity knowledge from the NCI cancer-types catalog: five new Tier 4 PATHOLOGICAL_SUBTYPE variants, nine Tier 5 identity concepts, and eight explicit, individually-declared applicability mappings. Does not create a universal cancer manifest, does not copy this content to another cancer disease, does not mix the Pulmonary Disease LCD manifest with Lung Cancer identity knowledge, and does not create stage, grade, laterality, molecular-subtype, metastatic-destination, symptom, diagnostic, treatment, medication, or prognosis knowledge -- none of that is supported by the approved source for this PR.",
+  "source_authority": [
+    "Cancer-Types-NCI-08.22.2021.pdf"
+  ],
+  "scope": {
+    "body_system": "Oncology",
+    "family": "Solid Malignancies",
+    "disease": "Lung Cancer"
+  },
+  "required_existing_disease": {
+    "disease": "Lung Cancer",
+    "family": "Solid Malignancies",
+    "disease_category": "NCI_CANCER_CATALOG",
+    "note": "Must already exist from the Oncology Foundation import (PR #45). This importer resolves it by exact name and rejects creating a duplicate; it never creates a new Lung Cancer disease row."
+  },
+  "required_existing_variants": [
+    {"dimension": "PRIMARY_SITE", "name": "Lung Primary Site"},
+    {"dimension": "METASTATIC_STATE", "name": "Localized Disease"},
+    {"dimension": "METASTATIC_STATE", "name": "Metastatic Disease"},
+    {"dimension": "RECURRENCE_STATE", "name": "Recurrent Disease"}
+  ],
+  "new_variants": [
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Non-Small Cell Lung Cancer",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Diagnosis alone never establishes this variant, stage, grade, molecular subtype, or hospice eligibility."
+    },
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Small Cell Lung Cancer",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Never collapsed with Non-Small Cell Lung Cancer. Never inherits limited-stage or extensive-stage distinctions, which this PR does not create."
+    },
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Pleuropulmonary Blastoma",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Never collapsed with Non-Small Cell or Small Cell Lung Cancer."
+    },
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Tracheobronchial Tumor",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Never automatically equivalent to Bronchial Tumor."
+    },
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Bronchial Tumor",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Never automatically equivalent to Tracheobronchial Tumor."
+    }
+  ],
+  "unsupported_variants_not_created": {
+    "note": "The approved source (Cancer-Types-NCI-08.22.2021.pdf) does not define these for Lung Cancer in this PR. None of the following are created:",
+    "STAGE": "not defined by the current source for this PR (no Stage I/II/III/IV Lung Cancer)",
+    "GRADE": "not defined by the current source for this PR",
+    "LATERALITY": "not defined by the current source (no left/right/bilateral distinction)",
+    "HISTOLOGY": "not defined by the current source for this PR beyond the five approved PATHOLOGICAL_SUBTYPE variants (no adenocarcinoma, squamous-cell carcinoma, large-cell carcinoma, or neuroendocrine subtype)",
+    "MOLECULAR_SUBTYPE": "not defined by the current source for this PR (no molecular-driver subtype)",
+    "METASTATIC_DESTINATION": "not defined by the current source for this PR (no bone, brain, liver, adrenal, or pleural metastasis destinations)",
+    "SMALL_CELL_STAGE_SPLIT": "no approved dimension for limited-stage/extensive-stage Small Cell Lung Cancer exists in this PR"
+  },
+  "concepts": [
+    {
+      "domain": "FINDING",
+      "name": "Lung Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician diagnosis in the patient record",
+        "never auto-confirmed from this ontology concept alone"
+      ],
+      "description": "Lung Cancer identity concept from the NCI cancer-types catalog. Authorizes cancer-identity knowledge only; never auto-confirms diagnosis, stage, grade, molecular subtype, treatment, prognosis, or hospice eligibility. Distinct from Lung Primary Site (a Tier 4 variant of any solid malignancy that metastasizes to the lung) and from Lung Metastasis From Another Primary Cancer."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Non-Small Cell Lung Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never collapsed with Small Cell Lung Cancer"
+      ],
+      "description": "Non-Small Cell Lung Cancer identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, Small Cell Lung Cancer or Pleuropulmonary Blastoma."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Small Cell Lung Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never collapsed with Non-Small Cell Lung Cancer",
+        "never assigned a limited-stage or extensive-stage distinction by this PR"
+      ],
+      "description": "Small Cell Lung Cancer identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, Non-Small Cell Lung Cancer or Pleuropulmonary Blastoma."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Pleuropulmonary Blastoma",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never collapsed with Non-Small Cell Lung Cancer or Small Cell Lung Cancer"
+      ],
+      "description": "Pleuropulmonary Blastoma identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, Non-Small Cell Lung Cancer or Small Cell Lung Cancer."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Tracheobronchial Tumor",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never automatically equivalent to Bronchial Tumor"
+      ],
+      "description": "Tracheobronchial Tumor identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, Bronchial Tumor."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Bronchial Tumor",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never automatically equivalent to Tracheobronchial Tumor"
+      ],
+      "description": "Bronchial Tumor identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, Tracheobronchial Tumor."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Localized Lung Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Localized Disease state to Lung Cancer specifically."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Metastatic Lung Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone",
+        "never establishes a metastatic destination"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Metastatic Disease state to Lung Cancer specifically. Never establishes a metastatic destination, which this PR does not create."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Recurrent Lung Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone",
+        "never automatically equivalent to Metastatic Lung Cancer"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Recurrent Disease state to Lung Cancer specifically. Recurrence alone never automatically means metastatic disease."
+    }
+  ],
+  "applicability": [
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Non-Small Cell Lung Cancer",
+      "concept_domain": "FINDING",
+      "concept": "Non-Small Cell Lung Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Small Cell Lung Cancer",
+      "concept_domain": "FINDING",
+      "concept": "Small Cell Lung Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Pleuropulmonary Blastoma",
+      "concept_domain": "FINDING",
+      "concept": "Pleuropulmonary Blastoma",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Tracheobronchial Tumor",
+      "concept_domain": "FINDING",
+      "concept": "Tracheobronchial Tumor",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Bronchial Tumor",
+      "concept_domain": "FINDING",
+      "concept": "Bronchial Tumor",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Localized Disease",
+      "concept_domain": "FINDING",
+      "concept": "Localized Lung Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    },
+    {
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Metastatic Disease",
+      "concept_domain": "FINDING",
+      "concept": "Metastatic Lung Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    },
+    {
+      "variant_dimension": "RECURRENCE_STATE",
+      "variant": "Recurrent Disease",
+      "concept_domain": "FINDING",
+      "concept": "Recurrent Lung Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    }
+  ],
+  "unattached_concepts_not_given_applicability": {
+    "note": "Lung Cancer (base identity) is intentionally given ZERO applicability edges in this PR. It anchors the disease's own identity, not a Tier 4 variant, and the approved source declares each pathological subtype and foundation state as its own distinct applicability mapping instead.",
+    "concepts": ["Lung Cancer"]
+  },
+  "differentiation_guards": [
+    {
+      "guard_name": "Lung Cancer IS_NOT Lung Primary Site",
+      "assertions": [
+        {"assert": "disease_exists", "name": "Lung Cancer"},
+        {"assert": "variant_exists", "disease": "Lung Cancer", "dimension": "PRIMARY_SITE", "name": "Lung Primary Site"},
+        {"assert": "disease_absent", "name": "Lung Primary Site"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer IS_NOT Lung Metastasis",
+      "assertions": [
+        {"assert": "concept_exists", "disease": "Lung Cancer", "domain": "FINDING", "name": "Lung Cancer"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Lung Metastasis From Another Primary Cancer"},
+        {"assert": "disease_absent", "name": "Lung Metastasis From Another Primary Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Primary Lung Cancer IS_NOT Metastatic Disease To Lung",
+      "assertions": [
+        {"assert": "disease_absent", "name": "Primary Lung Cancer"},
+        {"assert": "disease_absent", "name": "Metastatic Disease To Lung"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Primary Lung Cancer"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Metastatic Disease To Lung"}
+      ]
+    },
+    {
+      "guard_name": "Non-Small Cell Lung Cancer IS_NOT Small Cell Lung Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Non-Small Cell Lung Cancer", "name_b": "Small Cell Lung Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Pleuropulmonary Blastoma IS_NOT Non-Small Cell Lung Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Pleuropulmonary Blastoma", "name_b": "Non-Small Cell Lung Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Pleuropulmonary Blastoma IS_NOT Small Cell Lung Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Pleuropulmonary Blastoma", "name_b": "Small Cell Lung Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Tracheobronchial Tumor IS_NOT Automatically Bronchial Tumor",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Tracheobronchial Tumor", "name_b": "Bronchial Tumor"}
+      ]
+    },
+    {
+      "guard_name": "Localized Lung Cancer IS_NOT Metastatic Lung Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Localized Lung Cancer", "name_b": "Metastatic Lung Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Recurrent Lung Cancer IS_NOT Automatically Metastatic Lung Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Lung Cancer", "domain": "FINDING", "name_a": "Recurrent Lung Cancer", "name_b": "Metastatic Lung Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Metastatic Lung Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Lung Cancer", "dimension": "METASTATIC_DESTINATION"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer DOES_NOT_INHERIT Pulmonary LCD Criteria",
+      "assertions": [
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Hypoxemia"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Hypercapnia"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Oxygen Saturation Threshold"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Right Heart Failure"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "FEV1 Decline"},
+        {"assert": "concept_absent", "disease": "Lung Cancer", "domain": "FINDING", "name": "Respiratory Failure"},
+        {"assert": "no_concept_in_domain", "disease": "Lung Cancer", "domain": "HOSPICE_ELIGIBILITY_SUPPORT"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Lung Cancer", "dimension": "STAGE"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Grade",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Lung Cancer", "dimension": "GRADE"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Lung Cancer", "dimension": "MOLECULAR_SUBTYPE"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Treatment",
+      "assertions": [
+        {"assert": "no_concept_in_domain", "disease": "Lung Cancer", "domain": "TREATMENT"},
+        {"assert": "no_concept_in_domain", "disease": "Lung Cancer", "domain": "TREATMENT_LIMITATION"}
+      ]
+    },
+    {
+      "guard_name": "Lung Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "assertions": [
+        {"assert": "no_concept_in_domain", "disease": "Lung Cancer", "domain": "HOSPICE_ELIGIBILITY_SUPPORT"},
+        {"assert": "no_applicability_of_type_for_disease", "disease": "Lung Cancer", "applicability_type": "HOSPICE_SUPPORT_FOR"}
+      ]
+    }
+  ],
+  "guard_note": "A 'Diagnosis DOES_NOT_ESTABLISH Prognosis' guard was intentionally omitted. The Oncology Foundation import (PR #45) reuses two shared PROGNOSTIC_INDICATOR concepts (Progressive Disease, Worsening Clinical Status) across every cancer disease, including Lung Cancer, so a no_concept_in_domain(PROGNOSTIC_INDICATOR) assertion would always fail for a reason unrelated to this manifest. This manifest attaches zero new PROGNOSTIC_INDICATOR concepts or applicability edges of its own (see unattached_concepts_not_given_applicability / applicability list above), which is verified instead by the concepts/applicability count guards.",
+  "summary": {
+    "canonical_disease_count": 1,
+    "new_variants_count": 5,
+    "concepts_count": 9,
+    "applicability_count": 8,
+    "differentiation_guards_count": 16
+  }
+}
