@@ -45,6 +45,7 @@ from app.models.ontology_disease_blueprint import (
     OntologyConceptVariantApplicability,
     OntologyDisease,
     OntologyDiseaseFamily,
+    OntologyDiseaseSymptom,
     OntologyDiseaseVariant,
     OntologyEvidenceRule,
 )
@@ -419,6 +420,126 @@ def test_second_run_creates_zero_new_rows(db_session, built_state):
     assert counts["unresolved_applicability_defs"] == []
 
 
+def test_painful_muscle_spasm_exists_as_atomic_contracture_symptom(db_session, built_state):
+    """The approved atomic concept is 'Painful Muscle Spasm', never renamed
+    to 'Muscle Spasm', 'Positioning Discomfort', or any other term."""
+    contracture = built_state[CONTRACTURE]
+    symptom = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Painful Muscle Spasm")
+        .one()
+    )
+    assert symptom.symptom_name == "Painful Muscle Spasm"
+
+
+def test_painful_muscle_spasm_linked_to_spasticity_etiology(db_session, built_state):
+    contracture = built_state[CONTRACTURE]
+    symptom = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Painful Muscle Spasm")
+        .one()
+    )
+    variant = _variant(db_session, contracture, "MECHANISM", "Spasticity Etiology")
+    edge = (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter_by(
+            disease_id=contracture.id,
+            concept_type="SYMPTOM",
+            concept_id=symptom.id,
+            variant_id=variant.id,
+        )
+        .one()
+    )
+    assert edge.applicability_type == "MAY_OCCUR_WITH"
+
+
+def test_painful_muscle_spasm_has_evidence_rule_requiring_evidence(db_session, built_state):
+    contracture = built_state[CONTRACTURE]
+    symptom = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Painful Muscle Spasm")
+        .one()
+    )
+    rule = (
+        db_session.query(OntologyEvidenceRule)
+        .filter_by(concept_type="SYMPTOM", concept_id=symptom.id)
+        .one()
+    )
+    assert rule.patient_fact_requires_evidence is True
+
+
+def test_positioning_discomfort_remains_a_separate_unchanged_concept(db_session, built_state):
+    """Positioning Discomfort is an independently-approved pre-existing
+    Contracture concept and must never be used as a substitute for Painful
+    Muscle Spasm."""
+    contracture = built_state[CONTRACTURE]
+    symptom = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Positioning Discomfort")
+        .one()
+    )
+    assert symptom.symptom_name == "Positioning Discomfort"
+
+
+def test_positioning_discomfort_not_linked_to_spasticity_etiology(db_session, built_state):
+    """The superseded applicability edge (Positioning Discomfort ->
+    Spasticity Etiology) must not exist; only Painful Muscle Spasm ->
+    Spasticity Etiology is approved."""
+    contracture = built_state[CONTRACTURE]
+    symptom = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Positioning Discomfort")
+        .one()
+    )
+    variant = _variant(db_session, contracture, "MECHANISM", "Spasticity Etiology")
+    edge = (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter_by(
+            disease_id=contracture.id,
+            concept_type="SYMPTOM",
+            concept_id=symptom.id,
+            variant_id=variant.id,
+        )
+        .one_or_none()
+    )
+    assert edge is None
+
+
+def test_muscle_spasm_is_not_created_by_any_committed_population_script(db_session, built_state):
+    """'Muscle Spasm' (without 'Painful') is a stale, unauthorized
+    development-database artifact with no source in any committed
+    manifest or population script -- it must never be (re)created."""
+    contracture = built_state[CONTRACTURE]
+    stale = (
+        db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Muscle Spasm")
+        .one_or_none()
+    )
+    assert stale is None
+
+
+def test_no_stale_muscle_spasm_applicability_edge_exists(db_session, built_state):
+    contracture = built_state[CONTRACTURE]
+    variant = _variant(db_session, contracture, "MECHANISM", "Spasticity Etiology")
+    stale_symptom_ids = [
+        s.id for s in db_session.query(OntologyDiseaseSymptom)
+        .filter_by(disease_id=contracture.id, symptom_name="Muscle Spasm")
+        .all()
+    ]
+    assert stale_symptom_ids == []
+    edges_on_variant = (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter_by(disease_id=contracture.id, variant_id=variant.id, concept_type="SYMPTOM")
+        .all()
+    )
+    linked_names = {
+        db_session.query(OntologyDiseaseSymptom).filter_by(id=e.concept_id).one().symptom_name
+        for e in edges_on_variant
+    }
+    assert "Muscle Spasm" not in linked_names
+    assert linked_names == {"Painful Muscle Spasm"}
+
+
 def test_export_file_is_generated_from_the_database(db_session, built_state, tmp_path):
     """The acceptance export must be produced by reading the populated
     database (never hand-authored) and written to disk as valid JSON."""
@@ -457,7 +578,7 @@ def test_export_contains_every_tier5_applicability_row(db_session, built_state):
         .filter(OntologyConceptVariantApplicability.disease_id.in_(disease_ids))
         .count()
     )
-    assert db_edge_count >= 150
+    assert db_edge_count == 153
     assert payload["tier5_applicability_count"] == db_edge_count
     assert len(payload["applicability"]) == db_edge_count
 

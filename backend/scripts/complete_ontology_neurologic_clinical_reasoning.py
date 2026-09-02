@@ -196,6 +196,11 @@ NEW_SYMPTOMS: Dict[str, List[Tuple[str, str, str, str]]] = {
         ("Loss of Meaningful Verbal Communication", "Progressive decline to loss of purposeful, comprehensible "
          "speech.", "Core FAST Stage 7 / advanced-disease marker.", "Severe"),
     ],
+    CONTRACTURE: [
+        ("Painful Muscle Spasm", "Involuntary, painful muscle contraction associated with spasticity-driven "
+         "contracture.", "Distinct from generalized positioning discomfort; specifically reflects a "
+         "spasticity-etiology mechanism.", "Moderate"),
+    ],
     SDB: [
         ("Communication Decline", "Progressive, non-focal decline in expressive or receptive communication.",
          "Supports general-decline assessment distinct from Alzheimer's-specific language staging.",
@@ -858,7 +863,7 @@ APPLICABILITY_DEFS: List[ApplicabilityDef] = [
     # --- Contracture: etiology / location / severity / consequences ---
     (CONTRACTURE, "SYMPTOM", "Fixed Joint Limitation", "Upper-Motor-Neuron Injury Etiology", "MAY_OCCUR_WITH",
      "Contracture following upper-motor-neuron injury (e.g. post-stroke spasticity)."),
-    (CONTRACTURE, "SYMPTOM", "Positioning Discomfort", "Spasticity Etiology", "MAY_OCCUR_WITH",
+    (CONTRACTURE, "SYMPTOM", "Painful Muscle Spasm", "Spasticity Etiology", "MAY_OCCUR_WITH",
      "Spasticity-driven contracture presentation."),
     (CONTRACTURE, "FINDING", "Reduced Passive Range of Motion", "Fixed Contracture", "STRONGLY_ASSOCIATED_WITH",
      "Reduced, non-reducible passive range of motion defines a fixed contracture."),
