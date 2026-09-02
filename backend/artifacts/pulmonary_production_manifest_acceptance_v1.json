@@ -1,0 +1,32 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": "End Stage Pulmonary Disease",
+      "passed": true,
+      "right": "Chronic Obstructive Pulmonary Disease",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 64,
+    "expected": 64,
+    "missing": []
+  },
+  "expected_applicability_mappings": 40,
+  "expected_concepts": 64,
+  "expected_variants": 30,
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\pulmonary_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "stored_applicability_mappings": 40,
+  "stored_concepts": 64,
+  "stored_variants": 30,
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": []
+}
