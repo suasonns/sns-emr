@@ -1,0 +1,690 @@
+{
+  "manifest_path": "backend/manifests/neurologic_production_source_manifest_v1.json",
+  "generated_from": "clean isolated sns_emr_test database (rebuilt from scratch, migrations through af1833134391, then Phase2 + coverage repair + clinical-reasoning build + production manifest importer run twice)",
+  "expected_variants": 99,
+  "stored_variants": 99,
+  "missing_variants": [],
+  "unexpected_variants": [],
+  "blocked_variants_schema_incompatible": [
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Large-Territory Stroke"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Large Anterior Infarction"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Bihemispheric Infarction"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Malignant Cerebral Infarction"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Cerebral Edema"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Midline Shift"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Obstructive Hydrocephalus"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Intraventricular Extension"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Depressed Consciousness"
+    },
+    {
+      "disease": "Stroke",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Stroke With Persistent Coma"
+    },
+    {
+      "disease": "Hemiplegia",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Complete Hemiplegia"
+    },
+    {
+      "disease": "Hemiplegia",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Spastic Hemiplegia"
+    },
+    {
+      "disease": "Hemiplegia",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Flaccid Hemiplegia"
+    },
+    {
+      "disease": "Hemiparesis",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Mild Hemiparesis"
+    },
+    {
+      "disease": "Hemiparesis",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Moderate Hemiparesis"
+    },
+    {
+      "disease": "Hemiparesis",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Severe Hemiparesis"
+    },
+    {
+      "disease": "Contracture",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Mild Range-of-Motion Limitation"
+    },
+    {
+      "disease": "Contracture",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Moderate Range-of-Motion Limitation"
+    },
+    {
+      "disease": "Contracture",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Fixed Contracture"
+    },
+    {
+      "disease": "Contracture",
+      "dimension": "SEVERITY_PHENOTYPE",
+      "name": "Multi-Joint Contracture"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "dimension": "SUBTYPE",
+      "name": "Early-Onset Alzheimer's Disease"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "dimension": "SUBTYPE",
+      "name": "Late-Onset Alzheimer's Disease"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "dimension": "SUBTYPE",
+      "name": "Alzheimer's Disease With Behavioral Disturbance"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "dimension": "SUBTYPE",
+      "name": "Alzheimer's Disease Without Behavioral Disturbance"
+    }
+  ],
+  "expected_concepts": 477,
+  "stored_concepts": 477,
+  "missing_concepts": [],
+  "unexpected_concepts": [],
+  "blocked_concepts_schema_incompatible": [
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "IV Thrombolytic Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Alteplase"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Tenecteplase"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Mechanical Thrombectomy Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Mechanical Thrombectomy"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Antiplatelet Therapy"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Anticoagulation for Documented Cardioembolic Indication"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Blood Pressure Management"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Statin Therapy"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Seizure Management"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Dysphagia Management"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Aspiration Precautions"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Positioning Program"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Range-of-Motion Program"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Spasticity Management"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Assistive Communication Support"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Texture-Modified Diet"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Enteral Feeding Consideration"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Comfort-Focused Stroke Care"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Anticoagulant-Reversal Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Intracranial-Pressure Management"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Neurosurgical Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Ventricular-Drain Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT",
+      "name": "Aneurysm-Securing Procedure Evaluation"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Outside Treatment Window"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Thrombolytic Contraindication"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Thrombolytic Therapy Declined"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Mechanical Thrombectomy Not a Candidate"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Mechanical Thrombectomy Declined"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Anticoagulation Contraindicated"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Anticoagulation Declined"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Artificial Nutrition Declined"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Hospital Transfer Declined"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Surgical Intervention Not a Candidate"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Revascularization Not Consistent With Goals of Care"
+    },
+    {
+      "disease": "Stroke",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Comfort-Focused Care Selected"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Positioning Program"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Passive Range-of-Motion Program"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Splinting"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Assistive Device Fitting"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Spasticity Management"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Shoulder Protection Program"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT",
+      "name": "Comfort-Focused Positioning"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Rehabilitation Not a Candidate"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Spasticity Treatment Declined"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Splinting Not Tolerated"
+    },
+    {
+      "disease": "Hemiplegia",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Surgical Intervention Not a Candidate"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Strength and Mobility Program"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Positioning Program"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Range-of-Motion Program"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Assistive Device Fitting"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Ankle-Foot Orthosis Evaluation"
+    },
+    {
+      "disease": "Hemiparesis",
+      "domain": "TREATMENT",
+      "name": "Spasticity Management"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Serial Casting"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Splinting"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Positioning Program"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Passive Range-of-Motion Program"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Botulinum Toxin for Documented Spasticity"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Surgical Release for Appropriate Candidates"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT",
+      "name": "Comfort-Focused Positioning"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Surgical Release Not a Candidate"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Splinting Declined"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Splinting Not Tolerated"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Serial Casting Not Tolerated"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Range-of-Motion Limited by Pain"
+    },
+    {
+      "disease": "Contracture",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Comfort-Focused Management Selected"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Artificial Nutrition Declined"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Artificial Hydration Declined"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Hospital Transfer Declined"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Disease-Directed Medication Discontinued"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Rehabilitation Not Beneficial"
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "domain": "TREATMENT_LIMITATION",
+      "name": "Comfort-Focused Care Selected"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Supportive Cognitive Care"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Safety Supervision"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Behavioral Symptom Review"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Medication Review"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Nutrition and Hydration Support"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Aspiration Precautions"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Caregiver Education"
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "domain": "TREATMENT",
+      "name": "Comfort-Focused Care"
+    }
+  ],
+  "expected_applicability_mappings": 77,
+  "stored_applicability_mappings": 77,
+  "missing_applicability_mappings": [],
+  "blocked_applicability_mappings_schema_incompatible": [
+    {
+      "disease": "Stroke",
+      "variant": "Ischemic Stroke",
+      "concept": "IV Thrombolytic Evaluation",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Ischemic Stroke",
+      "concept": "Mechanical Thrombectomy Evaluation",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Ischemic Stroke",
+      "concept": "Antiplatelet Therapy",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Ischemic Stroke",
+      "concept": "Statin Therapy",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Hemorrhagic Stroke",
+      "concept": "Blood Pressure Management",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Hemorrhagic Stroke",
+      "concept": "Anticoagulant-Reversal Evaluation",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Stroke",
+      "variant": "Hemorrhagic Stroke",
+      "concept": "Neurosurgical Evaluation",
+      "concept_domain": "TREATMENT",
+      "applicability_type": "EXPECTED_WITH",
+      "source_ids": [
+        "APPROVED_NEURO_MANIFEST"
+      ],
+      "patient_fact_requires_evidence": true
+    }
+  ],
+  "evidence_rule_coverage": {
+    "expected_concepts_checked": 477,
+    "concepts_missing_evidence_rule_or_flag": [],
+    "coverage_percent": 100.0
+  },
+  "differentiation_guard_results": [
+    {
+      "left": "Hemiplegia",
+      "right": "Hemiparesis",
+      "rule": "NOT_INTERCHANGEABLE",
+      "verified": true
+    },
+    {
+      "left": "Dementia Due To Alzheimer's Disease",
+      "right": "Senile Degeneration of Brain",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
+      "verified": true
+    },
+    {
+      "left": "Locked-In Syndrome",
+      "right": "Coma",
+      "rule": "NOT_INTERCHANGEABLE",
+      "verified": true
+    },
+    {
+      "left": "Hemorrhagic Stroke",
+      "right": "IV Thrombolytic Evaluation",
+      "rule": "CONTRAINDICATED_APPLICABILITY",
+      "verified": true
+    },
+    {
+      "left": "Historical Stroke",
+      "right": "Current Neurologic Deficit",
+      "rule": "DO_NOT_INFER_CURRENT_STATE",
+      "verified": true
+    }
+  ],
+  "orphan_variant_count": 0,
+  "orphan_applicability_count": 0,
+  "cycle_count": 0,
+  "second_run_new_row_count": 0,
+  "run_1_counts": {
+    "variants_inserted": 43,
+    "variants_blocked": 24,
+    "concepts_inserted_by_domain": {
+      "SYMPTOM": 11,
+      "FINDING": 39,
+      "DIAGNOSTIC_TEST": 12,
+      "LAB": 2,
+      "COMPLICATION": 25,
+      "MEDICATION": 4,
+      "FUNCTIONAL_IMPACT": 5,
+      "NUTRITIONAL_IMPACT": 4,
+      "END_STAGE_FINDING": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 41
+    },
+    "concepts_inserted_total": 149,
+    "concepts_blocked": 80,
+    "applicability_inserted": 77,
+    "applicability_blocked": 7,
+    "evidence_rules_inserted": 149
+  },
+  "run_2_counts": {
+    "variants_inserted": 0,
+    "variants_blocked": 24,
+    "concepts_inserted_by_domain": {},
+    "concepts_inserted_total": 0,
+    "concepts_blocked": 80,
+    "applicability_inserted": 0,
+    "applicability_blocked": 7,
+    "evidence_rules_inserted": 0
+  }
+}
