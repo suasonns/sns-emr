@@ -1,0 +1,433 @@
+{
+  "manifest_version": 1,
+  "extends_diseases": [
+    "Acute Renal Failure",
+    "Chronic Renal Failure"
+  ],
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 7,
+    "stored": 7,
+    "missing": [],
+    "pre_existing_pr40_concepts_in_shared_domains": [
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "advanced cardiac disease"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "advanced liver disease"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "aids"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "cachexia"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "chronic lung disease"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "disseminated intravascular coagulation"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "gastrointestinal bleeding"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "immunosuppression"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "malignancy in another organ system"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "mechanical ventilation"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "platelet count less than 25,000"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "refractory acidosis"
+      ],
+      [
+        "Acute Renal Failure",
+        "COMPLICATION",
+        "sepsis"
+      ],
+      [
+        "Acute Renal Failure",
+        "FINDING",
+        "anuria"
+      ],
+      [
+        "Acute Renal Failure",
+        "FINDING",
+        "elevated serum creatinine"
+      ],
+      [
+        "Acute Renal Failure",
+        "FINDING",
+        "fluid overload"
+      ],
+      [
+        "Acute Renal Failure",
+        "FINDING",
+        "platelet count less than 25,000"
+      ],
+      [
+        "Acute Renal Failure",
+        "FINDING",
+        "volume overload"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "ambulation dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "bathing dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "continence dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "dressing dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "feeding dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "transfer dependence"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "creatinine clearance less than 15 ml/min"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "dependence in two or more activities of daily living"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "discontinuing dialysis"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "gfr less than 15 ml/min"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing emergency department visits"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing hospitalizations"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing physician visits"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "not seeking dialysis"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "not seeking renal transplant"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "serum creatinine greater than 6.0 mg/dl for patient with diabetes"
+      ],
+      [
+        "Acute Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "serum creatinine greater than 8.0 mg/dl"
+      ],
+      [
+        "Acute Renal Failure",
+        "NUTRITIONAL_IMPACT",
+        "cachexia"
+      ],
+      [
+        "Acute Renal Failure",
+        "SYMPTOM",
+        "pruritus"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "hepatorenal syndrome"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "intractable fluid overload not responsive to treatment"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "intractable hyperkalemia not responsive to treatment"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "refractory acidosis"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "refractory hyperkalemia"
+      ],
+      [
+        "Chronic Renal Failure",
+        "COMPLICATION",
+        "uremic pericarditis"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "anuria"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "elevated serum creatinine"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "fluid overload"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "hepatorenal syndrome"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "intractable fluid overload not responsive to treatment"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "intractable hyperkalemia greater than 7.0"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "oliguria"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "serum potassium greater than 7.0"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "uremia"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "uremic pericarditis"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FINDING",
+        "volume overload"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "ambulation dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "bathing dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "continence dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "dressing dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "feeding dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "FUNCTIONAL_IMPACT",
+        "transfer dependence"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "creatinine clearance less than 15 ml/min"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "dependence in two or more activities of daily living"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "discontinuing dialysis"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "gfr less than 15 ml/min"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing emergency department visits"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing hospitalizations"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "increasing physician visits"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "not seeking dialysis"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "not seeking renal transplant"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "serum creatinine greater than 6.0 mg/dl for patient with diabetes"
+      ],
+      [
+        "Chronic Renal Failure",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "serum creatinine greater than 8.0 mg/dl"
+      ],
+      [
+        "Chronic Renal Failure",
+        "SYMPTOM",
+        "pruritus"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 7,
+    "stored": 7
+  },
+  "functional_assessment_relationships": {
+    "expected": 4,
+    "stored": 4
+  },
+  "recertification_trend_indicators": {
+    "expected": 18,
+    "stored": 18,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 25,
+    "valid": 25
+  },
+  "second_run_new_rows": 0
+}
