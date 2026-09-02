@@ -144,6 +144,32 @@ def _manifest_applicability():
     return result
 
 
+def _stored_applicability_row_matching_manifest_entry(db_session, disease, entry):
+    """Resolve the single stored applicability edge for one Foundation-
+    manifest-declared entry, matched by exact disease_id + variant identity
+    + concept identity + applicability_type -- never a blanket disease-wide
+    count. This is immune to any additional applicability edges a later
+    disease-specific manifest (Breast/Lung/Colorectal/Rectal Cancer) may
+    have attached to the SAME foundation-created variant/concept rows,
+    because those later edges always point at different concept rows
+    (their own disease-specific FINDING concepts), never at this exact
+    (variant_id, concept_id, applicability_type) triple."""
+    variant = _variant(db_session, disease, entry["variant_dimension"], entry["variant"])
+    concept = _concept(db_session, disease, entry["concept_domain"], entry["concept"])
+    if variant is None or concept is None:
+        return None
+    return (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter_by(
+            concept_type=entry["concept_domain"],
+            concept_id=concept.id,
+            variant_id=variant.id,
+            applicability_type=entry["applicability_type"],
+        )
+        .one_or_none()
+    )
+
+
 # --- manifest self-consistency ---------------------------------------------
 
 def test_manifest_declares_twelve_real_canonical_diseases():
@@ -245,22 +271,44 @@ def test_foundation_imports_correctly(db_session, built_state):
     """Import succeeds and produces exactly the manifest's declared
     stored totals (checked against the database, not raw insertion counts,
     since the shared test database may already carry a prior idempotent
-    import of this same manifest)."""
-    disease_ids = [d.id for d in built_state["diseases"].values()]
-    stored_variants = db_session.query(OntologyDiseaseVariant).filter(
-        OntologyDiseaseVariant.disease_id.in_(disease_ids)
-    ).count()
-    assert stored_variants == 40
+    import of this same manifest).
 
-    stored_concepts = 0
-    for domain, (model_cls, _name_attr) in CONCEPT_DOMAIN_MODEL_MAP.items():
-        stored_concepts += db_session.query(model_cls).filter(model_cls.disease_id.in_(disease_ids)).count()
-    assert stored_concepts == 114
+    Every count below is scoped to records matching this manifest's OWN
+    declared identity (disease + dimension/domain + exact name, and for
+    applicability the full variant+concept+type tuple) -- never a blanket
+    per-disease-id count. A blanket count is not order-independent: when
+    this test module shares a database with later disease-specific
+    manifests (Breast/Lung/Colorectal/Rectal Cancer), those manifests
+    legitimately add their OWN new FINDING concepts and applicability
+    edges onto the SAME foundation-created disease rows (e.g. Colorectal
+    Cancer), which would inflate a blanket disease-id count and make the
+    result depend on which other test modules already ran. An exact
+    manifest-declared-identity match is immune to that and stays stable
+    regardless of test collection order or how many times other modules
+    have run against this database."""
+    stored_variants = sum(
+        1
+        for disease_name, dimension, name in _manifest_variants()
+        if _variant(db_session, built_state["diseases"][disease_name], dimension, name) is not None
+    )
+    assert stored_variants == len(_manifest_variants()) == 40
 
-    stored_applicability = db_session.query(OntologyConceptVariantApplicability).filter(
-        OntologyConceptVariantApplicability.disease_id.in_(disease_ids)
-    ).count()
-    assert stored_applicability == 10
+    stored_concepts = sum(
+        1
+        for disease_name, domain, name, _entry in _manifest_concepts()
+        if _concept(db_session, built_state["diseases"][disease_name], domain, name) is not None
+    )
+    assert stored_concepts == len(_manifest_concepts()) == 114
+
+    stored_applicability = sum(
+        1
+        for disease_name, entry in _manifest_applicability()
+        if _stored_applicability_row_matching_manifest_entry(
+            db_session, built_state["diseases"][disease_name], entry
+        )
+        is not None
+    )
+    assert stored_applicability == len(_manifest_applicability()) == 10
 
 
 # --- 1 (spec). No fake Oncology Foundation Reference Structure disease exists ---
@@ -323,20 +371,29 @@ def test_primary_sites_are_tier4_variants_not_diseases(db_session, built_state):
 # --- 7 & 8. No all-to-all Cartesian applicability generation / explicit reason ---
 
 def test_no_cartesian_applicability_generation(db_session, built_state):
-    disease_ids = [d.id for d in built_state["diseases"].values()]
-    total = db_session.query(OntologyConceptVariantApplicability).filter(
-        OntologyConceptVariantApplicability.disease_id.in_(disease_ids)
-    ).count()
-    assert total == 10, "expected only the 10 explicitly-justified applicability edges, not a Cartesian product"
+    """The Foundation manifest declares exactly 10 applicability edges, and
+    all 10 must be resolvable in the database by exact identity match.
+    Scoped to the manifest's own declared entries -- never a blanket
+    disease-id count, which would be inflated (and order-dependent) by any
+    additional applicability edges a later disease-specific manifest has
+    since attached to these same foundation-created variants/concepts."""
+    manifest_entries = _manifest_applicability()
+    assert len(manifest_entries) == 10, "expected only the 10 explicitly-justified applicability edges, not a Cartesian product"
+    found = [
+        _stored_applicability_row_matching_manifest_entry(db_session, built_state["diseases"][disease_name], entry)
+        for disease_name, entry in manifest_entries
+    ]
+    assert all(row is not None for row in found), "every Foundation-declared applicability edge must be stored"
 
 
 def test_every_stored_applicability_row_has_source_and_semantic_basis(db_session, built_state):
-    disease_ids = [d.id for d in built_state["diseases"].values()]
-    edges = db_session.query(OntologyConceptVariantApplicability).filter(
-        OntologyConceptVariantApplicability.disease_id.in_(disease_ids)
-    ).all()
-    assert len(edges) == 10
-    for edge in edges:
+    manifest_entries = _manifest_applicability()
+    assert len(manifest_entries) == 10
+    for disease_name, entry in manifest_entries:
+        edge = _stored_applicability_row_matching_manifest_entry(
+            db_session, built_state["diseases"][disease_name], entry
+        )
+        assert edge is not None, f"missing Foundation applicability edge for {disease_name}: {entry}"
         assert edge.applicability_type == "MAY_OCCUR_WITH"
         assert edge.evidence_requirement
         assert edge.concept_type == "FINDING"
