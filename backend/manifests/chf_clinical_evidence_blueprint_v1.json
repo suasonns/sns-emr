@@ -1,0 +1,224 @@
+{
+  "manifest_version": 1,
+  "title": "CHF Clinical Evidence Blueprint v1",
+  "description": "Extension-only manifest. Does NOT create a new disease, new NYHA classes, or new PPS/KPS/ADL support concepts -- 'Congestive Heart Failure' under the Cardiovascular System / 'Heart Failure and Advanced Cardiac Disease' family already exists (PR #38, merged) with its own self-contained NYHA Class I-IV variants and KPS/PPS/ADL HOSPICE_ELIGIBILITY_SUPPORT concepts. This manifest adds only what PR #38 does not already contain: (1) a small set of missing atomic CHF concepts (Orthopnea, Paroxysmal Nocturnal Dyspnea, Refractory Symptoms Despite Optimal Treatment, Cardiac Cachexia, Treatment Resistant Congestive Heart Failure, Increasing Care Needs) with provenance metadata; (2) three cross-disease OntologyRelationship edges linking CHF's existing NYHA Class IV / PPS Less Than 70 Percent / KPS Less Than 70 Percent concepts to the corresponding Functional Assessment Framework v1 (PR #49, merged) scale-definition concepts, so a nurse viewing CHF evidence can navigate to the full scale interpretation without any assessment definition ever being duplicated; (3) a recertification evidence trend model (8 PROGNOSTIC_INDICATOR concepts covering NYHA/PPS/KPS/ADL/weight/hospitalization/symptom/narrative trend) for CHF; (4) a documentation-only AI capability boundary (ai_may / ai_may_not), mirroring the pattern already established in the Functional Assessment Framework v1 manifest's trend_policy. No schema, migration, or API changes. No existing PR #38 or PR #49 row is ever modified, renamed, or duplicated.",
+  "source_authority": [
+    "heart disease.pdf",
+    "cms guidelines.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Cardiovascular System",
+    "family": "Heart Failure and Advanced Cardiac Disease",
+    "extends_disease": "Congestive Heart Failure",
+    "extends_functional_assessment_framework": "Functional Assessment Framework"
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_nyha_classes": true,
+    "no_new_pps_kps_adl_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "content_source_type_allowed": ["USER_DICTATED", "CLINICAL_REFERENCE"],
+  "content_review_status_allowed": ["PENDING_MEDICAL_DIRECTOR_APPROVAL", "APPROVED", "REJECTED"],
+  "new_concepts": [
+    {
+      "domain": "SYMPTOM",
+      "name": "Orthopnea",
+      "description": "Dyspnea that occurs or worsens when lying flat and is relieved by sitting or standing upright, reflecting rising left-sided filling pressures in decompensated heart failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "SYMPTOM",
+      "name": "Paroxysmal Nocturnal Dyspnea",
+      "description": "Sudden episodes of severe shortness of breath and coughing that awaken the patient from sleep, typically requiring the patient to sit up or stand for relief; a marker of worsening heart failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "SYMPTOM",
+      "name": "Refractory Symptoms Despite Optimal Treatment",
+      "description": "Persistent or recurrent heart failure symptoms (dyspnea, edema, fatigue) that continue despite optimized guideline-directed medical therapy, diuretics, and other disease-directed treatment.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "NUTRITIONAL_IMPACT",
+      "name": "Cardiac Cachexia",
+      "description": "Unintentional, progressive loss of lean body mass and weight in the setting of advanced heart failure, reflecting a systemic catabolic state associated with poor prognosis.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Treatment Resistant Congestive Heart Failure",
+      "description": "Heart failure symptoms and functional decline that persist or progress despite optimally dosed, guideline-directed medical therapy and device/procedural interventions where clinically appropriate.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FUNCTIONAL_IMPACT",
+      "name": "Increasing Care Needs",
+      "description": "A pattern of escalating reliance on caregivers or paid care for activities of daily living and household tasks, reflecting progressive functional decline in advanced heart failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "COPD",
+      "description": "Chronic Obstructive Pulmonary Disease as a co-morbid condition alongside Congestive Heart Failure; overlapping dyspnea and functional decline should be evaluated in the complete clinical picture.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Stroke",
+      "description": "Prior cerebrovascular accident (stroke) as a co-morbid condition alongside Congestive Heart Failure; may compound functional decline and ADL dependence.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Cancer",
+      "description": "Concurrent malignancy as a co-morbid condition alongside Congestive Heart Failure; relevant to overall prognosis review and the complete clinical picture.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "ALS",
+      "description": "Amyotrophic Lateral Sclerosis (ALS) as a co-morbid condition alongside Congestive Heart Failure; compounding neuromuscular and functional decline relevant to the complete clinical picture.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "new_applicability": [
+    {"variant": "NYHA Class IV", "concept_domain": "SYMPTOM", "concept": "Orthopnea", "applicability_type": "EXPECTED_WITH"},
+    {"variant": "NYHA Class IV", "concept_domain": "SYMPTOM", "concept": "Paroxysmal Nocturnal Dyspnea", "applicability_type": "EXPECTED_WITH"},
+    {"variant": "End Stage Heart Failure", "concept_domain": "SYMPTOM", "concept": "Refractory Symptoms Despite Optimal Treatment", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "End Stage Heart Failure", "concept_domain": "NUTRITIONAL_IMPACT", "concept": "Cardiac Cachexia", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "End Stage Heart Failure", "concept_domain": "COMPLICATION", "concept": "Treatment Resistant Congestive Heart Failure", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "Progressive Heart Failure", "concept_domain": "COMPLICATION", "concept": "Treatment Resistant Congestive Heart Failure", "applicability_type": "MAY_OCCUR_WITH"},
+    {"variant": "End Stage Heart Failure", "concept_domain": "FUNCTIONAL_IMPACT", "concept": "Increasing Care Needs", "applicability_type": "EXPECTED_WITH"},
+    {"variant": "Recurrent Hospitalization", "concept_domain": "FUNCTIONAL_IMPACT", "concept": "Increasing Care Needs", "applicability_type": "MAY_OCCUR_WITH"}
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "FINDING",
+      "chf_concept_name": "NYHA Class IV",
+      "faf_concept_name": "NYHA - New York Heart Association Functional Classification",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links CHF's existing NYHA Class IV finding to the Functional Assessment Framework's NYHA scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links CHF's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links CHF's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "disease": "Congestive Heart Failure",
+    "trend_indicators": [
+      {
+        "name": "NYHA Classification Trend",
+        "description": "Comparison of the patient's previous NYHA class to the current NYHA class at recertification; a worsening class supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "PPS Trend",
+        "description": "Comparison of the patient's previous PPS score to the current PPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "KPS Trend",
+        "description": "Comparison of the patient's previous KPS score to the current KPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "ADL Status Trend",
+        "description": "Comparison of the patient's previous ADL dependence status to the current status at recertification; increasing dependence supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Weight Trend",
+        "description": "Comparison of the patient's weight between the previous and current certification periods, documenting unintentional weight loss.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Hospitalization Trend",
+        "description": "Comparison of hospitalization or emergency-treatment frequency between the previous and current certification periods, documenting an increasing pattern.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Symptom Trend",
+        "description": "Comparison of symptom burden (dyspnea, orthopnea, paroxysmal nocturnal dyspnea, edema) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Narrative Trend",
+        "description": "A structured narrative summary comparing the patient's overall clinical course between the previous and current certification periods, supporting the physician's recertification determination.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    "This manifest never creates a new OntologyDisease, OntologyDiseaseFamily, or OntologyBodySystem row -- it resolves the existing Congestive Heart Failure disease and the existing Functional Assessment Framework disease by exact name and aborts if either is missing.",
+    "This manifest never creates a new OntologyDiseaseVariant row (no new NYHA classes, no new severity tiers).",
+    "This manifest never creates a duplicate NYHA/PPS/KPS/ADL definition -- it links to PR #38's and PR #49's existing rows via OntologyRelationship only.",
+    "Functional assessments and CHF clinical evidence support functional status documentation, clinical decline documentation, recertification review, and clinical picture development; they do not independently establish diagnosis, prognosis, hospice eligibility, or terminal status."
+  ],
+  "summary": {
+    "extends_disease": "Congestive Heart Failure",
+    "new_concepts_total": 10,
+    "new_applicability_total": 8,
+    "functional_assessment_relationships_total": 3,
+    "recertification_trend_indicators_total": 8
+  }
+}
