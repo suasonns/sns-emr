@@ -29,42 +29,28 @@ STRICT VERBATIM IMPORT RULES
   patient_fact_requires_evidence = True.
 - Nothing is ever hard-deleted or deactivated.
 - Idempotent: re-running inserts nothing new.
+- Nothing is silently skipped: any manifest value that is not schema-valid
+  (an unsupported variant_dimension, concept_domain, applicability_type,
+  treatment_category, or limitation_category) aborts the import with a
+  RuntimeError before any writes happen, rather than being dropped quietly.
 
-SCHEMA-CONSTRAINT BLOCKING (no schema change, no substitution allowed)
-------------------------------------------------------------------------
-This importer must not modify the schema, models, or migrations. Two
-categories of manifest content cannot be written under the CURRENT schema
-without either a schema change (prohibited) or an invented/substituted
-value (prohibited):
-
-1. Tier 4 variants whose `dimension` is not one of the values already
-   permitted by the `ck_ontology_disease_variant_dimension` CHECK
-   constraint on `ontology_disease_variant` (defined in
-   ontology_disease_blueprint.py). The manifest uses two dimension values
-   that are not in that allowed set: SUBTYPE and SEVERITY_PHENOTYPE.
-2. Tier 5 concepts whose domain is TREATMENT or TREATMENT_LIMITATION.
-   Both `OntologyDiseaseTreatment.treatment_category` and
-   `OntologyDiseaseTreatmentLimitation.limitation_category` are NOT NULL
-   columns constrained to a fixed enum of values
-   (DISEASE_DIRECTED/SUPPORTIVE/HOSPICE and
-   OPTIMALLY_TREATED/TREATMENT_FAILED/.../COMFORT_FOCUSED respectively).
-   The manifest does not supply a category for any TREATMENT or
-   TREATMENT_LIMITATION concept, and inventing one would be a clinical
-   judgment not authorized by the manifest.
-
-Every individual variant/concept/applicability row affected by one of
-these two conditions is skipped (not created, not substituted) and
-reported as a BLOCKED item with the exact reason -- never silently
-dropped and never worked around by choosing an existing "similar enough"
-dimension, category, or concept. All other, unaffected manifest content
-is imported normally in the same run.
+SCHEMA-COMPATIBLE VOCABULARY (approved corrections)
+------------------------------------------------------
+The manifest's variant dimensions and TREATMENT / TREATMENT_LIMITATION
+category assignments were corrected, at the manifest level, to the
+approved schema vocabulary (SUBTYPE -> PATHOLOGICAL_SUBTYPE,
+SEVERITY_PHENOTYPE -> SEVERITY_CLASS, plus an explicit
+treatment_category / limitation_category on every TREATMENT /
+TREATMENT_LIMITATION concept). This is a vocabulary correction only -- no
+concept name, evidence requirement, or applicability mapping was changed,
+renamed, or omitted. All 123 variants, 557 concepts, and 84 applicability
+mappings declared by the manifest are imported.
 
 Run with: .\\.venv\\Scripts\\python.exe scripts\\import_neurologic_production_source_manifest.py
 """
 from __future__ import annotations
 
 import json
-import sys
 import uuid
 from pathlib import Path
 from typing import Dict, List, Tuple
@@ -90,6 +76,8 @@ from app.models.ontology_disease_blueprint import (
     OntologyDiseaseNutritionalImpact,
     OntologyDiseaseEndStageFinding,
     OntologyDiseaseMedication,
+    OntologyDiseaseTreatment,
+    OntologyDiseaseTreatmentLimitation,
     OntologyDiseasePsychosocialConcern,
     OntologyDiseaseSpiritualConcern,
 )
@@ -99,9 +87,8 @@ DEFAULT_ACCEPTANCE_PATH = (
     Path(__file__).resolve().parent.parent / "artifacts" / "neurologic_production_manifest_acceptance_v1.json"
 )
 
-# --- Tier 4 variant dimensions currently permitted by the DB CHECK
-# constraint (ck_ontology_disease_variant_dimension). Any manifest variant
-# whose dimension is NOT in this set is blocked, never substituted. ---
+# --- Tier 4 variant dimensions permitted by the
+# ck_ontology_disease_variant_dimension CHECK constraint. ---
 ALLOWED_VARIANT_DIMENSIONS = {
     "MECHANISM", "PATHOLOGICAL_SUBTYPE", "HISTOLOGY", "MOLECULAR_SUBTYPE",
     "ANATOMICAL_LOCATION", "PRIMARY_SITE", "VASCULAR_TERRITORY", "HEMISPHERE",
@@ -112,13 +99,28 @@ ALLOWED_VARIANT_DIMENSIONS = {
     "METASTATIC_DESTINATION", "TREATMENT_STATE", "RESIDUAL_DEFICIT_STATE",
 }
 
-# --- Tier 5 domains that CANNOT be written without inventing a required,
-# non-nullable, enum-constrained field the manifest does not supply.
-# Blocked entirely -- never substituted with a guessed category. ---
-BLOCKED_CONCEPT_DOMAINS = {"TREATMENT", "TREATMENT_LIMITATION"}
+# --- ck_ontology_disease_treatment_category CHECK constraint values. ---
+ALLOWED_TREATMENT_CATEGORIES = {"DISEASE_DIRECTED", "SUPPORTIVE", "HOSPICE"}
 
-# concept_domain -> (ORM model class, unique-name column)
-CONCEPT_DOMAIN_MODEL_MAP = {
+# --- ck_ontology_disease_treatment_limitation_category CHECK constraint
+# values, after the additive widening migration
+# (c3f7a1e9b0d2_widen_ontology_disease_treatment_limitation_category). ---
+ALLOWED_LIMITATION_CATEGORIES = {
+    "OPTIMALLY_TREATED", "TREATMENT_FAILED", "TREATMENT_INTOLERANT", "NOT_A_CANDIDATE",
+    "TREATMENT_DECLINED", "TREATMENT_DISCONTINUED", "TREATMENT_CONTRAINDICATED", "COMFORT_FOCUSED",
+    "NOT_CANDIDATE", "CONTRAINDICATED", "DECLINED", "NOT_TOLERATED",
+    "OUTSIDE_WINDOW", "GOALS_OF_CARE", "DISCONTINUED", "NOT_BENEFICIAL",
+}
+
+APPLICABILITY_TYPES = {
+    "APPLIES_TO", "EXPECTED_WITH", "STRONGLY_ASSOCIATED_WITH", "MAY_OCCUR_WITH",
+    "SUPPORTS_DIFFERENTIATION", "CONTRAINDICATED_FOR", "TREATMENT_SPECIFIC_TO",
+    "PROGNOSTIC_FOR", "END_STAGE_SUPPORT_FOR", "HOSPICE_SUPPORT_FOR",
+}
+
+# concept_domain -> (ORM model class, unique-name column) for the "simple"
+# domains that only require a name plus disease_id.
+SIMPLE_CONCEPT_DOMAIN_MODEL_MAP = {
     "SYMPTOM": (OntologyDiseaseSymptom, "symptom_name"),
     "FINDING": (OntologyDiseaseFinding, "finding_name"),
     "LAB": (OntologyDiseaseLab, "lab_name"),
@@ -134,11 +136,12 @@ CONCEPT_DOMAIN_MODEL_MAP = {
     "SPIRITUAL_CONCERN": (OntologyDiseaseSpiritualConcern, "concern_name"),
 }
 
-APPLICABILITY_TYPES = {
-    "APPLIES_TO", "EXPECTED_WITH", "STRONGLY_ASSOCIATED_WITH", "MAY_OCCUR_WITH",
-    "SUPPORTS_DIFFERENTIATION", "CONTRAINDICATED_FOR", "TREATMENT_SPECIFIC_TO",
-    "PROGNOSTIC_FOR", "END_STAGE_SUPPORT_FOR", "HOSPICE_SUPPORT_FOR",
-}
+# Full domain -> (model class, name column) map, including the two
+# category-bearing domains, used for read/lookup purposes (applicability
+# resolution, orphan checks, etc.).
+CONCEPT_DOMAIN_MODEL_MAP = dict(SIMPLE_CONCEPT_DOMAIN_MODEL_MAP)
+CONCEPT_DOMAIN_MODEL_MAP["TREATMENT"] = (OntologyDiseaseTreatment, "treatment_name")
+CONCEPT_DOMAIN_MODEL_MAP["TREATMENT_LIMITATION"] = (OntologyDiseaseTreatmentLimitation, "limitation_name")
 
 
 def load_manifest(path: Path = DEFAULT_MANIFEST_PATH) -> dict:
@@ -147,9 +150,12 @@ def load_manifest(path: Path = DEFAULT_MANIFEST_PATH) -> dict:
 
 
 def validate_manifest(manifest: dict) -> List[str]:
-    """Structural validation only -- never a clinical judgment. Returns a
-    list of validation errors (empty means the manifest is well-formed).
-    Duplicate EXACT identities inside the manifest are rejected."""
+    """Structural + schema-vocabulary validation -- never a clinical
+    judgment. Returns a list of validation errors (empty means the
+    manifest is well-formed and every value is schema-valid). Duplicate
+    EXACT identities inside the manifest are rejected. Any unsupported
+    dimension / domain / applicability_type / category value is reported
+    as an error and aborts the import -- nothing is silently skipped."""
     errors: List[str] = []
     diseases = manifest.get("diseases")
     if not isinstance(diseases, list) or not diseases:
@@ -168,6 +174,8 @@ def validate_manifest(manifest: dict) -> List[str]:
             if key in seen_variants:
                 errors.append(f"duplicate variant identity in manifest: {key}")
             seen_variants.add(key)
+            if v.get("dimension") not in ALLOWED_VARIANT_DIMENSIONS:
+                errors.append(f"unsupported variant dimension '{v.get('dimension')}' for {key}")
 
         seen_concepts = set()
         for c in disease_entry.get("concepts", []):
@@ -175,6 +183,13 @@ def validate_manifest(manifest: dict) -> List[str]:
             if key in seen_concepts:
                 errors.append(f"duplicate concept identity in manifest: {key}")
             seen_concepts.add(key)
+            domain = c.get("domain")
+            if domain not in CONCEPT_DOMAIN_MODEL_MAP:
+                errors.append(f"unsupported concept domain '{domain}' for {key}")
+            elif domain == "TREATMENT" and c.get("treatment_category") not in ALLOWED_TREATMENT_CATEGORIES:
+                errors.append(f"unsupported or missing treatment_category '{c.get('treatment_category')}' for {key}")
+            elif domain == "TREATMENT_LIMITATION" and c.get("limitation_category") not in ALLOWED_LIMITATION_CATEGORIES:
+                errors.append(f"unsupported or missing limitation_category '{c.get('limitation_category')}' for {key}")
 
         seen_applic = set()
         for a in disease_entry.get("applicability", []):
@@ -185,6 +200,8 @@ def validate_manifest(manifest: dict) -> List[str]:
             if key in seen_applic:
                 errors.append(f"duplicate applicability identity in manifest: {key}")
             seen_applic.add(key)
+            if a.get("applicability_type") not in APPLICABILITY_TYPES:
+                errors.append(f"unsupported applicability_type '{a.get('applicability_type')}' for {key}")
 
     return errors
 
@@ -233,30 +250,46 @@ def _ensure_evidence_rule(db: Session, concept_type: str, concept_id) -> bool:
     return True
 
 
+def _build_concept_row(domain: str, disease_id, concept_entry: dict):
+    """Construct the ORM row for a single manifest concept, applying the
+    approved treatment_category / limitation_category for the two
+    category-bearing domains, verbatim from the manifest -- never
+    invented, never substituted."""
+    name = concept_entry["name"]
+    if domain == "TREATMENT":
+        return OntologyDiseaseTreatment(
+            id=uuid.uuid4(),
+            disease_id=disease_id,
+            treatment_name=name,
+            treatment_category=concept_entry["treatment_category"],
+        )
+    if domain == "TREATMENT_LIMITATION":
+        return OntologyDiseaseTreatmentLimitation(
+            id=uuid.uuid4(),
+            disease_id=disease_id,
+            limitation_name=name,
+            limitation_category=concept_entry["limitation_category"],
+        )
+    model_cls, name_attr = SIMPLE_CONCEPT_DOMAIN_MODEL_MAP[domain]
+    return model_cls(id=uuid.uuid4(), disease_id=disease_id, **{name_attr: name})
+
+
 def run(db: Session, manifest: dict | None = None) -> dict:
     if manifest is None:
         manifest = load_manifest()
 
     errors = validate_manifest(manifest)
     if errors:
-        raise RuntimeError(f"Neurologic Production Manifest v1 failed structural validation: {errors}")
+        raise RuntimeError(f"Neurologic Production Manifest v1 failed structural/vocabulary validation: {errors}")
 
     diseases = _resolve_diseases(db, manifest)
 
     variants_inserted = 0
-    variants_blocked: List[dict] = []
     concepts_inserted_by_domain: Dict[str, int] = {}
-    concepts_blocked: List[dict] = []
     applicability_inserted = 0
-    applicability_blocked: List[dict] = []
     evidence_rules_inserted = 0
 
-    # variant_by_key keyed on (disease_name, dimension, normalized_name) so
-    # concept_domain-scoped applicability lookups can resolve the exact
-    # manifest-specified variant.
     variant_by_key: Dict[Tuple[str, str, str], OntologyDiseaseVariant] = {}
-    # pre-load any already-existing variants for this disease so the
-    # importer is idempotent across runs.
     for disease_name, disease in diseases.items():
         for existing in db.query(OntologyDiseaseVariant).filter_by(disease_id=disease.id).all():
             variant_by_key[(disease_name, existing.variant_dimension, existing.normalized_name)] = existing
@@ -277,20 +310,6 @@ def run(db: Session, manifest: dict | None = None) -> dict:
             name = v["name"]
             normalized = name.strip().lower()
             key = (disease_name, dimension, normalized)
-
-            if dimension not in ALLOWED_VARIANT_DIMENSIONS:
-                variants_blocked.append({
-                    "disease": disease_name,
-                    "dimension": dimension,
-                    "name": name,
-                    "reason": (
-                        f"variant_dimension '{dimension}' is not permitted by the current "
-                        "ck_ontology_disease_variant_dimension CHECK constraint; creating it would "
-                        "require a schema/migration change, which is prohibited for this import, and "
-                        "substituting an existing 'similar' dimension is prohibited by the no-substitution rule."
-                    ),
-                })
-                continue
 
             if key in variant_by_key:
                 continue
@@ -324,38 +343,23 @@ def run(db: Session, manifest: dict | None = None) -> dict:
             normalized = name.strip().lower()
             key = (disease_name, domain, normalized)
 
-            if domain in BLOCKED_CONCEPT_DOMAINS:
-                concepts_blocked.append({
-                    "disease": disease_name,
-                    "domain": domain,
-                    "name": name,
-                    "reason": (
-                        f"concept domain '{domain}' requires a non-nullable, enum-constrained category "
-                        "column (treatment_category / limitation_category) that the manifest does not "
-                        "supply a value for; inventing a category value would be an unauthorized clinical "
-                        "judgment, and no schema change is permitted for this import."
-                    ),
-                })
-                continue
-
-            if domain not in CONCEPT_DOMAIN_MODEL_MAP:
-                concepts_blocked.append({
-                    "disease": disease_name,
-                    "domain": domain,
-                    "name": name,
-                    "reason": f"concept domain '{domain}' has no corresponding Tier 5 table in the current schema.",
-                })
-                continue
-
             if key in concept_by_key:
-                # already present -- ensure its evidence rule exists (idempotent) and continue
                 existing_row = concept_by_key[key]
+                # The manifest is authoritative over any pre-existing category
+                # value on an identity-matched concept (e.g. one created
+                # earlier by a different committed population script) --
+                # this reconciles the stored category to the approved
+                # manifest value verbatim; it never renames, substitutes,
+                # or deletes the concept itself.
+                if domain == "TREATMENT" and existing_row.treatment_category != c["treatment_category"]:
+                    existing_row.treatment_category = c["treatment_category"]
+                elif domain == "TREATMENT_LIMITATION" and existing_row.limitation_category != c["limitation_category"]:
+                    existing_row.limitation_category = c["limitation_category"]
                 if _ensure_evidence_rule(db, domain, existing_row.id):
                     evidence_rules_inserted += 1
                 continue
 
-            model_cls, name_attr = CONCEPT_DOMAIN_MODEL_MAP[domain]
-            row = model_cls(id=uuid.uuid4(), disease_id=disease.id, **{name_attr: name})
+            row = _build_concept_row(domain, disease.id, c)
             db.add(row)
             db.flush()
             concept_by_key[key] = row
@@ -376,14 +380,6 @@ def run(db: Session, manifest: dict | None = None) -> dict:
             concept_domain = a["concept_domain"]
             applicability_type = a["applicability_type"]
 
-            if applicability_type not in APPLICABILITY_TYPES:
-                applicability_blocked.append({
-                    "disease": disease_name, "variant": variant_name, "concept": concept_name,
-                    "concept_domain": concept_domain, "applicability_type": applicability_type,
-                    "reason": f"applicability_type '{applicability_type}' is not permitted by the current CHECK constraint.",
-                })
-                continue
-
             variant_key_found = None
             for (d_name, dimension, normalized), variant_row in variant_by_key.items():
                 if d_name == disease_name and variant_row.variant_name == variant_name:
@@ -396,15 +392,11 @@ def run(db: Session, manifest: dict | None = None) -> dict:
                     break
 
             if variant_key_found is None or concept_key_found is None:
-                applicability_blocked.append({
-                    "disease": disease_name, "variant": variant_name, "concept": concept_name,
-                    "concept_domain": concept_domain, "applicability_type": applicability_type,
-                    "reason": (
-                        "referenced variant or concept was itself blocked (schema-constrained) and does not exist"
-                        if (variant_key_found is None or concept_key_found is None) else "unknown"
-                    ),
-                })
-                continue
+                raise RuntimeError(
+                    f"Neurologic Production Manifest v1 applicability mapping references a variant/concept "
+                    f"that was not created: disease={disease_name!r} variant={variant_name!r} "
+                    f"concept={concept_name!r} domain={concept_domain!r}. Aborting rather than skipping silently."
+                )
 
             existing_edge = (
                 db.query(OntologyConceptVariantApplicability)
@@ -437,28 +429,227 @@ def run(db: Session, manifest: dict | None = None) -> dict:
 
     return {
         "variants_inserted": variants_inserted,
-        "variants_blocked": variants_blocked,
         "concepts_inserted_by_domain": concepts_inserted_by_domain,
         "concepts_inserted_total": sum(concepts_inserted_by_domain.values()),
-        "concepts_blocked": concepts_blocked,
         "applicability_inserted": applicability_inserted,
-        "applicability_blocked": applicability_blocked,
         "evidence_rules_inserted": evidence_rules_inserted,
+    }
+
+
+def _no_cycle(variants: List[OntologyDiseaseVariant]) -> int:
+    """Count hierarchy cycles among the given variants (parent_variant_id
+    chains). Returns the number of variants at which a cycle is detected."""
+    by_id = {v.id: v for v in variants}
+    cycles = 0
+    for v in variants:
+        seen = set()
+        current = v
+        while current is not None and current.parent_variant_id is not None:
+            if current.id in seen:
+                cycles += 1
+                break
+            seen.add(current.id)
+            current = by_id.get(current.parent_variant_id)
+    return cycles
+
+
+def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: int) -> dict:
+    """Compare the manifest against the (already-imported) clean database
+    and report expected vs. stored vs. missing vs. unexpected for
+    variants, concepts, and applicability mappings, plus evidence-rule
+    coverage, differentiation-guard results, orphan count, cycle count,
+    and the second-run new-row count. Never a clinical judgment -- purely
+    a mechanical comparison of the committed manifest against what is
+    actually stored."""
+    diseases = _resolve_diseases(db, manifest)
+    disease_ids = {d.id for d in diseases.values()}
+
+    # --- variants ---
+    expected_variants = []
+    for disease_entry in manifest["diseases"]:
+        for v in disease_entry.get("variants", []):
+            expected_variants.append((disease_entry["disease"], v["dimension"], v["name"]))
+    expected_variant_keys = {(d, dim, n.strip().lower()) for d, dim, n in expected_variants}
+
+    stored_variants = db.query(OntologyDiseaseVariant).filter(
+        OntologyDiseaseVariant.disease_id.in_(disease_ids)
+    ).all()
+    name_to_disease = {d.id: name for name, d in diseases.items()}
+    stored_variant_keys = {
+        (name_to_disease[v.disease_id], v.variant_dimension, v.normalized_name) for v in stored_variants
+    }
+    missing_variants = sorted(expected_variant_keys - stored_variant_keys)
+    unexpected_variants = sorted(k for k in stored_variant_keys if k not in expected_variant_keys)
+
+    # --- concepts ---
+    expected_concepts = []
+    for disease_entry in manifest["diseases"]:
+        for c in disease_entry.get("concepts", []):
+            expected_concepts.append((disease_entry["disease"], c["domain"], c["name"]))
+    expected_concept_keys = {(d, dom, n.strip().lower()) for d, dom, n in expected_concepts}
+
+    stored_concept_keys = set()
+    concept_id_by_key: Dict[Tuple[str, str, str], object] = {}
+    for domain, (model_cls, name_attr) in CONCEPT_DOMAIN_MODEL_MAP.items():
+        for row in db.query(model_cls).filter(model_cls.disease_id.in_(disease_ids)).all():
+            key = (name_to_disease[row.disease_id], domain, getattr(row, name_attr).strip().lower())
+            stored_concept_keys.add(key)
+            concept_id_by_key[key] = row.id
+    missing_concepts = sorted(expected_concept_keys - stored_concept_keys)
+    unexpected_concepts = sorted(k for k in stored_concept_keys if k not in expected_concept_keys)
+
+    # --- applicability ---
+    expected_applicability = []
+    for disease_entry in manifest["diseases"]:
+        for a in disease_entry.get("applicability", []):
+            expected_applicability.append(
+                (disease_entry["disease"], a["variant"], a["concept_domain"], a["concept"], a["applicability_type"])
+            )
+
+    variant_id_by_name: Dict[Tuple[str, str], object] = {}
+    for v in stored_variants:
+        variant_id_by_name[(name_to_disease[v.disease_id], v.variant_name)] = v.id
+
+    stored_applicability_rows = db.query(OntologyConceptVariantApplicability).filter(
+        OntologyConceptVariantApplicability.disease_id.in_(disease_ids)
+    ).all()
+    variant_id_to_name = {v.id: v.variant_name for v in stored_variants}
+    stored_applicability_keys = set()
+    for edge in stored_applicability_rows:
+        disease_name = name_to_disease.get(edge.disease_id)
+        variant_name = variant_id_to_name.get(edge.variant_id)
+        model_cls, name_attr = CONCEPT_DOMAIN_MODEL_MAP[edge.concept_type]
+        concept_row = db.query(model_cls).filter_by(id=edge.concept_id).one_or_none()
+        concept_name = getattr(concept_row, name_attr) if concept_row is not None else None
+        stored_applicability_keys.add(
+            (disease_name, variant_name, edge.concept_type, concept_name, edge.applicability_type)
+        )
+    missing_applicability = sorted(
+        [key for key in expected_applicability if key not in stored_applicability_keys],
+        key=lambda k: (k[0], k[1], k[2], k[3], k[4]),
+    )
+    unexpected_applicability = sorted(
+        [key for key in stored_applicability_keys if key not in set(expected_applicability)],
+        key=lambda k: (str(k[0]), str(k[1]), str(k[2]), str(k[3]), str(k[4])),
+    )
+
+    # --- evidence rule coverage (scoped to the manifest's own 557 expected
+    # concepts only -- not every concept in the database, which also holds
+    # concepts from other committed population scripts). ---
+    evidence_covered = 0
+    evidence_missing = []
+    for key in expected_concept_keys:
+        concept_id = concept_id_by_key.get(key)
+        if concept_id is None:
+            evidence_missing.append(list(key))
+            continue
+        disease_name, domain, _name = key
+        rule = db.query(OntologyEvidenceRule).filter_by(concept_type=domain, concept_id=concept_id).one_or_none()
+        if rule is not None and rule.patient_fact_requires_evidence is True:
+            evidence_covered += 1
+        else:
+            evidence_missing.append(list(key))
+
+    # --- differentiation guards (mechanical check per the guard's own
+    # declared rule -- reuses the same logic the test suite asserts). ---
+    guard_results = []
+    for guard in manifest.get("differentiation_guards", []):
+        rule = guard["rule"]
+        left, right = guard["left"], guard["right"]
+        passed = None
+        detail = None
+        if rule in ("NOT_AUTOMATICALLY_EQUIVALENT",):
+            left_d, right_d = diseases.get(left), diseases.get(right)
+            passed = left_d is not None and right_d is not None and left_d.id != right_d.id
+        elif rule == "NOT_INTERCHANGEABLE":
+            left_ids = {v.id for v in stored_variants if v.variant_name == left}
+            right_ids = {v.id for v in stored_variants if v.variant_name == right}
+            if left_ids or right_ids:
+                passed = left_ids.isdisjoint(right_ids)
+            else:
+                # Not variant names for this manifest -- fall back to
+                # disease-level distinctness (e.g. Hemiplegia/Hemiparesis).
+                left_d, right_d = diseases.get(left), diseases.get(right)
+                passed = left_d is not None and right_d is not None and left_d.id != right_d.id
+        elif rule == "CONTRAINDICATED_APPLICABILITY":
+            variant_id = variant_id_by_name.get(("Stroke", left))
+            passed = variant_id is not None and not any(
+                e.variant_id == variant_id and e.applicability_type == "TREATMENT_SPECIFIC_TO"
+                for e in stored_applicability_rows
+            )
+        elif rule == "DO_NOT_INFER_CURRENT_STATE":
+            variant_id = variant_id_by_name.get(("Stroke", left))
+            passed = variant_id is not None and not any(
+                e.variant_id == variant_id and e.applicability_type == "APPLIES_TO"
+                for e in stored_applicability_rows
+            )
+        else:
+            detail = f"unrecognized guard rule: {rule}"
+        guard_results.append({"left": left, "right": right, "rule": rule, "passed": passed, "detail": detail})
+
+    orphan_count = 0
+    for v in stored_variants:
+        if v.disease_id not in disease_ids:
+            orphan_count += 1
+        elif v.parent_variant_id is not None and v.parent_variant_id not in {vv.id for vv in stored_variants}:
+            orphan_count += 1
+    for edge in stored_applicability_rows:
+        if edge.variant_id not in {v.id for v in stored_variants}:
+            orphan_count += 1
+        model_cls, _ = CONCEPT_DOMAIN_MODEL_MAP[edge.concept_type]
+        if db.query(model_cls).filter_by(id=edge.concept_id).one_or_none() is None:
+            orphan_count += 1
+
+    cycle_count = _no_cycle(stored_variants)
+
+    return {
+        "manifest_path": str(DEFAULT_MANIFEST_PATH),
+        "expected_variants": len(expected_variant_keys),
+        "stored_variants": len(stored_variant_keys & expected_variant_keys),
+        "missing_variants": [list(k) for k in missing_variants],
+        "unexpected_variants": [list(k) for k in unexpected_variants],
+        "expected_concepts": len(expected_concept_keys),
+        "stored_concepts": len(stored_concept_keys & expected_concept_keys),
+        "missing_concepts": [list(k) for k in missing_concepts],
+        "unexpected_concepts": [list(k) for k in unexpected_concepts],
+        "expected_applicability_mappings": len(expected_applicability),
+        "stored_applicability_mappings": len(set(expected_applicability) & stored_applicability_keys),
+        "missing_applicability_mappings": [list(k) for k in missing_applicability],
+        "unexpected_applicability_mappings": [list(k) for k in unexpected_applicability],
+        "evidence_rule_coverage": {
+            "expected": len(expected_concept_keys),
+            "covered": evidence_covered,
+            "missing": evidence_missing,
+        },
+        "differentiation_guard_results": guard_results,
+        "orphan_count": orphan_count,
+        "cycle_count": cycle_count,
+        "second_run_new_rows": second_run_new_rows,
     }
 
 
 def main() -> None:
     db = SessionLocal()
     try:
-        counts = run(db)
+        manifest = load_manifest()
+        counts = run(db, manifest=manifest)
         db.commit()
         for label, value in counts.items():
-            if isinstance(value, list):
-                print(f"{label}: {len(value)}")
-                for item in value:
-                    print(f"    {item}")
-            else:
-                print(f"{label}: {value}")
+            print(f"{label}: {value}")
+
+        second_counts = run(db, manifest=manifest)
+        db.commit()
+        second_run_new_rows = (
+            second_counts["variants_inserted"]
+            + second_counts["concepts_inserted_total"]
+            + second_counts["applicability_inserted"]
+        )
+
+        report = build_acceptance_report(db, manifest, second_run_new_rows)
+        DEFAULT_ACCEPTANCE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(DEFAULT_ACCEPTANCE_PATH, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=2, sort_keys=True)
+        print(f"acceptance_export: {DEFAULT_ACCEPTANCE_PATH}")
     finally:
         db.close()
 

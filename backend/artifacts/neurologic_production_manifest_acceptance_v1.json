@@ -1,690 +1,2479 @@
 {
-  "manifest_path": "backend/manifests/neurologic_production_source_manifest_v1.json",
-  "generated_from": "clean isolated sns_emr_test database (rebuilt from scratch, migrations through af1833134391, then Phase2 + coverage repair + clinical-reasoning build + production manifest importer run twice)",
-  "expected_variants": 99,
-  "stored_variants": 99,
-  "missing_variants": [],
-  "unexpected_variants": [],
-  "blocked_variants_schema_incompatible": [
+  "cycle_count": 0,
+  "differentiation_guard_results": [
     {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Large-Territory Stroke"
+      "detail": null,
+      "left": "Hemiplegia",
+      "passed": true,
+      "right": "Hemiparesis",
+      "rule": "NOT_INTERCHANGEABLE"
     },
     {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Large Anterior Infarction"
+      "detail": null,
+      "left": "Dementia Due To Alzheimer's Disease",
+      "passed": true,
+      "right": "Senile Degeneration of Brain",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
     },
     {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Bihemispheric Infarction"
+      "detail": null,
+      "left": "Locked-In Syndrome",
+      "passed": true,
+      "right": "Coma",
+      "rule": "NOT_INTERCHANGEABLE"
     },
     {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Malignant Cerebral Infarction"
+      "detail": null,
+      "left": "Hemorrhagic Stroke",
+      "passed": true,
+      "right": "IV Thrombolytic Evaluation",
+      "rule": "CONTRAINDICATED_APPLICABILITY"
     },
     {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Cerebral Edema"
-    },
-    {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Midline Shift"
-    },
-    {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Obstructive Hydrocephalus"
-    },
-    {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Intraventricular Extension"
-    },
-    {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Depressed Consciousness"
-    },
-    {
-      "disease": "Stroke",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Stroke With Persistent Coma"
-    },
-    {
-      "disease": "Hemiplegia",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Complete Hemiplegia"
-    },
-    {
-      "disease": "Hemiplegia",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Spastic Hemiplegia"
-    },
-    {
-      "disease": "Hemiplegia",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Flaccid Hemiplegia"
-    },
-    {
-      "disease": "Hemiparesis",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Mild Hemiparesis"
-    },
-    {
-      "disease": "Hemiparesis",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Moderate Hemiparesis"
-    },
-    {
-      "disease": "Hemiparesis",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Severe Hemiparesis"
-    },
-    {
-      "disease": "Contracture",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Mild Range-of-Motion Limitation"
-    },
-    {
-      "disease": "Contracture",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Moderate Range-of-Motion Limitation"
-    },
-    {
-      "disease": "Contracture",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Fixed Contracture"
-    },
-    {
-      "disease": "Contracture",
-      "dimension": "SEVERITY_PHENOTYPE",
-      "name": "Multi-Joint Contracture"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "dimension": "SUBTYPE",
-      "name": "Early-Onset Alzheimer's Disease"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "dimension": "SUBTYPE",
-      "name": "Late-Onset Alzheimer's Disease"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "dimension": "SUBTYPE",
-      "name": "Alzheimer's Disease With Behavioral Disturbance"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "dimension": "SUBTYPE",
-      "name": "Alzheimer's Disease Without Behavioral Disturbance"
-    }
-  ],
-  "expected_concepts": 477,
-  "stored_concepts": 477,
-  "missing_concepts": [],
-  "unexpected_concepts": [],
-  "blocked_concepts_schema_incompatible": [
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "IV Thrombolytic Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Alteplase"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Tenecteplase"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Mechanical Thrombectomy Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Mechanical Thrombectomy"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Antiplatelet Therapy"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Anticoagulation for Documented Cardioembolic Indication"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Blood Pressure Management"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Statin Therapy"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Seizure Management"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Dysphagia Management"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Aspiration Precautions"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Positioning Program"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Range-of-Motion Program"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Spasticity Management"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Assistive Communication Support"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Texture-Modified Diet"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Enteral Feeding Consideration"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Comfort-Focused Stroke Care"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Anticoagulant-Reversal Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Intracranial-Pressure Management"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Neurosurgical Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Ventricular-Drain Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT",
-      "name": "Aneurysm-Securing Procedure Evaluation"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Outside Treatment Window"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Thrombolytic Contraindication"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Thrombolytic Therapy Declined"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Mechanical Thrombectomy Not a Candidate"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Mechanical Thrombectomy Declined"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Anticoagulation Contraindicated"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Anticoagulation Declined"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Artificial Nutrition Declined"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Hospital Transfer Declined"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Surgical Intervention Not a Candidate"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Revascularization Not Consistent With Goals of Care"
-    },
-    {
-      "disease": "Stroke",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Comfort-Focused Care Selected"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Positioning Program"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Passive Range-of-Motion Program"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Splinting"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Assistive Device Fitting"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Spasticity Management"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Shoulder Protection Program"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT",
-      "name": "Comfort-Focused Positioning"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Rehabilitation Not a Candidate"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Spasticity Treatment Declined"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Splinting Not Tolerated"
-    },
-    {
-      "disease": "Hemiplegia",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Surgical Intervention Not a Candidate"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Strength and Mobility Program"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Positioning Program"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Range-of-Motion Program"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Assistive Device Fitting"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Ankle-Foot Orthosis Evaluation"
-    },
-    {
-      "disease": "Hemiparesis",
-      "domain": "TREATMENT",
-      "name": "Spasticity Management"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Serial Casting"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Splinting"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Positioning Program"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Passive Range-of-Motion Program"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Botulinum Toxin for Documented Spasticity"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Surgical Release for Appropriate Candidates"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT",
-      "name": "Comfort-Focused Positioning"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Surgical Release Not a Candidate"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Splinting Declined"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Splinting Not Tolerated"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Serial Casting Not Tolerated"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Range-of-Motion Limited by Pain"
-    },
-    {
-      "disease": "Contracture",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Comfort-Focused Management Selected"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Artificial Nutrition Declined"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Artificial Hydration Declined"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Hospital Transfer Declined"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Disease-Directed Medication Discontinued"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Rehabilitation Not Beneficial"
-    },
-    {
-      "disease": "Dementia Due To Alzheimer's Disease",
-      "domain": "TREATMENT_LIMITATION",
-      "name": "Comfort-Focused Care Selected"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Supportive Cognitive Care"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Safety Supervision"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Behavioral Symptom Review"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Medication Review"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Nutrition and Hydration Support"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Aspiration Precautions"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Caregiver Education"
-    },
-    {
-      "disease": "Senile Degeneration of Brain",
-      "domain": "TREATMENT",
-      "name": "Comfort-Focused Care"
-    }
-  ],
-  "expected_applicability_mappings": 77,
-  "stored_applicability_mappings": 77,
-  "missing_applicability_mappings": [],
-  "blocked_applicability_mappings_schema_incompatible": [
-    {
-      "disease": "Stroke",
-      "variant": "Ischemic Stroke",
-      "concept": "IV Thrombolytic Evaluation",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Ischemic Stroke",
-      "concept": "Mechanical Thrombectomy Evaluation",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Ischemic Stroke",
-      "concept": "Antiplatelet Therapy",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Ischemic Stroke",
-      "concept": "Statin Therapy",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Hemorrhagic Stroke",
-      "concept": "Blood Pressure Management",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Hemorrhagic Stroke",
-      "concept": "Anticoagulant-Reversal Evaluation",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
-    },
-    {
-      "disease": "Stroke",
-      "variant": "Hemorrhagic Stroke",
-      "concept": "Neurosurgical Evaluation",
-      "concept_domain": "TREATMENT",
-      "applicability_type": "EXPECTED_WITH",
-      "source_ids": [
-        "APPROVED_NEURO_MANIFEST"
-      ],
-      "patient_fact_requires_evidence": true
+      "detail": null,
+      "left": "Historical Stroke",
+      "passed": true,
+      "right": "Current Neurologic Deficit",
+      "rule": "DO_NOT_INFER_CURRENT_STATE"
     }
   ],
   "evidence_rule_coverage": {
-    "expected_concepts_checked": 477,
-    "concepts_missing_evidence_rule_or_flag": [],
-    "coverage_percent": 100.0
+    "covered": 557,
+    "expected": 557,
+    "missing": []
   },
-  "differentiation_guard_results": [
-    {
-      "left": "Hemiplegia",
-      "right": "Hemiparesis",
-      "rule": "NOT_INTERCHANGEABLE",
-      "verified": true
-    },
-    {
-      "left": "Dementia Due To Alzheimer's Disease",
-      "right": "Senile Degeneration of Brain",
-      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
-      "verified": true
-    },
-    {
-      "left": "Locked-In Syndrome",
-      "right": "Coma",
-      "rule": "NOT_INTERCHANGEABLE",
-      "verified": true
-    },
-    {
-      "left": "Hemorrhagic Stroke",
-      "right": "IV Thrombolytic Evaluation",
-      "rule": "CONTRAINDICATED_APPLICABILITY",
-      "verified": true
-    },
-    {
-      "left": "Historical Stroke",
-      "right": "Current Neurologic Deficit",
-      "rule": "DO_NOT_INFER_CURRENT_STATE",
-      "verified": true
-    }
+  "expected_applicability_mappings": 84,
+  "expected_concepts": 557,
+  "expected_variants": 123,
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\neurologic_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "stored_applicability_mappings": 84,
+  "stored_concepts": 557,
+  "stored_variants": 123,
+  "unexpected_applicability_mappings": [
+    [
+      "Contracture",
+      "Fixed Contracture",
+      "FINDING",
+      "Reduced Passive Range of Motion",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Contracture",
+      "Fixed Contracture",
+      "SYMPTOM",
+      "Skin Fold Maceration",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Contracture",
+      "Hip Contracture",
+      "SYMPTOM",
+      "Pain With Passive Movement",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Contracture",
+      "Knee Contracture",
+      "SYMPTOM",
+      "Pain With Passive Movement",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Contracture",
+      "Spasticity Etiology",
+      "SYMPTOM",
+      "Painful Muscle Spasm",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Contracture",
+      "Upper-Motor-Neuron Injury Etiology",
+      "SYMPTOM",
+      "Fixed Joint Limitation",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Alzheimer's Pattern",
+      "FINDING",
+      "FAST Stage 7",
+      "END_STAGE_SUPPORT_FOR"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Alzheimer's Pattern",
+      "SYMPTOM",
+      "Agnosia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Alzheimer's Pattern",
+      "SYMPTOM",
+      "Apraxia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Alzheimer's Pattern",
+      "SYMPTOM",
+      "Language Decline (Aphasia)",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Alzheimer's Pattern",
+      "SYMPTOM",
+      "Progressive Memory Loss",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Delirium Differentiation",
+      "SYMPTOM",
+      "Disorientation",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "Vascular-Pattern Review",
+      "SYMPTOM",
+      "Behavioral/Psychological Symptoms",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Hemiparesis",
+      "Hemiplegia Differentiation",
+      "SYMPTOM",
+      "Partial Unilateral Weakness",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Hemiparesis",
+      "Left Hemiparesis",
+      "SYMPTOM",
+      "Partial Unilateral Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Hemiparesis",
+      "Right Hemiparesis",
+      "SYMPTOM",
+      "Partial Unilateral Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Hemiplegia",
+      "Left Hemiplegia",
+      "SYMPTOM",
+      "Complete Unilateral Paralysis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Hemiplegia",
+      "Right Hemiplegia",
+      "SYMPTOM",
+      "Complete Unilateral Paralysis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "Alzheimer's Differentiation",
+      "FINDING",
+      "Diffuse Cognitive Impairment on Screening",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "General Decline Pattern",
+      "SYMPTOM",
+      "Global Cognitive Slowing",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "General Decline Pattern",
+      "SYMPTOM",
+      "Progressive Forgetfulness",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "General Decline Pattern",
+      "SYMPTOM",
+      "Reduced Alertness/Arousal",
+      "HOSPICE_SUPPORT_FOR"
+    ],
+    [
+      "Stroke",
+      "Anterior Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Abulia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Anterior Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Apathy",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Anterior Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Urinary Incontinence",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basal Ganglia Stroke",
+      "FINDING",
+      "Contralateral Motor Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basal Ganglia Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basal Ganglia Stroke",
+      "SYMPTOM",
+      "Impaired Executive Function",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "FINDING",
+      "Impaired Horizontal Gaze",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "SYMPTOM",
+      "Altered Level of Consciousness",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "SYMPTOM",
+      "Quadriparesis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Basilar Artery Stroke",
+      "SYMPTOM",
+      "Quadriplegia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Altered Level of Consciousness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Ataxia/Imbalance",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Cranial-Nerve Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Diplopia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Nystagmus",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Brainstem Stroke",
+      "SYMPTOM",
+      "Vertigo",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cardioembolic Stroke",
+      "TREATMENT",
+      "Mechanical Thrombectomy",
+      "TREATMENT_SPECIFIC_TO"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "COMPLICATION",
+      "Obstructive Hydrocephalus",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Ataxia/Imbalance",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Nausea",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Sudden Severe Headache",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Vertigo",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar Stroke",
+      "SYMPTOM",
+      "Vomiting",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar-Hemisphere Stroke",
+      "FINDING",
+      "Dysmetria",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Cerebellar-Vermis Stroke",
+      "FINDING",
+      "Truncal Ataxia",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Dominant-Hemisphere Stroke",
+      "SYMPTOM",
+      "Expressive Aphasia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Dominant-Hemisphere Stroke",
+      "SYMPTOM",
+      "Receptive Aphasia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Dominant-Parietal Stroke",
+      "FINDING",
+      "Finger Agnosia",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Dominant-Parietal Stroke",
+      "SYMPTOM",
+      "Acalculia",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Dominant-Parietal Stroke",
+      "SYMPTOM",
+      "Agraphia",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Dominant-Parietal Stroke",
+      "SYMPTOM",
+      "Left-Right Disorientation",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "FINDING",
+      "Contralateral Motor Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Abulia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Apathy",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Behavioral Disinhibition",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Facial Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Impaired Attention",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Impaired Executive Function",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Impaired Judgment",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Personality or Behavioral Change",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Frontal-Lobe Stroke",
+      "SYMPTOM",
+      "Urinary Incontinence",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Hemorrhagic Stroke",
+      "TREATMENT",
+      "Thrombolytic Therapy",
+      "CONTRAINDICATED_FOR"
+    ],
+    [
+      "Stroke",
+      "Historical Stroke",
+      "SYMPTOM",
+      "Hemiparesis",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Insular Stroke",
+      "SYMPTOM",
+      "Altered Taste",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Insular Stroke",
+      "SYMPTOM",
+      "Autonomic Instability",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Insular Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Insular Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Internal Capsule Stroke",
+      "FINDING",
+      "Pure Motor Hemiparesis",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Internal Capsule Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Internal Carotid Artery Stroke",
+      "SYMPTOM",
+      "Altered Level of Consciousness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Internal Carotid Artery Stroke",
+      "SYMPTOM",
+      "Vision Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Intracerebral Hemorrhage",
+      "COMPLICATION",
+      "Obstructive Hydrocephalus",
+      "HOSPICE_SUPPORT_FOR"
+    ],
+    [
+      "Stroke",
+      "Intracerebral Hemorrhage",
+      "FINDING",
+      "Intraventricular Extension",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Intracerebral Hemorrhage",
+      "FINDING",
+      "Midline Shift",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Ischemic Stroke",
+      "TREATMENT",
+      "Thrombolytic Therapy",
+      "TREATMENT_SPECIFIC_TO"
+    ],
+    [
+      "Stroke",
+      "Lacunar Stroke",
+      "FINDING",
+      "Pure Motor Hemiparesis",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Lacunar Stroke",
+      "FINDING",
+      "Pure Sensory Deficit",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Lacunar Stroke",
+      "SYMPTOM",
+      "Ataxia/Imbalance",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Lacunar Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Large MCA Stroke",
+      "COMPLICATION",
+      "Herniation",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Large MCA Stroke",
+      "FINDING",
+      "Cerebral Edema",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Large MCA Stroke",
+      "FINDING",
+      "Midline Shift",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Large MCA Stroke",
+      "SYMPTOM",
+      "Altered Level of Consciousness",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Large-Artery Atherosclerotic Stroke",
+      "TREATMENT",
+      "Mechanical Thrombectomy",
+      "TREATMENT_SPECIFIC_TO"
+    ],
+    [
+      "Stroke",
+      "Left-Hemisphere Stroke",
+      "FINDING",
+      "Visual Field Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Left-Hemisphere Stroke",
+      "SYMPTOM",
+      "Aphasia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Left-Hemisphere Stroke",
+      "SYMPTOM",
+      "Hemiparesis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Left-Hemisphere Stroke",
+      "SYMPTOM",
+      "Hemiplegia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Left-Hemisphere Stroke",
+      "SYMPTOM",
+      "Unilateral Sensory Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Locked-In Syndrome",
+      "FINDING",
+      "Impaired Horizontal Gaze",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Locked-In Syndrome",
+      "SYMPTOM",
+      "Quadriplegia",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Medullary Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Medullary Stroke",
+      "SYMPTOM",
+      "Vertigo",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Midbrain Stroke",
+      "FINDING",
+      "Ptosis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Midbrain Stroke",
+      "FINDING",
+      "Vertical-Gaze Abnormality",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "FINDING",
+      "Gaze Preference Toward Lesion",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Aphasia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Unilateral Neglect",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Middle Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Unilateral Sensory Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Non-Dominant-Parietal Stroke",
+      "FINDING",
+      "Constructional Apraxia",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Non-Dominant-Parietal Stroke",
+      "SYMPTOM",
+      "Anosognosia",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Non-Dominant-Parietal Stroke",
+      "SYMPTOM",
+      "Unilateral Neglect",
+      "SUPPORTS_DIFFERENTIATION"
+    ],
+    [
+      "Stroke",
+      "Occipital-Lobe Stroke",
+      "FINDING",
+      "Cortical Blindness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Occipital-Lobe Stroke",
+      "FINDING",
+      "Visual Field Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Occipital-Lobe Stroke",
+      "SYMPTOM",
+      "Vision Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Occipital-Lobe Stroke",
+      "SYMPTOM",
+      "Visual Agnosia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Occipital-Lobe Stroke",
+      "SYMPTOM",
+      "Visual Hallucination",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Parietal-Lobe Stroke",
+      "FINDING",
+      "Cortical Sensory Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Parietal-Lobe Stroke",
+      "SYMPTOM",
+      "Agraphesthesia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Parietal-Lobe Stroke",
+      "SYMPTOM",
+      "Apraxia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Parietal-Lobe Stroke",
+      "SYMPTOM",
+      "Astereognosis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Parietal-Lobe Stroke",
+      "SYMPTOM",
+      "Unilateral Sensory Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Pontine Stroke",
+      "FINDING",
+      "Impaired Horizontal Gaze",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Pontine Stroke",
+      "SYMPTOM",
+      "Facial Weakness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Posterior Cerebral Artery Stroke",
+      "FINDING",
+      "Visual Field Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Posterior Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Memory Impairment",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Posterior Cerebral Artery Stroke",
+      "SYMPTOM",
+      "Visual Agnosia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Residual Deficit Following Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Residual Deficit Following Stroke",
+      "SYMPTOM",
+      "Hemiparesis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Residual Deficit Following Stroke",
+      "SYMPTOM",
+      "Hemiplegia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Right-Hemisphere Stroke",
+      "FINDING",
+      "Visual Field Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Right-Hemisphere Stroke",
+      "SYMPTOM",
+      "Hemiparesis",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Right-Hemisphere Stroke",
+      "SYMPTOM",
+      "Hemiplegia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Right-Hemisphere Stroke",
+      "SYMPTOM",
+      "Unilateral Neglect",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Right-Hemisphere Stroke",
+      "SYMPTOM",
+      "Unilateral Sensory Loss",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "COMPLICATION",
+      "Delayed Cerebral Ischemia",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "COMPLICATION",
+      "Rebleeding",
+      "PROGNOSTIC_FOR"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "COMPLICATION",
+      "Vasospasm",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "SYMPTOM",
+      "Neck Stiffness",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "SYMPTOM",
+      "Photophobia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Subarachnoid Hemorrhage",
+      "SYMPTOM",
+      "Thunderclap Headache",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Temporal-Lobe Stroke",
+      "FINDING",
+      "Visual Field Deficit",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Temporal-Lobe Stroke",
+      "SYMPTOM",
+      "Confusion",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Temporal-Lobe Stroke",
+      "SYMPTOM",
+      "Memory Impairment",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Temporal-Lobe Stroke",
+      "SYMPTOM",
+      "Seizure",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Thalamic Stroke",
+      "FINDING",
+      "Pure Sensory Deficit",
+      "STRONGLY_ASSOCIATED_WITH"
+    ],
+    [
+      "Stroke",
+      "Thalamic Stroke",
+      "SYMPTOM",
+      "Central Post-Stroke Pain",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Thalamic Stroke",
+      "SYMPTOM",
+      "Memory Impairment",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Ataxia/Imbalance",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Diplopia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Dysarthria",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Dysphagia",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Nystagmus",
+      "MAY_OCCUR_WITH"
+    ],
+    [
+      "Stroke",
+      "Vertebrobasilar Stroke",
+      "SYMPTOM",
+      "Vertigo",
+      "MAY_OCCUR_WITH"
+    ]
   ],
-  "orphan_variant_count": 0,
-  "orphan_applicability_count": 0,
-  "cycle_count": 0,
-  "second_run_new_row_count": 0,
-  "run_1_counts": {
-    "variants_inserted": 43,
-    "variants_blocked": 24,
-    "concepts_inserted_by_domain": {
-      "SYMPTOM": 11,
-      "FINDING": 39,
-      "DIAGNOSTIC_TEST": 12,
-      "LAB": 2,
-      "COMPLICATION": 25,
-      "MEDICATION": 4,
-      "FUNCTIONAL_IMPACT": 5,
-      "NUTRITIONAL_IMPACT": 4,
-      "END_STAGE_FINDING": 6,
-      "HOSPICE_ELIGIBILITY_SUPPORT": 41
-    },
-    "concepts_inserted_total": 149,
-    "concepts_blocked": 80,
-    "applicability_inserted": 77,
-    "applicability_blocked": 7,
-    "evidence_rules_inserted": 149
-  },
-  "run_2_counts": {
-    "variants_inserted": 0,
-    "variants_blocked": 24,
-    "concepts_inserted_by_domain": {},
-    "concepts_inserted_total": 0,
-    "concepts_blocked": 80,
-    "applicability_inserted": 0,
-    "applicability_blocked": 7,
-    "evidence_rules_inserted": 0
-  }
+  "unexpected_concepts": [
+    [
+      "Contracture",
+      "COMPLICATION",
+      "pain with care activities"
+    ],
+    [
+      "Contracture",
+      "COMPLICATION",
+      "skin breakdown within joint folds"
+    ],
+    [
+      "Contracture",
+      "FINDING",
+      "palpable soft-tissue shortening"
+    ],
+    [
+      "Contracture",
+      "FUNCTIONAL_IMPACT",
+      "dependence for hygiene within affected joint"
+    ],
+    [
+      "Contracture",
+      "FUNCTIONAL_IMPACT",
+      "impaired positioning tolerance"
+    ],
+    [
+      "Contracture",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "advanced multi-joint contracture with functional decline"
+    ],
+    [
+      "Contracture",
+      "MEDICATION",
+      "botulinum toxin for documented spasticity"
+    ],
+    [
+      "Contracture",
+      "PROGNOSTIC_INDICATOR",
+      "progressive multi-joint involvement"
+    ],
+    [
+      "Contracture",
+      "PSYCHOSOCIAL_CONCERN",
+      "distress with care activities"
+    ],
+    [
+      "Contracture",
+      "SYMPTOM",
+      "fixed joint limitation"
+    ],
+    [
+      "Contracture",
+      "SYMPTOM",
+      "muscle shortening"
+    ],
+    [
+      "Contracture",
+      "SYMPTOM",
+      "range-of-motion limited by pain"
+    ],
+    [
+      "Contracture",
+      "SYMPTOM",
+      "skin fold maceration"
+    ],
+    [
+      "Contracture",
+      "TREATMENT",
+      "splinting/positioning program"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "COMPLICATION",
+      "falls with injury"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "COMPLICATION",
+      "malnutrition/dehydration"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "COMPLICATION",
+      "recurrent infections (uti, skin, pulmonary)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "DIAGNOSTIC_TEST",
+      "cognitive screening (mmse/moca)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "DIAGNOSTIC_TEST",
+      "mri brain"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "END_STAGE_FINDING",
+      "fast stage 7c or beyond"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "END_STAGE_FINDING",
+      "inability to maintain adequate oral intake"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "abnormal cognitive screening score"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 1"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 2"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 3"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 4"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 5"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 6"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FINDING",
+      "fast stage 7"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FUNCTIONAL_IMPACT",
+      "loss of independent ambulation (advanced stage)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FUNCTIONAL_IMPACT",
+      "loss of independent communication (advanced stage)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "FUNCTIONAL_IMPACT",
+      "progressive dependence in adls"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "adl dependence consistent with advanced dementia"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "comorbidity supporting limited prognosis"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "fast stage 7a or beyond"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "LAB",
+      "serum albumin"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "MEDICATION",
+      "cholinesterase inhibitor (e.g. donepezil)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "NUTRITIONAL_IMPACT",
+      "progressive feeding difficulty"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PROGNOSTIC_INDICATOR",
+      "comorbidity burden"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PROGNOSTIC_INDICATOR",
+      "fast stage 7 or beyond"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PROGNOSTIC_INDICATOR",
+      "recurrent aspiration"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PROGNOSTIC_INDICATOR",
+      "recurrent infection"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PROGNOSTIC_INDICATOR",
+      "recurrent infections/aspiration"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PSYCHOSOCIAL_CONCERN",
+      "caregiver burden"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PSYCHOSOCIAL_CONCERN",
+      "patient distress from disorientation"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SPIRITUAL_CONCERN",
+      "loss of personhood concerns"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "behavioral symptoms"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "behavioral/psychological symptoms"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "disorientation"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "language decline (aphasia)"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "progressive memory loss"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "psychological symptoms"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "SYMPTOM",
+      "sleep-wake disturbance"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT",
+      "behavioral management"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT",
+      "behavioral management strategies"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT",
+      "environmental management"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT",
+      "feeding assistance"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT_LIMITATION",
+      "disease-modifying therapy not pursued"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "TREATMENT_LIMITATION",
+      "not a candidate for aggressive intervention"
+    ],
+    [
+      "Hemiparesis",
+      "FINDING",
+      "asymmetric gait pattern"
+    ],
+    [
+      "Hemiparesis",
+      "FINDING",
+      "reduced muscle strength, affected side"
+    ],
+    [
+      "Hemiparesis",
+      "FUNCTIONAL_IMPACT",
+      "partial dependence for mobility"
+    ],
+    [
+      "Hemiparesis",
+      "FUNCTIONAL_IMPACT",
+      "reduced dexterity"
+    ],
+    [
+      "Hemiparesis",
+      "FUNCTIONAL_IMPACT",
+      "reduced fine-motor independence"
+    ],
+    [
+      "Hemiparesis",
+      "FUNCTIONAL_IMPACT",
+      "reduced functional reach"
+    ],
+    [
+      "Hemiparesis",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "progressive functional decline (general decline principles)"
+    ],
+    [
+      "Hemiparesis",
+      "PROGNOSTIC_INDICATOR",
+      "plateau in rehabilitation gains"
+    ],
+    [
+      "Hemiparesis",
+      "PSYCHOSOCIAL_CONCERN",
+      "fear of falling"
+    ],
+    [
+      "Hemiparesis",
+      "SYMPTOM",
+      "fatigue with exertion"
+    ],
+    [
+      "Hemiparesis",
+      "SYMPTOM",
+      "fine motor impairment"
+    ],
+    [
+      "Hemiparesis",
+      "SYMPTOM",
+      "gait disturbance"
+    ],
+    [
+      "Hemiparesis",
+      "TREATMENT",
+      "gait and balance support"
+    ],
+    [
+      "Hemiplegia",
+      "COMPLICATION",
+      "contracture formation"
+    ],
+    [
+      "Hemiplegia",
+      "COMPLICATION",
+      "hygiene difficulty"
+    ],
+    [
+      "Hemiplegia",
+      "FINDING",
+      "absent voluntary movement, affected side"
+    ],
+    [
+      "Hemiplegia",
+      "FINDING",
+      "dependent edema"
+    ],
+    [
+      "Hemiplegia",
+      "FINDING",
+      "increased deep tendon reflexes, affected side"
+    ],
+    [
+      "Hemiplegia",
+      "FUNCTIONAL_IMPACT",
+      "total dependence for affected-side self-care"
+    ],
+    [
+      "Hemiplegia",
+      "FUNCTIONAL_IMPACT",
+      "total dependence for mobility"
+    ],
+    [
+      "Hemiplegia",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "persistent total dependence (general decline principles)"
+    ],
+    [
+      "Hemiplegia",
+      "PROGNOSTIC_INDICATOR",
+      "persistent total dependence"
+    ],
+    [
+      "Hemiplegia",
+      "PSYCHOSOCIAL_CONCERN",
+      "body image distress"
+    ],
+    [
+      "Hemiplegia",
+      "SYMPTOM",
+      "chronic pain"
+    ],
+    [
+      "Hemiplegia",
+      "SYMPTOM",
+      "facial droop"
+    ],
+    [
+      "Hemiplegia",
+      "TREATMENT",
+      "occupational therapy"
+    ],
+    [
+      "Hemiplegia",
+      "TREATMENT",
+      "physical therapy"
+    ],
+    [
+      "Hemiplegia",
+      "TREATMENT",
+      "range-of-motion program"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "COMPLICATION",
+      "falls with injury"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "COMPLICATION",
+      "malnutrition/dehydration"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "COMPLICATION",
+      "recurrent infections"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "DIAGNOSTIC_TEST",
+      "cognitive screening (general)"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "DIAGNOSTIC_TEST",
+      "mri brain"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "END_STAGE_FINDING",
+      "advanced generalized functional decline"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "END_STAGE_FINDING",
+      "inability to maintain adequate oral intake"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FINDING",
+      "diffuse cognitive impairment on screening"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FINDING",
+      "generalized brain atrophy on imaging (if available)"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "communication loss"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "functional dependence"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "generalized functional slowing"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "impaired safety awareness"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "increasing adl dependence"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "loss of ambulation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "progressive generalized dependence in adls"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "FUNCTIONAL_IMPACT",
+      "reduced meaningful communication"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "progressive generalized functional decline (general decline principles)"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "progressive nutritional decline (general decline principles)"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "recurrent medical complications (general decline principles)"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "LAB",
+      "serum albumin"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "MEDICATION",
+      "symptomatic/comfort medication management"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "NUTRITIONAL_IMPACT",
+      "nutritional decline"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "NUTRITIONAL_IMPACT",
+      "progressive feeding difficulty"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "NUTRITIONAL_IMPACT",
+      "unintentional weight loss"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PROGNOSTIC_INDICATOR",
+      "progressive cognitive decline"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PROGNOSTIC_INDICATOR",
+      "progressive functional loss"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PROGNOSTIC_INDICATOR",
+      "progressive generalized functional decline"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PROGNOSTIC_INDICATOR",
+      "recurrent infections"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PSYCHOSOCIAL_CONCERN",
+      "caregiver burden"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PSYCHOSOCIAL_CONCERN",
+      "family distress over uncertain trajectory"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SPIRITUAL_CONCERN",
+      "loss of personhood concerns"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SYMPTOM",
+      "dysphagia"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SYMPTOM",
+      "general functional slowing"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SYMPTOM",
+      "global cognitive slowing"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SYMPTOM",
+      "progressive forgetfulness"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "SYMPTOM",
+      "reduced alertness/arousal"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "TREATMENT",
+      "comfort-focused positioning and care"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "TREATMENT",
+      "feeding assistance"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "TREATMENT_LIMITATION",
+      "artificial nutrition declined"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "TREATMENT_LIMITATION",
+      "not a candidate for aggressive intervention"
+    ],
+    [
+      "Stroke",
+      "COMPLICATION",
+      "deep vein thrombosis/pulmonary embolism"
+    ],
+    [
+      "Stroke",
+      "COMPLICATION",
+      "herniation"
+    ],
+    [
+      "Stroke",
+      "COMPLICATION",
+      "post-stroke seizures"
+    ],
+    [
+      "Stroke",
+      "COMPLICATION",
+      "rebleeding"
+    ],
+    [
+      "Stroke",
+      "DIAGNOSTIC_TEST",
+      "ct angiography head/neck"
+    ],
+    [
+      "Stroke",
+      "DIAGNOSTIC_TEST",
+      "ct head (non-contrast)"
+    ],
+    [
+      "Stroke",
+      "DIAGNOSTIC_TEST",
+      "mri brain with diffusion-weighted imaging"
+    ],
+    [
+      "Stroke",
+      "END_STAGE_FINDING",
+      "medical complication of immobility"
+    ],
+    [
+      "Stroke",
+      "END_STAGE_FINDING",
+      "persistent minimally conscious state"
+    ],
+    [
+      "Stroke",
+      "END_STAGE_FINDING",
+      "persistent vegetative state/coma beyond acute period"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "constructional apraxia"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "cortical sensory deficit"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "finger agnosia"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "focal neurologic deficit on exam"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "gaze preference toward lesion"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "hemiparesis/hemiplegia on exam"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "impaired horizontal gaze"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "nih stroke scale score"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "ptosis"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "pure motor hemiparesis"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "pure sensory deficit"
+    ],
+    [
+      "Stroke",
+      "FINDING",
+      "vertical-gaze abnormality"
+    ],
+    [
+      "Stroke",
+      "FUNCTIONAL_IMPACT",
+      "dependence in adls"
+    ],
+    [
+      "Stroke",
+      "FUNCTIONAL_IMPACT",
+      "impaired communication"
+    ],
+    [
+      "Stroke",
+      "FUNCTIONAL_IMPACT",
+      "impaired mobility"
+    ],
+    [
+      "Stroke",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "coma or persistent vegetative state"
+    ],
+    [
+      "Stroke",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "karnofsky/pps 40 or below after acute stroke"
+    ],
+    [
+      "Stroke",
+      "HOSPICE_ELIGIBILITY_SUPPORT",
+      "medical complications documented within first days"
+    ],
+    [
+      "Stroke",
+      "LAB",
+      "coagulation panel (pt/inr, aptt)"
+    ],
+    [
+      "Stroke",
+      "MEDICATION",
+      "antiplatelet therapy"
+    ],
+    [
+      "Stroke",
+      "MEDICATION",
+      "antiplatelet therapy (e.g. aspirin)"
+    ],
+    [
+      "Stroke",
+      "NUTRITIONAL_IMPACT",
+      "dysphagia-related intake reduction"
+    ],
+    [
+      "Stroke",
+      "PROGNOSTIC_INDICATOR",
+      "absence of functional improvement"
+    ],
+    [
+      "Stroke",
+      "PROGNOSTIC_INDICATOR",
+      "large lesion volume/brainstem involvement"
+    ],
+    [
+      "Stroke",
+      "PROGNOSTIC_INDICATOR",
+      "persistent coma/severely depressed consciousness"
+    ],
+    [
+      "Stroke",
+      "PSYCHOSOCIAL_CONCERN",
+      "caregiver burden"
+    ],
+    [
+      "Stroke",
+      "PSYCHOSOCIAL_CONCERN",
+      "loss of independence"
+    ],
+    [
+      "Stroke",
+      "SPIRITUAL_CONCERN",
+      "sudden loss of function/meaning"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "acalculia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "agraphesthesia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "agraphia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "altered mental status"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "altered taste"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "anosognosia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "aphasia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "apraxia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "astereognosis"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "ataxia/imbalance"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "autonomic instability"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "central post-stroke pain"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "cranial-nerve deficit"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "hemianopia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "hemiparesis"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "hemiplegia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "impaired attention"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "impaired executive function"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "impaired judgment"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "left-right disorientation"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "memory impairment"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "nystagmus"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "personality or behavioral change"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "quadriparesis"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "quadriplegia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "sudden speech disturbance"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "sudden vision loss"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "sudden vision loss/field cut"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "urinary incontinence"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "vision loss"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "visual agnosia"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "visual field deficit"
+    ],
+    [
+      "Stroke",
+      "SYMPTOM",
+      "visual hallucination"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "occupational therapy"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "physical therapy"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "positioning and skin-integrity care"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "speech therapy"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "swallow evaluation and dysphagia management"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "swallow therapy"
+    ],
+    [
+      "Stroke",
+      "TREATMENT",
+      "thrombolytic therapy"
+    ],
+    [
+      "Stroke",
+      "TREATMENT_LIMITATION",
+      "aggressive care declined"
+    ],
+    [
+      "Stroke",
+      "TREATMENT_LIMITATION",
+      "not a thrombolysis/thrombectomy candidate"
+    ],
+    [
+      "Stroke",
+      "TREATMENT_LIMITATION",
+      "rehabilitation not tolerated"
+    ],
+    [
+      "Stroke",
+      "TREATMENT_LIMITATION",
+      "thrombectomy not a candidate"
+    ],
+    [
+      "Stroke",
+      "TREATMENT_LIMITATION",
+      "thrombolysis not a candidate"
+    ]
+  ],
+  "unexpected_variants": [
+    [
+      "Contracture",
+      "MECHANISM",
+      "immobility etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "joint disease etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "pain-limited movement etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "prolonged positioning etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "soft-tissue shortening etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "spasticity etiology"
+    ],
+    [
+      "Contracture",
+      "MECHANISM",
+      "upper-motor-neuron injury etiology"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PATHOLOGICAL_SUBTYPE",
+      "alzheimer's pattern"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PATHOLOGICAL_SUBTYPE",
+      "delirium differentiation"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PATHOLOGICAL_SUBTYPE",
+      "frontotemporal-pattern review"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PATHOLOGICAL_SUBTYPE",
+      "lewy-body-pattern review"
+    ],
+    [
+      "Dementia Due To Alzheimer's Disease",
+      "PATHOLOGICAL_SUBTYPE",
+      "vascular-pattern review"
+    ],
+    [
+      "Hemiparesis",
+      "ANATOMICAL_LOCATION",
+      "brainstem lesion origin review"
+    ],
+    [
+      "Hemiparesis",
+      "ANATOMICAL_LOCATION",
+      "cerebral lesion origin review"
+    ],
+    [
+      "Hemiparesis",
+      "ANATOMICAL_LOCATION",
+      "neuromuscular origin review"
+    ],
+    [
+      "Hemiparesis",
+      "ANATOMICAL_LOCATION",
+      "peripheral-nerve origin review"
+    ],
+    [
+      "Hemiparesis",
+      "ANATOMICAL_LOCATION",
+      "spinal cord lesion origin review"
+    ],
+    [
+      "Hemiparesis",
+      "DOMINANCE",
+      "dominant-side functional loss"
+    ],
+    [
+      "Hemiparesis",
+      "DOMINANCE",
+      "non-dominant-side functional loss"
+    ],
+    [
+      "Hemiparesis",
+      "SEVERITY_CLASS",
+      "hemiplegia differentiation"
+    ],
+    [
+      "Hemiplegia",
+      "ANATOMICAL_LOCATION",
+      "brainstem lesion origin review"
+    ],
+    [
+      "Hemiplegia",
+      "ANATOMICAL_LOCATION",
+      "cerebral lesion origin review"
+    ],
+    [
+      "Hemiplegia",
+      "ANATOMICAL_LOCATION",
+      "neuromuscular origin review"
+    ],
+    [
+      "Hemiplegia",
+      "ANATOMICAL_LOCATION",
+      "peripheral-nerve origin review"
+    ],
+    [
+      "Hemiplegia",
+      "ANATOMICAL_LOCATION",
+      "spinal cord lesion origin review"
+    ],
+    [
+      "Hemiplegia",
+      "DOMINANCE",
+      "dominant-side functional loss"
+    ],
+    [
+      "Hemiplegia",
+      "DOMINANCE",
+      "non-dominant-side functional loss"
+    ],
+    [
+      "Hemiplegia",
+      "LATERALITY",
+      "bilateral weakness"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "alzheimer's differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "delirium differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "frontotemporal dementia differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "general decline pattern"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "lewy body dementia differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "medication-related cognitive impairment differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "metabolic encephalopathy differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "mixed dementia differentiation"
+    ],
+    [
+      "Senile Degeneration of Brain",
+      "PATHOLOGICAL_SUBTYPE",
+      "vascular dementia differentiation"
+    ],
+    [
+      "Stroke",
+      "ANATOMICAL_LOCATION",
+      "lobar hemorrhage"
+    ],
+    [
+      "Stroke",
+      "CORTICAL_LOCATION",
+      "dominant-parietal stroke"
+    ],
+    [
+      "Stroke",
+      "CORTICAL_LOCATION",
+      "non-dominant-parietal stroke"
+    ],
+    [
+      "Stroke",
+      "DEEP_STRUCTURE",
+      "basal ganglia stroke"
+    ],
+    [
+      "Stroke",
+      "DEEP_STRUCTURE",
+      "caudate stroke"
+    ],
+    [
+      "Stroke",
+      "DEEP_STRUCTURE",
+      "putaminal hemorrhage"
+    ],
+    [
+      "Stroke",
+      "DEEP_STRUCTURE",
+      "thalamic hemorrhage"
+    ],
+    [
+      "Stroke",
+      "DEEP_STRUCTURE",
+      "thalamic stroke"
+    ],
+    [
+      "Stroke",
+      "LATERALITY",
+      "left-sided neurologic deficit"
+    ],
+    [
+      "Stroke",
+      "LATERALITY",
+      "right-sided neurologic deficit"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "coma"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "locked-in syndrome"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "minimally conscious state"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "persistent coma"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "persistent vegetative state"
+    ],
+    [
+      "Stroke",
+      "PHYSIOLOGICAL_PHENOTYPE",
+      "vegetative state"
+    ],
+    [
+      "Stroke",
+      "RESIDUAL_DEFICIT_STATE",
+      "progressive neurologic decline"
+    ],
+    [
+      "Stroke",
+      "RESIDUAL_DEFICIT_STATE",
+      "residual deficit following stroke"
+    ],
+    [
+      "Stroke",
+      "RESIDUAL_DEFICIT_STATE",
+      "resolved deficit"
+    ],
+    [
+      "Stroke",
+      "SEVERITY_CLASS",
+      "large mca stroke"
+    ],
+    [
+      "Stroke",
+      "SEVERITY_CLASS",
+      "multiple cerebral infarctions"
+    ]
+  ]
 }

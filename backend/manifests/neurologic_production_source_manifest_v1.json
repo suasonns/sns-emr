@@ -280,43 +280,43 @@
           "name": "Recurrent Stroke"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Large-Territory Stroke"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Large Anterior Infarction"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Bihemispheric Infarction"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Malignant Cerebral Infarction"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Cerebral Edema"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Midline Shift"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Obstructive Hydrocephalus"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Intraventricular Extension"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Depressed Consciousness"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Stroke With Persistent Coma"
         },
         {
@@ -1371,7 +1371,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1379,7 +1380,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1387,7 +1389,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1395,7 +1398,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1403,7 +1407,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1411,7 +1416,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1419,7 +1425,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1427,7 +1434,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1435,7 +1443,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1443,7 +1452,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1451,7 +1461,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1459,7 +1470,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1467,7 +1479,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1475,7 +1488,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1483,7 +1497,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1491,7 +1506,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1499,7 +1515,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1507,7 +1524,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -1515,7 +1533,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
         },
         {
           "domain": "TREATMENT",
@@ -1523,7 +1542,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1531,7 +1551,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1539,7 +1560,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1547,7 +1569,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -1555,7 +1578,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "MEDICATION",
@@ -1867,7 +1891,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "OUTSIDE_WINDOW"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1875,7 +1900,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "CONTRAINDICATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1883,7 +1909,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1891,7 +1918,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1899,7 +1927,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1907,7 +1936,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "CONTRAINDICATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1915,7 +1945,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1923,7 +1954,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1931,7 +1963,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1939,7 +1972,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1947,7 +1981,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -1955,7 +1990,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
         },
         {
           "domain": "END_STAGE_FINDING",
@@ -3417,15 +3453,15 @@
           "name": "Bilateral Hemiplegia"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Complete Hemiplegia"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Spastic Hemiplegia"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Flaccid Hemiplegia"
         },
         {
@@ -3664,7 +3700,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3672,7 +3709,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3680,7 +3718,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3688,7 +3727,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3696,7 +3736,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3704,7 +3745,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -3712,7 +3754,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
         },
         {
           "domain": "MEDICATION",
@@ -3808,7 +3851,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -3816,7 +3860,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -3824,7 +3869,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -3832,7 +3878,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
         }
       ],
       "applicability": []
@@ -3853,15 +3900,15 @@
           "name": "Bilateral Weakness"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Mild Hemiparesis"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Moderate Hemiparesis"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Severe Hemiparesis"
         },
         {
@@ -4068,7 +4115,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4076,7 +4124,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4084,7 +4133,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4092,7 +4142,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4100,7 +4151,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4108,7 +4160,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "MEDICATION",
@@ -4193,19 +4246,19 @@
           "name": "Soft-Tissue-Shortening Contracture"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Mild Range-of-Motion Limitation"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Moderate Range-of-Motion Limitation"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Fixed Contracture"
         },
         {
-          "dimension": "SEVERITY_PHENOTYPE",
+          "dimension": "SEVERITY_CLASS",
           "name": "Multi-Joint Contracture"
         }
       ],
@@ -4392,7 +4445,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -4400,7 +4454,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4408,7 +4463,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4416,7 +4472,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -4424,7 +4481,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -4432,7 +4490,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
         },
         {
           "domain": "TREATMENT",
@@ -4440,7 +4499,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4448,7 +4508,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4456,7 +4517,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4464,7 +4526,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4472,7 +4535,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4480,7 +4544,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -4488,7 +4553,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
         }
       ],
       "applicability": []
@@ -4509,19 +4575,19 @@
           "name": "Severe Alzheimer's Dementia"
         },
         {
-          "dimension": "SUBTYPE",
+          "dimension": "PATHOLOGICAL_SUBTYPE",
           "name": "Early-Onset Alzheimer's Disease"
         },
         {
-          "dimension": "SUBTYPE",
+          "dimension": "PATHOLOGICAL_SUBTYPE",
           "name": "Late-Onset Alzheimer's Disease"
         },
         {
-          "dimension": "SUBTYPE",
+          "dimension": "PATHOLOGICAL_SUBTYPE",
           "name": "Alzheimer's Disease With Behavioral Disturbance"
         },
         {
-          "dimension": "SUBTYPE",
+          "dimension": "PATHOLOGICAL_SUBTYPE",
           "name": "Alzheimer's Disease Without Behavioral Disturbance"
         },
         {
@@ -5224,7 +5290,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -5232,7 +5299,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -5240,7 +5308,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -5248,7 +5317,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DISCONTINUED"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -5256,7 +5326,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_BENEFICIAL"
         },
         {
           "domain": "TREATMENT_LIMITATION",
@@ -5264,7 +5335,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
         },
         {
           "domain": "END_STAGE_FINDING",
@@ -5752,7 +5824,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5760,7 +5833,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5768,7 +5842,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5776,7 +5851,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5784,7 +5860,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5792,7 +5869,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5800,7 +5878,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
         },
         {
           "domain": "TREATMENT",
@@ -5808,7 +5887,8 @@
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
-          "patient_fact_requires_evidence": true
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
         },
         {
           "domain": "FUNCTIONAL_IMPACT",
