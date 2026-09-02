@@ -1,0 +1,268 @@
+{
+  "manifest_version": 1,
+  "title": "Breast Cancer Production Identity Manifest v1",
+  "description": "The first disease-specific Oncology manifest. Resolves the existing canonical 'Breast Cancer' disease created by the Oncology Foundation (PR #45) and adds ONLY source-supported identity knowledge from the NCI cancer-types catalog: one new Tier 4 PATHOLOGICAL_SUBTYPE variant (Ductal Carcinoma In Situ), seven Tier 5 identity concepts, and four explicit, individually-declared applicability mappings. Does not create a universal cancer manifest, does not copy any of this content to another cancer disease, and does not create stage, grade, histology, molecular-subtype, metastatic-destination, symptom, treatment, medication, or prognosis knowledge -- none of that is supported by the approved source for this PR.",
+  "source_authority": [
+    "Cancer-Types-NCI-08.22.2021.pdf"
+  ],
+  "scope": {
+    "body_system": "Oncology",
+    "family": "Solid Malignancies",
+    "disease": "Breast Cancer"
+  },
+  "required_existing_disease": {
+    "disease": "Breast Cancer",
+    "family": "Solid Malignancies",
+    "disease_category": "NCI_CANCER_CATALOG",
+    "note": "Must already exist from the Oncology Foundation import (PR #45). This importer resolves it by exact name and rejects creating a duplicate; it never creates a new Breast Cancer disease row."
+  },
+  "required_existing_variants": [
+    {"dimension": "PRIMARY_SITE", "name": "Breast Primary Site"},
+    {"dimension": "METASTATIC_STATE", "name": "Localized Disease"},
+    {"dimension": "METASTATIC_STATE", "name": "Metastatic Disease"},
+    {"dimension": "RECURRENCE_STATE", "name": "Recurrent Disease"}
+  ],
+  "new_variants": [
+    {
+      "dimension": "PATHOLOGICAL_SUBTYPE",
+      "name": "Ductal Carcinoma In Situ",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "evidence_requirement": "Requires patient-record pathology evidence (biopsy/pathology report) before this PATHOLOGICAL_SUBTYPE variant is ever treated as a confirmed patient-specific fact. Diagnosis alone never establishes this variant, and it never by itself establishes invasive disease, stage, or hospice eligibility."
+    }
+  ],
+  "unsupported_variants_not_created": {
+    "note": "The approved source (Cancer-Types-NCI-08.22.2021.pdf) does not define these for Breast Cancer in this PR. None of the following are created:",
+    "LATERALITY": "not defined by the current source (no left/right/bilateral distinction)",
+    "STAGE": "not defined by the current source for this PR",
+    "GRADE": "not defined by the current source for this PR",
+    "HISTOLOGY": "not defined by the current source for this PR (beyond the approved PATHOLOGICAL_SUBTYPE Ductal Carcinoma In Situ)",
+    "MOLECULAR_SUBTYPE": "not defined by the current source for this PR",
+    "METASTATIC_DESTINATION": "not defined by the current source for this PR",
+    "CLINICAL_CONTEXT": "no such variant dimension exists in the schema; Male Breast Cancer and Pregnancy and Breast Cancer are represented as Tier 5 context concepts instead, never as a manufactured Tier 4 dimension"
+  },
+  "concepts": [
+    {
+      "domain": "FINDING",
+      "name": "Breast Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician diagnosis in the patient record",
+        "never auto-confirmed from this ontology concept alone"
+      ],
+      "description": "Breast Cancer identity concept from the NCI cancer-types catalog. Authorizes cancer-identity knowledge only; never auto-confirms diagnosis, stage, histology, molecular subtype, treatment, or hospice eligibility."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Ductal Carcinoma In Situ",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented pathology evidence in the patient record",
+        "never auto-confirmed from this ontology concept alone",
+        "never treated as invasive breast cancer"
+      ],
+      "description": "Ductal Carcinoma In Situ identity concept from the NCI cancer-types catalog. Stored separately from, and never collapsed into, invasive Breast Cancer."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Male Breast Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician diagnosis in the patient record",
+        "never inferred from any patient sex or gender field",
+        "never auto-confirmed from this ontology concept alone"
+      ],
+      "description": "Male Breast Cancer identity concept from the NCI cancer-types catalog. Represents a documented cancer-identity fact only; never infers, sets, or reads patient sex or gender."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Pregnancy and Breast Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician diagnosis in the patient record",
+        "never inferred from any current pregnancy status",
+        "never auto-confirmed from this ontology concept alone"
+      ],
+      "description": "Pregnancy and Breast Cancer identity concept from the NCI cancer-types catalog. Represents a documented cancer-identity fact only; never infers or asserts current pregnancy."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Localized Breast Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Localized Disease state to Breast Cancer specifically."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Metastatic Breast Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone",
+        "never establishes a metastatic destination"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Metastatic Disease state to Breast Cancer specifically. Never establishes a metastatic destination, which this PR does not create."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Recurrent Breast Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "evidence_requirements": [
+        "documented clinician evidence in the patient record",
+        "never asserted from disease diagnosis alone",
+        "never automatically equivalent to Metastatic Breast Cancer"
+      ],
+      "description": "Foundation-state identity concept applying the Oncology Foundation's Recurrent Disease state to Breast Cancer specifically. Recurrence alone never automatically means metastatic disease."
+    }
+  ],
+  "applicability": [
+    {
+      "variant_dimension": "PATHOLOGICAL_SUBTYPE",
+      "variant": "Ductal Carcinoma In Situ",
+      "concept_domain": "FINDING",
+      "concept": "Ductal Carcinoma In Situ",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "NCI_CANCER_CATALOG"
+    },
+    {
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Localized Disease",
+      "concept_domain": "FINDING",
+      "concept": "Localized Breast Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    },
+    {
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Metastatic Disease",
+      "concept_domain": "FINDING",
+      "concept": "Metastatic Breast Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    },
+    {
+      "variant_dimension": "RECURRENCE_STATE",
+      "variant": "Recurrent Disease",
+      "concept_domain": "FINDING",
+      "concept": "Recurrent Breast Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "source_classification": "ONCOLOGY_FOUNDATION"
+    }
+  ],
+  "unattached_concepts_not_given_applicability": {
+    "note": "Breast Cancer (base identity), Male Breast Cancer, and Pregnancy and Breast Cancer are intentionally given ZERO applicability edges in this PR. No approved Tier 4 variant dimension exists for 'clinical context' (sex/gender/pregnancy), and manufacturing one, or substituting PATHOLOGICAL_SUBTYPE/LATERALITY/TREATMENT_STATE/PHYSIOLOGICAL_PHENOTYPE for that purpose, is explicitly forbidden.",
+    "concepts": ["Breast Cancer", "Male Breast Cancer", "Pregnancy and Breast Cancer"]
+  },
+  "differentiation_guards": [
+    {
+      "guard_name": "Breast Cancer IS_NOT Breast Primary Site",
+      "assertions": [
+        {"assert": "disease_exists", "name": "Breast Cancer"},
+        {"assert": "variant_exists", "disease": "Breast Cancer", "dimension": "PRIMARY_SITE", "name": "Breast Primary Site"},
+        {"assert": "disease_absent", "name": "Breast Primary Site"}
+      ]
+    },
+    {
+      "guard_name": "Ductal Carcinoma In Situ IS_NOT Invasive Breast Cancer",
+      "assertions": [
+        {"assert": "concept_exists", "disease": "Breast Cancer", "domain": "FINDING", "name": "Ductal Carcinoma In Situ"},
+        {"assert": "concept_absent", "disease": "Breast Cancer", "domain": "FINDING", "name": "Invasive Breast Cancer"},
+        {"assert": "disease_absent", "name": "Invasive Breast Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Male Breast Cancer DOES_NOT_INFER Patient Sex Or Gender",
+      "assertions": [
+        {"assert": "concept_exists", "disease": "Breast Cancer", "domain": "FINDING", "name": "Male Breast Cancer"},
+        {"assert": "concept_requires_evidence", "disease": "Breast Cancer", "domain": "FINDING", "name": "Male Breast Cancer"},
+        {"assert": "concept_has_no_applicability", "disease": "Breast Cancer", "domain": "FINDING", "name": "Male Breast Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Pregnancy and Breast Cancer DOES_NOT_INFER Current Pregnancy",
+      "assertions": [
+        {"assert": "concept_exists", "disease": "Breast Cancer", "domain": "FINDING", "name": "Pregnancy and Breast Cancer"},
+        {"assert": "concept_requires_evidence", "disease": "Breast Cancer", "domain": "FINDING", "name": "Pregnancy and Breast Cancer"},
+        {"assert": "concept_has_no_applicability", "disease": "Breast Cancer", "domain": "FINDING", "name": "Pregnancy and Breast Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Localized Breast Cancer IS_NOT Metastatic Breast Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Breast Cancer", "domain": "FINDING", "name_a": "Localized Breast Cancer", "name_b": "Metastatic Breast Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Recurrent Breast Cancer IS_NOT Automatically Metastatic Breast Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Breast Cancer", "domain": "FINDING", "name_a": "Recurrent Breast Cancer", "name_b": "Metastatic Breast Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Metastatic Breast Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Breast Cancer", "dimension": "METASTATIC_DESTINATION"}
+      ]
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "assertions": [
+        {"assert": "no_concept_in_domain", "disease": "Breast Cancer", "domain": "HOSPICE_ELIGIBILITY_SUPPORT"},
+        {"assert": "no_applicability_of_type_for_disease", "disease": "Breast Cancer", "applicability_type": "HOSPICE_SUPPORT_FOR"}
+      ]
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Breast Cancer", "dimension": "STAGE"}
+      ]
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Breast Cancer", "dimension": "HISTOLOGY"}
+      ]
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Breast Cancer", "dimension": "MOLECULAR_SUBTYPE"}
+      ]
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Treatment",
+      "assertions": [
+        {"assert": "no_concept_in_domain", "disease": "Breast Cancer", "domain": "TREATMENT"},
+        {"assert": "no_concept_in_domain", "disease": "Breast Cancer", "domain": "TREATMENT_LIMITATION"}
+      ]
+    }
+  ],
+  "summary": {
+    "canonical_disease_count": 1,
+    "new_variants_count": 1,
+    "concepts_count": 7,
+    "applicability_count": 4,
+    "differentiation_guards_count": 12
+  }
+}
