@@ -1,0 +1,170 @@
+{
+  "manifest_id": "colorectal_rectal_cancer_production_identity_manifest_v1",
+  "colorectal_cancer_canonical_disease_count": 1,
+  "rectal_cancer_canonical_disease_count": 1,
+  "colon_cancer_canonical_disease_count": 0,
+  "duplicate_canonical_disease_count": 0,
+  "variants_by_dimension": {
+    "METASTATIC_STATE": 4,
+    "PRIMARY_SITE": 2,
+    "RECURRENCE_STATE": 2
+  },
+  "concepts_by_domain": {
+    "FINDING": 12
+  },
+  "applicability_by_type": {
+    "MAY_OCCUR_WITH": 1,
+    "APPLIES_TO": 7
+  },
+  "expected_new_variants_count": 4,
+  "stored_new_variants_count": 4,
+  "missing_variants": [],
+  "unsupported_variants": [],
+  "unsupported_variant_count": 0,
+  "expected_concepts_count": 9,
+  "stored_concepts_count": 14,
+  "missing_concepts": [],
+  "unexpected_concepts": [],
+  "foundation_inherited_concepts": [
+    [
+      "Colorectal Cancer",
+      "FINDING",
+      "distant metastatic disease"
+    ],
+    [
+      "Colorectal Cancer",
+      "FINDING",
+      "metastatic disease"
+    ],
+    [
+      "Colorectal Cancer",
+      "FINDING",
+      "regional spread"
+    ],
+    [
+      "Colorectal Cancer",
+      "PROGNOSTIC_INDICATOR",
+      "progressive disease"
+    ],
+    [
+      "Colorectal Cancer",
+      "PROGNOSTIC_INDICATOR",
+      "worsening clinical status"
+    ]
+  ],
+  "expected_applicability_count": 7,
+  "stored_applicability_count": 8,
+  "missing_applicability": [],
+  "undeclared_applicability": [],
+  "undeclared_applicability_count": 0,
+  "foundation_inherited_applicability": [
+    [
+      "Colorectal Cancer",
+      "METASTATIC_STATE",
+      "Metastatic Disease",
+      "FINDING",
+      "Metastatic Disease",
+      "MAY_OCCUR_WITH"
+    ]
+  ],
+  "evidence_rule_coverage": {
+    "covered": 9,
+    "expected": 9,
+    "missing": []
+  },
+  "source_provenance_coverage": {
+    "covered": 9,
+    "expected": 9
+  },
+  "source_classification_coverage": {
+    "covered": 9,
+    "expected": 9
+  },
+  "differentiation_guard_results": [
+    {
+      "guard_name": "Colorectal Cancer IS_NOT Rectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Colorectal Cancer IS_NOT Colorectal Primary Site",
+      "passed": true
+    },
+    {
+      "guard_name": "Rectal Cancer IS_NOT Rectal Primary Site",
+      "passed": true
+    },
+    {
+      "guard_name": "Colon and Rectal Cancer DOES_NOT_CREATE Colon Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Colorectal Cancer DOES_NOT_INFER Rectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Rectal Cancer DOES_NOT_INFER Colon Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Localized Colorectal Cancer IS_NOT Metastatic Colorectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Recurrent Colorectal Cancer IS_NOT Automatically Metastatic Colorectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Localized Rectal Cancer IS_NOT Metastatic Rectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Recurrent Rectal Cancer IS_NOT Automatically Metastatic Rectal Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Metastatic Colorectal Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "passed": true
+    },
+    {
+      "guard_name": "Metastatic Rectal Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "passed": true
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "passed": true
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "passed": true
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "passed": true
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "passed": true
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "passed": true
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "passed": true
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Prognosis",
+      "passed": true
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "passed": true
+    }
+  ],
+  "orphan_count": 0,
+  "cycle_count": 0,
+  "unresolved_concept_count": 0,
+  "second_run_new_rows": 0,
+  "changes_outside_oncology": []
+}
