@@ -1,0 +1,66 @@
+{
+  "manifest_id": "Functional Assessment Framework v1",
+  "expected_disease": "Functional Assessment Framework",
+  "stored_disease": "Functional Assessment Framework",
+  "expected_scales_count": 5,
+  "stored_scales_count": 5,
+  "expected_variants_count": 45,
+  "stored_variants_count": 45,
+  "missing_variants": [],
+  "unexpected_variants": [],
+  "expected_concepts_count": 5,
+  "stored_concepts_count": 5,
+  "missing_concepts": [],
+  "unexpected_concepts": [],
+  "expected_applicability_count": 45,
+  "stored_applicability_count": 45,
+  "missing_applicability": [],
+  "unexpected_applicability": [],
+  "evidence_rule_coverage": {
+    "covered": 5,
+    "expected": 5,
+    "missing": []
+  },
+  "source_provenance_coverage": {
+    "covered": 5,
+    "expected": 5
+  },
+  "every_score_level_has_full_interpretation_not_number_only": true,
+  "orphan_count": 0,
+  "cycle_count": 0,
+  "unresolved_concept_count": 0,
+  "second_run_new_rows": 0,
+  "changes_outside_functional_assessment": [],
+  "differentiation_guard_results": [
+    {
+      "guard_name": "functional_assessment_framework_disease_exists_once",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "five_scales_remain_distinct_concepts",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "no_score_level_collapsed_across_or_within_scales",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "every_score_level_has_full_interpretation_not_number_only",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "every_scale_concept_requires_evidence",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "no_score_alone_establishes_eligibility",
+      "passed": true,
+      "detail": null
+    }
+  ]
+}
