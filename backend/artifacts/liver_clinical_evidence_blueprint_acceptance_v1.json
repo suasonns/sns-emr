@@ -1,0 +1,283 @@
+{
+  "manifest_version": null,
+  "extends_diseases": [
+    "End Stage Liver Disease",
+    "Chronic Liver Disease"
+  ],
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 8,
+    "stored": 8,
+    "missing": [],
+    "pre_existing_pr41_concepts_in_shared_domains": [
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "ascites"
+      ],
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "hepatic encephalopathy"
+      ],
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "hepatorenal syndrome"
+      ],
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "recurrent variceal bleeding"
+      ],
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "refractory ascites"
+      ],
+      [
+        "End Stage Liver Disease",
+        "COMPLICATION",
+        "spontaneous bacterial peritonitis"
+      ],
+      [
+        "End Stage Liver Disease",
+        "FINDING",
+        "abnormal liver function tests"
+      ],
+      [
+        "End Stage Liver Disease",
+        "FINDING",
+        "elevated inr"
+      ],
+      [
+        "End Stage Liver Disease",
+        "FINDING",
+        "low serum albumin"
+      ],
+      [
+        "End Stage Liver Disease",
+        "FINDING",
+        "prolonged prothrombin time"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "adl dependence"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "elevated inr"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "end stage liver disease"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hepatic encephalopathy"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hepatorenal syndrome"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "low serum albumin"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "prolonged prothrombin time"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "recurrent variceal bleeding"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "refractory ascites"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "spontaneous bacterial peritonitis"
+      ],
+      [
+        "End Stage Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "weight loss"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "ascites"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "hepatic encephalopathy"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "hepatorenal syndrome"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "recurrent variceal bleeding"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "refractory ascites"
+      ],
+      [
+        "Chronic Liver Disease",
+        "COMPLICATION",
+        "spontaneous bacterial peritonitis"
+      ],
+      [
+        "Chronic Liver Disease",
+        "FINDING",
+        "abnormal liver function tests"
+      ],
+      [
+        "Chronic Liver Disease",
+        "FINDING",
+        "elevated inr"
+      ],
+      [
+        "Chronic Liver Disease",
+        "FINDING",
+        "low serum albumin"
+      ],
+      [
+        "Chronic Liver Disease",
+        "FINDING",
+        "prolonged prothrombin time"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "adl dependence"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "elevated inr"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "end stage liver disease"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hepatic encephalopathy"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hepatorenal syndrome"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "low serum albumin"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "prolonged prothrombin time"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "recurrent variceal bleeding"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "refractory ascites"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "spontaneous bacterial peritonitis"
+      ],
+      [
+        "Chronic Liver Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "weight loss"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 8,
+    "stored": 8
+  },
+  "functional_assessment_relationships": {
+    "expected": 4,
+    "stored": 4
+  },
+  "recertification_trend_indicators": {
+    "expected": 20,
+    "stored": 20,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 28,
+    "valid": 28
+  },
+  "second_run_new_rows": 0
+}

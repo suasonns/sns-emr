@@ -1,0 +1,233 @@
+{
+  "manifest_id": "liver_clinical_evidence_blueprint_v1",
+  "version": 1,
+  "scope": {
+    "extends_diseases": ["End Stage Liver Disease", "Chronic Liver Disease"],
+    "extends_functional_assessment_framework": "Functional Assessment Framework",
+    "note": "Extension-only. Both diseases were built as mirrored/identical structures by the Liver Production Knowledge Manifest v1 (PR #41, merged) -- this manifest applies every addition identically to both, matching the Pulmonary Clinical Evidence Blueprint's symmetric extension pattern (not the asymmetric Renal pattern)."
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_variants": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "already_present_verified": {
+    "note": "Every requested liver finding/complication/hospice-eligibility-support item except MELD Score, Elevated Serum Bilirubin, Hyponatremia, and Recurrent Liver Disease Hospitalization was verified already present in PR #41 (identically, for both diseases) under an identical name. No duplicate concept was created for any of these.",
+    "mapping": [
+      {"requested": "Recurrent Variceal Bleeding", "existing_concept": "Recurrent Variceal Bleeding (COMPLICATION, already present)"},
+      {"requested": "Refractory Ascites", "existing_concept": "Refractory Ascites (COMPLICATION, already present)"},
+      {"requested": "Spontaneous Bacterial Peritonitis", "existing_concept": "Spontaneous Bacterial Peritonitis (COMPLICATION, already present)"},
+      {"requested": "Hepatorenal Syndrome", "existing_concept": "Hepatorenal Syndrome (COMPLICATION, already present)"},
+      {"requested": "Hepatic Encephalopathy", "existing_concept": "Hepatic Encephalopathy (COMPLICATION, already present)"},
+      {"requested": "Ascites", "existing_concept": "Ascites (COMPLICATION, already present)"},
+      {"requested": "Low Serum Albumin", "existing_concept": "Low Serum Albumin (FINDING, already present)"},
+      {"requested": "Elevated INR", "existing_concept": "Elevated INR (FINDING, already present)"},
+      {"requested": "Prolonged Prothrombin Time", "existing_concept": "Prolonged Prothrombin Time (FINDING, already present)"},
+      {"requested": "Abnormal Liver Function Tests", "existing_concept": "Abnormal Liver Function Tests (FINDING, already present)"},
+      {"requested": "Progressive Functional Decline", "existing_concept": "Progressive Functional Decline (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Progressive Nutritional Decline", "existing_concept": "Progressive Nutritional Decline (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Weight Loss", "existing_concept": "Weight Loss (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "PPS Less Than 70 Percent", "existing_concept": "PPS Less Than 70 Percent (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "KPS Less Than 70 Percent", "existing_concept": "KPS Less Than 70 Percent (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "ADL Dependence", "existing_concept": "ADL Dependence (HOSPICE_ELIGIBILITY_SUPPORT, already present)"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "FINDING",
+      "name": "MELD Score",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Model For End-Stage Liver Disease composite score reflecting severity of hepatic dysfunction. A rising or elevated MELD score supports documentation of progressive liver disease severity; it does not by itself establish terminal prognosis or hospice eligibility."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Elevated Serum Bilirubin",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Elevated total serum bilirubin reflecting worsening hepatic synthetic/excretory function, distinct from the existing Elevated INR, Low Serum Albumin, and Abnormal Liver Function Tests findings. Requires documented patient-record laboratory evidence before being treated as a patient-specific fact."
+    },
+    {
+      "domain": "FINDING",
+      "name": "Hyponatremia",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Low serum sodium associated with advanced/decompensated liver disease and worsening prognosis when present alongside other hepatic decompensation findings. Requires documented patient-record laboratory evidence before being treated as a patient-specific fact."
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Recurrent Liver Disease Hospitalization",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Recurrent hospitalization for complications of liver disease supports documentation of disease severity and recertification review. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    }
+  ],
+  "new_applicability": [
+    {
+      "variant": "Child-Pugh Class C Cirrhosis",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "FINDING",
+      "concept": "MELD Score",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Child-Pugh Class C Cirrhosis",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "FINDING",
+      "concept": "Elevated Serum Bilirubin",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Child-Pugh Class C Cirrhosis",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "FINDING",
+      "concept": "Hyponatremia",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Child-Pugh Class C Cirrhosis",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "Recurrent Liver Disease Hospitalization",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    }
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Liver disease's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Liver disease's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "diseases": ["End Stage Liver Disease", "Chronic Liver Disease"],
+    "trend_indicators": [
+      {
+        "name": "PPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Palliative Performance Scale score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "KPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Karnofsky Performance Status score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "INR Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current INR value, tracked across recertification periods to document worsening hepatic synthetic function."
+      },
+      {
+        "name": "Albumin Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current serum albumin value, tracked across recertification periods to document worsening hepatic synthetic function and nutritional decline."
+      },
+      {
+        "name": "Bilirubin Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current total serum bilirubin value, tracked across recertification periods to document worsening hepatic excretory function."
+      },
+      {
+        "name": "Ascites Episode Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency/severity of ascites episodes (including refractory or recurrent large-volume paracentesis) across recertification periods."
+      },
+      {
+        "name": "Encephalopathy Episode Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency/severity of hepatic encephalopathy episodes across recertification periods."
+      },
+      {
+        "name": "Weight Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current weight, tracked across recertification periods to document nutritional decline."
+      },
+      {
+        "name": "Hospitalization Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency of hospitalization for liver disease complications, tracked across recertification periods."
+      },
+      {
+        "name": "Narrative Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Free-text nurse narrative summarizing overall clinical decline across recertification periods, supporting but never replacing physician-supported prognosis determination."
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    {
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
+      "left": "End Stage Liver Disease",
+      "right": "Chronic Liver Disease"
+    },
+    {
+      "rule": "DO_NOT_CREATE_NEW_DISEASE",
+      "names": ["Alcoholic Cirrhosis", "Non-Alcoholic Cirrhosis", "NASH Cirrhosis", "Hepatitis B Cirrhosis", "Hepatitis C Cirrhosis"]
+    },
+    {
+      "rule": "DO_NOT_DUPLICATE_EXISTING_BLEEDING_CONCEPT",
+      "name": "Recurrent Variceal Bleeding"
+    },
+    {
+      "rule": "NO_DUPLICATE_FAF_SCALE_DEFINITIONS",
+      "scales": ["PPS - Palliative Performance Scale", "KPS - Karnofsky Performance Status"]
+    }
+  ],
+  "summary": {
+    "canonical_diseases_extended": 2,
+    "new_concepts_per_disease": 4,
+    "new_concepts_total": 4,
+    "new_applicability_per_disease": 4,
+    "new_applicability_total": 4,
+    "functional_assessment_relationships_per_disease": 2,
+    "recertification_trend_indicators_per_disease": 10,
+    "no_forced_symmetry": false
+  }
+}
