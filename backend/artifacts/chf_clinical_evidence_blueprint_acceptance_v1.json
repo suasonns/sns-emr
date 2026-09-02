@@ -1,0 +1,142 @@
+{
+  "manifest_version": 1,
+  "extends_disease": "Congestive Heart Failure",
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 10,
+    "stored": 10,
+    "missing": [],
+    "pre_existing_pr38_concepts_in_shared_domains": [
+      [
+        "COMPLICATION",
+        "brain embolism of cardiac origin"
+      ],
+      [
+        "COMPLICATION",
+        "cardiac arrest history"
+      ],
+      [
+        "COMPLICATION",
+        "dementia"
+      ],
+      [
+        "COMPLICATION",
+        "diabetes mellitus"
+      ],
+      [
+        "COMPLICATION",
+        "hiv disease"
+      ],
+      [
+        "COMPLICATION",
+        "liver disease"
+      ],
+      [
+        "COMPLICATION",
+        "neurologic disease"
+      ],
+      [
+        "COMPLICATION",
+        "recurrent infection"
+      ],
+      [
+        "COMPLICATION",
+        "renal failure"
+      ],
+      [
+        "COMPLICATION",
+        "resuscitation history"
+      ],
+      [
+        "COMPLICATION",
+        "treatment resistant supraventricular arrhythmia"
+      ],
+      [
+        "COMPLICATION",
+        "treatment resistant ventricular arrhythmia"
+      ],
+      [
+        "COMPLICATION",
+        "unexplained syncope"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "adl dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "ambulation dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "bathing dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "continence dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "dressing dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "feeding dependence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "progressive functional decline"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "transfer dependence"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "progressive nutritional decline"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "weight loss"
+      ],
+      [
+        "SYMPTOM",
+        "angina at rest"
+      ],
+      [
+        "SYMPTOM",
+        "congestive heart failure symptoms at rest"
+      ],
+      [
+        "SYMPTOM",
+        "dyspnea"
+      ],
+      [
+        "SYMPTOM",
+        "fatigue"
+      ],
+      [
+        "SYMPTOM",
+        "progressive weakness"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 8,
+    "stored": 8
+  },
+  "functional_assessment_relationships": {
+    "expected": 3,
+    "stored": 3
+  },
+  "recertification_trend_indicators": {
+    "expected": 8,
+    "stored": 8,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 18,
+    "valid": 18
+  },
+  "second_run_new_rows": 0
+}
