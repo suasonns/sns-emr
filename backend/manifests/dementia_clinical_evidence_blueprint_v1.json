@@ -1,0 +1,230 @@
+{
+  "manifest_version": 1,
+  "title": "Dementia Clinical Evidence Blueprint v1",
+  "description": "Extension-only manifest. Does NOT create a new disease, new FAST stages, or new PPS/KPS definitions -- 'Dementia Due To Alzheimer's Disease' under the Neurologic System / Degenerative Brain Disorders family already exists (PR #44, merged) with its own self-contained FAST Stage 7 variant and KPS/PPS/ADL HOSPICE_ELIGIBILITY_SUPPORT concepts, plus every one of the major complications the source guidance identifies (Aspiration Pneumonia, Pyelonephritis, Septicemia [clinically equivalent to Sepsis], Stage 3-4 Pressure Ulcers, Recurrent Fever After Antibiotics, Ten Percent Weight Loss In Six Months [clinically equivalent to >10% weight loss], Serum Albumin Less Than 2.5 g/dL). This manifest adds only what PR #44 does not already contain: (1) 7 missing atomic dementia concepts (Six Or Fewer Intelligible Words, Progressive Ambulation Loss, Progressive Transfer Dependence, Progressive Feeding Dependence, Progressive Weight Loss, Nonspecific Nutritional Decline, Recurrent Aspiration Events) with provenance metadata; (2) three cross-disease OntologyRelationship edges linking Dementia's existing FAST Stage 7 / PPS Less Than 70 Percent / KPS Less Than 70 Percent concepts to the corresponding Functional Assessment Framework v1 (PR #49, merged) scale-definition concepts, so a nurse viewing Dementia evidence can navigate to the full scale interpretation without any assessment definition ever being duplicated; (3) a recertification evidence trend model (10 PROGNOSTIC_INDICATOR concepts covering FAST/PPS/KPS/Speech/Ambulation/Transfer/Weight/Nutrition/Complication History/Narrative trend) for Dementia; (4) a documentation-only AI capability boundary (ai_may / ai_may_not), mirroring the pattern already established in the Functional Assessment Framework v1 and CHF Clinical Evidence Blueprint v1 manifests. No schema, migration, or API changes. No existing PR #44 or PR #49 row is ever modified, renamed, or duplicated.",
+  "source_authority": [
+    "dementia.pdf",
+    "cms guidelines.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Neurologic System",
+    "family": "Degenerative Brain Disorders",
+    "extends_disease": "Dementia Due To Alzheimer's Disease",
+    "extends_functional_assessment_framework": "Functional Assessment Framework"
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_fast_stages": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "content_source_type_allowed": ["USER_DICTATED", "CLINICAL_REFERENCE"],
+  "content_review_status_allowed": ["PENDING_MEDICAL_DIRECTOR_APPROVAL", "APPROVED", "REJECTED"],
+  "already_present_verified": {
+    "note": "Every major complication requested for this PR was verified already present in PR #44 under a clinically-equivalent name. No duplicate concept was created for any of these.",
+    "mapping": [
+      {"requested": "Aspiration Pneumonia", "existing_concept": "Aspiration Pneumonia", "domain": "COMPLICATION"},
+      {"requested": "Pyelonephritis", "existing_concept": "Pyelonephritis", "domain": "COMPLICATION"},
+      {"requested": "Sepsis", "existing_concept": "Septicemia", "domain": "COMPLICATION"},
+      {"requested": "Pressure Ulcers Stage 3-4", "existing_concept": "Stage 3 Pressure Ulcer / Stage 4 Pressure Ulcer", "domain": "END_STAGE_FINDING"},
+      {"requested": "Recurrent Fever After Antibiotics", "existing_concept": "Recurrent Fever After Antibiotics", "domain": "COMPLICATION"},
+      {"requested": "Weight Loss Greater Than 10 Percent", "existing_concept": "Ten Percent Weight Loss In Six Months", "domain": "NUTRITIONAL_IMPACT"},
+      {"requested": "Albumin Less Than 2.5", "existing_concept": "Serum Albumin Less Than 2.5 g/dL", "domain": "LAB"},
+      {"requested": "Loss Of Meaningful Verbal Communication", "existing_concept": "No Consistently Meaningful Verbal Communication", "domain": "FINDING"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "FINDING",
+      "name": "Six Or Fewer Intelligible Words",
+      "description": "A more specific, granular verbal-communication criterion than the existing 'No Consistently Meaningful Verbal Communication' finding: the patient's vocabulary has declined to six or fewer intelligible, distinguishable words over the course of an average day.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FUNCTIONAL_IMPACT",
+      "name": "Progressive Ambulation Loss",
+      "description": "A progression-over-time pattern of declining ambulatory ability (rather than the existing point-in-time 'Unable To Ambulate Without Assistance' finding), supporting functional-decline documentation across serial assessments.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FUNCTIONAL_IMPACT",
+      "name": "Progressive Transfer Dependence",
+      "description": "A progression-over-time pattern of increasing dependence on others for transfers (bed-to-chair, sit-to-stand), not previously modeled in the existing Dementia concept set.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FUNCTIONAL_IMPACT",
+      "name": "Progressive Feeding Dependence",
+      "description": "A progression-over-time pattern of increasing dependence on others for feeding, not previously modeled in the existing Dementia concept set.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "NUTRITIONAL_IMPACT",
+      "name": "Progressive Weight Loss",
+      "description": "An ongoing, progression-over-time pattern of weight loss (distinct from the existing point-in-time 'Ten Percent Weight Loss In Six Months' threshold finding), supporting trend documentation across serial assessments.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "NUTRITIONAL_IMPACT",
+      "name": "Nonspecific Nutritional Decline",
+      "description": "General, non-threshold-based nutritional decline (reduced intake, declining oral acceptance) that may precede or accompany measurable weight loss, relevant to the complete clinical picture even before a specific percentage or lab threshold is met.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Recurrent Aspiration Events",
+      "description": "Repeated episodes of aspiration (coughing/choking with oral intake or witnessed aspiration) that may or may not progress to aspiration pneumonia, distinct from the existing 'Aspiration Pneumonia' complication concept.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "new_applicability": [
+    {"variant": "FAST Stage 7", "concept_domain": "FINDING", "concept": "Six Or Fewer Intelligible Words", "applicability_type": "EXPECTED_WITH"},
+    {"variant": "Dementia Due To Alzheimer's Disease", "concept_domain": "FUNCTIONAL_IMPACT", "concept": "Progressive Ambulation Loss", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "Dementia Due To Alzheimer's Disease", "concept_domain": "FUNCTIONAL_IMPACT", "concept": "Progressive Transfer Dependence", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "Dementia Due To Alzheimer's Disease", "concept_domain": "FUNCTIONAL_IMPACT", "concept": "Progressive Feeding Dependence", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "Dementia Due To Alzheimer's Disease", "concept_domain": "NUTRITIONAL_IMPACT", "concept": "Progressive Weight Loss", "applicability_type": "STRONGLY_ASSOCIATED_WITH"},
+    {"variant": "Dementia Due To Alzheimer's Disease", "concept_domain": "NUTRITIONAL_IMPACT", "concept": "Nonspecific Nutritional Decline", "applicability_type": "MAY_OCCUR_WITH"},
+    {"variant": "FAST Stage 7", "concept_domain": "COMPLICATION", "concept": "Recurrent Aspiration Events", "applicability_type": "STRONGLY_ASSOCIATED_WITH"}
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "FINDING",
+      "chf_concept_name": "FAST Stage 7",
+      "faf_concept_name": "FAST - Functional Assessment Staging Tool",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links Dementia's existing FAST Stage 7 finding to the Functional Assessment Framework's FAST scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links Dementia's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links Dementia's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "disease": "Dementia Due To Alzheimer's Disease",
+    "trend_indicators": [
+      {
+        "name": "FAST Trend",
+        "description": "Comparison of the patient's previous FAST stage to the current FAST stage at recertification; a worsening (higher) stage supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "PPS Trend",
+        "description": "Comparison of the patient's previous PPS score to the current PPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "KPS Trend",
+        "description": "Comparison of the patient's previous KPS score to the current KPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Speech Trend",
+        "description": "Comparison of the patient's verbal communication ability between the previous and current certification periods, documenting progressive loss of meaningful speech.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Ambulation Trend",
+        "description": "Comparison of the patient's ambulatory ability between the previous and current certification periods, documenting progressive ambulation loss.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Transfer Trend",
+        "description": "Comparison of the patient's transfer ability between the previous and current certification periods, documenting progressive transfer dependence.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Weight Trend",
+        "description": "Comparison of the patient's weight between the previous and current certification periods, documenting unintentional weight loss.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Nutrition Trend",
+        "description": "Comparison of the patient's oral intake and nutritional status between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Complication History Trend",
+        "description": "Comparison of the frequency and severity of complications (aspiration events, infections, pressure ulcers) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Narrative Trend",
+        "description": "A structured narrative summary comparing the patient's overall clinical course between the previous and current certification periods, supporting the physician's recertification determination.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "fast_progression_detection",
+      "nutritional_decline_detection",
+      "increasing_dependence_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    "This manifest never creates a new OntologyDisease, OntologyDiseaseFamily, or OntologyBodySystem row -- it resolves the existing Dementia Due To Alzheimer's Disease disease and the existing Functional Assessment Framework disease by exact name and aborts if either is missing.",
+    "This manifest never creates a new OntologyDiseaseVariant row (no new FAST stages).",
+    "This manifest never creates a duplicate FAST/PPS/KPS definition -- it links to PR #44's and PR #49's existing rows via OntologyRelationship only.",
+    "This manifest never duplicates a major complication already present in PR #44 -- see already_present_verified.mapping for the exact clinically-equivalent existing concept each requested item maps to.",
+    "Dementia clinical evidence and functional assessments support functional status documentation, clinical decline documentation, recertification review, and clinical picture development; they do not independently establish diagnosis, prognosis, hospice eligibility, or terminal status."
+  ],
+  "summary": {
+    "extends_disease": "Dementia Due To Alzheimer's Disease",
+    "new_concepts_total": 7,
+    "new_applicability_total": 7,
+    "functional_assessment_relationships_total": 3,
+    "recertification_trend_indicators_total": 10
+  }
+}
