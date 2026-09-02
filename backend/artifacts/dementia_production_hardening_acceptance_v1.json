@@ -1,0 +1,140 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FUNCTIONAL_IMPACT",
+        "name": "Urinary Incontinence"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FUNCTIONAL_IMPACT",
+        "name": "Fecal Incontinence"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "COMPLICATION",
+        "name": "Pyelonephritis"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "COMPLICATION",
+        "name": "Upper Urinary Tract Infection"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "END_STAGE_FINDING",
+        "name": "Stage 3 Pressure Ulcer"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "END_STAGE_FINDING",
+        "name": "Stage 4 Pressure Ulcer"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FINDING",
+        "name": "FAST Stage 7"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Ten Percent Weight Loss In Six Months"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 36,
+    "expected": 36,
+    "missing": []
+  },
+  "expected_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 16,
+    "LCD_NON_DISEASE_SPECIFIC": 4
+  },
+  "expected_applicability_mappings": 20,
+  "expected_concepts": 36,
+  "expected_concepts_by_disease_and_domain": {
+    "Dementia Due To Alzheimer's Disease": {
+      "COMPLICATION": 5,
+      "END_STAGE_FINDING": 2,
+      "FINDING": 2,
+      "FUNCTIONAL_IMPACT": 5,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 20,
+      "LAB": 1,
+      "NUTRITIONAL_IMPACT": 1
+    }
+  },
+  "expected_diseases": [
+    "Dementia Due To Alzheimer's Disease"
+  ],
+  "expected_variants": 2,
+  "expected_variants_by_disease_and_dimension": {
+    "Dementia Due To Alzheimer's Disease": {
+      "DISEASE_PHASE": 1,
+      "STAGE": 1
+    }
+  },
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\dementia_production_hardening_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_exact_lcd_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "source_provenance_coverage": {
+    "covered": 36,
+    "expected": 36
+  },
+  "stored_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 16,
+    "LCD_NON_DISEASE_SPECIFIC": 4
+  },
+  "stored_applicability_mappings": 20,
+  "stored_concepts": 36,
+  "stored_concepts_by_disease_and_domain": {
+    "Dementia Due To Alzheimer's Disease": {
+      "COMPLICATION": 5,
+      "END_STAGE_FINDING": 2,
+      "FINDING": 2,
+      "FUNCTIONAL_IMPACT": 5,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 20,
+      "LAB": 1,
+      "NUTRITIONAL_IMPACT": 1
+    }
+  },
+  "stored_diseases": [
+    "Dementia Due To Alzheimer's Disease"
+  ],
+  "stored_variants": 2,
+  "stored_variants_by_disease_and_dimension": {
+    "Dementia Due To Alzheimer's Disease": {
+      "DISEASE_PHASE": 1,
+      "STAGE": 1
+    }
+  },
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": [],
+  "unresolved_concept_count": 0,
+  "unsupported_general_concepts": []
+}

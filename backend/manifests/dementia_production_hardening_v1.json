@@ -1,0 +1,692 @@
+{
+  "manifest_id": "dementia_production_hardening_v1",
+  "source_authority": [
+    "dementia.pdf",
+    "cms guidelines.pdf",
+    "1.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Neurologic System",
+    "families": [
+      "Degenerative Brain Disorders"
+    ]
+  },
+  "summary": {
+    "canonical_diseases": 1,
+    "total_variants": 2,
+    "total_concepts": 36,
+    "total_applicability_mappings": 20
+  },
+  "diseases": [
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Dementia Due To Alzheimer's Disease"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 7"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "FAST Stage 7",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful terminal FAST staging finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "FAST Stage 7",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'FAST Stage 7' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Unable To Ambulate Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful dependency finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Ambulate Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Unable To Ambulate Without Assistance' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Unable To Dress Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful dependency finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Dress Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Unable To Dress Without Assistance' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Unable To Bathe Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful dependency finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Bathe Without Assistance",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Unable To Bathe Without Assistance' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Urinary Incontinence",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful dependency finding for Dementia Due To Alzheimer's Disease -- stored separately from Fecal Incontinence, never combined.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Urinary Incontinence",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Urinary Incontinence' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Fecal Incontinence",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful dependency finding for Dementia Due To Alzheimer's Disease -- stored separately from Urinary Incontinence, never combined.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Fecal Incontinence",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Fecal Incontinence' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "No Consistently Meaningful Verbal Communication",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful communication-capacity finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "No Consistently Meaningful Verbal Communication",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'No Consistently Meaningful Verbal Communication' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration Pneumonia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful comorbidity finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Aspiration Pneumonia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Aspiration Pneumonia' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pyelonephritis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful comorbidity finding for Dementia Due To Alzheimer's Disease -- stored separately from Upper Urinary Tract Infection, never combined.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Pyelonephritis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Pyelonephritis' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Upper Urinary Tract Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful comorbidity finding for Dementia Due To Alzheimer's Disease -- stored separately from Pyelonephritis, never combined.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Upper Urinary Tract Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Upper Urinary Tract Infection' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Septicemia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful comorbidity finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Septicemia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Septicemia' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Stage 3 Pressure Ulcer",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful end-stage skin-integrity finding for Dementia Due To Alzheimer's Disease -- stored separately from Stage 4 Pressure Ulcer, never combined.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Stage 3 Pressure Ulcer",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Stage 3 Pressure Ulcer' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Stage 4 Pressure Ulcer",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful end-stage skin-integrity finding for Dementia Due To Alzheimer's Disease -- stored separately from Stage 3 Pressure Ulcer, never combined.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Stage 4 Pressure Ulcer",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Stage 4 Pressure Ulcer' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Fever After Antibiotics",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful comorbidity finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Fever After Antibiotics",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Recurrent Fever After Antibiotics' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "diagnosis_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Ten Percent Weight Loss In Six Months",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful nutritional-decline finding for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "weight_data",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Ten Percent Weight Loss In Six Months",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Ten Percent Weight Loss In Six Months' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "weight_data",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Serum Albumin Less Than 2.5 g/dL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful LCD laboratory threshold for Dementia Due To Alzheimer's Disease. Never inferred.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Albumin Less Than 2.5 g/dL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Hospice-eligibility-support role of the exact source-faithful concept 'Serum Albumin Less Than 2.5 g/dL' for Dementia Due To Alzheimer's Disease.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Non-disease-specific hospice-eligibility support concept 'KPS Less Than 70 Percent' -- cannot independently establish eligibility.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Non-disease-specific hospice-eligibility support concept 'PPS Less Than 70 Percent' -- cannot independently establish eligibility.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Non-disease-specific hospice-eligibility support concept 'ADL Dependence' -- cannot independently establish eligibility.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "dementia.pdf",
+          "hospice_support_eligible": true,
+          "description": "Non-disease-specific hospice-eligibility support concept 'Progressive Functional Decline' -- cannot independently establish eligibility.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "FAST Stage 7",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Unable To Ambulate Without Assistance",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Unable To Dress Without Assistance",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Unable To Bathe Without Assistance",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Urinary Incontinence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Fecal Incontinence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "No Consistently Meaningful Verbal Communication",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Aspiration Pneumonia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Pyelonephritis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Upper Urinary Tract Infection",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Septicemia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Stage 3 Pressure Ulcer",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Stage 4 Pressure Ulcer",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Recurrent Fever After Antibiotics",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Ten Percent Weight Loss In Six Months",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Serum Albumin Less Than 2.5 g/dL",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "STAGE",
+          "variant": "FAST Stage 7",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FUNCTIONAL_IMPACT",
+        "name": "Urinary Incontinence"
+      },
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FUNCTIONAL_IMPACT",
+        "name": "Fecal Incontinence"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "COMPLICATION",
+        "name": "Pyelonephritis"
+      },
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "COMPLICATION",
+        "name": "Upper Urinary Tract Infection"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "END_STAGE_FINDING",
+        "name": "Stage 3 Pressure Ulcer"
+      },
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "END_STAGE_FINDING",
+        "name": "Stage 4 Pressure Ulcer"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "FINDING",
+        "name": "FAST Stage 7"
+      },
+      "right": {
+        "disease": "Dementia Due To Alzheimer's Disease",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Ten Percent Weight Loss In Six Months"
+      }
+    }
+  ]
+}
