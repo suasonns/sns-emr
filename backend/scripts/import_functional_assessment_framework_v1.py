@@ -101,7 +101,7 @@ ALLOWED_SOURCE_CLASSIFICATIONS = {
 
 REQUIRED_LEVEL_FIELDS = [
     "score", "display_title", "clinical_meaning", "functional_summary",
-    "hospice_interpretation", "ai_summary",
+    "clinical_examples", "hospice_interpretation", "ai_summary",
 ]
 
 ASSERTION_TYPES = {
@@ -297,6 +297,7 @@ def run(db: Session, manifest: dict | None = None) -> dict:
                 "display_title": level["display_title"],
                 "clinical_meaning": level["clinical_meaning"],
                 "functional_summary": level["functional_summary"],
+                "clinical_examples": level["clinical_examples"],
                 "hospice_interpretation": level["hospice_interpretation"],
                 "ai_summary": level["ai_summary"],
                 "source_reference": level.get("source_reference", scale["source_reference"]),

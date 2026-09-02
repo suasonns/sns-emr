@@ -137,12 +137,57 @@ def test_each_scale_declares_expected_level_count(scale_code, expected_count):
 
 def test_every_level_declares_all_required_interpretation_fields():
     """DO NOT STORE NUMBERS ONLY -- every level must carry score, title,
-    clinical meaning, functional summary, hospice interpretation, and an
-    AI summary."""
+    clinical meaning, functional summary, clinical examples, hospice
+    interpretation, and an AI summary."""
     for scale_code, levels in LEVELS_BY_SCALE.items():
         for level in levels:
             for field in REQUIRED_LEVEL_FIELDS:
                 assert level.get(field), f"{scale_code} {level.get('score')} missing {field}"
+
+
+def test_every_level_declares_a_non_empty_clinical_examples_list():
+    for scale_code, levels in LEVELS_BY_SCALE.items():
+        for level in levels:
+            examples = level["clinical_examples"]
+            assert isinstance(examples, list)
+            assert len(examples) > 0
+            assert all(isinstance(item, str) and item for item in examples)
+
+
+@pytest.mark.parametrize("scale_code,score,expected_examples", [
+    ("PPS", "40", [
+        "MAINLY IN BED",
+        "Unable to perform most activities.",
+        "Extensive assistance required.",
+        "Reduced intake.",
+        "Commonly associated with significant overall decline.",
+        "Documentation review recommended.",
+    ]),
+    ("FAST", "7C", [
+        "Unable to ambulate independently.",
+        "Advanced dementia stage.",
+        "Requires assistance with mobility.",
+        "Documentation review recommended.",
+    ]),
+    ("NYHA", "IV", [
+        "Symptoms at rest.",
+        "Unable to perform physical activity without discomfort.",
+        "Advanced CHF functional impairment.",
+        "Documentation review recommended.",
+    ]),
+    ("ECOG", "3", [
+        "Limited self-care.",
+        "Confined to bed/chair more than half of waking hours.",
+        "Significant functional decline.",
+        "Documentation review recommended.",
+    ]),
+])
+def test_nurse_ux_dictated_clinical_examples_match_verbatim(scale_code, score, expected_examples):
+    """These four score levels' clinical_examples were dictated verbatim
+    by the correction spec's "NURSE UX REQUIREMENT" section -- the nurse
+    must see exactly this content, unaltered."""
+    level = next(lvl for lvl in LEVELS_BY_SCALE[scale_code] if lvl["score"] == score)
+    assert level["clinical_examples"] == expected_examples
 
 
 def test_no_duplicate_score_identity_within_manifest():
