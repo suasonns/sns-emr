@@ -1,0 +1,224 @@
+{
+  "manifest_version": 1,
+  "title": "Renal Clinical Evidence Blueprint v1",
+  "description": "Extension-only manifest. Does NOT create a new disease, variant, or PPS/KPS definition -- 'Acute Renal Failure' and 'Chronic Renal Failure' (both under the Renal System body system, PR #40, merged) already exist as two DISTINCT (non-mirrored) disease identities with different existing concept sets. Chronic Renal Failure already contains Uremia, Oliguria, Intractable Hyperkalemia (as 'Intractable Hyperkalemia Greater Than 7.0' / 'Intractable Hyperkalemia Not Responsive To Treatment'), Uremic Pericarditis, and Hepatorenal Syndrome; Acute Renal Failure does not. Both diseases already contain 'Not Seeking Dialysis' and 'Discontinuing Dialysis' treatment-state variants (clinically equivalent to 'Dialysis Refused' / 'Dialysis Discontinued'). This manifest therefore extends BOTH diseases WITHOUT forcing symmetry -- it adds only what is genuinely missing per disease: (1) 5 atomic FINDING concepts (Uremia, Oliguria, Intractable Hyperkalemia, Uremic Pericarditis, Hepatorenal Syndrome) added ONLY to Acute Renal Failure, which lacks them; (2) 1 new HOSPICE_ELIGIBILITY_SUPPORT concept (Not Candidate For Dialysis) added to BOTH diseases, since neither has a concept for a treating clinician's determination that the patient is not a dialysis candidate (distinct from the patient's own refusal, already covered by 'Not Seeking Dialysis'); (3) cross-disease OntologyRelationship edges linking each disease's existing PPS Less Than 70 Percent / KPS Less Than 70 Percent concepts to the Functional Assessment Framework v1 (PR #49, merged) scale-definition concepts, without duplicating the scale content; (4) a recertification evidence trend model (9 PROGNOSTIC_INDICATOR concepts covering GFR/Creatinine/Potassium/PPS/KPS/Weight/Hospitalization/Symptom/Narrative trend) applied identically to both diseases; (5) a documentation-only AI capability boundary (ai_may / ai_may_not), mirroring the pattern already established in the Functional Assessment Framework v1, CHF, Dementia, and Pulmonary Clinical Evidence Blueprint manifests. No schema, migration, or API changes. No existing PR #40 or PR #49 row is ever modified, renamed, or duplicated.",
+  "source_authority": [
+    "renal.pdf",
+    "cms guidelines.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Renal System",
+    "extends_diseases": [
+      "Acute Renal Failure",
+      "Chronic Renal Failure"
+    ],
+    "extends_functional_assessment_framework": "Functional Assessment Framework"
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_variants": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "no_forced_symmetry": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "content_source_type_allowed": ["USER_DICTATED", "CLINICAL_REFERENCE"],
+  "content_review_status_allowed": ["PENDING_MEDICAL_DIRECTOR_APPROVAL", "APPROVED", "REJECTED"],
+  "already_present_verified": {
+    "note": "Uremia, Oliguria, Intractable Hyperkalemia, Uremic Pericarditis, Hepatorenal Syndrome, 'Not Seeking Dialysis', and 'Discontinuing Dialysis' were verified already present in PR #40's Chronic Renal Failure disease (and the dialysis-related two in Acute Renal Failure as well) under an identical or clinically-equivalent name. No duplicate concept was created for any of these.",
+    "mapping": [
+      {"requested": "Uremia", "existing_concept": "Uremia (Chronic Renal Failure only)", "domain": "FINDING"},
+      {"requested": "Oliguria", "existing_concept": "Oliguria (Chronic Renal Failure only)", "domain": "FINDING"},
+      {"requested": "Intractable Hyperkalemia", "existing_concept": "Intractable Hyperkalemia Greater Than 7.0 / Intractable Hyperkalemia Not Responsive To Treatment (Chronic Renal Failure only)", "domain": "FINDING / COMPLICATION"},
+      {"requested": "Uremic Pericarditis", "existing_concept": "Uremic Pericarditis (Chronic Renal Failure only)", "domain": "FINDING / COMPLICATION"},
+      {"requested": "Hepatorenal Syndrome", "existing_concept": "Hepatorenal Syndrome (Chronic Renal Failure only)", "domain": "FINDING / COMPLICATION"},
+      {"requested": "Fluid Overload", "existing_concept": "Fluid Overload (both diseases)", "domain": "FINDING"},
+      {"requested": "Dialysis Refused", "existing_concept": "Not Seeking Dialysis (both diseases)", "domain": "HOSPICE_ELIGIBILITY_SUPPORT / variant"},
+      {"requested": "Dialysis Discontinued", "existing_concept": "Discontinuing Dialysis (both diseases)", "domain": "HOSPICE_ELIGIBILITY_SUPPORT / variant"},
+      {"requested": "GFR Trend / Creatinine Trend / Potassium Trend", "existing_concept": "GFR Less Than 15 mL/min / Serum Creatinine Greater Than 8.0 mg/dL / Serum Potassium Greater Than 7.0 (static thresholds only, not trend concepts -- these remain distinct and are not duplicated by the new trend indicators below)", "domain": "HOSPICE_ELIGIBILITY_SUPPORT / FINDING"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "FINDING",
+      "name": "Uremia",
+      "diseases": ["Acute Renal Failure"],
+      "description": "Clinical syndrome of toxin accumulation due to severe loss of renal function, producing symptoms such as nausea, confusion, and pruritus -- present in PR #40's Chronic Renal Failure disease but genuinely absent from Acute Renal Failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FINDING",
+      "name": "Oliguria",
+      "diseases": ["Acute Renal Failure"],
+      "description": "Urine output below the threshold expected for adequate renal clearance, a hallmark finding of severe/advancing renal failure -- present in PR #40's Chronic Renal Failure disease but genuinely absent from Acute Renal Failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FINDING",
+      "name": "Intractable Hyperkalemia",
+      "diseases": ["Acute Renal Failure"],
+      "description": "Elevated serum potassium that persists despite treatment, a life-threatening complication of severe renal failure -- present in PR #40's Chronic Renal Failure disease (as 'Intractable Hyperkalemia Greater Than 7.0' / 'Intractable Hyperkalemia Not Responsive To Treatment') but genuinely absent from Acute Renal Failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FINDING",
+      "name": "Uremic Pericarditis",
+      "diseases": ["Acute Renal Failure"],
+      "description": "Pericardial inflammation caused by uremic toxin accumulation, a serious complication of advanced renal failure -- present in PR #40's Chronic Renal Failure disease but genuinely absent from Acute Renal Failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FINDING",
+      "name": "Hepatorenal Syndrome",
+      "diseases": ["Acute Renal Failure"],
+      "description": "Progressive renal failure occurring in the context of severe liver disease, reflecting profound circulatory dysfunction -- present in PR #40's Chronic Renal Failure disease but genuinely absent from Acute Renal Failure.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Not Candidate For Dialysis",
+      "diseases": ["Acute Renal Failure", "Chronic Renal Failure"],
+      "description": "A treating clinician's determination that the patient is not medically appropriate for dialysis, distinct from the patient's own informed refusal (already captured by the existing 'Not Seeking Dialysis' concept/variant) -- genuinely absent from both diseases.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "new_applicability": [
+    {"disease": "Acute Renal Failure", "variant": "Severe Acute Renal Failure", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Uremia", "applicability_type": "MAY_OCCUR_WITH"},
+    {"disease": "Acute Renal Failure", "variant": "Severe Acute Renal Failure", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Oliguria", "applicability_type": "MAY_OCCUR_WITH"},
+    {"disease": "Acute Renal Failure", "variant": "Severe Acute Renal Failure", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Intractable Hyperkalemia", "applicability_type": "MAY_OCCUR_WITH"},
+    {"disease": "Acute Renal Failure", "variant": "Severe Acute Renal Failure", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Uremic Pericarditis", "applicability_type": "MAY_OCCUR_WITH"},
+    {"disease": "Acute Renal Failure", "variant": "Severe Acute Renal Failure", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Hepatorenal Syndrome", "applicability_type": "MAY_OCCUR_WITH"},
+    {"disease": "Acute Renal Failure", "variant": "Not Seeking Dialysis", "variant_dimension": "TREATMENT_STATE", "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT", "concept": "Not Candidate For Dialysis", "applicability_type": "HOSPICE_SUPPORT_FOR"},
+    {"disease": "Chronic Renal Failure", "variant": "Not Seeking Dialysis", "variant_dimension": "TREATMENT_STATE", "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT", "concept": "Not Candidate For Dialysis", "applicability_type": "HOSPICE_SUPPORT_FOR"}
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Renal disease's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Renal disease's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "diseases": [
+      "Acute Renal Failure",
+      "Chronic Renal Failure"
+    ],
+    "trend_indicators": [
+      {
+        "name": "GFR Trend",
+        "description": "Comparison of the patient's glomerular filtration rate between the previous and current certification periods, documenting progressive renal decline.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Creatinine Trend",
+        "description": "Comparison of the patient's serum creatinine between the previous and current certification periods, documenting progressive renal decline.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Potassium Trend",
+        "description": "Comparison of the patient's serum potassium between the previous and current certification periods, documenting worsening or refractory hyperkalemia.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "PPS Trend",
+        "description": "Comparison of the patient's previous PPS score to the current PPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "KPS Trend",
+        "description": "Comparison of the patient's previous KPS score to the current KPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Weight Trend",
+        "description": "Comparison of the patient's weight between the previous and current certification periods, documenting unintentional weight loss or fluid-related weight change.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Hospitalization Trend",
+        "description": "Comparison of the frequency of renal-related hospitalizations between the previous and current certification periods, documenting recurrent hospitalization.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Symptom Trend",
+        "description": "Comparison of overall renal-failure symptom burden (uremia, pruritus, fluid overload, fatigue) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Narrative Trend",
+        "description": "A structured narrative summary comparing the patient's overall clinical course between the previous and current certification periods, supporting the physician's recertification determination.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    "This manifest never creates a new OntologyDisease, OntologyDiseaseFamily, or OntologyBodySystem row -- it resolves the existing Acute Renal Failure, Chronic Renal Failure, and Functional Assessment Framework diseases by exact name and aborts if any is missing.",
+    "This manifest never creates a new OntologyDiseaseVariant row.",
+    "This manifest never creates a duplicate PPS/KPS definition -- it links to PR #40's and PR #49's existing rows via OntologyRelationship only.",
+    "This manifest does NOT force symmetry between Acute Renal Failure and Chronic Renal Failure -- each disease receives only the new_concepts entries whose 'diseases' list names it, reflecting that PR #40 built them as genuinely distinct (non-mirrored) disease identities.",
+    "Renal clinical evidence and functional assessments support functional status documentation, clinical decline documentation, recertification review, and clinical picture development; they do not independently establish diagnosis, prognosis, hospice eligibility, or terminal status."
+  ],
+  "summary": {
+    "extends_diseases": [
+      "Acute Renal Failure",
+      "Chronic Renal Failure"
+    ],
+    "new_concepts_acute_renal_failure": 6,
+    "new_concepts_chronic_renal_failure": 1,
+    "new_applicability_total": 7,
+    "functional_assessment_relationships_per_disease": 2,
+    "recertification_trend_indicators_per_disease": 9,
+    "diseases_extended": 2
+  }
+}
