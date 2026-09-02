@@ -1,0 +1,1578 @@
+{
+  "manifest_id": "renal_production_source_manifest_v1",
+  "version": 2,
+  "scope": {
+    "body_system": "Renal System",
+    "families": [
+      "Renal Failure and Advanced Kidney Disease"
+    ]
+  },
+  "diseases": [
+    {
+      "disease": "Acute Renal Failure",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Acute Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Acute Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Terminal Acute Renal Failure"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Seeking Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Discontinuing Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Seeking Renal Transplant"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Acute Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Terminal Acute Renal Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Seeking Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "dialysis_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Seeking Renal Transplant",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "renal_transplant_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Discontinuing Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "dialysis_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Creatinine Clearance Less Than 15 mL/min",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "GFR Less Than 15 mL/min",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Creatinine Greater Than 8.0 mg/dL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record",
+            "diabetes_status"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated Serum Creatinine",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Mechanical Ventilation",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Malignancy In Another Organ System",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Chronic Lung Disease",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Advanced Cardiac Disease",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Advanced Liver Disease",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Sepsis",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Immunosuppression",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "AIDS",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cachexia",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Disseminated Intravascular Coagulation",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Gastrointestinal Bleeding",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Platelet Count Less Than 25,000",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Platelet Count Less Than 25,000",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Cachexia",
+          "source_classification": "COMORBIDITY_SUPPORT",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Comorbidity/complication support concept cited in the renal hospice terminal-prognosis pathway; supports but does not independently establish hospice eligibility.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Dependence In Two Or More Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Emergency Department Visits",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Hospitalizations",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Physician Visits",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Acidosis",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Fluid Overload",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Volume Overload",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Anuria",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Pruritus",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Not Seeking Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Not Seeking Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Not Seeking Renal Transplant",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Not Seeking Renal Transplant",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Discontinuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Discontinuing Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Creatinine Clearance Less Than 15 mL/min",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "GFR Less Than 15 mL/min",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Serum Creatinine Greater Than 8.0 mg/dL",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Mechanical Ventilation",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Malignancy In Another Organ System",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Chronic Lung Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Advanced Cardiac Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Advanced Liver Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Sepsis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Immunosuppression",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "AIDS",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Cachexia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Platelet Count Less Than 25,000",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FINDING",
+          "concept": "Platelet Count Less Than 25,000",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Disseminated Intravascular Coagulation",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "COMPLICATION",
+          "concept": "Gastrointestinal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Cachexia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Feeding Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Ambulation Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Continence Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Transfer Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Bathing Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Dressing Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Dependence In Two Or More Activities Of Daily Living",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Emergency Department Visits",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Hospitalizations",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Acute Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Physician Visits",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    },
+    {
+      "disease": "Chronic Renal Failure",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Chronic Renal Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Chronic Renal Failure"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Seeking Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Discontinuing Dialysis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Seeking Renal Transplant"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Chronic Renal Failure"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "End Stage Renal Disease"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Uremic Chronic Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Oliguric Chronic Renal Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Chronic Renal Failure With Intractable Hyperkalemia"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Chronic Renal Failure With Uremic Pericarditis"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Chronic Renal Failure With Hepatorenal Syndrome"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Chronic Renal Failure With Intractable Fluid Overload"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Seeking Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "dialysis_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Seeking Renal Transplant",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "renal_transplant_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Discontinuing Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "dialysis_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Creatinine Clearance Less Than 15 mL/min",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "GFR Less Than 15 mL/min",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Creatinine Greater Than 8.0 mg/dL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record",
+            "diabetes_status"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated Serum Creatinine",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Uremia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Oliguria",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Intractable Hyperkalemia Greater Than 7.0",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record",
+            "treatment_response_status"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Uremic Pericarditis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Intractable Fluid Overload Not Responsive To Treatment",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Serum Potassium Greater Than 7.0",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Uremic Pericarditis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Intractable Hyperkalemia Not Responsive To Treatment",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record",
+            "treatment_response_status"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Intractable Fluid Overload Not Responsive To Treatment",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_renal_failure.pdf",
+          "description": "Renal disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Hyperkalemia",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Dependence In Two Or More Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Emergency Department Visits",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Hospitalizations",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Increasing Physician Visits",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Acidosis",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Fluid Overload",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Volume Overload",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "FINDING",
+          "name": "Anuria",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Pruritus",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "internal_general_clinical_knowledge",
+          "description": "General clinical knowledge retained for ontology completeness. Not classified as an LCD criterion and does not satisfy any exact LCD threshold. Not eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Not Seeking Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Not Seeking Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Not Seeking Renal Transplant",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Not Seeking Renal Transplant",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "TREATMENT_STATE",
+          "variant": "Discontinuing Dialysis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Discontinuing Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Creatinine Clearance Less Than 15 mL/min",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "GFR Less Than 15 mL/min",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Serum Creatinine Greater Than 8.0 mg/dL",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Uremic Chronic Renal Failure",
+          "concept_domain": "FINDING",
+          "concept": "Uremia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Oliguric Chronic Renal Failure",
+          "concept_domain": "FINDING",
+          "concept": "Oliguria",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Intractable Hyperkalemia",
+          "concept_domain": "FINDING",
+          "concept": "Intractable Hyperkalemia Greater Than 7.0",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Uremic Pericarditis",
+          "concept_domain": "FINDING",
+          "concept": "Uremic Pericarditis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Hepatorenal Syndrome",
+          "concept_domain": "FINDING",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Intractable Fluid Overload",
+          "concept_domain": "FINDING",
+          "concept": "Intractable Fluid Overload Not Responsive To Treatment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Intractable Hyperkalemia",
+          "concept_domain": "FINDING",
+          "concept": "Serum Potassium Greater Than 7.0",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Uremic Pericarditis",
+          "concept_domain": "COMPLICATION",
+          "concept": "Uremic Pericarditis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Hepatorenal Syndrome",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Intractable Hyperkalemia",
+          "concept_domain": "COMPLICATION",
+          "concept": "Intractable Hyperkalemia Not Responsive To Treatment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Chronic Renal Failure With Intractable Fluid Overload",
+          "concept_domain": "COMPLICATION",
+          "concept": "Intractable Fluid Overload Not Responsive To Treatment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Feeding Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Ambulation Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Continence Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Transfer Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Bathing Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Dressing Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Dependence In Two Or More Activities Of Daily Living",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Emergency Department Visits",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Hospitalizations",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "End Stage Chronic Renal Failure",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Increasing Physician Visits",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
+      "left": "Acute Renal Failure",
+      "right": "Chronic Renal Failure"
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Dialysis"
+      },
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Renal Transplant"
+      },
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Creatinine Clearance Less Than 15 mL/min"
+      },
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "GFR Less Than 15 mL/min"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 8.0 mg/dL"
+      },
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Dialysis"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Renal Transplant"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Creatinine Clearance Less Than 15 mL/min"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "GFR Less Than 15 mL/min"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 8.0 mg/dL"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Uremic Pericarditis"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Uremic Pericarditis"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Hyperkalemia Greater Than 7.0"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Intractable Hyperkalemia Not Responsive To Treatment"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Fluid Overload Not Responsive To Treatment"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Fluid Overload"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Refractory Hyperkalemia"
+      },
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Hyperkalemia Greater Than 7.0"
+      }
+    }
+  ],
+  "summary": {
+    "canonical_diseases": 2,
+    "total_variants": 21,
+    "total_concepts": 80,
+    "total_applicability_mappings": 67
+  }
+}

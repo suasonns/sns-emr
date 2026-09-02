@@ -1,0 +1,363 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": "Acute Renal Failure",
+      "passed": true,
+      "right": "Chronic Renal Failure",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Dialysis"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Renal Transplant"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Creatinine Clearance Less Than 15 mL/min"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "GFR Less Than 15 mL/min"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 8.0 mg/dL"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Acute Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Dialysis"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Not Seeking Renal Transplant"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Discontinuing Dialysis"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Creatinine Clearance Less Than 15 mL/min"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "GFR Less Than 15 mL/min"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 8.0 mg/dL"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Serum Creatinine Greater Than 6.0 mg/dL For Patient With Diabetes"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Uremic Pericarditis"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Uremic Pericarditis"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Hyperkalemia Greater Than 7.0"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Intractable Hyperkalemia Not Responsive To Treatment"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Fluid Overload Not Responsive To Treatment"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Fluid Overload"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Renal Failure",
+        "domain": "COMPLICATION",
+        "name": "Refractory Hyperkalemia"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Renal Failure",
+        "domain": "FINDING",
+        "name": "Intractable Hyperkalemia Greater Than 7.0"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 80,
+    "expected": 80,
+    "missing": []
+  },
+  "expected_applicability_by_source_classification": {
+    "COMORBIDITY_SUPPORT": 14,
+    "LCD_DISEASE_SPECIFIC": 25,
+    "LCD_NON_DISEASE_SPECIFIC": 28
+  },
+  "expected_applicability_mappings": 67,
+  "expected_concepts": 80,
+  "expected_concepts_by_disease_and_domain": {
+    "Acute Renal Failure": {
+      "COMPLICATION": 13,
+      "FINDING": 5,
+      "FUNCTIONAL_IMPACT": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15,
+      "NUTRITIONAL_IMPACT": 1,
+      "SYMPTOM": 1
+    },
+    "Chronic Renal Failure": {
+      "COMPLICATION": 6,
+      "FINDING": 11,
+      "FUNCTIONAL_IMPACT": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15,
+      "SYMPTOM": 1
+    }
+  },
+  "expected_diseases": [
+    "Acute Renal Failure",
+    "Chronic Renal Failure"
+  ],
+  "expected_variants": 21,
+  "expected_variants_by_disease_and_dimension": {
+    "Acute Renal Failure": {
+      "DISEASE_PHASE": 3,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    },
+    "Chronic Renal Failure": {
+      "DISEASE_PHASE": 2,
+      "PHYSIOLOGICAL_PHENOTYPE": 6,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    }
+  },
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\renal_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_exact_lcd_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "source_provenance_coverage": {
+    "covered": 80,
+    "expected": 80
+  },
+  "stored_applicability_by_source_classification": {
+    "COMORBIDITY_SUPPORT": 14,
+    "LCD_DISEASE_SPECIFIC": 25,
+    "LCD_NON_DISEASE_SPECIFIC": 28
+  },
+  "stored_applicability_mappings": 67,
+  "stored_concepts": 80,
+  "stored_concepts_by_disease_and_domain": {
+    "Acute Renal Failure": {
+      "COMPLICATION": 13,
+      "FINDING": 5,
+      "FUNCTIONAL_IMPACT": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15,
+      "NUTRITIONAL_IMPACT": 1,
+      "SYMPTOM": 1
+    },
+    "Chronic Renal Failure": {
+      "COMPLICATION": 6,
+      "FINDING": 11,
+      "FUNCTIONAL_IMPACT": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15,
+      "SYMPTOM": 1
+    }
+  },
+  "stored_diseases": [
+    "Acute Renal Failure",
+    "Chronic Renal Failure"
+  ],
+  "stored_variants": 21,
+  "stored_variants_by_disease_and_dimension": {
+    "Acute Renal Failure": {
+      "DISEASE_PHASE": 3,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    },
+    "Chronic Renal Failure": {
+      "DISEASE_PHASE": 2,
+      "PHYSIOLOGICAL_PHENOTYPE": 6,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    }
+  },
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": [],
+  "unresolved_concept_count": 0,
+  "unsupported_general_concepts": [
+    [
+      "Acute Renal Failure",
+      "COMPLICATION",
+      "refractory acidosis"
+    ],
+    [
+      "Acute Renal Failure",
+      "FINDING",
+      "anuria"
+    ],
+    [
+      "Acute Renal Failure",
+      "FINDING",
+      "elevated serum creatinine"
+    ],
+    [
+      "Acute Renal Failure",
+      "FINDING",
+      "fluid overload"
+    ],
+    [
+      "Acute Renal Failure",
+      "FINDING",
+      "volume overload"
+    ],
+    [
+      "Acute Renal Failure",
+      "SYMPTOM",
+      "pruritus"
+    ],
+    [
+      "Chronic Renal Failure",
+      "COMPLICATION",
+      "refractory acidosis"
+    ],
+    [
+      "Chronic Renal Failure",
+      "COMPLICATION",
+      "refractory hyperkalemia"
+    ],
+    [
+      "Chronic Renal Failure",
+      "FINDING",
+      "anuria"
+    ],
+    [
+      "Chronic Renal Failure",
+      "FINDING",
+      "elevated serum creatinine"
+    ],
+    [
+      "Chronic Renal Failure",
+      "FINDING",
+      "fluid overload"
+    ],
+    [
+      "Chronic Renal Failure",
+      "FINDING",
+      "volume overload"
+    ],
+    [
+      "Chronic Renal Failure",
+      "SYMPTOM",
+      "pruritus"
+    ]
+  ]
+}
