@@ -1,0 +1,689 @@
+{
+  "manifest_version": 1,
+  "title": "Functional Assessment Framework v1",
+  "description": "Creates a reusable, disease-agnostic Functional Assessment Framework: five standardized clinical performance/staging scales (PPS, KPS, FAST, NYHA, ECOG), each with fully interpreted score-level knowledge (display title, nurse-facing clinical meaning, functional summary, hospice interpretation, and AI summary guidance) plus visibility-rule metadata describing which active diagnosis categories should surface which scale. This is reference clinical knowledge only -- it never establishes diagnosis, prognosis, hospice eligibility, or terminal status, and it makes no schema, migration, or API changes. It reuses the existing Ontology Disease Blueprint tables exactly as prior production manifests do: a new OntologyBodySystem/OntologyDiseaseFamily/OntologyDisease container ('Functional Assessment' / 'Functional Assessment Scales' / 'Functional Assessment Framework'), one OntologyDiseaseVariant (dimension=SEVERITY_CLASS) per individual score level (45 total, never collapsed), one OntologyDiseaseFinding concept per scale (5 total) carrying the full per-level structured knowledge in its existing severity_levels JSONB column and visibility-rule/trend metadata in its existing supporting_evidence_types JSONB column, and one APPLIES_TO OntologyConceptVariantApplicability edge per score level (45 total) linking each level's variant to its scale's concept. Every concept receives an OntologyEvidenceRule with patient_fact_requires_evidence=true. The 'assessor' and 'assessment_date' fields named in the specification's DATABASE MODEL section belong to the separate, unchanged, patient-facing assessment-recording feature (the existing 'assessments' table); this PR does not touch patient records, the API, or that table -- it only builds the reference knowledge library those future recordings will point back to.",
+  "source_authority": [
+    "cms guidelines.pdf",
+    "1.pdf",
+    "DPH-18-002E-HospiceAgencies_Text.pdf",
+    "Cancer-Types-NCI-08.22.2021.pdf",
+    "heart disease.pdf",
+    "dementia.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Functional Assessment",
+    "family": "Functional Assessment Scales",
+    "disease": "Functional Assessment Framework"
+  },
+  "new_disease": {
+    "disease": "Functional Assessment Framework",
+    "family": "Functional Assessment Scales",
+    "disease_category": "FUNCTIONAL_ASSESSMENT_FRAMEWORK",
+    "disease_type": "ASSESSMENT_TOOL",
+    "disease_description": "A reusable container for standardized functional/performance assessment scale reference knowledge (PPS, KPS, FAST, NYHA, ECOG). Not a clinical disease; used only to host scale reference knowledge inside the existing Ontology Disease Blueprint schema without any migration.",
+    "clinical_purpose": "Gives admission nurses, case managers, physicians, medical directors, IDG, quality/recertification reviewers, and AI evidence analysis a single source of nurse-facing clinical meaning, functional summary, hospice interpretation, and AI interpretation guidance for every score of every supported functional assessment scale, so a brand-new hospice nurse never has to leave the EMR to understand a score.",
+    "hospice_relevance": "Provides trend-analysis and recertification-support material for the IDG and physician; no individual score, and no assessment scale by itself, ever establishes diagnosis, prognosis, terminal status, or hospice eligibility -- those require the complete documented clinical picture and physician judgment."
+  },
+  "trend_policy": {
+    "storage": "Every assessment instance must be preserved; never overwrite a prior assessment.",
+    "ai_may": [
+      "trend scores",
+      "identify decline",
+      "identify improvement",
+      "identify missing assessments",
+      "identify missing documentation",
+      "generate recertification prompts",
+      "generate physician-review prompts",
+      "generate narrative suggestions",
+      "generate contradiction warnings"
+    ],
+    "ai_may_not": [
+      "establish diagnosis",
+      "establish prognosis",
+      "establish terminal status",
+      "establish hospice eligibility",
+      "certify CTI",
+      "certify recertification",
+      "recommend medications",
+      "recommend treatments"
+    ],
+    "trend_values": [
+      "IMPROVING",
+      "STABLE",
+      "DECLINING"
+    ],
+    "trend_basis": "Trend analysis must use historical assessments only."
+  },
+  "assessment_scales": [
+    {
+      "scale_code": "ECOG",
+      "concept_name": "ECOG - Eastern Cooperative Oncology Group Performance Status",
+      "source_reference": "cms guidelines.pdf",
+      "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+      "purpose": "Eastern Cooperative Oncology Group Performance Status. Grades a patient's functional status on a 0-4 scale. Shown for any active cancer diagnosis.",
+      "visibility_rule": {
+        "trigger": "ANY_ACTIVE_CANCER_DIAGNOSIS",
+        "trigger_diagnoses": [
+          "Breast Cancer",
+          "Lung Cancer",
+          "Colorectal Cancer",
+          "Rectal Cancer",
+          "Prostate Cancer",
+          "Pancreatic Cancer",
+          "Liver Cancer",
+          "Kidney Cancer",
+          "Bladder Cancer",
+          "Melanoma",
+          "Leukemia",
+          "Lymphoma"
+        ],
+        "trigger_source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+        "co_displayed_scales": [
+          "PPS",
+          "KPS"
+        ],
+        "visibility_basis": "ANY_ACTIVE_DIAGNOSIS_NOT_ONLY_PRIMARY_HOSPICE_DIAGNOSIS"
+      },
+      "levels": [
+        {
+          "score": "0",
+          "display_title": "Fully Active",
+          "clinical_meaning": "No restriction in activities.",
+          "functional_summary": "Able to perform all usual activities.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "1",
+          "display_title": "Restricted Strenuous Activity",
+          "clinical_meaning": "Ambulatory.",
+          "functional_summary": "Able to perform light work.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "2",
+          "display_title": "Ambulatory Self-Care",
+          "clinical_meaning": "Unable to work.",
+          "functional_summary": "Awake and active more than 50% of waking hours.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "3",
+          "display_title": "Limited Self-Care",
+          "clinical_meaning": "Requires significant assistance.",
+          "functional_summary": "Bed or chair more than 50% of waking hours.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "4",
+          "display_title": "Completely Disabled",
+          "clinical_meaning": "Unable to perform self-care.",
+          "functional_summary": "Totally bed or chair confined.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        }
+      ]
+    },
+    {
+      "scale_code": "NYHA",
+      "concept_name": "NYHA - New York Heart Association Functional Classification",
+      "source_reference": "heart disease.pdf",
+      "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+      "purpose": "New York Heart Association functional classification of heart failure symptom burden. Disease-specific to CHF; shown for any active CHF diagnosis.",
+      "visibility_rule": {
+        "trigger": "ANY_ACTIVE_CHF_DIAGNOSIS",
+        "trigger_diagnoses": [
+          "Congestive Heart Failure"
+        ],
+        "trigger_source_reference": "heart disease.pdf",
+        "co_displayed_scales": [
+          "PPS",
+          "KPS"
+        ],
+        "visibility_basis": "ANY_ACTIVE_DIAGNOSIS_NOT_ONLY_PRIMARY_HOSPICE_DIAGNOSIS"
+      },
+      "levels": [
+        {
+          "score": "I",
+          "display_title": "No Limitation",
+          "clinical_meaning": "Ordinary activity tolerated.",
+          "functional_summary": "No symptoms with usual activity.",
+          "hospice_interpretation": "Minimal cardiac limitation.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "II",
+          "display_title": "Slight Limitation",
+          "clinical_meaning": "Symptoms with ordinary activity.",
+          "functional_summary": "Comfortable at rest.",
+          "hospice_interpretation": "Mild cardiac impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "III",
+          "display_title": "Marked Limitation",
+          "clinical_meaning": "Symptoms with less-than-ordinary activity.",
+          "functional_summary": "Comfortable only at rest.",
+          "hospice_interpretation": "Significant cardiac impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "IV",
+          "display_title": "Symptoms At Rest",
+          "clinical_meaning": "Symptoms occur even at rest.",
+          "functional_summary": "Unable to perform physical activity without discomfort.",
+          "hospice_interpretation": "Severe end-stage heart failure impairment.",
+          "ai_summary": "Specific CHF hospice-support evidence but not independent eligibility."
+        }
+      ]
+    },
+    {
+      "scale_code": "FAST",
+      "concept_name": "FAST - Functional Assessment Staging Tool",
+      "source_reference": "dementia.pdf",
+      "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+      "purpose": "Functional Assessment Staging Tool for dementia progression. Disease-specific to dementia; shown for any active dementia diagnosis.",
+      "visibility_rule": {
+        "trigger": "ANY_ACTIVE_DEMENTIA_DIAGNOSIS",
+        "trigger_diagnoses": [
+          "Dementia Due To Alzheimer's Disease"
+        ],
+        "trigger_source_reference": "dementia.pdf",
+        "co_displayed_scales": [
+          "PPS",
+          "KPS"
+        ],
+        "visibility_basis": "ANY_ACTIVE_DIAGNOSIS_NOT_ONLY_PRIMARY_HOSPICE_DIAGNOSIS"
+      },
+      "levels": [
+        {
+          "score": "1",
+          "display_title": "Normal Adult",
+          "clinical_meaning": "No cognitive or functional decline.",
+          "functional_summary": "No subjective or objective functional deficit.",
+          "hospice_interpretation": "Not applicable to hospice staging.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "2",
+          "display_title": "Subjective Forgetfulness",
+          "clinical_meaning": "Subjective complaints of word-finding or object-location difficulty.",
+          "functional_summary": "No objective deficits noted by others; performs all usual activities independently.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "3",
+          "display_title": "Early Functional Deficits",
+          "clinical_meaning": "Deficits noted in demanding job or social situations.",
+          "functional_summary": "Difficulty with complex occupational or social tasks; decreased performance noted by co-workers or family.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "4",
+          "display_title": "Difficulty Managing Complex Tasks",
+          "clinical_meaning": "Reduced ability to perform complex tasks of daily living.",
+          "functional_summary": "Requires assistance with complex tasks such as handling finances, planning meals, or managing a household.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "5",
+          "display_title": "Needs Help Choosing Clothing",
+          "clinical_meaning": "Requires assistance selecting proper clothing for the season or occasion.",
+          "functional_summary": "No longer able to choose clothing without assistance or cuing.",
+          "hospice_interpretation": "Moderately severe functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "6A",
+          "display_title": "Difficulty Dressing",
+          "clinical_meaning": "Requires assistance putting on clothing correctly.",
+          "functional_summary": "Improperly dons clothing without physical assistance or cuing.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "6B",
+          "display_title": "Difficulty Bathing",
+          "clinical_meaning": "Requires assistance bathing properly.",
+          "functional_summary": "Unable to bathe properly without assistance; may fear or refuse bathing.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "6C",
+          "display_title": "Difficulty Toileting",
+          "clinical_meaning": "Requires assistance with the mechanics of toileting.",
+          "functional_summary": "Inability to handle mechanics of toileting (e.g. forgets to flush, fails to wipe properly).",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "6D",
+          "display_title": "Urinary Incontinence",
+          "clinical_meaning": "Loss of bladder control.",
+          "functional_summary": "Urinary incontinence, occasional or more frequent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "6E",
+          "display_title": "Fecal Incontinence",
+          "clinical_meaning": "Loss of bowel control.",
+          "functional_summary": "Fecal incontinence, occasional or more frequent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "7A",
+          "display_title": "Limited Speech",
+          "clinical_meaning": "Ability to speak is limited.",
+          "functional_summary": "Speech ability limited to approximately a half-dozen intelligible words or fewer in the course of an average day or an intensive interview.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "7B",
+          "display_title": "Single Words Only",
+          "clinical_meaning": "Vocabulary reduced to a single intelligible word.",
+          "functional_summary": "Vocabulary limited to the use of a single intelligible word in an average day or an intensive interview.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "7C",
+          "display_title": "Unable To Ambulate Independently",
+          "clinical_meaning": "Loss of ambulatory ability.",
+          "functional_summary": "Ambulatory ability is lost; unable to walk without personal assistance.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "7D",
+          "display_title": "Unable To Sit Independently",
+          "clinical_meaning": "Loss of ability to sit up independently.",
+          "functional_summary": "Unable to sit up without assistance (e.g. will fall over without lateral chair supports).",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "7E",
+          "display_title": "Unable To Smile",
+          "clinical_meaning": "Loss of ability to smile.",
+          "functional_summary": "Unable to smile.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "7F",
+          "display_title": "Unable To Hold Head Upright",
+          "clinical_meaning": "Loss of head and postural control.",
+          "functional_summary": "Unable to hold head up independently.",
+          "hospice_interpretation": "Very severe functional impairment; represents the most advanced FAST stage.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        }
+      ]
+    },
+    {
+      "scale_code": "KPS",
+      "concept_name": "KPS - Karnofsky Performance Status",
+      "source_reference": "cms guidelines.pdf",
+      "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+      "purpose": "Karnofsky Performance Status. Non-disease-specific functional performance scale repeatedly referenced across CMS hospice LCD guidance. Shown alongside PPS for every active terminal-condition diagnosis category in this framework.",
+      "visibility_rule": {
+        "trigger": "ANY_ACTIVE_DIAGNOSIS_IN_ANY_SUPPORTED_TERMINAL_CONDITION_CATEGORY",
+        "trigger_diagnoses": [
+          "any active cancer diagnosis",
+          "Congestive Heart Failure",
+          "Dementia Due To Alzheimer's Disease",
+          "Amyotrophic Lateral Sclerosis",
+          "HIV",
+          "end-stage renal disease",
+          "end-stage pulmonary disease",
+          "end-stage liver disease",
+          "stroke or coma"
+        ],
+        "trigger_source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+        "co_displayed_scales": [
+          "PPS"
+        ],
+        "visibility_basis": "ANY_ACTIVE_DIAGNOSIS_NOT_ONLY_PRIMARY_HOSPICE_DIAGNOSIS"
+      },
+      "levels": [
+        {
+          "score": "100",
+          "display_title": "Normal",
+          "clinical_meaning": "Normal, no complaints, no evidence of disease.",
+          "functional_summary": "Able to carry on normal activity and to work; no special care needed.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "90",
+          "display_title": "Minor Symptoms",
+          "clinical_meaning": "Minor symptoms of disease.",
+          "functional_summary": "Able to carry on normal activity with effort; some signs or symptoms of disease.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "80",
+          "display_title": "Normal Activity With Effort",
+          "clinical_meaning": "Normal activity requires effort.",
+          "functional_summary": "Able to carry on normal activity with effort.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "70",
+          "display_title": "Able To Care For Self",
+          "clinical_meaning": "Able to care for self; unable to carry on normal activity or to do active work.",
+          "functional_summary": "Cares for self but unable to carry on normal activity or active work.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "60",
+          "display_title": "Requires Occasional Assistance",
+          "clinical_meaning": "Requires occasional assistance.",
+          "functional_summary": "Able to care for most personal needs but requires occasional assistance.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "50",
+          "display_title": "Requires Considerable Assistance",
+          "clinical_meaning": "Requires considerable assistance and frequent medical care.",
+          "functional_summary": "Requires considerable assistance and frequent medical care.",
+          "hospice_interpretation": "Significant functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "40",
+          "display_title": "Disabled",
+          "clinical_meaning": "Disabled.",
+          "functional_summary": "Requires special care and assistance.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "30",
+          "display_title": "Severely Disabled",
+          "clinical_meaning": "Severely disabled.",
+          "functional_summary": "Hospitalization indicated although death not imminent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "20",
+          "display_title": "Very Sick",
+          "clinical_meaning": "Very sick.",
+          "functional_summary": "Hospitalization necessary; active supportive treatment necessary.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "10",
+          "display_title": "Moribund",
+          "clinical_meaning": "Moribund.",
+          "functional_summary": "Fatal processes progressing rapidly.",
+          "hospice_interpretation": "Very severe, end-of-life functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        }
+      ]
+    },
+    {
+      "scale_code": "PPS",
+      "concept_name": "PPS - Palliative Performance Scale",
+      "source_reference": "cms guidelines.pdf",
+      "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+      "purpose": "Palliative Performance Scale. Non-disease-specific functional performance scale repeatedly referenced across CMS hospice LCD guidance. Shown alongside KPS for every active terminal-condition diagnosis category in this framework.",
+      "visibility_rule": {
+        "trigger": "ANY_ACTIVE_DIAGNOSIS_IN_ANY_SUPPORTED_TERMINAL_CONDITION_CATEGORY",
+        "trigger_diagnoses": [
+          "any active cancer diagnosis",
+          "Congestive Heart Failure",
+          "Dementia Due To Alzheimer's Disease",
+          "Amyotrophic Lateral Sclerosis",
+          "HIV",
+          "end-stage renal disease",
+          "end-stage pulmonary disease",
+          "end-stage liver disease",
+          "stroke or coma"
+        ],
+        "trigger_source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+        "co_displayed_scales": [
+          "KPS"
+        ],
+        "visibility_basis": "ANY_ACTIVE_DIAGNOSIS_NOT_ONLY_PRIMARY_HOSPICE_DIAGNOSIS"
+      },
+      "levels": [
+        {
+          "score": "100",
+          "display_title": "Full Ambulation And Full Activity",
+          "clinical_meaning": "Full ambulation and full activity level.",
+          "functional_summary": "Full self-care; normal intake; normal level of consciousness.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "90",
+          "display_title": "Full Ambulation With Minor Disease Signs",
+          "clinical_meaning": "Full ambulation with minor disease signs.",
+          "functional_summary": "Full self-care.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself."
+        },
+        {
+          "score": "80",
+          "display_title": "Full Activity With Effort",
+          "clinical_meaning": "Full activity maintained only with effort; some disease evidence.",
+          "functional_summary": "Full self-care.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "70",
+          "display_title": "Reduced Activity, Independent Self-Care",
+          "clinical_meaning": "Reduced activity; unable to perform normal job or work.",
+          "functional_summary": "Independent self-care.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence."
+        },
+        {
+          "score": "60",
+          "display_title": "Reduced Activity, Occasional Assistance",
+          "clinical_meaning": "Reduced activity; unable to do hobbies or housework.",
+          "functional_summary": "Occasional assistance necessary.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "50",
+          "display_title": "Mainly Sitting Or Lying, Considerable Assistance",
+          "clinical_meaning": "Mainly sitting or lying; unable to do any work.",
+          "functional_summary": "Considerable assistance required.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently."
+        },
+        {
+          "score": "40",
+          "display_title": "Mainly In Bed, Reduced Intake",
+          "clinical_meaning": "Mainly in bed; unable to perform most activities.",
+          "functional_summary": "Extensive assistance required; reduced intake.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "30",
+          "display_title": "Totally Bedbound, Extensive Assistance",
+          "clinical_meaning": "Totally bedbound; unable to do any activity.",
+          "functional_summary": "Extensive assistance required; intake normal or reduced.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings."
+        },
+        {
+          "score": "20",
+          "display_title": "Totally Bedbound, Minimal Intake",
+          "clinical_meaning": "Totally bedbound; total care required.",
+          "functional_summary": "Minimal intake.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        },
+        {
+          "score": "10",
+          "display_title": "Comatose Or Near Death",
+          "clinical_meaning": "Comatose or near death.",
+          "functional_summary": "Total care required; mouth care only; minimal to no intake.",
+          "hospice_interpretation": "Very severe, end-of-life functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility."
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "guard_name": "functional_assessment_framework_disease_exists_once",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "disease": "Functional Assessment Framework"
+        }
+      ]
+    },
+    {
+      "guard_name": "five_scales_remain_distinct_concepts",
+      "assertions": [
+        {
+          "assert": "concepts_not_collapsed",
+          "domain": "FINDING",
+          "names": [
+            "ECOG - Eastern Cooperative Oncology Group Performance Status",
+            "NYHA - New York Heart Association Functional Classification",
+            "FAST - Functional Assessment Staging Tool",
+            "KPS - Karnofsky Performance Status",
+            "PPS - Palliative Performance Scale"
+          ]
+        }
+      ]
+    },
+    {
+      "guard_name": "no_score_level_collapsed_across_or_within_scales",
+      "assertions": [
+        {
+          "assert": "variants_not_collapsed",
+          "dimension": "SEVERITY_CLASS",
+          "names": [
+            "ECOG 0",
+            "ECOG 1",
+            "ECOG 2",
+            "ECOG 3",
+            "ECOG 4",
+            "NYHA I",
+            "NYHA II",
+            "NYHA III",
+            "NYHA IV",
+            "FAST 1",
+            "FAST 2",
+            "FAST 3",
+            "FAST 4",
+            "FAST 5",
+            "FAST 6A",
+            "FAST 6B",
+            "FAST 6C",
+            "FAST 6D",
+            "FAST 6E",
+            "FAST 7A",
+            "FAST 7B",
+            "FAST 7C",
+            "FAST 7D",
+            "FAST 7E",
+            "FAST 7F",
+            "KPS 100",
+            "KPS 90",
+            "KPS 80",
+            "KPS 70",
+            "KPS 60",
+            "KPS 50",
+            "KPS 40",
+            "KPS 30",
+            "KPS 20",
+            "KPS 10",
+            "PPS 100",
+            "PPS 90",
+            "PPS 80",
+            "PPS 70",
+            "PPS 60",
+            "PPS 50",
+            "PPS 40",
+            "PPS 30",
+            "PPS 20",
+            "PPS 10"
+          ]
+        }
+      ]
+    },
+    {
+      "guard_name": "every_score_level_has_full_interpretation_not_number_only",
+      "assertions": [
+        {
+          "assert": "for_each_level",
+          "required_fields": [
+            "score",
+            "display_title",
+            "clinical_meaning",
+            "functional_summary",
+            "hospice_interpretation",
+            "ai_summary"
+          ]
+        }
+      ]
+    },
+    {
+      "guard_name": "every_scale_concept_requires_evidence",
+      "assertions": [
+        {
+          "assert": "hospice_support_requires_evidence_systemwide",
+          "concept_domain": "FINDING",
+          "names": [
+            "ECOG - Eastern Cooperative Oncology Group Performance Status",
+            "NYHA - New York Heart Association Functional Classification",
+            "FAST - Functional Assessment Staging Tool",
+            "KPS - Karnofsky Performance Status",
+            "PPS - Palliative Performance Scale"
+          ]
+        }
+      ]
+    },
+    {
+      "guard_name": "no_score_alone_establishes_eligibility",
+      "assertions": [
+        {
+          "assert": "no_diagnosis_or_score_establishes",
+          "forbidden": [
+            "diagnosis",
+            "prognosis",
+            "hospice_eligibility",
+            "terminal_status"
+          ]
+        }
+      ]
+    }
+  ],
+  "unsupported_content_not_created": {
+    "note": "This PR does not create any of the following -- none is supported by the approved source for this PR:",
+    "SCHEMA_CHANGES": "no new tables/columns; reuses OntologyBodySystem/Family/Disease/Variant/Finding/Applicability/EvidenceRule exactly as-is",
+    "MIGRATIONS": "none",
+    "API_CHANGES": "none",
+    "PATIENT_RECORD_MODIFICATIONS": "none -- the existing 'assessments' table (patient_id, visit_id, assessment_type, occurred_at, etc.) is untouched by this import",
+    "NEW_VARIANT_DIMENSIONS": "uses only the already-CHECK-constraint-allowed SEVERITY_CLASS dimension",
+    "ADDITIONAL_SCALES": "no scale beyond PPS, KPS, FAST, NYHA, ECOG is created",
+    "ADDITIONAL_SCORE_LEVELS": "no score level beyond the ones explicitly enumerated in this manifest is created"
+  }
+}
