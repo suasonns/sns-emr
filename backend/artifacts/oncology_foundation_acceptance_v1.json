@@ -1,0 +1,81 @@
+{
+  "manifest_id": "oncology_foundation_v1",
+  "expected_diseases": [
+    "Oncology Foundation Reference Structure"
+  ],
+  "stored_diseases": [
+    "Oncology Foundation Reference Structure"
+  ],
+  "expected_variants_count": 12,
+  "stored_variants_count": 12,
+  "missing_variants": [],
+  "unexpected_variants": [],
+  "expected_concepts_count": 10,
+  "stored_concepts_count": 10,
+  "missing_concepts": [],
+  "unexpected_concepts": [],
+  "expected_applicability_count": 120,
+  "stored_applicability_count": 120,
+  "missing_applicability": [],
+  "unexpected_applicability": [],
+  "evidence_rule_coverage": {
+    "covered": 10,
+    "expected": 10,
+    "missing": []
+  },
+  "source_provenance_coverage": {
+    "covered": 10,
+    "expected": 10
+  },
+  "orphan_count": 0,
+  "cycle_count": 0,
+  "unresolved_concept_count": 0,
+  "second_run_new_rows": 0,
+  "differentiation_guards": [
+    {
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Metastatic Disease"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Regional Spread"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Regional Spread"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Distant Metastatic Disease"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Progressive Disease"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Worsening Clinical Status"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "passed": true,
+      "detail": null
+    }
+  ]
+}

@@ -1,0 +1,1114 @@
+{
+  "manifest_id": "oncology_foundation_v1",
+  "source_authority": [
+    "Cancer-Types-NCI-08.22.2021.pdf",
+    "cms guidelines.pdf",
+    "1.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Oncology",
+    "families": [
+      "Oncology Foundation"
+    ]
+  },
+  "foundation_dimensions": [
+    "PRIMARY_SITE",
+    "HISTOLOGY",
+    "MOLECULAR_SUBTYPE",
+    "STAGE",
+    "GRADE",
+    "METASTATIC_STATE",
+    "METASTATIC_DESTINATION"
+  ],
+  "primary_sites": [
+    "Breast",
+    "Lung",
+    "Prostate",
+    "Colorectal",
+    "Liver",
+    "Kidney",
+    "Thyroid",
+    "Pancreas",
+    "Bladder",
+    "Skin",
+    "Leukemia",
+    "Lymphoma"
+  ],
+  "summary": {
+    "canonical_diseases": 1,
+    "total_variants": 12,
+    "total_concepts": 10,
+    "total_applicability_mappings": 120
+  },
+  "diseases": [
+    {
+      "disease": "Oncology Foundation Reference Structure",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Breast"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Lung"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Prostate"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Colorectal"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Liver"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Kidney"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Thyroid"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Pancreas"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Bladder"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Skin"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Leukemia"
+        },
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Lymphoma"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable oncology-foundation finding: presence of metastatic disease, site-agnostic.",
+          "evidence_requirements": [
+            "diagnostic_imaging",
+            "pathology_confirmation",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable oncology-foundation finding: regional (nodal/local) spread beyond the primary site.",
+          "evidence_requirements": [
+            "diagnostic_imaging",
+            "pathology_confirmation",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable oncology-foundation finding: distant-organ metastatic disease, site-agnostic.",
+          "evidence_requirements": [
+            "diagnostic_imaging",
+            "pathology_confirmation",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable non-disease-specific functional-decline finding applicable across oncology primary sites.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable non-disease-specific nutritional-decline finding applicable across oncology primary sites.",
+          "evidence_requirements": [
+            "weight_data",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "description": "Reusable non-disease-specific weight-loss finding applicable across oncology primary sites.",
+          "evidence_requirements": [
+            "weight_data",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": true,
+          "description": "Reusable oncology-foundation hospice-support concept: documented disease progression, site-agnostic.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Worsening Clinical Status",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": true,
+          "description": "Reusable oncology-foundation hospice-support concept: overall worsening clinical status, site-agnostic.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Functional Impairment",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": true,
+          "description": "General clinical-knowledge hospice-support concept: functional impairment, site-agnostic.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Reusable non-disease-specific hospice-support concept: ADL dependence, site-agnostic.",
+          "evidence_requirements": [
+            "functional_assessment",
+            "date",
+            "source_record"
+          ]
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "FINDING",
+          "concept": "Regional Spread",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "FINDING",
+          "concept": "Distant Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "concept": "Weight Loss",
+          "applicability_type": "EXPECTED_WITH"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Worsening Clinical Status",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Functional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Breast",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lung",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Prostate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Colorectal",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Liver",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Kidney",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Thyroid",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Pancreas",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Bladder",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Skin",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Leukemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PRIMARY_SITE",
+          "variant": "Lymphoma",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Metastatic Disease"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Regional Spread"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Regional Spread"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "FINDING",
+        "name": "Distant Metastatic Disease"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Progressive Disease"
+      },
+      "right": {
+        "disease": "Oncology Foundation Reference Structure",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "Worsening Clinical Status"
+      }
+    }
+  ]
+}
