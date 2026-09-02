@@ -78,7 +78,10 @@ Run with: .\\.venv\\Scripts\\python.exe scripts\\complete_ontology_neurologic_cl
 
 from __future__ import annotations
 
+import json
+import sys
 import uuid
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy.orm import Session
@@ -89,8 +92,10 @@ from app.core.database import SessionLocal
 # needed before any query touches the full ORM mapper registry.
 import app.models.poc  # noqa: F401
 from app.models.ontology_disease_blueprint import (
+    OntologyBodySystem,
     OntologyConceptVariantApplicability,
     OntologyDisease,
+    OntologyDiseaseFamily,
     OntologyDiseaseValidationResult,
     OntologyDiseaseVariant,
     OntologyEvidenceRule,
@@ -1110,6 +1115,163 @@ def populate_validation_results(db: Session, diseases: Dict[str, OntologyDisease
     return inserted
 
 
+DEFAULT_ACCEPTANCE_EXPORT_PATH = (
+    Path(__file__).resolve().parent.parent / "artifacts" / "neurologic_five_tier_acceptance_baseline.json"
+)
+
+
+def _concept_lookup(db: Session) -> Dict[Tuple[str, uuid.UUID], Dict[str, object]]:
+    """Build a {(concept_type, concept_id): {name, domain}} map covering every
+    row in every CONCEPT_DOMAINS-registered table, scoped to nothing in
+    particular (concept ids are globally unique per table) so any
+    applicability row's concept_type/concept_id can be resolved to its
+    stored name -- read-only, no writes."""
+    lookup: Dict[Tuple[str, uuid.UUID], Dict[str, object]] = {}
+    for model_cls, concept_type, name_attr, _requires_evidence in CONCEPT_DOMAINS:
+        name_col = getattr(model_cls, name_attr)
+        for row_id, row_name in db.query(model_cls.id, name_col).all():
+            lookup[(concept_type, row_id)] = {"name": row_name, "domain": concept_type}
+    return lookup
+
+
+def _variant_parent_path(
+    variant: OntologyDiseaseVariant, variants_by_id: Dict[uuid.UUID, OntologyDiseaseVariant]
+) -> List[str]:
+    """Return the chain of variant names from the root ancestor down to
+    (and including) this variant. Detects/breaks cycles defensively (a
+    cycle would otherwise infinite-loop) rather than ever raising."""
+    chain: List[str] = []
+    seen: set = set()
+    current: Optional[OntologyDiseaseVariant] = variant
+    while current is not None and current.id not in seen:
+        chain.append(current.variant_name)
+        seen.add(current.id)
+        current = variants_by_id.get(current.parent_variant_id) if current.parent_variant_id else None
+    chain.reverse()
+    return chain
+
+
+def export_five_tier_acceptance_baseline(db: Session) -> Dict[str, object]:
+    """Generate the five-tier Neurologic acceptance baseline directly from
+    the populated database (never hand-authored). Read-only -- issues no
+    writes. Includes every active Tier 4 variant and every active Tier 5
+    applicability edge for the six approved Neurologic diseases, plus a
+    grouped-by-hierarchy view (Body System -> Disease Family -> Canonical
+    Disease -> Variant Dimension -> Tier 4 Variant -> Tier 5 Domain ->
+    Tier 5 Atomic Concept)."""
+    diseases = _resolve_diseases(db)
+    concept_lookup = _concept_lookup(db)
+
+    all_variants: List[OntologyDiseaseVariant] = (
+        db.query(OntologyDiseaseVariant)
+        .filter(OntologyDiseaseVariant.disease_id.in_([d.id for d in diseases.values()]))
+        .all()
+    )
+    variants_by_id: Dict[uuid.UUID, OntologyDiseaseVariant] = {v.id: v for v in all_variants}
+
+    all_edges: List[OntologyConceptVariantApplicability] = (
+        db.query(OntologyConceptVariantApplicability)
+        .filter(OntologyConceptVariantApplicability.disease_id.in_([d.id for d in diseases.values()]))
+        .all()
+    )
+    edges_by_variant: Dict[uuid.UUID, List[OntologyConceptVariantApplicability]] = {}
+    for edge in all_edges:
+        edges_by_variant.setdefault(edge.variant_id, []).append(edge)
+
+    export_variants: List[Dict[str, object]] = []
+    export_applicability: List[Dict[str, object]] = []
+    grouped: Dict[str, object] = {}
+
+    for disease_name, disease in diseases.items():
+        family: OntologyDiseaseFamily = disease.disease_family
+        system: OntologyBodySystem = family.body_system
+
+        system_node = grouped.setdefault(
+            system.system_name, {"disease_families": {}}
+        )
+        family_node = system_node["disease_families"].setdefault(
+            family.family_name, {"diseases": {}}
+        )
+        disease_node = family_node["diseases"].setdefault(
+            disease_name, {"variant_dimensions": {}}
+        )
+
+        disease_variants = [v for v in all_variants if v.disease_id == disease.id]
+        for variant in disease_variants:
+            parent_path = _variant_parent_path(variant, variants_by_id)
+            full_path_tier4 = [system.system_name, family.family_name, disease_name] + parent_path
+
+            variant_record = {
+                "id": str(variant.id),
+                "disease_id": str(variant.disease_id),
+                "parent_variant_id": str(variant.parent_variant_id) if variant.parent_variant_id else None,
+                "variant_name": variant.variant_name,
+                "normalized_name": variant.normalized_name,
+                "variant_dimension": variant.variant_dimension,
+                "variant_code": variant.variant_code,
+                "description": variant.description,
+                "clinical_significance": variant.clinical_significance,
+                "hospice_relevance": variant.hospice_relevance,
+                "evidence_requirement": variant.evidence_requirement,
+                "source_reference": variant.source_reference,
+                "active": variant.active,
+                "path": full_path_tier4,
+            }
+            export_variants.append(variant_record)
+
+            dim_node = disease_node["variant_dimensions"].setdefault(
+                variant.variant_dimension, {"variants": {}}
+            )
+            variant_node = dim_node["variants"].setdefault(
+                variant.variant_name, {"variant": variant_record, "tier5_domains": {}}
+            )
+
+            for edge in edges_by_variant.get(variant.id, []):
+                concept_info = concept_lookup.get((edge.concept_type, edge.concept_id))
+                concept_name = concept_info["name"] if concept_info else None
+                full_path_tier5 = full_path_tier4 + [edge.concept_type, concept_name]
+
+                edge_record = {
+                    "id": str(edge.id),
+                    "disease_id": str(edge.disease_id),
+                    "concept_type": edge.concept_type,
+                    "concept_id": str(edge.concept_id),
+                    "concept_name": concept_name,
+                    "concept_domain": edge.concept_type,
+                    "variant_id": str(edge.variant_id),
+                    "variant_name": variant.variant_name,
+                    "variant_dimension": variant.variant_dimension,
+                    "applicability_type": edge.applicability_type,
+                    "description": edge.description,
+                    "evidence_requirement": edge.evidence_requirement,
+                    "active": edge.active,
+                    "path": full_path_tier5,
+                }
+                export_applicability.append(edge_record)
+
+                domain_node = variant_node["tier5_domains"].setdefault(edge.concept_type, {"concepts": {}})
+                domain_node["concepts"].setdefault(concept_name or edge.concept_id.hex, edge_record)
+
+    return {
+        "diseases": sorted(diseases.keys()),
+        "tier4_variant_count": len(export_variants),
+        "tier5_applicability_count": len(export_applicability),
+        "variants": export_variants,
+        "applicability": export_applicability,
+        "grouped": grouped,
+    }
+
+
+def write_acceptance_baseline_export(db: Session, path: Optional[Path] = None) -> Path:
+    """Generate the acceptance baseline export and write it to disk as
+    pretty-printed JSON. Returns the path written to."""
+    target = path or DEFAULT_ACCEPTANCE_EXPORT_PATH
+    payload = export_five_tier_acceptance_baseline(db)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, indent=2, sort_keys=False), encoding="utf-8")
+    return target
+
+
 def run(db: Session) -> Dict[str, object]:
     """Run the full Neurologic Clinical Reasoning Completion build against
     the given session. Does not commit -- caller controls the transaction
@@ -1143,10 +1305,14 @@ def run(db: Session) -> Dict[str, object]:
 def main() -> None:
     db = SessionLocal()
     try:
-        counts = run(db)
-        db.commit()
-        for label, value in counts.items():
-            print(f"{label}: {value}")
+        if len(sys.argv) > 1 and sys.argv[1] == "export":
+            path = write_acceptance_baseline_export(db)
+            print(f"acceptance_export_path: {path}")
+        else:
+            counts = run(db)
+            db.commit()
+            for label, value in counts.items():
+                print(f"{label}: {value}")
     finally:
         db.close()
 

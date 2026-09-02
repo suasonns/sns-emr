@@ -34,6 +34,7 @@ and Senile Degeneration of Brain. These tests assert that:
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -55,7 +56,9 @@ from scripts.complete_ontology_neurologic_clinical_reasoning import (
     HEMIPLEGIA,
     SDB,
     STROKE,
+    export_five_tier_acceptance_baseline,
     run as run_clinical_reasoning_script,
+    write_acceptance_baseline_export,
 )
 from scripts.complete_ontology_phase2_neurologic_coverage import run as run_coverage_repair_script
 from scripts.expand_ontology_phase2_neurologic import EXISTING_DISEASE_NAMES, SYSTEM_NAME
@@ -416,6 +419,198 @@ def test_second_run_creates_zero_new_rows(db_session, built_state):
     assert counts["unresolved_applicability_defs"] == []
 
 
+def test_export_file_is_generated_from_the_database(db_session, built_state, tmp_path):
+    """The acceptance export must be produced by reading the populated
+    database (never hand-authored) and written to disk as valid JSON."""
+    target = tmp_path / "neurologic_five_tier_acceptance_baseline.json"
+    written_path = write_acceptance_baseline_export(db_session, path=target)
+    assert written_path == target
+    assert target.exists()
+    payload = json.loads(target.read_text(encoding="utf-8"))
+    assert payload["tier4_variant_count"] > 0
+    assert payload["tier5_applicability_count"] > 0
+
+
+def test_export_contains_all_six_neurologic_diseases(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    assert set(payload["diseases"]) == set(ALL_DISEASE_NAMES)
+
+
+def test_export_contains_every_tier4_variant(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    disease_ids = [d.id for d in built_state.values()]
+    db_variant_count = (
+        db_session.query(OntologyDiseaseVariant)
+        .filter(OntologyDiseaseVariant.disease_id.in_(disease_ids))
+        .count()
+    )
+    assert db_variant_count == 122
+    assert payload["tier4_variant_count"] == db_variant_count
+    assert len(payload["variants"]) == db_variant_count
+
+
+def test_export_contains_every_tier5_applicability_row(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    disease_ids = [d.id for d in built_state.values()]
+    db_edge_count = (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter(OntologyConceptVariantApplicability.disease_id.in_(disease_ids))
+        .count()
+    )
+    assert db_edge_count >= 150
+    assert payload["tier5_applicability_count"] == db_edge_count
+    assert len(payload["applicability"]) == db_edge_count
+
+
+def test_export_every_applicability_row_resolves_to_an_existing_concept(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    unresolved = [e for e in payload["applicability"] if e["concept_name"] is None]
+    assert unresolved == [], f"applicability rows with unresolved concept names: {unresolved}"
+
+
+def test_export_every_variant_resolves_to_an_existing_canonical_disease(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    valid_disease_ids = {str(d.id) for d in built_state.values()}
+    bad = [v for v in payload["variants"] if v["disease_id"] not in valid_disease_ids]
+    assert bad == [], f"variants with an unresolvable disease_id: {bad}"
+
+
+def test_export_recursive_parent_paths_contain_no_cycle(db_session, built_state):
+    """Walk each variant's parent_variant_id chain directly against the
+    database (independent of the export's own cycle-breaking logic) and
+    assert no variant id ever repeats -- a repeat would indicate a cycle."""
+    disease_ids = [d.id for d in built_state.values()]
+    all_variants = (
+        db_session.query(OntologyDiseaseVariant)
+        .filter(OntologyDiseaseVariant.disease_id.in_(disease_ids))
+        .all()
+    )
+    by_id = {v.id: v for v in all_variants}
+    for variant in all_variants:
+        seen = set()
+        current = variant
+        while current is not None:
+            assert current.id not in seen, f"cycle detected reaching variant {variant.variant_name}"
+            seen.add(current.id)
+            current = by_id.get(current.parent_variant_id) if current.parent_variant_id else None
+        assert len(seen) < 10, "unexpectedly deep parent chain -- possible undetected cycle"
+
+
+def test_export_has_no_orphan_tier4_variant(db_session, built_state):
+    """Every variant's parent_variant_id (when set) must reference another
+    variant that actually exists, and every variant's disease_id must
+    reference one of the six approved diseases -- no orphans."""
+    disease_ids = {d.id for d in built_state.values()}
+    all_variants = (
+        db_session.query(OntologyDiseaseVariant)
+        .filter(OntologyDiseaseVariant.disease_id.in_(disease_ids))
+        .all()
+    )
+    all_variant_ids = {v.id for v in all_variants}
+    for variant in all_variants:
+        assert variant.disease_id in disease_ids
+        if variant.parent_variant_id is not None:
+            assert variant.parent_variant_id in all_variant_ids, (
+                f"orphan variant: {variant.variant_name} references a missing parent"
+            )
+
+
+def test_export_has_no_orphan_tier5_applicability_row(db_session, built_state):
+    """Every applicability edge's variant_id must reference an existing
+    Tier 4 variant row -- no orphans."""
+    disease_ids = [d.id for d in built_state.values()]
+    all_variant_ids = {
+        v.id
+        for v in db_session.query(OntologyDiseaseVariant)
+        .filter(OntologyDiseaseVariant.disease_id.in_(disease_ids))
+        .all()
+    }
+    all_edges = (
+        db_session.query(OntologyConceptVariantApplicability)
+        .filter(OntologyConceptVariantApplicability.disease_id.in_(disease_ids))
+        .all()
+    )
+    for edge in all_edges:
+        assert edge.variant_id in all_variant_ids, f"orphan applicability edge {edge.id}"
+
+
+def test_export_paths_contain_all_five_tiers(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    for variant in payload["variants"]:
+        # [Body System, Disease Family, Canonical Disease, ...variant chain]
+        assert len(variant["path"]) >= 3
+    for edge in payload["applicability"]:
+        # [Body System, Disease Family, Canonical Disease, ...variant chain,
+        #  Tier 5 Domain, Tier 5 Concept Name]
+        assert len(edge["path"]) >= 5
+        assert edge["path"][-2] == edge["concept_type"]
+        assert edge["path"][-1] == edge["concept_name"]
+
+
+def test_export_senile_degeneration_of_brain_remains_distinct_from_alzheimers(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    sdb_variant_ids = {v["id"] for v in payload["variants"] if v["disease_id"] == str(built_state[SDB].id)}
+    alz_variant_ids = {v["id"] for v in payload["variants"] if v["disease_id"] == str(built_state[ALZ].id)}
+    assert sdb_variant_ids.isdisjoint(alz_variant_ids)
+
+    # Structural check (not narrative-prose matching): no applicability row
+    # attached to a Senile Degeneration of Brain variant may reference a
+    # concept whose *name* is itself Alzheimer/FAST-branded (e.g. a "FAST
+    # Stage 7" concept), and no HOSPICE_SUPPORT_FOR edge attached to SDB may
+    # point at a concept that is exclusively an Alzheimer's-branded concept.
+    forbidden_concept_name_markers = ("FAST Stage", "Alzheimer")
+    sdb_edges = [e for e in payload["applicability"] if e["variant_id"] in sdb_variant_ids]
+    for edge in sdb_edges:
+        concept_name = edge["concept_name"] or ""
+        for marker in forbidden_concept_name_markers:
+            assert marker not in concept_name, (
+                f"Alzheimer/FAST-stage concept name leaked into a Senile Degeneration of Brain "
+                f"applicability row: {edge}"
+            )
+
+
+def test_export_hemorrhagic_stroke_has_no_thrombolysis_applicability(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    stroke_id = str(built_state[STROKE].id)
+    hemorrhagic_variant_ids = {
+        v["id"]
+        for v in payload["variants"]
+        if v["disease_id"] == stroke_id and "Hemorrhagic" in v["variant_name"]
+    }
+    assert hemorrhagic_variant_ids, "expected at least one Hemorrhagic Stroke variant in the export"
+    offending = [
+        e
+        for e in payload["applicability"]
+        if e["variant_id"] in hemorrhagic_variant_ids
+        and e["concept_name"] == "Thrombolytic Therapy"
+        and e["applicability_type"] != "CONTRAINDICATED_FOR"
+    ]
+    assert offending == [], f"hemorrhagic stroke must never carry non-contraindicated thrombolysis applicability: {offending}"
+
+
+def test_export_locked_in_syndrome_remains_distinct_from_coma(db_session, built_state):
+    payload = export_five_tier_acceptance_baseline(db_session)
+    stroke_id = str(built_state[STROKE].id)
+    phenotype_variants = {
+        v["variant_name"]
+        for v in payload["variants"]
+        if v["disease_id"] == stroke_id and v["variant_dimension"] == "PHYSIOLOGICAL_PHENOTYPE"
+    }
+    assert "Locked-In Syndrome" in phenotype_variants
+    assert "Coma" in phenotype_variants
+    locked_in_ids = {
+        v["id"]
+        for v in payload["variants"]
+        if v["disease_id"] == stroke_id and v["variant_name"] == "Locked-In Syndrome"
+    }
+    coma_ids = {
+        v["id"]
+        for v in payload["variants"]
+        if v["disease_id"] == stroke_id and v["variant_name"] == "Coma"
+    }
+    assert locked_in_ids.isdisjoint(coma_ids)
+
+
 def test_no_other_body_system_touched(db_session, built_state):
     """Only the Neurologic body system's diseases may gain Tier 4/5 rows;
     every other body system's disease set must be completely untouched by
@@ -458,6 +653,7 @@ def test_only_authorized_files_changed():
         "backend/app/models/ontology_disease_blueprint.py",
         "backend/scripts/complete_ontology_neurologic_clinical_reasoning.py",
         "backend/tests/test_ontology_neurologic_clinical_reasoning.py",
+        "backend/artifacts/neurologic_five_tier_acceptance_baseline.json",
     )
     allowed_prefixes = ("backend/alembic/versions/",)
     disallowed = [
