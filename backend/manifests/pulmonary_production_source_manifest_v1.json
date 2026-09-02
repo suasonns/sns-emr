@@ -1,0 +1,1452 @@
+{
+  "manifest_version": "1.0",
+  "status": "AUTHORITATIVE",
+  "scope": {
+    "body_system": "Pulmonary System",
+    "families": [
+      "End Stage Pulmonary Disease and Chronic Obstructive Pulmonary Disease"
+    ]
+  },
+  "rules": [
+    "No concept is renamed, substituted, combined, split, or omitted.",
+    "No additional concept is invented beyond what this manifest declares.",
+    "patient_fact_requires_evidence is always true for every Tier 5 concept.",
+    "No inferred diagnoses. No inferred hospice eligibility.",
+    "RESPIRATORY_PHYSIOLOGY is an approved vocabulary correction mapped to the existing PHYSIOLOGICAL_PHENOTYPE variant dimension -- no new dimension, no schema change, no migration."
+  ],
+  "sources": [
+    {
+      "source_id": "PULM-PDF-1",
+      "title": "hospice_terminal_prog_pulmonary_disease.pdf"
+    },
+    {
+      "source_id": "CMS-GUIDE-1",
+      "title": "cms guidelines.pdf"
+    },
+    {
+      "source_id": "SRC-1",
+      "title": "1.pdf"
+    },
+    {
+      "source_id": "NONDISEASE-1",
+      "title": "hospice_terminal_prog_non-disease_specific.pdf"
+    }
+  ],
+  "diseases": [
+    {
+      "disease": "End Stage Pulmonary Disease",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "End Stage Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Stable Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Pulmonary Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Optimally Treated Pulmonary Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Candidate For Further Pulmonary Intervention"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Pulmonary Intervention Declined"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Pulmonary Exacerbation"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hypoxemic Respiratory Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hypercapnic Respiratory Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Combined Hypoxemic Hypercapnic Respiratory Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Disabling Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea At Rest",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Chronic Cough",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Severe Chronic Lung Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hypoxemia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hypercapnia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Progressive Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Resting Tachycardia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Right Heart Failure Secondary To Pulmonary Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Pulmonary Infection",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Respiratory Failure",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Severe Chronic Lung Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Disabling Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Disease Progression",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hypoxemia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hypercapnia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Right Heart Failure Secondary To Pulmonary Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Resting Tachycardia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Severe Chronic Lung Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Disabling Dyspnea",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Disease Progression",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Hypoxemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Hypercapnia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Right Heart Failure Secondary To Pulmonary Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Weight Loss",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Resting Tachycardia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Combined Hypoxemic Hypercapnic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Respiratory Failure",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hypoxemic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Hypoxemia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hypercapnic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Hypercapnia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Pulmonary Disease",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Dyspnea",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Pulmonary Disease",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Hospitalization",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Disease Progression",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "PROGNOSTIC_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Pulmonary Exacerbation",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Recurrent Pulmonary Infection",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Candidate For Further Pulmonary Intervention",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Severe Chronic Lung Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Pulmonary Intervention Declined",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Disabling Dyspnea",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    },
+    {
+      "disease": "Chronic Obstructive Pulmonary Disease",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Pulmonary Impairment"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "End Stage Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Stable Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Pulmonary Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Pulmonary Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Optimally Treated Pulmonary Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Candidate For Further Pulmonary Intervention"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Pulmonary Intervention Declined"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Pulmonary Exacerbation"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hypoxemic Respiratory Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hypercapnic Respiratory Failure"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Combined Hypoxemic Hypercapnic Respiratory Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Disabling Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea At Rest",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Chronic Cough",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Severe Chronic Lung Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hypoxemia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hypercapnia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Progressive Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Resting Tachycardia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Right Heart Failure Secondary To Pulmonary Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Pulmonary Infection",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Respiratory Failure",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Severe Chronic Lung Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Disabling Dyspnea",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Disease Progression",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hypoxemia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hypercapnia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Right Heart Failure Secondary To Pulmonary Disease",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Resting Tachycardia",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Severe Chronic Lung Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Disabling Dyspnea",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Disease Progression",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Hypoxemia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Hypercapnia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Right Heart Failure Secondary To Pulmonary Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Weight Loss",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "Resting Tachycardia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Pulmonary Disease",
+          "variant_dimension": "SEVERITY_CLASS",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Combined Hypoxemic Hypercapnic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Respiratory Failure",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hypoxemic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Hypoxemia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hypercapnic Respiratory Failure",
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "concept": "Hypercapnia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Pulmonary Disease",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Dyspnea",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Progressive Pulmonary Disease",
+          "variant_dimension": "DISEASE_PHASE",
+          "concept": "Progressive Nutritional Decline",
+          "concept_domain": "NUTRITIONAL_IMPACT",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Hospitalization",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Disease Progression",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "PROGNOSTIC_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Recurrent Pulmonary Exacerbation",
+          "variant_dimension": "RECURRENCE_STATE",
+          "concept": "Recurrent Pulmonary Infection",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Candidate For Further Pulmonary Intervention",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Severe Chronic Lung Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Pulmonary Intervention Declined",
+          "variant_dimension": "TREATMENT_STATE",
+          "concept": "Disabling Dyspnea",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "END_STAGE_SUPPORT_FOR",
+          "source_ids": [
+            "PULM-PDF-1",
+            "CMS-GUIDE-1",
+            "SRC-1",
+            "NONDISEASE-1"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "left": "End Stage Pulmonary Disease",
+      "right": "Chronic Obstructive Pulmonary Disease",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    }
+  ],
+  "summary": {
+    "disease_count": 2,
+    "variant_count": 30,
+    "concept_count": 64,
+    "explicit_applicability_count": 40
+  }
+}
