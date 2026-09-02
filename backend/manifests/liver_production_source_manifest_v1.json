@@ -1,0 +1,1212 @@
+{
+  "manifest_id": "liver_production_source_manifest_v1",
+  "version": 1,
+  "scope": {
+    "body_system": "Hepatic System",
+    "families": [
+      "End Stage Liver Disease and Chronic Liver Disease"
+    ]
+  },
+  "diseases": [
+    {
+      "disease": "End Stage Liver Disease",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Liver Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Terminal End Stage Liver Disease"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Child-Pugh Class C Cirrhosis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not A Liver Transplant Candidate"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Liver Transplant Declined"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Variceal Bleeding Episodes"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Spontaneous Bacterial Peritonitis Episodes"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Refractory Ascites Phenotype"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hepatorenal Syndrome Phenotype"
+        },
+        {
+          "dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "name": "Hepatic Encephalopathy Phenotype"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Prolonged Prothrombin Time",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated INR",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Low Serum Albumin",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Ascites",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Spontaneous Bacterial Peritonitis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hepatic Encephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "clinical_exam_finding",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Variceal Bleeding",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "hospitalization_record",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "End Stage Liver Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Diagnosis-level hospice-eligibility support concept. A diagnosis of end stage liver disease alone never establishes terminal prognosis; requires documented evidence of hepatic decompensation before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "decompensation_evidence",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Prolonged Prothrombin Time",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Elevated INR",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Low Serum Albumin",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Refractory Ascites",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Spontaneous Bacterial Peritonitis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hepatic Encephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "clinical_exam_finding",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Variceal Bleeding",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "hospitalization_record",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Liver Function Tests",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "description": "General clinical knowledge concept retained for clinical completeness. Not an LCD hospice-eligibility criterion and never eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Ascites",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "description": "General clinical knowledge concept retained for clinical completeness. Not an LCD hospice-eligibility criterion and never eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Prolonged Prothrombin Time",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Elevated INR",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Low Serum Albumin",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Refractory Ascites",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Spontaneous Bacterial Peritonitis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatic Encephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Recurrent Variceal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "End Stage Liver Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Prolonged Prothrombin Time",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Elevated INR",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Low Serum Albumin",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Refractory Ascites",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Spontaneous Bacterial Peritonitis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Hepatic Encephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Recurrent Variceal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal End Stage Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Weight Loss",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Refractory Ascites Phenotype",
+          "concept_domain": "COMPLICATION",
+          "concept": "Refractory Ascites",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Hepatorenal Syndrome Phenotype",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "PHYSIOLOGICAL_PHENOTYPE",
+          "variant": "Hepatic Encephalopathy Phenotype",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatic Encephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "RECURRENCE_STATE",
+          "variant": "Recurrent Variceal Bleeding Episodes",
+          "concept_domain": "COMPLICATION",
+          "concept": "Recurrent Variceal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "RECURRENCE_STATE",
+          "variant": "Recurrent Spontaneous Bacterial Peritonitis Episodes",
+          "concept_domain": "COMPLICATION",
+          "concept": "Spontaneous Bacterial Peritonitis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    },
+    {
+      "disease": "Chronic Liver Disease",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Chronic Liver Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Chronic Liver Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Decompensated Chronic Liver Disease"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Child-Pugh Class B Cirrhosis"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Child-Pugh Class C Cirrhosis"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not A Liver Transplant Candidate"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Liver Transplant Declined"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Liver Transplant Not Pursued"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization For Liver Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Prolonged Prothrombin Time",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Elevated INR",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Low Serum Albumin",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Refractory Ascites",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Spontaneous Bacterial Peritonitis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hepatic Encephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "clinical_exam_finding",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Variceal Bleeding",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "hospitalization_record",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "End Stage Liver Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Diagnosis-level hospice-eligibility support concept. A diagnosis of end stage liver disease alone never establishes terminal prognosis; requires documented evidence of hepatic decompensation before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "decompensation_evidence",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Prolonged Prothrombin Time",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Elevated INR",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Low Serum Albumin",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Refractory Ascites",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "treatment_response_status",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Spontaneous Bacterial Peritonitis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hepatorenal Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hepatic Encephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "clinical_exam_finding",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Variceal Bleeding",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_liver_disease.pdf",
+          "description": "Liver disease-specific LCD hospice-eligibility support concept. Diagnosis alone never establishes terminal prognosis; requires documented patient-record evidence before being treated as a patient-specific fact.",
+          "evidence_requirements": [
+            "hospitalization_record",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "description": "Non-disease-specific hospice decline indicator. Does not independently establish hospice eligibility; must be considered alongside disease-specific criteria, never as a substitute for them.",
+          "evidence_requirements": [
+            "functional_status_documentation",
+            "source_record"
+          ],
+          "hospice_support_eligible": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Liver Function Tests",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "description": "General clinical knowledge concept retained for clinical completeness. Not an LCD hospice-eligibility criterion and never eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Ascites",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "description": "General clinical knowledge concept retained for clinical completeness. Not an LCD hospice-eligibility criterion and never eligible for HOSPICE_SUPPORT_FOR applicability.",
+          "evidence_requirements": [],
+          "hospice_support_eligible": false
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Prolonged Prothrombin Time",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Elevated INR",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "FINDING",
+          "concept": "Low Serum Albumin",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Refractory Ascites",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Spontaneous Bacterial Peritonitis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Hepatic Encephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "COMPLICATION",
+          "concept": "Recurrent Variceal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "End Stage Liver Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Prolonged Prothrombin Time",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Elevated INR",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Low Serum Albumin",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Refractory Ascites",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Spontaneous Bacterial Peritonitis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Hepatorenal Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Hepatic Encephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Recurrent Variceal Bleeding",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Decompensated Chronic Liver Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Weight Loss",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
+      "left": "End Stage Liver Disease",
+      "right": "Chronic Liver Disease"
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Prolonged Prothrombin Time"
+      },
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Elevated INR"
+      },
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Low Serum Albumin"
+      },
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Refractory Ascites"
+      },
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Ascites"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Prolonged Prothrombin Time"
+      },
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Elevated INR"
+      },
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Low Serum Albumin"
+      },
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Refractory Ascites"
+      },
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Ascites"
+      }
+    }
+  ],
+  "summary": {
+    "canonical_diseases": 2,
+    "total_variants": 19,
+    "total_concepts": 50,
+    "total_applicability_mappings": 51
+  }
+}

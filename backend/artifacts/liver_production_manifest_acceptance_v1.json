@@ -1,0 +1,250 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": "End Stage Liver Disease",
+      "passed": true,
+      "right": "Chronic Liver Disease",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Prolonged Prothrombin Time"
+      },
+      "passed": true,
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Elevated INR"
+      },
+      "passed": true,
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Low Serum Albumin"
+      },
+      "passed": true,
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "End Stage Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Refractory Ascites"
+      },
+      "passed": true,
+      "right": {
+        "disease": "End Stage Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Ascites"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Prolonged Prothrombin Time"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Elevated INR"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Low Serum Albumin"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "FINDING",
+        "name": "Abnormal Liver Function Tests"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Chronic Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Refractory Ascites"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Chronic Liver Disease",
+        "domain": "COMPLICATION",
+        "name": "Ascites"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 50,
+    "expected": 50,
+    "missing": []
+  },
+  "expected_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 39,
+    "LCD_NON_DISEASE_SPECIFIC": 12
+  },
+  "expected_applicability_mappings": 51,
+  "expected_concepts": 50,
+  "expected_concepts_by_disease_and_domain": {
+    "Chronic Liver Disease": {
+      "COMPLICATION": 6,
+      "FINDING": 4,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15
+    },
+    "End Stage Liver Disease": {
+      "COMPLICATION": 6,
+      "FINDING": 4,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15
+    }
+  },
+  "expected_diseases": [
+    "Chronic Liver Disease",
+    "End Stage Liver Disease"
+  ],
+  "expected_variants": 19,
+  "expected_variants_by_disease_and_dimension": {
+    "Chronic Liver Disease": {
+      "DISEASE_PHASE": 3,
+      "RECURRENCE_STATE": 1,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    },
+    "End Stage Liver Disease": {
+      "DISEASE_PHASE": 2,
+      "PHYSIOLOGICAL_PHENOTYPE": 3,
+      "RECURRENCE_STATE": 2,
+      "SEVERITY_CLASS": 1,
+      "TREATMENT_STATE": 2
+    }
+  },
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\liver_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_exact_lcd_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "source_provenance_coverage": {
+    "covered": 50,
+    "expected": 50
+  },
+  "stored_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 39,
+    "LCD_NON_DISEASE_SPECIFIC": 12
+  },
+  "stored_applicability_mappings": 51,
+  "stored_concepts": 50,
+  "stored_concepts_by_disease_and_domain": {
+    "Chronic Liver Disease": {
+      "COMPLICATION": 6,
+      "FINDING": 4,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15
+    },
+    "End Stage Liver Disease": {
+      "COMPLICATION": 6,
+      "FINDING": 4,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 15
+    }
+  },
+  "stored_diseases": [
+    "Chronic Liver Disease",
+    "End Stage Liver Disease"
+  ],
+  "stored_variants": 19,
+  "stored_variants_by_disease_and_dimension": {
+    "Chronic Liver Disease": {
+      "DISEASE_PHASE": 3,
+      "RECURRENCE_STATE": 1,
+      "SEVERITY_CLASS": 2,
+      "TREATMENT_STATE": 3
+    },
+    "End Stage Liver Disease": {
+      "DISEASE_PHASE": 2,
+      "PHYSIOLOGICAL_PHENOTYPE": 3,
+      "RECURRENCE_STATE": 2,
+      "SEVERITY_CLASS": 1,
+      "TREATMENT_STATE": 2
+    }
+  },
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": [],
+  "unresolved_concept_count": 0,
+  "unsupported_general_concepts": [
+    [
+      "Chronic Liver Disease",
+      "COMPLICATION",
+      "ascites"
+    ],
+    [
+      "Chronic Liver Disease",
+      "FINDING",
+      "abnormal liver function tests"
+    ],
+    [
+      "End Stage Liver Disease",
+      "COMPLICATION",
+      "ascites"
+    ],
+    [
+      "End Stage Liver Disease",
+      "FINDING",
+      "abnormal liver function tests"
+    ]
+  ]
+}
