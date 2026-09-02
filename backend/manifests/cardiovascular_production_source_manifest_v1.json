@@ -1,0 +1,1365 @@
+{
+  "manifest_version": "1.0.0",
+  "status": "APPROVED_SOURCE_MANIFEST",
+  "scope": {
+    "body_system": "Cardiovascular System",
+    "families": [
+      "Heart Failure and Advanced Cardiac Disease"
+    ],
+    "diseases": [
+      "Congestive Heart Failure",
+      "Ischemic Heart Disease"
+    ]
+  },
+  "rules": {
+    "five_tiers": [
+      "BODY_SYSTEM",
+      "DISEASE_FAMILY",
+      "CANONICAL_DISEASE",
+      "DISEASE_VARIANT_OR_CONTEXT",
+      "ATOMIC_CLINICAL_KNOWLEDGE"
+    ],
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_semantic_substitution": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_hospice_eligibility": true
+  },
+  "sources": [
+    {
+      "source_id": "HEART_DISEASE_SOURCE",
+      "title": "Heart Disease (Approved Enterprise Source)",
+      "use_for": [
+        "variants",
+        "atomic_concepts",
+        "applicability"
+      ]
+    },
+    {
+      "source_id": "CMS_GUIDELINES",
+      "title": "CMS Guidelines (Approved Enterprise Source)",
+      "use_for": [
+        "hospice_support",
+        "general_decline"
+      ]
+    },
+    {
+      "source_id": "SOURCE_1",
+      "title": "1.pdf (Approved Enterprise Source)",
+      "use_for": [
+        "hospice_support",
+        "atomic_concepts"
+      ]
+    },
+    {
+      "source_id": "HOSPICE_TERMINAL_PROG_NON_DISEASE_SPECIFIC",
+      "title": "Hospice Terminal Prognosis: Non-Disease-Specific Decline Guidance",
+      "use_for": [
+        "general_decline",
+        "functional_impacts"
+      ]
+    },
+    {
+      "source_id": "APPROVED_CARDIO_MANIFEST",
+      "title": "Approved SNS Cardiovascular Clinical Reasoning Specification",
+      "use_for": [
+        "variants",
+        "applicability",
+        "atomic_concepts"
+      ]
+    }
+  ],
+  "diseases": [
+    {
+      "disease": "Congestive Heart Failure",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "NYHA Class I"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "NYHA Class II"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "NYHA Class III"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "NYHA Class IV"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Optimally Treated Heart Failure"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Surgical Candidate"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Procedure Declined"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Stable Heart Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Heart Failure"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "End Stage Heart Failure"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Hospitalization"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Cardiac Decompensation"
+        },
+        {
+          "dimension": "CARDIAC_CHAMBER",
+          "name": "Left Ventricular Failure"
+        },
+        {
+          "dimension": "CARDIAC_CHAMBER",
+          "name": "Right Ventricular Failure"
+        },
+        {
+          "dimension": "CARDIAC_CHAMBER",
+          "name": "Biventricular Failure"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Congestive Heart Failure Symptoms At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Angina At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Weakness",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "NYHA Class IV",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Functional Impairment",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Treatment Resistant Supraventricular Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Treatment Resistant Ventricular Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cardiac Arrest History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Resuscitation History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Unexplained Syncope",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Brain Embolism Of Cardiac Origin",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "HIV Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Renal Failure",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Liver Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Diabetes Mellitus",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Neurologic Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dementia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Infection",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Increasing Hospitalizations",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Increasing Physician Visits",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Optimally Treated Heart Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Surgical Candidate",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Procedure Declined",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "NYHA Class IV",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Symptoms At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Treatment Resistant Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Cardiac Arrest History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Resuscitation History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unexplained Syncope",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Brain Embolism Of Cardiac Origin",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Concomitant HIV Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "NYHA Class IV",
+          "concept": "NYHA Class IV",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "NYHA Class IV",
+          "concept": "Symptoms At Rest",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "NYHA Class IV",
+          "concept": "Congestive Heart Failure Symptoms At Rest",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Optimally Treated Heart Failure",
+          "concept": "Optimally Treated Heart Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Surgical Candidate",
+          "concept": "Not Surgical Candidate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Procedure Declined",
+          "concept": "Procedure Declined",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Treatment Resistant Ventricular Arrhythmia",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "STRONGLY_ASSOCIATED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Treatment Resistant Supraventricular Arrhythmia",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "STRONGLY_ASSOCIATED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Treatment Resistant Arrhythmia",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Cardiac Arrest History",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Cardiac Arrest History",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Resuscitation History",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Resuscitation History",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Unexplained Syncope",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Unexplained Syncope",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Brain Embolism Of Cardiac Origin",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Brain Embolism Of Cardiac Origin",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "Concomitant HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "End Stage Heart Failure",
+          "concept": "HIV Disease",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    },
+    {
+      "disease": "Ischemic Heart Disease",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stable Ischemic Heart Disease"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Advanced Ischemic Heart Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Optimally Treated Ischemic Heart Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Surgical Candidate"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Procedure Declined"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Congestive Heart Failure Symptoms At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Angina At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dyspnea",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Weakness",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigue",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "NYHA Class IV",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Functional Impairment",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Treatment Resistant Supraventricular Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Treatment Resistant Ventricular Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cardiac Arrest History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Resuscitation History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Unexplained Syncope",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Brain Embolism Of Cardiac Origin",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "HIV Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Renal Failure",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Liver Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Diabetes Mellitus",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Neurologic Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dementia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Infection",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Increasing Hospitalizations",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Increasing Physician Visits",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Optimally Treated Heart Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Not Surgical Candidate",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Procedure Declined",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "NYHA Class IV",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Symptoms At Rest",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Treatment Resistant Arrhythmia",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Cardiac Arrest History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Resuscitation History",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unexplained Syncope",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Brain Embolism Of Cardiac Origin",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Concomitant HIV Disease",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Angina At Rest",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Symptoms At Rest",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Optimally Treated Ischemic Heart Disease",
+          "concept": "Optimally Treated Heart Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Not Surgical Candidate",
+          "concept": "Not Surgical Candidate",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Procedure Declined",
+          "concept": "Procedure Declined",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Ejection Fraction Less Than Or Equal To 20 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Cardiac Arrest History",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Cardiac Arrest History",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Resuscitation History",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "MAY_OCCUR_WITH",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "Resuscitation History",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "KPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "PPS Less Than 70 Percent",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Advanced Ischemic Heart Disease",
+          "concept": "ADL Dependence",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "applicability_type": "HOSPICE_SUPPORT_FOR",
+          "source_ids": [
+            "APPROVED_CARDIO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "left": "Congestive Heart Failure",
+      "right": "Ischemic Heart Disease",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    }
+  ],
+  "summary": {
+    "disease_count": 2,
+    "variant_count": 20,
+    "concept_count": 100,
+    "explicit_applicability_count": 38
+  }
+}
