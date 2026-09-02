@@ -1,0 +1,6034 @@
+{
+  "manifest_version": "1.0.0",
+  "status": "APPROVED_SOURCE_MANIFEST",
+  "scope": {
+    "body_system": "Neurologic System",
+    "families": [
+      "Cerebrovascular Disease",
+      "Motor Deficit Disorders",
+      "Degenerative Brain Disorders"
+    ],
+    "diseases": [
+      "Stroke",
+      "Hemiplegia",
+      "Hemiparesis",
+      "Contracture",
+      "Dementia Due To Alzheimer's Disease",
+      "Senile Degeneration of Brain"
+    ]
+  },
+  "rules": {
+    "five_tiers": [
+      "BODY_SYSTEM",
+      "DISEASE_FAMILY",
+      "CANONICAL_DISEASE",
+      "DISEASE_VARIANT_OR_CONTEXT",
+      "ATOMIC_CLINICAL_KNOWLEDGE"
+    ],
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_semantic_substitution": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_hospice_eligibility": true
+  },
+  "sources": [
+    {
+      "source_id": "CGS_STROKE_COMA",
+      "title": "Hospice Terminal Prognosis: Stroke and Coma",
+      "use_for": [
+        "hospice_support",
+        "end_stage_findings",
+        "prognostic_indicators",
+        "treatment_limitations"
+      ]
+    },
+    {
+      "source_id": "CGS_DEMENTIA",
+      "title": "Hospice Terminal Prognosis: Dementia Due to Alzheimer's Disease",
+      "use_for": [
+        "hospice_support",
+        "end_stage_findings",
+        "functional_impacts",
+        "nutritional_impacts"
+      ]
+    },
+    {
+      "source_id": "CMS_LCD_L34538",
+      "title": "Hospice Determining Terminal Status",
+      "use_for": [
+        "general_decline",
+        "hospice_support"
+      ]
+    },
+    {
+      "source_id": "TJC_STROKE_MEASURES",
+      "title": "Joint Commission Stroke Measures",
+      "use_for": [
+        "diagnostics",
+        "treatments",
+        "quality_evidence"
+      ]
+    },
+    {
+      "source_id": "APPROVED_NEURO_MANIFEST",
+      "title": "Approved SNS Neurologic Clinical Reasoning Specification",
+      "use_for": [
+        "variants",
+        "applicability",
+        "atomic_concepts"
+      ]
+    }
+  ],
+  "diseases": [
+    {
+      "disease": "Stroke",
+      "variants": [
+        {
+          "dimension": "MECHANISM",
+          "name": "Ischemic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Thrombotic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Embolic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Cardioembolic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Large-Artery Atherosclerotic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Small-Vessel Occlusive Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Lacunar Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Cryptogenic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Hemorrhagic Stroke"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Intracerebral Hemorrhage"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Subarachnoid Hemorrhage"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Hemorrhagic Transformation"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Anterior Circulation Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Internal Carotid Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Anterior Cerebral Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Middle Cerebral Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Posterior Circulation Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Posterior Cerebral Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Vertebral Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Basilar Artery Stroke"
+        },
+        {
+          "dimension": "VASCULAR_TERRITORY",
+          "name": "Vertebrobasilar Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Cortical Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Frontal-Lobe Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Temporal-Lobe Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Parietal-Lobe Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Occipital-Lobe Stroke"
+        },
+        {
+          "dimension": "CORTICAL_LOCATION",
+          "name": "Insular Stroke"
+        },
+        {
+          "dimension": "SUBCORTICAL_LOCATION",
+          "name": "Subcortical Stroke"
+        },
+        {
+          "dimension": "SUBCORTICAL_LOCATION",
+          "name": "Internal Capsule Stroke"
+        },
+        {
+          "dimension": "SUBCORTICAL_LOCATION",
+          "name": "Thalamic Stroke"
+        },
+        {
+          "dimension": "SUBCORTICAL_LOCATION",
+          "name": "Basal Ganglia Stroke"
+        },
+        {
+          "dimension": "SUBCORTICAL_LOCATION",
+          "name": "Caudate Stroke"
+        },
+        {
+          "dimension": "BRAINSTEM_LEVEL",
+          "name": "Brainstem Stroke"
+        },
+        {
+          "dimension": "BRAINSTEM_LEVEL",
+          "name": "Midbrain Stroke"
+        },
+        {
+          "dimension": "BRAINSTEM_LEVEL",
+          "name": "Pontine Stroke"
+        },
+        {
+          "dimension": "BRAINSTEM_LEVEL",
+          "name": "Medullary Stroke"
+        },
+        {
+          "dimension": "CEREBELLAR_LOCATION",
+          "name": "Cerebellar Stroke"
+        },
+        {
+          "dimension": "CEREBELLAR_LOCATION",
+          "name": "Cerebellar-Hemisphere Stroke"
+        },
+        {
+          "dimension": "CEREBELLAR_LOCATION",
+          "name": "Cerebellar-Vermis Stroke"
+        },
+        {
+          "dimension": "HEMISPHERE",
+          "name": "Left-Hemisphere Stroke"
+        },
+        {
+          "dimension": "HEMISPHERE",
+          "name": "Right-Hemisphere Stroke"
+        },
+        {
+          "dimension": "HEMISPHERE",
+          "name": "Bilateral Cerebral Stroke"
+        },
+        {
+          "dimension": "DOMINANCE",
+          "name": "Dominant-Hemisphere Stroke"
+        },
+        {
+          "dimension": "DOMINANCE",
+          "name": "Non-Dominant-Hemisphere Stroke"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Acute Stroke"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Evolving Stroke"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Established Stroke"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Historical Stroke"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Recurrent Stroke"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Large-Territory Stroke"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Large Anterior Infarction"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Bihemispheric Infarction"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Malignant Cerebral Infarction"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Cerebral Edema"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Midline Shift"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Obstructive Hydrocephalus"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Intraventricular Extension"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Depressed Consciousness"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Stroke With Persistent Coma"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Hemiplegia"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Hemiparesis"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Aphasia"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Dysarthria"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Dysphagia"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Visual-Field Deficit"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Cognitive Impairment"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Gait Impairment"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Incontinence"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Spasticity"
+        },
+        {
+          "dimension": "RESIDUAL_DEFICIT_STATE",
+          "name": "Residual Contracture"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Sudden Unilateral Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Sudden Unilateral Paralysis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Facial Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Facial Numbness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Expressive Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Receptive Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Global Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dysarthria",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dysphagia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Unilateral Sensory Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Homonymous Hemianopia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Diplopia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Gaze Disturbance",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Unilateral Neglect",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Vertigo",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Ataxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Loss of Coordination",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Sudden Severe Headache",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Thunderclap Headache",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Nausea",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Vomiting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Confusion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Altered Level of Consciousness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Seizure",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Imbalance",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Difficulty Walking",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Facial Droop",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Pronator Drift",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Focal Motor Deficit",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Focal Sensory Deficit",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Graded Motor Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Babinski Sign",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Gaze Deviation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Visual Field Deficit",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Limb Ataxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Gait",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Protective Reflexes",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Gag Reflex",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Swallow Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "NIH Stroke Scale Deficit",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Level of Consciousness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Absent Verbal Response",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Absent Withdrawal Response",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Brainstem Response",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Mass Effect",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Cerebral Edema",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Intraventricular Extension",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Midline Shift",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Obstructive Hydrocephalus",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Noncontrast Head CT",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain MRI",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Diffusion-Weighted Brain MRI",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "CT Angiography",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "MR Angiography",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Carotid Duplex Ultrasound",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Cerebral Angiography",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Echocardiogram",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Electrocardiogram",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Cardiac Rhythm Monitoring",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Swallow Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Modified Barium Swallow Study",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Fiberoptic Endoscopic Evaluation of Swallowing",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Neurologic Examination",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "NIH Stroke Scale Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Glasgow Coma Scale Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Complete Blood Count",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Comprehensive Metabolic Panel",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Serum Glucose",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Hemoglobin A1c",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Coagulation Studies",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Prothrombin Time",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "INR",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Partial Thromboplastin Time",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Platelet Count",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Lipid Panel",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Cardiac Troponin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Serum Creatinine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "LAB",
+          "name": "Serum Albumin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hemiplegia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hemiparesis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dysarthria",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dysphagia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Aspiration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration Pneumonia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Malnutrition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dehydration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Deep Vein Thrombosis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pulmonary Embolism",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pressure Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Falls",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Post-Stroke Seizure",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Post-Stroke Depression",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Contracture",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Shoulder Subluxation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Stroke",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hemorrhagic Transformation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cerebral Edema",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Obstructive Hydrocephalus",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Communication Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cognitive Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Urinary Incontinence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Bowel Incontinence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Increasing NIH Stroke Scale Score",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Large Infarct Territory",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Bilateral Cerebral Involvement",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Large Anterior Infarction",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Cortical and Subcortical Involvement",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Basilar Artery Occlusion",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Bilateral Vertebral Artery Occlusion",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Large-Volume Intracranial Hemorrhage",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Intraventricular Hemorrhage Extension",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Midline Shift",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Obstructive Hydrocephalus",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Persistent Dysphagia",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Recurrent Aspiration",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Declining Level of Consciousness",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Severe Functional Dependence",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Continuing Weight Loss",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Inadequate Calorie Intake",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Inadequate Fluid Intake",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Low Serum Albumin When Documented",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Recurrent Serious Infection",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Refractory Pressure Injury",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "IV Thrombolytic Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Alteplase",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Tenecteplase",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Mechanical Thrombectomy Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Mechanical Thrombectomy",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Antiplatelet Therapy",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Anticoagulation for Documented Cardioembolic Indication",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Blood Pressure Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Statin Therapy",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Seizure Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Dysphagia Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Aspiration Precautions",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Positioning Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Range-of-Motion Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Spasticity Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Assistive Communication Support",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Texture-Modified Diet",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Enteral Feeding Consideration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Comfort-Focused Stroke Care",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Anticoagulant-Reversal Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Intracranial-Pressure Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Neurosurgical Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Ventricular-Drain Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Aneurysm-Securing Procedure Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Aspirin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Clopidogrel",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Alteplase",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Tenecteplase",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Atorvastatin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Anticoagulant Therapy for Documented Cardioembolic Indication",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Baclofen",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Tizanidine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Botulinum Toxin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Antiseizure Medication for Documented Seizure",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Analgesic Therapy for Documented Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Nimodipine for Documented Subarachnoid Hemorrhage",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Toileting Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Communication Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Swallowing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Wheelchair Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bedbound Status",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Loss of Dominant-Hand Function",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Impaired Safety Awareness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Need for Continuous Supervision",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Total ADL Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Dysphagia-Related Intake Limitation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Texture-Modified Diet",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Thickened Liquid Requirement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Aspiration-Risk Nutrition Plan",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Enteral Feeding Consideration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Inadequate Oral Intake",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Inadequate Fluid Intake",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Dehydration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Protein-Calorie Malnutrition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Low Serum Albumin When Documented",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Outside Treatment Window",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "OUTSIDE_WINDOW"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Thrombolytic Contraindication",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "CONTRAINDICATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Thrombolytic Therapy Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Mechanical Thrombectomy Not a Candidate",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Mechanical Thrombectomy Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Anticoagulation Contraindicated",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "CONTRAINDICATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Anticoagulation Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Artificial Nutrition Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Hospital Transfer Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Surgical Intervention Not a Candidate",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Revascularization Not Consistent With Goals of Care",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Comfort-Focused Care Selected",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Persistent Coma",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Minimally Conscious State",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Persistent Vegetative State",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Global Functional Dependence",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Inability To Maintain Oral Nutrition",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Inability To Maintain Hydration",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Recurrent Aspiration Pneumonia",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Severe Persistent Dysphagia",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Progressive Loss of Consciousness",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Bedbound With Total ADL Dependence",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Karnofsky Performance Status 40 Percent or Less",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Palliative Performance Scale 40 Percent or Less",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Inability To Maintain Hydration and Caloric Intake",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss Greater Than 10 Percent in Six Months",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss Greater Than 7.5 Percent in Three Months",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Albumin Below 2.5 g/dL When Documented",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Current Pulmonary Aspiration Not Responsive to Speech-Language Intervention",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Sequential Calorie Counts Showing Inadequate Intake",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Severe Dysphagia Preventing Sustaining Intake",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Infratentorial Hemorrhage Volume 20 mL or Greater",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Supratentorial Hemorrhage Volume 50 mL or Greater",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Hemorrhage Involving 30 Percent or More of Cerebrum",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Intraventricular Hemorrhage Extension",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Midline Shift 1.5 cm or Greater",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Obstructive Hydrocephalus",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Large Anterior Infarct With Cortical and Subcortical Involvement",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Large Bihemispheric Infarction",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Basilar Artery Occlusion",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Bilateral Vertebral Artery Occlusion",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Aspiration Pneumonia",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Pyelonephritis",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Sepsis",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Refractory Stage 3 or 4 Pressure Injury",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Fever After Antibiotics",
+          "source_ids": [
+            "CGS_STROKE_COMA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Contralateral Motor Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Executive Function",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Planning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Abulia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Apathy",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Behavioral Disinhibition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Gaze Preference",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Memory Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Auditory-Processing Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Contralateral Superior Quadrantanopia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Contralateral Sensory Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Astereognosis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Agraphesthesia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Anosognosia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Apraxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Visual Agnosia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Cortical Blindness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Alexia Without Agraphia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Face and Arm Weakness Greater Than Leg Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Leg Weakness Greater Than Arm Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Gait Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Quadriplegia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Locked-In Syndrome",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Respiratory Failure",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Coma",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Cranial-Nerve Dysfunction",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Crossed Motor or Sensory Findings",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Respiratory Dysfunction",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Nystagmus",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Gait Ataxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Truncal Ataxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Dysmetria",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Neck Stiffness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Photophobia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Vasospasm",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Delayed Cerebral Ischemia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hydrocephalus",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Residual Hemiplegia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Residual Hemiparesis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Residual Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Residual Dysphagia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": [
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Contralateral Motor Weakness",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Impaired Executive Function",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Impaired Planning",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Abulia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Apathy",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Behavioral Disinhibition",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Urinary Incontinence",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Frontal-Lobe Stroke",
+          "concept": "Gaze Preference",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Temporal-Lobe Stroke",
+          "concept": "Memory Impairment",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Temporal-Lobe Stroke",
+          "concept": "Auditory-Processing Impairment",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Temporal-Lobe Stroke",
+          "concept": "Receptive Aphasia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Temporal-Lobe Stroke",
+          "concept": "Contralateral Superior Quadrantanopia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Temporal-Lobe Stroke",
+          "concept": "Seizure",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Contralateral Sensory Loss",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Astereognosis",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Agraphesthesia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Unilateral Neglect",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Anosognosia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Parietal-Lobe Stroke",
+          "concept": "Apraxia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Occipital-Lobe Stroke",
+          "concept": "Homonymous Hemianopia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Occipital-Lobe Stroke",
+          "concept": "Visual Agnosia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Occipital-Lobe Stroke",
+          "concept": "Cortical Blindness",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Occipital-Lobe Stroke",
+          "concept": "Alexia Without Agraphia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Middle Cerebral Artery Stroke",
+          "concept": "Face and Arm Weakness Greater Than Leg Weakness",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Middle Cerebral Artery Stroke",
+          "concept": "Homonymous Hemianopia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Middle Cerebral Artery Stroke",
+          "concept": "Gaze Preference",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Middle Cerebral Artery Stroke",
+          "concept": "Dysphagia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anterior Cerebral Artery Stroke",
+          "concept": "Leg Weakness Greater Than Arm Weakness",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anterior Cerebral Artery Stroke",
+          "concept": "Abulia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anterior Cerebral Artery Stroke",
+          "concept": "Urinary Incontinence",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Anterior Cerebral Artery Stroke",
+          "concept": "Gait Impairment",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Posterior Cerebral Artery Stroke",
+          "concept": "Homonymous Hemianopia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Posterior Cerebral Artery Stroke",
+          "concept": "Visual Agnosia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Posterior Cerebral Artery Stroke",
+          "concept": "Memory Impairment",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Posterior Cerebral Artery Stroke",
+          "concept": "Cortical Blindness",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Quadriplegia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Dysarthria",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Dysphagia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Locked-In Syndrome",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Respiratory Failure",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Basilar Artery Stroke",
+          "concept": "Coma",
+          "concept_domain": "END_STAGE_FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Cranial-Nerve Dysfunction",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Dysarthria",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Dysphagia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Diplopia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Crossed Motor or Sensory Findings",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Brainstem Stroke",
+          "concept": "Respiratory Dysfunction",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Vertigo",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Nystagmus",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Gait Ataxia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Truncal Ataxia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Dysmetria",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Dysarthria",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Cerebellar Stroke",
+          "concept": "Obstructive Hydrocephalus",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Ischemic Stroke",
+          "concept": "Diffusion-Weighted Brain MRI",
+          "concept_domain": "DIAGNOSTIC_TEST",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Ischemic Stroke",
+          "concept": "IV Thrombolytic Evaluation",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Ischemic Stroke",
+          "concept": "Mechanical Thrombectomy Evaluation",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Ischemic Stroke",
+          "concept": "Antiplatelet Therapy",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Ischemic Stroke",
+          "concept": "Statin Therapy",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Noncontrast Head CT",
+          "concept_domain": "DIAGNOSTIC_TEST",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Blood Pressure Management",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Anticoagulant-Reversal Evaluation",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Neurosurgical Evaluation",
+          "concept_domain": "TREATMENT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Intraventricular Extension",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Midline Shift",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Hemorrhagic Stroke",
+          "concept": "Obstructive Hydrocephalus",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Thunderclap Headache",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Neck Stiffness",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Photophobia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Vasospasm",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Delayed Cerebral Ischemia",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Hydrocephalus",
+          "concept_domain": "COMPLICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Subarachnoid Hemorrhage",
+          "concept": "Nimodipine for Documented Subarachnoid Hemorrhage",
+          "concept_domain": "MEDICATION",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dominant-Hemisphere Stroke",
+          "concept": "Expressive Aphasia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dominant-Hemisphere Stroke",
+          "concept": "Receptive Aphasia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dominant-Hemisphere Stroke",
+          "concept": "Global Aphasia",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Dominant-Hemisphere Stroke",
+          "concept": "Apraxia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Non-Dominant-Hemisphere Stroke",
+          "concept": "Unilateral Neglect",
+          "concept_domain": "SYMPTOM",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Non-Dominant-Hemisphere Stroke",
+          "concept": "Anosognosia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Non-Dominant-Hemisphere Stroke",
+          "concept": "Impaired Safety Awareness",
+          "concept_domain": "FUNCTIONAL_IMPACT",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Historical Stroke",
+          "concept": "Residual Hemiplegia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Historical Stroke",
+          "concept": "Residual Hemiparesis",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Historical Stroke",
+          "concept": "Residual Aphasia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "variant": "Historical Stroke",
+          "concept": "Residual Dysphagia",
+          "concept_domain": "FINDING",
+          "applicability_type": "EXPECTED_WITH",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ]
+    },
+    {
+      "disease": "Hemiplegia",
+      "variants": [
+        {
+          "dimension": "LATERALITY",
+          "name": "Left Hemiplegia"
+        },
+        {
+          "dimension": "LATERALITY",
+          "name": "Right Hemiplegia"
+        },
+        {
+          "dimension": "LATERALITY",
+          "name": "Bilateral Hemiplegia"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Complete Hemiplegia"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Spastic Hemiplegia"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Flaccid Hemiplegia"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Acute Hemiplegia"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Chronic Hemiplegia"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Residual Hemiplegia"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Complete Unilateral Paralysis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Unilateral Sensory Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Shoulder Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Shoulder Subluxation Symptoms",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Painful Muscle Spasm",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Absent Voluntary Movement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Zero of Five Motor Strength",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Flaccid Tone",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Spastic Tone",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Hyperreflexia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Shoulder Subluxation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Limb Positioning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain Imaging Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Motor Strength Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Tone Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Range-of-Motion Measurement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Electromyography When Differential Diagnosis Requires It",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Nerve Conduction Study When Differential Diagnosis Requires It",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Contracture",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Shoulder-Hand Syndrome",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pressure Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Deep Vein Thrombosis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Falls",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Skin Breakdown",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Chronic Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dependent Edema",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Positioning Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Passive Range-of-Motion Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Splinting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Assistive Device Fitting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Spasticity Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Shoulder Protection Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Comfort-Focused Positioning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Baclofen",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Tizanidine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Botulinum Toxin",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Analgesic Therapy for Documented Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Total Transfer Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Wheelchair Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Toileting Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Impaired Bed Mobility",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Loss of Functional Use of Affected Side",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Rehabilitation Not a Candidate",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Spasticity Treatment Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Splinting Not Tolerated",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Surgical Intervention Not a Candidate",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
+        }
+      ],
+      "applicability": []
+    },
+    {
+      "disease": "Hemiparesis",
+      "variants": [
+        {
+          "dimension": "LATERALITY",
+          "name": "Left Hemiparesis"
+        },
+        {
+          "dimension": "LATERALITY",
+          "name": "Right Hemiparesis"
+        },
+        {
+          "dimension": "LATERALITY",
+          "name": "Bilateral Weakness"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Hemiparesis"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Hemiparesis"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Hemiparesis"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Acute Hemiparesis"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Chronic Hemiparesis"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Residual Hemiparesis"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Partial Unilateral Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Gait Asymmetry",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fine-Motor Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Reduced Grip Strength",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fatigability of Affected Limb",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Imbalance",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Graded Motor Weakness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reflex Asymmetry",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Pronator Drift",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Abnormal Gait",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Dexterity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Functional Reach",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain Imaging Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Serial Motor Strength Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Gait Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Electromyography When Differential Diagnosis Requires It",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Nerve Conduction Study When Differential Diagnosis Requires It",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Falls",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Overuse Injury of Unaffected Side",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Progressive Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Contracture",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Reduced Mobility",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Loss of Independence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Strength and Mobility Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Positioning Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Range-of-Motion Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Assistive Device Fitting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Ankle-Foot Orthosis Evaluation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Spasticity Management",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Baclofen for Documented Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Tizanidine for Documented Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Botulinum Toxin for Documented Focal Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Analgesic Therapy for Documented Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": []
+    },
+    {
+      "disease": "Contracture",
+      "variants": [
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Shoulder Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Elbow Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Wrist Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Hand Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Hip Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Knee Contracture"
+        },
+        {
+          "dimension": "ANATOMICAL_LOCATION",
+          "name": "Ankle Contracture"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Spasticity-Related Contracture"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Immobility-Related Contracture"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Pain-Limited-Movement Contracture"
+        },
+        {
+          "dimension": "MECHANISM",
+          "name": "Soft-Tissue-Shortening Contracture"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Range-of-Motion Limitation"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Range-of-Motion Limitation"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Fixed Contracture"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Multi-Joint Contracture"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Joint Stiffness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Pain With Passive Movement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Painful Muscle Spasm",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Reduced Range of Motion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Visible Joint Deformity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Positioning Discomfort",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Hygiene Difficulty",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Fixed Flexion Deformity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Passive Range of Motion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Joint Position Abnormality",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Skin-to-Skin Contact at Flexion Crease",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Pressure Area at Contracted Joint",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Goniometric Range-of-Motion Measurement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Functional Positioning Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Imaging When Heterotopic Ossification Is Suspected",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Skin Breakdown",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Hygiene-Related Infection Risk",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pressure Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Further Mobility Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Impaired Positioning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Caregiver Handling Difficulty",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Serial Casting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Splinting",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Positioning Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Passive Range-of-Motion Program",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Botulinum Toxin for Documented Spasticity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Surgical Release for Appropriate Candidates",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "DISEASE_DIRECTED"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Comfort-Focused Positioning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Surgical Release Not a Candidate",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_CANDIDATE"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Splinting Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Splinting Not Tolerated",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Serial Casting Not Tolerated",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Range-of-Motion Limited by Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_TOLERATED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Comfort-Focused Management Selected",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
+        }
+      ],
+      "applicability": []
+    },
+    {
+      "disease": "Dementia Due To Alzheimer's Disease",
+      "variants": [
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Alzheimer's Dementia"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Alzheimer's Dementia"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Alzheimer's Dementia"
+        },
+        {
+          "dimension": "PATHOLOGICAL_SUBTYPE",
+          "name": "Early-Onset Alzheimer's Disease"
+        },
+        {
+          "dimension": "PATHOLOGICAL_SUBTYPE",
+          "name": "Late-Onset Alzheimer's Disease"
+        },
+        {
+          "dimension": "PATHOLOGICAL_SUBTYPE",
+          "name": "Alzheimer's Disease With Behavioral Disturbance"
+        },
+        {
+          "dimension": "PATHOLOGICAL_SUBTYPE",
+          "name": "Alzheimer's Disease Without Behavioral Disturbance"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 1"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 2"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 3"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 4"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 5"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 6"
+        },
+        {
+          "dimension": "STAGE",
+          "name": "FAST Stage 7"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Short-Term Memory Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Long-Term Memory Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Disorientation to Time",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Disorientation to Place",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Disorientation to Person",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Word-Finding Difficulty",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Aphasia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Apraxia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Agnosia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Impaired Executive Function",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Impaired Judgment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Wandering",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Agitation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Sundowning",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Sleep-Wake Reversal",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Delusion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Hallucination",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Anxiety",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Apathy",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Loss of Meaningful Verbal Communication",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dysphagia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Feeding Difficulty",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Urinary Incontinence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Fecal Incontinence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Progressive FAST Stage",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Recent Memory",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Remote Memory",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Limited Intelligible Speech",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Loss of Independent Ambulation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Total ADL Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Loss of Decision-Making Capacity",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Cognitive Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Functional Assessment Staging",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Mini-Mental State Examination When Available",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Montreal Cognitive Assessment When Available",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain MRI Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain CT Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Thyroid-Stimulating Hormone",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Vitamin B12",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Medication Review for Reversible Contributors",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Delirium Evaluation When Acute Change Is Present",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Delirium Superimposed on Dementia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Falls",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Wandering-Related Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration Pneumonia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Malnutrition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dehydration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Weight Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pressure Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Urinary Infection",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pyelonephritis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Sepsis",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Fever After Antibiotics",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Caregiver Exhaustion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Donepezil",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Rivastigmine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Galantamine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Memantine",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Analgesic Therapy for Documented Pain",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Antipsychotic Therapy Only for Documented Indication and Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Benzodiazepine Risk Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "MEDICATION",
+          "name": "Medication Burden Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Toileting Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Continence Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Communication Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Need for Continuous Supervision",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Total Care Requirement",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Dysphagia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Prolonged Mealtime",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Food Intake",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Fluid Intake",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Dehydration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Protein-Calorie Malnutrition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Inability To Maintain Sufficient Calories",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Inability To Maintain Sufficient Fluids",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Artificial Nutrition Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Artificial Hydration Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Hospital Transfer Declined",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DECLINED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Disease-Directed Medication Discontinued",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "DISCONTINUED"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Rehabilitation Not Beneficial",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "NOT_BENEFICIAL"
+        },
+        {
+          "domain": "TREATMENT_LIMITATION",
+          "name": "Comfort-Focused Care Selected",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "limitation_category": "GOALS_OF_CARE"
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "FAST Stage 7 or Beyond",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Unable To Ambulate Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Unable To Dress Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Unable To Bathe Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Urinary and Fecal Incontinence",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Six or Fewer Intelligible Words",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "No Consistently Meaningful Communication",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Severe Dysphagia",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Recurrent Aspiration",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Recurrent Serious Infection",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Bedbound Status",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Total Functional Dependence",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "END_STAGE_FINDING",
+          "name": "Inability To Maintain Nutrition and Hydration",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "FAST Stage 7 or Beyond",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Ambulate Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Dress Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Unable To Bathe Without Assistance",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Urinary and Fecal Incontinence",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "No Consistently Meaningful Verbal Communication",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Aspiration Pneumonia Within Prior 12 Months",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Pyelonephritis or Upper Urinary Tract Infection Within Prior 12 Months",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Septicemia Within Prior 12 Months",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Multiple Stage 3 or 4 Pressure Injuries",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Fever After Antibiotics",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Inability To Maintain Sufficient Fluid and Calorie Intake",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Weight Loss 10 Percent in Six Months",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Serum Albumin Below 2.5 g/dL When Documented",
+          "source_ids": [
+            "CGS_DEMENTIA"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": []
+    },
+    {
+      "disease": "Senile Degeneration of Brain",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Early Senile Degeneration"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Progressive Senile Degeneration"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Advanced Senile Degeneration"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Mild Cognitive and Functional Decline"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Moderate Cognitive and Functional Decline"
+        },
+        {
+          "dimension": "SEVERITY_CLASS",
+          "name": "Severe Cognitive and Functional Decline"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Cognitive Decline",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Memory Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Disorientation",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Impaired Judgment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Impaired Executive Function",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Communication Decline",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Behavioral Change",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Functional Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Feeding Difficulty",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Continence Decline",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Objective Cognitive Impairment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Progressive Functional Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Impaired Safety Awareness",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Meaningful Communication",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FINDING",
+          "name": "Increasing ADL Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Cognitive Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Neurologic Examination",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Functional Assessment",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Brain Imaging Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "DIAGNOSTIC_TEST",
+          "name": "Evaluation for Reversible Contributors",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Falls",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Delirium",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Malnutrition",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Dehydration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Aspiration Pneumonia",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Pressure Injury",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Recurrent Infection",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Caregiver Exhaustion",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Supportive Cognitive Care",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Safety Supervision",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Behavioral Symptom Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Medication Review",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Nutrition and Hydration Support",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Aspiration Precautions",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Caregiver Education",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "SUPPORTIVE"
+        },
+        {
+          "domain": "TREATMENT",
+          "name": "Comfort-Focused Care",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true,
+          "treatment_category": "HOSPICE"
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Ambulation Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Transfer Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dressing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Bathing Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Toileting Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Feeding Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Communication Dependence",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Dehydration Risk",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Generalized Functional Decline",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Recurrent Medical Complications",
+          "source_ids": [
+            "APPROVED_NEURO_MANIFEST"
+          ],
+          "patient_fact_requires_evidence": true
+        }
+      ],
+      "applicability": []
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "left": "Hemiplegia",
+      "right": "Hemiparesis",
+      "rule": "NOT_INTERCHANGEABLE"
+    },
+    {
+      "left": "Dementia Due To Alzheimer's Disease",
+      "right": "Senile Degeneration of Brain",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    },
+    {
+      "left": "Locked-In Syndrome",
+      "right": "Coma",
+      "rule": "NOT_INTERCHANGEABLE"
+    },
+    {
+      "left": "Hemorrhagic Stroke",
+      "right": "IV Thrombolytic Evaluation",
+      "rule": "CONTRAINDICATED_APPLICABILITY"
+    },
+    {
+      "left": "Historical Stroke",
+      "right": "Current Neurologic Deficit",
+      "rule": "DO_NOT_INFER_CURRENT_STATE"
+    }
+  ],
+  "summary": {
+    "disease_count": 6,
+    "variant_count": 123,
+    "concept_count": 557,
+    "explicit_applicability_count": 84
+  }
+}
