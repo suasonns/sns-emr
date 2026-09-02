@@ -1,0 +1,383 @@
+{
+  "manifest_id": "colorectal_rectal_cancer_production_identity_manifest_v1",
+  "pr": "PR #48",
+  "source_authority": ["Cancer-Types-NCI-08.22.2021.pdf"],
+  "scope": {
+    "body_system": "Oncology",
+    "family": "Solid Malignancies",
+    "diseases": ["Colorectal Cancer", "Rectal Cancer"]
+  },
+  "existing_disease": {
+    "name": "Colorectal Cancer",
+    "note": "Created by the Oncology Foundation import (PR #45). This manifest resolves it -- it never creates or modifies it."
+  },
+  "new_disease": {
+    "name": "Rectal Cancer",
+    "disease_category": "NCI_CANCER_CATALOG",
+    "primary_organ": "Rectal",
+    "disease_type": "Solid Malignancy",
+    "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+    "clinical_purpose": "Anchors source-supported Tier 4 disease-identity variants and Tier 5 atomic identity concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+    "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence."
+  },
+  "required_existing_variants": {
+    "Colorectal Cancer": [
+      {"dimension": "PRIMARY_SITE", "name": "Colorectal Primary Site"},
+      {"dimension": "METASTATIC_STATE", "name": "Localized Disease"},
+      {"dimension": "METASTATIC_STATE", "name": "Metastatic Disease"},
+      {"dimension": "RECURRENCE_STATE", "name": "Recurrent Disease"}
+    ]
+  },
+  "new_variants": {
+    "Rectal Cancer": [
+      {
+        "dimension": "PRIMARY_SITE",
+        "name": "Rectal Primary Site",
+        "source_classification": "ONCOLOGY_FOUNDATION",
+        "source_reference": "Cancer-Types-NCI-08.22.2021.pdf"
+      },
+      {
+        "dimension": "METASTATIC_STATE",
+        "name": "Localized Disease",
+        "source_classification": "ONCOLOGY_FOUNDATION",
+        "source_reference": "Cancer-Types-NCI-08.22.2021.pdf"
+      },
+      {
+        "dimension": "METASTATIC_STATE",
+        "name": "Metastatic Disease",
+        "source_classification": "ONCOLOGY_FOUNDATION",
+        "source_reference": "Cancer-Types-NCI-08.22.2021.pdf"
+      },
+      {
+        "dimension": "RECURRENCE_STATE",
+        "name": "Recurrent Disease",
+        "source_classification": "ONCOLOGY_FOUNDATION",
+        "source_reference": "Cancer-Types-NCI-08.22.2021.pdf"
+      }
+    ]
+  },
+  "unsupported_variants_not_created": {
+    "Colorectal Cancer": [
+      "Colon Primary Site", "Rectal Primary Site", "Right-Sided Colon Cancer", "Left-Sided Colon Cancer",
+      "Ascending-Colon Cancer", "Transverse-Colon Cancer", "Descending-Colon Cancer", "Sigmoid-Colon Cancer",
+      "Rectosigmoid Cancer", "Rectal Histology", "Colorectal Histology", "Stage", "Grade",
+      "Molecular Subtype", "Metastatic Destination"
+    ],
+    "Rectal Cancer": [
+      "Colorectal Primary Site (never copied from Colorectal Cancer)", "Stage", "Grade",
+      "Molecular Subtype", "Metastatic Destination", "Histology"
+    ],
+    "note": "None of these are supported by the approved NCI cancer-types catalog for this PR. Rectal Cancer is never treated as interchangeable with Colorectal Cancer, and no Colorectal Cancer diagnosis is inferred to be Rectal Cancer."
+  },
+  "concepts": [
+    {
+      "disease": "Colorectal Cancer",
+      "domain": "FINDING",
+      "name": "Colorectal Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Base disease-identity concept for Colorectal Cancer. Requires patient-specific evidence; never inferred from a generic diagnosis alone, and never itself attached to a Tier 4 variant."
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "domain": "FINDING",
+      "name": "Colon and Rectal Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "NCI catalog identity concept for Colorectal Cancer's combined colon-and-rectal primary-site identity. Attached only to the Colorectal Primary Site variant -- never creates a separate 'Colon Cancer' canonical disease or concept."
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "domain": "FINDING",
+      "name": "Localized Colorectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation localized-state finding applied to Colorectal Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "domain": "FINDING",
+      "name": "Metastatic Colorectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation metastatic-state finding applied to Colorectal Cancer. Requires patient-specific evidence; never establishes metastatic destination."
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "domain": "FINDING",
+      "name": "Recurrent Colorectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation recurrence-state finding applied to Colorectal Cancer. Requires patient-specific evidence; never automatically implies metastatic disease."
+    },
+    {
+      "disease": "Rectal Cancer",
+      "domain": "FINDING",
+      "name": "Rectal Cancer",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Base disease-identity concept for Rectal Cancer. Requires patient-specific evidence; never inferred from a Colorectal Cancer diagnosis, and never itself attached to a Tier 4 variant."
+    },
+    {
+      "disease": "Rectal Cancer",
+      "domain": "FINDING",
+      "name": "Localized Rectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation localized-state finding applied to Rectal Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+    },
+    {
+      "disease": "Rectal Cancer",
+      "domain": "FINDING",
+      "name": "Metastatic Rectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation metastatic-state finding applied to Rectal Cancer. Requires patient-specific evidence; never establishes metastatic destination."
+    },
+    {
+      "disease": "Rectal Cancer",
+      "domain": "FINDING",
+      "name": "Recurrent Rectal Cancer",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true,
+      "description": "Reusable oncology-foundation recurrence-state finding applied to Rectal Cancer. Requires patient-specific evidence; never automatically implies metastatic disease."
+    }
+  ],
+  "unattached_concepts_not_given_applicability": [
+    {"disease": "Colorectal Cancer", "domain": "FINDING", "name": "Colorectal Cancer", "reason": "Anchors disease identity, not a Tier 4 variant."},
+    {"disease": "Rectal Cancer", "domain": "FINDING", "name": "Rectal Cancer", "reason": "Anchors disease identity, not a Tier 4 variant."}
+  ],
+  "applicability": [
+    {
+      "disease": "Colorectal Cancer",
+      "variant_dimension": "PRIMARY_SITE",
+      "variant": "Colorectal Primary Site",
+      "concept_domain": "FINDING",
+      "concept": "Colon and Rectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "NCI_CANCER_CATALOG",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Localized Disease",
+      "concept_domain": "FINDING",
+      "concept": "Localized Colorectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Metastatic Disease",
+      "concept_domain": "FINDING",
+      "concept": "Metastatic Colorectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "variant_dimension": "RECURRENCE_STATE",
+      "variant": "Recurrent Disease",
+      "concept_domain": "FINDING",
+      "concept": "Recurrent Colorectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Rectal Cancer",
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Localized Disease",
+      "concept_domain": "FINDING",
+      "concept": "Localized Rectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Rectal Cancer",
+      "variant_dimension": "METASTATIC_STATE",
+      "variant": "Metastatic Disease",
+      "concept_domain": "FINDING",
+      "concept": "Metastatic Rectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    },
+    {
+      "disease": "Rectal Cancer",
+      "variant_dimension": "RECURRENCE_STATE",
+      "variant": "Recurrent Disease",
+      "concept_domain": "FINDING",
+      "concept": "Recurrent Rectal Cancer",
+      "applicability_type": "APPLIES_TO",
+      "source_classification": "ONCOLOGY_FOUNDATION",
+      "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+      "patient_fact_requires_evidence": true
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "guard_name": "Colorectal Cancer IS_NOT Rectal Cancer",
+      "assertions": [
+        {"assert": "diseases_distinct", "disease_a": "Colorectal Cancer", "disease_b": "Rectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Colorectal Cancer IS_NOT Colorectal Primary Site",
+      "assertions": [
+        {"assert": "disease_exists", "name": "Colorectal Cancer"},
+        {"assert": "variant_exists", "disease": "Colorectal Cancer", "dimension": "PRIMARY_SITE", "name": "Colorectal Primary Site"},
+        {"assert": "disease_absent", "name": "Colorectal Primary Site"}
+      ]
+    },
+    {
+      "guard_name": "Rectal Cancer IS_NOT Rectal Primary Site",
+      "assertions": [
+        {"assert": "disease_exists", "name": "Rectal Cancer"},
+        {"assert": "variant_exists", "disease": "Rectal Cancer", "dimension": "PRIMARY_SITE", "name": "Rectal Primary Site"},
+        {"assert": "disease_absent", "name": "Rectal Primary Site"}
+      ]
+    },
+    {
+      "guard_name": "Colon and Rectal Cancer DOES_NOT_CREATE Colon Cancer",
+      "assertions": [
+        {"assert": "concept_exists", "disease": "Colorectal Cancer", "domain": "FINDING", "name": "Colon and Rectal Cancer"},
+        {"assert": "disease_absent", "name": "Colon Cancer"},
+        {"assert": "concept_absent", "disease": "Colorectal Cancer", "domain": "FINDING", "name": "Colon Cancer"},
+        {"assert": "concept_absent", "disease": "Rectal Cancer", "domain": "FINDING", "name": "Colon Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Colorectal Cancer DOES_NOT_INFER Rectal Cancer",
+      "assertions": [
+        {"assert": "concept_absent", "disease": "Colorectal Cancer", "domain": "FINDING", "name": "Rectal Cancer"},
+        {"assert": "diseases_distinct", "disease_a": "Colorectal Cancer", "disease_b": "Rectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Rectal Cancer DOES_NOT_INFER Colon Cancer",
+      "assertions": [
+        {"assert": "concept_absent", "disease": "Rectal Cancer", "domain": "FINDING", "name": "Colon Cancer"},
+        {"assert": "disease_absent", "name": "Colon Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Localized Colorectal Cancer IS_NOT Metastatic Colorectal Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Colorectal Cancer", "domain": "FINDING", "name_a": "Localized Colorectal Cancer", "name_b": "Metastatic Colorectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Recurrent Colorectal Cancer IS_NOT Automatically Metastatic Colorectal Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Colorectal Cancer", "domain": "FINDING", "name_a": "Recurrent Colorectal Cancer", "name_b": "Metastatic Colorectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Localized Rectal Cancer IS_NOT Metastatic Rectal Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Rectal Cancer", "domain": "FINDING", "name_a": "Localized Rectal Cancer", "name_b": "Metastatic Rectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Recurrent Rectal Cancer IS_NOT Automatically Metastatic Rectal Cancer",
+      "assertions": [
+        {"assert": "concepts_not_collapsed", "disease": "Rectal Cancer", "domain": "FINDING", "name_a": "Recurrent Rectal Cancer", "name_b": "Metastatic Rectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Metastatic Colorectal Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Colorectal Cancer", "dimension": "METASTATIC_DESTINATION"}
+      ]
+    },
+    {
+      "guard_name": "Metastatic Rectal Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Rectal Cancer", "dimension": "METASTATIC_DESTINATION"}
+      ]
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Colorectal Cancer", "dimension": "STAGE"}
+      ]
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Rectal Cancer", "dimension": "STAGE"}
+      ]
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Colorectal Cancer", "dimension": "HISTOLOGY"}
+      ]
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Rectal Cancer", "dimension": "HISTOLOGY"}
+      ]
+    },
+    {
+      "guard_name": "Colorectal Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Colorectal Cancer", "dimension": "MOLECULAR_SUBTYPE"}
+      ]
+    },
+    {
+      "guard_name": "Rectal Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "assertions": [
+        {"assert": "no_variants_in_dimension", "disease": "Rectal Cancer", "dimension": "MOLECULAR_SUBTYPE"}
+      ]
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Prognosis",
+      "assertions": [
+        {"assert": "no_new_prognostic_concepts_for_disease", "disease": "Colorectal Cancer"},
+        {"assert": "no_new_prognostic_concepts_for_disease", "disease": "Rectal Cancer"},
+        {"assert": "no_prognostic_applicability_for_disease", "disease": "Colorectal Cancer"},
+        {"assert": "no_prognostic_applicability_for_disease", "disease": "Rectal Cancer"}
+      ]
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "assertions": [
+        {"assert": "no_concept_in_domain", "disease": "Colorectal Cancer", "domain": "HOSPICE_ELIGIBILITY_SUPPORT"},
+        {"assert": "no_concept_in_domain", "disease": "Rectal Cancer", "domain": "HOSPICE_ELIGIBILITY_SUPPORT"},
+        {"assert": "no_applicability_of_type_for_disease", "disease": "Colorectal Cancer", "applicability_type": "HOSPICE_SUPPORT_FOR"},
+        {"assert": "no_applicability_of_type_for_disease", "disease": "Rectal Cancer", "applicability_type": "HOSPICE_SUPPORT_FOR"}
+      ]
+    }
+  ],
+  "summary": {
+    "existing_canonical_disease_count": 1,
+    "new_canonical_disease_count": 1,
+    "new_variants_count": 4,
+    "concepts_count": 9,
+    "applicability_count": 7,
+    "differentiation_guards_count": 20
+  }
+}
