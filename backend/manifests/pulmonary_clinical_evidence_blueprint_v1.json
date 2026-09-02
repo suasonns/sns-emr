@@ -1,0 +1,185 @@
+{
+  "manifest_version": 1,
+  "title": "Pulmonary Clinical Evidence Blueprint v1",
+  "description": "Extension-only manifest. Does NOT create a new disease, variant, or PPS/KPS definition -- 'Chronic Obstructive Pulmonary Disease' AND 'End Stage Pulmonary Disease' (both under the Pulmonary System body system, PR #39, merged) already exist as two intentionally mirrored disease identities, each with its own self-contained set of 15 variants and 32 concepts (SYMPTOM, FINDING, COMPLICATION, FUNCTIONAL_IMPACT, NUTRITIONAL_IMPACT, HOSPICE_ELIGIBILITY_SUPPORT), including Hypoxemia, Hypercapnia, Progressive Dyspnea, Chronic Cough, Weight Loss, Right Heart Failure Secondary To Pulmonary Disease (clinically equivalent to Cor Pulmonale), Progressive Disease, and ADL Dependence. This manifest extends BOTH diseases symmetrically (never picking just one) to avoid ontology drift, adding only what PR #39 does not already contain: (1) 2 missing atomic pulmonary concepts (Activity Intolerance, Severe Functional Limitation) applied identically to both diseases, with provenance metadata; (2) cross-disease OntologyRelationship edges linking each disease's existing PPS Less Than 70 Percent / KPS Less Than 70 Percent concepts to the corresponding Functional Assessment Framework v1 (PR #49, merged) scale-definition concepts, so a nurse viewing Pulmonary evidence can navigate to the full scale interpretation without any assessment definition ever being duplicated; (3) a recertification evidence trend model (9 PROGNOSTIC_INDICATOR concepts covering PPS/KPS/Weight/Oxygen Requirement/Hospitalization/Respiratory Failure/Symptom Burden/Narrative/ED Visit trend) applied identically to both diseases; (4) a documentation-only AI capability boundary (ai_may / ai_may_not), mirroring the pattern already established in the Functional Assessment Framework v1, CHF Clinical Evidence Blueprint v1, and Dementia Clinical Evidence Blueprint v1 manifests. No schema, migration, or API changes. No existing PR #39 or PR #49 row is ever modified, renamed, or duplicated.",
+  "source_authority": [
+    "pulmonary.pdf",
+    "cms guidelines.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Pulmonary System",
+    "extends_diseases": [
+      "Chronic Obstructive Pulmonary Disease",
+      "End Stage Pulmonary Disease"
+    ],
+    "extends_functional_assessment_framework": "Functional Assessment Framework"
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_variants": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "content_source_type_allowed": ["USER_DICTATED", "CLINICAL_REFERENCE"],
+  "content_review_status_allowed": ["PENDING_MEDICAL_DIRECTOR_APPROVAL", "APPROVED", "REJECTED"],
+  "already_present_verified": {
+    "note": "Every requested symptom, finding, and nutritional item except 'Activity Intolerance' and 'Severe Functional Limitation' was verified already present in PR #39 (identically, for both diseases) under an identical or clinically-equivalent name. No duplicate concept was created for any of these.",
+    "mapping": [
+      {"requested": "Disabling Dyspnea At Rest", "existing_concept": "Disabling Dyspnea + Dyspnea At Rest (two existing SYMPTOM concepts combine to cover this)", "domain": "SYMPTOM"},
+      {"requested": "Progressive Dyspnea", "existing_concept": "Progressive Dyspnea", "domain": "SYMPTOM"},
+      {"requested": "Chronic Cough", "existing_concept": "Chronic Cough", "domain": "SYMPTOM"},
+      {"requested": "Increased Fatigue", "existing_concept": "Fatigue", "domain": "SYMPTOM"},
+      {"requested": "Hypoxemia", "existing_concept": "Hypoxemia", "domain": "FINDING"},
+      {"requested": "Hypercapnia", "existing_concept": "Hypercapnia", "domain": "FINDING"},
+      {"requested": "Cor Pulmonale", "existing_concept": "Right Heart Failure Secondary To Pulmonary Disease", "domain": "COMPLICATION"},
+      {"requested": "Progressive Pulmonary Disease", "existing_concept": "Progressive Disease", "domain": "FINDING"},
+      {"requested": "Unintentional Weight Loss", "existing_concept": "Weight Loss", "domain": "NUTRITIONAL_IMPACT"},
+      {"requested": "Pulmonary Hospitalization Trend", "existing_concept": "folded into Hospitalization Trend (recertification_evidence_model)", "domain": "PROGNOSTIC_INDICATOR"},
+      {"requested": "Respiratory Failure Trend (utilization)", "existing_concept": "folded into Respiratory Failure Trend (recertification_evidence_model)", "domain": "PROGNOSTIC_INDICATOR"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "SYMPTOM",
+      "name": "Activity Intolerance",
+      "description": "Marked reduction in the ability to perform physical activity due to disproportionate dyspnea, fatigue, or desaturation -- distinct from the existing point-in-time 'Disabling Dyspnea' and 'Dyspnea At Rest' findings, this captures the functional consequence across ordinary activity levels.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "domain": "FINDING",
+      "name": "Severe Functional Limitation",
+      "description": "A general clinical finding of severe, disease-driven functional limitation across activities of daily living, distinct from and summarizing the existing individual FUNCTIONAL_IMPACT concepts (ambulation/transfer/bathing/dressing/feeding dependence), relevant to the complete clinical picture supporting end-stage pulmonary disease documentation.",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "new_applicability": [
+    {"variant": "Progressive Pulmonary Disease", "variant_dimension": "DISEASE_PHASE", "concept_domain": "SYMPTOM", "concept": "Activity Intolerance", "applicability_type": "MAY_OCCUR_WITH"},
+    {"variant": "End Stage Pulmonary Disease", "variant_dimension": "SEVERITY_CLASS", "concept_domain": "FINDING", "concept": "Severe Functional Limitation", "applicability_type": "EXPECTED_WITH"}
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Pulmonary disease's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links each Pulmonary disease's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "diseases": [
+      "Chronic Obstructive Pulmonary Disease",
+      "End Stage Pulmonary Disease"
+    ],
+    "trend_indicators": [
+      {
+        "name": "PPS Trend",
+        "description": "Comparison of the patient's previous PPS score to the current PPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "KPS Trend",
+        "description": "Comparison of the patient's previous KPS score to the current KPS score at recertification; a decreasing score supports continued functional-decline documentation.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Weight Trend",
+        "description": "Comparison of the patient's weight between the previous and current certification periods, documenting unintentional weight loss.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Oxygen Requirement Trend",
+        "description": "Comparison of the patient's supplemental oxygen requirement (flow rate, hours per day, or escalation to continuous use) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Hospitalization Trend",
+        "description": "Comparison of the frequency of pulmonary-related hospitalizations between the previous and current certification periods, documenting recurrent hospitalization.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Respiratory Failure Trend",
+        "description": "Comparison of episodes or severity of respiratory failure (hypoxemic, hypercapnic, or combined) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Symptom Burden Trend",
+        "description": "Comparison of overall respiratory symptom burden (dyspnea, cough, fatigue, activity intolerance) between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "Narrative Trend",
+        "description": "A structured narrative summary comparing the patient's overall clinical course between the previous and current certification periods, supporting the physician's recertification determination.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      },
+      {
+        "name": "ED Visit Trend",
+        "description": "Comparison of the frequency of emergency department visits for pulmonary-related complaints between the previous and current certification periods.",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    "This manifest never creates a new OntologyDisease, OntologyDiseaseFamily, or OntologyBodySystem row -- it resolves the existing Chronic Obstructive Pulmonary Disease and End Stage Pulmonary Disease diseases and the existing Functional Assessment Framework disease by exact name and aborts if any is missing.",
+    "This manifest never creates a new OntologyDiseaseVariant row.",
+    "This manifest never creates a duplicate PPS/KPS definition -- it links to PR #39's and PR #49's existing rows via OntologyRelationship only.",
+    "This manifest extends both mirrored pulmonary diseases identically -- it never applies new content to only one, to avoid ontology drift between them.",
+    "Pulmonary clinical evidence and functional assessments support functional status documentation, clinical decline documentation, recertification review, and clinical picture development; they do not independently establish diagnosis, prognosis, hospice eligibility, or terminal status."
+  ],
+  "summary": {
+    "extends_diseases": [
+      "Chronic Obstructive Pulmonary Disease",
+      "End Stage Pulmonary Disease"
+    ],
+    "new_concepts_per_disease": 2,
+    "new_applicability_per_disease": 2,
+    "functional_assessment_relationships_per_disease": 2,
+    "recertification_trend_indicators_per_disease": 9,
+    "diseases_extended": 2
+  }
+}

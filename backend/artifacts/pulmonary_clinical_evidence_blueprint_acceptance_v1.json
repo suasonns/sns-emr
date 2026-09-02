@@ -1,0 +1,243 @@
+{
+  "manifest_version": 1,
+  "extends_diseases": [
+    "Chronic Obstructive Pulmonary Disease",
+    "End Stage Pulmonary Disease"
+  ],
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 4,
+    "stored": 4,
+    "missing": [],
+    "pre_existing_pr39_concepts_in_shared_domains": [
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "COMPLICATION",
+        "recurrent pulmonary infection"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "COMPLICATION",
+        "respiratory failure"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "COMPLICATION",
+        "right heart failure secondary to pulmonary disease"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FINDING",
+        "hypercapnia"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FINDING",
+        "hypoxemia"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FINDING",
+        "progressive disease"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FINDING",
+        "resting tachycardia"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FINDING",
+        "severe chronic lung disease"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "ambulation dependence"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "bathing dependence"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "dressing dependence"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "feeding dependence"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "transfer dependence"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "progressive nutritional decline"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "reduced oral intake"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "weight loss"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "SYMPTOM",
+        "chronic cough"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "SYMPTOM",
+        "disabling dyspnea"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "SYMPTOM",
+        "dyspnea at rest"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "SYMPTOM",
+        "fatigue"
+      ],
+      [
+        "Chronic Obstructive Pulmonary Disease",
+        "SYMPTOM",
+        "progressive dyspnea"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "COMPLICATION",
+        "recurrent pulmonary infection"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "COMPLICATION",
+        "respiratory failure"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "COMPLICATION",
+        "right heart failure secondary to pulmonary disease"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FINDING",
+        "hypercapnia"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FINDING",
+        "hypoxemia"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FINDING",
+        "progressive disease"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FINDING",
+        "resting tachycardia"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FINDING",
+        "severe chronic lung disease"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "ambulation dependence"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "bathing dependence"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "dressing dependence"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "feeding dependence"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "FUNCTIONAL_IMPACT",
+        "transfer dependence"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "progressive nutritional decline"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "reduced oral intake"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "NUTRITIONAL_IMPACT",
+        "weight loss"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "SYMPTOM",
+        "chronic cough"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "SYMPTOM",
+        "disabling dyspnea"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "SYMPTOM",
+        "dyspnea at rest"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "SYMPTOM",
+        "fatigue"
+      ],
+      [
+        "End Stage Pulmonary Disease",
+        "SYMPTOM",
+        "progressive dyspnea"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 4,
+    "stored": 4
+  },
+  "functional_assessment_relationships": {
+    "expected": 4,
+    "stored": 4
+  },
+  "recertification_trend_indicators": {
+    "expected": 18,
+    "stored": 18,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 22,
+    "valid": 22
+  },
+  "second_run_new_rows": 0
+}
