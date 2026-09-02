@@ -1,0 +1,398 @@
+{
+  "manifest_id": "als_production_source_manifest_v1",
+  "source_authority": [
+    "ALS.pdf",
+    "cms guidelines.pdf",
+    "1.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Neuromuscular System",
+    "families": [
+      "Amyotrophic Lateral Sclerosis"
+    ]
+  },
+  "summary": {
+    "canonical_diseases": 1,
+    "total_variants": 2,
+    "total_concepts": 20,
+    "total_applicability_mappings": 8
+  },
+  "diseases": [
+    {
+      "disease": "Amyotrophic Lateral Sclerosis",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Amyotrophic Lateral Sclerosis"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Advanced Amyotrophic Lateral Sclerosis"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Critically Impaired Breathing Capacity",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful respiratory finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "respiratory_measurement",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Vital Capacity Decline",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful respiratory finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "respiratory_measurement",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Respiratory Insufficiency",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful respiratory finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "respiratory_measurement",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Dependence On Ventilatory Support",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful respiratory finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "respiratory_measurement",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Reduced Breathing Capacity",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic breathing-capacity finding; does not satisfy an exact LCD respiratory finding.",
+          "evidence_requirements": [
+            "respiratory_measurement"
+          ]
+        },
+        {
+          "domain": "FINDING",
+          "name": "Rapid Disease Progression",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful disease-course finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Dysphagia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful nutritional-support symptom for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "weight_data",
+            "intake_data",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "SYMPTOM",
+          "name": "Progressive Weakness",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful symptom for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Severe Nutritional Impairment",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful nutritional finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "weight_data",
+            "intake_data",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Significant Weight Loss",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful nutritional finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "weight_data",
+            "intake_data",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Reduced Oral Intake",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful nutritional finding for Amyotrophic Lateral Sclerosis.",
+          "evidence_requirements": [
+            "weight_data",
+            "intake_data",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Weight Loss",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic weight-loss finding; does not satisfy an exact LCD nutritional finding.",
+          "evidence_requirements": [
+            "weight_data"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Critically Impaired Breathing Capacity",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility respiratory finding for Amyotrophic Lateral Sclerosis. Requires documented respiratory-measurement evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "respiratory_measurement",
+            "date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Rapid Disease Progression",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility disease-course finding for Amyotrophic Lateral Sclerosis. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Severe Nutritional Impairment",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "ALS.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility nutritional finding for Amyotrophic Lateral Sclerosis. Requires documented weight/intake evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "weight_data",
+            "intake_data",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Critically Impaired Breathing Capacity",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Rapid Disease Progression",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Severe Nutritional Impairment",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Advanced Amyotrophic Lateral Sclerosis",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Reduced Breathing Capacity"
+      },
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Critically Impaired Breathing Capacity"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Weight Loss"
+      },
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Significant Weight Loss"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Vital Capacity Decline"
+      },
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Respiratory Insufficiency"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Severe Nutritional Impairment"
+      },
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Significant Weight Loss"
+      }
+    }
+  ]
+}
