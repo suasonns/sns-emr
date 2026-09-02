@@ -1,79 +1,242 @@
 {
   "manifest_id": "oncology_foundation_v1",
   "expected_diseases": [
-    "Oncology Foundation Reference Structure"
+    "Bladder Cancer",
+    "Breast Cancer",
+    "Colorectal Cancer",
+    "Kidney Cancer",
+    "Leukemia",
+    "Liver Cancer",
+    "Lung Cancer",
+    "Lymphoma",
+    "Melanoma",
+    "Pancreatic Cancer",
+    "Prostate Cancer",
+    "Thyroid Cancer"
   ],
   "stored_diseases": [
-    "Oncology Foundation Reference Structure"
+    "Bladder Cancer",
+    "Breast Cancer",
+    "Colorectal Cancer",
+    "Kidney Cancer",
+    "Leukemia",
+    "Liver Cancer",
+    "Lung Cancer",
+    "Lymphoma",
+    "Melanoma",
+    "Pancreatic Cancer",
+    "Prostate Cancer",
+    "Thyroid Cancer"
   ],
-  "expected_variants_count": 12,
-  "stored_variants_count": 12,
+  "canonical_disease_count": {
+    "expected": 12,
+    "stored": 12
+  },
+  "canonical_diseases_by_family": {
+    "Solid Malignancies": 10,
+    "Hematologic Malignancies": 2
+  },
+  "variants_by_disease_and_dimension": {
+    "Breast Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Lung Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Prostate Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Colorectal Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Liver Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Kidney Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Thyroid Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Pancreatic Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Bladder Cancer": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    },
+    "Melanoma": {
+      "PRIMARY_SITE": 1,
+      "METASTATIC_STATE": 2,
+      "RECURRENCE_STATE": 1
+    }
+  },
+  "concepts_by_domain": {
+    "FINDING": 30,
+    "FUNCTIONAL_IMPACT": 36,
+    "NUTRITIONAL_IMPACT": 24,
+    "PROGNOSTIC_INDICATOR": 24
+  },
+  "applicability_by_disease_and_type": {
+    "Breast Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Lung Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Prostate Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Colorectal Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Liver Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Kidney Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Thyroid Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Pancreatic Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Bladder Cancer": {
+      "MAY_OCCUR_WITH": 1
+    },
+    "Melanoma": {
+      "MAY_OCCUR_WITH": 1
+    }
+  },
+  "rejected_cartesian_mappings": {
+    "v1_blanket_mappings_rejected": 120,
+    "naive_cartesian_pool_this_manifest": 130,
+    "actual_applicability_created": 10,
+    "cartesian_mappings_avoided": 120
+  },
+  "expected_variants_count": 40,
+  "stored_variants_count": 40,
   "missing_variants": [],
   "unexpected_variants": [],
-  "expected_concepts_count": 10,
-  "stored_concepts_count": 10,
+  "expected_concepts_count": 114,
+  "stored_concepts_count": 114,
   "missing_concepts": [],
   "unexpected_concepts": [],
-  "expected_applicability_count": 120,
-  "stored_applicability_count": 120,
+  "expected_applicability_count": 10,
+  "stored_applicability_count": 10,
   "missing_applicability": [],
   "unexpected_applicability": [],
   "evidence_rule_coverage": {
-    "covered": 10,
-    "expected": 10,
+    "covered": 114,
+    "expected": 114,
     "missing": []
   },
   "source_provenance_coverage": {
-    "covered": 10,
-    "expected": 10
+    "covered": 114,
+    "expected": 114
+  },
+  "source_classification_coverage": {
+    "concepts_covered": 114,
+    "concepts_expected": 114,
+    "diseases_covered": 12,
+    "diseases_expected": 12
   },
   "orphan_count": 0,
   "cycle_count": 0,
   "unresolved_concept_count": 0,
   "second_run_new_rows": 0,
-  "differentiation_guards": [
+  "changes_outside_oncology": [],
+  "differentiation_guard_results": [
     {
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Metastatic Disease"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Regional Spread"
-      },
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "guard_name": "Breast Cancer IS_NOT Breast Primary Site",
       "passed": true,
       "detail": null
     },
     {
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Regional Spread"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Distant Metastatic Disease"
-      },
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "guard_name": "Lung Cancer IS_NOT Lung Primary Site",
       "passed": true,
       "detail": null
     },
     {
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-        "name": "Progressive Disease"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-        "name": "Worsening Clinical Status"
-      },
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "guard_name": "Leukemia IS_NOT Anatomical Primary Site",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Lymphoma IS_NOT Anatomical Primary Site",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Primary Bone Cancer IS_NOT Bone Metastasis",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Primary Brain Cancer IS_NOT Brain Metastasis",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Primary Liver Cancer IS_NOT Liver Metastasis",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Primary Lung Cancer IS_NOT Lung Metastasis",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Localized Disease IS_NOT Metastatic Disease",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Regional Spread IS_NOT Distant Metastatic Disease",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Recurrent Disease IS_NOT Metastatic Disease",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Progressive Disease IS_NOT Automatically Metastatic Disease",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Metastatic Disease DOES_NOT_ESTABLISH Metastatic Destination",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "guard_name": "Metastatic Destination REQUIRES Patient Evidence",
       "passed": true,
       "detail": null
     }

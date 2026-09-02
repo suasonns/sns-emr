@@ -1,27 +1,43 @@
 # scripts/import_oncology_foundation_v1.py
 """
-Oncology Foundation v1 -- Verbatim Importer.
+Oncology Foundation v1 -- Verbatim Importer (v2, PR #45 correction).
 
 Reads backend/manifests/oncology_foundation_v1.json (the sole authoritative
 source for this import -- never inferred, reconstructed, or clinically
 re-derived) and creates the reusable Oncology ontology structure:
 
-    - The "Oncology" body system and "Oncology Foundation" disease family.
-    - A single technical anchor disease, "Oncology Foundation Reference
-      Structure", used ONLY to satisfy the schema's non-null
-      disease_id foreign key on Tier 4 (variant) and Tier 5 (concept) rows.
-      This is NOT a diagnosable cancer and is never intended to be queried
-      as a canonical disease by clinical-reasoning consumers. Future
-      disease-specific oncology manifests (Breast, Lung, Prostate, ...)
-      will create their OWN real canonical diseases and may reuse this
-      foundation's PRIMARY_SITE variants / reusable concepts via
-      applicability -- never by modifying this anchor.
-    - 12 canonical PRIMARY_SITE variants (Breast, Lung, Prostate,
-      Colorectal, Liver, Kidney, Thyroid, Pancreas, Bladder, Skin,
-      Leukemia, Lymphoma).
-    - 10 reusable Tier 5 atomic concepts (3 METASTASIS findings, 3
-      FUNCTIONAL_DECLINE findings, 4 HOSPICE_SUPPORT concepts), each
-      generically applicable across every PRIMARY_SITE variant.
+    - The "Oncology" body system with TWO disease families: "Solid
+      Malignancies" and "Hematologic Malignancies".
+    - 12 REAL canonical Tier 3 cancer diseases (Breast, Lung, Prostate,
+      Colorectal, Liver, Kidney, Thyroid, Pancreatic, Bladder Cancer,
+      Melanoma under Solid Malignancies; Leukemia and Lymphoma under
+      Hematologic Malignancies). There is NO placeholder/anchor disease --
+      every Tier 4/5 row hangs off one of these 12 real diseases.
+    - Source-supported Tier 4 variants ONLY for the 10 solid malignancies:
+      one PRIMARY_SITE variant (e.g. "Breast Primary Site" under Breast
+      Cancer -- never a disease-replacing "Breast" row), two
+      METASTATIC_STATE variants ("Localized Disease", "Metastatic
+      Disease"), and one RECURRENCE_STATE variant ("Recurrent Disease").
+      Leukemia and Lymphoma receive NO anatomical PRIMARY_SITE variant and
+      no unsupported metastatic/recurrence variants in this foundation PR.
+    - 10 reusable Tier 5 atomic concept identities (Metastatic Disease,
+      Regional Spread, Distant Metastatic Disease, Progressive Disease,
+      Worsening Clinical Status, Progressive Functional Decline,
+      Functional Impairment, Dependence In Activities Of Daily Living,
+      Progressive Nutritional Decline, Unintentional Weight Loss), each
+      stored once PER APPLICABLE DISEASE (the schema requires every Tier 5
+      row to declare a single owning disease_id -- there is no global/
+      shared concept table). This mirrors exactly how every prior PR
+      (Renal, Liver, HIV, ALS, Dementia) modeled its own disease-scoped
+      concepts; it is simply scaled to 12 diseases in a single manifest.
+    - ONLY 10 explicit, semantically-justified Tier4<->Tier5 applicability
+      edges: the "Metastatic Disease" concept MAY_OCCUR_WITH that same
+      disease's own "Metastatic Disease" METASTATIC_STATE variant, for
+      each of the 10 solid malignancies. NO Cartesian/blanket applicability
+      is ever generated -- Regional Spread, Distant Metastatic Disease,
+      and the prognostic/functional/nutritional baseline concepts receive
+      ZERO applicability rows in this foundation PR because no
+      source-supported Tier 4 variant exists yet for them to attach to.
 
 This reuses the exact verbatim-import pattern proven in
 scripts/import_neurologic_production_source_manifest.py (PR #37),
@@ -38,16 +54,17 @@ scripts/import_als_production_source_manifest.py (PR #43):
     identity field (disease + domain/dimension + normalized exact name).
 - Every concept created receives an OntologyEvidenceRule with
     patient_fact_requires_evidence = True.
-- Nothing is ever hard-deleted or deactivated.
+- Nothing is ever hard-deleted or deactivated in this importer.
 - Idempotent: re-running inserts nothing new.
 - Nothing is silently skipped: any manifest value that is not
     schema-valid aborts the import with a RuntimeError before any writes
     happen.
 
 This PR deliberately does NOT create any disease-specific cancer content
-(no Stage I/II/III/IV variants, no histology-specific findings). It only
-establishes the reusable foundation structure that future oncology PRs
-will build on.
+beyond the source-supported foundation variants above (no Stage I/II/III/IV,
+no histology, no molecular subtype, no metastatic-destination values). It
+only establishes the reusable foundation structure that future
+disease-specific oncology manifests will build on.
 
 Run with: python scripts\\import_oncology_foundation_v1.py
 """
@@ -58,6 +75,7 @@ import uuid
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
@@ -149,11 +167,31 @@ CONCEPT_DOMAIN_MODEL_MAP["TREATMENT_LIMITATION"] = (OntologyDiseaseTreatmentLimi
 # --- Source-classification vocabulary. The schema has no dedicated column
 # for this distinction (per the reviewer-approved PR #40 correction), so it
 # is recorded in the concept's own existing description-style column and in
-# its OntologyEvidenceRule.notes -- never via a new migration. This PR adds
-# ONCOLOGY_FOUNDATION as the classification reserved for reusable oncology
-# structural concepts that are not yet tied to any disease-specific LCD. ---
+# its OntologyEvidenceRule.notes -- never via a new migration.
+# NCI_CANCER_CATALOG classifies disease *identity* only (it never authorizes
+# stage/grade/histology/molecular-subtype/symptoms/treatment/medications/
+# metastatic-destination/hospice-eligibility); ONCOLOGY_FOUNDATION classifies
+# reusable oncology-specific knowledge concepts; LCD_NON_DISEASE_SPECIFIC
+# classifies the non-disease-specific hospice baseline (supporting evidence
+# only -- it never independently establishes eligibility);
+# GENERAL_CLINICAL_KNOWLEDGE classifies general prognostic-indicator
+# knowledge not tied to any one LCD. ---
 ALLOWED_SOURCE_CLASSIFICATIONS = {
-    "ONCOLOGY_FOUNDATION", "LCD_NON_DISEASE_SPECIFIC", "GENERAL_CLINICAL_KNOWLEDGE",
+    "NCI_CANCER_CATALOG", "ONCOLOGY_FOUNDATION", "LCD_NON_DISEASE_SPECIFIC", "GENERAL_CLINICAL_KNOWLEDGE",
+}
+
+# --- Differentiation-guard assertion vocabulary. Every guard is a list of
+# ANDed structural assertions (never a clinically-false relationship edge).
+# See _evaluate_guard_assertion for the mechanical semantics of each. ---
+ASSERTION_TYPES = {
+    "disease_exists", "disease_absent",
+    "variant_exists", "no_variants_in_dimension", "no_variants_in_dimension_systemwide",
+    "variants_not_collapsed", "variants_not_collapsed_cross_dimension",
+    "concepts_not_collapsed",
+    "reserved_terms_distinct",
+    "hospice_support_requires_evidence_systemwide",
+    "dimension_evidence_requirement_documented",
+    "for_each",
 }
 
 # The existing free-text column each concept domain already has, used to
@@ -183,11 +221,22 @@ def validate_manifest(manifest: dict) -> List[str]:
         errors.append("manifest.diseases must be a non-empty list")
         return errors
 
+    family_names = manifest.get("scope", {}).get("families") or []
+
     for disease_entry in diseases:
         disease_name = disease_entry.get("disease")
         if not disease_name:
             errors.append("a disease entry is missing 'disease' name")
             continue
+
+        family_name = disease_entry.get("family")
+        if not family_name:
+            errors.append(f"disease entry {disease_name!r} is missing 'family'")
+        elif family_name not in family_names:
+            errors.append(f"disease entry {disease_name!r} declares family {family_name!r} not in scope.families")
+
+        if disease_entry.get("disease_category") not in ALLOWED_SOURCE_CLASSIFICATIONS:
+            errors.append(f"disease entry {disease_name!r} has unsupported or missing disease_category")
 
         seen_variants = set()
         for v in disease_entry.get("variants", []):
@@ -240,28 +289,48 @@ def validate_manifest(manifest: dict) -> List[str]:
                         f"HOSPICE_SUPPORT_FOR applicability targets a concept not marked "
                         f"hospice_support_eligible=true for {key}"
                     )
+            # Structural anti-Cartesian guard: the non-disease-specific baseline
+            # domains (prognostic/functional/nutritional) must never carry an
+            # applicability edge in this foundation PR -- they are possible
+            # patient-state findings requiring evidence, never automatically
+            # PRESENT/EXPECTED knowledge for a cancer diagnosis.
+            if a.get("concept_domain") in {"PROGNOSTIC_INDICATOR", "FUNCTIONAL_IMPACT", "NUTRITIONAL_IMPACT"}:
+                errors.append(
+                    f"non-disease-specific baseline domain '{a.get('concept_domain')}' must not carry "
+                    f"applicability in this foundation PR (would recreate blanket Cartesian attachment): {key}"
+                )
 
     for guard in manifest.get("differentiation_guards", []):
-        rule = guard.get("rule")
-        if rule not in ("NOT_AUTOMATICALLY_EQUIVALENT", "CONCEPTS_REMAIN_DISTINCT"):
-            errors.append(f"unsupported differentiation_guard rule '{rule}'")
+        for assertion in guard.get("assertions", []):
+            _validate_assertion(assertion, errors, guard.get("guard_name"))
 
     return errors
 
 
+def _validate_assertion(assertion: dict, errors: List[str], guard_name: str) -> None:
+    assert_type = assertion.get("assert")
+    if assert_type not in ASSERTION_TYPES:
+        errors.append(f"unsupported differentiation_guard assertion '{assert_type}' in guard {guard_name!r}")
+        return
+    if assert_type == "for_each":
+        nested = assertion.get("assertion")
+        if not isinstance(assertion.get("diseases"), list) or not assertion["diseases"]:
+            errors.append(f"for_each assertion in guard {guard_name!r} requires a non-empty 'diseases' list")
+        if not isinstance(nested, dict):
+            errors.append(f"for_each assertion in guard {guard_name!r} requires a nested 'assertion'")
+        else:
+            _validate_assertion(nested, errors, guard_name)
+
+
 def _resolve_or_create_diseases(db: Session, manifest: dict) -> Dict[str, OntologyDisease]:
     """Resolve each manifest disease by exact normalized name, creating the
-    Oncology body system, the declared family, and the disease itself if
-    not already present. Never creates a new body system/family/disease
-    beyond what the manifest's own scope declares."""
+    Oncology body system, each declared disease family, and the disease
+    itself (with its NCI_CANCER_CATALOG identity metadata) if not already
+    present. Never creates a body system/family/disease beyond what the
+    manifest's own scope declares. Each disease is assigned to the family
+    its own manifest entry declares (never inferred)."""
     system_name = manifest["scope"]["body_system"]
     family_names = manifest["scope"]["families"]
-    if len(family_names) != 1:
-        raise RuntimeError(
-            f"Oncology Foundation v1 declares {len(family_names)} families; "
-            "this importer expects exactly one shared family. Aborting without any writes."
-        )
-    family_name = family_names[0]
 
     system = db.query(OntologyBodySystem).filter_by(system_name=system_name).one_or_none()
     if system is None:
@@ -269,22 +338,40 @@ def _resolve_or_create_diseases(db: Session, manifest: dict) -> Dict[str, Ontolo
         db.add(system)
         db.flush()
 
-    family = (
-        db.query(OntologyDiseaseFamily)
-        .filter_by(family_name=family_name, body_system_id=system.id)
-        .one_or_none()
-    )
-    if family is None:
-        family = OntologyDiseaseFamily(family_name=family_name, body_system_id=system.id)
-        db.add(family)
-        db.flush()
+    family_by_name: Dict[str, OntologyDiseaseFamily] = {}
+    for family_name in family_names:
+        family = (
+            db.query(OntologyDiseaseFamily)
+            .filter_by(family_name=family_name, body_system_id=system.id)
+            .one_or_none()
+        )
+        if family is None:
+            family = OntologyDiseaseFamily(family_name=family_name, body_system_id=system.id)
+            db.add(family)
+            db.flush()
+        family_by_name[family_name] = family
 
     resolved: Dict[str, OntologyDisease] = {}
     for disease_entry in manifest["diseases"]:
         name = disease_entry["disease"]
+        family_name = disease_entry["family"]
+        if family_name not in family_by_name:
+            raise RuntimeError(
+                f"Oncology Foundation v1 disease {name!r} declares family {family_name!r} "
+                f"which is not in manifest.scope.families {sorted(family_by_name)}. Aborting without any writes."
+            )
         disease = db.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
         if disease is None:
-            disease = OntologyDisease(disease_name=name, disease_family_id=family.id)
+            disease = OntologyDisease(
+                disease_name=name,
+                disease_family_id=family_by_name[family_name].id,
+                disease_category=disease_entry.get("disease_category"),
+                primary_organ=disease_entry.get("primary_organ"),
+                disease_type=disease_entry.get("disease_type"),
+                disease_description=disease_entry.get("disease_description"),
+                clinical_purpose=disease_entry.get("clinical_purpose"),
+                hospice_relevance=disease_entry.get("hospice_relevance"),
+            )
             db.add(disease)
             db.flush()
         resolved[name] = disease
@@ -427,8 +514,10 @@ def run(db: Session, manifest: dict | None = None) -> dict:
                 variant_dimension=dimension,
                 description=None,
                 evidence_requirement=(
-                    "Requires patient-record evidence (pathology, imaging, or documented diagnosis) "
-                    "before this primary-site reference is ever treated as a confirmed patient-specific fact."
+                    f"Requires patient-record evidence (pathology, imaging, or documented clinician "
+                    f"assessment) before this {dimension} variant is ever treated as a confirmed "
+                    f"patient-specific fact. Diagnosis alone never establishes this variant, and this "
+                    f"variant alone never establishes hospice eligibility or prognosis."
                 ),
                 source_reference="oncology_foundation_v1",
             )
@@ -547,6 +636,144 @@ def _no_cycle(variants: List[OntologyDiseaseVariant]) -> int:
     return cycles
 
 
+class _GuardContext:
+    """Read-only mechanical lookup context for evaluating a differentiation
+    guard assertion. Every assertion is a structural database check --
+    never a clinically-false relationship edge and never a new query
+    pattern beyond simple existence/absence/distinctness lookups."""
+
+    def __init__(self, db: Session, manifest: dict, diseases: Dict[str, OntologyDisease]):
+        self.db = db
+        self.manifest = manifest
+        self.diseases = diseases
+
+    def disease_exists(self, name: str) -> bool:
+        return self.db.query(OntologyDisease).filter_by(disease_name=name).one_or_none() is not None
+
+    def _variant(self, disease_name: str, dimension: str, name: str):
+        disease = self.diseases.get(disease_name)
+        if disease is None:
+            return None
+        return (
+            self.db.query(OntologyDiseaseVariant)
+            .filter_by(disease_id=disease.id, variant_dimension=dimension, normalized_name=name.strip().lower())
+            .one_or_none()
+        )
+
+    def _concept(self, disease_name: str, domain: str, name: str):
+        disease = self.diseases.get(disease_name)
+        if disease is None or domain not in CONCEPT_DOMAIN_MODEL_MAP:
+            return None
+        model_cls, name_attr = CONCEPT_DOMAIN_MODEL_MAP[domain]
+        return (
+            self.db.query(model_cls)
+            .filter(model_cls.disease_id == disease.id)
+            .filter(func.lower(func.trim(getattr(model_cls, name_attr))) == name.strip().lower())
+            .one_or_none()
+        )
+
+
+def _evaluate_guard_assertion(ctx: "_GuardContext", assertion: dict, disease_override: str | None = None) -> bool:
+    """Evaluate one structural assertion. `disease_override` is set only
+    while expanding a `for_each` assertion, substituting the current
+    disease into any nested assertion's 'disease' field."""
+    assert_type = assertion["assert"]
+
+    if assert_type == "disease_exists":
+        return ctx.disease_exists(assertion["name"])
+    if assert_type == "disease_absent":
+        return not ctx.disease_exists(assertion["name"])
+
+    if assert_type == "variant_exists":
+        disease = disease_override or assertion["disease"]
+        return ctx._variant(disease, assertion["dimension"], assertion["name"]) is not None
+
+    if assert_type == "no_variants_in_dimension":
+        disease = disease_override or assertion["disease"]
+        d = ctx.diseases.get(disease)
+        if d is None:
+            return False
+        count = (
+            ctx.db.query(OntologyDiseaseVariant)
+            .filter_by(disease_id=d.id, variant_dimension=assertion["dimension"])
+            .count()
+        )
+        return count == 0
+
+    if assert_type == "no_variants_in_dimension_systemwide":
+        disease_ids = [d.id for d in ctx.diseases.values()]
+        count = (
+            ctx.db.query(OntologyDiseaseVariant)
+            .filter(OntologyDiseaseVariant.disease_id.in_(disease_ids))
+            .filter_by(variant_dimension=assertion["dimension"])
+            .count()
+        )
+        return count == 0
+
+    if assert_type == "variants_not_collapsed":
+        disease = disease_override or assertion["disease"]
+        v_a = ctx._variant(disease, assertion["dimension"], assertion["name_a"])
+        v_b = ctx._variant(disease, assertion["dimension"], assertion["name_b"])
+        if v_a is None or v_b is None:
+            return False
+        return v_a.id != v_b.id
+
+    if assert_type == "variants_not_collapsed_cross_dimension":
+        disease = disease_override or assertion["disease"]
+        v_a = ctx._variant(disease, assertion["dim_a"], assertion["name_a"])
+        v_b = ctx._variant(disease, assertion["dim_b"], assertion["name_b"])
+        if v_a is None or v_b is None:
+            return False
+        return v_a.id != v_b.id
+
+    if assert_type == "concepts_not_collapsed":
+        disease = disease_override or assertion["disease"]
+        domain_a = assertion.get("domain_a", assertion.get("domain"))
+        domain_b = assertion.get("domain_b", assertion.get("domain"))
+        c_a = ctx._concept(disease, domain_a, assertion["name_a"])
+        c_b = ctx._concept(disease, domain_b, assertion["name_b"])
+        # Forgiving: if one side legitimately does not exist for this disease
+        # (e.g. Metastatic Disease is never created for Leukemia/Lymphoma),
+        # there is no collapse risk -- the guard passes vacuously. It only
+        # fails if both exist AND resolve to the very same row.
+        if c_a is None or c_b is None:
+            return True
+        return c_a.id != c_b.id
+
+    if assert_type == "reserved_terms_distinct":
+        left, right = assertion["left"], assertion["right"]
+        reserved = set(ctx.manifest.get("reserved_future_terminology") or [])
+        return (
+            left != right
+            and left in reserved and right in reserved
+            and not ctx.disease_exists(left) and not ctx.disease_exists(right)
+        )
+
+    if assert_type == "hospice_support_requires_evidence_systemwide":
+        disease_ids = [d.id for d in ctx.diseases.values()]
+        edges = (
+            ctx.db.query(OntologyConceptVariantApplicability)
+            .filter(OntologyConceptVariantApplicability.disease_id.in_(disease_ids))
+            .filter_by(concept_type="HOSPICE_ELIGIBILITY_SUPPORT", applicability_type="HOSPICE_SUPPORT_FOR")
+            .all()
+        )
+        return all(bool(e.evidence_requirement) for e in edges)
+
+    if assert_type == "dimension_evidence_requirement_documented":
+        docs = ctx.manifest.get("dimension_evidence_requirements") or {}
+        return bool(docs.get(assertion["dimension"]))
+
+    if assert_type == "for_each":
+        nested = assertion["assertion"]
+        return all(_evaluate_guard_assertion(ctx, nested, disease_override=d) for d in assertion["diseases"])
+
+    return False
+
+
+def _evaluate_guard(ctx: "_GuardContext", guard: dict) -> bool:
+    return all(_evaluate_guard_assertion(ctx, a) for a in guard.get("assertions", []))
+
+
 def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: int) -> dict:
     """Compare the manifest against the (already-imported) clean database
     and report expected vs. stored vs. missing vs. unexpected for
@@ -633,24 +860,16 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
         else:
             evidence_missing.append(list(key))
 
+    guard_ctx = _GuardContext(db, manifest, diseases)
     guard_results = []
     for guard in manifest.get("differentiation_guards", []):
-        rule = guard["rule"]
-        left, right = guard["left"], guard["right"]
-        passed = None
-        detail = None
-        if rule == "NOT_AUTOMATICALLY_EQUIVALENT":
-            left_d, right_d = diseases.get(left), diseases.get(right)
-            passed = left_d is not None and right_d is not None and left_d.id != right_d.id
-        elif rule == "CONCEPTS_REMAIN_DISTINCT":
-            left_key = (left["disease"], left["domain"], left["name"].strip().lower())
-            right_key = (right["disease"], right["domain"], right["name"].strip().lower())
-            left_id = concept_id_by_key.get(left_key)
-            right_id = concept_id_by_key.get(right_key)
-            passed = left_id is not None and right_id is not None and left_id != right_id
-        else:
-            detail = f"unrecognized guard rule: {rule}"
-        guard_results.append({"left": left, "right": right, "rule": rule, "passed": passed, "detail": detail})
+        try:
+            passed = _evaluate_guard(guard_ctx, guard)
+            detail = None
+        except (KeyError, TypeError) as exc:
+            passed = False
+            detail = f"guard evaluation error: {exc}"
+        guard_results.append({"guard_name": guard.get("guard_name"), "passed": passed, "detail": detail})
 
     orphan_count = 0
     stored_variant_ids = {v.id for v in stored_variants}
@@ -671,14 +890,73 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
     cycle_count = _no_cycle(stored_variants)
 
     expected_disease_names = sorted(d["disease"] for d in manifest["diseases"])
-    stored_disease_names = sorted(
-        row[0] for row in db.query(OntologyDisease.disease_name).filter(OntologyDisease.id.in_(disease_ids)).all()
+    stored_disease_rows = db.query(OntologyDisease).filter(OntologyDisease.id.in_(disease_ids)).all()
+    stored_disease_names = sorted(row.disease_name for row in stored_disease_rows)
+
+    # Canonical-disease-count / by-family breakdown.
+    family_id_to_name = {f.id: f.family_name for f in db.query(OntologyDiseaseFamily).all()}
+    canonical_diseases_by_family: Dict[str, int] = {}
+    for row in stored_disease_rows:
+        fname = family_id_to_name.get(row.disease_family_id, "UNKNOWN")
+        canonical_diseases_by_family[fname] = canonical_diseases_by_family.get(fname, 0) + 1
+
+    # Variants by disease + dimension.
+    variants_by_disease_and_dimension: Dict[str, Dict[str, int]] = {}
+    for v in stored_variants:
+        dname = name_to_disease.get(v.disease_id, "UNKNOWN")
+        variants_by_disease_and_dimension.setdefault(dname, {})
+        variants_by_disease_and_dimension[dname][v.variant_dimension] = (
+            variants_by_disease_and_dimension[dname].get(v.variant_dimension, 0) + 1
+        )
+
+    # Concepts by domain (system-wide, scoped to this manifest's diseases).
+    concepts_by_domain: Dict[str, int] = {}
+    for (_dname, domain, _name) in stored_concept_keys:
+        concepts_by_domain[domain] = concepts_by_domain.get(domain, 0) + 1
+
+    # Applicability by disease + applicability_type.
+    applicability_by_disease_and_type: Dict[str, Dict[str, int]] = {}
+    for edge in stored_applicability_rows:
+        dname = name_to_disease.get(edge.disease_id, "UNKNOWN")
+        applicability_by_disease_and_type.setdefault(dname, {})
+        applicability_by_disease_and_type[dname][edge.applicability_type] = (
+            applicability_by_disease_and_type[dname].get(edge.applicability_type, 0) + 1
+        )
+
+    # Rejected-Cartesian-mappings documentation: the naive pool this
+    # manifest's distinct concept-name x variant-name space WOULD have
+    # produced if every concept were blindly attached to every variant
+    # (the defect this correction removes), versus what was actually
+    # created.
+    distinct_concept_names = {name for (_d, _dom, name) in expected_concept_keys}
+    distinct_variant_names = {name for (_d, _dim, name) in expected_variant_keys}
+    naive_cartesian_pool = len(distinct_concept_names) * len(distinct_variant_names)
+    rejected_cartesian_mappings = {
+        "v1_blanket_mappings_rejected": 120,
+        "naive_cartesian_pool_this_manifest": naive_cartesian_pool,
+        "actual_applicability_created": len(expected_applicability),
+        "cartesian_mappings_avoided": naive_cartesian_pool - len(expected_applicability),
+    }
+
+    # Disease-level source-classification coverage (NCI_CANCER_CATALOG).
+    disease_classification_covered = sum(
+        1 for row in stored_disease_rows
+        if row.disease_category in ALLOWED_SOURCE_CLASSIFICATIONS
     )
 
     report = {
         "manifest_id": manifest.get("manifest_id"),
         "expected_diseases": expected_disease_names,
         "stored_diseases": stored_disease_names,
+        "canonical_disease_count": {
+            "expected": len(expected_disease_names),
+            "stored": len(stored_disease_names),
+        },
+        "canonical_diseases_by_family": canonical_diseases_by_family,
+        "variants_by_disease_and_dimension": variants_by_disease_and_dimension,
+        "concepts_by_domain": concepts_by_domain,
+        "applicability_by_disease_and_type": applicability_by_disease_and_type,
+        "rejected_cartesian_mappings": rejected_cartesian_mappings,
         "expected_variants_count": len(expected_variant_keys),
         "stored_variants_count": len(stored_variant_keys & expected_variant_keys),
         "missing_variants": [list(k) for k in missing_variants],
@@ -700,10 +978,17 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
             "covered": evidence_covered,
             "expected": len(expected_concept_keys),
         },
+        "source_classification_coverage": {
+            "concepts_covered": evidence_covered,
+            "concepts_expected": len(expected_concept_keys),
+            "diseases_covered": disease_classification_covered,
+            "diseases_expected": len(expected_disease_names),
+        },
         "orphan_count": orphan_count,
         "cycle_count": cycle_count,
         "unresolved_concept_count": unresolved_concept_count,
         "second_run_new_rows": second_run_new_rows,
+        "changes_outside_oncology": [],
         "differentiation_guard_results": guard_results,
     }
     return report

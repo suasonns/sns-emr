@@ -1,5 +1,11 @@
 {
   "manifest_id": "oncology_foundation_v1",
+  "manifest_version": 2,
+  "correction_of_defects": [
+    "FAKE_CANONICAL_DISEASE",
+    "CANCERS_AS_PRIMARY_SITE_VARIANTS",
+    "ALL_TO_ALL_APPLICABILITY"
+  ],
   "source_authority": [
     "Cancer-Types-NCI-08.22.2021.pdf",
     "cms guidelines.pdf",
@@ -9,7 +15,8 @@
   "scope": {
     "body_system": "Oncology",
     "families": [
-      "Oncology Foundation"
+      "Solid Malignancies",
+      "Hematologic Malignancies"
     ]
   },
   "foundation_dimensions": [
@@ -18,80 +25,61 @@
     "MOLECULAR_SUBTYPE",
     "STAGE",
     "GRADE",
+    "DISEASE_PHASE",
+    "RECURRENCE_STATE",
     "METASTATIC_STATE",
-    "METASTATIC_DESTINATION"
+    "METASTATIC_DESTINATION",
+    "TREATMENT_STATE",
+    "ANATOMICAL_LOCATION",
+    "LATERALITY"
   ],
-  "primary_sites": [
-    "Breast",
-    "Lung",
-    "Prostate",
-    "Colorectal",
-    "Liver",
-    "Kidney",
-    "Thyroid",
-    "Pancreas",
-    "Bladder",
-    "Skin",
-    "Leukemia",
-    "Lymphoma"
+  "reserved_future_terminology": [
+    "Primary Bone Cancer",
+    "Bone Metastasis",
+    "Primary Brain Cancer",
+    "Brain Metastasis",
+    "Liver Metastasis",
+    "Lung Metastasis"
   ],
+  "dimension_evidence_requirements": {
+    "METASTATIC_DESTINATION": "A METASTATIC_DESTINATION variant may only ever be recorded as a documented patient-specific fact when supported by patient-record evidence (imaging, pathology, or clinician documentation identifying the specific metastatic site). It is never inferred from a Metastatic Disease finding or from diagnosis alone."
+  },
   "summary": {
-    "canonical_diseases": 1,
-    "total_variants": 12,
-    "total_concepts": 10,
-    "total_applicability_mappings": 120
+    "canonical_diseases": 12,
+    "canonical_diseases_by_family": {
+      "Solid Malignancies": 10,
+      "Hematologic Malignancies": 2
+    },
+    "total_variants": 40,
+    "total_concepts": 114,
+    "total_applicability_mappings": 10
   },
   "diseases": [
     {
-      "disease": "Oncology Foundation Reference Structure",
+      "disease": "Breast Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Breast",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
       "variants": [
         {
           "dimension": "PRIMARY_SITE",
-          "name": "Breast"
+          "name": "Breast Primary Site"
         },
         {
-          "dimension": "PRIMARY_SITE",
-          "name": "Lung"
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
         },
         {
-          "dimension": "PRIMARY_SITE",
-          "name": "Prostate"
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
         },
         {
-          "dimension": "PRIMARY_SITE",
-          "name": "Colorectal"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Liver"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Kidney"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Thyroid"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Pancreas"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Bladder"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Skin"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Leukemia"
-        },
-        {
-          "dimension": "PRIMARY_SITE",
-          "name": "Lymphoma"
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
         }
       ],
       "concepts": [
@@ -99,40 +87,66 @@
           "domain": "FINDING",
           "name": "Metastatic Disease",
           "source_classification": "ONCOLOGY_FOUNDATION",
-          "source_reference": "1.pdf",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable oncology-foundation finding: presence of metastatic disease, site-agnostic.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "diagnostic_imaging",
-            "pathology_confirmation",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Breast Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
         },
         {
           "domain": "FINDING",
           "name": "Regional Spread",
           "source_classification": "ONCOLOGY_FOUNDATION",
-          "source_reference": "1.pdf",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable oncology-foundation finding: regional (nodal/local) spread beyond the primary site.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "diagnostic_imaging",
-            "pathology_confirmation",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Breast Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
         },
         {
           "domain": "FINDING",
           "name": "Distant Metastatic Disease",
           "source_classification": "ONCOLOGY_FOUNDATION",
-          "source_reference": "1.pdf",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable oncology-foundation finding: distant-organ metastatic disease, site-agnostic.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "diagnostic_imaging",
-            "pathology_confirmation",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Breast Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Breast Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Breast Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
         },
         {
           "domain": "FUNCTIONAL_IMPACT",
@@ -140,12 +154,38 @@
           "source_classification": "LCD_NON_DISEASE_SPECIFIC",
           "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable non-disease-specific functional-decline finding applicable across oncology primary sites.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "functional_assessment",
-            "date",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Breast Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Breast Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Breast Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
         },
         {
           "domain": "NUTRITIONAL_IMPACT",
@@ -153,962 +193,2025 @@
           "source_classification": "LCD_NON_DISEASE_SPECIFIC",
           "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable non-disease-specific nutritional-decline finding applicable across oncology primary sites.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "weight_data",
-            "date",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Breast Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
         },
         {
           "domain": "NUTRITIONAL_IMPACT",
-          "name": "Weight Loss",
+          "name": "Unintentional Weight Loss",
           "source_classification": "LCD_NON_DISEASE_SPECIFIC",
           "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
           "hospice_support_eligible": false,
-          "description": "Reusable non-disease-specific weight-loss finding applicable across oncology primary sites.",
+          "patient_fact_requires_evidence": true,
           "evidence_requirements": [
-            "weight_data",
-            "date",
-            "source_record"
-          ]
-        },
-        {
-          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "name": "Progressive Disease",
-          "source_classification": "ONCOLOGY_FOUNDATION",
-          "source_reference": "cms guidelines.pdf",
-          "hospice_support_eligible": true,
-          "description": "Reusable oncology-foundation hospice-support concept: documented disease progression, site-agnostic.",
-          "evidence_requirements": [
-            "clinical_documentation",
-            "date",
-            "source_record"
-          ]
-        },
-        {
-          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "name": "Worsening Clinical Status",
-          "source_classification": "ONCOLOGY_FOUNDATION",
-          "source_reference": "cms guidelines.pdf",
-          "hospice_support_eligible": true,
-          "description": "Reusable oncology-foundation hospice-support concept: overall worsening clinical status, site-agnostic.",
-          "evidence_requirements": [
-            "clinical_documentation",
-            "date",
-            "source_record"
-          ]
-        },
-        {
-          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "name": "Functional Impairment",
-          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
-          "source_reference": "1.pdf",
-          "hospice_support_eligible": true,
-          "description": "General clinical-knowledge hospice-support concept: functional impairment, site-agnostic.",
-          "evidence_requirements": [
-            "functional_assessment",
-            "date",
-            "source_record"
-          ]
-        },
-        {
-          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "name": "ADL Dependence",
-          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
-          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
-          "hospice_support_eligible": true,
-          "description": "Reusable non-disease-specific hospice-support concept: ADL dependence, site-agnostic.",
-          "evidence_requirements": [
-            "functional_assessment",
-            "date",
-            "source_record"
-          ]
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Breast Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
         }
       ],
       "applicability": [
         {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
           "concept_domain": "FINDING",
           "concept": "Metastatic Disease",
           "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "FINDING",
-          "concept": "Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "FINDING",
-          "concept": "Regional Spread",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "FINDING",
-          "concept": "Distant Metastatic Disease",
-          "applicability_type": "MAY_OCCUR_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "FUNCTIONAL_IMPACT",
-          "concept": "Progressive Functional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Progressive Nutritional Decline",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "NUTRITIONAL_IMPACT",
-          "concept": "Weight Loss",
-          "applicability_type": "EXPECTED_WITH"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Progressive Disease",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Worsening Clinical Status",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "Functional Impairment",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Breast",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lung",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Prostate",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Colorectal",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Liver",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Kidney",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Thyroid",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Pancreas",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Bladder",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Skin",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Leukemia",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
-        },
-        {
-          "variant_dimension": "PRIMARY_SITE",
-          "variant": "Lymphoma",
-          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-          "concept": "ADL Dependence",
-          "applicability_type": "HOSPICE_SUPPORT_FOR"
         }
       ]
+    },
+    {
+      "disease": "Lung Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Lung",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Lung Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Lung Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Lung Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Lung Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Lung Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Lung Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lung Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lung Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lung Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Lung Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Lung Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Prostate Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Prostate",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Prostate Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Prostate Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Prostate Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Prostate Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Prostate Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Prostate Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Prostate Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Prostate Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Prostate Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Prostate Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Prostate Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Colorectal Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Colorectal",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Colorectal Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Colorectal Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Colorectal Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Colorectal Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Colorectal Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Colorectal Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Colorectal Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Colorectal Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Colorectal Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Colorectal Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Colorectal Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Liver Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Liver",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Liver Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Liver Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Liver Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Liver Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Liver Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Liver Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Liver Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Liver Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Liver Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Liver Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Liver Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Kidney Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Kidney",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Kidney Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Kidney Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Kidney Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Kidney Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Kidney Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Kidney Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Kidney Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Kidney Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Kidney Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Kidney Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Kidney Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Thyroid Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Thyroid",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Thyroid Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Thyroid Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Thyroid Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Thyroid Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Thyroid Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Thyroid Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Thyroid Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Thyroid Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Thyroid Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Thyroid Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Thyroid Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Pancreatic Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Pancreas",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Pancreas Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Pancreatic Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Pancreatic Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Pancreatic Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Pancreatic Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Pancreatic Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Pancreatic Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Pancreatic Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Pancreatic Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Pancreatic Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Pancreatic Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Bladder Cancer",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Bladder",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Bladder Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Bladder Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Bladder Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Bladder Cancer. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Bladder Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Bladder Cancer. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Bladder Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Bladder Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Bladder Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Bladder Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Bladder Cancer. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Melanoma",
+      "family": "Solid Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": "Skin",
+      "disease_type": "Solid Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [
+        {
+          "dimension": "PRIMARY_SITE",
+          "name": "Skin Primary Site"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Localized Disease"
+        },
+        {
+          "dimension": "METASTATIC_STATE",
+          "name": "Metastatic Disease"
+        },
+        {
+          "dimension": "RECURRENCE_STATE",
+          "name": "Recurrent Disease"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "FINDING",
+          "name": "Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Melanoma. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Regional Spread",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Melanoma. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "FINDING",
+          "name": "Distant Metastatic Disease",
+          "source_classification": "ONCOLOGY_FOUNDATION",
+          "source_reference": "Cancer-Types-NCI-08.22.2021.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Reusable oncology-foundation metastasis finding for Melanoma. Requires patient-specific evidence; never inferred from diagnosis alone."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Melanoma. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Melanoma. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Melanoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Melanoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Melanoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Melanoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Melanoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "METASTATIC_STATE",
+          "variant": "Metastatic Disease",
+          "concept_domain": "FINDING",
+          "concept": "Metastatic Disease",
+          "applicability_type": "MAY_OCCUR_WITH"
+        }
+      ]
+    },
+    {
+      "disease": "Leukemia",
+      "family": "Hematologic Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": null,
+      "disease_type": "Hematologic Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [],
+      "concepts": [
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Leukemia. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Leukemia. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Leukemia. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Leukemia. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Leukemia. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Leukemia. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Leukemia. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": []
+    },
+    {
+      "disease": "Lymphoma",
+      "family": "Hematologic Malignancies",
+      "disease_category": "NCI_CANCER_CATALOG",
+      "primary_organ": null,
+      "disease_type": "Hematologic Malignancy",
+      "disease_description": "Canonical cancer disease from the NCI cancer-types catalog (Cancer-Types-NCI-08.22.2021.pdf). Diagnosis alone never establishes a six-month terminal prognosis.",
+      "clinical_purpose": "Anchors source-supported Tier 4 disease variants and Tier 5 atomic knowledge concepts for hospice clinical-reasoning support. Diagnosis alone never establishes eligibility.",
+      "hospice_relevance": "Hospice prognosis review is supported (never established) by hospice_terminal_prog_non-disease_specific.pdf and cms guidelines.pdf baseline indicators plus disease-specific evidence.",
+      "variants": [],
+      "concepts": [
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Progressive Disease",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Lymphoma. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "PROGNOSTIC_INDICATOR",
+          "name": "Worsening Clinical Status",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "cms guidelines.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "General prognostic-indicator baseline concept for Lymphoma. Possible patient-state finding requiring evidence; does not independently establish prognosis."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lymphoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Functional Impairment",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lymphoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "FUNCTIONAL_IMPACT",
+          "name": "Dependence In Activities Of Daily Living",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific functional-decline baseline concept for Lymphoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Lymphoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        },
+        {
+          "domain": "NUTRITIONAL_IMPACT",
+          "name": "Unintentional Weight Loss",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": false,
+          "patient_fact_requires_evidence": true,
+          "evidence_requirements": [
+            "documented clinician evidence in the patient record",
+            "never asserted from disease diagnosis alone"
+          ],
+          "description": "Non-disease-specific nutritional-decline baseline concept for Lymphoma. Supporting evidence only; cannot independently establish hospice eligibility."
+        }
+      ],
+      "applicability": []
     }
   ],
   "differentiation_guards": [
     {
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Metastatic Disease"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Regional Spread"
-      }
+      "guard_name": "Breast Cancer IS_NOT Breast Primary Site",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Breast Cancer"
+        },
+        {
+          "assert": "variant_exists",
+          "disease": "Breast Cancer",
+          "dimension": "PRIMARY_SITE",
+          "name": "Breast Primary Site"
+        },
+        {
+          "assert": "disease_absent",
+          "name": "Breast Primary Site"
+        }
+      ]
     },
     {
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Regional Spread"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "FINDING",
-        "name": "Distant Metastatic Disease"
-      }
+      "guard_name": "Lung Cancer IS_NOT Lung Primary Site",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Lung Cancer"
+        },
+        {
+          "assert": "variant_exists",
+          "disease": "Lung Cancer",
+          "dimension": "PRIMARY_SITE",
+          "name": "Lung Primary Site"
+        },
+        {
+          "assert": "disease_absent",
+          "name": "Lung Primary Site"
+        }
+      ]
     },
     {
-      "rule": "CONCEPTS_REMAIN_DISTINCT",
-      "left": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-        "name": "Progressive Disease"
-      },
-      "right": {
-        "disease": "Oncology Foundation Reference Structure",
-        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
-        "name": "Worsening Clinical Status"
-      }
+      "guard_name": "Leukemia IS_NOT Anatomical Primary Site",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Leukemia"
+        },
+        {
+          "assert": "no_variants_in_dimension",
+          "disease": "Leukemia",
+          "dimension": "PRIMARY_SITE"
+        }
+      ]
+    },
+    {
+      "guard_name": "Lymphoma IS_NOT Anatomical Primary Site",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Lymphoma"
+        },
+        {
+          "assert": "no_variants_in_dimension",
+          "disease": "Lymphoma",
+          "dimension": "PRIMARY_SITE"
+        }
+      ]
+    },
+    {
+      "guard_name": "Primary Bone Cancer IS_NOT Bone Metastasis",
+      "assertions": [
+        {
+          "assert": "reserved_terms_distinct",
+          "left": "Primary Bone Cancer",
+          "right": "Bone Metastasis"
+        }
+      ]
+    },
+    {
+      "guard_name": "Primary Brain Cancer IS_NOT Brain Metastasis",
+      "assertions": [
+        {
+          "assert": "reserved_terms_distinct",
+          "left": "Primary Brain Cancer",
+          "right": "Brain Metastasis"
+        }
+      ]
+    },
+    {
+      "guard_name": "Primary Liver Cancer IS_NOT Liver Metastasis",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Liver Cancer"
+        },
+        {
+          "assert": "no_variants_in_dimension",
+          "disease": "Liver Cancer",
+          "dimension": "METASTATIC_DESTINATION"
+        },
+        {
+          "assert": "disease_absent",
+          "name": "Liver Metastasis"
+        }
+      ]
+    },
+    {
+      "guard_name": "Primary Lung Cancer IS_NOT Lung Metastasis",
+      "assertions": [
+        {
+          "assert": "disease_exists",
+          "name": "Lung Cancer"
+        },
+        {
+          "assert": "no_variants_in_dimension",
+          "disease": "Lung Cancer",
+          "dimension": "METASTATIC_DESTINATION"
+        },
+        {
+          "assert": "disease_absent",
+          "name": "Lung Metastasis"
+        }
+      ]
+    },
+    {
+      "guard_name": "Localized Disease IS_NOT Metastatic Disease",
+      "assertions": [
+        {
+          "assert": "for_each",
+          "diseases": [
+            "Breast Cancer",
+            "Lung Cancer",
+            "Prostate Cancer",
+            "Colorectal Cancer",
+            "Liver Cancer",
+            "Kidney Cancer",
+            "Thyroid Cancer",
+            "Pancreatic Cancer",
+            "Bladder Cancer",
+            "Melanoma"
+          ],
+          "assertion": {
+            "assert": "variants_not_collapsed",
+            "dimension": "METASTATIC_STATE",
+            "name_a": "Localized Disease",
+            "name_b": "Metastatic Disease"
+          }
+        }
+      ]
+    },
+    {
+      "guard_name": "Regional Spread IS_NOT Distant Metastatic Disease",
+      "assertions": [
+        {
+          "assert": "for_each",
+          "diseases": [
+            "Breast Cancer",
+            "Lung Cancer",
+            "Prostate Cancer",
+            "Colorectal Cancer",
+            "Liver Cancer",
+            "Kidney Cancer",
+            "Thyroid Cancer",
+            "Pancreatic Cancer",
+            "Bladder Cancer",
+            "Melanoma"
+          ],
+          "assertion": {
+            "assert": "concepts_not_collapsed",
+            "domain": "FINDING",
+            "name_a": "Regional Spread",
+            "name_b": "Distant Metastatic Disease"
+          }
+        }
+      ]
+    },
+    {
+      "guard_name": "Recurrent Disease IS_NOT Metastatic Disease",
+      "assertions": [
+        {
+          "assert": "for_each",
+          "diseases": [
+            "Breast Cancer",
+            "Lung Cancer",
+            "Prostate Cancer",
+            "Colorectal Cancer",
+            "Liver Cancer",
+            "Kidney Cancer",
+            "Thyroid Cancer",
+            "Pancreatic Cancer",
+            "Bladder Cancer",
+            "Melanoma"
+          ],
+          "assertion": {
+            "assert": "variants_not_collapsed_cross_dimension",
+            "dim_a": "RECURRENCE_STATE",
+            "name_a": "Recurrent Disease",
+            "dim_b": "METASTATIC_STATE",
+            "name_b": "Metastatic Disease"
+          }
+        }
+      ]
+    },
+    {
+      "guard_name": "Progressive Disease IS_NOT Automatically Metastatic Disease",
+      "assertions": [
+        {
+          "assert": "for_each",
+          "diseases": [
+            "Breast Cancer",
+            "Lung Cancer",
+            "Prostate Cancer",
+            "Colorectal Cancer",
+            "Liver Cancer",
+            "Kidney Cancer",
+            "Thyroid Cancer",
+            "Pancreatic Cancer",
+            "Bladder Cancer",
+            "Melanoma",
+            "Leukemia",
+            "Lymphoma"
+          ],
+          "assertion": {
+            "assert": "concepts_not_collapsed",
+            "domain_a": "PROGNOSTIC_INDICATOR",
+            "name_a": "Progressive Disease",
+            "domain_b": "FINDING",
+            "name_b": "Metastatic Disease"
+          }
+        }
+      ]
+    },
+    {
+      "guard_name": "Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "assertions": [
+        {
+          "assert": "hospice_support_requires_evidence_systemwide"
+        }
+      ]
+    },
+    {
+      "guard_name": "Metastatic Disease DOES_NOT_ESTABLISH Metastatic Destination",
+      "assertions": [
+        {
+          "assert": "no_variants_in_dimension_systemwide",
+          "dimension": "METASTATIC_DESTINATION"
+        }
+      ]
+    },
+    {
+      "guard_name": "Metastatic Destination REQUIRES Patient Evidence",
+      "assertions": [
+        {
+          "assert": "dimension_evidence_requirement_documented",
+          "dimension": "METASTATIC_DESTINATION"
+        }
+      ]
     }
   ]
 }
