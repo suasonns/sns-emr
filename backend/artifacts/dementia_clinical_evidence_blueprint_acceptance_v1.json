@@ -1,0 +1,82 @@
+{
+  "manifest_version": 1,
+  "extends_disease": "Dementia Due To Alzheimer's Disease",
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 7,
+    "stored": 7,
+    "missing": [],
+    "pre_existing_pr44_concepts_in_shared_domains": [
+      [
+        "COMPLICATION",
+        "aspiration pneumonia"
+      ],
+      [
+        "COMPLICATION",
+        "pyelonephritis"
+      ],
+      [
+        "COMPLICATION",
+        "recurrent fever after antibiotics"
+      ],
+      [
+        "COMPLICATION",
+        "septicemia"
+      ],
+      [
+        "COMPLICATION",
+        "upper urinary tract infection"
+      ],
+      [
+        "FINDING",
+        "fast stage 7"
+      ],
+      [
+        "FINDING",
+        "no consistently meaningful verbal communication"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "fecal incontinence"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "unable to ambulate without assistance"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "unable to bathe without assistance"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "unable to dress without assistance"
+      ],
+      [
+        "FUNCTIONAL_IMPACT",
+        "urinary incontinence"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "ten percent weight loss in six months"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 7,
+    "stored": 7
+  },
+  "functional_assessment_relationships": {
+    "expected": 3,
+    "stored": 3
+  },
+  "recertification_trend_indicators": {
+    "expected": 10,
+    "stored": 10,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 17,
+    "valid": 17
+  },
+  "second_run_new_rows": 0
+}
