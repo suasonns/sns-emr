@@ -102,7 +102,11 @@ ALLOWED_SOURCE_CLASSIFICATIONS = {
 REQUIRED_LEVEL_FIELDS = [
     "score", "display_title", "clinical_meaning", "functional_summary",
     "clinical_examples", "hospice_interpretation", "ai_summary",
+    "content_source_type", "content_review_status",
 ]
+
+ALLOWED_CONTENT_SOURCE_TYPES = {"USER_DICTATED", "CLINICAL_SCALE_REFERENCE"}
+ALLOWED_CONTENT_REVIEW_STATUSES = {"PENDING_MEDICAL_DIRECTOR_APPROVAL", "MEDICAL_DIRECTOR_APPROVED"}
 
 ASSERTION_TYPES = {
     "disease_exists", "concepts_not_collapsed", "variants_not_collapsed",
@@ -159,6 +163,16 @@ def validate_manifest(manifest: dict) -> List[str]:
                         f"scale {scale_code!r} level {level.get('score')!r} is missing required "
                         f"field {field!r} -- scores may never be stored without full interpretation"
                     )
+            if level.get("content_source_type") not in ALLOWED_CONTENT_SOURCE_TYPES:
+                errors.append(
+                    f"scale {scale_code!r} level {level.get('score')!r} has an unsupported "
+                    f"content_source_type {level.get('content_source_type')!r}"
+                )
+            if level.get("content_review_status") not in ALLOWED_CONTENT_REVIEW_STATUSES:
+                errors.append(
+                    f"scale {scale_code!r} level {level.get('score')!r} has an unsupported "
+                    f"content_review_status {level.get('content_review_status')!r}"
+                )
             variant_name = f"{scale_code} {level.get('score')}"
             normalized_variant = variant_name.strip().lower()
             if normalized_variant in seen_variant_names:
@@ -300,6 +314,8 @@ def run(db: Session, manifest: dict | None = None) -> dict:
                 "clinical_examples": level["clinical_examples"],
                 "hospice_interpretation": level["hospice_interpretation"],
                 "ai_summary": level["ai_summary"],
+                "content_source_type": level["content_source_type"],
+                "content_review_status": level["content_review_status"],
                 "source_reference": level.get("source_reference", scale["source_reference"]),
                 "patient_fact_requires_evidence": True,
             }

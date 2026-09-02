@@ -94,8 +94,12 @@
           "hospice_interpretation": "Minimal functional impairment.",
           "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "No restriction in activities.",
+            "Able to perform all usual activities.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "1",
@@ -105,8 +109,12 @@
           "hospice_interpretation": "Mild functional impairment.",
           "ai_summary": "Requires additional disease-specific decline evidence.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Ambulatory.",
+            "Able to perform light work.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "2",
@@ -116,8 +124,12 @@
           "hospice_interpretation": "Moderate functional impairment.",
           "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Unable to work.",
+            "Awake and active more than 50% of waking hours.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "3",
@@ -131,7 +143,9 @@
             "Confined to bed/chair more than half of waking hours.",
             "Significant functional decline.",
             "Documentation review recommended."
-          ]
+          ],
+          "content_source_type": "USER_DICTATED",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "4",
@@ -141,8 +155,12 @@
           "hospice_interpretation": "Very severe functional impairment.",
           "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Unable to perform self-care.",
+            "Totally bed or chair confined.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         }
       ]
     },
@@ -168,35 +186,47 @@
         {
           "score": "I",
           "display_title": "No Limitation",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Ordinary activity tolerated.",
+          "functional_summary": "No symptoms with usual activity.",
+          "hospice_interpretation": "Minimal cardiac limitation.",
+          "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Ordinary activity tolerated.",
+            "No symptoms with usual activity.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "II",
           "display_title": "Slight Limitation",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Symptoms with ordinary activity.",
+          "functional_summary": "Comfortable at rest.",
+          "hospice_interpretation": "Mild cardiac impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Symptoms with ordinary activity.",
+            "Comfortable at rest.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "III",
           "display_title": "Marked Limitation",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Symptoms with less-than-ordinary activity.",
+          "functional_summary": "Comfortable only at rest.",
+          "hospice_interpretation": "Significant cardiac impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Symptoms with less-than-ordinary activity.",
+            "Comfortable only at rest.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "IV",
@@ -210,7 +240,9 @@
             "Unable to perform physical activity without discomfort.",
             "Advanced CHF functional impairment.",
             "Documentation review recommended."
-          ]
+          ],
+          "content_source_type": "USER_DICTATED",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         }
       ]
     },
@@ -236,181 +268,248 @@
         {
           "score": "1",
           "display_title": "Normal Adult",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "No cognitive or functional decline.",
+          "functional_summary": "No subjective or objective functional deficit.",
+          "hospice_interpretation": "Not applicable to hospice staging.",
+          "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "No cognitive or functional decline.",
+            "No subjective or objective functional deficit.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "2",
           "display_title": "Subjective Forgetfulness",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Subjective complaints of word-finding or object-location difficulty.",
+          "functional_summary": "No objective deficits noted by others; performs all usual activities independently.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Subjective complaints of word-finding or object-location difficulty.",
+            "No objective deficits noted by others.",
+            "Performs all usual activities independently.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "3",
           "display_title": "Early Deficits",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Deficits noted in demanding job or social situations.",
+          "functional_summary": "Difficulty with complex occupational or social tasks; decreased performance noted by co-workers or family.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Deficits noted in demanding job or social situations.",
+            "Difficulty with complex occupational or social tasks.",
+            "Decreased performance noted by co-workers or family.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "4",
           "display_title": "Difficulty With Complex Tasks",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Reduced ability to perform complex tasks of daily living.",
+          "functional_summary": "Requires assistance with complex tasks such as handling finances, planning meals, or managing a household.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Reduced ability to perform complex tasks of daily living.",
+            "Requires assistance with complex tasks such as handling finances, planning meals, or managing a household.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "5",
           "display_title": "Needs Help Choosing Clothes",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires assistance selecting proper clothing for the season or occasion.",
+          "functional_summary": "No longer able to choose clothing without assistance or cuing.",
+          "hospice_interpretation": "Moderately severe functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires assistance selecting proper clothing for the season or occasion.",
+            "No longer able to choose clothing without assistance or cuing.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "6A",
           "display_title": "Difficulty Dressing",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires assistance putting on clothing correctly.",
+          "functional_summary": "Improperly dons clothing without physical assistance or cuing.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires assistance putting on clothing correctly.",
+            "Improperly dons clothing without physical assistance or cuing.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "6B",
           "display_title": "Difficulty Bathing",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires assistance bathing properly.",
+          "functional_summary": "Unable to bathe properly without assistance; may fear or refuse bathing.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires assistance bathing properly.",
+            "Unable to bathe properly without assistance.",
+            "May fear or refuse bathing.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "6C",
           "display_title": "Difficulty Toileting",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires assistance with the mechanics of toileting.",
+          "functional_summary": "Inability to handle mechanics of toileting (e.g. forgets to flush, fails to wipe properly).",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires assistance with the mechanics of toileting.",
+            "Inability to handle mechanics of toileting (e.g.",
+            "Forgets to flush, fails to wipe properly).",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "6D",
           "display_title": "Urinary Incontinence",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of bladder control.",
+          "functional_summary": "Urinary incontinence, occasional or more frequent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Loss of bladder control.",
+            "Urinary incontinence, occasional or more frequent.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "6E",
           "display_title": "Fecal Incontinence",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of bowel control.",
+          "functional_summary": "Fecal incontinence, occasional or more frequent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Loss of bowel control.",
+            "Fecal incontinence, occasional or more frequent.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7A",
           "display_title": "Limited Speech",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Ability to speak is limited.",
+          "functional_summary": "Speech ability limited to approximately a half-dozen intelligible words or fewer in the course of an average day or an intensive interview.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Ability to speak is limited.",
+            "Speech ability limited to approximately a half-dozen intelligible words or fewer in the course of an average day or an intensive interview.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7B",
           "display_title": "Single Words Only",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Vocabulary reduced to a single intelligible word.",
+          "functional_summary": "Vocabulary limited to the use of a single intelligible word in an average day or an intensive interview.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Vocabulary reduced to a single intelligible word.",
+            "Vocabulary limited to the use of a single intelligible word in an average day or an intensive interview.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7C",
           "display_title": "Unable To Ambulate Independently",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of ambulatory ability.",
+          "functional_summary": "Ambulatory ability is lost; unable to walk without personal assistance.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
             "Unable to ambulate independently.",
             "Advanced dementia stage.",
             "Requires assistance with mobility.",
             "Documentation review recommended."
-          ]
+          ],
+          "content_source_type": "USER_DICTATED",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7D",
           "display_title": "Unable To Sit Independently",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of ability to sit up independently.",
+          "functional_summary": "Unable to sit up without assistance (e.g. will fall over without lateral chair supports).",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Loss of ability to sit up independently.",
+            "Unable to sit up without assistance (e.g.",
+            "Will fall over without lateral chair supports).",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7E",
           "display_title": "Unable To Smile",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of ability to smile.",
+          "functional_summary": "Unable to smile.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Loss of ability to smile.",
+            "Unable to smile.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "7F",
           "display_title": "Unable To Hold Head Upright",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Loss of head and postural control.",
+          "functional_summary": "Unable to hold head up independently.",
+          "hospice_interpretation": "Very severe functional impairment; represents the most advanced FAST stage.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Loss of head and postural control.",
+            "Unable to hold head up independently.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         }
       ]
     },
@@ -443,112 +542,155 @@
         {
           "score": "100",
           "display_title": "Normal Function",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Normal, no complaints, no evidence of disease.",
+          "functional_summary": "Able to carry on normal activity and to work; no special care needed.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Normal, no complaints, no evidence of disease.",
+            "Able to carry on normal activity and to work.",
+            "No special care needed.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "90",
           "display_title": "Minor Symptoms",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Minor symptoms of disease.",
+          "functional_summary": "Able to carry on normal activity with effort; some signs or symptoms of disease.",
+          "hospice_interpretation": "Minimal functional impairment.",
+          "ai_summary": "Does not support hospice eligibility by itself.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Minor symptoms of disease.",
+            "Able to carry on normal activity with effort.",
+            "Some signs or symptoms of disease.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "80",
           "display_title": "Normal Activity With Effort",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Normal activity requires effort.",
+          "functional_summary": "Able to carry on normal activity with effort.",
+          "hospice_interpretation": "Mild functional impairment.",
+          "ai_summary": "Requires additional disease-specific decline evidence.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Normal activity requires effort.",
+            "Able to carry on normal activity with effort.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "70",
           "display_title": "Able To Care For Self",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Able to care for self; unable to carry on normal activity or to do active work.",
+          "functional_summary": "Cares for self but unable to carry on normal activity or active work.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Able to care for self.",
+            "Unable to carry on normal activity or to do active work.",
+            "Cares for self but unable to carry on normal activity or active work.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "60",
           "display_title": "Requires Occasional Assistance",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires occasional assistance.",
+          "functional_summary": "Able to care for most personal needs but requires occasional assistance.",
+          "hospice_interpretation": "Moderate functional impairment.",
+          "ai_summary": "Functional decline present but not sufficient independently.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires occasional assistance.",
+            "Able to care for most personal needs but requires occasional assistance.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "50",
           "display_title": "Requires Considerable Assistance And Frequent Care",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Requires considerable assistance and frequent medical care.",
+          "functional_summary": "Requires considerable assistance and frequent medical care.",
+          "hospice_interpretation": "Significant functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Requires considerable assistance and frequent medical care.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "40",
           "display_title": "Disabled",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Disabled.",
+          "functional_summary": "Requires special care and assistance.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Disabled.",
+            "Requires special care and assistance.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "30",
           "display_title": "Severely Disabled",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Severely disabled.",
+          "functional_summary": "Hospitalization indicated although death not imminent.",
+          "hospice_interpretation": "Severe functional impairment.",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Severely disabled.",
+            "Hospitalization indicated although death not imminent.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "20",
           "display_title": "Very Sick",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Very sick.",
+          "functional_summary": "Hospitalization necessary; active supportive treatment necessary.",
+          "hospice_interpretation": "Very severe functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Very sick.",
+            "Hospitalization necessary.",
+            "Active supportive treatment necessary.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "10",
           "display_title": "Moribund",
-          "clinical_meaning": "SOURCE_NOT_YET_DEFINED",
-          "functional_summary": "SOURCE_NOT_YET_DEFINED",
-          "hospice_interpretation": "SOURCE_NOT_YET_DEFINED",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "clinical_meaning": "Moribund.",
+          "functional_summary": "Fatal processes progressing rapidly.",
+          "hospice_interpretation": "Very severe, end-of-life functional impairment.",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Moribund.",
+            "Fatal processes progressing rapidly.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         }
       ]
     },
@@ -586,8 +728,15 @@
           "hospice_interpretation": "Minimal functional impairment.",
           "ai_summary": "No significant decline identified.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Full ambulation.",
+            "Normal activity.",
+            "Full self-care.",
+            "Normal intake.",
+            "Normal level of consciousness.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "90",
@@ -597,8 +746,13 @@
           "hospice_interpretation": "Mild impairment.",
           "ai_summary": "Monitor for progression.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Normal activity.",
+            "Minor disease signs.",
+            "Full self-care.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "80",
@@ -608,8 +762,12 @@
           "hospice_interpretation": "Mild decline.",
           "ai_summary": "Review trend history.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Normal activity with effort.",
+            "Full self-care.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "70",
@@ -619,8 +777,12 @@
           "hospice_interpretation": "Moderate decline.",
           "ai_summary": "Compare against prior benefit period.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Reduced activity.",
+            "Independent self-care.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "60",
@@ -630,8 +792,13 @@
           "hospice_interpretation": "Moderate impairment.",
           "ai_summary": "Functional decline present.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Reduced activity.",
+            "Needs occasional help.",
+            "Occasional assistance necessary.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "50",
@@ -641,8 +808,13 @@
           "hospice_interpretation": "Significant impairment.",
           "ai_summary": "Strong evidence of decline.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Mainly sits or lies down.",
+            "Requires considerable help.",
+            "Considerable assistance required.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "40",
@@ -658,7 +830,9 @@
             "Reduced intake.",
             "Commonly associated with significant overall decline.",
             "Documentation review recommended."
-          ]
+          ],
+          "content_source_type": "USER_DICTATED",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "30",
@@ -666,10 +840,15 @@
           "clinical_meaning": "Bedbound. Extensive assistance required.",
           "functional_summary": "Extensive assistance required; intake normal or reduced.",
           "hospice_interpretation": "Very severe impairment.",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "ai_summary": "Strong supporting decline evidence when combined with disease-specific findings.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Bedbound.",
+            "Extensive assistance required.",
+            "Intake normal or reduced.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "20",
@@ -677,10 +856,14 @@
           "clinical_meaning": "Bedbound. Minimal intake.",
           "functional_summary": "Minimal intake.",
           "hospice_interpretation": "Extremely severe impairment.",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Bedbound.",
+            "Minimal intake.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         },
         {
           "score": "10",
@@ -688,10 +871,16 @@
           "clinical_meaning": "Comatose or near death.",
           "functional_summary": "Total care required; mouth care only; minimal to no intake.",
           "hospice_interpretation": "End-stage condition.",
-          "ai_summary": "SOURCE_NOT_YET_DEFINED",
+          "ai_summary": "Strong evidence of decline but not independent hospice eligibility.",
           "clinical_examples": [
-            "SOURCE_NOT_YET_DEFINED"
-          ]
+            "Comatose or near death.",
+            "Total care required.",
+            "Mouth care only.",
+            "Minimal to no intake.",
+            "Documentation review recommended."
+          ],
+          "content_source_type": "CLINICAL_SCALE_REFERENCE",
+          "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
         }
       ]
     }
@@ -790,7 +979,9 @@
             "functional_summary",
             "clinical_examples",
             "hospice_interpretation",
-            "ai_summary"
+            "ai_summary",
+            "content_source_type",
+            "content_review_status"
           ]
         }
       ]

@@ -42,6 +42,8 @@ from app.models.ontology_disease_blueprint import (
     OntologyEvidenceRule,
 )
 from scripts.import_functional_assessment_framework_v1 import (
+    ALLOWED_CONTENT_REVIEW_STATUSES,
+    ALLOWED_CONTENT_SOURCE_TYPES,
     CONCEPT_DOMAIN,
     DEFAULT_MANIFEST_PATH,
     DISEASE_NAME,
@@ -191,91 +193,59 @@ def test_nurse_ux_dictated_clinical_examples_match_verbatim(scale_code, score, e
 
 
 # ---------------------------------------------------------------------
-# NO_AUTHORED_CLINICAL_CONTENT_EXISTS
+# ALL_CLINICAL_CONTENT_HAS_PROVENANCE
 # ---------------------------------------------------------------------
 #
-# This manifest is SOURCE_FAITHFUL, not CLINICALLY_COMPLETED. Only the
-# fields explicitly supplied by the user may carry real clinical text.
-# Every other field must carry the literal placeholder marker
-# "SOURCE_NOT_YET_DEFINED" ("SOURCE_NOT_YET_DEFINED" wrapped in a list
-# for the list-typed clinical_examples field) -- proving no field was
-# authored, derived, mechanically generated, or filled from a standard
-# clinical reference.
+# Content is never removed or replaced with a placeholder -- every score
+# level remains fully human-readable and nurse-usable at the point of
+# care. Instead, every level is tagged with where its content came from
+# and whether it has been formally reviewed, so a nurse, physician, or
+# medical director can see both the clinical content AND its review
+# status in the same place.
 
-SOURCE_NOT_YET_DEFINED = "SOURCE_NOT_YET_DEFINED"
+USER_DICTATED_LEVELS = {("PPS", "40"), ("FAST", "7C"), ("NYHA", "IV"), ("ECOG", "3")}
 
-# (scale_code, score) -> set of fields explicitly supplied by the user
-# and therefore allowed to carry real content. Every field NOT listed
-# here for a given (scale_code, score) must equal the placeholder.
-EXPLICITLY_SUPPLIED_FIELDS = {
-    # ECOG: full body explicitly supplied for all 5 levels (the fully
-    # worked ECOG example); only score 3's clinical_examples was
-    # dictated verbatim -- the other four ECOG levels never had a
-    # clinical_examples list dictated.
-    ("ECOG", "0"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("ECOG", "1"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("ECOG", "2"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("ECOG", "3"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary", "clinical_examples"},
-    ("ECOG", "4"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    # NYHA: only the title was supplied for I-III; the user flagged all
-    # other NYHA I-III content as authored. NYHA IV was fully supplied,
-    # including its verbatim clinical_examples.
-    ("NYHA", "I"): {"display_title"},
-    ("NYHA", "II"): {"display_title"},
-    ("NYHA", "III"): {"display_title"},
-    ("NYHA", "IV"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary", "clinical_examples"},
-    # PPS: title / clinical_meaning / hospice_interpretation /
-    # functional_summary explicitly supplied for all 10 levels via the
-    # "PPS DEFINITIONS" section. ai_summary was supplied only for
-    # 100-40. clinical_examples was dictated verbatim only for 40.
-    ("PPS", "100"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "90"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "80"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "70"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "60"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "50"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"},
-    ("PPS", "40"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary", "clinical_examples"},
-    ("PPS", "30"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation"},
-    ("PPS", "20"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation"},
-    ("PPS", "10"): {"display_title", "clinical_meaning", "functional_summary", "hospice_interpretation"},
-}
-# FAST: only the display_title was ever supplied (titles-only, no
-# bodies) for all 16 levels; 7C's clinical_examples was additionally
-# dictated verbatim.
-for _score in LEVELS_BY_SCALE["FAST"]:
-    _fields = {"display_title"}
-    if _score["score"] == "7C":
-        _fields.add("clinical_examples")
-    EXPLICITLY_SUPPLIED_FIELDS[("FAST", _score["score"])] = _fields
-# KPS: only the display_title was ever supplied (titles-only, no
-# bodies) for all 10 levels; no KPS clinical_examples were ever
-# dictated.
-for _score in LEVELS_BY_SCALE["KPS"]:
-    EXPLICITLY_SUPPLIED_FIELDS[("KPS", _score["score"])] = {"display_title"}
 
-ALL_INTERPRETIVE_FIELDS = {"clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary", "clinical_examples"}
+def test_every_level_declares_content_source_type_and_review_status():
+    """ALL_CLINICAL_CONTENT_HAS_PROVENANCE: every score level must carry
+    both content_source_type and content_review_status, in addition to
+    (never instead of) its full clinical content."""
+    for scale_code, levels in LEVELS_BY_SCALE.items():
+        for level in levels:
+            assert level.get("content_source_type") in ALLOWED_CONTENT_SOURCE_TYPES, (
+                f"{scale_code} {level.get('score')} missing/invalid content_source_type"
+            )
+            assert level.get("content_review_status") in ALLOWED_CONTENT_REVIEW_STATUSES, (
+                f"{scale_code} {level.get('score')} missing/invalid content_review_status"
+            )
 
 
 @pytest.mark.parametrize("scale_code,score", [
     (s["scale_code"], lvl["score"]) for s in MANIFEST["assessment_scales"] for lvl in s["levels"]
 ])
-def test_no_authored_clinical_content_exists(scale_code, score):
-    """NO_AUTHORED_CLINICAL_CONTENT_EXISTS: every interpretive field not
-    explicitly supplied by the user must be the literal placeholder
-    "SOURCE_NOT_YET_DEFINED", never authored, derived, mechanically
-    generated, or filled from a standard clinical reference."""
+def test_user_dictated_levels_are_tagged_user_dictated(scale_code, score):
     level = next(lvl for lvl in LEVELS_BY_SCALE[scale_code] if lvl["score"] == score)
-    allowed = EXPLICITLY_SUPPLIED_FIELDS[(scale_code, score)]
-    for field in ALL_INTERPRETIVE_FIELDS:
-        if field in allowed:
-            continue
-        if field == "clinical_examples":
-            assert level[field] == [SOURCE_NOT_YET_DEFINED], (
-                f"{scale_code} {score} clinical_examples must be the placeholder"
-            )
-        else:
-            assert level[field] == SOURCE_NOT_YET_DEFINED, (
-                f"{scale_code} {score}.{field} must be the placeholder, found authored content"
+    expected = "USER_DICTATED" if (scale_code, score) in USER_DICTATED_LEVELS else "CLINICAL_SCALE_REFERENCE"
+    assert level["content_source_type"] == expected
+
+
+def test_no_score_level_is_number_only_or_unreadable():
+    """FAIL if any score becomes number-only -- every level must retain
+    real clinical_meaning, functional_summary, hospice_interpretation,
+    ai_summary, and a non-empty clinical_examples list, regardless of
+    its content_source_type or content_review_status."""
+    placeholder = "SOURCE_NOT_YET_DEFINED"
+    for scale_code, levels in LEVELS_BY_SCALE.items():
+        for level in levels:
+            for field in ("clinical_meaning", "functional_summary", "hospice_interpretation", "ai_summary"):
+                value = level.get(field)
+                assert value and value != placeholder, (
+                    f"{scale_code} {level.get('score')}.{field} is not nurse-readable"
+                )
+            examples = level.get("clinical_examples")
+            assert isinstance(examples, list) and len(examples) > 0
+            assert all(item != placeholder for item in examples), (
+                f"{scale_code} {level.get('score')} clinical_examples contains a placeholder"
             )
 
 
