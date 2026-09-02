@@ -133,6 +133,27 @@ CONCEPT_DOMAIN_MODEL_MAP = dict(SIMPLE_CONCEPT_DOMAIN_MODEL_MAP)
 CONCEPT_DOMAIN_MODEL_MAP["TREATMENT"] = (OntologyDiseaseTreatment, "treatment_name")
 CONCEPT_DOMAIN_MODEL_MAP["TREATMENT_LIMITATION"] = (OntologyDiseaseTreatmentLimitation, "limitation_name")
 
+# --- Source-classification vocabulary (PR #40 correction). The current
+# schema has no dedicated column for this distinction, so per the
+# reviewer's explicit instruction it is recorded in the concept's own
+# existing description-style column and in its OntologyEvidenceRule.notes
+# -- never via a new migration. ---
+ALLOWED_SOURCE_CLASSIFICATIONS = {
+    "LCD_DISEASE_SPECIFIC", "LCD_NON_DISEASE_SPECIFIC",
+    "GENERAL_CLINICAL_KNOWLEDGE", "COMORBIDITY_SUPPORT",
+}
+
+# The existing free-text column each concept domain already has, used to
+# carry the description + source classification without a schema change.
+DESCRIPTION_ATTR_BY_DOMAIN = {
+    "SYMPTOM": "description",
+    "FINDING": "finding_description",
+    "COMPLICATION": "description",
+    "FUNCTIONAL_IMPACT": "description",
+    "NUTRITIONAL_IMPACT": "description",
+    "HOSPICE_ELIGIBILITY_SUPPORT": "description",
+}
+
 
 def load_manifest(path: Path = DEFAULT_MANIFEST_PATH) -> dict:
     with open(path, encoding="utf-8") as f:
@@ -165,11 +186,13 @@ def validate_manifest(manifest: dict) -> List[str]:
                 errors.append(f"unsupported variant dimension '{v.get('dimension')}' for {key}")
 
         seen_concepts = set()
+        concept_lookup: Dict[Tuple[str, str], dict] = {}
         for c in disease_entry.get("concepts", []):
             key = (disease_name, c.get("domain"), (c.get("name") or "").strip().lower())
             if key in seen_concepts:
                 errors.append(f"duplicate concept identity in manifest: {key}")
             seen_concepts.add(key)
+            concept_lookup[(c.get("domain"), (c.get("name") or "").strip().lower())] = c
             domain = c.get("domain")
             if domain not in CONCEPT_DOMAIN_MODEL_MAP:
                 errors.append(f"unsupported concept domain '{domain}' for {key}")
@@ -177,6 +200,10 @@ def validate_manifest(manifest: dict) -> List[str]:
                 errors.append(f"unsupported or missing treatment_category '{c.get('treatment_category')}' for {key}")
             elif domain == "TREATMENT_LIMITATION" and c.get("limitation_category") not in ALLOWED_LIMITATION_CATEGORIES:
                 errors.append(f"unsupported or missing limitation_category '{c.get('limitation_category')}' for {key}")
+            if c.get("source_classification") not in ALLOWED_SOURCE_CLASSIFICATIONS:
+                errors.append(f"unsupported or missing source_classification '{c.get('source_classification')}' for {key}")
+            if not c.get("source_reference"):
+                errors.append(f"missing source_reference for {key}")
 
         seen_applic = set()
         for a in disease_entry.get("applicability", []):
@@ -191,6 +218,20 @@ def validate_manifest(manifest: dict) -> List[str]:
                 errors.append(f"unsupported applicability variant_dimension '{a.get('variant_dimension')}' for {key}")
             if a.get("applicability_type") not in APPLICABILITY_TYPES:
                 errors.append(f"unsupported applicability_type '{a.get('applicability_type')}' for {key}")
+            if a.get("applicability_type") == "HOSPICE_SUPPORT_FOR":
+                referenced = concept_lookup.get((a.get("concept_domain"), (a.get("concept") or "").strip().lower()))
+                if referenced is None:
+                    errors.append(f"applicability references undeclared concept for {key}")
+                elif referenced.get("hospice_support_eligible") is not True:
+                    errors.append(
+                        f"HOSPICE_SUPPORT_FOR applicability targets a concept not marked "
+                        f"hospice_support_eligible=true for {key}"
+                    )
+
+    for guard in manifest.get("differentiation_guards", []):
+        rule = guard.get("rule")
+        if rule not in ("NOT_AUTOMATICALLY_EQUIVALENT", "CONCEPTS_REMAIN_DISTINCT"):
+            errors.append(f"unsupported differentiation_guard rule '{rule}'")
 
     return errors
 
@@ -237,16 +278,41 @@ def _resolve_or_create_diseases(db: Session, manifest: dict) -> Dict[str, Ontolo
     return resolved
 
 
-def _ensure_evidence_rule(db: Session, concept_type: str, concept_id) -> bool:
+def _evidence_notes(concept_entry: dict) -> str:
+    """Fold source_classification / source_reference / evidence_requirements
+    / hospice_support_eligible into the evidence rule's existing free-text
+    'notes' column -- the reviewer-approved way to carry this distinction
+    without a schema change or new migration."""
+    parts = [
+        "Imported verbatim from the approved Renal Production Source Manifest v1.",
+        f"source_classification={concept_entry.get('source_classification')}",
+        f"source_reference={concept_entry.get('source_reference')}",
+        f"hospice_support_eligible={concept_entry.get('hospice_support_eligible')}",
+    ]
+    reqs = concept_entry.get("evidence_requirements") or []
+    if reqs:
+        parts.append("evidence_requirements=" + ",".join(reqs))
+    return " | ".join(parts)
+
+
+def _ensure_evidence_rule(db: Session, concept_type: str, concept_id, concept_entry: dict | None = None) -> bool:
     """Create or preserve an OntologyEvidenceRule for a concept, always
     with patient_fact_requires_evidence=True. Returns True if a new row
-    was inserted."""
+    was inserted. When re-run against an existing row, the notes are kept
+    in sync with the manifest's current source-classification metadata
+    (never touching patient_fact_requires_evidence, which always stays
+    True)."""
     existing = (
         db.query(OntologyEvidenceRule)
         .filter_by(concept_type=concept_type, concept_id=concept_id)
         .one_or_none()
     )
+    notes = _evidence_notes(concept_entry) if concept_entry else (
+        "Imported verbatim from the approved Renal Production Source Manifest v1."
+    )
     if existing is not None:
+        if concept_entry is not None and existing.notes != notes:
+            existing.notes = notes
         return False
     db.add(
         OntologyEvidenceRule(
@@ -257,7 +323,7 @@ def _ensure_evidence_rule(db: Session, concept_type: str, concept_id) -> bool:
             evidence_type="MANIFEST_ATOMIC_CONCEPT",
             confidence="HIGH",
             patient_fact_requires_evidence=True,
-            notes="Imported verbatim from the approved Renal Production Source Manifest v1.",
+            notes=notes,
         )
     )
     return True
@@ -267,7 +333,9 @@ def _build_concept_row(domain: str, disease_id, concept_entry: dict):
     """Construct the ORM row for a single manifest concept, applying the
     approved treatment_category / limitation_category for the two
     category-bearing domains, verbatim from the manifest -- never
-    invented, never substituted."""
+    invented, never substituted. The concept's own existing free-text
+    description-style column carries its source-classification metadata
+    (no schema change)."""
     name = concept_entry["name"]
     if domain == "TREATMENT":
         return OntologyDiseaseTreatment(
@@ -284,7 +352,16 @@ def _build_concept_row(domain: str, disease_id, concept_entry: dict):
             limitation_category=concept_entry["limitation_category"],
         )
     model_cls, name_attr = SIMPLE_CONCEPT_DOMAIN_MODEL_MAP[domain]
-    return model_cls(id=uuid.uuid4(), disease_id=disease_id, **{name_attr: name})
+    row = model_cls(id=uuid.uuid4(), disease_id=disease_id, **{name_attr: name})
+    description_attr = DESCRIPTION_ATTR_BY_DOMAIN.get(domain)
+    if description_attr is not None and concept_entry.get("description"):
+        setattr(row, description_attr, concept_entry["description"])
+    if domain == "HOSPICE_ELIGIBILITY_SUPPORT":
+        row.lcd_reference = concept_entry.get("source_classification")
+        reqs = concept_entry.get("evidence_requirements") or []
+        if reqs:
+            row.supporting_evidence = "Requires: " + ", ".join(reqs)
+    return row
 
 
 def run(db: Session, manifest: dict | None = None) -> dict:
@@ -363,7 +440,7 @@ def run(db: Session, manifest: dict | None = None) -> dict:
                     existing_row.treatment_category = c["treatment_category"]
                 elif domain == "TREATMENT_LIMITATION" and existing_row.limitation_category != c["limitation_category"]:
                     existing_row.limitation_category = c["limitation_category"]
-                if _ensure_evidence_rule(db, domain, existing_row.id):
+                if _ensure_evidence_rule(db, domain, existing_row.id, c):
                     evidence_rules_inserted += 1
                 continue
 
@@ -373,7 +450,7 @@ def run(db: Session, manifest: dict | None = None) -> dict:
             concept_by_key[key] = row
             concepts_inserted_by_domain[domain] = concepts_inserted_by_domain.get(domain, 0) + 1
 
-            if _ensure_evidence_rule(db, domain, row.id):
+            if _ensure_evidence_rule(db, domain, row.id, c):
                 evidence_rules_inserted += 1
 
     db.flush()
@@ -556,6 +633,12 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
         if rule == "NOT_AUTOMATICALLY_EQUIVALENT":
             left_d, right_d = diseases.get(left), diseases.get(right)
             passed = left_d is not None and right_d is not None and left_d.id != right_d.id
+        elif rule == "CONCEPTS_REMAIN_DISTINCT":
+            left_key = (left["disease"], left["domain"], left["name"].strip().lower())
+            right_key = (right["disease"], right["domain"], right["name"].strip().lower())
+            left_id = concept_id_by_key.get(left_key)
+            right_id = concept_id_by_key.get(right_key)
+            passed = left_id is not None and right_id is not None and left_id != right_id
         else:
             detail = f"unrecognized guard rule: {rule}"
         guard_results.append({"left": left, "right": right, "rule": rule, "passed": passed, "detail": detail})
@@ -567,37 +650,117 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
             orphan_count += 1
         elif v.parent_variant_id is not None and v.parent_variant_id not in stored_variant_ids:
             orphan_count += 1
+    unresolved_concept_count = 0
     for edge in stored_applicability_rows:
         if edge.variant_id not in stored_variant_ids:
             orphan_count += 1
         model_cls, _ = CONCEPT_DOMAIN_MODEL_MAP[edge.concept_type]
         if db.query(model_cls).filter_by(id=edge.concept_id).one_or_none() is None:
             orphan_count += 1
+            unresolved_concept_count += 1
 
     cycle_count = _no_cycle(stored_variants)
 
+    # --- expected/stored diseases ---
+    expected_disease_names = sorted(d["disease"] for d in manifest["diseases"])
+    stored_disease_names = sorted(
+        row[0] for row in db.query(OntologyDisease.disease_name).filter(OntologyDisease.id.in_(disease_ids)).all()
+    )
+
+    # --- variants / concepts broken down by disease + dimension/domain ---
+    def _bucket_count(keys, idx_disease, idx_bucket):
+        counts: Dict[str, Dict[str, int]] = {}
+        for key in keys:
+            counts.setdefault(key[idx_disease], {}).setdefault(key[idx_bucket], 0)
+            counts[key[idx_disease]][key[idx_bucket]] += 1
+        return counts
+
+    expected_variants_by_disease_dimension = _bucket_count(expected_variant_keys, 0, 1)
+    stored_variants_by_disease_dimension = _bucket_count(stored_variant_keys & expected_variant_keys, 0, 1)
+    expected_concepts_by_disease_domain = _bucket_count(expected_concept_keys, 0, 1)
+    stored_concepts_by_disease_domain = _bucket_count(stored_concept_keys & expected_concept_keys, 0, 1)
+
+    # --- LCD-classification-aware breakdowns ---
+    classification_by_concept_key: Dict[Tuple[str, str, str], str] = {}
+    hospice_eligible_by_concept_key: Dict[Tuple[str, str, str], bool] = {}
+    for disease_entry in manifest["diseases"]:
+        for c in disease_entry.get("concepts", []):
+            key = (disease_entry["disease"], c["domain"], c["name"].strip().lower())
+            classification_by_concept_key[key] = c.get("source_classification")
+            hospice_eligible_by_concept_key[key] = c.get("hospice_support_eligible")
+
+    missing_exact_lcd_concepts = [
+        list(k) for k in missing_concepts
+        if classification_by_concept_key.get(k) == "LCD_DISEASE_SPECIFIC"
+    ]
+    unsupported_general_concepts = sorted(
+        list(k) for k, cls in classification_by_concept_key.items()
+        if cls == "GENERAL_CLINICAL_KNOWLEDGE" and k in (stored_concept_keys & expected_concept_keys)
+    )
+
+    expected_applicability_by_classification: Dict[str, int] = {}
+    for disease_entry in manifest["diseases"]:
+        for a in disease_entry.get("applicability", []):
+            key = (disease_entry["disease"], a["concept_domain"], a["concept"].strip().lower())
+            cls = classification_by_concept_key.get(key, "UNKNOWN")
+            expected_applicability_by_classification[cls] = expected_applicability_by_classification.get(cls, 0) + 1
+
+    stored_applicability_by_classification: Dict[str, int] = {}
+    stored_expected_applicability = set(expected_applicability) & stored_applicability_keys
+    for key in stored_expected_applicability:
+        disease_name, _dim, _variant, concept_domain, concept_name, _atype = key
+        c_key = (disease_name, concept_domain, (concept_name or "").strip().lower())
+        cls = classification_by_concept_key.get(c_key, "UNKNOWN")
+        stored_applicability_by_classification[cls] = stored_applicability_by_classification.get(cls, 0) + 1
+
+    # --- source-provenance coverage: every expected concept must declare a
+    # non-empty source_reference somewhere in the manifest. ---
+    source_reference_by_concept_key: Dict[Tuple[str, str, str], str] = {}
+    for disease_entry in manifest["diseases"]:
+        for c in disease_entry.get("concepts", []):
+            key = (disease_entry["disease"], c["domain"], c["name"].strip().lower())
+            source_reference_by_concept_key[key] = c.get("source_reference")
+    provenance_covered = sum(
+        1 for k in expected_concept_keys if source_reference_by_concept_key.get(k)
+    )
+
     return {
         "manifest_path": str(DEFAULT_MANIFEST_PATH),
+        "expected_diseases": expected_disease_names,
+        "stored_diseases": stored_disease_names,
         "expected_variants": len(expected_variant_keys),
         "stored_variants": len(stored_variant_keys & expected_variant_keys),
         "missing_variants": [list(k) for k in missing_variants],
         "unexpected_variants": [list(k) for k in unexpected_variants],
+        "expected_variants_by_disease_and_dimension": expected_variants_by_disease_dimension,
+        "stored_variants_by_disease_and_dimension": stored_variants_by_disease_dimension,
         "expected_concepts": len(expected_concept_keys),
         "stored_concepts": len(stored_concept_keys & expected_concept_keys),
         "missing_concepts": [list(k) for k in missing_concepts],
         "unexpected_concepts": [list(k) for k in unexpected_concepts],
+        "expected_concepts_by_disease_and_domain": expected_concepts_by_disease_domain,
+        "stored_concepts_by_disease_and_domain": stored_concepts_by_disease_domain,
+        "missing_exact_lcd_concepts": missing_exact_lcd_concepts,
+        "unsupported_general_concepts": unsupported_general_concepts,
         "expected_applicability_mappings": len(expected_applicability),
         "stored_applicability_mappings": len(set(expected_applicability) & stored_applicability_keys),
         "missing_applicability_mappings": [list(k) for k in missing_applicability],
         "unexpected_applicability_mappings": [list(k) for k in unexpected_applicability],
+        "expected_applicability_by_source_classification": expected_applicability_by_classification,
+        "stored_applicability_by_source_classification": stored_applicability_by_classification,
         "evidence_rule_coverage": {
             "expected": len(expected_concept_keys),
             "covered": evidence_covered,
             "missing": evidence_missing,
         },
+        "source_provenance_coverage": {
+            "expected": len(expected_concept_keys),
+            "covered": provenance_covered,
+        },
         "differentiation_guard_results": guard_results,
         "orphan_count": orphan_count,
         "cycle_count": cycle_count,
+        "unresolved_concept_count": unresolved_concept_count,
         "second_run_new_rows": second_run_new_rows,
     }
 
