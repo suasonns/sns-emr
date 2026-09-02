@@ -1,0 +1,126 @@
+{
+  "manifest_id": "breast_cancer_production_identity_manifest_v1",
+  "canonical_disease_count": {
+    "expected": 1,
+    "stored": 1
+  },
+  "duplicate_canonical_disease_count": 0,
+  "variants_by_dimension": {
+    "METASTATIC_STATE": 2,
+    "PATHOLOGICAL_SUBTYPE": 1,
+    "PRIMARY_SITE": 1,
+    "RECURRENCE_STATE": 1
+  },
+  "concepts_by_domain": {
+    "FINDING": 10
+  },
+  "applicability_by_type": {
+    "MAY_OCCUR_WITH": 1,
+    "APPLIES_TO": 4
+  },
+  "expected_new_variants_count": 1,
+  "stored_new_variants_count": 1,
+  "missing_variants": [],
+  "unsupported_variants": [],
+  "unsupported_variant_count": 0,
+  "expected_concepts_count": 7,
+  "stored_concepts_count": 10,
+  "missing_concepts": [],
+  "unexpected_concepts": [],
+  "pre_existing_foundation_concepts": [
+    [
+      "FINDING",
+      "distant metastatic disease"
+    ],
+    [
+      "FINDING",
+      "metastatic disease"
+    ],
+    [
+      "FINDING",
+      "regional spread"
+    ]
+  ],
+  "expected_applicability_count": 4,
+  "stored_applicability_count": 5,
+  "missing_applicability": [],
+  "undeclared_applicability": [],
+  "undeclared_applicability_count": 0,
+  "pre_existing_foundation_applicability": [
+    [
+      "METASTATIC_STATE",
+      "Metastatic Disease",
+      "FINDING",
+      "Metastatic Disease",
+      "MAY_OCCUR_WITH"
+    ]
+  ],
+  "evidence_rule_coverage": {
+    "covered": 7,
+    "expected": 7,
+    "missing": []
+  },
+  "source_provenance_coverage": {
+    "covered": 7,
+    "expected": 7
+  },
+  "source_classification_coverage": {
+    "covered": 7,
+    "expected": 7
+  },
+  "differentiation_guard_results": [
+    {
+      "guard_name": "Breast Cancer IS_NOT Breast Primary Site",
+      "passed": true
+    },
+    {
+      "guard_name": "Ductal Carcinoma In Situ IS_NOT Invasive Breast Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Male Breast Cancer DOES_NOT_INFER Patient Sex Or Gender",
+      "passed": true
+    },
+    {
+      "guard_name": "Pregnancy and Breast Cancer DOES_NOT_INFER Current Pregnancy",
+      "passed": true
+    },
+    {
+      "guard_name": "Localized Breast Cancer IS_NOT Metastatic Breast Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Recurrent Breast Cancer IS_NOT Automatically Metastatic Breast Cancer",
+      "passed": true
+    },
+    {
+      "guard_name": "Metastatic Breast Cancer DOES_NOT_ESTABLISH Metastatic Destination",
+      "passed": true
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Hospice Eligibility",
+      "passed": true
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Stage",
+      "passed": true
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Histology",
+      "passed": true
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Molecular Subtype",
+      "passed": true
+    },
+    {
+      "guard_name": "Breast Cancer Diagnosis DOES_NOT_ESTABLISH Treatment",
+      "passed": true
+    }
+  ],
+  "orphan_count": 0,
+  "cycle_count": 0,
+  "unresolved_concept_count": 0,
+  "second_run_new_rows": 0,
+  "changes_outside_oncology": []
+}
