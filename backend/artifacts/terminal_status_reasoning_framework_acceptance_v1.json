@@ -1,0 +1,167 @@
+{
+  "manifest_title": "Terminal Status Reasoning Framework v1",
+  "disease_created": true,
+  "concepts_created": 12,
+  "expected_concepts": 12,
+  "evidence_rules_created": 12,
+  "second_run_new_rows": 0,
+  "idempotent": true,
+  "section_coverage_by_disease": {
+    "Amyotrophic Lateral Sclerosis": {
+      "1": 4,
+      "2": 7,
+      "3": 8,
+      "4": 3,
+      "5": 5,
+      "6": 8,
+      "7": 0
+    },
+    "Congestive Heart Failure": {
+      "1": 12,
+      "2": 3,
+      "3": 12,
+      "4": 11,
+      "5": 18,
+      "6": 10,
+      "7": 1
+    },
+    "Dementia Due To Alzheimer's Disease": {
+      "1": 26,
+      "2": 19,
+      "3": 62,
+      "4": 38,
+      "5": 20,
+      "6": 14,
+      "7": 1
+    },
+    "Advanced HIV Disease": {
+      "1": 6,
+      "2": 1,
+      "3": 4,
+      "4": 12,
+      "5": 12,
+      "6": 8,
+      "7": 1
+    },
+    "AIDS": {
+      "1": 6,
+      "2": 1,
+      "3": 4,
+      "4": 12,
+      "5": 12,
+      "6": 8,
+      "7": 1
+    },
+    "End Stage Liver Disease": {
+      "1": 4,
+      "2": 3,
+      "3": 7,
+      "4": 8,
+      "5": 6,
+      "6": 10,
+      "7": 0
+    },
+    "Chronic Liver Disease": {
+      "1": 4,
+      "2": 3,
+      "3": 7,
+      "4": 8,
+      "5": 6,
+      "6": 10,
+      "7": 0
+    },
+    "Chronic Obstructive Pulmonary Disease": {
+      "1": 8,
+      "2": 4,
+      "3": 12,
+      "4": 7,
+      "5": 3,
+      "6": 8,
+      "7": 0
+    },
+    "End Stage Pulmonary Disease": {
+      "1": 8,
+      "2": 4,
+      "3": 12,
+      "4": 7,
+      "5": 3,
+      "6": 8,
+      "7": 0
+    },
+    "Acute Renal Failure": {
+      "1": 10,
+      "2": 2,
+      "3": 11,
+      "4": 8,
+      "5": 13,
+      "6": 11,
+      "7": 0
+    },
+    "Chronic Renal Failure": {
+      "1": 10,
+      "2": 1,
+      "3": 12,
+      "4": 8,
+      "5": 6,
+      "6": 11,
+      "7": 0
+    },
+    "Stroke": {
+      "1": 24,
+      "2": 19,
+      "3": 160,
+      "4": 32,
+      "5": 36,
+      "6": 30,
+      "7": 0
+    }
+  },
+  "missing_evidence_informational": [
+    {
+      "disease": "Amyotrophic Lateral Sclerosis",
+      "section_number": 7
+    },
+    {
+      "disease": "End Stage Liver Disease",
+      "section_number": 7
+    },
+    {
+      "disease": "Chronic Liver Disease",
+      "section_number": 7
+    },
+    {
+      "disease": "Chronic Obstructive Pulmonary Disease",
+      "section_number": 7
+    },
+    {
+      "disease": "End Stage Pulmonary Disease",
+      "section_number": 7
+    },
+    {
+      "disease": "Acute Renal Failure",
+      "section_number": 7
+    },
+    {
+      "disease": "Chronic Renal Failure",
+      "section_number": 7
+    },
+    {
+      "disease": "Stroke",
+      "section_number": 7
+    }
+  ],
+  "target_diseases_checked": [
+    "Amyotrophic Lateral Sclerosis",
+    "Congestive Heart Failure",
+    "Dementia Due To Alzheimer's Disease",
+    "Advanced HIV Disease",
+    "AIDS",
+    "End Stage Liver Disease",
+    "Chronic Liver Disease",
+    "Chronic Obstructive Pulmonary Disease",
+    "End Stage Pulmonary Disease",
+    "Acute Renal Failure",
+    "Chronic Renal Failure",
+    "Stroke"
+  ]
+}

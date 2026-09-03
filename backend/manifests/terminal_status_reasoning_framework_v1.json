@@ -1,0 +1,344 @@
+{
+  "manifest_version": 1,
+  "title": "Terminal Status Reasoning Framework v1",
+  "description": "Creates a reusable, disease-agnostic, read-only cross-disease EVIDENCE SYNTHESIS framework -- NOT a decision engine. This is the first PR in the series to read across all 8 merged Clinical Evidence Blueprint PRs (12 diseases total: Amyotrophic Lateral Sclerosis, Congestive Heart Failure, Dementia Due To Alzheimer's Disease, Advanced HIV Disease, AIDS, End Stage Liver Disease, Chronic Liver Disease, Chronic Obstructive Pulmonary Disease, End Stage Pulmonary Disease, Acute Renal Failure, Chronic Renal Failure, Stroke) instead of extending a single disease. It defines a TERMINAL_STATUS_EVIDENCE_SUMMARY reporting structure of 11 sections, a 4-level evidence-strength vocabulary describing DOCUMENTATION COMPLETENESS ONLY (never eligibility, prognosis, or terminal-status determinations), and a declarative, ordered classification_rules ruleset (concept_domain + optional name_keywords -> section_number) that a future read-time API/AI layer can use to route any existing ontology concept, across any of the 12 diseases, into the correct section without ever materializing a per-concept OntologyRelationship edge. No schema changes. No migrations. No API changes. No new clinical concepts, thresholds, or scoring logic of any kind are created; this PR only organizes and classifies evidence that already exists in the database from prior PRs, and defines generic (disease-agnostic) physician-review and narrative-support prompt templates. Reuses the existing Ontology Disease Blueprint tables exactly as PR #49 (Functional Assessment Framework) does: a new OntologyBodySystem/OntologyDiseaseFamily/OntologyDisease container ('Reasoning Frameworks' / 'Terminal Status Reasoning' / 'Terminal Status Reasoning Framework'), 11 OntologyDiseaseFinding rows (one per section, domain=FINDING) plus 1 OntologyDiseaseFinding row for the evidence-strength vocabulary (12 concepts total), each carrying its structured reference metadata in the existing severity_levels/supporting_evidence_types JSONB columns, and one OntologyEvidenceRule per concept (12 total) with patient_fact_requires_evidence=true.",
+  "source_authority": [
+    "cms guidelines.pdf",
+    "1.pdf",
+    "DPH-18-002E-HospiceAgencies_Text.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Reasoning Frameworks",
+    "family": "Terminal Status Reasoning",
+    "disease": "Terminal Status Reasoning Framework",
+    "consumes_diseases": [
+      "Amyotrophic Lateral Sclerosis",
+      "Congestive Heart Failure",
+      "Dementia Due To Alzheimer's Disease",
+      "Advanced HIV Disease",
+      "AIDS",
+      "End Stage Liver Disease",
+      "Chronic Liver Disease",
+      "Chronic Obstructive Pulmonary Disease",
+      "End Stage Pulmonary Disease",
+      "Acute Renal Failure",
+      "Chronic Renal Failure",
+      "Stroke"
+    ],
+    "consumes_domains": [
+      "SYMPTOM", "FINDING", "LAB", "DIAGNOSTIC_TEST", "COMPLICATION",
+      "FUNCTIONAL_IMPACT", "NUTRITIONAL_IMPACT",
+      "HOSPICE_ELIGIBILITY_SUPPORT", "PROGNOSTIC_INDICATOR", "END_STAGE_FINDING"
+    ]
+  },
+  "new_disease": {
+    "disease": "Terminal Status Reasoning Framework",
+    "family": "Terminal Status Reasoning",
+    "disease_category": "REASONING_FRAMEWORK",
+    "disease_type": "EVIDENCE_SYNTHESIS_TOOL",
+    "disease_description": "A reusable, read-only container for the cross-disease terminal-status EVIDENCE SUMMARY reasoning framework: 11 section definitions plus a 4-level evidence-strength (documentation-completeness) vocabulary. Not a clinical disease and not a decision engine; hosts reference/classification metadata inside the existing Ontology Disease Blueprint schema without any migration.",
+    "clinical_purpose": "Gives IDG members, physicians, medical directors, and recertification reviewers a single, consistent way to organize the clinical evidence already captured across all disease-specific Clinical Evidence Blueprints into one TERMINAL_STATUS_EVIDENCE_SUMMARY view -- aggregating, classifying, and highlighting supporting evidence, conflicting evidence, missing evidence, and documentation gaps -- so evidence review is faster and more complete without ever substituting for physician judgment.",
+    "hospice_relevance": "CMS and California hospice requirements keep the terminal-status/eligibility determination tied to physician-supported clinical judgment and individualized documentation, not diagnosis or aggregated evidence alone. This framework never determines terminal status, hospice eligibility, or prognosis; it only organizes and surfaces evidence and documentation gaps that already exist, and generates physician-review and narrative-building prompts to support -- never replace -- the certifying physician."
+  },
+  "framework_sections": [
+    {
+      "section_number": 1,
+      "section_name": "Functional Decline Evidence",
+      "section_description": "Aggregates functional-status evidence relevant to the patient's clinical picture: PPS/KPS/Karnofsky/Palliative Performance Scale levels and trends, ADL/activities-of-daily-living dependence, and disease-specific progressive functional decline concepts.",
+      "source_domains": ["FUNCTIONAL_IMPACT", "HOSPICE_ELIGIBILITY_SUPPORT (functional keywords)", "PROGNOSTIC_INDICATOR (non-narrative, default bucket also includes functional trends)"]
+    },
+    {
+      "section_number": 2,
+      "section_name": "Nutritional Decline Evidence",
+      "section_description": "Aggregates nutritional-status evidence: weight loss, albumin, hydration/caloric intake, dysphagia, cachexia, and feeding-dependence concepts across all diseases.",
+      "source_domains": ["NUTRITIONAL_IMPACT", "HOSPICE_ELIGIBILITY_SUPPORT (nutrition keywords)"]
+    },
+    {
+      "section_number": 3,
+      "section_name": "Disease-Specific Evidence",
+      "section_description": "Aggregates the disease's own symptoms, clinical findings, labs, and diagnostic tests -- the default/fallback section for concept domains that are inherently disease-specific rather than cross-cutting.",
+      "source_domains": ["SYMPTOM", "FINDING", "LAB", "DIAGNOSTIC_TEST"]
+    },
+    {
+      "section_number": 4,
+      "section_name": "End-Stage Findings",
+      "section_description": "Aggregates end-stage severity markers: staging thresholds (e.g. FAST stage, hemorrhage volume, ejection fraction), disease-specific end-organ failure markers, and treatment-limitation/goals-of-care indicators (e.g. not a dialysis candidate, ventilatory support declined) that function as severity evidence. This is also the fallback section for HOSPICE_ELIGIBILITY_SUPPORT concepts that are not functional, nutritional, comorbidity, or utilization in nature.",
+      "source_domains": ["END_STAGE_FINDING", "HOSPICE_ELIGIBILITY_SUPPORT (fallback / severity-threshold keywords)"]
+    },
+    {
+      "section_number": 5,
+      "section_name": "Complications",
+      "section_description": "Aggregates documented complications (e.g. aspiration pneumonia, sepsis, pressure ulcers, pyelonephritis, recurrent infection) across all diseases.",
+      "source_domains": ["COMPLICATION"]
+    },
+    {
+      "section_number": 6,
+      "section_name": "Hospitalization / Utilization Trends",
+      "section_description": "Aggregates hospitalization, ED visit, physician visit, and other recertification trend indicators over time -- the default bucket for PROGNOSTIC_INDICATOR concepts, plus any HOSPICE_ELIGIBILITY_SUPPORT concept describing increasing hospitalizations/ED/physician visits.",
+      "source_domains": ["PROGNOSTIC_INDICATOR (default)", "HOSPICE_ELIGIBILITY_SUPPORT (utilization keywords)"]
+    },
+    {
+      "section_number": 7,
+      "section_name": "Supporting Co-Morbidities",
+      "section_description": "Aggregates comorbidity/concomitant/concurrent condition flags that support the overall clinical picture without themselves being the primary hospice diagnosis.",
+      "source_domains": ["HOSPICE_ELIGIBILITY_SUPPORT (comorbidity keywords)"]
+    },
+    {
+      "section_number": 8,
+      "section_name": "Missing Evidence",
+      "section_description": "Generated at read time, never stored: identifies sections (1-7) for a given patient/disease where the classification ruleset finds no supporting documented evidence at all.",
+      "source_domains": ["GENERATED_AT_READ_TIME"]
+    },
+    {
+      "section_number": 9,
+      "section_name": "Documentation Gaps",
+      "section_description": "Generated at read time, never stored: identifies sections with evidence present but rated below Strong (Moderate/Limited), and flags contradictory or stale documentation.",
+      "source_domains": ["GENERATED_AT_READ_TIME"]
+    },
+    {
+      "section_number": 10,
+      "section_name": "Physician Review Questions",
+      "section_description": "Generic, disease-agnostic prompt templates (see physician_review_prompts) surfaced to the physician/IDG at read time based on which sections show Missing or Limited evidence.",
+      "source_domains": ["FRAMEWORK_PROMPT_TEMPLATE"]
+    },
+    {
+      "section_number": 11,
+      "section_name": "Suggested Narrative Elements",
+      "section_description": "Generic, disease-agnostic narrative-building prompt templates (see narrative_support_elements) plus any PROGNOSTIC_INDICATOR concept whose name contains 'Narrative' (e.g. 'Narrative Trend').",
+      "source_domains": ["PROGNOSTIC_INDICATOR (narrative keyword)", "FRAMEWORK_PROMPT_TEMPLATE"]
+    }
+  ],
+  "evidence_strength_vocabulary": {
+    "concept_name": "Evidence Strength Vocabulary",
+    "disclaimer": "These four labels describe DOCUMENTATION COMPLETENESS ONLY. They are never eligibility labels, never prognosis labels, and never terminal-status labels. CMS requires the terminal-status/eligibility determination to rest on physician-supported clinical judgment with individualized documentation, not on an aggregated evidence-strength score.",
+    "levels": [
+      {
+        "level": "Strong",
+        "definition": "Multiple, recent, well-documented concepts exist for this section, consistent with each other and with the disease's clinical trajectory.",
+        "content_source_type": "CLINICAL_REFERENCE",
+        "content_review_status": "APPROVED"
+      },
+      {
+        "level": "Moderate",
+        "definition": "Some documented concepts exist for this section, but coverage is partial, dated, or only indirectly relevant.",
+        "content_source_type": "CLINICAL_REFERENCE",
+        "content_review_status": "APPROVED"
+      },
+      {
+        "level": "Limited",
+        "definition": "Minimal documented concepts exist for this section -- a single data point, or evidence that is stale, ambiguous, or only weakly supportive.",
+        "content_source_type": "CLINICAL_REFERENCE",
+        "content_review_status": "APPROVED"
+      },
+      {
+        "level": "Missing",
+        "definition": "No documented concepts were found for this section at all. This is a documentation-completeness flag only, and never implies the underlying clinical fact is absent, nor does it by itself resolve hospice eligibility or the physician's overall status determination.",
+        "content_source_type": "CLINICAL_REFERENCE",
+        "content_review_status": "APPROVED"
+      }
+    ]
+  },
+  "classification_rules": [
+    {
+      "order": 1,
+      "concept_domain": "NUTRITIONAL_IMPACT",
+      "name_keywords": null,
+      "section_number": 2,
+      "rationale": "NUTRITIONAL_IMPACT concepts are always nutritional-decline evidence."
+    },
+    {
+      "order": 2,
+      "concept_domain": "FUNCTIONAL_IMPACT",
+      "name_keywords": null,
+      "section_number": 1,
+      "rationale": "FUNCTIONAL_IMPACT concepts are always functional-decline evidence."
+    },
+    {
+      "order": 3,
+      "concept_domain": "END_STAGE_FINDING",
+      "name_keywords": null,
+      "section_number": 4,
+      "rationale": "END_STAGE_FINDING concepts are always end-stage findings."
+    },
+    {
+      "order": 4,
+      "concept_domain": "COMPLICATION",
+      "name_keywords": null,
+      "section_number": 5,
+      "rationale": "COMPLICATION concepts are always complications."
+    },
+    {
+      "order": 5,
+      "concept_domain": "SYMPTOM",
+      "name_keywords": null,
+      "section_number": 3,
+      "rationale": "Disease-specific clinical evidence."
+    },
+    {
+      "order": 6,
+      "concept_domain": "FINDING",
+      "name_keywords": null,
+      "section_number": 3,
+      "rationale": "Disease-specific clinical evidence."
+    },
+    {
+      "order": 7,
+      "concept_domain": "LAB",
+      "name_keywords": null,
+      "section_number": 3,
+      "rationale": "Disease-specific clinical evidence."
+    },
+    {
+      "order": 8,
+      "concept_domain": "DIAGNOSTIC_TEST",
+      "name_keywords": null,
+      "section_number": 3,
+      "rationale": "Disease-specific clinical evidence."
+    },
+    {
+      "order": 9,
+      "concept_domain": "PROGNOSTIC_INDICATOR",
+      "name_keywords": ["narrative"],
+      "section_number": 11,
+      "rationale": "Narrative Trend concepts feed suggested narrative elements, not the utilization-trend bucket."
+    },
+    {
+      "order": 10,
+      "concept_domain": "PROGNOSTIC_INDICATOR",
+      "name_keywords": null,
+      "section_number": 6,
+      "rationale": "Default bucket for recertification trend indicators (PPS/KPS/weight/symptom/disease-specific-lab/hospitalization trends)."
+    },
+    {
+      "order": 11,
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name_keywords": ["pps", "kps", "karnofsky", "palliative performance", "adl dependence", "activities of daily living", "progressive functional decline"],
+      "section_number": 1,
+      "rationale": "Functional-status hospice-support concepts belong with functional decline evidence."
+    },
+    {
+      "order": 12,
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name_keywords": ["weight loss", "albumin", "nutrition", "hydration", "caloric", "calorie", "dysphagia", "cachexia", "feeding"],
+      "section_number": 2,
+      "rationale": "Nutritional hospice-support concepts belong with nutritional decline evidence."
+    },
+    {
+      "order": 13,
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name_keywords": ["comorbid", "concomitant", "concurrent"],
+      "section_number": 7,
+      "rationale": "Comorbidity/concurrent-condition flags belong with supporting co-morbidities."
+    },
+    {
+      "order": 14,
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name_keywords": ["hospitalization", "emergency department", "ed visit", "physician visit"],
+      "section_number": 6,
+      "rationale": "Utilization-pattern hospice-support concepts belong with hospitalization/utilization trends."
+    },
+    {
+      "order": 15,
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name_keywords": null,
+      "section_number": 4,
+      "rationale": "Default/fallback: disease-specific severity thresholds, end-organ failure markers, and treatment-limitation/goals-of-care flags function as end-stage severity evidence."
+    }
+  ],
+  "physician_review_prompts": [
+    "Section 1 (Functional Decline) shows {evidence_strength} evidence. Does the documented functional status reflect the patient's current clinical picture?",
+    "Section 2 (Nutritional Decline) shows {evidence_strength} evidence. Is there a recent weight, albumin, or intake assessment on file?",
+    "Section 3 (Disease-Specific Evidence) shows {evidence_strength} evidence. Are the disease-specific findings/labs/tests current and consistent with disease progression?",
+    "Section 4 (End-Stage Findings) shows {evidence_strength} evidence. Are end-stage severity markers documented with supporting dates and sources?",
+    "Section 5 (Complications) shows {evidence_strength} evidence. Are recent complications (e.g. infection, aspiration, pressure injury) fully documented with dates?",
+    "Section 6 (Hospitalization / Utilization Trends) shows {evidence_strength} evidence. Is the hospitalization/ED/physician-visit history up to date?",
+    "Section 7 (Supporting Co-Morbidities) shows {evidence_strength} evidence. Are relevant comorbid conditions documented and considered in the clinical picture?",
+    "One or more sections show Missing evidence. Does the physician wish to add clinical documentation before recertification review, or confirm the absence reflects the patient's actual status?",
+    "One or more sections show conflicting evidence. Does the physician wish to reconcile or clarify the conflicting documentation?"
+  ],
+  "narrative_support_elements": [
+    "Summarize the patient's overall functional trajectory using the Section 1 evidence and any Functional/PPS/KPS trend indicators.",
+    "Summarize the patient's nutritional trajectory using the Section 2 evidence and any Weight/Nutrition trend indicators.",
+    "Summarize disease-specific progression using the Section 3 and Section 4 evidence.",
+    "Summarize recent complications from Section 5 and their clinical significance.",
+    "Summarize hospitalization/utilization trends from Section 6 as they relate to disease burden.",
+    "Note any supporting comorbidities from Section 7 relevant to the overall clinical picture.",
+    "Note any Missing Evidence (Section 8) or Documentation Gaps (Section 9) the physician should address.",
+    "This narrative-building support is descriptive only; the physician remains solely responsible for the recertification narrative content and the underlying clinical determination."
+  ],
+  "ai_layer": {
+    "ai_may": [
+      "aggregate evidence across disease-specific blueprints",
+      "correlate evidence across disease-specific blueprints",
+      "summarize evidence",
+      "highlight decline",
+      "highlight documentation gaps",
+      "highlight conflicting findings",
+      "produce audit-ready support views",
+      "generate physician-review prompts",
+      "generate narrative-building prompts",
+      "identify missing evidence",
+      "identify missing documentation"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine",
+      "life_expectancy_prediction",
+      "admission_recommendation_engine",
+      "recertification_recommendation_engine",
+      "pass_fail_eligibility_decision_engine",
+      "physician_judgment_override",
+      "physician_certification_replacement"
+    ]
+  },
+  "rules": {
+    "read_only": true,
+    "no_eligibility_engine": true,
+    "no_terminal_status_engine": true,
+    "no_prognosis_engine": true,
+    "no_recertification_engine": true,
+    "no_new_clinical_concepts": true,
+    "no_per_concept_relationship_edges": true,
+    "evidence_strength_describes_documentation_completeness_only": true,
+    "forbidden_vocabulary": [
+      "Eligible", "Not Eligible", "Terminal", "Not Terminal",
+      "Certify", "Do Not Certify", "Prognosis Met", "Prognosis Not Met"
+    ]
+  },
+  "differentiation_guards": [
+    {
+      "guard": "disease_exists",
+      "description": "The Terminal Status Reasoning Framework disease/family/body-system must exist exactly once and never collapse with any of the 12 consumed diseases.",
+      "assertion": {"type": "disease_exists", "disease": "Terminal Status Reasoning Framework"}
+    },
+    {
+      "guard": "sections_not_collapsed",
+      "description": "All 11 section-definition concepts plus the 1 evidence-strength-vocabulary concept must exist as distinct OntologyDiseaseFinding rows -- 12 total, never collapsed into fewer rows.",
+      "assertion": {"type": "concepts_not_collapsed", "expected_count": 12}
+    },
+    {
+      "guard": "no_forbidden_vocabulary",
+      "description": "No section, prompt, or vocabulary term may use eligibility/terminal-status/certification pass-fail language.",
+      "assertion": {"type": "no_forbidden_vocabulary"}
+    },
+    {
+      "guard": "hospice_support_requires_evidence_systemwide",
+      "description": "Every framework concept created by this manifest must carry an OntologyEvidenceRule with patient_fact_requires_evidence=true.",
+      "assertion": {"type": "hospice_support_requires_evidence_systemwide"}
+    },
+    {
+      "guard": "no_diagnosis_or_score_establishes",
+      "description": "No concept created by this manifest may itself establish diagnosis, prognosis, terminal status, or hospice eligibility.",
+      "assertion": {"type": "no_diagnosis_or_score_establishes"}
+    }
+  ],
+  "unsupported_content_not_created": [
+    "Per-concept OntologyRelationship edges linking every existing disease concept to a section (deliberately out of scope -- classification is applied at read time via classify_concept(), not materialized as hundreds of fragile rows).",
+    "Any numeric eligibility, prognosis, or terminal-status score.",
+    "Any pass/fail certification or recertification decision.",
+    "Any new disease-specific clinical concept, threshold, or scale (all 12 diseases' concepts already exist from prior PRs and are reused verbatim, never re-derived)."
+  ]
+}
