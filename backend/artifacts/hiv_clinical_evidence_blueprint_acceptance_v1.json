@@ -1,0 +1,303 @@
+{
+  "manifest_version": null,
+  "extends_diseases": [
+    "Advanced HIV Disease",
+    "AIDS"
+  ],
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 10,
+    "stored": 10,
+    "missing": [],
+    "pre_existing_pr41_concepts_in_shared_domains": [
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "cns lymphoma"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "cryptosporidium infection"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "hiv wasting syndrome"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "mycobacterium avium complex bacteremia"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "progressive multifocal leukoencephalopathy"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "renal failure without dialysis"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "systemic lymphoma with advanced hiv disease"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "toxoplasmosis unresponsive to therapy"
+      ],
+      [
+        "Advanced HIV Disease",
+        "COMPLICATION",
+        "visceral kaposi sarcoma unresponsive to therapy"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "adl dependence"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cd4 count less than 25 cells per microliter"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cns lymphoma"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cryptosporidium infection"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hiv wasting syndrome"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 50 percent"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "mycobacterium avium complex bacteremia"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "persistent viral load greater than 100000 copies per ml"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 50 percent"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive multifocal leukoencephalopathy"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "renal failure without dialysis"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "systemic lymphoma with advanced hiv disease"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "toxoplasmosis unresponsive to therapy"
+      ],
+      [
+        "Advanced HIV Disease",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "visceral kaposi sarcoma unresponsive to therapy"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "cns lymphoma"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "cryptosporidium infection"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "hiv wasting syndrome"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "mycobacterium avium complex bacteremia"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "progressive multifocal leukoencephalopathy"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "renal failure without dialysis"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "systemic lymphoma with advanced hiv disease"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "toxoplasmosis unresponsive to therapy"
+      ],
+      [
+        "AIDS",
+        "COMPLICATION",
+        "visceral kaposi sarcoma unresponsive to therapy"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "adl dependence"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cd4 count less than 25 cells per microliter"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cns lymphoma"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "cryptosporidium infection"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hiv wasting syndrome"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 50 percent"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "mycobacterium avium complex bacteremia"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "persistent viral load greater than 100000 copies per ml"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 50 percent"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive multifocal leukoencephalopathy"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "renal failure without dialysis"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "systemic lymphoma with advanced hiv disease"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "toxoplasmosis unresponsive to therapy"
+      ],
+      [
+        "AIDS",
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "visceral kaposi sarcoma unresponsive to therapy"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 10,
+    "stored": 10
+  },
+  "functional_assessment_relationships": {
+    "expected": 4,
+    "stored": 4
+  },
+  "recertification_trend_indicators": {
+    "expected": 18,
+    "stored": 18,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 28,
+    "valid": 28
+  },
+  "second_run_new_rows": 0
+}
