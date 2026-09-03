@@ -779,6 +779,7 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
             ),
         },
         "test_matrix": load_test_matrix_report(),
+        "baseline_attribution": load_baseline_attribution_report(),
     }
 
 
@@ -793,6 +794,29 @@ def load_test_matrix_report() -> dict:
         return {"status": "NOT_YET_GENERATED"}
     with open(matrix_path, "r", encoding="utf-8") as fh:
         return json.load(fh)
+
+
+def load_baseline_attribution_report() -> dict:
+    """Loads the externally-generated baseline-attribution report (produced
+    by scripts/generate_recertification_baseline_attribution.py, which
+    classifies every PR #59-branch test failure against real origin/main
+    baseline JUnit XML data as BASELINE_REPRODUCED_IDENTICALLY,
+    PR59_NEW_FAILURE, NONDETERMINISTIC_REQUIRES_INVESTIGATION, or
+    PRE_EXISTING_STRUCTURAL_TEST_DESIGN_LIMITATION). Returns a
+    NOT_YET_GENERATED placeholder -- never fabricated counters -- if the
+    attribution has not been executed yet."""
+    attribution_path = Path(__file__).resolve().parent.parent / "artifacts" / "recertification_baseline_attribution_v1.json"
+    if not attribution_path.exists():
+        return {"status": "NOT_YET_GENERATED"}
+    with open(attribution_path, "r", encoding="utf-8") as fh:
+        full = json.load(fh)
+    return {
+        "pr59_new_failure_count": full["pr59_new_failure_count"],
+        "result_changed_count": full["result_changed_count"],
+        "nondeterministic_requires_investigation_count": full["nondeterministic_requires_investigation_count"],
+        "baseline_reproduced_identically_count": full["baseline_reproduced_identically_count"],
+        "pre_existing_structural_test_design_limitation_count": full["pre_existing_structural_test_design_limitation_count"],
+    }
 
 
 def main() -> None:
