@@ -1,0 +1,255 @@
+{
+  "manifest_id": "als_clinical_evidence_blueprint_v1",
+  "version": 1,
+  "scope": {
+    "extends_disease": "Amyotrophic Lateral Sclerosis",
+    "extends_functional_assessment_framework": "Functional Assessment Framework",
+    "note": "Extension-only. Extends the single 'Amyotrophic Lateral Sclerosis' disease created by the ALS Production Knowledge Manifest v1 (PR #43, merged) with only what is genuinely missing."
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_variants": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "already_present_verified": {
+    "note": "Every requested ALS finding/symptom/nutritional-impact/hospice-eligibility-support item was verified already present in PR #43 under an identical name. No duplicate concept was created for any of these.",
+    "mapping": [
+      {"requested": "Critically Impaired Breathing Capacity", "existing_concept": "Critically Impaired Breathing Capacity (FINDING, already present)"},
+      {"requested": "Vital Capacity Decline", "existing_concept": "Vital Capacity Decline (FINDING, already present)"},
+      {"requested": "Respiratory Insufficiency", "existing_concept": "Respiratory Insufficiency (FINDING, already present)"},
+      {"requested": "Dependence On Ventilatory Support", "existing_concept": "Dependence On Ventilatory Support (FINDING, already present)"},
+      {"requested": "Rapid Disease Progression", "existing_concept": "Rapid Disease Progression (FINDING, already present)"},
+      {"requested": "Dysphagia", "existing_concept": "Dysphagia (SYMPTOM, already present)"},
+      {"requested": "Progressive Weakness", "existing_concept": "Progressive Weakness (SYMPTOM, already present)"},
+      {"requested": "Severe Nutritional Impairment", "existing_concept": "Severe Nutritional Impairment (NUTRITIONAL_IMPACT, already present)"},
+      {"requested": "Significant Weight Loss", "existing_concept": "Significant Weight Loss (NUTRITIONAL_IMPACT, already present)"},
+      {"requested": "PPS Less Than 70 Percent", "existing_concept": "PPS Less Than 70 Percent (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "KPS Less Than 70 Percent", "existing_concept": "KPS Less Than 70 Percent (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "ADL Dependence", "existing_concept": "ADL Dependence (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Progressive Functional Decline", "existing_concept": "Progressive Functional Decline (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Progressive Nutritional Decline", "existing_concept": "Progressive Nutritional Decline (HOSPICE_ELIGIBILITY_SUPPORT, already present)"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "COMPLICATION",
+      "name": "Recurrent Aspiration Pneumonia",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Recurrent aspiration pneumonia is a recognized life-threatening complication of ALS-related dysphagia and supports documentation of disease severity and recertification review."
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Recurrent Upper Urinary Tract Infection",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Recurrent upper urinary tract infection (e.g. pyelonephritis) is a recognized life-threatening complication supporting documentation of disease severity and recertification review."
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Sepsis",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Sepsis is a recognized life-threatening complication of advanced ALS supporting documentation of disease severity and recertification review."
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Stage 3-4 Pressure Ulcers",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Stage 3-4 pressure ulcers are a recognized complication of advanced immobility in ALS supporting documentation of disease severity and recertification review."
+    },
+    {
+      "domain": "COMPLICATION",
+      "name": "Recurrent Fever After Antibiotic Therapy",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Recurrent fever despite antibiotic therapy is a recognized complication supporting documentation of disease severity and recertification review."
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Enteral Feeding Declined",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Patient/surrogate decision to decline artificial (enteral/PEG) feeding in the setting of ALS-related dysphagia supports documentation of disease trajectory. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Ventilatory Support Declined",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Patient/surrogate decision to decline mechanical ventilatory support in the setting of ALS-related respiratory insufficiency supports documentation of disease trajectory. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    }
+  ],
+  "new_applicability": [
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "COMPLICATION",
+      "concept": "Recurrent Aspiration Pneumonia",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "COMPLICATION",
+      "concept": "Recurrent Upper Urinary Tract Infection",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "COMPLICATION",
+      "concept": "Sepsis",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "COMPLICATION",
+      "concept": "Stage 3-4 Pressure Ulcers",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "COMPLICATION",
+      "concept": "Recurrent Fever After Antibiotic Therapy",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "Enteral Feeding Declined",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Advanced Amyotrophic Lateral Sclerosis",
+      "variant_dimension": "DISEASE_PHASE",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "Ventilatory Support Declined",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    }
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "PPS Less Than 70 Percent",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links ALS's existing PPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "KPS Less Than 70 Percent",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links ALS's existing KPS Less Than 70 Percent hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "disease": "Amyotrophic Lateral Sclerosis",
+    "trend_indicators": [
+      {
+        "name": "PPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Palliative Performance Scale score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "KPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Karnofsky Performance Status score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "Vital Capacity Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current forced vital capacity measurement, tracked across recertification periods to document respiratory decline."
+      },
+      {
+        "name": "Weight Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current weight, tracked across recertification periods to document nutritional decline."
+      },
+      {
+        "name": "Speech Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current speech intelligibility, tracked across recertification periods to document bulbar decline."
+      },
+      {
+        "name": "Swallowing Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current swallowing function, tracked across recertification periods to document bulbar and nutritional decline."
+      },
+      {
+        "name": "Respiratory Support Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current respiratory support requirement (e.g. none, BiPAP, ventilator), tracked across recertification periods to document respiratory decline."
+      },
+      {
+        "name": "Complication History Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency/severity of major complications (aspiration pneumonia, urinary tract infection, sepsis, pressure ulcers, recurrent fever), tracked across recertification periods."
+      },
+      {
+        "name": "Narrative Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Free-text nurse narrative summarizing overall clinical decline across recertification periods, supporting but never replacing physician-supported prognosis determination."
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    {
+      "rule": "DO_NOT_CREATE_NEW_DISEASE",
+      "names": ["Progressive Bulbar Palsy", "Primary Lateral Sclerosis", "Spinal Muscular Atrophy"]
+    },
+    {
+      "rule": "NO_DUPLICATE_FAF_SCALE_DEFINITIONS",
+      "scales": ["PPS - Palliative Performance Scale", "KPS - Karnofsky Performance Status"]
+    }
+  ],
+  "summary": {
+    "canonical_disease_extended": "Amyotrophic Lateral Sclerosis",
+    "new_concepts_total": 7,
+    "new_applicability_total": 7,
+    "functional_assessment_relationships_total": 2,
+    "recertification_trend_indicators_total": 9
+  }
+}

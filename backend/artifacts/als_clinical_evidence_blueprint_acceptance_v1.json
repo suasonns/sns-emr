@@ -1,0 +1,86 @@
+{
+  "manifest_version": null,
+  "extends_disease": "Amyotrophic Lateral Sclerosis",
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 7,
+    "stored": 7,
+    "missing": [],
+    "pre_existing_pr38_concepts_in_shared_domains": [
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "adl dependence"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "critically impaired breathing capacity"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "kps less than 70 percent"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pps less than 70 percent"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive functional decline"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "progressive nutritional decline"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "rapid disease progression"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "severe nutritional impairment"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "reduced oral intake"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "severe nutritional impairment"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "significant weight loss"
+      ],
+      [
+        "NUTRITIONAL_IMPACT",
+        "weight loss"
+      ],
+      [
+        "SYMPTOM",
+        "dysphagia"
+      ],
+      [
+        "SYMPTOM",
+        "progressive weakness"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 7,
+    "stored": 7
+  },
+  "functional_assessment_relationships": {
+    "expected": 2,
+    "stored": 2
+  },
+  "recertification_trend_indicators": {
+    "expected": 9,
+    "stored": 9,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 16,
+    "valid": 16
+  },
+  "second_run_new_rows": 0
+}
