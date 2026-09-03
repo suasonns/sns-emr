@@ -255,10 +255,10 @@ def validate_manifest(manifest: dict) -> List[str]:
         errors.append(f"differentiation_guards must be numbered 1-{EXPECTED_GUARD_COUNT} exactly once each, found {guard_numbers}")
 
     scope = manifest.get("implementation_scope", {})
-    if scope.get("runtime_synthesis_implemented") is not False:
-        errors.append("implementation_scope.runtime_synthesis_implemented must be explicitly false for this PR (no runtime synthesis path exists)")
-    if "Patient-level runtime summary generation is not implemented in this PR." not in (scope.get("statement") or ""):
-        errors.append("implementation_scope.statement must include the required verbatim out-of-scope declaration")
+    if scope.get("runtime_synthesis_implemented") is not True:
+        errors.append("implementation_scope.runtime_synthesis_implemented must be explicitly true (runtime patient-level synthesis is implemented in app/services/recertification_evidence_synthesis.py)")
+    if "read-only patient-level runtime synthesis function" not in (scope.get("statement") or ""):
+        errors.append("implementation_scope.statement must describe the implemented read-only patient-level runtime synthesis function")
 
     required_fields = manifest.get("required_evidence_item_fields", [])
     if sorted(required_fields) != sorted(EXPECTED_EVIDENCE_ITEM_FIELDS):
@@ -728,6 +728,7 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
 
     guard_report = evaluate_differentiation_guards(manifest)
     section_names = [s["section_name"] for s in sorted(manifest["framework_sections"], key=lambda s: s["section_number"])]
+    runtime_synthesis_report = load_runtime_synthesis_report()
 
     # Concept-id uniqueness across all created rows == zero duplicate/orphan/cycle concepts;
     # this framework creates no relationship edges of any kind, so cycle_count is trivially 0.
@@ -769,18 +770,35 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
         "changes_outside_framework": 0,
         "implementation_scope": {
             "structural_framework_validated": True,
-            "runtime_synthesis_implemented": False,
-            "runtime_synthesis_validated": False,
-            "patient_data_write_audit_passed": True,
-            "patient_data_write_audit_note": (
-                "No runtime synthesis path exists in this PR to audit; structurally "
-                "guaranteed by the absence of any patient-fact model import/reference "
-                "in scripts/import_recertification_reasoning_framework_v1.py."
+            "runtime_synthesis_implemented": True,
+            "runtime_synthesis_validated": runtime_synthesis_report.get("status") == "GENERATED_FROM_REAL_EXECUTION",
+            "patient_data_write_audit_passed": runtime_synthesis_report.get("patient_data_write_audit_passed", False),
+            "patient_data_write_audit_note": runtime_synthesis_report.get(
+                "patient_data_write_audit_note",
+                "Runtime synthesis write-audit report not yet generated -- run "
+                "scripts/generate_recertification_runtime_synthesis_report.py against the isolated test database.",
             ),
         },
+        "runtime_synthesis_metrics": runtime_synthesis_report,
         "test_matrix": load_test_matrix_report(),
         "baseline_attribution": load_baseline_attribution_report(),
     }
+
+
+def load_runtime_synthesis_report() -> dict:
+    """Loads the externally-generated runtime-synthesis report (produced by
+    scripts/generate_recertification_runtime_synthesis_report.py, which
+    executes app.services.recertification_evidence_synthesis.
+    build_recertification_evidence_summary() against real patient rows in
+    the isolated test database and captures every SQL statement issued via
+    a SQLAlchemy event listener). Returns a NOT_YET_GENERATED placeholder
+    -- never fabricated counters -- if the report has not been produced
+    yet."""
+    report_path = Path(__file__).resolve().parent.parent / "artifacts" / "recertification_runtime_synthesis_v1.json"
+    if not report_path.exists():
+        return {"status": "NOT_YET_GENERATED"}
+    with open(report_path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def load_test_matrix_report() -> dict:

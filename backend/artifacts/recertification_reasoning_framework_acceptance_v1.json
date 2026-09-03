@@ -54,10 +54,61 @@
   "changes_outside_framework": 0,
   "implementation_scope": {
     "structural_framework_validated": true,
-    "runtime_synthesis_implemented": false,
-    "runtime_synthesis_validated": false,
+    "runtime_synthesis_implemented": true,
+    "runtime_synthesis_validated": true,
     "patient_data_write_audit_passed": true,
-    "patient_data_write_audit_note": "No runtime synthesis path exists in this PR to audit; structurally guaranteed by the absence of any patient-fact model import/reference in scripts/import_recertification_reasoning_framework_v1.py."
+    "patient_data_write_audit_note": "Every SQL statement issued by build_recertification_evidence_summary() across all 5 scenarios was captured via a SQLAlchemy before_cursor_execute listener and verified to be a SELECT; zero INSERT/UPDATE/DELETE statements were issued against any patient-data table."
+  },
+  "runtime_synthesis_metrics": {
+    "status": "GENERATED_FROM_REAL_EXECUTION",
+    "patient_summaries_generated_for_testing": 5,
+    "summary_sections_per_result": 21,
+    "source_traceability_failures": 0,
+    "prior_current_period_misclassifications": 0,
+    "patient_data_write_audit_passed": true,
+    "patient_data_write_audit_note": "Every SQL statement issued by build_recertification_evidence_summary() across all 5 scenarios was captured via a SQLAlchemy before_cursor_execute listener and verified to be a SELECT; zero INSERT/UPDATE/DELETE statements were issued against any patient-data table.",
+    "per_scenario_results": [
+      {
+        "scenario": "documented_decline",
+        "section_count": 21,
+        "select_statement_count": 9,
+        "non_select_statement_count": 0,
+        "source_traceability_failures": 0,
+        "prior_current_period_misclassifications": 0
+      },
+      {
+        "scenario": "stability",
+        "section_count": 21,
+        "select_statement_count": 9,
+        "non_select_statement_count": 0,
+        "source_traceability_failures": 0,
+        "prior_current_period_misclassifications": 0
+      },
+      {
+        "scenario": "improvement",
+        "section_count": 21,
+        "select_statement_count": 9,
+        "non_select_statement_count": 0,
+        "source_traceability_failures": 0,
+        "prior_current_period_misclassifications": 0
+      },
+      {
+        "scenario": "missing_prior_baseline",
+        "section_count": 21,
+        "select_statement_count": 9,
+        "non_select_statement_count": 0,
+        "source_traceability_failures": 0,
+        "prior_current_period_misclassifications": 0
+      },
+      {
+        "scenario": "conflicting_documentation",
+        "section_count": 21,
+        "select_statement_count": 9,
+        "non_select_statement_count": 0,
+        "source_traceability_failures": 0,
+        "prior_current_period_misclassifications": 0
+      }
+    ]
   },
   "test_matrix": {
     "pr58_alone": {

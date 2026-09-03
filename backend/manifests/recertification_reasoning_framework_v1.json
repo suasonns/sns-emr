@@ -249,21 +249,25 @@
   ],
   "implementation_scope": {
     "structural_framework_implemented": true,
-    "runtime_synthesis_implemented": false,
-    "statement": "PR #59 establishes the production-grade structural contract, classification vocabulary, comparison rules, provenance requirements, and safety boundaries. Patient-level runtime summary generation is not implemented in this PR.",
+    "runtime_synthesis_implemented": true,
+    "runtime_synthesis_validated": true,
+    "statement": "PR #59 establishes the production-grade structural contract, classification vocabulary, comparison rules, provenance requirements, and safety boundaries, AND implements a read-only patient-level runtime synthesis function (app.services.recertification_evidence_synthesis.build_recertification_evidence_summary) that reads real BenefitPeriod/PatientDiagnosis/F2FEncounter/RNRecertAssessment records and returns a fully populated, source-traceable RECERTIFICATION_EVIDENCE_SUMMARY for all 21 sections.",
     "in_scope": [
       "21-section RECERTIFICATION_EVIDENCE_SUMMARY structural definition",
       "9-label period-comparison vocabulary",
       "reference (never duplication) of PR #58's evidence-strength vocabulary",
       "two distinct, never-merged regulatory context definitions",
       "20 differentiation guards",
-      "pure comparison functions compare_scale(), compare_numeric(), and select_regulatory_context() for a future read-time API/AI layer",
-      "required_evidence_item_fields contract (the exact field set any future runtime evidence item must carry)"
+      "pure comparison functions compare_scale(), compare_numeric(), and select_regulatory_context(), reused verbatim (not reimplemented) by the runtime synthesis function",
+      "required_evidence_item_fields contract (the exact field set every runtime evidence item carries)",
+      "app.services.recertification_evidence_synthesis.build_recertification_evidence_summary(): a READ-ONLY runtime function that accepts patient_id/hospice_episode_id/current_benefit_period_id/prior_benefit_period_id/regulatory_context and returns a populated RECERTIFICATION_EVIDENCE_SUMMARY built entirely from real patient evidence (BenefitPeriod, PatientDiagnosis, F2FEncounter, RNRecertAssessment)",
+      "9 integration test scenarios (documented decline, stability, improvement, mixed clinical course, missing prior baseline, conflicting documentation, potentially reversible factor, regulatory-context separation, read-only SQL write audit) plus structural/traceability/forbidden-vocabulary guard tests, all executed against the isolated test database with real rows",
+      "a SQLAlchemy event-listener-based SQL write-audit test that fails if any non-SELECT statement is issued during synthesis"
     ],
     "out_of_scope_deferred_to_a_future_pr": [
-      "a runtime summary-builder that accepts patient_id/hospice_episode_id/benefit_period_id and returns a populated RECERTIFICATION_EVIDENCE_SUMMARY from real patient evidence",
-      "any read/write path against patient-fact or clinical-note tables",
-      "any SQL write-audit of a runtime synthesis path (there is no such path in this PR)"
+      "any read/write path against Certification, ClinicalNote, or IDGMeetingPatientReview tables (referenced conceptually in the manifest but not yet wired into the runtime synthesis function)",
+      "discrete symptom, laboratory-result, and complication/infection tracking (no dedicated tables exist in this schema version -- sections 8, 9, and 10 honestly report EMPTY with missing_evidence_code=NO_STRUCTURED_SOURCE_AVAILABLE_IN_SCHEMA rather than being fabricated)",
+      "an HTTP/API endpoint exposing build_recertification_evidence_summary() (this PR adds the service-layer function only, per its explicit no-API-changes scope)"
     ]
   },
   "required_evidence_item_fields": [
@@ -288,6 +292,6 @@
     "Any certification, recertification, or discharge recommendation of any kind.",
     "A duplicate copy of PR #58's 11 evidence sections, classification_rules, or evidence-strength vocabulary -- referenced by name only.",
     "Any new disease-specific clinical concept, threshold, or scale.",
-    "Any runtime patient-evidence synthesis path (deferred; see implementation_scope)."
+    "Any eligibility, terminal-status, prognosis, life-expectancy, certification, recertification, or discharge OUTPUT from the runtime synthesis function -- it returns only documented evidence, comparison labels, and physician-review prompts (see app/services/recertification_evidence_synthesis.py's module docstring for the enforced boundary)."
   ]
 }
