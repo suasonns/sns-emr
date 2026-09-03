@@ -1,0 +1,143 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Reduced Breathing Capacity"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Critically Impaired Breathing Capacity"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Weight Loss"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Significant Weight Loss"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Vital Capacity Decline"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "FINDING",
+        "name": "Respiratory Insufficiency"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Severe Nutritional Impairment"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Amyotrophic Lateral Sclerosis",
+        "domain": "NUTRITIONAL_IMPACT",
+        "name": "Significant Weight Loss"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 20,
+    "expected": 20,
+    "missing": []
+  },
+  "expected_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 3,
+    "LCD_NON_DISEASE_SPECIFIC": 5
+  },
+  "expected_applicability_mappings": 8,
+  "expected_concepts": 20,
+  "expected_concepts_by_disease_and_domain": {
+    "Amyotrophic Lateral Sclerosis": {
+      "FINDING": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 8,
+      "NUTRITIONAL_IMPACT": 4,
+      "SYMPTOM": 2
+    }
+  },
+  "expected_diseases": [
+    "Amyotrophic Lateral Sclerosis"
+  ],
+  "expected_variants": 2,
+  "expected_variants_by_disease_and_dimension": {
+    "Amyotrophic Lateral Sclerosis": {
+      "DISEASE_PHASE": 2
+    }
+  },
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\als_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_exact_lcd_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "source_provenance_coverage": {
+    "covered": 20,
+    "expected": 20
+  },
+  "stored_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 3,
+    "LCD_NON_DISEASE_SPECIFIC": 5
+  },
+  "stored_applicability_mappings": 8,
+  "stored_concepts": 20,
+  "stored_concepts_by_disease_and_domain": {
+    "Amyotrophic Lateral Sclerosis": {
+      "FINDING": 6,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 8,
+      "NUTRITIONAL_IMPACT": 4,
+      "SYMPTOM": 2
+    }
+  },
+  "stored_diseases": [
+    "Amyotrophic Lateral Sclerosis"
+  ],
+  "stored_variants": 2,
+  "stored_variants_by_disease_and_dimension": {
+    "Amyotrophic Lateral Sclerosis": {
+      "DISEASE_PHASE": 2
+    }
+  },
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": [],
+  "unresolved_concept_count": 0,
+  "unsupported_general_concepts": [
+    [
+      "Amyotrophic Lateral Sclerosis",
+      "FINDING",
+      "reduced breathing capacity"
+    ],
+    [
+      "Amyotrophic Lateral Sclerosis",
+      "NUTRITIONAL_IMPACT",
+      "weight loss"
+    ]
+  ]
+}
