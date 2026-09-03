@@ -107,6 +107,7 @@ from scripts.import_recertification_reasoning_framework_v1 import (
     EXPECTED_REGULATORY_CONTEXT_COUNT,
     compare_scale,
     compare_numeric,
+    select_regulatory_context,
     evaluate_differentiation_guards,
     load_manifest,
     validate_manifest,
@@ -398,68 +399,203 @@ def test_manifest_declares_no_relationship_edge_or_patient_fact_explosion():
 
 
 # ---------------------------------------------------------------------
-# compare_scale() / compare_numeric() pure-function tests
+# compare_scale() / compare_numeric() / select_regulatory_context()
+# pure-function tests -- exhaustive edge-case coverage per the
+# BLOCKED-review Production Blockers #6, #7, #10.
 # ---------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("scale,prior,current,expected", [
-    ("PPS", 60, 40, "DECLINING"),   # lower PPS = worse
-    ("PPS", 40, 60, "IMPROVING"),
-    ("PPS", 50, 50, "STABLE"),
-    ("KPS", 60, 40, "DECLINING"),
-    ("KPS", 40, 60, "IMPROVING"),
-    ("ECOG", 1, 3, "DECLINING"),    # higher ECOG = worse
-    ("ECOG", 3, 1, "IMPROVING"),
-    ("FAST", 5, 7, "DECLINING"),    # later FAST stage = worse
-    ("FAST", 7, 5, "IMPROVING"),
-    ("NYHA", 2, 4, "DECLINING"),    # higher NYHA class = worse
-    ("NYHA", 4, 2, "IMPROVING"),
+    ("PPS", 70, 60, "DECLINING"),
+    ("PPS", 60, 60, "STABLE"),
+    ("PPS", 50, 60, "IMPROVING"),
+    ("KPS", 70, 60, "DECLINING"),
+    ("KPS", 60, 60, "STABLE"),
+    ("KPS", 50, 60, "IMPROVING"),
+    ("ECOG", 2, 3, "DECLINING"),
+    ("ECOG", 3, 3, "STABLE"),
+    ("ECOG", 4, 3, "IMPROVING"),
+    ("FAST", "6E", "7A", "DECLINING"),
+    ("FAST", "7C", "7C", "STABLE"),
+    ("FAST", "7D", "7C", "IMPROVING"),
+    ("NYHA", "II", "III", "DECLINING"),
+    ("NYHA", "III", "III", "STABLE"),
+    ("NYHA", "IV", "III", "IMPROVING"),
 ])
 def test_compare_scale_direction_correct_per_scale_ordering(scale, prior, current, expected):
-    assert compare_scale(scale, prior, "2024-01-01", current, "2024-06-01") == expected
+    assert compare_scale(scale, prior, "2024-01-01", scale, current, "2024-06-01") == expected
 
 
-def test_compare_scale_rejects_cross_scale_comparison():
+def test_compare_scale_rejects_unrecognized_scale_type():
     with pytest.raises(ValueError):
-        compare_scale("PPS_VS_KPS_NOT_A_REAL_SCALE", 60, "2024-01-01", 40, "2024-06-01")
+        compare_scale("PPS_VS_KPS_NOT_A_REAL_SCALE", 60, "2024-01-01", "PPS_VS_KPS_NOT_A_REAL_SCALE", 40, "2024-06-01")
 
 
-@pytest.mark.parametrize("scale", ["PPS", "KPS", "ECOG", "FAST", "NYHA"])
-def test_compare_scale_never_cross_compares_two_different_named_scales(scale):
-    # compare_scale only ever accepts one scale_type argument -- there is
-    # no code path by which a PPS value could be compared against a KPS
-    # value; this is enforced structurally by the single scale_type param.
-    assert scale in ("PPS", "KPS", "ECOG", "FAST", "NYHA")
+@pytest.mark.parametrize("prior_scale,current_scale", [
+    ("PPS", "KPS"),
+    ("PPS", "ECOG"),
+    ("FAST", "PPS"),
+    ("NYHA", "PPS"),
+])
+def test_compare_scale_rejects_cross_scale_comparison(prior_scale, current_scale):
+    # compare_scale requires two independent scale-type arguments precisely
+    # so a cross-scale call is structurally possible to make -- and reject.
+    with pytest.raises(ValueError):
+        compare_scale(prior_scale, 60, "2024-01-01", current_scale, 40, "2024-06-01")
 
 
-def test_compare_scale_reports_prior_value_missing_never_decline():
-    assert compare_scale("PPS", None, None, 40, "2024-06-01") == "PRIOR_VALUE_MISSING"
+def test_compare_scale_rejects_unknown_fast_stage():
+    with pytest.raises(ValueError):
+        compare_scale("FAST", "8Z", "2024-01-01", "FAST", "7A", "2024-06-01")
+
+
+def test_compare_scale_rejects_malformed_fast_value():
+    with pytest.raises(ValueError):
+        compare_scale("FAST", "seven", "2024-01-01", "FAST", "7A", "2024-06-01")
+
+
+def test_compare_scale_verifies_fast_alphanumeric_stage_ordering():
+    # 6E precedes 7A precedes 7C precedes 7D in the standard FAST ordering.
+    assert compare_scale("FAST", "6E", "2024-01-01", "FAST", "7A", "2024-06-01") == "DECLINING"
+    assert compare_scale("FAST", "7A", "2024-01-01", "FAST", "7C", "2024-06-01") == "DECLINING"
+    assert compare_scale("FAST", "7D", "2024-01-01", "FAST", "7C", "2024-06-01") == "IMPROVING"
+
+
+def test_compare_scale_rejects_unknown_nyha_class():
+    with pytest.raises(ValueError):
+        compare_scale("NYHA", "V", "2024-01-01", "NYHA", "III", "2024-06-01")
+
+
+def test_compare_scale_rejects_numeric_nyha_representation():
+    # NYHA must only accept the approved roman-numeral class strings, not
+    # bare digits, even though the clinical concept is ordinal.
+    with pytest.raises(ValueError):
+        compare_scale("NYHA", 2, "2024-01-01", "NYHA", 3, "2024-06-01")
+
+
+def test_compare_scale_rejects_pps_kps_value_not_a_multiple_of_ten():
+    with pytest.raises(ValueError):
+        compare_scale("PPS", 65, "2024-01-01", "PPS", 60, "2024-06-01")
+
+
+def test_compare_scale_rejects_ecog_value_out_of_range():
+    with pytest.raises(ValueError):
+        compare_scale("ECOG", 6, "2024-01-01", "ECOG", 3, "2024-06-01")
+
+
+def test_compare_scale_reports_prior_value_missing():
+    assert compare_scale("PPS", None, None, "PPS", 40, "2024-06-01") == "PRIOR_VALUE_MISSING"
 
 
 def test_compare_scale_reports_current_value_missing():
-    assert compare_scale("PPS", 60, "2024-01-01", None, None) == "CURRENT_VALUE_MISSING"
+    assert compare_scale("PPS", 60, "2024-01-01", "PPS", None, None) == "CURRENT_VALUE_MISSING"
+
+
+def test_compare_scale_reports_indeterminate_when_both_sides_missing():
+    # Both entirely undocumented -> INDETERMINATE, never PRIOR_VALUE_MISSING
+    # (there is no "prior" to be missing relative to if current is also
+    # absent -- no evidence exists on either side to compare at all).
+    assert compare_scale("PPS", None, None, "PPS", None, None) == "INDETERMINATE"
 
 
 def test_compare_scale_single_undated_observation_never_creates_a_trend():
-    # No date on either side -> always a *_MISSING label, never a direction.
-    result = compare_scale("PPS", 60, None, None, None)
+    # An undated prior value counts as "missing" for trend purposes; with
+    # current also fully absent, neither side has usable evidence, so the
+    # both-missing rule applies: INDETERMINATE, never a direction.
+    result = compare_scale("PPS", 60, None, "PPS", None, None)
+    assert result == "INDETERMINATE"
+
+    # An undated prior value paired with a fully documented current value
+    # is a genuine one-sided gap -> PRIOR_VALUE_MISSING, never a direction.
+    result = compare_scale("PPS", 60, None, "PPS", 40, "2024-06-01")
     assert result == "PRIOR_VALUE_MISSING"
 
 
+@pytest.mark.parametrize("prior_value,prior_unit,current_value,current_unit,expected_label", [
+    (3.0, "mg/dL", 3.0, "mg/dL", "STABLE"),
+    (3.0, "MG/DL", 3.0, "mg/dl", "STABLE"),  # case-insensitive identical unit
+])
+def test_compare_numeric_compatible_units(prior_value, prior_unit, current_value, current_unit, expected_label):
+    result = compare_numeric(prior_value, prior_unit, "2024-01-01", current_value, current_unit, "2024-06-01", higher_is_worse=True)
+    assert result["unit_compatible"] is True
+    assert result["comparison_label"] == expected_label
+    assert result["requires_documentation_gap_flag"] is False
+
+
 def test_compare_numeric_stable_and_direction():
-    assert compare_numeric(3.0, "mg/dL", "2024-01-01", 3.0, "mg/dL", "2024-06-01", higher_is_worse=True) == "STABLE"
-    assert compare_numeric(1.0, "mg/dL", "2024-01-01", 3.0, "mg/dL", "2024-06-01", higher_is_worse=True) == "DECLINING"
-    assert compare_numeric(3.0, "mg/dL", "2024-01-01", 1.0, "mg/dL", "2024-06-01", higher_is_worse=True) == "IMPROVING"
+    assert compare_numeric(1.0, "mg/dL", "2024-01-01", 3.0, "mg/dL", "2024-06-01", higher_is_worse=True)["comparison_label"] == "DECLINING"
+    assert compare_numeric(3.0, "mg/dL", "2024-01-01", 1.0, "mg/dL", "2024-06-01", higher_is_worse=True)["comparison_label"] == "IMPROVING"
 
 
-def test_compare_numeric_rejects_incompatible_units():
-    with pytest.raises(ValueError):
-        compare_numeric(3.0, "mg/dL", "2024-01-01", 3.0, "mmol/L", "2024-06-01", higher_is_worse=True)
+@pytest.mark.parametrize("prior_unit,current_unit", [
+    ("mg/dL", "mmol/L"),
+    ("lbs", "kg"),
+    ("%", "absolute"),
+    ("mL/min", "mg/dL"),
+])
+def test_compare_numeric_incompatible_units_never_raises_and_never_converts(prior_unit, current_unit):
+    # Incompatible units must be *reported*, never raise, and never silently
+    # apply an implicit/guessed conversion factor.
+    result = compare_numeric(3.0, prior_unit, "2024-01-01", 3.0, current_unit, "2024-06-01", higher_is_worse=True)
+    assert result["comparison_label"] == "CONFLICTING_DOCUMENTATION"
+    assert result["unit_compatible"] is False
+    assert result["requires_documentation_gap_flag"] is True
+    # Original values/units are always preserved for clinician review.
+    assert result["prior_unit"] == prior_unit
+    assert result["current_unit"] == current_unit
+    assert result["prior_value"] == 3.0
+    assert result["current_value"] == 3.0
+
+
+def test_compare_numeric_missing_unit_on_one_side_is_indeterminate_not_a_guess():
+    result = compare_numeric(3.0, "mg/dL", "2024-01-01", 3.0, None, "2024-06-01", higher_is_worse=True)
+    assert result["comparison_label"] == "INDETERMINATE"
+    assert result["unit_compatible"] is False
+    assert result["requires_documentation_gap_flag"] is True
 
 
 def test_compare_numeric_missing_values_reported_not_inferred():
-    assert compare_numeric(None, "mg/dL", None, 3.0, "mg/dL", "2024-06-01", higher_is_worse=True) == "PRIOR_VALUE_MISSING"
-    assert compare_numeric(3.0, "mg/dL", "2024-01-01", None, "mg/dL", None, higher_is_worse=True) == "CURRENT_VALUE_MISSING"
+    assert compare_numeric(None, "mg/dL", None, 3.0, "mg/dL", "2024-06-01", higher_is_worse=True)["comparison_label"] == "PRIOR_VALUE_MISSING"
+    assert compare_numeric(3.0, "mg/dL", "2024-01-01", None, "mg/dL", None, higher_is_worse=True)["comparison_label"] == "CURRENT_VALUE_MISSING"
+
+
+def test_compare_numeric_reports_indeterminate_when_both_sides_missing():
+    result = compare_numeric(None, None, None, None, None, None, higher_is_worse=True)
+    assert result["comparison_label"] == "INDETERMINATE"
+
+
+# ---------------------------------------------------------------------
+# select_regulatory_context() pure-function tests (Production Blocker #10)
+# ---------------------------------------------------------------------
+
+
+def test_select_regulatory_context_cms_federal():
+    context = select_regulatory_context(MANIFEST, "CMS_MEDICARE_SIX_MONTH")
+    assert context["context_id"] == "FEDERAL_CMS_HOSPICE"
+    for field in ("regulatory_authority", "jurisdiction", "payer_context", "prognosis_standard", "source_reference"):
+        assert context.get(field)
+
+
+def test_select_regulatory_context_california_state():
+    context = select_regulatory_context(MANIFEST, "CALIFORNIA_CDPH_STATE")
+    assert context["context_id"] == "CALIFORNIA_DPH_HOSPICE"
+    for field in ("regulatory_authority", "jurisdiction", "payer_context", "prognosis_standard", "source_reference"):
+        assert context.get(field)
+
+
+def test_select_regulatory_context_never_merges_or_substitutes_contexts():
+    cms = select_regulatory_context(MANIFEST, "CMS_MEDICARE_SIX_MONTH")
+    ca = select_regulatory_context(MANIFEST, "CALIFORNIA_CDPH_STATE")
+    assert cms["context_id"] != ca["context_id"]
+    assert cms["jurisdiction"] != ca["jurisdiction"]
+    # Never claim CA regulation is a CMS rule or vice versa.
+    assert "california" not in cms["regulatory_authority"].lower()
+    assert "cms" not in ca["regulatory_authority"].lower()
+
+
+def test_select_regulatory_context_rejects_unknown_context():
+    with pytest.raises(ValueError):
+        select_regulatory_context(MANIFEST, "SOME_OTHER_JURISDICTION")
 
 
 # ---------------------------------------------------------------------

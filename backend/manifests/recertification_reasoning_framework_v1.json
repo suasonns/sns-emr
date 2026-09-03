@@ -247,12 +247,47 @@
     {"guard_number": 19, "subject": "Every Trend", "relation": "REQUIRES", "object": "Dated Prior And Current Evidence"},
     {"guard_number": 20, "subject": "Numeric Comparison", "relation": "REQUIRES", "object": "Compatible Units"}
   ],
+  "implementation_scope": {
+    "structural_framework_implemented": true,
+    "runtime_synthesis_implemented": false,
+    "statement": "PR #59 establishes the production-grade structural contract, classification vocabulary, comparison rules, provenance requirements, and safety boundaries. Patient-level runtime summary generation is not implemented in this PR.",
+    "in_scope": [
+      "21-section RECERTIFICATION_EVIDENCE_SUMMARY structural definition",
+      "9-label period-comparison vocabulary",
+      "reference (never duplication) of PR #58's evidence-strength vocabulary",
+      "two distinct, never-merged regulatory context definitions",
+      "20 differentiation guards",
+      "pure comparison functions compare_scale(), compare_numeric(), and select_regulatory_context() for a future read-time API/AI layer",
+      "required_evidence_item_fields contract (the exact field set any future runtime evidence item must carry)"
+    ],
+    "out_of_scope_deferred_to_a_future_pr": [
+      "a runtime summary-builder that accepts patient_id/hospice_episode_id/benefit_period_id and returns a populated RECERTIFICATION_EVIDENCE_SUMMARY from real patient evidence",
+      "any read/write path against patient-fact or clinical-note tables",
+      "any SQL write-audit of a runtime synthesis path (there is no such path in this PR)"
+    ]
+  },
+  "required_evidence_item_fields": [
+    "source_record_type",
+    "source_record_id",
+    "source_document_id",
+    "assessment_date",
+    "documentation_date",
+    "author_or_assessor_id",
+    "concept_identity",
+    "disease_ownership",
+    "benefit_period_association",
+    "classification_rule_id",
+    "framework_version",
+    "generated_timestamp",
+    "read_only"
+  ],
   "unsupported_content_not_created": [
     "Any per-concept OntologyRelationship edge linking every existing disease concept to a comparison section (deliberately out of scope, same rationale as PR #58).",
     "Any patient-fact table, row, insert, update, or delete of any kind -- this manifest creates only its own 22 framework registry concepts.",
     "Any eligibility, terminal-status, prognosis, or life-expectancy output of any kind.",
     "Any certification, recertification, or discharge recommendation of any kind.",
     "A duplicate copy of PR #58's 11 evidence sections, classification_rules, or evidence-strength vocabulary -- referenced by name only.",
-    "Any new disease-specific clinical concept, threshold, or scale."
+    "Any new disease-specific clinical concept, threshold, or scale.",
+    "Any runtime patient-evidence synthesis path (deferred; see implementation_scope)."
   ]
 }

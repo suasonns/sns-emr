@@ -104,6 +104,13 @@ EXPECTED_COMPARISON_LABELS = [
 EXPECTED_EVIDENCE_COMPLETENESS_LABELS = ["Strong", "Moderate", "Limited", "Missing"]
 EXPECTED_GUARD_COUNT = 20
 EXPECTED_REGULATORY_CONTEXT_COUNT = 2
+EXPECTED_EVIDENCE_ITEM_FIELDS = [
+    "source_record_type", "source_record_id", "source_document_id",
+    "assessment_date", "documentation_date", "author_or_assessor_id",
+    "concept_identity", "disease_ownership", "benefit_period_association",
+    "classification_rule_id", "framework_version", "generated_timestamp",
+    "read_only",
+]
 
 FORBIDDEN_VOCABULARY = {
     "eligible", "not eligible", "terminal", "not terminal",
@@ -128,15 +135,66 @@ ALLOWED_CONTENT_REVIEW_STATUSES = {
     "PENDING_MEDICAL_DIRECTOR_APPROVAL", "APPROVED", "REJECTED",
 }
 
-# Scale ordering rules: whether a LOWER or HIGHER numeric value represents a
-# worse clinical state, per scale. Comparisons are never made across scales.
+# Scale ordering rules: whether a LOWER or HIGHER rank represents a worse
+# clinical state, per scale. Comparisons are never made across scales -- see
+# compare_scale(), which requires prior_scale_type == current_scale_type.
 SCALE_ORDERING = {
     "PPS": "LOWER_IS_WORSE",
     "KPS": "LOWER_IS_WORSE",
     "ECOG": "HIGHER_IS_WORSE",
-    "FAST": "HIGHER_IS_WORSE",  # later numbered FAST stage = worse
+    "FAST": "HIGHER_IS_WORSE",  # later stage = worse
     "NYHA": "HIGHER_IS_WORSE",  # higher class = worse
 }
+
+# Valid, closed value sets per scale -- an unrecognized or malformed value is
+# always a deterministic ValueError, never silently normalized or classified
+# as INDETERMINATE.
+_PPS_KPS_VALID_VALUES = {float(v) for v in range(0, 101, 10)}
+_ECOG_VALID_VALUES = {0.0, 1.0, 2.0, 3.0, 4.0, 5.0}
+_NYHA_CLASS_RANK = {"I": 1, "II": 2, "III": 3, "IV": 4}
+# FAST stages 1-5 have no sub-stages; 6 and 7 are subdivided A-F/A-D per the
+# standard FAST scale. Index position is the ordering rank (later = worse).
+FAST_STAGE_ORDER = [
+    "1", "2", "3", "4", "5",
+    "6A", "6B", "6C", "6D", "6E",
+    "7A", "7B", "7C", "7D", "7E", "7F",
+]
+_FAST_STAGE_RANK = {stage: idx for idx, stage in enumerate(FAST_STAGE_ORDER)}
+
+
+def _normalize_scale_value(scale_type: str, value) -> float:
+    """Returns a numeric rank for a value already confirmed to belong to
+    scale_type, or raises ValueError for any unrecognized/malformed value.
+    Never guesses, coerces, or silently normalizes a clinically ambiguous
+    value (e.g. never accepts NYHA as a bare digit, never accepts a FAST
+    stage outside the standard 1-5, 6A-6E, 7A-7F vocabulary)."""
+    if scale_type in ("PPS", "KPS"):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"{scale_type} value must be numeric, got {value!r}")
+        if numeric not in _PPS_KPS_VALID_VALUES:
+            raise ValueError(f"{scale_type} value must be a multiple of 10 between 0 and 100, got {value!r}")
+        return numeric
+    if scale_type == "ECOG":
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"ECOG value must be numeric, got {value!r}")
+        if numeric not in _ECOG_VALID_VALUES:
+            raise ValueError(f"ECOG value must be one of 0-5, got {value!r}")
+        return numeric
+    if scale_type == "NYHA":
+        normalized = str(value).strip().upper()
+        if normalized not in _NYHA_CLASS_RANK:
+            raise ValueError(f"NYHA value must be one of I, II, III, IV (approved class representations only), got {value!r}")
+        return float(_NYHA_CLASS_RANK[normalized])
+    if scale_type == "FAST":
+        normalized = str(value).strip().upper()
+        if normalized not in _FAST_STAGE_RANK:
+            raise ValueError(f"FAST value must be one of {FAST_STAGE_ORDER} (approved stage representations only), got {value!r}")
+        return float(_FAST_STAGE_RANK[normalized])
+    raise ValueError(f"Unsupported scale_type '{scale_type}'")  # pragma: no cover - guarded by caller
 
 
 def load_manifest(path: Path = DEFAULT_MANIFEST_PATH) -> dict:
@@ -195,6 +253,16 @@ def validate_manifest(manifest: dict) -> List[str]:
     guard_numbers = sorted(g.get("guard_number") for g in guards)
     if guard_numbers != list(range(1, EXPECTED_GUARD_COUNT + 1)):
         errors.append(f"differentiation_guards must be numbered 1-{EXPECTED_GUARD_COUNT} exactly once each, found {guard_numbers}")
+
+    scope = manifest.get("implementation_scope", {})
+    if scope.get("runtime_synthesis_implemented") is not False:
+        errors.append("implementation_scope.runtime_synthesis_implemented must be explicitly false for this PR (no runtime synthesis path exists)")
+    if "Patient-level runtime summary generation is not implemented in this PR." not in (scope.get("statement") or ""):
+        errors.append("implementation_scope.statement must include the required verbatim out-of-scope declaration")
+
+    required_fields = manifest.get("required_evidence_item_fields", [])
+    if sorted(required_fields) != sorted(EXPECTED_EVIDENCE_ITEM_FIELDS):
+        errors.append(f"required_evidence_item_fields must be exactly {sorted(EXPECTED_EVIDENCE_ITEM_FIELDS)}, found {sorted(required_fields)}")
 
     for carrier in _collect_provenance_dicts(manifest):
         for field in REQUIRED_PROVENANCE_FIELDS:
@@ -345,35 +413,59 @@ def _ensure_evidence_rule(db: Session, concept_id, source_note: str) -> bool:
 
 
 def compare_scale(
-    scale_type: str,
-    prior_value: Optional[float],
+    prior_scale_type: str,
+    prior_value,
     prior_date: Optional[str],
-    current_value: Optional[float],
+    current_scale_type: str,
+    current_value,
     current_date: Optional[str],
 ) -> str:
     """Pure function: like-for-like functional scale comparison only. Never
-    compares across scale types (e.g. never PPS vs KPS). Returns one of
-    the comparison_vocabulary direction labels. Requires both values to be
-    dated to ever return DECLINING/STABLE/IMPROVING/INDETERMINATE -- a
-    single (undated or one-sided) observation never creates a trend."""
-    if scale_type not in SCALE_ORDERING:
+    compares across scale types (e.g. never PPS vs KPS) -- both a
+    prior_scale_type and current_scale_type are required, and any mismatch
+    (or any unrecognized scale type) is a deterministic ValueError, never a
+    silent INDETERMINATE classification. Returns one of the
+    comparison_vocabulary direction labels:
+      - both prior and current entirely undocumented (no value/date on
+        either side): INDETERMINATE (no evidence exists to compare at all)
+      - only the prior side undocumented: PRIOR_VALUE_MISSING
+      - only the current side undocumented: CURRENT_VALUE_MISSING
+      - otherwise: DECLINING / STABLE / IMPROVING per the scale's own
+        worse-direction ordering
+    A single (undated or one-sided) observation never creates a trend.
+    Any value that is not a recognized member of the scale's own closed
+    vocabulary (e.g. a bare digit for NYHA, an out-of-range FAST stage) is
+    rejected with a ValueError rather than normalized or guessed."""
+    if prior_scale_type not in SCALE_ORDERING or current_scale_type not in SCALE_ORDERING:
         raise ValueError(
-            f"Unsupported scale_type '{scale_type}': comparisons are restricted to "
-            f"{sorted(SCALE_ORDERING.keys())} and are never made across scale types."
+            f"Unsupported scale_type(s) '{prior_scale_type}'/'{current_scale_type}': comparisons are "
+            f"restricted to {sorted(SCALE_ORDERING.keys())}."
         )
-    if prior_value is None or prior_date is None:
+    if prior_scale_type != current_scale_type:
+        raise ValueError(
+            f"Cross-scale comparison is never permitted: prior_scale_type='{prior_scale_type}' "
+            f"current_scale_type='{current_scale_type}' (differentiation guard: no_cross_scale_comparison)."
+        )
+    scale_type = prior_scale_type
+
+    prior_missing = prior_value is None or prior_date is None
+    current_missing = current_value is None or current_date is None
+    if prior_missing and current_missing:
+        return "INDETERMINATE"
+    if prior_missing:
         return "PRIOR_VALUE_MISSING"
-    if current_value is None or current_date is None:
+    if current_missing:
         return "CURRENT_VALUE_MISSING"
 
+    prior_rank = _normalize_scale_value(scale_type, prior_value)
+    current_rank = _normalize_scale_value(scale_type, current_value)
+
     ordering = SCALE_ORDERING[scale_type]
-    if current_value == prior_value:
+    if current_rank == prior_rank:
         return "STABLE"
     if ordering == "LOWER_IS_WORSE":
-        return "DECLINING" if current_value < prior_value else "IMPROVING"
-    if ordering == "HIGHER_IS_WORSE":
-        return "DECLINING" if current_value > prior_value else "IMPROVING"
-    return "INDETERMINATE"  # pragma: no cover - defensive, no ordering is unmapped today
+        return "DECLINING" if current_rank < prior_rank else "IMPROVING"
+    return "DECLINING" if current_rank > prior_rank else "IMPROVING"  # HIGHER_IS_WORSE
 
 
 def compare_numeric(
@@ -384,28 +476,108 @@ def compare_numeric(
     current_unit: Optional[str],
     current_date: Optional[str],
     higher_is_worse: bool,
-) -> str:
+) -> dict:
     """Pure function: generic numeric (e.g. lab) period-over-period
-    comparison. Requires compatible (identical, case-insensitive) units --
-    never invents an equivalent unit or silently assumes compatibility.
-    Requires both values to be dated -- a single observation never
-    creates a trend."""
-    if prior_value is None or prior_date is None:
-        return "PRIOR_VALUE_MISSING"
-    if current_value is None or current_date is None:
-        return "CURRENT_VALUE_MISSING"
+    comparison. Never performs implicit unit conversion and never guesses a
+    conversion factor -- incompatible or missing-on-one-side units are
+    reported as a documentation/clinician-review flag, never silently
+    dropped or treated as a directional result. Returns a structured dict
+    (never a bare label) so the original values/units are always
+    preserved for audit:
+      {
+        "comparison_label": one of the comparison_vocabulary labels,
+        "unit_compatible": bool,
+        "requires_documentation_gap_flag": bool,
+        "prior_value": ..., "prior_unit": ...,
+        "current_value": ..., "current_unit": ...,
+      }
+    Label rules:
+      - both sides entirely undocumented: INDETERMINATE
+      - only prior undocumented: PRIOR_VALUE_MISSING
+      - only current undocumented: CURRENT_VALUE_MISSING
+      - both documented but units incompatible (present and different, or
+        present on only one side): CONFLICTING_DOCUMENTATION if both units
+        are present and differ, INDETERMINATE if a unit is present on only
+        one side (compatibility itself cannot be determined) -- both cases
+        set requires_documentation_gap_flag=True and never compute a
+        direction from mismatched units
+      - compatible units: DECLINING / STABLE / IMPROVING per higher_is_worse
+    A single (undated or one-sided) observation never creates a trend."""
+    prior_missing = prior_value is None or prior_date is None
+    current_missing = current_value is None or current_date is None
+
+    result = {
+        "unit_compatible": None,
+        "requires_documentation_gap_flag": False,
+        "prior_value": prior_value,
+        "prior_unit": prior_unit,
+        "current_value": current_value,
+        "current_unit": current_unit,
+    }
+
+    if prior_missing and current_missing:
+        result["comparison_label"] = "INDETERMINATE"
+        return result
+    if prior_missing:
+        result["comparison_label"] = "PRIOR_VALUE_MISSING"
+        return result
+    if current_missing:
+        result["comparison_label"] = "CURRENT_VALUE_MISSING"
+        return result
+
     norm_prior_unit = (prior_unit or "").strip().lower()
     norm_current_unit = (current_unit or "").strip().lower()
-    if norm_prior_unit != norm_current_unit:
-        raise ValueError(
-            f"Incompatible units for numeric comparison: prior='{prior_unit}' current='{current_unit}'. "
-            "Numeric comparison requires compatible units (differentiation guard #20)."
-        )
+    prior_unit_present = bool(norm_prior_unit)
+    current_unit_present = bool(norm_current_unit)
+
+    if prior_unit_present != current_unit_present:
+        # A unit documented on only one side means compatibility itself
+        # cannot be determined -- never guessed, never treated as a match.
+        result["unit_compatible"] = False
+        result["requires_documentation_gap_flag"] = True
+        result["comparison_label"] = "INDETERMINATE"
+        return result
+
+    if prior_unit_present and norm_prior_unit != norm_current_unit:
+        # Units present on both sides but different (e.g. mg/dL vs mmol/L,
+        # lb vs kg, % vs absolute value) -- no implicit conversion, no
+        # guessed conversion factor. Both original values/units are
+        # preserved above for physician/clinician review.
+        result["unit_compatible"] = False
+        result["requires_documentation_gap_flag"] = True
+        result["comparison_label"] = "CONFLICTING_DOCUMENTATION"
+        return result
+
+    result["unit_compatible"] = True
     if current_value == prior_value:
-        return "STABLE"
-    if higher_is_worse:
-        return "DECLINING" if current_value > prior_value else "IMPROVING"
-    return "DECLINING" if current_value < prior_value else "IMPROVING"
+        result["comparison_label"] = "STABLE"
+    elif higher_is_worse:
+        result["comparison_label"] = "DECLINING" if current_value > prior_value else "IMPROVING"
+    else:
+        result["comparison_label"] = "DECLINING" if current_value < prior_value else "IMPROVING"
+    return result
+
+
+def select_regulatory_context(manifest: dict, regulatory_context: str) -> dict:
+    """Pure function: explicit regulatory-context selection. Never applies
+    both regulatory contexts simultaneously and never silently substitutes
+    one for the other -- the caller must pass exactly one of the allowed
+    enum values, and gets back exactly that context's own definition
+    (regulatory_authority, jurisdiction, payer_context, prognosis_standard,
+    source_reference), never a merged/blended result."""
+    context_map = {
+        "CMS_MEDICARE_SIX_MONTH": "FEDERAL_CMS_HOSPICE",
+        "CALIFORNIA_CDPH_STATE": "CALIFORNIA_DPH_HOSPICE",
+    }
+    if regulatory_context not in context_map:
+        raise ValueError(
+            f"Unsupported regulatory_context '{regulatory_context}': must be one of {sorted(context_map.keys())}."
+        )
+    context_id = context_map[regulatory_context]
+    for context in manifest.get("regulatory_context_definitions", []):
+        if context.get("context_id") == context_id:
+            return context
+    raise ValueError(f"regulatory_context_definitions is missing the required context_id '{context_id}'")  # pragma: no cover
 
 
 def evaluate_differentiation_guards(manifest: dict) -> Dict[str, int]:
@@ -595,7 +767,32 @@ def build_acceptance_report(db: Session, manifest: dict, second_run_new_rows: in
         "cycle_count": 0,
         "unresolved_framework_concept_count": unresolved_framework_concept_count,
         "changes_outside_framework": 0,
+        "implementation_scope": {
+            "structural_framework_validated": True,
+            "runtime_synthesis_implemented": False,
+            "runtime_synthesis_validated": False,
+            "patient_data_write_audit_passed": True,
+            "patient_data_write_audit_note": (
+                "No runtime synthesis path exists in this PR to audit; structurally "
+                "guaranteed by the absence of any patient-fact model import/reference "
+                "in scripts/import_recertification_reasoning_framework_v1.py."
+            ),
+        },
+        "test_matrix": load_test_matrix_report(),
     }
+
+
+def load_test_matrix_report() -> dict:
+    """Loads the externally-generated test-matrix report (produced by
+    scripts/run_recertification_test_matrix.py from real pytest --junitxml
+    runs across freshly rebuilt isolated databases). Returns a
+    NOT_YET_GENERATED placeholder -- never fabricated counters -- if the
+    matrix has not been executed yet."""
+    matrix_path = Path(__file__).resolve().parent.parent / "artifacts" / "recertification_test_matrix_v1.json"
+    if not matrix_path.exists():
+        return {"status": "NOT_YET_GENERATED"}
+    with open(matrix_path, "r", encoding="utf-8") as fh:
+        return json.load(fh)
 
 
 def main() -> None:
