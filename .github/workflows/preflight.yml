@@ -17,7 +17,7 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: sns_emr_test
+          POSTGRES_DB: sns_ci
         ports:
           - 5432:5432
         options: >-
@@ -52,7 +52,23 @@ jobs:
           pip install pytest
 
       # ---------------------------------------------------------
-      # 4) Run Alembic migrations (forward-only)
+      # 4) Create the isolated test database
+      #
+      # The postgres service only auto-creates POSTGRES_DB (sns_ci, the
+      # application-side placeholder database). Tests must run against a
+      # PHYSICALLY SEPARATE database (sns_emr_test) so that DATABASE_URL
+      # (application) and TEST_DATABASE_URL (tests) never resolve to the
+      # same target -- see backend/tests/conftest.py's isolation guard.
+      # ---------------------------------------------------------
+      - name: Create isolated test database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'sns_emr_test'" | grep -q 1 || \
+            psql -h localhost -U postgres -c "CREATE DATABASE sns_emr_test"
+
+      # ---------------------------------------------------------
+      # 5) Run Alembic migrations (forward-only) against the test DB
       # ---------------------------------------------------------
       - name: Run Alembic migrations
         working-directory: backend
@@ -62,7 +78,7 @@ jobs:
           alembic upgrade head
 
       # ---------------------------------------------------------
-      # 5) Preflight drift check (current == heads)
+      # 6) Preflight drift check (current == heads)
       # ---------------------------------------------------------
       - name: Alembic drift check
         working-directory: backend
@@ -73,12 +89,31 @@ jobs:
           alembic heads
 
       # ---------------------------------------------------------
-      # 6) Run test suite
+      # 7) Validate DATABASE_URL / TEST_DATABASE_URL are isolated
+      #
+      # Logs only database names (never credentials) so isolation can be
+      # confirmed from the workflow run without exposing secrets.
       # ---------------------------------------------------------
+      - name: Validate database isolation
+        env:
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_ci
+          TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
+        run: |
+          app_db="${DATABASE_URL##*/}"
+          test_db="${TEST_DATABASE_URL##*/}"
+          echo "DATABASE_URL database name:      $app_db"
+          echo "TEST_DATABASE_URL database name: $test_db"
+          if [ "$app_db" = "$test_db" ]; then
+            echo "::error::DATABASE_URL and TEST_DATABASE_URL resolve to the same database ($app_db)."
+            exit 1
+          fi
+          echo "Isolation confirmed: application and test databases are distinct."
+
       - name: Run tests
         working-directory: backend
         env:
-          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
+          DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_ci
+          TEST_DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/sns_emr_test
           APP_ENV: development
           ENV: local
           AUTH_MODE: TOKEN
