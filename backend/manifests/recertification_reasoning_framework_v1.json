@@ -1,0 +1,258 @@
+{
+  "manifest_version": 1,
+  "title": "Recertification Reasoning Framework v1",
+  "description": "Creates a reusable, disease-agnostic, READ-ONLY, auditable period-over-period evidence-comparison framework -- NOT a recertification decision engine, NOT an eligibility engine, NOT a terminal-status engine, NOT a prognosis-prediction engine. Extends the merged Terminal Status Reasoning Framework v1 (PR #58) by adding benefit-period comparison semantics on top of PR #58's evidence sections, domain-to-section classification rules, evidence-strength vocabulary, and AI safety boundaries -- this manifest never duplicates any of that content. Defines the structural RECERTIFICATION_EVIDENCE_SUMMARY output (21 sections), a 9-label period-comparison vocabulary, two distinct regulatory-context definitions (federal CMS six-month hospice prognosis standard; California DPH hospice documentation/certification requirements) that are never combined or silently substituted for one another, 20 differentiation guards, and pure comparison functions (compare_scale, compare_numeric) for a future read-time API/AI layer. Creates zero patient facts, zero eligibility/terminal-status/prognosis/life-expectancy outputs, and zero certification/recertification/discharge recommendations. No schema changes. No migrations. No API changes. No changes to any prior PR's files.",
+  "source_authority": [
+    "cms guidelines.pdf",
+    "1.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf",
+    "DPH-18-002E-HospiceAgencies_Text.pdf",
+    "heart disease.pdf"
+  ],
+  "prerequisite": {
+    "requires_disease": "Terminal Status Reasoning Framework",
+    "requires_manifest_title": "Terminal Status Reasoning Framework v1",
+    "block_message": "BLOCKED: TERMINAL_STATUS_REASONING_FRAMEWORK_V1 prerequisite missing",
+    "must_not_duplicate": [
+      "evidence sections (PR #58's 11 TERMINAL_STATUS_EVIDENCE_SUMMARY sections)",
+      "domain-to-section classification_rules",
+      "evidence-strength vocabulary (Strong/Moderate/Limited/Missing)",
+      "ai_layer safety boundaries"
+    ]
+  },
+  "scope": {
+    "body_system": "Reasoning Frameworks",
+    "family": "Recertification Reasoning",
+    "disease": "Recertification Reasoning Framework",
+    "source_frameworks_read_only": [
+      "Functional Assessment Framework",
+      "CHF Clinical Evidence Blueprint",
+      "Dementia Clinical Evidence Blueprint",
+      "Pulmonary Clinical Evidence Blueprint",
+      "Renal Clinical Evidence Blueprint",
+      "Liver Clinical Evidence Blueprint",
+      "ALS Clinical Evidence Blueprint",
+      "HIV Clinical Evidence Blueprint",
+      "Stroke/Coma Clinical Evidence Blueprint",
+      "Terminal Status Reasoning Framework"
+    ]
+  },
+  "new_disease": {
+    "disease": "Recertification Reasoning Framework",
+    "family": "Recertification Reasoning",
+    "disease_category": "REASONING_FRAMEWORK",
+    "disease_type": "EVIDENCE_SYNTHESIS_TOOL",
+    "disease_description": "A reusable, read-only container for the cross-disease, period-over-period RECERTIFICATION_EVIDENCE_SUMMARY reasoning framework: 21 section definitions plus a 9-label period-comparison vocabulary. Not a clinical disease and not a decision engine; hosts reference/classification metadata inside the existing Ontology Disease Blueprint schema without any migration. Extends, and never duplicates, the Terminal Status Reasoning Framework (PR #58).",
+    "clinical_purpose": "Gives physicians, medical directors, IDG members, and recertification/audit reviewers a single, consistent, source-traceable way to compare a patient's documented evidence between the immediately preceding benefit period and the current benefit period -- functional status, ADL/care dependence, nutrition/hydration, disease-specific findings, symptoms, labs, complications, utilization, treatment context, co-morbidities, stability/improvement, and potentially reversible factors -- while explicitly surfacing missing evidence, documentation gaps, and conflicting evidence for physician/medical-director review, without ever generating an eligibility, terminal-status, prognosis, or recertification conclusion itself.",
+    "hospice_relevance": "CMS terminal-status guidance requires the record to support the physician's clinical judgment through documented comparison over time; diagnosis alone is insufficient and baseline guidelines do not independently qualify a patient. California hospice regulations separately require consistent outcome measurement, comprehensive written assessments, evaluation of change since the previous assessment, and authenticated, traceable documentation. This framework supports both regulatory contexts as clinical review material only -- it never determines eligibility, terminal status, prognosis, or recertification, and never replaces attending-physician or medical-director judgment."
+  },
+  "regulatory_context_definitions": [
+    {
+      "context_id": "FEDERAL_CMS_HOSPICE",
+      "regulatory_authority": "Centers for Medicare & Medicaid Services (CMS)",
+      "jurisdiction": "Federal / Medicare",
+      "payer_context": "Medicare Hospice Benefit",
+      "prognosis_standard": "Six-month terminal prognosis if the illness runs its normal course",
+      "source_reference": "cms guidelines.pdf; 1.pdf",
+      "content_source_type": "REGULATORY_REFERENCE",
+      "content_review_status": "APPROVED",
+      "notes": "The federal Medicare hospice terminal-status review uses the six-month prognosis standard reflected in the CMS LCD materials. This context must never be silently substituted for, or combined with, the California state context."
+    },
+    {
+      "context_id": "CALIFORNIA_DPH_HOSPICE",
+      "regulatory_authority": "California Department of Public Health (CDPH)",
+      "jurisdiction": "State / California",
+      "payer_context": "California-licensed hospice agencies",
+      "prognosis_standard": "Not a distinct prognosis-period standard -- separate state certification and documentation requirements (outcome measurement, comprehensive assessments, reassessment of response to care, authenticated and traceable record entries)",
+      "source_reference": "DPH-18-002E-HospiceAgencies_Text.pdf",
+      "content_source_type": "REGULATORY_REFERENCE",
+      "content_review_status": "APPROVED",
+      "notes": "California hospice regulations impose distinct documentation and record-keeping requirements. This context is preserved separately and must never overwrite or be merged with the federal Medicare six-month standard."
+    }
+  ],
+  "framework_sections": [
+    {"section_number": 1, "section_name": "Review Context", "section_description": "Patient/episode/benefit-period identifiers, documented primary and secondary diagnoses (never inferred), regulatory authority/jurisdiction/payer context, applicable disease blueprint, and framework/manifest version metadata."},
+    {"section_number": 2, "section_name": "Prior Benefit-Period Baseline", "section_description": "The most relevant documented prior-period evidence across every comparison category, each retaining its original source reference. Reports PRIOR_BASELINE_MISSING when no prior-period value exists; never treats a missing prior value as decline."},
+    {"section_number": 3, "section_name": "Current Benefit-Period Evidence", "section_description": "Current documented evidence using the same categories and normalization rules as the prior-period baseline. Undated evidence is never treated as current evidence -- it is routed to Section 18 (Documentation Gaps)."},
+    {"section_number": 4, "section_name": "Functional Assessment Comparison", "section_description": "Like-for-like scale comparison only (PPS-to-PPS, KPS-to-KPS, ECOG-to-ECOG, FAST-to-FAST, NYHA-to-NYHA); never cross-scale. Reports scale type, prior/current value and date, direction, and source references using each scale's own ordering."},
+    {"section_number": 5, "section_name": "ADL and Care-Dependence Comparison", "section_description": "Compares documented dependence for feeding, ambulation, continence, transfer, bathing, dressing, supervision/cueing needs, caregiver assistance, dependent-ADL count, increasing care needs, bedbound/chairbound status. Never infers ADL dependence from diagnosis or functional score alone."},
+    {"section_number": 6, "section_name": "Nutritional and Hydration Comparison", "section_description": "Compares documented weight, calculable percentage weight change, mid-arm circumference, abdominal girth, oral intake, meal percentage, diet consistency, swallowing/dysphagia/aspiration, hydration status, albumin/cholesterol, artificial nutrition/hydration, refusal, and treatment limitations. Flags documented potentially-reversible causes rather than automatically attributing change to disease progression."},
+    {"section_number": 7, "section_name": "Disease-Specific Evidence Comparison", "section_description": "Uses only the active disease blueprint(s) matching documented primary/secondary diagnoses; never applies one disease's criteria to another. Reports newly documented, no-longer-documented, unchanged, conflicting, and missing disease-specific evidence with source references."},
+    {"section_number": 8, "section_name": "Symptoms and Clinical Signs Comparison", "section_description": "Compares documented trends in dyspnea, cough, pain, nausea, vomiting, diarrhea, weakness, fatigue, edema, ascites, altered level of consciousness, and disease-specific symptom burden/frequency/severity/treatment responsiveness. Never infers severity from medication orders alone."},
+    {"section_number": 9, "section_name": "Laboratory and Objective-Finding Comparison", "section_description": "Compares only documented lab/objective values with compatible units; never invents equivalent units or requires testing the governing LCD marks optional. Reports test name, prior/current value+unit+date, source reference, and unit-compatibility status."},
+    {"section_number": 10, "section_name": "Complications and Infections Comparison", "section_description": "Tracks documented complications/infections with event date, source, treatment response, and recurrence status. Never treats a historical complication as current without current documentation of persistence or recurrence."},
+    {"section_number": 11, "section_name": "Hospitalization and Utilization Comparison", "section_description": "Compares documented ED visits, observation stays, admissions, readmissions, physician visits, and urgent calls, with date/type/reason/related-diagnosis/source. Never automatically classifies unrelated utilization as advanced-disease progression."},
+    {"section_number": 12, "section_name": "Treatment and Intervention Context", "section_description": "Documents changes in disease-directed/palliative treatment, oxygen/ventilation/artificial nutrition-hydration/dialysis, transplant status, surgical candidacy, refusal, intolerance, and treatment failure. Never interprets refusal as incapacity, never infers failure without documentation, and never recommends any treatment action."},
+    {"section_number": 13, "section_name": "Co-Morbidity Contribution", "section_description": "Lists documented active co-morbidities with severity evidence, current treatment context, and a contribution-status label. Never infers contribution solely from the co-morbidity's existence and never converts co-morbidity count into a score."},
+    {"section_number": 14, "section_name": "Stability or Improvement Review", "section_description": "Explicitly surfaces every stable or improving domain -- never hidden. Reports prior/current state, dates, sources, documented explanation, and whether improvement may be temporary, plus a physician-review question. Never treats stability as automatic ineligibility nor continued decline elsewhere as automatic eligibility."},
+    {"section_number": 15, "section_name": "Potentially Reversible Factors", "section_description": "Identifies documented factors that may explain decline but may be reversible (e.g. acute infection under treatment, medication effect, dehydration). Never determines reversibility itself -- routes the issue to physician review."},
+    {"section_number": 16, "section_name": "Conflicting Evidence", "section_description": "Detects and displays contradictions (e.g. inconsistent PPS on the same date, conflicting weight values) without resolving them automatically. Every conflict retains type, involved values, dates, source-record identifiers, and a physician-review prompt; resolution status starts UNRESOLVED."},
+    {"section_number": 17, "section_name": "Missing Evidence", "section_description": "Identifies expected evidence categories with no usable documented evidence. Missing evidence means DOCUMENTATION NOT FOUND -- it must never mean the clinical condition is absent."},
+    {"section_number": 18, "section_name": "Documentation Gaps", "section_description": "Identifies evidence that exists but is not sufficiently usable (no date/assessor/source, ambiguous units, copied-forward content, conflicting values, unsigned/unauthenticated entries, generic narrative language, unsupported conclusions, untraceable corrections)."},
+    {"section_number": 19, "section_name": "Physician Review Questions", "section_description": "Generates patient-specific review questions only, derived from identified evidence or gaps -- never generates answers or conclusions."},
+    {"section_number": 20, "section_name": "Suggested Individualized Narrative Elements", "section_description": "Generates individualized narrative elements (not a completed certification) drawn from documented, source-traceable evidence. Never creates a physician attestation or signature, never states hospice status, eligibility, or life expectancy, never recommends certification/recertification, and every element must be labeled as AI-generated, never as physician-authored."},
+    {"section_number": 21, "section_name": "Source and Audit Trace", "section_description": "Every summarized evidence item carries evidence_id, patient/episode/benefit-period references, disease/domain/concept identity, exact documented value and unit, assessment/documentation dates, source-record identifiers, framework_version, classification_rule_id, generated_at, and read_only=true. Distinguishes source clinical facts from framework classifications and AI-generated prompts/narrative suggestions; generated output never masquerades as clinician-authored documentation."}
+  ],
+  "comparison_window_rules": {
+    "primary_comparison": "CURRENT_BENEFIT_PERIOD vs IMMEDIATELY_PRECEDING_BENEFIT_PERIOD",
+    "on_missing_immediately_preceding_period": [
+      "do not silently skip to an older period",
+      "identify PRIOR_BASELINE_MISSING",
+      "optionally display older evidence under HISTORICAL_CONTEXT, explicitly labeled",
+      "never combine evidence from multiple periods into one undocumented baseline"
+    ],
+    "trend_requires": [
+      "one dated prior observation",
+      "one dated current observation",
+      "compatible concept identity",
+      "compatible units when numeric",
+      "traceable source records"
+    ],
+    "single_observation_never_creates_a_trend": true
+  },
+  "comparison_vocabulary": {
+    "concept_name": "Period Comparison Vocabulary",
+    "disclaimer": "These labels describe DOCUMENTED CHANGE ONLY. They never describe eligibility, terminal status, prognosis, certification, or coverage.",
+    "labels": [
+      {"label": "DECLINING", "definition": "Documented current value/state reflects worse function or greater burden than the documented prior value/state, per the concept's own ordering.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "STABLE", "definition": "Documented current value/state is unchanged from the documented prior value/state.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "IMPROVING", "definition": "Documented current value/state reflects better function or lesser burden than the documented prior value/state, per the concept's own ordering.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "MIXED", "definition": "Some sub-elements of a comparison category improved while others declined; reported explicitly rather than averaged.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "INDETERMINATE", "definition": "Both prior and current values are documented and dated but do not support a clear directional conclusion.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "NOT_APPLICABLE", "definition": "The comparison category does not apply to this patient/disease/scale combination.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "PRIOR_VALUE_MISSING", "definition": "No dated prior-period value exists for this concept -- a documentation-completeness flag, never treated as decline.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "CURRENT_VALUE_MISSING", "definition": "No dated current-period value exists for this concept -- a documentation-completeness flag only.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"},
+      {"label": "CONFLICTING_DOCUMENTATION", "definition": "Prior and/or current values conflict across source records for the same concept and date; the framework never resolves which source is correct.", "content_source_type": "FRAMEWORK_DERIVED", "content_review_status": "APPROVED"}
+    ]
+  },
+  "evidence_completeness_vocabulary_reference": {
+    "reused_from": "Terminal Status Reasoning Framework v1 (PR #58)",
+    "reused_concept_name": "Evidence Strength Vocabulary",
+    "labels": ["Strong", "Moderate", "Limited", "Missing"],
+    "note": "This manifest never redefines or duplicates the PR #58 evidence-strength vocabulary. It is referenced by name only; the four labels remain documentation-completeness labels, never weighted scores, points, probabilities, risk percentages, or patient rankings."
+  },
+  "scale_ordering_rules": [
+    {"scale": "PPS", "ordering": "LOWER_SCORE_IS_WORSE"},
+    {"scale": "KPS", "ordering": "LOWER_SCORE_IS_WORSE"},
+    {"scale": "ECOG", "ordering": "HIGHER_SCORE_IS_WORSE"},
+    {"scale": "FAST", "ordering": "LATER_STAGE_IS_WORSE"},
+    {"scale": "NYHA", "ordering": "HIGHER_CLASS_IS_WORSE"}
+  ],
+  "physician_review_prompts": [
+    "What documented changes since the prior benefit period support the current clinical prognosis?",
+    "How does the current functional status compare with the prior benefit-period baseline?",
+    "What disease-specific findings remain active and clinically significant?",
+    "How do current nutritional, hydration, and swallowing findings affect the clinical picture?",
+    "How do recent hospitalizations or exacerbations relate to the documented advanced condition?",
+    "What is the clinical significance of documented stability or improvement?",
+    "Are potentially reversible causes contributing to the observed decline?",
+    "How do active co-morbidities contribute to the current prognosis?",
+    "Which conflicting findings require clarification before completing the narrative?"
+  ],
+  "narrative_support_elements": [
+    "Current primary diagnosis and relevant secondary diagnoses.",
+    "Benefit-period comparison summary.",
+    "Documented functional change.",
+    "Documented ADL change.",
+    "Documented nutritional change.",
+    "Documented symptom change.",
+    "Documented disease-specific findings.",
+    "Documented complications.",
+    "Documented utilization.",
+    "Documented treatment context.",
+    "Stability or improvement explanation needed.",
+    "Unresolved contradictions.",
+    "Source-supported physician-review points."
+  ],
+  "ai_layer": {
+    "ai_may": [
+      "aggregate documented evidence",
+      "compare prior and current evidence",
+      "identify documented decline",
+      "identify documented stability",
+      "identify documented improvement",
+      "identify mixed clinical courses",
+      "identify missing evidence",
+      "identify documentation gaps",
+      "identify conflicting evidence",
+      "identify potentially reversible factors for review",
+      "generate physician-review questions",
+      "generate individualized narrative elements",
+      "cite source records",
+      "produce audit-ready evidence summaries"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine",
+      "life_expectancy_prediction",
+      "admission_recommendation_engine",
+      "recertification_recommendation_engine",
+      "non_recertification_recommendation_engine",
+      "discharge_recommendation_engine",
+      "pass_fail_eligibility_decision_engine",
+      "physician_judgment_override",
+      "physician_certification_replacement",
+      "physician_attestation_replacement",
+      "conflicting_evidence_resolution_engine",
+      "undocumented_decline_inference_engine",
+      "missing_evidence_to_negative_evidence_conversion",
+      "stability_to_ineligibility_conversion",
+      "decline_to_eligibility_conversion",
+      "medical_director_judgment_replacement",
+      "medical_record_alteration"
+    ]
+  },
+  "rules": {
+    "read_only": true,
+    "no_eligibility_engine": true,
+    "no_terminal_status_engine": true,
+    "no_prognosis_engine": true,
+    "no_recertification_engine": true,
+    "no_discharge_recommendation_engine": true,
+    "no_patient_fact_writes": true,
+    "no_new_clinical_concepts": true,
+    "no_per_concept_relationship_edges": true,
+    "no_cross_scale_comparison": true,
+    "no_cross_regulatory_context_substitution": true,
+    "single_observation_never_creates_a_trend": true,
+    "evidence_strength_describes_documentation_completeness_only": true,
+    "comparison_labels_describe_documented_change_only": true,
+    "forbidden_vocabulary": [
+      "Eligible", "Not Eligible", "Terminal", "Not Terminal",
+      "Certify", "Do Not Certify", "Prognosis Met", "Prognosis Not Met",
+      "Recertify", "Do Not Recertify", "Discharge Recommended"
+    ]
+  },
+  "differentiation_guards": [
+    {"guard_number": 1, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_ESTABLISH", "object": "Hospice Eligibility"},
+    {"guard_number": 2, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_ESTABLISH", "object": "Terminal Status"},
+    {"guard_number": 3, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_ESTABLISH", "object": "Prognosis"},
+    {"guard_number": 4, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_RECOMMEND", "object": "Recertification"},
+    {"guard_number": 5, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_RECOMMEND", "object": "Non-Recertification"},
+    {"guard_number": 6, "subject": "RECERTIFICATION_EVIDENCE_SUMMARY", "relation": "DOES_NOT_RECOMMEND", "object": "Discharge"},
+    {"guard_number": 7, "subject": "Decline", "relation": "DOES_NOT_ESTABLISH", "object": "Continued Eligibility"},
+    {"guard_number": 8, "subject": "Stability", "relation": "DOES_NOT_ESTABLISH", "object": "Ineligibility"},
+    {"guard_number": 9, "subject": "Improvement", "relation": "DOES_NOT_ESTABLISH", "object": "Ineligibility"},
+    {"guard_number": 10, "subject": "Missing Evidence", "relation": "DOES_NOT_MEAN", "object": "Clinical Condition Absent"},
+    {"guard_number": 11, "subject": "Co-Morbidity Presence", "relation": "DOES_NOT_ESTABLISH", "object": "Prognostic Contribution"},
+    {"guard_number": 12, "subject": "Functional Score", "relation": "DOES_NOT_ESTABLISH", "object": "Eligibility"},
+    {"guard_number": 13, "subject": "Disease Diagnosis", "relation": "DOES_NOT_ESTABLISH", "object": "Eligibility"},
+    {"guard_number": 14, "subject": "AI Narrative Element", "relation": "IS_NOT", "object": "Physician Certification"},
+    {"guard_number": 15, "subject": "AI Narrative Element", "relation": "IS_NOT", "object": "Physician Attestation"},
+    {"guard_number": 16, "subject": "Conflicting Evidence", "relation": "REQUIRES", "object": "Clinician Review"},
+    {"guard_number": 17, "subject": "Potentially Reversible Factor", "relation": "REQUIRES", "object": "Clinician Review"},
+    {"guard_number": 18, "subject": "Every Summary Item", "relation": "REQUIRES", "object": "Source Traceability"},
+    {"guard_number": 19, "subject": "Every Trend", "relation": "REQUIRES", "object": "Dated Prior And Current Evidence"},
+    {"guard_number": 20, "subject": "Numeric Comparison", "relation": "REQUIRES", "object": "Compatible Units"}
+  ],
+  "unsupported_content_not_created": [
+    "Any per-concept OntologyRelationship edge linking every existing disease concept to a comparison section (deliberately out of scope, same rationale as PR #58).",
+    "Any patient-fact table, row, insert, update, or delete of any kind -- this manifest creates only its own 22 framework registry concepts.",
+    "Any eligibility, terminal-status, prognosis, or life-expectancy output of any kind.",
+    "Any certification, recertification, or discharge recommendation of any kind.",
+    "A duplicate copy of PR #58's 11 evidence sections, classification_rules, or evidence-strength vocabulary -- referenced by name only.",
+    "Any new disease-specific clinical concept, threshold, or scale."
+  ]
+}
