@@ -1,0 +1,184 @@
+{
+  "manifest_id": "stroke_coma_clinical_evidence_blueprint_v1",
+  "version": 1,
+  "scope": {
+    "extends_disease": "Stroke",
+    "extends_functional_assessment_framework": "Functional Assessment Framework",
+    "note": "Extension-only. Extends the existing 'Stroke' disease created by the Neurologic Production Source Manifest v1 (PR #37, merged). Coma is NOT a separate disease -- it already exists inside Stroke as END_STAGE_FINDING concepts ('Coma', 'Persistent Coma', 'Persistent Vegetative State', 'Minimally Conscious State') and as the SEVERITY_CLASS variant 'Stroke With Persistent Coma'. This manifest adds only the small set of universal non-disease-specific hospice-eligibility-support concepts that every other disease foundation already carries but Stroke's foundation never received, links them to the existing 'Stroke With Persistent Coma' variant, links Stroke's existing PPS/KPS 40-percent-threshold concepts to the Functional Assessment Framework, and adds a recertification trend model. No new disease, no new variant, and no new PPS/KPS/ADL scale definitions are created."
+  },
+  "rules": {
+    "extension_only": true,
+    "no_new_disease": true,
+    "no_new_variants": true,
+    "no_new_pps_kps_definitions": true,
+    "no_duplicate_assessment_definitions": true,
+    "atomic_concepts_only": true,
+    "patient_fact_requires_evidence": true,
+    "no_automatic_diagnosis": true,
+    "no_automatic_prognosis": true,
+    "no_automatic_hospice_eligibility": true,
+    "no_automatic_terminal_status": true
+  },
+  "already_present_verified": {
+    "note": "Every coma-related and infection/pressure-injury-related item already exists on the Stroke disease under PR #37 and is not duplicated here.",
+    "mapping": [
+      {"requested": "Coma", "existing_concept": "Coma (END_STAGE_FINDING, already present)"},
+      {"requested": "Persistent Coma", "existing_concept": "Persistent Coma (END_STAGE_FINDING, already present)"},
+      {"requested": "Persistent Vegetative State", "existing_concept": "Persistent Vegetative State (END_STAGE_FINDING, already present)"},
+      {"requested": "Minimally Conscious State", "existing_concept": "Minimally Conscious State (END_STAGE_FINDING, already present)"},
+      {"requested": "Aspiration Pneumonia", "existing_concept": "Aspiration Pneumonia (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Sepsis", "existing_concept": "Sepsis (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Pyelonephritis", "existing_concept": "Pyelonephritis (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Refractory Stage 3 or 4 Pressure Injury", "existing_concept": "Refractory Stage 3 or 4 Pressure Injury (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Stroke With Persistent Coma", "existing_concept": "Stroke With Persistent Coma (SEVERITY_CLASS variant, already present)"},
+      {"requested": "Karnofsky Performance Status 40 Percent or Less", "existing_concept": "Karnofsky Performance Status 40 Percent or Less (HOSPICE_ELIGIBILITY_SUPPORT, already present)"},
+      {"requested": "Palliative Performance Scale 40 Percent or Less", "existing_concept": "Palliative Performance Scale 40 Percent or Less (HOSPICE_ELIGIBILITY_SUPPORT, already present)"}
+    ]
+  },
+  "new_concepts": [
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "ADL Dependence",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Dependence in most or all activities of daily living is a recognized hospice-support indicator for advanced stroke/coma disease supporting documentation of disease severity and recertification review. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Progressive Functional Decline",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Progressive, longitudinal functional decline is a recognized hospice-support indicator for advanced stroke/coma disease supporting documentation of disease trajectory and recertification review. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    },
+    {
+      "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "name": "Progressive Nutritional Decline",
+      "content_source_type": "CLINICAL_REFERENCE",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+      "description": "Progressive, longitudinal nutritional decline is a recognized hospice-support indicator for advanced stroke/coma disease supporting documentation of disease trajectory and recertification review. Does not independently establish hospice eligibility -- remains dependent upon the complete documented clinical picture and physician-supported determination."
+    }
+  ],
+  "new_applicability": [
+    {
+      "variant": "Stroke With Persistent Coma",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "ADL Dependence",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Stroke With Persistent Coma",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "Progressive Functional Decline",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    },
+    {
+      "variant": "Stroke With Persistent Coma",
+      "variant_dimension": "SEVERITY_CLASS",
+      "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "concept": "Progressive Nutritional Decline",
+      "applicability_type": "HOSPICE_SUPPORT_FOR"
+    }
+  ],
+  "functional_assessment_linkage": [
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "Palliative Performance Scale 40 Percent or Less",
+      "faf_concept_name": "PPS - Palliative Performance Scale",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links Stroke's existing Palliative Performance Scale 40 Percent or Less hospice-eligibility-support concept to the Functional Assessment Framework's PPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    },
+    {
+      "chf_concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+      "chf_concept_name": "Karnofsky Performance Status 40 Percent or Less",
+      "faf_concept_name": "KPS - Karnofsky Performance Status",
+      "relationship_type": "REFERENCES_FUNCTIONAL_ASSESSMENT_SCALE",
+      "description": "Links Stroke's existing Karnofsky Performance Status 40 Percent or Less hospice-eligibility-support concept to the Functional Assessment Framework's KPS scale definition for full nurse-facing score interpretation, without duplicating the scale's level content.",
+      "content_source_type": "USER_DICTATED",
+      "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL"
+    }
+  ],
+  "recertification_evidence_model": {
+    "disease": "Stroke",
+    "trend_indicators": [
+      {
+        "name": "PPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Palliative Performance Scale score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "KPS Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current Karnofsky Performance Status score, tracked across recertification periods to document functional decline."
+      },
+      {
+        "name": "Functional Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current functional/ADL dependence status, tracked across recertification periods to document progressive functional decline."
+      },
+      {
+        "name": "Nutritional Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Previous vs. current nutritional/hydration status, tracked across recertification periods to document progressive nutritional decline."
+      },
+      {
+        "name": "Hospitalization Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency of hospitalization, tracked across recertification periods to document disease severity."
+      },
+      {
+        "name": "Symptom Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Frequency/severity of stroke/coma-related symptoms and complications (e.g. aspiration pneumonia, sepsis, pyelonephritis, pressure injury), tracked across recertification periods."
+      },
+      {
+        "name": "Narrative Trend",
+        "content_source_type": "USER_DICTATED",
+        "content_review_status": "PENDING_MEDICAL_DIRECTOR_APPROVAL",
+        "description": "Free-text nurse narrative summarizing overall clinical decline across recertification periods, supporting but never replacing physician-supported prognosis determination."
+      }
+    ]
+  },
+  "ai_layer": {
+    "ai_may": [
+      "missing_evidence_detection",
+      "missing_documentation_detection",
+      "recertification_gap_detection",
+      "decline_trend_detection",
+      "physician_review_prompts",
+      "narrative_support_prompts"
+    ],
+    "ai_may_not": [
+      "diagnosis_engine",
+      "eligibility_engine",
+      "terminal_status_engine",
+      "prognosis_engine"
+    ]
+  },
+  "differentiation_guards": [
+    {
+      "rule": "DO_NOT_CREATE_NEW_DISEASE",
+      "names": ["Coma", "Stroke-Induced Coma", "Post-Stroke Persistent Vegetative State"]
+    },
+    {
+      "rule": "NO_DUPLICATE_FAF_SCALE_DEFINITIONS",
+      "scales": ["PPS - Palliative Performance Scale", "KPS - Karnofsky Performance Status"]
+    }
+  ],
+  "summary": {
+    "canonical_disease_extended": "Stroke",
+    "new_concepts": 3,
+    "new_applicability": 3,
+    "functional_assessment_relationships": 2,
+    "recertification_trend_indicators": 7
+  }
+}

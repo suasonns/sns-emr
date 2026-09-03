@@ -1,0 +1,138 @@
+{
+  "manifest_version": null,
+  "extends_disease": "Stroke",
+  "extends_functional_assessment_framework": "Functional Assessment Framework",
+  "concepts": {
+    "expected": 3,
+    "stored": 3,
+    "missing": [],
+    "pre_existing_pr37_concepts_in_shared_domains": [
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "aspiration pneumonia"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "basilar artery occlusion"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "bilateral vertebral artery occlusion"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "coma or persistent vegetative state"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "current pulmonary aspiration not responsive to speech-language intervention"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "hemorrhage involving 30 percent or more of cerebrum"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "inability to maintain hydration and caloric intake"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "infratentorial hemorrhage volume 20 ml or greater"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "intraventricular hemorrhage extension"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "karnofsky performance status 40 percent or less"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "karnofsky/pps 40 or below after acute stroke"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "large anterior infarct with cortical and subcortical involvement"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "large bihemispheric infarction"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "medical complications documented within first days"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "midline shift 1.5 cm or greater"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "obstructive hydrocephalus"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "palliative performance scale 40 percent or less"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "pyelonephritis"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "recurrent fever after antibiotics"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "refractory stage 3 or 4 pressure injury"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "sepsis"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "sequential calorie counts showing inadequate intake"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "serum albumin below 2.5 g/dl when documented"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "severe dysphagia preventing sustaining intake"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "supratentorial hemorrhage volume 50 ml or greater"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "weight loss greater than 10 percent in six months"
+      ],
+      [
+        "HOSPICE_ELIGIBILITY_SUPPORT",
+        "weight loss greater than 7.5 percent in three months"
+      ]
+    ]
+  },
+  "applicability": {
+    "expected": 3,
+    "stored": 3
+  },
+  "functional_assessment_relationships": {
+    "expected": 2,
+    "stored": 2
+  },
+  "recertification_trend_indicators": {
+    "expected": 7,
+    "stored": 7,
+    "missing": []
+  },
+  "provenance_coverage": {
+    "checked": 10,
+    "valid": 10
+  },
+  "second_run_new_rows": 0
+}
