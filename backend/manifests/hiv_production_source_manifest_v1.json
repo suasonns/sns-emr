@@ -1,0 +1,1204 @@
+{
+  "manifest_id": "hiv_production_source_manifest_v1",
+  "source_authority": [
+    "HIV.pdf",
+    "cms guidelines.pdf",
+    "1.pdf",
+    "hospice_terminal_prog_non-disease_specific.pdf"
+  ],
+  "scope": {
+    "body_system": "Immune System",
+    "families": [
+      "HIV Disease and AIDS"
+    ]
+  },
+  "summary": {
+    "canonical_diseases": 2,
+    "total_variants": 8,
+    "total_concepts": 62,
+    "total_applicability_mappings": 36
+  },
+  "diseases": [
+    {
+      "disease": "Advanced HIV Disease",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Advanced HIV Disease"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Terminal Advanced HIV Disease"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Receiving Antiretroviral Therapy"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Antiretroviral Therapy Declined"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "LAB",
+          "name": "CD4 Count Less Than 25 Cells Per Microliter",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful laboratory threshold concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful laboratory threshold concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Low CD4 Count",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic laboratory finding; does not satisfy an exact LCD threshold concept.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Elevated Viral Load",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic laboratory finding; does not satisfy an exact LCD threshold concept.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "CNS Lymphoma",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "HIV Wasting Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Mycobacterium Avium Complex Bacteremia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Progressive Multifocal Leukoencephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Systemic Lymphoma With Advanced HIV Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Renal Failure Without Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cryptosporidium Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Toxoplasmosis Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for Advanced HIV Disease.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "CD4 Count Less Than 25 Cells Per Microliter",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility laboratory threshold for Advanced HIV Disease. Requires documented laboratory evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility laboratory threshold for Advanced HIV Disease. Requires documented laboratory evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "CNS Lymphoma",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "HIV Wasting Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Mycobacterium Avium Complex Bacteremia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Multifocal Leukoencephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Systemic Lymphoma With Advanced HIV Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Renal Failure Without Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Cryptosporidium Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Toxoplasmosis Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for Advanced HIV Disease. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 50 Percent",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact HIV-specific hospice-eligibility functional threshold for Advanced HIV Disease. Requires a documented functional assessment; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 50 Percent",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact HIV-specific hospice-eligibility functional threshold for Advanced HIV Disease. Requires a documented functional assessment; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "CD4 Count Less Than 25 Cells Per Microliter",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "CNS Lymphoma",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "HIV Wasting Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Mycobacterium Avium Complex Bacteremia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Multifocal Leukoencephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Systemic Lymphoma With Advanced HIV Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Renal Failure Without Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Cryptosporidium Infection",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Toxoplasmosis Unresponsive To Therapy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 50 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 50 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal Advanced HIV Disease",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    },
+    {
+      "disease": "AIDS",
+      "variants": [
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "AIDS"
+        },
+        {
+          "dimension": "DISEASE_PHASE",
+          "name": "Terminal AIDS"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Not Receiving Antiretroviral Therapy"
+        },
+        {
+          "dimension": "TREATMENT_STATE",
+          "name": "Antiretroviral Therapy Declined"
+        }
+      ],
+      "concepts": [
+        {
+          "domain": "LAB",
+          "name": "CD4 Count Less Than 25 Cells Per Microliter",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful laboratory threshold concept for AIDS.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful laboratory threshold concept for AIDS.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Low CD4 Count",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic laboratory finding; does not satisfy an exact LCD threshold concept.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value"
+          ]
+        },
+        {
+          "domain": "LAB",
+          "name": "Elevated Viral Load",
+          "source_classification": "GENERAL_CLINICAL_KNOWLEDGE",
+          "source_reference": "1.pdf",
+          "hospice_support_eligible": false,
+          "description": "Generic laboratory finding; does not satisfy an exact LCD threshold concept.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "CNS Lymphoma",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "HIV Wasting Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Mycobacterium Avium Complex Bacteremia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Progressive Multifocal Leukoencephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Systemic Lymphoma With Advanced HIV Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Renal Failure Without Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Cryptosporidium Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "COMPLICATION",
+          "name": "Toxoplasmosis Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": false,
+          "description": "Exact source-faithful complication concept for AIDS.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "CD4 Count Less Than 25 Cells Per Microliter",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility laboratory threshold for AIDS. Requires documented laboratory evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility laboratory threshold for AIDS. Requires documented laboratory evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "laboratory_name",
+            "laboratory_value",
+            "laboratory_unit",
+            "laboratory_date",
+            "source_record"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "CNS Lymphoma",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "HIV Wasting Syndrome",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Mycobacterium Avium Complex Bacteremia",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Multifocal Leukoencephalopathy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Systemic Lymphoma With Advanced HIV Disease",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Renal Failure Without Dialysis",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Cryptosporidium Infection",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Toxoplasmosis Unresponsive To Therapy",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact source-faithful hospice-eligibility complication for AIDS. Requires documented clinical evidence; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "clinical_documentation",
+            "diagnostic_confirmation"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 50 Percent",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact HIV-specific hospice-eligibility functional threshold for AIDS. Requires a documented functional assessment; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 50 Percent",
+          "source_classification": "LCD_DISEASE_SPECIFIC",
+          "source_reference": "HIV.pdf",
+          "hospice_support_eligible": true,
+          "description": "Exact HIV-specific hospice-eligibility functional threshold for AIDS. Requires a documented functional assessment; diagnosis alone never establishes eligibility.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "KPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "PPS Less Than 70 Percent",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "ADL Dependence",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Functional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        },
+        {
+          "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "name": "Progressive Nutritional Decline",
+          "source_classification": "LCD_NON_DISEASE_SPECIFIC",
+          "source_reference": "hospice_terminal_prog_non-disease_specific.pdf",
+          "hospice_support_eligible": true,
+          "description": "Shared non-disease-specific hospice-support indicator; does not independently establish eligibility without disease-specific evidence.",
+          "evidence_requirements": [
+            "functional_assessment_score",
+            "assessment_date"
+          ]
+        }
+      ],
+      "applicability": [
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "CD4 Count Less Than 25 Cells Per Microliter",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Persistent Viral Load Greater Than 100000 Copies Per mL",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "CNS Lymphoma",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "HIV Wasting Syndrome",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Mycobacterium Avium Complex Bacteremia",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Multifocal Leukoencephalopathy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Systemic Lymphoma With Advanced HIV Disease",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Visceral Kaposi Sarcoma Unresponsive To Therapy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Renal Failure Without Dialysis",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Cryptosporidium Infection",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Toxoplasmosis Unresponsive To Therapy",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 50 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 50 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "KPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "PPS Less Than 70 Percent",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "ADL Dependence",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Functional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        },
+        {
+          "variant_dimension": "DISEASE_PHASE",
+          "variant": "Terminal AIDS",
+          "concept_domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+          "concept": "Progressive Nutritional Decline",
+          "applicability_type": "HOSPICE_SUPPORT_FOR"
+        }
+      ]
+    }
+  ],
+  "differentiation_guards": [
+    {
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT",
+      "left": "Advanced HIV Disease",
+      "right": "AIDS"
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Low CD4 Count"
+      },
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "CD4 Count Less Than 25 Cells Per Microliter"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Elevated Viral Load"
+      },
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Persistent Viral Load Greater Than 100000 Copies Per mL"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 70 Percent"
+      },
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 50 Percent"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 70 Percent"
+      },
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 50 Percent"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Low CD4 Count"
+      },
+      "right": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "CD4 Count Less Than 25 Cells Per Microliter"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Elevated Viral Load"
+      },
+      "right": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Persistent Viral Load Greater Than 100000 Copies Per mL"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 70 Percent"
+      },
+      "right": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 50 Percent"
+      }
+    },
+    {
+      "rule": "CONCEPTS_REMAIN_DISTINCT",
+      "left": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 70 Percent"
+      },
+      "right": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 50 Percent"
+      }
+    }
+  ]
+}

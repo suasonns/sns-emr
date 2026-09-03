@@ -1,0 +1,240 @@
+{
+  "cycle_count": 0,
+  "differentiation_guard_results": [
+    {
+      "detail": null,
+      "left": "Advanced HIV Disease",
+      "passed": true,
+      "right": "AIDS",
+      "rule": "NOT_AUTOMATICALLY_EQUIVALENT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Low CD4 Count"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "CD4 Count Less Than 25 Cells Per Microliter"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Elevated Viral Load"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "LAB",
+        "name": "Persistent Viral Load Greater Than 100000 Copies Per mL"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 70 Percent"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 50 Percent"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 70 Percent"
+      },
+      "passed": true,
+      "right": {
+        "disease": "Advanced HIV Disease",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 50 Percent"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Low CD4 Count"
+      },
+      "passed": true,
+      "right": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "CD4 Count Less Than 25 Cells Per Microliter"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Elevated Viral Load"
+      },
+      "passed": true,
+      "right": {
+        "disease": "AIDS",
+        "domain": "LAB",
+        "name": "Persistent Viral Load Greater Than 100000 Copies Per mL"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 70 Percent"
+      },
+      "passed": true,
+      "right": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "KPS Less Than 50 Percent"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    },
+    {
+      "detail": null,
+      "left": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 70 Percent"
+      },
+      "passed": true,
+      "right": {
+        "disease": "AIDS",
+        "domain": "HOSPICE_ELIGIBILITY_SUPPORT",
+        "name": "PPS Less Than 50 Percent"
+      },
+      "rule": "CONCEPTS_REMAIN_DISTINCT"
+    }
+  ],
+  "evidence_rule_coverage": {
+    "covered": 62,
+    "expected": 62,
+    "missing": []
+  },
+  "expected_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 26,
+    "LCD_NON_DISEASE_SPECIFIC": 10
+  },
+  "expected_applicability_mappings": 36,
+  "expected_concepts": 62,
+  "expected_concepts_by_disease_and_domain": {
+    "AIDS": {
+      "COMPLICATION": 9,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 18,
+      "LAB": 4
+    },
+    "Advanced HIV Disease": {
+      "COMPLICATION": 9,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 18,
+      "LAB": 4
+    }
+  },
+  "expected_diseases": [
+    "AIDS",
+    "Advanced HIV Disease"
+  ],
+  "expected_variants": 8,
+  "expected_variants_by_disease_and_dimension": {
+    "AIDS": {
+      "DISEASE_PHASE": 2,
+      "TREATMENT_STATE": 2
+    },
+    "Advanced HIV Disease": {
+      "DISEASE_PHASE": 2,
+      "TREATMENT_STATE": 2
+    }
+  },
+  "manifest_path": "C:\\dev\\SNS EMR\\copilot-worktrees\\sns-emr\\neuro-clinical-reasoning\\backend\\manifests\\hiv_production_source_manifest_v1.json",
+  "missing_applicability_mappings": [],
+  "missing_concepts": [],
+  "missing_exact_lcd_concepts": [],
+  "missing_variants": [],
+  "orphan_count": 0,
+  "second_run_new_rows": 0,
+  "source_provenance_coverage": {
+    "covered": 62,
+    "expected": 62
+  },
+  "stored_applicability_by_source_classification": {
+    "LCD_DISEASE_SPECIFIC": 26,
+    "LCD_NON_DISEASE_SPECIFIC": 10
+  },
+  "stored_applicability_mappings": 36,
+  "stored_concepts": 62,
+  "stored_concepts_by_disease_and_domain": {
+    "AIDS": {
+      "COMPLICATION": 9,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 18,
+      "LAB": 4
+    },
+    "Advanced HIV Disease": {
+      "COMPLICATION": 9,
+      "HOSPICE_ELIGIBILITY_SUPPORT": 18,
+      "LAB": 4
+    }
+  },
+  "stored_diseases": [
+    "AIDS",
+    "Advanced HIV Disease"
+  ],
+  "stored_variants": 8,
+  "stored_variants_by_disease_and_dimension": {
+    "AIDS": {
+      "DISEASE_PHASE": 2,
+      "TREATMENT_STATE": 2
+    },
+    "Advanced HIV Disease": {
+      "DISEASE_PHASE": 2,
+      "TREATMENT_STATE": 2
+    }
+  },
+  "unexpected_applicability_mappings": [],
+  "unexpected_concepts": [],
+  "unexpected_variants": [],
+  "unresolved_concept_count": 0,
+  "unsupported_general_concepts": [
+    [
+      "AIDS",
+      "LAB",
+      "elevated viral load"
+    ],
+    [
+      "AIDS",
+      "LAB",
+      "low cd4 count"
+    ],
+    [
+      "Advanced HIV Disease",
+      "LAB",
+      "elevated viral load"
+    ],
+    [
+      "Advanced HIV Disease",
+      "LAB",
+      "low cd4 count"
+    ]
+  ]
+}
