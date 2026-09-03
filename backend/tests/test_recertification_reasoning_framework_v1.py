@@ -270,6 +270,126 @@ def test_prerequisite_block_message_matches_manifest_declaration():
 
 
 # ---------------------------------------------------------------------
+# Real, isolated-database prerequisite integration test
+# (BLOCKED-review Production Blocker #5)
+#
+# The fake-session test above proves the *code path* deterministically,
+# but never touches a real Session/ORM/database -- it cannot prove the
+# prerequisite check behaves correctly against real SQLAlchemy query
+# machinery. This test proves that on a genuinely clean, physically
+# separate database (never the shared sns_emr_test DB, and never a
+# destructive DELETE against production-like prerequisite rows):
+#   1. a brand-new DB with no PR #58 disease -> run() blocks with the
+#      exact message and zero framework rows/evidence rules written
+#   2. importing PR #58 makes the prerequisite check pass
+#   3. PR #59 then imports successfully
+#   4. re-running PR #59 is idempotent (zero new rows)
+#
+# The dedicated database is selected via TEST_DATABASE_URL (the same
+# override mechanism tests/conftest.py and backend/_create_test_db.py
+# already support) so this test never shares state with, or deletes rows
+# from, the shared sns_emr_test database used by every other test file.
+# ---------------------------------------------------------------------
+
+import os as _os
+from urllib.parse import urlsplit as _urlsplit, urlunsplit as _urlunsplit
+
+from sqlalchemy import create_engine as _create_engine, text as _text
+from sqlalchemy.orm import sessionmaker as _sessionmaker
+
+from app.core.database import DATABASE_URL as _APP_DATABASE_URL
+from app.models.ontology_disease_blueprint import OntologyDisease as _OntologyDisease
+from scripts.import_terminal_status_reasoning_framework_v1 import run as _run_pr58_import
+
+_ISOLATED_TEST_DB_NAME = "sns_emr_test_pr59_isolated"
+
+
+def _isolated_test_database_url() -> str:
+    override = _os.getenv("PR59_ISOLATED_TEST_DATABASE_URL")
+    if override:
+        return override
+    parts = _urlsplit(_APP_DATABASE_URL)
+    return _urlunsplit(parts._replace(path=f"/{_ISOLATED_TEST_DB_NAME}"))
+
+
+def _isolated_db_available() -> bool:
+    """The isolated database must be created and schema-migrated ahead of
+    time (see backend/_create_test_db.py with TEST_DATABASE_URL set to
+    this database's URL) -- this test never creates or migrates a
+    database itself, and never runs against anything whose name doesn't
+    contain 'test'."""
+    url = _isolated_test_database_url()
+    dbname = _urlsplit(url).path.lstrip("/")
+    if "test" not in dbname.lower():
+        return False
+    try:
+        engine = _create_engine(url, future=True, pool_pre_ping=True)
+        with engine.connect() as conn:
+            actual = conn.execute(_text("SELECT current_database()")).scalar()
+            has_ontology_table = conn.execute(_text(
+                "SELECT to_regclass('public.ontology_disease') IS NOT NULL"
+            )).scalar()
+        engine.dispose()
+        return actual == dbname and bool(has_ontology_table)
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(
+    not _isolated_db_available(),
+    reason=(
+        "Dedicated isolated database 'sns_emr_test_pr59_isolated' is not available/migrated. "
+        "Build it once with: "
+        "$env:TEST_DATABASE_URL=<url pointing at sns_emr_test_pr59_isolated>; python _create_test_db.py"
+    ),
+)
+def test_real_isolated_database_prerequisite_lifecycle():
+    isolated_url = _isolated_test_database_url()
+    engine = _create_engine(isolated_url, future=True, pool_pre_ping=True)
+    IsolatedSessionLocal = _sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+    # --- Start every run of this test from a clean slate: truncate only
+    # the two tables this framework and its PR #58 prerequisite touch,
+    # never a destructive sweep of unrelated tables, and never against the
+    # shared sns_emr_test database. ---
+    with engine.begin() as conn:
+        conn.execute(_text(
+            "TRUNCATE TABLE ontology_evidence_rule, ontology_disease_finding, ontology_disease CASCADE"
+        ))
+
+    db = IsolatedSessionLocal()
+    try:
+        # 1. Clean DB, PR #58 absent -> hard block, zero writes.
+        assert db.query(_OntologyDisease).filter_by(disease_name=PREREQUISITE_DISEASE_NAME).one_or_none() is None
+        with pytest.raises(RuntimeError, match=r"^BLOCKED: TERMINAL_STATUS_REASONING_FRAMEWORK_V1 prerequisite missing$"):
+            run_framework_import(db, manifest=MANIFEST)
+        db.rollback()
+
+        recert_disease = db.query(_OntologyDisease).filter_by(disease_name=DISEASE_NAME).one_or_none()
+        assert recert_disease is None, "run() must not create the Recertification disease when the prerequisite is missing"
+
+        # 2. Import PR #58 -> prerequisite now present.
+        _run_pr58_import(db)
+        db.commit()
+        assert db.query(_OntologyDisease).filter_by(disease_name=PREREQUISITE_DISEASE_NAME).one_or_none() is not None
+
+        # 3. PR #59 now succeeds.
+        result_first = run_framework_import(db, manifest=MANIFEST)
+        db.commit()
+        assert result_first["concepts_inserted"] == EXPECTED_SECTION_COUNT + 1
+        assert result_first["evidence_rules_inserted"] == EXPECTED_SECTION_COUNT + 1
+
+        # 4. Second run is fully idempotent (zero new rows).
+        result_second = run_framework_import(db, manifest=MANIFEST)
+        db.commit()
+        assert result_second["concepts_inserted"] == 0
+        assert result_second["evidence_rules_inserted"] == 0
+    finally:
+        db.close()
+        engine.dispose()
+
+
+# ---------------------------------------------------------------------
 # Manifest structural validation
 # ---------------------------------------------------------------------
 
