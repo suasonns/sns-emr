@@ -939,10 +939,48 @@ def populate_variants(
             .filter_by(disease_id=disease.id, variant_dimension=dimension, normalized_name=normalized)
             .one_or_none()
         )
+        parent_variant = variant_by_key.get((disease_name, parent_name)) if parent_name else None
+        if parent_name is not None and parent_variant is None:
+            # This script's own VARIANT_DEFS ordering guarantees a variant's
+            # parent entry is processed before its children. If the parent
+            # cannot be resolved, the hierarchy definition itself is broken
+            # (out-of-order VARIANT_DEFS) -- fail explicitly rather than
+            # silently creating/adopting an orphaned root variant.
+            raise RuntimeError(
+                f"Neurologic Clinical Reasoning: required parent variant "
+                f"'{parent_name}' for '{variant_name}' ({disease_name}/{dimension}) "
+                f"was not resolved. Check VARIANT_DEFS ordering."
+            )
         if existing is not None:
+            # A different importer (e.g. the Neurologic Production Source
+            # Manifest) may have already created this exact
+            # (disease, dimension, normalized_name) variant -- for example
+            # when that importer runs before this script against a shared
+            # database. This script is the single authoritative owner of
+            # the Neurologic Tier 4 recursive hierarchy (see module
+            # docstring), so it must reconcile -- not silently accept --
+            # a pre-existing row that is missing the hierarchy/ownership
+            # data only this script knows how to derive. Import order must
+            # not change the resulting authoritative state (idempotent on
+            # rerun: once reconciled, both checks below are no-ops).
+            if existing.parent_variant_id is None and parent_variant is not None:
+                existing.parent_variant_id = parent_variant.id
+            elif (
+                parent_variant is not None
+                and existing.parent_variant_id is not None
+                and existing.parent_variant_id != parent_variant.id
+            ):
+                raise RuntimeError(
+                    f"Neurologic Clinical Reasoning: existing variant "
+                    f"'{variant_name}' ({disease_name}/{dimension}) already has a "
+                    f"parent_variant_id that conflicts with the authoritative "
+                    f"hierarchy's expected parent '{parent_name}'. Ambiguous "
+                    f"parent -- refusing to overwrite."
+                )
+            if existing.source_reference is not None:
+                existing.source_reference = None
             variant_by_key[(disease_name, variant_name)] = existing
             continue
-        parent_variant = variant_by_key.get((disease_name, parent_name)) if parent_name else None
         variant = OntologyDiseaseVariant(
             id=uuid.uuid4(),
             disease_id=disease.id,
