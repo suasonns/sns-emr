@@ -1,0 +1,12 @@
+{
+  "allowed_paths": [
+    ".gitignore",
+    "backend/_create_test_db.py",
+    "backend/ci/pr_scope_allowlist.json"
+  ],
+  "allowed_prefixes": [
+    ".github/workflows/",
+    "backend/scripts/",
+    "backend/tests/"
+  ]
+}

@@ -3399,7 +3399,7 @@
           "variant": "Historical Stroke",
           "concept": "Residual Hemiplegia",
           "concept_domain": "FINDING",
-          "applicability_type": "EXPECTED_WITH",
+          "applicability_type": "SUPPORTS_DIFFERENTIATION",
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
@@ -3409,7 +3409,7 @@
           "variant": "Historical Stroke",
           "concept": "Residual Hemiparesis",
           "concept_domain": "FINDING",
-          "applicability_type": "EXPECTED_WITH",
+          "applicability_type": "SUPPORTS_DIFFERENTIATION",
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
@@ -3419,7 +3419,7 @@
           "variant": "Historical Stroke",
           "concept": "Residual Aphasia",
           "concept_domain": "FINDING",
-          "applicability_type": "EXPECTED_WITH",
+          "applicability_type": "SUPPORTS_DIFFERENTIATION",
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],
@@ -3429,7 +3429,7 @@
           "variant": "Historical Stroke",
           "concept": "Residual Dysphagia",
           "concept_domain": "FINDING",
-          "applicability_type": "EXPECTED_WITH",
+          "applicability_type": "SUPPORTS_DIFFERENTIATION",
           "source_ids": [
             "APPROVED_NEURO_MANIFEST"
           ],

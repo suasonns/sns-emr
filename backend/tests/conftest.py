@@ -44,25 +44,38 @@ TEST_USER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
 
 def _derive_test_database_url() -> str:
+    """TEST_DATABASE_URL is now REQUIRED, with no fallback -- see the
+    2026-09-03 incident where every session silently defaulting to the same
+    shared 'sns_emr_test' database caused cross-session schema collisions
+    (tables vanishing mid-run, migration deadlocks). Use
+    `backend/scripts/run_isolated_tests.py` to get one automatically."""
     override = os.getenv("TEST_DATABASE_URL")
-    if override:
-        return override
-    parts = urlsplit(DATABASE_URL)
-    if not parts.path.lstrip("/"):
+    if not override:
         raise RuntimeError(
-            "Cannot derive a test database URL: DATABASE_URL has no database name. "
-            "Set TEST_DATABASE_URL explicitly."
+            "TEST_DATABASE_URL_REQUIRED: Tests must use an explicitly "
+            "isolated database. Run tests via "
+            "`python backend/scripts/run_isolated_tests.py -- <pytest args>` "
+            "instead of invoking pytest directly."
         )
-    return urlunsplit(parts._replace(path="/sns_emr_test"))
+    return override
 
 
 TEST_DATABASE_URL = _derive_test_database_url()
+
+_SNS_TEST_WORKTREE_ID = os.getenv("SNS_TEST_WORKTREE_ID", "unknown")
+_SNS_TEST_RUN_ID = os.getenv("SNS_TEST_RUN_ID", "unknown")
+_TEST_APPLICATION_NAME = (
+    f"sns-emr-test:{_SNS_TEST_WORKTREE_ID}:{_SNS_TEST_RUN_ID}:{os.getpid()}"
+)
 
 _test_engine = create_engine(
     TEST_DATABASE_URL,
     future=True,
     pool_pre_ping=True,
-    connect_args={"options": "-csearch_path=public -c TimeZone=UTC"},
+    connect_args={
+        "options": "-csearch_path=public -c TimeZone=UTC",
+        "application_name": _TEST_APPLICATION_NAME,
+    },
 )
 
 TestSessionLocal = sessionmaker(
@@ -76,9 +89,8 @@ def _assert_tests_are_isolated_from_dev_db() -> None:
 
     if TEST_DATABASE_URL == DATABASE_URL:
         raise RuntimeError(
-            "REFUSING TO RUN TESTS: TEST_DATABASE_URL is identical to the "
-            "application's DATABASE_URL. Tests must run against a physically "
-            "separate database. See backend/_create_test_db.py."
+            "TEST_DATABASE_ISOLATION_VIOLATION: DATABASE_URL and "
+            "TEST_DATABASE_URL resolve to the same database."
         )
 
     with _test_engine.connect() as conn:
@@ -86,16 +98,17 @@ def _assert_tests_are_isolated_from_dev_db() -> None:
 
     if dbname == dev_dbname:
         raise RuntimeError(
-            f"REFUSING TO RUN TESTS: the test engine is connected to '{dbname}', "
-            f"which is the SAME database name as the app's DATABASE_URL "
-            f"('{dev_dbname}'). Tests must never share a database with the app."
+            f"TEST_DATABASE_ISOLATION_VIOLATION: the test engine is "
+            f"connected to '{dbname}', which is the SAME database name as "
+            f"the app's DATABASE_URL ('{dev_dbname}'). Tests must never "
+            "share a database with the app."
         )
-    if "test" not in (dbname or "").lower():
-        raise RuntimeError(
-            f"REFUSING TO RUN TESTS: connected database '{dbname}' does not look "
-            "like a dedicated test database (expected a name containing 'test'). "
-            "Refusing to run destructive test fixtures against it."
-        )
+    from scripts.test_db_identity import UnsafeTestDatabaseNameError, validate_database_name
+
+    try:
+        validate_database_name(dbname or "")
+    except UnsafeTestDatabaseNameError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 _assert_tests_are_isolated_from_dev_db()

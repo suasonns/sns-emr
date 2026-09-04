@@ -54,6 +54,11 @@ from typing import Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.treatment_identity import (
+    concept_identity_key,
+    existing_rows_by_canonical_name,
+    reconcile_category,
+)
 
 # See populate_ontology_ak_neuro_cardio.py for why this explicit import is
 # needed before any query touches the full ORM mapper registry.
@@ -84,6 +89,7 @@ from app.models.ontology_disease_blueprint import (
 )
 
 SYSTEM_NAME = "Pulmonary System"
+IMPORTER_NAME = "populate_ontology_ak_pulmonary_copd_crf"
 FAMILY_NAME = "Chronic Obstructive Pulmonary Disease"
 COPD = "Chronic Obstructive Pulmonary Disease"
 CRF = "Chronic Respiratory Failure"
@@ -781,10 +787,50 @@ def populate_nutritional_impacts(db, diseases) -> int:
 
 
 def populate_treatments(db, diseases) -> int:
-    return _populate_simple_domain(
-        db, OntologyDiseaseTreatment, TREATMENTS, diseases,
-        ["treatment_name", "treatment_category"], ["treatment_name", "treatment_category", "description"],
-    )
+    inserted = 0
+    for disease_name, rows in TREATMENTS.items():
+        disease = diseases[disease_name]
+        existing_rows = existing_rows_by_canonical_name(
+            db.query(OntologyDiseaseTreatment).filter_by(disease_id=disease.id).all(),
+            domain="TREATMENT",
+            table_name=OntologyDiseaseTreatment.__tablename__,
+            disease_id=disease.id,
+            importer_name=IMPORTER_NAME,
+            name_attr="treatment_name",
+            category_attr="treatment_category",
+        )
+        for name, category, desc in rows:
+            normalized_name = concept_identity_key("TREATMENT", name)
+            existing = existing_rows.get(normalized_name)
+            if existing is not None:
+                result = reconcile_category(
+                    domain="TREATMENT",
+                    disease_id=existing.disease_id,
+                    normalized_name=existing.normalized_name,
+                    existing_row_id=existing.id,
+                    existing_display_name=existing.treatment_name,
+                    existing_category=existing.treatment_category,
+                    incoming_display_name=name,
+                    incoming_category=category,
+                    importer_name=IMPORTER_NAME,
+                )
+                if result.changed:
+                    existing.treatment_category = result.category
+                continue
+            row = OntologyDiseaseTreatment(
+                id=uuid.uuid4(),
+                disease_id=disease.id,
+                treatment_name=name,
+                normalized_name=normalized_name,
+                treatment_category=category,
+                description=desc,
+            )
+            db.add(row)
+            db.flush()
+            existing_rows[normalized_name] = row
+            inserted += 1
+    db.flush()
+    return inserted
 
 
 def populate_medications(db, diseases) -> int:
@@ -838,25 +884,46 @@ def populate_treatment_limitations(db, diseases) -> int:
     inserted = 0
     for disease_name, rows in TREATMENT_LIMITATIONS.items():
         disease = diseases[disease_name]
+        existing_rows = existing_rows_by_canonical_name(
+            db.query(OntologyDiseaseTreatmentLimitation).filter_by(disease_id=disease.id).all(),
+            domain="TREATMENT_LIMITATION",
+            table_name=OntologyDiseaseTreatmentLimitation.__tablename__,
+            disease_id=disease.id,
+            importer_name=IMPORTER_NAME,
+            name_attr="limitation_name",
+            category_attr="limitation_category",
+        )
         for name, category, desc, evidence_req, hospice_rel in rows:
-            existing = (
-                db.query(OntologyDiseaseTreatmentLimitation)
-                .filter_by(disease_id=disease.id, limitation_name=name, limitation_category=category)
-                .one_or_none()
-            )
+            normalized_name = concept_identity_key("TREATMENT_LIMITATION", name)
+            existing = existing_rows.get(normalized_name)
             if existing is not None:
-                continue
-            db.add(
-                OntologyDiseaseTreatmentLimitation(
-                    id=uuid.uuid4(),
-                    disease_id=disease.id,
-                    limitation_name=name,
-                    limitation_category=category,
-                    description=desc,
-                    evidence_requirement=evidence_req,
-                    hospice_relevance=hospice_rel,
+                result = reconcile_category(
+                    domain="TREATMENT_LIMITATION",
+                    disease_id=existing.disease_id,
+                    normalized_name=existing.normalized_name,
+                    existing_row_id=existing.id,
+                    existing_display_name=existing.limitation_name,
+                    existing_category=existing.limitation_category,
+                    incoming_display_name=name,
+                    incoming_category=category,
+                    importer_name=IMPORTER_NAME,
                 )
+                if result.changed:
+                    existing.limitation_category = result.category
+                continue
+            row = OntologyDiseaseTreatmentLimitation(
+                id=uuid.uuid4(),
+                disease_id=disease.id,
+                limitation_name=name,
+                normalized_name=normalized_name,
+                limitation_category=category,
+                description=desc,
+                evidence_requirement=evidence_req,
+                hospice_relevance=hospice_rel,
             )
+            db.add(row)
+            db.flush()
+            existing_rows[normalized_name] = row
             inserted += 1
     db.flush()
     return inserted

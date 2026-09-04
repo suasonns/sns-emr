@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models.ontology_disease_blueprint import (
     OntologyBodySystem,
+    OntologyConceptVariantApplicability,
     OntologyDisease,
     OntologyDiseaseComplication,
     OntologyDiseaseEndStageFinding,
@@ -340,16 +341,17 @@ def clean_ak_state(db_session, ak_base_content):
     tests can invoke run() against a known-clean starting point."""
     disease_ids = [d.id for d in ak_base_content.values()]
 
-    db_session.query(OntologyDiseaseTreatmentLimitation).filter(
-        OntologyDiseaseTreatmentLimitation.disease_id.in_(disease_ids)
-    ).delete(synchronize_session=False)
-    db_session.query(OntologyDiseaseEndStageFinding).filter(
-        OntologyDiseaseEndStageFinding.disease_id.in_(disease_ids)
-    ).delete(synchronize_session=False)
-    db_session.query(OntologyDiseaseValidationResult).filter(
-        OntologyDiseaseValidationResult.disease_id.in_(disease_ids)
-    ).delete(synchronize_session=False)
-
+    # Evidence rules AND Tier5 applicability edges must be cleaned up FIRST,
+    # while the concept rows they reference (e.g. TreatmentLimitation and
+    # EndStageFinding, both directly reset below AND tracked in
+    # CONCEPT_DOMAINS) still exist. Deleting the concept rows before looking
+    # up their ids left dangling references for every prior test run's rows,
+    # because the id lookup below would find nothing once its target rows
+    # were already gone. This also applies to EndStageFinding concepts that
+    # other importers (e.g. the Neurologic Production Source Manifest, whose
+    # "Stroke" disease is shared with this fixture) attach their own Tier5
+    # OntologyConceptVariantApplicability edges to -- those edges must be
+    # cleaned up here too, not just this script's own evidence rules.
     for model_cls, concept_type, _name_attr, _required in CONCEPT_DOMAINS:
         concept_ids = [
             row.id
@@ -362,6 +364,20 @@ def clean_ak_state(db_session, ak_base_content):
                 OntologyEvidenceRule.concept_type == concept_type,
                 OntologyEvidenceRule.concept_id.in_(concept_ids),
             ).delete(synchronize_session=False)
+            db_session.query(OntologyConceptVariantApplicability).filter(
+                OntologyConceptVariantApplicability.concept_type == concept_type,
+                OntologyConceptVariantApplicability.concept_id.in_(concept_ids),
+            ).delete(synchronize_session=False)
+
+    db_session.query(OntologyDiseaseTreatmentLimitation).filter(
+        OntologyDiseaseTreatmentLimitation.disease_id.in_(disease_ids)
+    ).delete(synchronize_session=False)
+    db_session.query(OntologyDiseaseEndStageFinding).filter(
+        OntologyDiseaseEndStageFinding.disease_id.in_(disease_ids)
+    ).delete(synchronize_session=False)
+    db_session.query(OntologyDiseaseValidationResult).filter(
+        OntologyDiseaseValidationResult.disease_id.in_(disease_ids)
+    ).delete(synchronize_session=False)
     db_session.commit()
     return ak_base_content
 

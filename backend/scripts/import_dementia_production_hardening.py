@@ -75,6 +75,16 @@ from typing import Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.disease_family_ownership import (
+    authoritative_family_name_for,
+    resolve_or_create_authoritative_disease,
+)
+from app.ontology.treatment_identity import (
+    CANONICAL_TREATMENT_DOMAINS,
+    concept_identity_key,
+    existing_rows_by_canonical_name,
+    reconcile_category,
+)
 
 import app.models.poc  # noqa: F401
 from app.models.ontology_disease_blueprint import (
@@ -107,6 +117,7 @@ DEFAULT_MANIFEST_PATH = (
 DEFAULT_ACCEPTANCE_PATH = (
     Path(__file__).resolve().parent.parent / "artifacts" / "dementia_production_hardening_acceptance_v1.json"
 )
+IMPORTER_NAME = "import_dementia_production_hardening"
 
 SYSTEM_NAME = "Neurologic System"
 
@@ -269,38 +280,24 @@ def _resolve_or_create_diseases(db: Session, manifest: dict) -> Dict[str, Ontolo
     manifest's own scope declares."""
     system_name = manifest["scope"]["body_system"]
     family_names = manifest["scope"]["families"]
-    if len(family_names) != 1:
-        raise RuntimeError(
-            f"Dementia Production Hardening v1 declares {len(family_names)} families; "
-            "this importer expects exactly one shared family. Aborting without any writes."
-        )
-    family_name = family_names[0]
-
-    system = db.query(OntologyBodySystem).filter_by(system_name=system_name).one_or_none()
-    if system is None:
-        system = OntologyBodySystem(system_name=system_name)
-        db.add(system)
-        db.flush()
-
-    family = (
-        db.query(OntologyDiseaseFamily)
-        .filter_by(family_name=family_name, body_system_id=system.id)
-        .one_or_none()
-    )
-    if family is None:
-        family = OntologyDiseaseFamily(family_name=family_name, body_system_id=system.id)
-        db.add(family)
-        db.flush()
+    expected_families = {
+        authoritative_family_name_for(disease_entry["disease"])
+        for disease_entry in manifest["diseases"]
+    }
+    if not expected_families:
+        raise RuntimeError("Dementia Production Hardening v1 resolved no authoritative families.")
 
     resolved: Dict[str, OntologyDisease] = {}
     for disease_entry in manifest["diseases"]:
         name = disease_entry["disease"]
-        disease = db.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
-        if disease is None:
-            disease = OntologyDisease(disease_name=name, disease_family_id=family.id)
-            db.add(disease)
-            db.flush()
-        resolved[name] = disease
+        resolved[name] = resolve_or_create_authoritative_disease(
+            db,
+            disease_name=name,
+            importer_name=IMPORTER_NAME,
+            source_manifest=str(DEFAULT_MANIFEST_PATH),
+            system_name=system_name,
+            create_if_missing=True,
+        )
     return resolved
 
 
@@ -414,8 +411,22 @@ def run(db: Session, manifest: dict | None = None) -> dict:
     concept_by_key: Dict[Tuple[str, str, str], object] = {}
     for concept_type, (model_cls, name_attr) in CONCEPT_DOMAIN_MODEL_MAP.items():
         for disease_name, disease in diseases.items():
-            for existing in db.query(model_cls).filter_by(disease_id=disease.id).all():
-                key = (disease_name, concept_type, getattr(existing, name_attr).strip().lower())
+            existing_rows = db.query(model_cls).filter_by(disease_id=disease.id).all()
+            if concept_type in CANONICAL_TREATMENT_DOMAINS:
+                indexed_rows = existing_rows_by_canonical_name(
+                    existing_rows,
+                    domain=concept_type,
+                    table_name=model_cls.__tablename__,
+                    disease_id=disease.id,
+                    importer_name=IMPORTER_NAME,
+                    name_attr=name_attr,
+                    category_attr="treatment_category" if concept_type == "TREATMENT" else "limitation_category",
+                )
+                for normalized_name, row in indexed_rows.items():
+                    concept_by_key[(disease_name, concept_type, normalized_name)] = row
+                continue
+            for existing in existing_rows:
+                key = (disease_name, concept_type, concept_identity_key(concept_type, getattr(existing, name_attr)))
                 concept_by_key[key] = existing
 
     # --- Tier 4 variants ---
@@ -457,15 +468,28 @@ def run(db: Session, manifest: dict | None = None) -> dict:
         for c in disease_entry.get("concepts", []):
             domain = c["domain"]
             name = c["name"]
-            normalized = name.strip().lower()
+            normalized = concept_identity_key(domain, name)
             key = (disease_name, domain, normalized)
 
             if key in concept_by_key:
                 existing_row = concept_by_key[key]
-                if domain == "TREATMENT" and existing_row.treatment_category != c["treatment_category"]:
-                    existing_row.treatment_category = c["treatment_category"]
-                elif domain == "TREATMENT_LIMITATION" and existing_row.limitation_category != c["limitation_category"]:
-                    existing_row.limitation_category = c["limitation_category"]
+                if domain in CANONICAL_TREATMENT_DOMAINS:
+                    category_attr = "treatment_category" if domain == "TREATMENT" else "limitation_category"
+                    name_attr = "treatment_name" if domain == "TREATMENT" else "limitation_name"
+                    incoming_category = c[category_attr]
+                    result = reconcile_category(
+                        domain=domain,
+                        disease_id=existing_row.disease_id,
+                        normalized_name=existing_row.normalized_name,
+                        existing_row_id=existing_row.id,
+                        existing_display_name=getattr(existing_row, name_attr),
+                        existing_category=getattr(existing_row, category_attr),
+                        incoming_display_name=name,
+                        incoming_category=incoming_category,
+                        importer_name=IMPORTER_NAME,
+                    )
+                    if result.changed:
+                        setattr(existing_row, category_attr, result.category)
                 if _ensure_evidence_rule(db, domain, existing_row.id, c):
                     evidence_rules_inserted += 1
                 continue
@@ -819,5 +843,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

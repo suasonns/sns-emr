@@ -55,6 +55,7 @@ from typing import Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.treatment_identity import concept_identity_key
 
 import app.models.poc  # noqa: F401
 from app.models.ontology_disease_blueprint import (
@@ -342,13 +343,13 @@ def _run_for_disease(db: Session, manifest: dict, disease: OntologyDisease, faf_
     concept_by_key: Dict[Tuple[str, str], object] = {}
     for domain, (model_cls, name_attr) in CONCEPT_DOMAIN_MODEL_MAP.items():
         for existing in db.query(model_cls).filter_by(disease_id=disease.id).all():
-            concept_by_key[(domain, getattr(existing, name_attr).strip().lower())] = existing
+            concept_by_key[(domain, concept_identity_key(domain, getattr(existing, name_attr)))] = existing
 
     # --- new atomic concepts ---
     for c in manifest.get("new_concepts", []):
         domain = c["domain"]
         name = c["name"]
-        normalized = name.strip().lower()
+        normalized = concept_identity_key(domain, name)
         key = (domain, normalized)
 
         if key in concept_by_key:

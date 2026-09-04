@@ -63,9 +63,20 @@ ALLOWED_DISCIPLINES = {
 
 @pytest.fixture()
 def expanded_state(db_session):
-    """Run the Phase 2 expansion script once to bring the Neurologic System
-    to a known expanded state, then hand back the resolved disease map.
-    Safe to call repeatedly -- the script is idempotent."""
+    """Explicitly seed this file's declared prerequisite (the five
+    pre-existing Neurologic diseases, via the ONE authoritative
+    `tests.ontology_neurologic_baseline` helper) before running the Phase 2
+    expansion script, then hand back the resolved disease map.
+
+    This file must never depend on another test module having already run
+    and committed those prerequisite rows first -- both the seed step and
+    the expansion script are idempotent get-or-create operations, so
+    calling them here is always safe even if another module already built
+    (or will later build) the same baseline against the same database."""
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
+
+    seed_base_neurologic_diseases(db_session)
+    db_session.commit()
     run_expansion_script(db_session)
     db_session.commit()
     diseases = {
@@ -272,6 +283,10 @@ def test_every_active_clinical_concept_has_active_evidence_rule(db_session, expa
 
 
 def test_population_script_second_execution_creates_zero_new_rows(db_session):
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
+
+    seed_base_neurologic_diseases(db_session)
+    db_session.commit()
     run_expansion_script(db_session)
     db_session.commit()
     counts_second_run = run_expansion_script(db_session)
