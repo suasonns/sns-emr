@@ -214,6 +214,51 @@ def run_document_intelligence(*, document_id: UUID) -> None:
     finally:
         harvest_db.close()
 
+    # ------------------------------
+    # FACESHEET / CHART AUTO-POPULATION -- separate try/except, own DB
+    # session, so a parsing/persistence failure here can never affect the
+    # document-intelligence or harvesting work already committed above.
+    # Reuses the SAME shared service the manual /patients/from-hnp endpoint
+    # calls (persist_patient_from_hnp_extraction) -- no parsing or
+    # persistence logic is duplicated here. If the document text cannot be
+    # parsed as an HNP-style record (missing name/MRN/DOB), this is a safe
+    # no-op: nothing is fabricated, and the chart is simply left for manual
+    # entry as it is today.
+    # ------------------------------
+    facesheet_db = SessionLocal()
+    try:
+        doc = facesheet_db.query(DocumentRecord).filter(DocumentRecord.id == document_id).one_or_none()
+        if not doc or not doc.document_text or not doc.patient_id:
+            return
+
+        from app.api.patients import persist_patient_from_hnp_extraction
+
+        persist_patient_from_hnp_extraction(
+            facesheet_db,
+            tenant_id=doc.tenant_id,
+            user_id=doc.uploaded_by,
+            raw_text=doc.document_text,
+            patient_id=doc.patient_id,
+            source_name="PDF_UPLOAD",
+            source_document_id=doc.id,
+        )
+    except ValueError:
+        # Document text did not parse as an HNP-style record (missing
+        # name/MRN/DOB) -- expected for many document types (labs,
+        # orders, etc). Leave the chart untouched rather than guessing.
+        logger.info(
+            "document_intelligence_job: document_id=%s did not parse as HNP; "
+            "facesheet left unchanged",
+            document_id,
+        )
+    except Exception:
+        logger.exception(
+            "document_intelligence_job: failed to auto-populate facesheet for document_id=%s",
+            document_id,
+        )
+    finally:
+        facesheet_db.close()
+
 
 def _guess_content_type(file_path: str) -> str:
     from app.services.document_storage import guess_document_content_type

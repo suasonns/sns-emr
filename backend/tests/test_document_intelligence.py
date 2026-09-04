@@ -273,6 +273,102 @@ def test_run_document_intelligence_populates_text_and_harvests(
     assert "Sodium 128" in evidence_records[0].original_documentation
 
 
+def test_run_document_intelligence_auto_populates_facesheet_from_hnp_text(
+    db_session, monkeypatch, tmp_path
+):
+    """An uploaded document whose text parses as an HNP record (name/MRN/DOB
+    present) must auto-populate the patient's facesheet and primary
+    diagnosis via the SAME shared persist_patient_from_hnp_extraction()
+    service /patients/from-hnp uses -- with source_document_id stamped for
+    provenance. AI is left unconfigured so no network calls occur."""
+
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+
+    from app.services import document_storage as storage_module
+
+    storage_module.get_document_storage.cache_clear()
+    monkeypatch.setenv("DOCUMENT_STORAGE_PROVIDER", "local")
+    monkeypatch.setenv("DOCUMENT_STORAGE_DIR", str(tmp_path))
+
+    hnp_text = (
+        "Name: Test Patient\n"
+        "MRN: DOCINT-HNP-001\n"
+        "Date of birth: 03/14/1945\n"
+        "Sex: Female\n"
+        "Address: 100 Sample Ave\n"
+        "Diagnosis: Chronic obstructive pulmonary disease Noted on: 2026-01-05\n"
+    )
+
+    document_id = uuid.uuid4()
+    object_key = storage_module.build_document_key(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_id=document_id,
+        content_type="text/plain",
+    )
+    storage = storage_module.get_document_storage()
+    storage.put(
+        object_key,
+        io.BytesIO(hnp_text.encode("utf-8")),
+        content_type="text/plain",
+        max_bytes=storage_module.max_upload_bytes_from_env(),
+    )
+
+    doc = DocumentRecord(
+        id=document_id,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_type="HNP",
+        source="EXTERNAL",
+        file_name="hnp.txt",
+        file_path=object_key,
+        extracted_values={},
+        document_text=None,
+        uploaded_by=TEST_USER_ID,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    from app.services.evidence import document_harvest_job as job_module
+
+    monkeypatch.setattr(
+        job_module,
+        "SessionLocal",
+        lambda: db_session.get_bind().pool and _TestSessionProxy(db_session),
+    )
+
+    run_document_intelligence(document_id=document_id)
+
+    db_session.expire_all()
+
+    from app.models.patient_facesheet import PatientFaceSheet
+
+    facesheet = (
+        db_session.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .one()
+    )
+    assert facesheet.first_name == "Test"
+    assert facesheet.last_name == "Patient"
+    assert "obstructive" in (facesheet.secondary_diagnoses or "").lower() or (
+        facesheet.primary_diagnosis
+    )
+    assert facesheet.source_document_id == document_id
+
+    # Existing patient's MRN is authoritative and is never overwritten by
+    # a document-extracted value (persist_patient_from_hnp_extraction only
+    # backfills mrn when the existing patient record has none).
+    refreshed_patient = db_session.get(Patient, patient.id)
+    assert refreshed_patient.mrn == patient.mrn
+
+
 class _TestSessionProxy:
     """Thin proxy so the job's `db.close()` calls don't tear down the
     shared test session/transaction that the pytest fixture owns."""
