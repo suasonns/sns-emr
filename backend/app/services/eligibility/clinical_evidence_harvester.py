@@ -9,12 +9,16 @@ evidence_harvester.py -- its output is a supplementary, clearly-labeled
 (EvidenceOrigin.LEGACY_ADAPTER) bundle merged in only when requested, never
 a substitute for Layer 1, and never DOCUMENTED.
 
-Commit 2A scope: only the diagnosis source adapter is wired in. RN
-recertification assessment, F2F encounter/ECOG, laboratory, and other
-functional-assessment sources are Commit 2B/2C follow-ups (see
-evidence_sources.py module docstring) and are NOT part of this bundle yet --
-callers must not assume PPS/KPS/NYHA/ECOG/FAST/ADL evidence is present in a
-bundle produced by this class today.
+Commit 2A scope: only the diagnosis source adapter is wired in. Commit 2B
+adds the RN recertification assessment and Certification source adapters
+(see evidence_sources.py). F2F encounter/ECOG, laboratory, and other
+functional-assessment sources are Commit 2C/2D follow-ups and are NOT part
+of this bundle yet -- callers must not assume PPS/KPS/NYHA/ECOG/FAST/ADL
+concept-level evidence from a dedicated functional-assessment source is
+present in a bundle produced by this class today (RNRecertAssessment's own
+structured PPS/KPS/FAST/NYHA/ADL fields ARE surfaced under concept_code
+"RN_RECERT_ASSESSMENT", but no separate per-concept functional-assessment
+adapter exists yet).
 """
 
 from __future__ import annotations
@@ -31,7 +35,12 @@ from app.domain.clinical_runtime.contracts import (
     EvidenceErrorCode,
 )
 from app.models.patient import Patient
-from app.services.eligibility.evidence_sources import DiagnosisSourceAdapter, SourceAdapter
+from app.services.eligibility.evidence_sources import (
+    CertificationSourceAdapter,
+    DiagnosisSourceAdapter,
+    RNRecertAssessmentSourceAdapter,
+    SourceAdapter,
+)
 
 
 @dataclass(frozen=True)
@@ -76,10 +85,15 @@ class ClinicalEvidenceHarvester:
     """
 
     def __init__(self, adapters: Optional[list[SourceAdapter]] = None):
-        # Commit 2A: diagnosis only. Additional adapters are appended here in
-        # follow-up commits (2B/2C) -- see evidence_sources.py.
+        # Commit 2A: diagnosis only. Commit 2B adds RN recertification
+        # assessment and Certification (CTI/recert) sources. Additional
+        # adapters (functional-assessment-specific sources, negative/
+        # conflicting evidence) are appended in follow-up commits (2C/2D) --
+        # see evidence_sources.py.
         self._adapters: list[SourceAdapter] = adapters if adapters is not None else [
             DiagnosisSourceAdapter(),
+            RNRecertAssessmentSourceAdapter(),
+            CertificationSourceAdapter(),
         ]
 
     def harvest(

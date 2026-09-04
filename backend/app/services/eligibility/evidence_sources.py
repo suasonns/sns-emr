@@ -12,11 +12,13 @@ compatibility extraction" implemented by LegacyEvidenceAdapter in
 evidence_harvester.py, which has no database session and can therefore
 never produce DOCUMENTED evidence.
 
-Commit 2A scope: only PatientDiagnosis is implemented (diagnosis lifecycle
-is fully specified and verified against the real model below). Additional
-adapters (RN recertification assessment, F2F encounter/ECOG, laboratory,
-other functional-assessment sources) are tracked as Commit 2B/2C follow-ups
-and must not be assumed to exist by any caller of this module yet.
+Commit 2A scope: PatientDiagnosis. Commit 2B adds RN recertification
+assessment (RNRecertAssessment) and Certification (CTI/recert)
+source-adapters, both verified against their real models below. Additional
+adapters (F2F encounter/ECOG, laboratory, other functional-assessment
+sources, negative/conflicting evidence) are tracked as Commit 2C/2D
+follow-ups and must not be assumed to exist by any caller of this module
+yet.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ from app.domain.clinical_runtime.contracts import (
     EvidenceStatus,
 )
 from app.models.patient_diagnosis import PatientDiagnosis
+from app.models.rn_recert_assessment import RNRecertAssessment
+from app.models.certification import Certification
 
 
 class SourceAdapter(ABC):
@@ -179,6 +183,230 @@ class DiagnosisSourceAdapter(SourceAdapter):
                         "resolved_date": row.resolved_date.isoformat() if row.resolved_date else None,
                         "effective_benefit_period_number": row.effective_benefit_period_number,
                         "resolved_benefit_period_number": row.resolved_benefit_period_number,
+                    },
+                    recorded_at=recorded_at,
+                    effective_at=effective_at,
+                    extraction_method="DIRECT_ORM_READ",
+                    origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
+                )
+            )
+
+        return items
+
+
+def _tz_aware(value):
+    """Attach UTC if a naive datetime is read from the database (Postgres
+    `TIMESTAMP WITHOUT TIME ZONE` columns come back naive from psycopg2 even
+    though the application always writes/interprets them as UTC)."""
+    if value is not None and value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+class RNRecertAssessmentSourceAdapter(SourceAdapter):
+    """
+    Authoritative evidence source backed by
+    app.models.rn_recert_assessment.RNRecertAssessment -- the RN's structured
+    recertification assessment (PPS/KPS/FAST/NYHA, ADL level, primary
+    diagnosis, narrative translation output).
+
+    Deliberately excludes `eligibility_recommendation` from the surfaced
+    evidence: that field is the RN's own working recommendation, not a
+    verified clinical fact, and this adapter must never surface (let alone
+    generate) an eligibility conclusion.
+
+    RNRecertAssessment has no encounter/Visit foreign key (Visit carries only
+    admission_id, no benefit_period_id) -- the assessment record itself IS
+    the recertification encounter; source_encounter_id is left None rather
+    than fabricated.
+    """
+
+    SOURCE_MODEL = "RNRecertAssessment"
+    SOURCE_TABLE = "rn_recert_assessments"
+
+    def fetch(
+        self,
+        session: Session,
+        *,
+        patient_id: UUID,
+        tenant_id: UUID,
+        benefit_period_id: Optional[UUID] = None,
+        as_of: Optional[datetime] = None,
+    ) -> list[ClinicalEvidenceItem]:
+        query = session.query(RNRecertAssessment).filter(
+            RNRecertAssessment.patient_id == patient_id,
+            # tenant_id is nullable on this model (defense-in-depth column,
+            # not always populated by every caller). patient_id is already
+            # tenant-verified by ClinicalEvidenceHarvester.harvest() before
+            # any adapter runs, so a NULL tenant_id row for this exact
+            # patient is not a cross-tenant leak; a row explicitly stamped
+            # with a DIFFERENT tenant_id is still excluded.
+            (RNRecertAssessment.tenant_id.is_(None)) | (RNRecertAssessment.tenant_id == tenant_id),
+        )
+        if benefit_period_id is not None:
+            query = query.filter(RNRecertAssessment.benefit_period_id == benefit_period_id)
+
+        rows = query.order_by(
+            RNRecertAssessment.created_at.asc(),
+            RNRecertAssessment.id.asc(),
+        ).all()
+
+        items: list[ClinicalEvidenceItem] = []
+        for row in rows:
+            recorded_at = _tz_aware(row.created_at)
+            effective_at = _tz_aware(row.attested_at) or _tz_aware(row.finalized_at)
+
+            if as_of is not None and effective_at is not None and effective_at > as_of:
+                # Future-effective exclusion: an assessment attested/
+                # finalized after the as-of point must not be treated as
+                # evidence available "as of" that earlier moment.
+                continue
+
+            author_id = row.attesting_provider_user_id or row.created_by_user_id
+
+            source_reference = ClinicalSourceReference(
+                source_type="DATABASE_RECORD",
+                source_id=str(row.id),
+                source_record_type="RN_RECERT_ASSESSMENT",
+                source_field="normalized_observations_json",
+                source_recorded_at=recorded_at,
+                source_effective_at=effective_at,
+                source_author_id=str(author_id) if author_id else None,
+                authentication_status="ATTESTED" if row.attested_at is not None else "UNATTESTED",
+                source_model=self.SOURCE_MODEL,
+                source_table=self.SOURCE_TABLE,
+                source_patient_id=row.patient_id,
+                source_encounter_id=None,
+                source_benefit_period_id=row.benefit_period_id,
+            )
+
+            items.append(
+                ClinicalEvidenceItem(
+                    evidence_id=f"{self.SOURCE_TABLE}:{row.id}",
+                    patient_id=patient_id,
+                    concept_code="RN_RECERT_ASSESSMENT",
+                    canonical_name="RN Recertification Assessment",
+                    status=EvidenceStatus.DOCUMENTED,
+                    source_reference=source_reference,
+                    encounter_id=None,
+                    benefit_period_id=row.benefit_period_id,
+                    observed_value=row.status,
+                    normalized_value={
+                        "status": row.status,
+                        "pps_score": row.pps_score,
+                        "kps_score": row.kps_score,
+                        "fast_stage": row.fast_stage,
+                        "nyha_class": row.nyha_class,
+                        "adl_level": row.adl_level,
+                        "adl_dependency_count": row.adl_dependency_count,
+                        "primary_diagnosis": row.primary_diagnosis,
+                        # eligibility_recommendation intentionally omitted --
+                        # see class docstring.
+                        "discipline": row.discipline,
+                        "form_type": row.form_type,
+                        "translation_accepted": row.translation_accepted,
+                    },
+                    recorded_at=recorded_at,
+                    effective_at=effective_at,
+                    extraction_method="DIRECT_ORM_READ",
+                    origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
+                )
+            )
+
+        return items
+
+
+class CertificationSourceAdapter(SourceAdapter):
+    """
+    Authoritative evidence source backed by app.models.certification.Certification
+    -- the signed Certification/Recertification of Terminal Illness (CTI) and
+    its supporting physician narrative captured during the DRAFT stage.
+
+    Surfaces only what a physician documented (narrative, supporting
+    evidence, decline indicators, signed status/role/date). Never surfaces or
+    derives a certification/recertification/eligibility conclusion of its
+    own -- that determination belongs solely to a future, explicitly
+    clinician-reviewed Recertification Framework stage.
+    """
+
+    SOURCE_MODEL = "Certification"
+    SOURCE_TABLE = "certifications"
+
+    def fetch(
+        self,
+        session: Session,
+        *,
+        patient_id: UUID,
+        tenant_id: UUID,
+        benefit_period_id: Optional[UUID] = None,
+        as_of: Optional[datetime] = None,
+    ) -> list[ClinicalEvidenceItem]:
+        query = session.query(Certification).filter(
+            Certification.patient_id == patient_id,
+            Certification.tenant_id == tenant_id,
+        )
+        if benefit_period_id is not None:
+            query = query.filter(Certification.benefit_period_id == benefit_period_id)
+
+        rows = query.order_by(
+            Certification.effective_date.asc(),
+            Certification.id.asc(),
+        ).all()
+
+        items: list[ClinicalEvidenceItem] = []
+        for row in rows:
+            # Certification has no created_at column (BaseModel is not used
+            # here) -- signed_at is the only reliable "when was this
+            # recorded" timestamp available on the model.
+            recorded_at = _tz_aware(row.signed_at)
+            effective_at = None
+            if row.effective_date is not None:
+                effective_at = datetime.combine(
+                    row.effective_date, datetime.min.time(), tzinfo=timezone.utc
+                )
+
+            if as_of is not None and effective_at is not None and effective_at > as_of:
+                continue
+
+            source_reference = ClinicalSourceReference(
+                source_type="DATABASE_RECORD",
+                source_id=str(row.id),
+                source_record_type="CERTIFICATION_RECORD",
+                source_field="physician_narrative",
+                source_recorded_at=recorded_at,
+                source_effective_at=effective_at,
+                source_author_id=str(row.signed_by_user_id) if row.signed_by_user_id else None,
+                authentication_status=row.status,
+                source_model=self.SOURCE_MODEL,
+                source_table=self.SOURCE_TABLE,
+                source_patient_id=row.patient_id,
+                source_encounter_id=None,
+                source_benefit_period_id=row.benefit_period_id,
+                correction_status="SUPERSEDED" if row.superseded_by_id is not None else None,
+                supersedes_record_id=None,
+            )
+
+            items.append(
+                ClinicalEvidenceItem(
+                    evidence_id=f"{self.SOURCE_TABLE}:{row.id}",
+                    patient_id=patient_id,
+                    concept_code="CERTIFICATION",
+                    canonical_name="Certification of Terminal Illness",
+                    status=EvidenceStatus.DOCUMENTED,
+                    source_reference=source_reference,
+                    encounter_id=None,
+                    benefit_period_id=row.benefit_period_id,
+                    observed_value=row.status,
+                    normalized_value={
+                        "cert_type": row.cert_type,
+                        "status": row.status,
+                        "signed_by_role": row.signed_by_role,
+                        "physician_narrative": row.physician_narrative,
+                        "supporting_evidence": row.supporting_evidence,
+                        "clinical_decline_indicators": row.clinical_decline_indicators,
+                        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+                        "superseded_by_id": str(row.superseded_by_id) if row.superseded_by_id else None,
+                        "superseded_at": row.superseded_at.isoformat() if row.superseded_at else None,
                     },
                     recorded_at=recorded_at,
                     effective_at=effective_at,
