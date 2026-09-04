@@ -1463,24 +1463,36 @@ class HnpImportRequest(BaseModel):
     source_name: str | None = None
 
 
-@router.post("/from-hnp")
-def create_patient_from_hnp(
-    payload: HnpImportRequest,
-    db: Session = Depends(get_db_with_request_state),
-    user=Depends(require_tenant_user),
-):
-    tenant_id = _tenant_id_uuid(user)
-    user_id = getattr(user, "user_id", None)
+def persist_patient_from_hnp_extraction(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    user_id: uuid.UUID | None,
+    raw_text: str,
+    patient_id: str | uuid.UUID | None = None,
+    source_name: str | None = None,
+) -> dict:
+    """Shared HNP-extraction persistence service.
 
-    if not payload.raw_text or not payload.raw_text.strip():
-        raise HTTPException(400, "raw_text is required")
+    Parses `raw_text` (via parse_hnp_text/build_hnp_summary) and creates or
+    updates, in one transaction: Patient, PatientFaceSheet, the primary
+    PatientDiagnosis (+ Admission, for a brand new patient), and secondary
+    diagnosis/diagnosis-source provenance rows.
 
-    try:
-        summary = build_hnp_summary(payload.raw_text)
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+    This is the SINGLE application-level operation responsible for that
+    persistence -- both POST /patients/from-hnp (below) and any other
+    authorized ingestion workflow (e.g. an authorized PDF-upload pipeline)
+    MUST call this function rather than duplicating the parsing/matching/
+    facesheet-mapping/diagnosis-persistence logic inline.
 
-    source_name = (payload.source_name or "HNP").strip() or "HNP"
+    Raises ValueError if raw_text cannot be parsed (missing name/MRN/DOB).
+    Commits (and rolls back on failure) before returning -- callers should
+    invoke this with a session dedicated to this unit of work.
+    """
+
+    summary = build_hnp_summary(raw_text)
+
+    resolved_source_name = (source_name or "HNP").strip() or "HNP"
     diagnosis_entries = list(summary.get("diagnosis_entries") or [])
     for entry in diagnosis_entries:
         resolved_code, resolved_description, resolved_display_name = (
@@ -1492,10 +1504,12 @@ def create_patient_from_hnp(
         entry["icd10_code"] = resolved_code
         entry["display_name"] = resolved_display_name or resolved_description
 
-    if payload.patient_id:
+    source_name = resolved_source_name
+
+    if patient_id:
         patient = (
             db.query(Patient)
-            .filter(Patient.id == uuid.UUID(str(payload.patient_id)), Patient.tenant_id == tenant_id)
+            .filter(Patient.id == uuid.UUID(str(patient_id)), Patient.tenant_id == tenant_id)
             .first()
         )
     else:
@@ -1669,6 +1683,31 @@ def create_patient_from_hnp(
         "source": source_name,
         "updated_from_hnp": True,
     }
+
+
+@router.post("/from-hnp")
+def create_patient_from_hnp(
+    payload: HnpImportRequest,
+    db: Session = Depends(get_db_with_request_state),
+    user=Depends(require_tenant_user),
+):
+    tenant_id = _tenant_id_uuid(user)
+    user_id = getattr(user, "user_id", None)
+
+    if not payload.raw_text or not payload.raw_text.strip():
+        raise HTTPException(400, "raw_text is required")
+
+    try:
+        return persist_patient_from_hnp_extraction(
+            db,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            raw_text=payload.raw_text,
+            patient_id=payload.patient_id,
+            source_name=payload.source_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 # =========================================================
