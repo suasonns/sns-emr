@@ -14,11 +14,12 @@ never produce DOCUMENTED evidence.
 
 Commit 2A scope: PatientDiagnosis. Commit 2B adds RN recertification
 assessment (RNRecertAssessment) and Certification (CTI/recert)
-source-adapters, both verified against their real models below. Additional
-adapters (F2F encounter/ECOG, laboratory, other functional-assessment
-sources, negative/conflicting evidence) are tracked as Commit 2C/2D
-follow-ups and must not be assumed to exist by any caller of this module
-yet.
+source-adapters. Commit 2C adds F2FEncounter (the dedicated face-to-face
+functional-assessment source, including ECOG which RNRecertAssessment does
+not carry). All are verified against their real models below. Additional
+adapters (laboratory, other negative/conflicting evidence) are tracked as
+Commit 2D follow-ups and must not be assumed to exist by any caller of this
+module yet.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from app.domain.clinical_runtime.contracts import (
 from app.models.patient_diagnosis import PatientDiagnosis
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.certification import Certification
+from app.models.f2f_encounter import F2FEncounter
 
 
 class SourceAdapter(ABC):
@@ -407,6 +409,122 @@ class CertificationSourceAdapter(SourceAdapter):
                         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
                         "superseded_by_id": str(row.superseded_by_id) if row.superseded_by_id else None,
                         "superseded_at": row.superseded_at.isoformat() if row.superseded_at else None,
+                    },
+                    recorded_at=recorded_at,
+                    effective_at=effective_at,
+                    extraction_method="DIRECT_ORM_READ",
+                    origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
+                )
+            )
+
+        return items
+
+
+class F2FEncounterSourceAdapter(SourceAdapter):
+    """
+    Authoritative evidence source backed by app.models.f2f_encounter.F2FEncounter
+    -- the dedicated face-to-face functional-assessment encounter (the only
+    source model in this codebase that carries ECOG performance status;
+    RNRecertAssessment does not have ecog_score_* fields).
+
+    Surfaces the previous/current score pairs (PPS, ECOG) exactly as
+    recorded -- this adapter reports the two observed values as evidence,
+    it never itself computes or labels a "decline"/"improvement"
+    conclusion from the pair; that comparison belongs to a later,
+    explicitly-labeled synthesis stage (see
+    app/services/recertification_evidence_synthesis.py for the analogous
+    pattern used elsewhere in this codebase).
+    """
+
+    SOURCE_MODEL = "F2FEncounter"
+    SOURCE_TABLE = "f2f_encounters"
+
+    def fetch(
+        self,
+        session: Session,
+        *,
+        patient_id: UUID,
+        tenant_id: UUID,
+        benefit_period_id: Optional[UUID] = None,
+        as_of: Optional[datetime] = None,
+    ) -> list[ClinicalEvidenceItem]:
+        query = session.query(F2FEncounter).filter(
+            F2FEncounter.patient_id == patient_id,
+            F2FEncounter.tenant_id == tenant_id,
+        )
+        if benefit_period_id is not None:
+            query = query.filter(F2FEncounter.benefit_period_id == benefit_period_id)
+
+        rows = query.order_by(
+            F2FEncounter.encounter_date.asc(),
+            F2FEncounter.id.asc(),
+        ).all()
+
+        items: list[ClinicalEvidenceItem] = []
+        for row in rows:
+            recorded_at = _tz_aware(row.created_at)
+            effective_at = None
+            if row.encounter_date is not None:
+                effective_at = datetime.combine(
+                    row.encounter_date, datetime.min.time(), tzinfo=timezone.utc
+                )
+
+            if as_of is not None and effective_at is not None and effective_at > as_of:
+                # Future-effective exclusion.
+                continue
+
+            author_id = row.attesting_provider_user_id or row.performed_by_user_id or row.created_by
+
+            source_reference = ClinicalSourceReference(
+                source_type="DATABASE_RECORD",
+                source_id=str(row.id),
+                source_record_type="F2F_ENCOUNTER",
+                source_field="clinical_decline_summary",
+                source_recorded_at=recorded_at,
+                source_effective_at=effective_at,
+                source_author_id=str(author_id) if author_id else None,
+                authentication_status="ATTESTED" if row.attested_at is not None else "UNATTESTED",
+                source_model=self.SOURCE_MODEL,
+                source_table=self.SOURCE_TABLE,
+                source_patient_id=row.patient_id,
+                # F2FEncounter has no dedicated encounter_id field distinct
+                # from its own primary key -- the row IS the encounter.
+                source_encounter_id=None,
+                source_benefit_period_id=row.benefit_period_id,
+            )
+
+            items.append(
+                ClinicalEvidenceItem(
+                    evidence_id=f"{self.SOURCE_TABLE}:{row.id}",
+                    patient_id=patient_id,
+                    concept_code="F2F_ENCOUNTER",
+                    canonical_name="Face-to-Face Encounter",
+                    status=EvidenceStatus.DOCUMENTED,
+                    source_reference=source_reference,
+                    encounter_id=None,
+                    benefit_period_id=row.benefit_period_id,
+                    observed_value=row.status,
+                    normalized_value={
+                        "status": row.status,
+                        "performed_by_role": row.performed_by_role,
+                        "kps_score": row.kps_score,
+                        "pps_score_previous": row.pps_score_previous,
+                        "pps_score_current": row.pps_score_current,
+                        "ecog_score_previous": row.ecog_score_previous,
+                        "ecog_score_current": row.ecog_score_current,
+                        "fast_score": row.fast_score,
+                        "nyha_class": row.nyha_class,
+                        "adl_dependency_level": row.adl_dependency_level,
+                        "adl_dependency_count": row.adl_dependency_count,
+                        "is_bedbound": row.is_bedbound,
+                        "weight_loss_lbs": float(row.weight_loss_lbs) if row.weight_loss_lbs is not None else None,
+                        "oral_intake_decline": row.oral_intake_decline,
+                        "dysphagia": row.dysphagia,
+                        "hospitalizations_30d": row.hospitalizations_30d,
+                        "oxygen_lpm_previous": float(row.oxygen_lpm_previous) if row.oxygen_lpm_previous is not None else None,
+                        "oxygen_lpm_current": float(row.oxygen_lpm_current) if row.oxygen_lpm_current is not None else None,
+                        "primary_diagnosis": row.primary_diagnosis,
+                        "secondary_conditions": row.secondary_conditions,
                     },
                     recorded_at=recorded_at,
                     effective_at=effective_at,
