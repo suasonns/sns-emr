@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, String, Index, CheckConstraint, text
+from sqlalchemy import Boolean, Column, ForeignKeyConstraint, String, Index, CheckConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 
 from app.models.base import BaseModel
@@ -91,6 +91,43 @@ class Tenant(BaseModel):
     )
 
     # ---------------------------------------------------------
+    # FACESHEET DEMOGRAPHIC PROTECTION
+    # ---------------------------------------------------------
+    # Controls how persist_patient_from_hnp_extraction() reacts when an
+    # uploaded document's extracted demographic value (name/dob/mrn/
+    # gender/address/phone) conflicts with an already-populated facesheet
+    # value:
+    #   OFF            -- overwrite automatically (legacy behavior).
+    #   WARN            -- overwrite automatically, but record an audited
+    #                       FacesheetFieldSuggestion for visibility.
+    #   REQUIRE_REVIEW  -- never overwrite; queue a pending suggestion for
+    #                       a human to accept/reject (default).
+    facesheet_protection_mode = Column(
+        String(32),
+        nullable=False,
+        server_default=text("'REQUIRE_REVIEW'"),
+    )
+
+    # ---------------------------------------------------------
+    # AGENCY-OWNED OPERATIONAL DEFAULTS
+    # ---------------------------------------------------------
+    # The hospice Medical Director is an agency governance decision, never
+    # something hospital documents determine. This FK points at a record in
+    # this SAME tenant's own Physician directory (physicians.tenant_id must
+    # match) -- never another tenant's physician, never a platform/seed
+    # record. Nullable: an agency that has not configured a default sees
+    # NOT_CONFIGURED, never a fallback to some other tenant's data or a
+    # development seed value. A per-patient Facesheet override always takes
+    # precedence over this tenant default (see _apply_tenant_default_
+    # medical_director in app/api/patients.py, which only fills a *blank*
+    # medical_director_name -- it never overwrites an existing value).
+    default_medical_director_physician_id = Column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
+
+    # ---------------------------------------------------------
     # AUDIT SAFETY
     # ---------------------------------------------------------
 
@@ -163,6 +200,22 @@ class Tenant(BaseModel):
         CheckConstraint(
             "ein IS NULL OR char_length(ein) = 9",
             name="ck_tenant_ein_length",
+        ),
+        CheckConstraint(
+            "facesheet_protection_mode IN ('OFF', 'WARN', 'REQUIRE_REVIEW')",
+            name="ck_tenant_facesheet_protection_mode_valid",
+        ),
+        # Composite FK: a single-column FK on physicians.id alone cannot
+        # stop this tenant's default from pointing at ANOTHER tenant's
+        # physician row. Matching against (tenant_id, id) on physicians
+        # (see uq_physicians_tenant_id_id) enforces tenant isolation at
+        # the database level, not just in application code.
+        ForeignKeyConstraint(
+            ["id", "default_medical_director_physician_id"],
+            ["physicians.tenant_id", "physicians.id"],
+            name="fk_tenants_default_medical_director_physician_id",
+            ondelete="SET NULL",
+            use_alter=True,
         ),
         Index(
             "ix_tenants_type_status",

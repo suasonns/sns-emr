@@ -25,6 +25,9 @@ from app.models.user import User
 from app.models.admission import Admission
 from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
+from app.models.facesheet_field_suggestion import FacesheetFieldSuggestion
+from app.models.tenant import Tenant
+from app.services.audit_events import audit_event
 from app.models.task import Task
 from app.models.visit import Visit
 from app.models.patient_diagnosis import PatientDiagnosis
@@ -60,6 +63,7 @@ from app.services.physician_sync_service import (
     ASSOCIATE_MEDICAL_DIRECTOR,
     ATTENDING,
     MEDICAL_DIRECTOR,
+    apply_tenant_default_medical_director,
     get_physician_assignments,
 )
 from app.services.contact_sync_service import (
@@ -1210,6 +1214,14 @@ def create_patient(
     db.add(facesheet)
     db.add(diagnosis)
     db.add(admission)
+    # New patient: no explicit Medical Director assignment can exist yet,
+    # so this only ever prepopulates from the tenant's configured default
+    # (never from hospital documents) -- a no-op if the agency hasn't
+    # configured one. Flush first so patient_id exists for the FK.
+    db.flush()
+    apply_tenant_default_medical_director(
+        db, tenant_id=tenant_id, patient_id=patient_id, updated_by=user_id
+    )
 
     try:
         db.commit()
@@ -1420,6 +1432,10 @@ def build_patient_from_referral_payload(
     db.add(facesheet)
     db.add(diagnosis)
     db.add(admission)
+    db.flush()
+    apply_tenant_default_medical_director(
+        db, tenant_id=tenant_id, patient_id=patient_id, updated_by=user_id
+    )
 
     try:
         db.commit()
@@ -1467,6 +1483,114 @@ class HnpImportRequest(BaseModel):
     raw_text: str
     patient_id: str | None = None
     source_name: str | None = None
+
+
+def _reconcile_demographic_field(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    target_obj,
+    attr_name: str,
+    field_name: str,
+    new_value,
+    source_document_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+    protection_mode: str = "REQUIRE_REVIEW",
+) -> None:
+    """Apply `new_value` to `target_obj.attr_name` only when that field is
+    currently empty. If it is already populated and a later document's
+    extracted value differs, behavior depends on the tenant's
+    `facesheet_protection_mode`:
+
+      OFF            -- overwrite immediately (legacy behavior, no record).
+      WARN           -- overwrite, but record an audited
+                        FacesheetFieldSuggestion (status="auto_applied")
+                        so the change is still visible/reviewable.
+      REQUIRE_REVIEW -- (default) never overwrite; queue a pending
+                        FacesheetFieldSuggestion for a human to
+                        accept/reject via the facesheet suggestions
+                        endpoints.
+
+    This is the reconciliation point required by real hospice/billing
+    workflow: legitimate corrections (e.g. a Medicare rejection reveals a
+    name/DOB/MBI mismatch) must still be possible, but an automated
+    ingestion pipeline must never silently overwrite a confirmed
+    demographic value with OCR noise from an unrelated document. Only
+    demographic fields (identity + administrative) go through this path;
+    clinical fields (diagnoses, evidence, RNICA) are untouched and
+    continue to auto-update via the separate harvester pipeline.
+    """
+    if new_value in (None, ""):
+        return
+
+    current_value = getattr(target_obj, attr_name)
+    if current_value in (None, ""):
+        setattr(target_obj, attr_name, new_value)
+        return
+
+    if str(current_value) == str(new_value):
+        return  # already the same value -- nothing to reconcile
+
+    if protection_mode == "OFF":
+        setattr(target_obj, attr_name, new_value)
+        return
+
+    # Conflict: do not silently overwrite. Queue a suggestion (deduped
+    # against any existing pending suggestion for the same field + value
+    # so repeated uploads of the same conflicting document don't spam
+    # duplicates). In WARN mode, apply the value AND record it so the
+    # change remains visible/auditable rather than untracked.
+    existing = (
+        db.query(FacesheetFieldSuggestion)
+        .filter(
+            FacesheetFieldSuggestion.tenant_id == tenant_id,
+            FacesheetFieldSuggestion.patient_id == patient_id,
+            FacesheetFieldSuggestion.field_name == field_name,
+            FacesheetFieldSuggestion.suggested_value == str(new_value),
+            FacesheetFieldSuggestion.status.in_(["pending", "auto_applied"]),
+        )
+        .first()
+    )
+    if existing is not None:
+        if protection_mode == "WARN":
+            setattr(target_obj, attr_name, new_value)
+        return
+
+    if protection_mode == "WARN":
+        setattr(target_obj, attr_name, new_value)
+        status = "auto_applied"
+    else:
+        status = "pending"
+
+    db.add(
+        FacesheetFieldSuggestion(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            field_name=field_name,
+            current_value=str(current_value),
+            suggested_value=str(new_value),
+            source_document_id=source_document_id,
+            status=status,
+            created_by=user_id,
+            created_at=datetime.now(timezone.utc),
+        )
+    )
+    if protection_mode == "WARN":
+        audit_event(
+            db=db,
+            action="facesheet_field_auto_applied_warn",
+            entity_type="patient_facesheet",
+            entity_id=str(patient_id),
+            user_id=str(user_id) if user_id else None,
+            tenant_id=str(tenant_id),
+            meta={
+                "field_name": field_name,
+                "previous_value": str(current_value),
+                "new_value": str(new_value),
+                "source_document_id": str(source_document_id) if source_document_id else None,
+            },
+        )
 
 
 def persist_patient_from_hnp_extraction(
@@ -1613,12 +1737,51 @@ def persist_patient_from_hnp_extraction(
             created_by=user_id,
         )
         db.add(admission)
+        # Genuinely new patient created from an HNP upload -- prepopulate
+        # the Medical Director from the tenant's configured default only
+        # (never harvested from the hospital document itself; a hospital
+        # packet does not determine who the hospice agency's own Medical
+        # Director is). No-op if the agency hasn't configured one.
+        db.flush()
+        apply_tenant_default_medical_director(
+            db, tenant_id=tenant_id, patient_id=patient_id, updated_by=user_id
+        )
 
     else:
+        protection_mode = (
+            db.query(Tenant.facesheet_protection_mode)
+            .filter(Tenant.id == tenant_id)
+            .scalar()
+        ) or "REQUIRE_REVIEW"
+
         patient.primary_diagnosis = summary["primary_diagnosis"] or patient.primary_diagnosis
-        patient.date_of_birth = date.fromisoformat(summary["date_of_birth"])
-        if not patient.mrn:
-            patient.mrn = summary["mrn"]
+        # Identity fields (dob, mrn) are demographic data: never silently
+        # overwritten once populated -- conflicts are queued as
+        # suggestions instead. See _reconcile_demographic_field.
+        _reconcile_demographic_field(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            target_obj=patient,
+            attr_name="date_of_birth",
+            field_name="dob",
+            new_value=date.fromisoformat(summary["date_of_birth"]),
+            source_document_id=source_document_id,
+            user_id=user_id,
+            protection_mode=protection_mode,
+        )
+        _reconcile_demographic_field(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            target_obj=patient,
+            attr_name="mrn",
+            field_name="mrn",
+            new_value=summary["mrn"],
+            source_document_id=source_document_id,
+            user_id=user_id,
+            protection_mode=protection_mode,
+        )
         patient.updated_at = datetime.now(timezone.utc)
 
         facesheet = (
@@ -1646,24 +1809,44 @@ def persist_patient_from_hnp_extraction(
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(facesheet)
+            db.flush()
+            apply_tenant_default_medical_director(
+                db, tenant_id=tenant_id, patient_id=patient.id, updated_by=user_id
+            )
         else:
-            # Identity fields (first/last name) are protected once already
-            # populated: this function runs unconditionally on EVERY
-            # uploaded document's extracted text, not just genuine H&P
-            # records, and a lower-confidence document (an insurance
-            # authorization, an ADR cover letter, an orders packet) can
-            # incidentally match the generic "Name:" pattern in
-            # parse_hnp_text on unrelated text and silently overwrite a
-            # correct, previously-confirmed patient name with garbage.
-            # Only fill the name in if it is genuinely missing -- exactly
-            # the same fill-gaps-don't-overwrite policy already used for
-            # mrn above.
-            facesheet.first_name = facesheet.first_name or summary["first_name"]
-            facesheet.last_name = facesheet.last_name or summary["last_name"]
-            facesheet.dob = date.fromisoformat(summary["date_of_birth"])
-            facesheet.phone = summary.get("phone") or facesheet.phone
-            facesheet.address = summary.get("address") or facesheet.address
-            facesheet.gender = summary.get("sex") or facesheet.gender
+            # Demographic fields (identity: name/dob/gender;
+            # administrative: address/phone) are never silently
+            # overwritten once populated -- this function runs
+            # unconditionally on EVERY uploaded document's extracted
+            # text, not just genuine H&P records, and a lower-confidence
+            # document (an insurance authorization, an ADR cover letter,
+            # an orders packet) can incidentally match parse_hnp_text's
+            # generic patterns on unrelated text. Conflicts are queued as
+            # FacesheetFieldSuggestion rows for a human to accept/reject/
+            # dismiss -- real billing corrections (e.g. a Medicare
+            # rejection revealing a name/DOB mismatch) remain possible,
+            # just never automatic.
+            db.flush()  # ensure facesheet.id/patient.id visible for suggestion FKs
+            for attr_name, field_name, new_value in (
+                ("first_name", "first_name", summary["first_name"]),
+                ("last_name", "last_name", summary["last_name"]),
+                ("dob", "dob", date.fromisoformat(summary["date_of_birth"])),
+                ("gender", "gender", summary.get("sex")),
+                ("phone", "phone", summary.get("phone")),
+                ("address", "address", summary.get("address")),
+            ):
+                _reconcile_demographic_field(
+                    db,
+                    tenant_id=tenant_id,
+                    patient_id=patient.id,
+                    target_obj=facesheet,
+                    attr_name=attr_name,
+                    field_name=field_name,
+                    new_value=new_value,
+                    source_document_id=source_document_id,
+                    user_id=user_id,
+                    protection_mode=protection_mode,
+                )
             facesheet.primary_diagnosis = summary["primary_diagnosis"] or facesheet.primary_diagnosis
             facesheet.secondary_diagnoses = _build_hnp_secondary_summary(diagnosis_entries)
             if source_document_id is not None:
@@ -2216,6 +2399,10 @@ def save_facesheet(
             created_by=str(user_id),
         )
         db.add(facesheet)
+        db.flush()
+        apply_tenant_default_medical_director(
+            db, tenant_id=tenant_id, patient_id=patient.id, updated_by=user_id
+        )
 
     if "primary_diagnosis" in data:
         primary_diagnosis_value = data.get("primary_diagnosis")
