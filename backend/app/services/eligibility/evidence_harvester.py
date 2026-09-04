@@ -43,6 +43,7 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         "fast_stage_rank": None,
         "fast_stage_at_or_beyond_7a": None,
         "nyha_class": None,
+        "ecog_score": None,
         "kps_or_pps_lt_70": None,
         "kps_or_pps_declining": None,
         "adl_dependency_count": None,
@@ -165,6 +166,16 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         ],
     )
     facts["nyha_class"] = _normalize_nyha_class(raw_nyha)
+
+    raw_ecog = _first_value(
+        sources,
+        [
+            "ecog",
+            "ecog_score",
+            "ecog_score_current",
+        ],
+    )
+    facts["ecog_score"] = _normalize_ecog_score(raw_ecog)
 
     if facts["kps"] is not None or facts["pps"] is not None:
         facts["kps_or_pps_lt_70"] = any(
@@ -929,6 +940,18 @@ def _normalize_nyha_class(value: Any) -> str | None:
     return normalized or None
 
 
+def _normalize_ecog_score(value: Any) -> int | None:
+    """ECOG performance status is an integer 0-5. Out-of-range values are
+    treated as a normalization failure (returns None) rather than silently
+    clamped, so the caller can distinguish MISSING from UNVERIFIED."""
+    number = _normalize_int(value)
+    if number is None:
+        return None
+    if number < 0 or number > 5:
+        return None
+    return number
+
+
 def _to_bool(value: Any) -> bool | None:
     if value is None:
         return None
@@ -943,6 +966,153 @@ def _to_bool(value: Any) -> bool | None:
         if normalized in {"false", "no", "n", "0", "absent", "negative", "off"}:
             return False
     return None
+
+
+# =========================================================
+# TYPED RUNTIME HARVESTER (Commit 2 of the clinical_runtime
+# pipeline -- see app/domain/clinical_runtime/contracts.py)
+# =========================================================
+#
+# harvest_clinical_facts() above remains the single source of truth for
+# extraction logic. ClinicalEvidenceHarvester does not reimplement or
+# duplicate that extraction -- it wraps its output into the typed
+# ClinicalEvidenceBundle/ClinicalEvidenceItem contracts so downstream
+# runtime stages (ontology resolution, functional assessment, terminal
+# status, recertification) have a single well-typed input shape instead of
+# an untyped dict.
+#
+# KNOWN LIMITATION (must not be silently "fixed" by fabricating data):
+# harvest_clinical_facts() takes an opaque, duck-typed `patient` payload
+# (dict / object with dict-like attributes) and has no database session and
+# no reference to real ORM records. It therefore cannot supply true
+# record-level provenance (source_id, source_recorded_at, source_author_id).
+# ClinicalSourceReference.source_field is populated (which raw fact key
+# produced the value); the remaining provenance fields are left None until a
+# follow-up commit sources facts directly from real ORM models (the pattern
+# already used in app/services/recertification_evidence_synthesis.py) rather
+# than an opaque dict payload. Callers must not assume source_id/
+# source_recorded_at are populated by this harvester today.
+
+from dataclasses import dataclass as _dataclass
+from datetime import datetime as _datetime, timezone as _timezone
+from typing import Optional as _Optional
+from uuid import UUID as _UUID
+
+from app.domain.clinical_runtime.contracts import (
+    ClinicalEvidenceBundle,
+    ClinicalEvidenceItem,
+    ClinicalSourceReference,
+    EvidenceStatus,
+)
+
+# Facts that represent a validated, ranged clinical scale. For these keys we
+# distinguish "no value supplied" (MISSING) from "a value was supplied but
+# failed normalization/range validation" (UNVERIFIED) -- see
+# harvest_clinical_facts' _normalize_* helpers, none of which silently clamp
+# an out-of-range value into something else.
+_SCALE_FACT_KEYS = {
+    "pps": ["pps", "pps_score"],
+    "kps": ["kps", "kps_score"],
+    "fast_stage": ["fast", "fast_stage", "fast_score"],
+    "nyha_class": ["nyha", "nyha_class"],
+    "ecog_score": ["ecog", "ecog_score", "ecog_score_current"],
+}
+
+
+@_dataclass(frozen=True)
+class PatientEvidenceContext:
+    """
+    Explicit typed input to ClinicalEvidenceHarvester.harvest().
+
+    `patient` is the same opaque duck-typed payload harvest_clinical_facts()
+    already accepts (dict, or object exposing dict-like clinical-data
+    attributes). It is intentionally left untyped here (Any is not imported
+    to keep the boundary obvious) -- it is a legacy-shaped input being
+    adapted into the typed pipeline, not a new contract.
+    """
+
+    patient_id: _UUID
+    patient: Any
+    encounter_id: _Optional[str] = None
+    benefit_period_id: _Optional[_UUID] = None
+
+
+class ClinicalEvidenceHarvester:
+    """
+    Typed wrapper around harvest_clinical_facts() producing a
+    ClinicalEvidenceBundle for the clinical_runtime pipeline.
+
+    Guarantees:
+      - never returns an eligibility, prognosis, certification,
+        recertification, or discharge conclusion (this class only classifies
+        and packages facts; it draws no clinical conclusions)
+      - deterministic ordering (items sorted by concept_code)
+      - one evidence item per fact key (harvest_clinical_facts already
+        dedupes across its candidate sources internally)
+      - a present-but-unparseable scale value is reported as UNVERIFIED, not
+        silently coerced to MISSING or to an apparently-valid DOCUMENTED value
+    """
+
+    def harvest(self, context: PatientEvidenceContext) -> ClinicalEvidenceBundle:
+        facts = harvest_clinical_facts(context.patient)
+        sources = _candidate_sources(context.patient)
+        generated_at = _datetime.now(_timezone.utc)
+
+        items: list[ClinicalEvidenceItem] = []
+        for concept_code in sorted(facts.keys()):
+            normalized_value = facts[concept_code]
+            status = self._classify_status(concept_code, normalized_value, sources)
+
+            source_reference = ClinicalSourceReference(
+                source_type="STRUCTURED_FIELD",
+                source_field=concept_code,
+            )
+
+            items.append(
+                ClinicalEvidenceItem(
+                    evidence_id=f"{context.patient_id}:{concept_code}",
+                    patient_id=context.patient_id,
+                    concept_code=concept_code,
+                    canonical_name=concept_code,
+                    status=status,
+                    source_reference=source_reference,
+                    encounter_id=context.encounter_id,
+                    benefit_period_id=context.benefit_period_id,
+                    observed_value=normalized_value,
+                    normalized_value=normalized_value,
+                    recorded_at=generated_at if normalized_value is not None else None,
+                    extraction_method="STRUCTURED_FIELD_LOOKUP",
+                )
+            )
+
+        return ClinicalEvidenceBundle(
+            patient_id=context.patient_id,
+            items=items,
+            encounter_id=context.encounter_id,
+            benefit_period_id=context.benefit_period_id,
+            generated_at=generated_at,
+        )
+
+    @staticmethod
+    def _classify_status(
+        concept_code: str,
+        normalized_value: Any,
+        sources: list[dict[str, Any]],
+    ) -> EvidenceStatus:
+        if normalized_value is not None:
+            return EvidenceStatus.DOCUMENTED
+
+        raw_keys = _SCALE_FACT_KEYS.get(concept_code)
+        if raw_keys is not None:
+            raw_value = _first_value(sources, raw_keys)
+            if not _empty(raw_value):
+                # A raw value was supplied for this scale but normalization
+                # rejected it (out of range / unparseable) -- this is a real
+                # data-quality problem, not an absence of data.
+                return EvidenceStatus.UNVERIFIED
+
+        return EvidenceStatus.MISSING
+
 
 
 def _coalesce_bool(*values: Any) -> bool | None:
