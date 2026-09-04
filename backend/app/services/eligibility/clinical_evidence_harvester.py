@@ -11,9 +11,12 @@ a substitute for Layer 1, and never DOCUMENTED.
 
 Commit 2A scope: only the diagnosis source adapter is wired in. Commit 2B
 adds the RN recertification assessment and Certification source adapters.
-Commit 2C adds F2FEncounter (functional assessment / ECOG). Laboratory and
-other negative/conflicting-evidence sources are Commit 2D follow-ups and
-are NOT part of this bundle yet.
+Commit 2C adds F2FEncounter (functional assessment / ECOG). Commit 2D adds
+structured cross-source conflict detection (ClinicalEvidenceBundle.conflicts)
+and missing-workflow-requirement detection
+(ClinicalEvidenceBundle.missing_requirements), and replaces the prior
+UUID-influenced final ordering with an explicit clinical-chronology order.
+Laboratory and other additional sources remain follow-ups.
 """
 
 from __future__ import annotations
@@ -30,6 +33,10 @@ from app.domain.clinical_runtime.contracts import (
     EvidenceErrorCode,
 )
 from app.models.patient import Patient
+from app.services.eligibility.evidence_conflict_detection import (
+    detect_functional_score_conflicts,
+    detect_missing_rn_recert_requirement,
+)
 from app.services.eligibility.evidence_sources import (
     CertificationSourceAdapter,
     DiagnosisSourceAdapter,
@@ -144,13 +151,44 @@ class ClinicalEvidenceHarvester:
                 errors.append(EvidenceErrorCode.EVIDENCE_SOURCE_UNAVAILABLE)
                 warnings.append(f"{adapter.SOURCE_MODEL} adapter failed: {exc.__class__.__name__}")
 
-        # Deterministic overall ordering across adapters: concept_code, then
-        # evidence_id (which itself encodes source table + record id).
-        items.sort(key=lambda item: (item.concept_code, item.evidence_id))
+        # Canonical clinical-chronology ordering across adapters:
+        # effective_at asc (nulls last), recorded_at asc (nulls last),
+        # source_model, source_record_id, source_field, evidence_id.
+        # evidence_id is only a final, purely-for-determinism tie-break --
+        # it is a hash-derived string and MUST NOT be treated as clinical
+        # chronology (a prior bug: the previous (concept_code, evidence_id)
+        # sort let UUID lexical order silently override real timestamps
+        # whenever two items shared a concept_code).
+        _min = datetime.min.replace(tzinfo=timezone.utc)
+
+        def _order_key(item):
+            ref = item.source_reference
+            return (
+                item.effective_at is None,
+                item.effective_at or _min,
+                item.recorded_at is None,
+                item.recorded_at or _min,
+                ref.source_model or "",
+                ref.source_id or "",
+                ref.source_field or "",
+                item.evidence_id,
+            )
+
+        items.sort(key=_order_key)
+
+        conflicts = detect_functional_score_conflicts(items, now=generated_at)
+        missing_requirements = detect_missing_rn_recert_requirement(
+            items,
+            patient_id=patient_id,
+            benefit_period_id=benefit_period_id,
+            now=generated_at,
+        )
 
         return ClinicalEvidenceBundle(
             patient_id=patient_id,
             items=items,
+            conflicts=conflicts,
+            missing_requirements=missing_requirements,
             encounter_id=encounter_id,
             benefit_period_id=benefit_period_id,
             generated_at=generated_at,

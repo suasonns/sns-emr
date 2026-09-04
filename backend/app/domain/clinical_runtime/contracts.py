@@ -35,7 +35,7 @@ without creating import cycles.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 from uuid import UUID
@@ -107,6 +107,80 @@ class EvidenceOrigin(str, Enum):
     NARRATIVE_EXTRACTION = "NARRATIVE_EXTRACTION"
     CALCULATED = "CALCULATED"
     AI_ESTIMATED = "AI_ESTIMATED"
+
+
+# =========================================================
+# C2. Evidence polarity, conflict, correction/review dimensions
+#     (Commit 2D -- kept as separate dimensions from EvidenceStatus rather
+#     than overloading it; see evidence_conflict_detection.py for the
+#     detection policy that produces ClinicalEvidenceConflict instances)
+# =========================================================
+
+
+class EvidencePolarity(str, Enum):
+    """
+    Whether a documented item asserts the presence, explicit absence, or an
+    unassessed/inapplicable state of a clinical finding. Orthogonal to
+    EvidenceStatus (a fact can be DOCUMENTED and EXPLICIT_NEGATIVE at the
+    same time -- e.g. a physician documenting "denies dyspnea").
+
+    A polarity of EXPLICIT_NEGATIVE must never be derived from a merely
+    absent/None value -- see __post_init__ on ClinicalEvidenceItem, which
+    requires full authoritative source identity for EXPLICIT_NEGATIVE just
+    as it does for DOCUMENTED.
+    """
+
+    POSITIVE = "POSITIVE"
+    EXPLICIT_NEGATIVE = "EXPLICIT_NEGATIVE"
+    NEUTRAL = "NEUTRAL"
+    UNKNOWN = "UNKNOWN"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    NOT_ASSESSED = "NOT_ASSESSED"
+
+
+class ConflictType(str, Enum):
+    VALUE_DISAGREEMENT = "VALUE_DISAGREEMENT"
+    UNIT_INCOMPATIBILITY = "UNIT_INCOMPATIBILITY"
+    STATUS_DISAGREEMENT = "STATUS_DISAGREEMENT"
+    TEMPORAL_OVERLAP = "TEMPORAL_OVERLAP"
+    DUPLICATE_SOURCE_CONFLICT = "DUPLICATE_SOURCE_CONFLICT"
+    CORRECTION_CHAIN_CONFLICT = "CORRECTION_CHAIN_CONFLICT"
+    PROVENANCE_CONFLICT = "PROVENANCE_CONFLICT"
+    # Used only when no approved, versioned comparison-window policy exists
+    # to classify the relationship more specifically -- see
+    # evidence_conflict_detection.ConflictComparisonPolicy. Never
+    # auto-resolved; always human_review_required=True.
+    POTENTIAL_CONFLICT = "POTENTIAL_CONFLICT"
+
+
+class ConflictResolutionStatus(str, Enum):
+    UNRESOLVED = "UNRESOLVED"
+    RECONCILED = "RECONCILED"
+    SUPERSEDED = "SUPERSEDED"
+    ENTERED_IN_ERROR = "ENTERED_IN_ERROR"
+    NOT_A_CONFLICT = "NOT_A_CONFLICT"
+
+
+class HumanReviewStatus(str, Enum):
+    NOT_REQUIRED = "NOT_REQUIRED"
+    REQUIRED = "REQUIRED"
+    IN_PROGRESS = "IN_PROGRESS"
+    RESOLVED = "RESOLVED"
+
+
+class EvidenceRelationshipType(str, Enum):
+    """Correction/supersession/addendum relationship between two evidence
+    items or source records. Only used where the source model actually
+    carries the backing field(s); FIELD_NOT_AVAILABLE is returned (as a
+    plain string, not a fabricated relationship) when it does not."""
+
+    CORRECTS = "CORRECTS"
+    SUPERSEDES = "SUPERSEDES"
+    ADDENDUM_TO = "ADDENDUM_TO"
+    ENTERED_IN_ERROR = "ENTERED_IN_ERROR"
+    DUPLICATES = "DUPLICATES"
+    CONFIRMS = "CONFIRMS"
+    CONTRADICTS = "CONTRADICTS"
 
 
 # Current contract schema version. Bump when a contract's persisted/serialized
@@ -229,6 +303,57 @@ class ClinicalEvidenceItem:
     # that does not explicitly assert AUTHORITATIVE_DATABASE provenance is
     # never accidentally treated as authoritative.
     origin: EvidenceOrigin = EvidenceOrigin.LEGACY_ADAPTER
+    # Orthogonal to status (see EvidencePolarity). Defaults to POSITIVE --
+    # every adapter in this codebase today (Commit 2A/2B/2C) reports a
+    # positively-observed value; none of the current source models carry an
+    # explicit-denial/normal-finding field, so no adapter sets this to
+    # EXPLICIT_NEGATIVE yet.
+    polarity: EvidencePolarity = EvidencePolarity.POSITIVE
+
+    def _require_complete_source_identity(self, *, context: str) -> None:
+        ref = self.source_reference
+        missing = [
+            name
+            for name, value in (
+                ("source_model", ref.source_model),
+                ("source_table", ref.source_table),
+                ("source_id", ref.source_id),
+                ("source_field", ref.source_field),
+                ("source_patient_id", ref.source_patient_id),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                f"{context} requires complete source identity; "
+                f"missing {missing} for concept_code={self.concept_code!r}"
+            )
+        if ref.source_patient_id != self.patient_id:
+            raise ValueError(
+                f"{context} evidence source_patient_id does not match "
+                f"evidence patient_id (source={ref.source_patient_id!r}, "
+                f"evidence={self.patient_id!r}) for concept_code={self.concept_code!r}"
+            )
+        if (
+            self.encounter_id is not None
+            and ref.source_encounter_id is not None
+            and ref.source_encounter_id != self.encounter_id
+        ):
+            raise ValueError(
+                f"{context} evidence source_encounter_id conflicts with "
+                f"evidence encounter_id (source={ref.source_encounter_id!r}, "
+                f"evidence={self.encounter_id!r}) for concept_code={self.concept_code!r}"
+            )
+        if (
+            self.benefit_period_id is not None
+            and ref.source_benefit_period_id is not None
+            and ref.source_benefit_period_id != self.benefit_period_id
+        ):
+            raise ValueError(
+                f"{context} evidence source_benefit_period_id conflicts with "
+                f"evidence benefit_period_id (source={ref.source_benefit_period_id!r}, "
+                f"evidence={self.benefit_period_id!r}) for concept_code={self.concept_code!r}"
+            )
 
     def __post_init__(self) -> None:
         _require_tz_aware("recorded_at", self.recorded_at)
@@ -242,50 +367,20 @@ class ClinicalEvidenceItem:
                 f"(got origin={self.origin.value} for concept_code={self.concept_code!r}); "
                 "use UNVERIFIED for non-authoritative evidence."
             )
+        if (
+            self.origin != EvidenceOrigin.AUTHORITATIVE_DATABASE
+            and self.polarity == EvidencePolarity.EXPLICIT_NEGATIVE
+        ):
+            raise ValueError(
+                "EXPLICIT_NEGATIVE polarity requires origin=AUTHORITATIVE_DATABASE "
+                f"(got origin={self.origin.value} for concept_code={self.concept_code!r}); "
+                "an explicit denial/normal-finding must be traced to a real source record, "
+                "never inferred from a merely absent/legacy value."
+            )
         if self.status == EvidenceStatus.DOCUMENTED:
-            ref = self.source_reference
-            missing = [
-                name
-                for name, value in (
-                    ("source_model", ref.source_model),
-                    ("source_table", ref.source_table),
-                    ("source_id", ref.source_id),
-                    ("source_field", ref.source_field),
-                    ("source_patient_id", ref.source_patient_id),
-                )
-                if value is None
-            ]
-            if missing:
-                raise ValueError(
-                    "DOCUMENTED status requires complete source identity; "
-                    f"missing {missing} for concept_code={self.concept_code!r}"
-                )
-            if ref.source_patient_id != self.patient_id:
-                raise ValueError(
-                    "DOCUMENTED evidence source_patient_id does not match "
-                    f"evidence patient_id (source={ref.source_patient_id!r}, "
-                    f"evidence={self.patient_id!r}) for concept_code={self.concept_code!r}"
-                )
-            if (
-                self.encounter_id is not None
-                and ref.source_encounter_id is not None
-                and ref.source_encounter_id != self.encounter_id
-            ):
-                raise ValueError(
-                    "DOCUMENTED evidence source_encounter_id conflicts with "
-                    f"evidence encounter_id (source={ref.source_encounter_id!r}, "
-                    f"evidence={self.encounter_id!r}) for concept_code={self.concept_code!r}"
-                )
-            if (
-                self.benefit_period_id is not None
-                and ref.source_benefit_period_id is not None
-                and ref.source_benefit_period_id != self.benefit_period_id
-            ):
-                raise ValueError(
-                    "DOCUMENTED evidence source_benefit_period_id conflicts with "
-                    f"evidence benefit_period_id (source={ref.source_benefit_period_id!r}, "
-                    f"evidence={self.benefit_period_id!r}) for concept_code={self.concept_code!r}"
-                )
+            self._require_complete_source_identity(context="DOCUMENTED status")
+        if self.polarity == EvidencePolarity.EXPLICIT_NEGATIVE:
+            self._require_complete_source_identity(context="EXPLICIT_NEGATIVE polarity")
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (
@@ -294,12 +389,109 @@ class ClinicalEvidenceItem:
         )
 
 
+# =========================================================
+# B2. Structured conflict and missing-requirement contracts (Commit 2D)
+# =========================================================
+
+
+@dataclass(frozen=True)
+class ClinicalEvidenceConflict:
+    """
+    A structured, typed relationship between two or more independently
+    sourced DOCUMENTED evidence items that materially disagree.
+
+    Creating a conflict NEVER changes the status of either referenced
+    evidence item (both remain DOCUMENTED) and NEVER selects a winning
+    value -- winning_evidence_id is populated only after an authorized
+    human reviewer resolves the conflict via a future review workflow;
+    it is None for every conflict this harvester itself produces.
+    """
+
+    conflict_id: str
+    patient_id: UUID
+    concept_code: str
+    evidence_ids: list[str]
+    source_references: list[ClinicalSourceReference]
+    observed_values: list[Any]
+    normalized_values: list[Any]
+    conflict_type: ConflictType
+    resolution_status: ConflictResolutionStatus
+    human_review_required: bool
+    created_at: datetime
+    encounter_id: Optional[str] = None
+    benefit_period_id: Optional[UUID] = None
+    instrument: Optional[str] = None
+    units: list[Optional[str]] = field(default_factory=list)
+    effective_times: list[Optional[datetime]] = field(default_factory=list)
+    recorded_times: list[Optional[datetime]] = field(default_factory=list)
+    # No approved, versioned clinical-materiality policy exists yet (see
+    # evidence_conflict_detection.ConflictComparisonPolicy) -- left as a
+    # descriptive string, never a fabricated severity score.
+    materiality: str = "UNKNOWN_NO_APPROVED_MATERIALITY_POLICY"
+    resolved_by_actor_id: Optional[UUID] = None
+    resolved_at: Optional[datetime] = None
+    resolution_reason: Optional[str] = None
+    winning_evidence_id: Optional[str] = None
+    warning_codes: list[str] = field(default_factory=list)
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("created_at", self.created_at)
+        _require_tz_aware("resolved_at", self.resolved_at)
+        for t in self.effective_times:
+            _require_tz_aware("effective_times[]", t)
+        for t in self.recorded_times:
+            _require_tz_aware("recorded_times[]", t)
+        if len(self.evidence_ids) < 2:
+            raise ValueError(
+                f"ClinicalEvidenceConflict requires at least 2 evidence_ids "
+                f"(got {len(self.evidence_ids)}) for concept_code={self.concept_code!r}"
+            )
+        if self.winning_evidence_id is not None:
+            raise ValueError(
+                "winning_evidence_id must not be set by automatic conflict "
+                "detection -- a conflict is only ever auto-resolved into a "
+                "winner by an authorized human reviewer, never by this contract's "
+                "producer."
+            )
+
+
+@dataclass(frozen=True)
+class MissingEvidenceRequirement:
+    """
+    A missing WORKFLOW requirement (an expected source record that does not
+    exist), kept structurally separate from clinical observations. Must
+    never be represented as a fake ClinicalEvidenceItem -- a missing RN
+    recertification assessment is an operational gap, not a clinical
+    finding of "no assessment performed" (which would itself require a
+    real documented source to assert).
+    """
+
+    requirement_id: str
+    patient_id: UUID
+    requirement_code: str
+    expected_source_type: str
+    reason_required: str
+    status: str
+    detected_at: datetime
+    human_review_required: bool
+    encounter_id: Optional[str] = None
+    benefit_period_id: Optional[UUID] = None
+    expected_field: Optional[str] = None
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("detected_at", self.detected_at)
+
+
 @dataclass(frozen=True)
 class ClinicalEvidenceBundle:
     """Ordered, deduplicated collection of evidence items for one patient."""
 
     patient_id: UUID
     items: list[ClinicalEvidenceItem] = field(default_factory=list)
+    conflicts: list[ClinicalEvidenceConflict] = field(default_factory=list)
+    missing_requirements: list[MissingEvidenceRequirement] = field(default_factory=list)
     encounter_id: Optional[str] = None
     benefit_period_id: Optional[UUID] = None
     generated_at: Optional[datetime] = None
@@ -312,6 +504,53 @@ class ClinicalEvidenceBundle:
 
     def by_concept_code(self, concept_code: str) -> list[ClinicalEvidenceItem]:
         return [item for item in self.items if item.concept_code == concept_code]
+
+    def by_source(self, source_model: str) -> list[ClinicalEvidenceItem]:
+        return [item for item in self.items if item.source_reference.source_model == source_model]
+
+    def chronological(self) -> list[ClinicalEvidenceItem]:
+        """
+        Canonical clinical chronology: effective_at ascending (nulls last),
+        recorded_at ascending (nulls last), then source_model/source_id/
+        source_field/evidence_id as a purely-for-determinism tie-break --
+        never used to establish prior-vs-current, only to make repeated
+        calls byte-identical when every real timestamp ties.
+        """
+
+        def key(item: ClinicalEvidenceItem):
+            ref = item.source_reference
+            _min = datetime.min.replace(tzinfo=timezone.utc)
+            return (
+                item.effective_at is None,
+                item.effective_at or _min,
+                item.recorded_at is None,
+                item.recorded_at or _min,
+                ref.source_model or "",
+                ref.source_id or "",
+                ref.source_field or "",
+                item.evidence_id,
+            )
+
+        return sorted(self.items, key=key)
+
+    def latest_effective(self, concept_code: str) -> Optional[ClinicalEvidenceItem]:
+        """
+        Returns the item with the greatest effective_at for a concept, or
+        None if no item has an effective_at. Does NOT imply this is a
+        "winning"/authoritative value when multiple items share the same
+        (or no) effective_at -- callers needing that distinction must
+        consult bundle.conflicts.
+        """
+        candidates = [item for item in self.by_concept_code(concept_code) if item.effective_at is not None]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda item: item.effective_at)
+
+    def unresolved_conflicts(self) -> list[ClinicalEvidenceConflict]:
+        return [
+            c for c in self.conflicts
+            if c.resolution_status == ConflictResolutionStatus.UNRESOLVED
+        ]
 
 
 # =========================================================
