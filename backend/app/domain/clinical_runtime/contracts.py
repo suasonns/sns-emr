@@ -90,6 +90,25 @@ class RuntimeStageStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+class EvidenceOrigin(str, Enum):
+    """
+    Identifies which acquisition path produced a ClinicalEvidenceItem.
+
+    AUTHORITATIVE_DATABASE is reserved for evidence traced to a persisted,
+    identifiable ORM record (source_reference.source_record_id resolves to a
+    real row this harvester read directly). LEGACY_ADAPTER is evidence read
+    through the legacy duck-typed harvest_clinical_facts() compatibility path,
+    which cannot supply record-level provenance -- it must never be labeled
+    DOCUMENTED, only UNVERIFIED/MISSING.
+    """
+
+    AUTHORITATIVE_DATABASE = "AUTHORITATIVE_DATABASE"
+    LEGACY_ADAPTER = "LEGACY_ADAPTER"
+    NARRATIVE_EXTRACTION = "NARRATIVE_EXTRACTION"
+    CALCULATED = "CALCULATED"
+    AI_ESTIMATED = "AI_ESTIMATED"
+
+
 # Current contract schema version. Bump when a contract's persisted/serialized
 # shape changes in a way that downstream consumers (audit records, API
 # responses) need to distinguish.
@@ -125,6 +144,12 @@ class ClinicalSourceReference:
     source_version: Optional[str] = None
     source_text_span: Optional[str] = None
     source_document_reference: Optional[str] = None
+    # Explicit ORM model class name and physical table name for the
+    # authoritative-database acquisition path (e.g. "PatientDiagnosis" /
+    # "patient_diagnoses"). None for legacy/narrative/calculated evidence
+    # that has no single backing table.
+    source_model: Optional[str] = None
+    source_table: Optional[str] = None
 
     def __post_init__(self) -> None:
         _require_tz_aware("source_recorded_at", self.source_recorded_at)
@@ -164,10 +189,23 @@ class ClinicalEvidenceItem:
     ontology_reference: Optional["OntologyResolutionResult"] = None
     warnings: list[str] = field(default_factory=list)
     schema_version: str = CONTRACT_SCHEMA_VERSION
+    # Defaults to LEGACY_ADAPTER (the conservative assumption) so any caller
+    # that does not explicitly assert AUTHORITATIVE_DATABASE provenance is
+    # never accidentally treated as authoritative.
+    origin: EvidenceOrigin = EvidenceOrigin.LEGACY_ADAPTER
 
     def __post_init__(self) -> None:
         _require_tz_aware("recorded_at", self.recorded_at)
         _require_tz_aware("effective_at", self.effective_at)
+        if (
+            self.origin != EvidenceOrigin.AUTHORITATIVE_DATABASE
+            and self.status == EvidenceStatus.DOCUMENTED
+        ):
+            raise ValueError(
+                "DOCUMENTED status requires origin=AUTHORITATIVE_DATABASE "
+                f"(got origin={self.origin.value} for concept_code={self.concept_code!r}); "
+                "use UNVERIFIED for non-authoritative evidence."
+            )
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (

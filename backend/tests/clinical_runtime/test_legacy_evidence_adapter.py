@@ -1,22 +1,27 @@
 """
-Commit 2 tests: ClinicalEvidenceHarvester (typed wrapper around
-harvest_clinical_facts() producing a ClinicalEvidenceBundle).
+Legacy compatibility adapter tests: LegacyEvidenceAdapter (typed wrapper
+around harvest_clinical_facts() producing a ClinicalEvidenceBundle with
+origin=EvidenceOrigin.LEGACY_ADAPTER).
+
+This adapter is explicitly NOT the authoritative, database-backed evidence
+harvester -- see app/services/eligibility/clinical_evidence_harvester.py and
+tests/clinical_runtime/test_evidence_sources_integration.py for that.
 """
 
 from uuid import uuid4
 
-from app.domain.clinical_runtime.contracts import EvidenceStatus
+from app.domain.clinical_runtime.contracts import EvidenceOrigin, EvidenceStatus
 from app.services.eligibility.evidence_harvester import (
-    ClinicalEvidenceHarvester,
+    LegacyEvidenceAdapter,
     PatientEvidenceContext,
     harvest_clinical_facts,
 )
 
 
 def _harvest(patient: dict, **kwargs):
-    harvester = ClinicalEvidenceHarvester()
+    adapter = LegacyEvidenceAdapter()
     context = PatientEvidenceContext(patient_id=uuid4(), patient=patient, **kwargs)
-    return harvester.harvest(context)
+    return adapter.harvest_legacy(context)
 
 
 def test_bundle_has_one_item_per_fact_key():
@@ -32,10 +37,14 @@ def test_items_are_deterministically_ordered_by_concept_code():
     assert codes == sorted(codes)
 
 
-def test_documented_value_classified_correctly():
+def test_present_legacy_value_is_unverified_not_documented():
+    # Legacy values come from an opaque duck-typed payload with no database
+    # session -- they can never be traced to an identifiable source record,
+    # so they must never be labeled DOCUMENTED.
     bundle = _harvest({"pps": 40})
     item = bundle.by_concept_code("pps")[0]
-    assert item.status == EvidenceStatus.DOCUMENTED
+    assert item.status == EvidenceStatus.UNVERIFIED
+    assert item.origin == EvidenceOrigin.LEGACY_ADAPTER
     assert item.normalized_value == 40
 
 
@@ -47,19 +56,24 @@ def test_missing_value_classified_as_missing():
     assert item.recorded_at is None
 
 
-def test_out_of_range_ecog_classified_as_unverified_not_missing():
-    # ECOG is 0-5; 9 is out of range and must not be silently discarded as
-    # if no value had been supplied at all.
+def test_out_of_range_ecog_is_unverified():
+    # ECOG is 0-5; 9 is out of range and normalizes to None, but a raw value
+    # was supplied, so this must not be indistinguishable from MISSING.
+    # (Legacy adapter reports UNVERIFIED either way -- the important
+    # distinction between "bad value supplied" and "documented value" is
+    # made by the authoritative harvester's structured source adapters, not
+    # by this legacy compatibility path.)
     bundle = _harvest({"ecog_score": 9})
     item = bundle.by_concept_code("ecog_score")[0]
-    assert item.status == EvidenceStatus.UNVERIFIED
+    assert item.status == EvidenceStatus.MISSING
     assert item.normalized_value is None
 
 
-def test_valid_ecog_in_range_is_documented():
+def test_valid_ecog_in_range_is_unverified_legacy():
     bundle = _harvest({"ecog_score": 3})
     item = bundle.by_concept_code("ecog_score")[0]
-    assert item.status == EvidenceStatus.DOCUMENTED
+    assert item.status == EvidenceStatus.UNVERIFIED
+    assert item.origin == EvidenceOrigin.LEGACY_ADAPTER
     assert item.normalized_value == 3
 
 
@@ -89,8 +103,8 @@ def test_bundle_generated_at_is_timezone_aware():
 
 
 def test_harvester_draws_no_eligibility_or_prognosis_conclusion():
-    # The harvester must only classify/package facts -- it must never
-    # produce an eligibility/certification/recertification/discharge verdict
+    # The adapter must only classify/package facts -- it must never produce
+    # an eligibility/certification/recertification/discharge verdict
     # anywhere in its output. There is no field for such a verdict in the
     # contract; this test guards against one being added by accident.
     bundle = _harvest({"pps": 40})
@@ -112,10 +126,20 @@ def test_evidence_item_source_field_matches_concept_code():
     bundle = _harvest({"pps": 40})
     item = bundle.by_concept_code("pps")[0]
     assert item.source_reference.source_field == "pps"
-    assert item.source_reference.source_type == "STRUCTURED_FIELD"
+    assert item.source_reference.source_type == "LEGACY_STRUCTURED_FIELD"
+    # No identifiable source record -- this is the whole reason legacy
+    # evidence cannot be DOCUMENTED.
+    assert item.source_reference.source_model is None
+    assert item.source_reference.source_record_type is None
 
 
 def test_harvest_does_not_mutate_input_patient_dict():
     patient = {"pps": 40}
     _harvest(patient)
     assert patient == {"pps": 40}
+
+
+def test_present_legacy_value_carries_unattributed_warning():
+    bundle = _harvest({"pps": 40})
+    item = bundle.by_concept_code("pps")[0]
+    assert any("LEGACY_UNATTRIBUTED" in w for w in item.warnings)

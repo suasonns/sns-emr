@@ -969,29 +969,28 @@ def _to_bool(value: Any) -> bool | None:
 
 
 # =========================================================
-# TYPED RUNTIME HARVESTER (Commit 2 of the clinical_runtime
-# pipeline -- see app/domain/clinical_runtime/contracts.py)
+# LEGACY COMPATIBILITY ADAPTER (superseded design note)
 # =========================================================
 #
 # harvest_clinical_facts() above remains the single source of truth for
-# extraction logic. ClinicalEvidenceHarvester does not reimplement or
-# duplicate that extraction -- it wraps its output into the typed
-# ClinicalEvidenceBundle/ClinicalEvidenceItem contracts so downstream
-# runtime stages (ontology resolution, functional assessment, terminal
-# status, recertification) have a single well-typed input shape instead of
-# an untyped dict.
+# legacy extraction logic; nothing here duplicates it. LegacyEvidenceAdapter
+# wraps its output into the typed ClinicalEvidenceBundle/ClinicalEvidenceItem
+# contracts for existing callers that only have an opaque, duck-typed
+# `patient` payload (dict / object with dict-like attributes) and no database
+# session.
 #
-# KNOWN LIMITATION (must not be silently "fixed" by fabricating data):
-# harvest_clinical_facts() takes an opaque, duck-typed `patient` payload
-# (dict / object with dict-like attributes) and has no database session and
-# no reference to real ORM records. It therefore cannot supply true
-# record-level provenance (source_id, source_recorded_at, source_author_id).
-# ClinicalSourceReference.source_field is populated (which raw fact key
-# produced the value); the remaining provenance fields are left None until a
-# follow-up commit sources facts directly from real ORM models (the pattern
-# already used in app/services/recertification_evidence_synthesis.py) rather
-# than an opaque dict payload. Callers must not assume source_id/
-# source_recorded_at are populated by this harvester today.
+# ARCHITECTURAL CORRECTION: an earlier version of this wrapper labeled every
+# present value DOCUMENTED. That is wrong -- a value read from an opaque
+# duck-typed payload with no database session cannot be traced to an
+# identifiable source record, author, or recording timestamp, so it must
+# never be conflated with a verified persisted clinical fact. This adapter
+# now labels present values UNVERIFIED (origin=LEGACY_ADAPTER) instead.
+# DOCUMENTED is reserved for the authoritative, database-backed
+# ClinicalEvidenceHarvester in app/services/eligibility/
+# clinical_evidence_harvester.py, which resolves evidence to real ORM
+# records with identifiable source_record_id/source_model/source_table.
+# ClinicalEvidenceItem.__post_init__ enforces this at construction time
+# (DOCUMENTED without origin=AUTHORITATIVE_DATABASE raises ValueError).
 
 from dataclasses import dataclass as _dataclass
 from datetime import datetime as _datetime, timezone as _timezone
@@ -1002,27 +1001,15 @@ from app.domain.clinical_runtime.contracts import (
     ClinicalEvidenceBundle,
     ClinicalEvidenceItem,
     ClinicalSourceReference,
+    EvidenceOrigin,
     EvidenceStatus,
 )
-
-# Facts that represent a validated, ranged clinical scale. For these keys we
-# distinguish "no value supplied" (MISSING) from "a value was supplied but
-# failed normalization/range validation" (UNVERIFIED) -- see
-# harvest_clinical_facts' _normalize_* helpers, none of which silently clamp
-# an out-of-range value into something else.
-_SCALE_FACT_KEYS = {
-    "pps": ["pps", "pps_score"],
-    "kps": ["kps", "kps_score"],
-    "fast_stage": ["fast", "fast_stage", "fast_score"],
-    "nyha_class": ["nyha", "nyha_class"],
-    "ecog_score": ["ecog", "ecog_score", "ecog_score_current"],
-}
 
 
 @_dataclass(frozen=True)
 class PatientEvidenceContext:
     """
-    Explicit typed input to ClinicalEvidenceHarvester.harvest().
+    Explicit typed input to LegacyEvidenceAdapter.harvest_legacy().
 
     `patient` is the same opaque duck-typed payload harvest_clinical_facts()
     already accepts (dict, or object exposing dict-like clinical-data
@@ -1037,10 +1024,10 @@ class PatientEvidenceContext:
     benefit_period_id: _Optional[_UUID] = None
 
 
-class ClinicalEvidenceHarvester:
+class LegacyEvidenceAdapter:
     """
     Typed wrapper around harvest_clinical_facts() producing a
-    ClinicalEvidenceBundle for the clinical_runtime pipeline.
+    ClinicalEvidenceBundle with origin=EvidenceOrigin.LEGACY_ADAPTER.
 
     Guarantees:
       - never returns an eligibility, prognosis, certification,
@@ -1049,28 +1036,32 @@ class ClinicalEvidenceHarvester:
       - deterministic ordering (items sorted by concept_code)
       - one evidence item per fact key (harvest_clinical_facts already
         dedupes across its candidate sources internally)
-      - a present-but-unparseable scale value is reported as UNVERIFIED, not
-        silently coerced to MISSING or to an apparently-valid DOCUMENTED value
+      - never labels a value DOCUMENTED -- an opaque duck-typed payload with
+        no database session has no identifiable source record, so present
+        values are UNVERIFIED and absent values are MISSING
     """
 
-    def harvest(self, context: PatientEvidenceContext) -> ClinicalEvidenceBundle:
+    def harvest_legacy(self, context: PatientEvidenceContext) -> ClinicalEvidenceBundle:
         facts = harvest_clinical_facts(context.patient)
-        sources = _candidate_sources(context.patient)
         generated_at = _datetime.now(_timezone.utc)
 
         items: list[ClinicalEvidenceItem] = []
         for concept_code in sorted(facts.keys()):
             normalized_value = facts[concept_code]
-            status = self._classify_status(concept_code, normalized_value, sources)
+            status = (
+                EvidenceStatus.UNVERIFIED
+                if normalized_value is not None
+                else EvidenceStatus.MISSING
+            )
 
             source_reference = ClinicalSourceReference(
-                source_type="STRUCTURED_FIELD",
+                source_type="LEGACY_STRUCTURED_FIELD",
                 source_field=concept_code,
             )
 
             items.append(
                 ClinicalEvidenceItem(
-                    evidence_id=f"{context.patient_id}:{concept_code}",
+                    evidence_id=f"{context.patient_id}:{concept_code}:legacy",
                     patient_id=context.patient_id,
                     concept_code=concept_code,
                     canonical_name=concept_code,
@@ -1081,7 +1072,11 @@ class ClinicalEvidenceHarvester:
                     observed_value=normalized_value,
                     normalized_value=normalized_value,
                     recorded_at=generated_at if normalized_value is not None else None,
-                    extraction_method="STRUCTURED_FIELD_LOOKUP",
+                    extraction_method="LEGACY_STRUCTURED_FIELD_LOOKUP",
+                    origin=EvidenceOrigin.LEGACY_ADAPTER,
+                    warnings=["LEGACY_UNATTRIBUTED: no identifiable source record"]
+                    if normalized_value is not None
+                    else [],
                 )
             )
 
@@ -1093,25 +1088,6 @@ class ClinicalEvidenceHarvester:
             generated_at=generated_at,
         )
 
-    @staticmethod
-    def _classify_status(
-        concept_code: str,
-        normalized_value: Any,
-        sources: list[dict[str, Any]],
-    ) -> EvidenceStatus:
-        if normalized_value is not None:
-            return EvidenceStatus.DOCUMENTED
-
-        raw_keys = _SCALE_FACT_KEYS.get(concept_code)
-        if raw_keys is not None:
-            raw_value = _first_value(sources, raw_keys)
-            if not _empty(raw_value):
-                # A raw value was supplied for this scale but normalization
-                # rejected it (out of range / unparseable) -- this is a real
-                # data-quality problem, not an absence of data.
-                return EvidenceStatus.UNVERIFIED
-
-        return EvidenceStatus.MISSING
 
 
 

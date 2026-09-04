@@ -27,6 +27,7 @@ from app.domain.clinical_runtime.contracts import (
     ClinicalEvidenceItem,
     ClinicalSourceReference,
     EvidenceErrorCode,
+    EvidenceOrigin,
     EvidenceStatus,
     FunctionalAssessmentResult,
     OntologyResolutionResult,
@@ -64,6 +65,7 @@ def test_clinical_evidence_item_requires_status_and_source_reference():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(),
         observed_value=40,
         normalized_value=40,
@@ -88,6 +90,7 @@ def test_clinical_evidence_items_are_immutable():
         concept_code="KPS",
         canonical_name="Karnofsky Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(source_field="kps_score"),
     )
     with pytest.raises(dataclasses.FrozenInstanceError):
@@ -102,6 +105,7 @@ def test_clinical_evidence_bundle_lookup_by_concept_code():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(source_field="pps_score"),
     )
     kps_item = ClinicalEvidenceItem(
@@ -211,6 +215,7 @@ def test_naive_datetime_rejected_on_evidence_item():
             concept_code="PPS",
             canonical_name="Palliative Performance Scale",
             status=EvidenceStatus.DOCUMENTED,
+            origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
             source_reference=_source_ref(),
             recorded_at=datetime(2026, 1, 1),  # naive
         )
@@ -235,6 +240,7 @@ def test_timezone_aware_datetime_accepted():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(),
         recorded_at=datetime.now(timezone.utc),
     )
@@ -248,6 +254,7 @@ def test_contracts_carry_schema_version():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(),
     )
     assert item.schema_version == CONTRACT_SCHEMA_VERSION
@@ -260,6 +267,7 @@ def test_evidence_item_repr_does_not_leak_observed_value():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(),
         observed_value="SENSITIVE_CLINICAL_VALUE_123",
     )
@@ -277,6 +285,7 @@ def test_to_serializable_round_trips_enum_and_datetime():
         concept_code="PPS",
         canonical_name="Palliative Performance Scale",
         status=EvidenceStatus.DOCUMENTED,
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
         source_reference=_source_ref(),
         recorded_at=now,
     )
@@ -323,3 +332,33 @@ def test_runtime_trace_status_values_are_stable_strings():
         "FAILED",
         "SKIPPED",
     }
+
+
+def test_documented_status_requires_authoritative_database_origin():
+    from app.domain.clinical_runtime.contracts import EvidenceOrigin
+
+    with pytest.raises(ValueError, match="AUTHORITATIVE_DATABASE"):
+        ClinicalEvidenceItem(
+            evidence_id="ev-bad-origin",
+            patient_id=uuid4(),
+            concept_code="PPS",
+            canonical_name="Palliative Performance Scale",
+            status=EvidenceStatus.DOCUMENTED,
+            source_reference=_source_ref(),
+            origin=EvidenceOrigin.LEGACY_ADAPTER,
+        )
+
+
+def test_documented_status_allowed_with_authoritative_database_origin():
+    from app.domain.clinical_runtime.contracts import EvidenceOrigin
+
+    item = ClinicalEvidenceItem(
+        evidence_id="ev-good-origin",
+        patient_id=uuid4(),
+        concept_code="PPS",
+        canonical_name="Palliative Performance Scale",
+        status=EvidenceStatus.DOCUMENTED,
+        source_reference=_source_ref(),
+        origin=EvidenceOrigin.AUTHORITATIVE_DATABASE,
+    )
+    assert item.origin == EvidenceOrigin.AUTHORITATIVE_DATABASE
