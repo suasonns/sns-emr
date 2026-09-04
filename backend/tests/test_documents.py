@@ -242,3 +242,111 @@ def test_document_upload_rejects_oversized_file(client, db_session, monkeypatch)
     finally:
         get_document_storage.cache_clear()
         shutil.rmtree(storage_root, ignore_errors=True)
+
+
+def _password_protected_pdf_bytes(password: str) -> bytes:
+    """A real, encrypted, parseable single-page PDF requiring `password`."""
+    from io import BytesIO
+
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    writer.encrypt(user_password=password)
+    buf = BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.integration
+def test_document_upload_encrypted_pdf_without_password_returns_structured_error(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    payload = _password_protected_pdf_bytes("correct-horse-battery-staple")
+
+    response = client.post(
+        "/documents/",
+        headers=_headers(TEST_USER_ID, "RN", tenant_id),
+        data={"patient_id": str(patient.id), "document_type": "AUTHORIZATION"},
+        files={"file": ("protected.pdf", payload, "application/pdf")},
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["error_code"] == "PDF_PASSWORD_REQUIRED"
+
+
+@pytest.mark.integration
+def test_document_upload_encrypted_pdf_with_wrong_password_returns_structured_error(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    payload = _password_protected_pdf_bytes("correct-horse-battery-staple")
+
+    response = client.post(
+        "/documents/",
+        headers=_headers(TEST_USER_ID, "RN", tenant_id),
+        data={
+            "patient_id": str(patient.id),
+            "document_type": "AUTHORIZATION",
+            "document_password": "definitely-wrong",
+        },
+        files={"file": ("protected.pdf", payload, "application/pdf")},
+    )
+    assert response.status_code == 422, response.text
+    detail = response.json()["detail"]
+    assert detail["error_code"] == "PDF_PASSWORD_INCORRECT"
+
+
+@pytest.mark.integration
+def test_document_upload_encrypted_pdf_with_correct_password_succeeds(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    payload = _password_protected_pdf_bytes("correct-horse-battery-staple")
+
+    response = client.post(
+        "/documents/",
+        headers=_headers(TEST_USER_ID, "RN", tenant_id),
+        data={
+            "patient_id": str(patient.id),
+            "document_type": "AUTHORIZATION",
+            "document_password": "correct-horse-battery-staple",
+        },
+        files={"file": ("protected.pdf", payload, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    document_id = response.json()["document_id"]
+    stored = db_session.get(DocumentRecord, uuid.UUID(document_id))
+    assert stored is not None
+    # The stored bytes are the decrypted re-write, not the original encrypted upload.
+    stored_path = document_storage_env / Path(*stored.file_path.split("/"))
+    assert stored_path.read_bytes() != payload
+
+
+@pytest.mark.integration
+def test_document_upload_encrypted_pdf_uses_configured_password_strategy(
+    client, db_session, document_storage_env, monkeypatch
+):
+    """A tenant-configured candidate password is tried automatically, with
+    no vendor name, patient attribute, or filename parsing involved -- the
+    candidate is an explicit, generic config value only."""
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    payload = _password_protected_pdf_bytes("configured-candidate-password")
+
+    monkeypatch.setenv(
+        "DOCUMENT_PASSWORD_STRATEGIES_JSON",
+        f'{{"{tenant_id}": ["configured-candidate-password"]}}',
+    )
+
+    response = client.post(
+        "/documents/",
+        headers=_headers(TEST_USER_ID, "RN", tenant_id),
+        data={"patient_id": str(patient.id), "document_type": "AUTHORIZATION"},
+        files={"file": ("protected.pdf", payload, "application/pdf")},
+    )
+    assert response.status_code == 201, response.text

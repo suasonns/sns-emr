@@ -1219,6 +1219,8 @@ const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentT
   const [error, setError] = useState('');
   const [uploadMessage, setUploadMessage] = useState('');
   const [pickerKey, setPickerKey] = useState(0);
+  const [passwordPrompt, setPasswordPrompt] = useState(null); // { message, incorrect } | null
+  const [passwordValue, setPasswordValue] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -1253,26 +1255,52 @@ const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentT
     };
   }, [patientId, documentType]);
 
-  const handleUpload = async () => {
+  const handleUpload = async (passwordOverride) => {
     if (!patientId || !selectedFile || uploading) return;
 
     setUploading(true);
     setError('');
     setUploadMessage('');
     try {
-      const response = await uploadDocument(patientId, documentType, selectedFile);
+      const response = await uploadDocument(
+        patientId,
+        documentType,
+        selectedFile,
+        'EXTERNAL',
+        passwordOverride,
+      );
       const refreshed = await listPatientDocuments(patientId, documentType);
       setDocuments(Array.isArray(refreshed?.documents) ? refreshed.documents : []);
       setSelectedFile(null);
       setPickerKey((value) => value + 1);
+      setPasswordPrompt(null);
+      setPasswordValue('');
       setUploadMessage(
         `Uploaded ${response.file_name || 'document'}${response.size_bytes ? ` (${formatDocumentSize(response.size_bytes)})` : ''}.`,
       );
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Unable to upload this document.');
+      const errorCode = err?.response?.data?.detail?.error_code;
+      if (errorCode === 'PDF_PASSWORD_REQUIRED' || errorCode === 'PDF_PASSWORD_INCORRECT') {
+        setPasswordPrompt({
+          message: err.response.data.detail.message || 'This PDF is password protected.',
+          incorrect: errorCode === 'PDF_PASSWORD_INCORRECT',
+        });
+      } else {
+        setError(err?.response?.data?.detail || 'Unable to upload this document.');
+      }
     } finally {
       setUploading(false);
     }
+  };
+
+  const handlePasswordSubmit = () => {
+    if (!passwordValue || uploading) return;
+    handleUpload(passwordValue);
+  };
+
+  const handlePasswordCancel = () => {
+    setPasswordPrompt(null);
+    setPasswordValue('');
   };
 
   const handleView = async (documentId) => {
@@ -1314,7 +1342,7 @@ const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentT
           </div>
           <button
             type="button"
-            onClick={handleUpload}
+            onClick={() => handleUpload()}
             disabled={!selectedFile || uploading}
             style={{ padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: !selectedFile || uploading ? colors.border : colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: !selectedFile || uploading ? 'not-allowed' : 'pointer' }}
           >
@@ -1356,6 +1384,78 @@ const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentT
         )}
       </div>
       <div style={{ color: colors.label, fontSize: 11 }}>Files are stored on the patient record and can be reopened from this facesheet.</div>
+      {passwordPrompt ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.55)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: colors.card,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 10,
+              padding: 20,
+              width: 320,
+              maxWidth: '90vw',
+            }}
+          >
+            <div style={{ color: colors.white, fontSize: 13, fontWeight: 700, marginBottom: 8 }}>
+              {passwordPrompt.incorrect ? 'Incorrect Password' : 'Password Required'}
+            </div>
+            <div style={{ color: colors.label, fontSize: 11.5, marginBottom: 12 }}>
+              {passwordPrompt.message}
+            </div>
+            <input
+              type="password"
+              autoFocus
+              value={passwordValue}
+              onChange={(event) => setPasswordValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') handlePasswordSubmit();
+              }}
+              placeholder="Enter Document Password"
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '8px 10px',
+                borderRadius: 6,
+                border: `1px solid ${colors.border}`,
+                backgroundColor: colors.bg,
+                color: colors.white,
+                fontSize: 12,
+                marginBottom: 14,
+              }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button
+                type="button"
+                onClick={handlePasswordCancel}
+                disabled={uploading}
+                style={{ padding: '6px 12px', borderRadius: 6, border: `1px solid ${colors.border}`, backgroundColor: 'transparent', color: colors.white, fontSize: 11, fontWeight: 600, cursor: uploading ? 'not-allowed' : 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePasswordSubmit}
+                disabled={!passwordValue || uploading}
+                style={{ padding: '6px 12px', borderRadius: 6, border: 'none', backgroundColor: !passwordValue || uploading ? colors.border : colors.teal, color: '#fff', fontSize: 11, fontWeight: 700, cursor: !passwordValue || uploading ? 'not-allowed' : 'pointer' }}
+              >
+                {uploading ? 'Processing…' : 'Process'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

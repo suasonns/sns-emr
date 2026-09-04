@@ -30,5 +30,8 @@ def create_document_notifications(db, *, tenant_id: str, document_id, patient_id
             action="DOC_NOTIFIED",
             entity_type="DOCUMENT",
             entity_id=str(document_id),
-            meta={"recipient_role": r.role, "recipient_user_id": r.user_id},
+            meta={
+                "recipient_role": r.role,
+                "recipient_user_id": str(r.user_id) if r.user_id else None,
+            },
         )

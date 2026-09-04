@@ -22,6 +22,7 @@ from app.dependencies.auth import get_current_user
 from app.models.document_record import DocumentRecord
 from app.models.document_idg_resolution import DocumentIDGResolution
 from app.services.document_flagger import evaluate_document_flags
+from app.services.document_password_strategies import get_configured_password_candidates
 from app.services.audit_events import audit_event
 from app.services.document_notifications import create_document_notifications
 from app.services.evidence.document_harvest_job import run_document_intelligence
@@ -42,6 +43,21 @@ from app.services.document_storage import (
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
 logger = logging.getLogger(__name__)
+
+
+def _decrypt_pdf(raw_bytes: bytes, password: str):
+    """Attempts to decrypt an encrypted PDF with the given password.
+
+    Returns the decrypted PdfReader on success, or None on failure. Uses a
+    fresh PdfReader per attempt -- pypdf's decrypt() state is not reliably
+    reusable across repeated attempts on the same instance.
+    """
+    from pypdf import PdfReader
+
+    reader = PdfReader(BytesIO(raw_bytes))
+    if reader.decrypt(password) == 0:
+        return None
+    return reader
 
 
 class DocumentResolutionRequest(BaseModel):
@@ -215,17 +231,42 @@ async def upload_document(
 
             reader = PdfReader(BytesIO(raw_bytes))
             if reader.is_encrypted:
-                if not document_password:
-                    raise HTTPException(
-                        status_code=422,
-                        detail="This PDF is password-protected. Provide document_password to upload it.",
-                    )
-                decrypt_result = reader.decrypt(document_password)
-                if decrypt_result == 0:
-                    raise HTTPException(status_code=422, detail="Incorrect password for this PDF.")
+                # Structured, machine-readable error codes (rather than a
+                # free-text detail string) so the frontend can reliably
+                # branch on "needs a password" vs. "wrong password" and
+                # present the right prompt -- see PDF_PASSWORD_REQUIRED /
+                # PDF_PASSWORD_INCORRECT below.
+                resolved_reader = None
+                if document_password:
+                    resolved_reader = _decrypt_pdf(raw_bytes, document_password)
+                    if resolved_reader is None:
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "error_code": "PDF_PASSWORD_INCORRECT",
+                                "message": "Incorrect password for this PDF.",
+                            },
+                        )
+                else:
+                    # Optional convenience layer: if this tenant has
+                    # configured candidate passwords (generic, explicit
+                    # config -- never a vendor-specific or patient-attribute
+                    # guess), try those first before prompting the user.
+                    for candidate in get_configured_password_candidates(tenant_id):
+                        resolved_reader = _decrypt_pdf(raw_bytes, candidate)
+                        if resolved_reader is not None:
+                            break
+                    if resolved_reader is None:
+                        raise HTTPException(
+                            status_code=422,
+                            detail={
+                                "error_code": "PDF_PASSWORD_REQUIRED",
+                                "message": "This PDF is password-protected. Enter the document password to continue.",
+                            },
+                        )
 
                 writer = PdfWriter()
-                for page in reader.pages:
+                for page in resolved_reader.pages:
                     writer.add_page(page)
                 decrypted_buffer = BytesIO()
                 writer.write(decrypted_buffer)
