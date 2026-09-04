@@ -11390,12 +11390,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <div style={styles.bannerMeta}>
             {patientSummary
               ? `MRN: ${patientSummary.patient.mrn} | ${patientSummary.patient.primary_diagnosis}`
-              : "MRN: 94731 | DOB: 11/15/1941 (84F) | Lung Cancer (C34.90), CHF, COPD"}
+              : resolvedPatientId
+                ? "Loading patient details..."
+                : "Select a patient to view chart details"}
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 13, fontWeight: 600 }}>RN ICA</div>
-          <div style={styles.bannerMeta}>Dr. James Olsen | Sarah Mitchell, RN, BSN</div>
+          <div style={styles.bannerMeta}>
+            {(() => {
+              const attending = patientSummary?.patient?.attending_physician_name;
+              const careTeam = patientSummary?.care_team || [];
+              const rnAssignment =
+                careTeam.find((member) => member.discipline === "RN" && member.primary) ||
+                careTeam.find((member) => member.discipline === "RN");
+              const assignedRn = rnAssignment?.staff_name;
+              if (!attending && !assignedRn) {
+                return "Attending physician / assigned RN not yet on file";
+              }
+              return [attending, assignedRn].filter(Boolean).join(" | ");
+            })()}
+          </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8, marginTop: 6 }}>
             <button
               type="button"
