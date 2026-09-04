@@ -22,6 +22,7 @@ from uuid import uuid4
 import pytest
 
 from app.domain.clinical_runtime.contracts import (
+    CONTRACT_SCHEMA_VERSION,
     ClinicalEvidenceBundle,
     ClinicalEvidenceItem,
     ClinicalSourceReference,
@@ -34,6 +35,7 @@ from app.domain.clinical_runtime.contracts import (
     RuntimeTrace,
     TerminalStatusResult,
 )
+from app.domain.clinical_runtime.serialization import to_serializable
 
 
 def _source_ref(**overrides) -> ClinicalSourceReference:
@@ -185,3 +187,139 @@ def test_ontology_resolution_result_optional_by_default():
     assert result.ontology_id is None
     assert result.ambiguity is False
     assert result.warnings == []
+
+
+# =========================================================
+# Commit 1 quality-gate tests (schema version, tz-aware
+# timestamps, JSON serialization, redacted repr)
+# =========================================================
+
+
+def test_naive_datetime_rejected_on_source_reference():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ClinicalSourceReference(
+            source_type="STRUCTURED_FIELD",
+            source_recorded_at=datetime(2026, 1, 1),  # naive
+        )
+
+
+def test_naive_datetime_rejected_on_evidence_item():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        ClinicalEvidenceItem(
+            evidence_id="ev-naive",
+            patient_id=uuid4(),
+            concept_code="PPS",
+            canonical_name="Palliative Performance Scale",
+            status=EvidenceStatus.DOCUMENTED,
+            source_reference=_source_ref(),
+            recorded_at=datetime(2026, 1, 1),  # naive
+        )
+
+
+def test_naive_datetime_rejected_on_runtime_trace():
+    with pytest.raises(ValueError, match="timezone-aware"):
+        RuntimeTrace(
+            trace_id="trace-naive",
+            patient_id=uuid4(),
+            pipeline_version="v1",
+            stage="EVIDENCE_HARVESTER",
+            status=RuntimeStageStatus.STARTED,
+            started_at=datetime(2026, 1, 1),  # naive
+        )
+
+
+def test_timezone_aware_datetime_accepted():
+    item = ClinicalEvidenceItem(
+        evidence_id="ev-tz",
+        patient_id=uuid4(),
+        concept_code="PPS",
+        canonical_name="Palliative Performance Scale",
+        status=EvidenceStatus.DOCUMENTED,
+        source_reference=_source_ref(),
+        recorded_at=datetime.now(timezone.utc),
+    )
+    assert item.recorded_at.tzinfo is not None
+
+
+def test_contracts_carry_schema_version():
+    item = ClinicalEvidenceItem(
+        evidence_id="ev-schema",
+        patient_id=uuid4(),
+        concept_code="PPS",
+        canonical_name="Palliative Performance Scale",
+        status=EvidenceStatus.DOCUMENTED,
+        source_reference=_source_ref(),
+    )
+    assert item.schema_version == CONTRACT_SCHEMA_VERSION
+
+
+def test_evidence_item_repr_does_not_leak_observed_value():
+    item = ClinicalEvidenceItem(
+        evidence_id="ev-repr",
+        patient_id=uuid4(),
+        concept_code="PPS",
+        canonical_name="Palliative Performance Scale",
+        status=EvidenceStatus.DOCUMENTED,
+        source_reference=_source_ref(),
+        observed_value="SENSITIVE_CLINICAL_VALUE_123",
+    )
+    rendered = repr(item)
+    assert "SENSITIVE_CLINICAL_VALUE_123" not in rendered
+    assert "ev-repr" in rendered
+    assert "PPS" in rendered
+
+
+def test_to_serializable_round_trips_enum_and_datetime():
+    now = datetime.now(timezone.utc)
+    item = ClinicalEvidenceItem(
+        evidence_id="ev-json",
+        patient_id=uuid4(),
+        concept_code="PPS",
+        canonical_name="Palliative Performance Scale",
+        status=EvidenceStatus.DOCUMENTED,
+        source_reference=_source_ref(),
+        recorded_at=now,
+    )
+    payload = to_serializable(item)
+    assert payload["status"] == "DOCUMENTED"
+    assert payload["recorded_at"] == now.isoformat()
+    assert payload["patient_id"] == str(item.patient_id)
+    # must be actually JSON-serializable (no custom objects left over)
+    import json
+
+    json.dumps(payload)
+
+
+def test_to_serializable_rejects_naive_datetime_directly():
+    with pytest.raises(ValueError, match="naive datetime"):
+        to_serializable(datetime(2026, 1, 1))
+
+
+def test_empty_evidence_bundle_serializes_cleanly():
+    bundle = ClinicalEvidenceBundle(patient_id=uuid4())
+    payload = to_serializable(bundle)
+    assert payload["items"] == []
+    assert payload["errors"] == []
+
+
+def test_functional_assessment_result_carries_calculation_and_ontology_version():
+    result = FunctionalAssessmentResult(
+        instrument="PPS",
+        value=40,
+        normalized_value=40,
+        status=EvidenceStatus.CALCULATED,
+        complete=True,
+        calculation_version="pps-calc-v1",
+        ontology_version="functional-assessment-framework-v1",
+    )
+    assert result.calculation_version == "pps-calc-v1"
+    assert result.ontology_version == "functional-assessment-framework-v1"
+
+
+def test_runtime_trace_status_values_are_stable_strings():
+    assert {s.value for s in RuntimeStageStatus} == {
+        "STARTED",
+        "SUCCEEDED",
+        "FAILED",
+        "SKIPPED",
+    }

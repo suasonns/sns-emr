@@ -90,6 +90,25 @@ class RuntimeStageStatus(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+# Current contract schema version. Bump when a contract's persisted/serialized
+# shape changes in a way that downstream consumers (audit records, API
+# responses) need to distinguish.
+CONTRACT_SCHEMA_VERSION = "v1"
+
+
+def _require_tz_aware(field_name: str, value: Optional[datetime]) -> None:
+    """
+    Enforce that any timestamp carried on a runtime contract is timezone-aware.
+    Naive datetimes are a common source of silent, non-deterministic bugs when
+    comparing evidence recorded across UTC/local boundaries.
+    """
+
+    if value is not None and value.tzinfo is None:
+        raise ValueError(
+            f"{field_name} must be a timezone-aware datetime (got naive datetime {value!r})"
+        )
+
+
 # =========================================================
 # A. Clinical source reference
 # =========================================================
@@ -107,14 +126,26 @@ class ClinicalSourceReference:
     source_text_span: Optional[str] = None
     source_document_reference: Optional[str] = None
 
+    def __post_init__(self) -> None:
+        _require_tz_aware("source_recorded_at", self.source_recorded_at)
+
 
 # =========================================================
 # B. Clinical evidence item
 # =========================================================
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ClinicalEvidenceItem:
+    """
+    A single clinical fact with full provenance.
+
+    repr is intentionally overridden: the default dataclass repr would print
+    observed_value/normalized_value (clinical data that may be sensitive) into
+    any log line or exception traceback that captures this object. The custom
+    repr below identifies the item by evidence_id/concept_code/status only.
+    """
+
     evidence_id: str
     patient_id: UUID
     concept_code: str
@@ -132,6 +163,17 @@ class ClinicalEvidenceItem:
     extraction_method: Optional[str] = None
     ontology_reference: Optional["OntologyResolutionResult"] = None
     warnings: list[str] = field(default_factory=list)
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("recorded_at", self.recorded_at)
+        _require_tz_aware("effective_at", self.effective_at)
+
+    def __repr__(self) -> str:  # pragma: no cover - trivial
+        return (
+            f"ClinicalEvidenceItem(evidence_id={self.evidence_id!r}, "
+            f"concept_code={self.concept_code!r}, status={self.status.value})"
+        )
 
 
 @dataclass(frozen=True)
@@ -145,6 +187,10 @@ class ClinicalEvidenceBundle:
     generated_at: Optional[datetime] = None
     warnings: list[str] = field(default_factory=list)
     errors: list[EvidenceErrorCode] = field(default_factory=list)
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("generated_at", self.generated_at)
 
     def by_concept_code(self, concept_code: str) -> list[ClinicalEvidenceItem]:
         return [item for item in self.items if item.concept_code == concept_code]
@@ -194,6 +240,10 @@ class FunctionalAssessmentResult:
     warnings: list[str] = field(default_factory=list)
     calculated_at: Optional[datetime] = None
     calculated_by: Optional[str] = None
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("calculated_at", self.calculated_at)
 
 
 # =========================================================
@@ -220,6 +270,10 @@ class TerminalStatusResult:
     human_review_required: bool = True
     warnings: list[str] = field(default_factory=list)
     evaluated_at: Optional[datetime] = None
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("evaluated_at", self.evaluated_at)
 
 
 # =========================================================
@@ -240,6 +294,10 @@ class RecertificationResult:
     missing_information: list[str] = field(default_factory=list)
     human_review_required: bool = True
     generated_at: Optional[datetime] = None
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("generated_at", self.generated_at)
 
 
 # =========================================================
@@ -263,3 +321,8 @@ class RuntimeTrace:
     error_code: Optional[str] = None
     warning_codes: list[str] = field(default_factory=list)
     actor_type: str = "SYSTEM"
+    schema_version: str = CONTRACT_SCHEMA_VERSION
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("started_at", self.started_at)
+        _require_tz_aware("completed_at", self.completed_at)
