@@ -55,6 +55,7 @@ from app.models.post_death_bereavement_assessment import PostDeathBereavementAss
 from app.models.bereavement_letter_tracker import BereavementLetterTracker
 from app.models.bereavement_communication_note import BereavementCommunicationNote
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
+from app.models.facesheet_field_suggestion import FacesheetFieldSuggestion
 
 # ---------------------------------------------------------
 # ✅ CLINICAL DOMAIN

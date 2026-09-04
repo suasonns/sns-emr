@@ -436,12 +436,13 @@ def test_run_document_intelligence_never_overwrites_existing_patient_name(
 
     # An unrelated document (e.g. an insurance authorization) whose OCR
     # text incidentally contains enough matching fields to pass
-    # parse_hnp_text's minimal validation, with a name that does NOT
-    # belong to this patient -- reproducing the real defect exactly.
+    # parse_hnp_text's minimal validation, with a name AND a DOB that do
+    # NOT belong to this patient -- reproducing the real defect exactly
+    # and covering the parallel DOB-overwrite risk in the same function.
     unrelated_text = (
         "Name: Birth Order\n"
         f"MRN: {patient.mrn}\n"
-        f"Date of birth: {patient.date_of_birth.strftime('%m/%d/%Y')}\n"
+        "Date of birth: 01/01/1900\n"
         "Diagnosis: Authorization pending Noted on: 2026-01-05\n"
     )
 
@@ -495,6 +496,11 @@ def test_run_document_intelligence_never_overwrites_existing_patient_name(
     )
     assert refreshed_facesheet.first_name == "Margaret"
     assert refreshed_facesheet.last_name == "Kessler"
+    # DOB is an identity field just like name -- must not be overwritten
+    # by the unrelated document's (wrong) "Date of birth: 01/01/1900".
+    assert refreshed_facesheet.dob == patient.date_of_birth
+    refreshed_patient = db_session.get(Patient, patient.id)
+    assert refreshed_patient.date_of_birth == patient.date_of_birth
 
 
 class _TestSessionProxy:
