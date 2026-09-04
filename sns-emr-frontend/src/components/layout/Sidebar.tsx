@@ -20,6 +20,7 @@ import { useDashboardAlerts, severityForCount } from "../../hooks/useDashboardAl
 import { logout } from "../../api/auth";
 import { getCurrentUser } from "../../api/session";
 import { hasFeatureAccess, hasRouteAccess } from "../../utils/authorization";
+import BrandLogo from "../BrandLogo";
 
 type SidebarUser = {
   name: string;
@@ -101,17 +102,9 @@ export default function Sidebar({
     >
       {/* HEADER */}
       <Box sx={{ p: 2, borderBottom: "1px solid #1e293b", display: "flex", justifyContent: "center" }}>
-        <Box
-          component="img"
-          src="/brand/sns-logo-light.svg"
-          alt="SNS logo"
-          onError={(event) => {
-            const target = event.currentTarget as HTMLImageElement;
-            if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
-              target.src = "/brand/sns-logo-icon.svg";
-            }
-          }}
-          sx={{ width: 190, height: "auto", display: "block" }}
+        <BrandLogo
+          variant="light"
+          style={{ width: 190, height: "auto", display: "block" }}
         />
       </Box>
 

@@ -6,6 +6,7 @@ import { getCurrentUser } from "../api/session";
 import { portalTypography } from "../styles/portalTypography";
 import { hasFeatureAccess, hasRouteAccess } from "../utils/authorization";
 import type { FeatureKey, RouteAccess } from "../utils/authorization";
+import BrandLogo from "./BrandLogo";
 
 type PortalShellProps = {
   activeTab: string;
@@ -91,17 +92,9 @@ export default function PortalShell({ activeTab, children }: PortalShellProps) {
           }}
         >
           <Box sx={{ display: "flex", alignItems: "center", gap: 3, flexWrap: "wrap" }}>
-            <Box
-              component="img"
-              src="/brand/sns-logo-light.svg"
-              alt="SNS logo"
-              onError={(event) => {
-                const target = event.currentTarget as HTMLImageElement;
-                if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
-                  target.src = "/brand/sns-logo-icon.svg";
-                }
-              }}
-              sx={{ width: 180, height: "auto", display: "block" }}
+            <BrandLogo
+              variant="light"
+              style={{ width: 180, height: "auto", display: "block" }}
             />
             <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
               {navItems.map((tab) => {
