@@ -397,8 +397,15 @@ def test_non_disease_specific_support_cannot_establish_eligibility_alone(db_sess
         assert concept_row is not None
         linked_names.add(getattr(concept_row, name_attr))
     assert non_disease_names <= linked_names
+    # Concepts on this shared variant are not exclusively owned by this
+    # manifest -- the ALS Clinical Evidence Blueprint v1 extension (PR #55)
+    # legitimately links its own additional HOSPICE_SUPPORT_FOR concepts
+    # (e.g. "Enteral Feeding Declined") to the same "Advanced ALS" variant.
+    # Those names are not declared here, so treat them as "not
+    # disease-specific under this manifest" rather than failing the lookup.
     disease_specific_present = any(
-        _find_concept_entry(ALS, "HOSPICE_ELIGIBILITY_SUPPORT", n)["source_classification"] == "LCD_DISEASE_SPECIFIC"
+        (entry := _find_concept_entry(ALS, "HOSPICE_ELIGIBILITY_SUPPORT", n)) is not None
+        and entry["source_classification"] == "LCD_DISEASE_SPECIFIC"
         for n in linked_names
         if n not in non_disease_names
     )

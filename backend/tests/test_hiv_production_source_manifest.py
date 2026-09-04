@@ -398,8 +398,16 @@ def test_non_disease_specific_support_cannot_establish_eligibility_alone(db_sess
         # Non-disease-specific concepts must always coexist with at least one
         # disease-specific (LCD_DISEASE_SPECIFIC) concept on the same variant.
         assert non_disease_names <= linked_names
+        # Concepts on this shared variant are not exclusively owned by this
+        # manifest -- the HIV Clinical Evidence Blueprint v1 extension links
+        # its own additional HOSPICE_SUPPORT_FOR concepts (e.g. "Concurrent
+        # Life-Threatening Comorbid Condition") to the same "Terminal
+        # Advanced HIV Disease"/"Terminal AIDS" variants. Those names are
+        # not declared here, so treat them as "not disease-specific under
+        # this manifest" rather than failing the lookup.
         disease_specific_present = any(
-            _find_concept_entry(disease_name, "HOSPICE_ELIGIBILITY_SUPPORT", n)["source_classification"]
+            (entry := _find_concept_entry(disease_name, "HOSPICE_ELIGIBILITY_SUPPORT", n)) is not None
+            and entry["source_classification"]
             == "LCD_DISEASE_SPECIFIC"
             for n in linked_names
             if n not in non_disease_names
