@@ -544,6 +544,7 @@ def _sync_hnp_diagnosis_sources(
     patient_id: uuid.UUID,
     source_name: str,
     diagnosis_entries: list[dict],
+    source_document_id: uuid.UUID | None = None,
 ) -> None:
     if not inspect(db.get_bind()).has_table("diagnosis_sources"):
         return
@@ -579,6 +580,8 @@ def _sync_hnp_diagnosis_sources(
         if existing:
             existing.documented_at = documented_at or existing.documented_at
             existing.is_active = entry.get("status") == "current"
+            if source_document_id is not None:
+                existing.source_document_id = source_document_id
             continue
 
         db.add(
@@ -591,6 +594,7 @@ def _sync_hnp_diagnosis_sources(
                 description=description,
                 documented_at=documented_at,
                 is_active=entry.get("status") == "current",
+                source_document_id=source_document_id,
             )
         )
 
@@ -603,6 +607,7 @@ def _sync_hnp_secondary_diagnoses(
     actor_id: uuid.UUID | None,
     source_name: str,
     diagnosis_entries: list[dict],
+    source_document_id: uuid.UUID | None = None,
 ) -> list[dict]:
     existing_rows = (
         db.query(PatientDiagnosis)
@@ -687,6 +692,7 @@ def _sync_hnp_secondary_diagnoses(
                 ),
                 change_reason="HNP documented diagnosis import",
                 notes=f"Imported from {source_name}.",
+                source_document_id=source_document_id,
                 created_by=actor_id,
                 updated_by=actor_id,
             )
@@ -1471,6 +1477,7 @@ def persist_patient_from_hnp_extraction(
     raw_text: str,
     patient_id: str | uuid.UUID | None = None,
     source_name: str | None = None,
+    source_document_id: uuid.UUID | None = None,
 ) -> dict:
     """Shared HNP-extraction persistence service.
 
@@ -1484,6 +1491,14 @@ def persist_patient_from_hnp_extraction(
     authorized ingestion workflow (e.g. an authorized PDF-upload pipeline)
     MUST call this function rather than duplicating the parsing/matching/
     facesheet-mapping/diagnosis-persistence logic inline.
+
+    `source_document_id`, when provided, is the id of the existing
+    Patient Chart -> Documents record (document_records.id) this
+    extraction came from -- it is stamped onto the facesheet and every
+    diagnosis/diagnosis-source row this call creates or updates, so every
+    auto-populated field remains traceable back to its originating
+    document. This never creates a second document record; it only
+    references the one already stored via POST /documents/.
 
     Raises ValueError if raw_text cannot be parsed (missing name/MRN/DOB).
     Commits (and rolls back on failure) before returning -- callers should
@@ -1564,6 +1579,7 @@ def persist_patient_from_hnp_extraction(
             gender=summary.get("sex"),
             primary_diagnosis=summary["primary_diagnosis"] or "Diagnosis pending",
             secondary_diagnoses=_build_hnp_secondary_summary(diagnosis_entries),
+            source_document_id=source_document_id,
             created_by=user_id,
             updated_by=user_id,
             updated_at=now,
@@ -1583,6 +1599,7 @@ def persist_patient_from_hnp_extraction(
             is_terminal=True,
             is_related_to_terminal=True,
             effective_date=date.today(),
+            source_document_id=source_document_id,
             created_by=user_id,
         )
         db.add(diagnosis)
@@ -1623,6 +1640,7 @@ def persist_patient_from_hnp_extraction(
                 address=summary.get("address"),
                 gender=summary.get("sex"),
                 primary_diagnosis=summary["primary_diagnosis"] or patient.primary_diagnosis,
+                source_document_id=source_document_id,
                 created_by=user_id,
                 updated_by=user_id,
                 updated_at=datetime.now(timezone.utc),
@@ -1637,6 +1655,8 @@ def persist_patient_from_hnp_extraction(
             facesheet.gender = summary.get("sex") or facesheet.gender
             facesheet.primary_diagnosis = summary["primary_diagnosis"] or facesheet.primary_diagnosis
             facesheet.secondary_diagnoses = _build_hnp_secondary_summary(diagnosis_entries)
+            if source_document_id is not None:
+                facesheet.source_document_id = source_document_id
             facesheet.updated_by = user_id
             facesheet.updated_at = datetime.now(timezone.utc)
 
@@ -1657,6 +1677,7 @@ def persist_patient_from_hnp_extraction(
         patient_id=patient.id,
         source_name=source_name,
         diagnosis_entries=diagnosis_entries,
+        source_document_id=source_document_id,
     )
     _sync_hnp_secondary_diagnoses(
         db,
@@ -1665,6 +1686,7 @@ def persist_patient_from_hnp_extraction(
         actor_id=user_id,
         source_name=source_name,
         diagnosis_entries=diagnosis_entries,
+        source_document_id=source_document_id,
     )
 
     try:

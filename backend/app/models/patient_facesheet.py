@@ -125,6 +125,17 @@ class PatientFaceSheet(Base):
     secondary_diagnoses = Column(Text)
     diagnosis_entries = Column(JSON)
     allergies = Column(Text)
+
+    # Canonical source-document provenance: the Patient Chart -> Documents
+    # record (document_records.id) this facesheet was last auto-populated
+    # from, when it originated from an uploaded document rather than manual
+    # entry. Nullable -- most facesheets are entered directly by staff and
+    # have no source document. Never a second/duplicate document store.
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_records.id"),
+        nullable=True,
+    )
     
     # --------------------------------------------------
     # ✅ LEVEL OF CARE
