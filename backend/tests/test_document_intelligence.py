@@ -390,6 +390,113 @@ def test_run_document_intelligence_auto_populates_facesheet_from_hnp_text(
     assert refreshed_patient.mrn == patient.mrn
 
 
+def test_run_document_intelligence_never_overwrites_existing_patient_name(
+    db_session, monkeypatch, tmp_path
+):
+    """Real production defect, found via manual multi-document upload
+    validation: this facesheet-auto-populate step runs unconditionally on
+    EVERY uploaded document's extracted text, not just genuine H&P
+    records. A lower-confidence document (an insurance authorization form,
+    a cover letter, an orders packet) can incidentally satisfy
+    parse_hnp_text's generic "Name:"/"MRN:"/"Date of birth:" patterns on
+    unrelated text and silently overwrite a patient's real, previously-
+    confirmed name with garbage. Once a facesheet already has a name, a
+    later document's parse must never overwrite it -- only backfill a
+    genuinely missing name, exactly like the existing mrn policy."""
+
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+
+    from app.models.patient_facesheet import PatientFaceSheet
+
+    facesheet = PatientFaceSheet(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        first_name="Margaret",
+        last_name="Kessler",
+        dob=patient.date_of_birth,
+        primary_diagnosis=patient.primary_diagnosis,
+        created_by=TEST_USER_ID,
+        updated_by=TEST_USER_ID,
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(facesheet)
+    db_session.commit()
+
+    from app.services import document_storage as storage_module
+
+    storage_module.get_document_storage.cache_clear()
+    monkeypatch.setenv("DOCUMENT_STORAGE_PROVIDER", "local")
+    monkeypatch.setenv("DOCUMENT_STORAGE_DIR", str(tmp_path))
+
+    # An unrelated document (e.g. an insurance authorization) whose OCR
+    # text incidentally contains enough matching fields to pass
+    # parse_hnp_text's minimal validation, with a name that does NOT
+    # belong to this patient -- reproducing the real defect exactly.
+    unrelated_text = (
+        "Name: Birth Order\n"
+        f"MRN: {patient.mrn}\n"
+        f"Date of birth: {patient.date_of_birth.strftime('%m/%d/%Y')}\n"
+        "Diagnosis: Authorization pending Noted on: 2026-01-05\n"
+    )
+
+    document_id = uuid.uuid4()
+    object_key = storage_module.build_document_key(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_id=document_id,
+        content_type="text/plain",
+    )
+    storage = storage_module.get_document_storage()
+    storage.put(
+        object_key,
+        io.BytesIO(unrelated_text.encode("utf-8")),
+        content_type="text/plain",
+        max_bytes=storage_module.max_upload_bytes_from_env(),
+    )
+
+    doc = DocumentRecord(
+        id=document_id,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_type="INSURANCE_AUTHORIZATION",
+        source="EXTERNAL",
+        file_name="auth.txt",
+        file_path=object_key,
+        extracted_values={},
+        document_text=None,
+        uploaded_by=TEST_USER_ID,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    from app.services.evidence import document_harvest_job as job_module
+
+    monkeypatch.setattr(
+        job_module,
+        "SessionLocal",
+        lambda: db_session.get_bind().pool and _TestSessionProxy(db_session),
+    )
+
+    run_document_intelligence(document_id=document_id)
+
+    db_session.expire_all()
+
+    refreshed_facesheet = (
+        db_session.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .one()
+    )
+    assert refreshed_facesheet.first_name == "Margaret"
+    assert refreshed_facesheet.last_name == "Kessler"
+
+
 class _TestSessionProxy:
     """Thin proxy so the job's `db.close()` calls don't tear down the
     shared test session/transaction that the pytest fixture owns."""

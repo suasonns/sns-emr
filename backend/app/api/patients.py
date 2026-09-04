@@ -1647,8 +1647,19 @@ def persist_patient_from_hnp_extraction(
             )
             db.add(facesheet)
         else:
-            facesheet.first_name = summary["first_name"] or facesheet.first_name
-            facesheet.last_name = summary["last_name"] or facesheet.last_name
+            # Identity fields (first/last name) are protected once already
+            # populated: this function runs unconditionally on EVERY
+            # uploaded document's extracted text, not just genuine H&P
+            # records, and a lower-confidence document (an insurance
+            # authorization, an ADR cover letter, an orders packet) can
+            # incidentally match the generic "Name:" pattern in
+            # parse_hnp_text on unrelated text and silently overwrite a
+            # correct, previously-confirmed patient name with garbage.
+            # Only fill the name in if it is genuinely missing -- exactly
+            # the same fill-gaps-don't-overwrite policy already used for
+            # mrn above.
+            facesheet.first_name = facesheet.first_name or summary["first_name"]
+            facesheet.last_name = facesheet.last_name or summary["last_name"]
             facesheet.dob = date.fromisoformat(summary["date_of_birth"])
             facesheet.phone = summary.get("phone") or facesheet.phone
             facesheet.address = summary.get("address") or facesheet.address
