@@ -183,6 +183,124 @@ class EvidenceRelationshipType(str, Enum):
     CONTRADICTS = "CONTRADICTS"
 
 
+class CapabilityStatus(str, Enum):
+    """Whether a source model genuinely carries a given clinical field."""
+
+    AVAILABLE = "AVAILABLE"
+    FIELD_NOT_AVAILABLE = "FIELD_NOT_AVAILABLE"
+
+
+class PolicyApprovalStatus(str, Enum):
+    """
+    Approval lifecycle for a versioned clinical/workflow policy. Only
+    APPROVED policies may drive automatic classification (comparison
+    outcomes) or formal missing-requirement generation. DRAFT policies are
+    inert placeholders pending a real clinical/agency decision -- they exist
+    so the shape of an eventual decision is visible for review, never so
+    engineering can quietly activate a clinical judgment on its own.
+    """
+
+    DRAFT = "DRAFT"
+    APPROVED = "APPROVED"
+    RETIRED = "RETIRED"
+
+
+@dataclass(frozen=True)
+class SourceCapability:
+    """
+    Declares whether a given source model genuinely carries a given
+    clinical field -- e.g. RNRecertAssessment has no ECOG field at all.
+    Used so "this source cannot supply this concept" is a typed, explicit
+    fact rather than an ad hoc comment or a silently-skipped comparison.
+    """
+
+    source_model: str
+    field_name: str
+    status: CapabilityStatus
+    notes: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class InstrumentComparisonPolicy:
+    """
+    A versioned, explicitly-approved policy describing how two
+    independently-sourced observations of the same instrument should be
+    compared (e.g. what counts as "the same assessment cycle", what
+    magnitude of difference is clinically material). This dataclass only
+    carries the policy's *identity and lifecycle*; it deliberately has NO
+    threshold/window fields -- those must be added only once a real,
+    approved policy exists, and adding them is itself the policy decision,
+    not an engineering one.
+
+    Only a policy with approval_status == APPROVED may be consulted by
+    detection logic. A DRAFT policy exists purely as a placeholder that
+    documents "a decision is needed here" for human review; it must never
+    be read for classification.
+    """
+
+    policy_id: str
+    policy_version: str
+    instrument: str
+    approval_status: PolicyApprovalStatus = PolicyApprovalStatus.DRAFT
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("effective_from", self.effective_from)
+        _require_tz_aware("effective_to", self.effective_to)
+        _require_tz_aware("approved_at", self.approved_at)
+        if self.approval_status == PolicyApprovalStatus.APPROVED and (
+            self.approved_by is None or self.approved_at is None
+        ):
+            raise ValueError(
+                f"InstrumentComparisonPolicy {self.policy_id!r} cannot be APPROVED "
+                "without approved_by and approved_at"
+            )
+
+    def is_active(self) -> bool:
+        return self.approval_status == PolicyApprovalStatus.APPROVED
+
+
+@dataclass(frozen=True)
+class EvidenceRequirementPolicy:
+    """
+    A versioned, explicitly-approved policy describing when a source
+    record is actually *required* to exist (e.g. "an RN recertification
+    assessment is required for every benefit period"). Like
+    InstrumentComparisonPolicy, this carries only identity/lifecycle --
+    no requirement rule fields -- until a real policy is approved.
+
+    Only a policy with approval_status == APPROVED may drive formal
+    MissingEvidenceRequirement generation.
+    """
+
+    policy_id: str
+    policy_version: str
+    workflow: str
+    approval_status: PolicyApprovalStatus = PolicyApprovalStatus.DRAFT
+    effective_from: Optional[datetime] = None
+    effective_to: Optional[datetime] = None
+    approved_by: Optional[str] = None
+    approved_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("effective_from", self.effective_from)
+        _require_tz_aware("effective_to", self.effective_to)
+        _require_tz_aware("approved_at", self.approved_at)
+        if self.approval_status == PolicyApprovalStatus.APPROVED and (
+            self.approved_by is None or self.approved_at is None
+        ):
+            raise ValueError(
+                f"EvidenceRequirementPolicy {self.policy_id!r} cannot be APPROVED "
+                "without approved_by and approved_at"
+            )
+
+    def is_active(self) -> bool:
+        return self.approval_status == PolicyApprovalStatus.APPROVED
+
+
 # Current contract schema version. Bump when a contract's persisted/serialized
 # shape changes in a way that downstream consumers (audit records, API
 # responses) need to distinguish.
@@ -303,12 +421,14 @@ class ClinicalEvidenceItem:
     # that does not explicitly assert AUTHORITATIVE_DATABASE provenance is
     # never accidentally treated as authoritative.
     origin: EvidenceOrigin = EvidenceOrigin.LEGACY_ADAPTER
-    # Orthogonal to status (see EvidencePolarity). Defaults to POSITIVE --
-    # every adapter in this codebase today (Commit 2A/2B/2C) reports a
-    # positively-observed value; none of the current source models carry an
-    # explicit-denial/normal-finding field, so no adapter sets this to
-    # EXPLICIT_NEGATIVE yet.
-    polarity: EvidencePolarity = EvidencePolarity.POSITIVE
+    # Orthogonal to status (see EvidencePolarity). Defaults to NEUTRAL --
+    # polarity is only POSITIVE when an adapter has an explicit, reviewed
+    # mapping asserting an affirmative finding, and only EXPLICIT_NEGATIVE
+    # when a real authoritative source records an explicit denial/normal
+    # finding. Absent such an explicit mapping, NEUTRAL is the honest
+    # default: this item exists and was documented, but nothing has
+    # positively classified it as an affirmative or negative finding.
+    polarity: EvidencePolarity = EvidencePolarity.NEUTRAL
 
     def _require_complete_source_identity(self, *, context: str) -> None:
         ref = self.source_reference
@@ -418,14 +538,27 @@ class ClinicalEvidenceConflict:
     resolution_status: ConflictResolutionStatus
     human_review_required: bool
     created_at: datetime
+    # Strengthened conflict identity (engineering correction after Commit
+    # 2D): every dimension the conflict was actually grouped/compared on,
+    # so a reviewer (or a future regression test) can verify two items were
+    # genuinely comparable rather than merely sharing a concept_code.
+    # Fields the current source models cannot supply are set to the literal
+    # string "FIELD_NOT_AVAILABLE" (via SourceCapability), never fabricated.
+    tenant_id: Optional[UUID] = None
     encounter_id: Optional[str] = None
     benefit_period_id: Optional[UUID] = None
     instrument: Optional[str] = None
+    instrument_version: str = "FIELD_NOT_AVAILABLE"
+    assessment_context: str = "FIELD_NOT_AVAILABLE"
+    source_models: list[str] = field(default_factory=list)
+    source_fields: list[str] = field(default_factory=list)
+    correction_states: list[str] = field(default_factory=list)
+    supersession_states: list[str] = field(default_factory=list)
     units: list[Optional[str]] = field(default_factory=list)
     effective_times: list[Optional[datetime]] = field(default_factory=list)
     recorded_times: list[Optional[datetime]] = field(default_factory=list)
     # No approved, versioned clinical-materiality policy exists yet (see
-    # evidence_conflict_detection.ConflictComparisonPolicy) -- left as a
+    # evidence_conflict_detection.InstrumentComparisonPolicy) -- left as a
     # descriptive string, never a fabricated severity score.
     materiality: str = "UNKNOWN_NO_APPROVED_MATERIALITY_POLICY"
     resolved_by_actor_id: Optional[UUID] = None
@@ -485,6 +618,25 @@ class MissingEvidenceRequirement:
 
 
 @dataclass(frozen=True)
+class RequirementPolicyNotice:
+    """
+    Returned in place of a MissingEvidenceRequirement whenever no APPROVED
+    EvidenceRequirementPolicy exists for a workflow. This is a deliberately
+    inert, non-actionable notice -- it must never be treated as (or
+    upgraded into) a clinical finding of a missing observation. It exists
+    purely so callers can see "a requirement rule could apply here, but no
+    one has approved it yet" without the runtime fabricating a decision.
+    """
+
+    workflow: str
+    status: str = "POLICY_NOT_CONFIGURED"
+    detected_at: Optional[datetime] = None
+
+    def __post_init__(self) -> None:
+        _require_tz_aware("detected_at", self.detected_at)
+
+
+@dataclass(frozen=True)
 class ClinicalEvidenceBundle:
     """Ordered, deduplicated collection of evidence items for one patient."""
 
@@ -492,6 +644,7 @@ class ClinicalEvidenceBundle:
     items: list[ClinicalEvidenceItem] = field(default_factory=list)
     conflicts: list[ClinicalEvidenceConflict] = field(default_factory=list)
     missing_requirements: list[MissingEvidenceRequirement] = field(default_factory=list)
+    requirement_policy_notices: list[RequirementPolicyNotice] = field(default_factory=list)
     encounter_id: Optional[str] = None
     benefit_period_id: Optional[UUID] = None
     generated_at: Optional[datetime] = None

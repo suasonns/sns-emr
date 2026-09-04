@@ -176,8 +176,8 @@ class ClinicalEvidenceHarvester:
 
         items.sort(key=_order_key)
 
-        conflicts = detect_functional_score_conflicts(items, now=generated_at)
-        missing_requirements = detect_missing_rn_recert_requirement(
+        conflicts = detect_functional_score_conflicts(items, tenant_id=tenant_id, now=generated_at)
+        missing_requirements, requirement_policy_notices = detect_missing_rn_recert_requirement(
             items,
             patient_id=patient_id,
             benefit_period_id=benefit_period_id,
@@ -189,6 +189,7 @@ class ClinicalEvidenceHarvester:
             items=items,
             conflicts=conflicts,
             missing_requirements=missing_requirements,
+            requirement_policy_notices=requirement_policy_notices,
             encounter_id=encounter_id,
             benefit_period_id=benefit_period_id,
             generated_at=generated_at,
