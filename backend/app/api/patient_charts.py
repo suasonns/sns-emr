@@ -26,6 +26,7 @@ from app.services.bereavement_aggregation_engine import (
 )
 from app.services.eligibility.engine import evaluate_hospice_eligibility
 from app.services.patient_assignment_service import list_patient_assignments
+from app.services.physician_sync_service import ATTENDING, get_physician_assignments
 
 
 router = APIRouter(prefix="/patient-charts", tags=["patient-charts"])
@@ -89,6 +90,18 @@ def _latest_facesheet(db: Session, patient: Patient) -> PatientFaceSheet | None:
 
 def _base_patient(db: Session, patient: Patient) -> dict:
     face_sheet = _latest_facesheet(db, patient)
+
+    # Attending Physician: read from the authoritative shared
+    # patient_physician_assignments table (never fabricated -- falls back
+    # to the legacy Facesheet free-text field only during the transition
+    # period before every patient has a structured assignment, and shows
+    # nothing rather than a placeholder name when neither exists).
+    assignments = get_physician_assignments(db, patient_id=patient.id, tenant_id=patient.tenant_id)
+    attending = assignments.get(ATTENDING)
+    attending_physician_name = (
+        attending.name if attending and attending.name else getattr(face_sheet, "attending_physician_name", None)
+    )
+
     return {
         "id": str(patient.id),
         "mrn": patient.mrn,
@@ -98,6 +111,7 @@ def _base_patient(db: Session, patient: Patient) -> dict:
         "acuity_state": patient.acuity_state,
         "admission_status": patient.admission_status,
         "hospice_election_date": _serialize_date(patient.hospice_election_date),
+        "attending_physician_name": attending_physician_name,
         # Patient has no soc_date column of its own -- Start of Care is
         # recorded on the Facesheet (and/or the Admission row). Pulling
         # `getattr(patient, "soc_date", None)` always returned None here,
