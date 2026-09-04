@@ -135,12 +135,20 @@ class DiagnosisSourceAdapter(SourceAdapter):
             source_reference = ClinicalSourceReference(
                 source_type="DATABASE_RECORD",
                 source_id=str(row.id),
-                source_record_type=self.SOURCE_TABLE,
-                source_field="patient_diagnoses",
+                source_record_type="DIAGNOSIS_RECORD",
+                source_field="icd10_code",
                 source_recorded_at=recorded_at,
+                source_effective_at=effective_at,
                 source_author_id=str(row.created_by) if row.created_by else None,
                 source_model=self.SOURCE_MODEL,
                 source_table=self.SOURCE_TABLE,
+                source_patient_id=row.patient_id,
+                # PatientDiagnosis has no encounter or BenefitPeriod foreign
+                # key -- only an integer effective_benefit_period_number
+                # (see normalized_value below). Left None rather than
+                # fabricated from the caller's request parameter.
+                source_encounter_id=None,
+                source_benefit_period_id=None,
             )
 
             items.append(
@@ -151,7 +159,12 @@ class DiagnosisSourceAdapter(SourceAdapter):
                     canonical_name=row.diagnosis_description,
                     status=EvidenceStatus.DOCUMENTED,
                     source_reference=source_reference,
-                    benefit_period_id=benefit_period_id,
+                    # Not set from the caller's benefit_period_id parameter:
+                    # PatientDiagnosis carries no BenefitPeriod foreign key,
+                    # only the integer effective_benefit_period_number
+                    # captured in normalized_value below. A real
+                    # benefit-period association must not be fabricated from
+                    # a pass-through parameter.
                     observed_value=row.icd10_code,
                     normalized_value={
                         "icd10_code": row.icd10_code,

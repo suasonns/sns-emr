@@ -136,12 +136,30 @@ def _require_tz_aware(field_name: str, value: Optional[datetime]) -> None:
 @dataclass(frozen=True)
 class ClinicalSourceReference:
     source_type: str
+    # NOTE on naming: the directive's "source_record_id" is this field --
+    # source_id already served that role since Commit 1 and is kept (not
+    # duplicated) per "do not create duplicate fields that mean the same
+    # thing."
     source_id: Optional[str] = None
+    # Domain/business record-type label (e.g. "DIAGNOSIS_RECORD"). Distinct
+    # from source_model (ORM class name) and source_table (physical table):
+    # this describes *what kind of clinical record* it is, independent of
+    # how it happens to be persisted.
     source_record_type: Optional[str] = None
     source_field: Optional[str] = None
     source_recorded_at: Optional[datetime] = None
+    source_effective_at: Optional[datetime] = None
     source_author_id: Optional[str] = None
+    # Whether the source record itself carries a verified authentication/
+    # co-signature state (e.g. physician e-signature). Left None -- never
+    # fabricated -- when the source model has no such concept.
+    authentication_status: Optional[str] = None
     source_version: Optional[str] = None
+    # Correction/supersession provenance (Commit 2D will populate these from
+    # real correction/addendum records; Commit 2A leaves them None rather
+    # than inventing a correction history that does not exist).
+    correction_status: Optional[str] = None
+    supersedes_record_id: Optional[str] = None
     source_text_span: Optional[str] = None
     source_document_reference: Optional[str] = None
     # Explicit ORM model class name and physical table name for the
@@ -150,9 +168,27 @@ class ClinicalSourceReference:
     # that has no single backing table.
     source_model: Optional[str] = None
     source_table: Optional[str] = None
+    # Identity fields carried straight from the resolved source row, used to
+    # verify (not merely assert) that a DOCUMENTED item's source really
+    # belongs to the requesting patient/encounter/benefit period. These are
+    # populated by the adapter from the row it actually read -- never from
+    # the caller's request parameters -- so a mismatch here indicates the
+    # adapter attached evidence to the wrong patient/scope, not merely that
+    # the caller asked for a different one.
+    source_patient_id: Optional[UUID] = None
+    source_encounter_id: Optional[str] = None
+    source_benefit_period_id: Optional[UUID] = None
 
     def __post_init__(self) -> None:
         _require_tz_aware("source_recorded_at", self.source_recorded_at)
+        _require_tz_aware("source_effective_at", self.source_effective_at)
+        if self.source_field is not None and (
+            self.source_table is not None and self.source_field == self.source_table
+        ):
+            raise ValueError(
+                "source_field must not contain a table name "
+                f"(source_field == source_table == {self.source_field!r})"
+            )
 
 
 # =========================================================
@@ -206,6 +242,50 @@ class ClinicalEvidenceItem:
                 f"(got origin={self.origin.value} for concept_code={self.concept_code!r}); "
                 "use UNVERIFIED for non-authoritative evidence."
             )
+        if self.status == EvidenceStatus.DOCUMENTED:
+            ref = self.source_reference
+            missing = [
+                name
+                for name, value in (
+                    ("source_model", ref.source_model),
+                    ("source_table", ref.source_table),
+                    ("source_id", ref.source_id),
+                    ("source_field", ref.source_field),
+                    ("source_patient_id", ref.source_patient_id),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ValueError(
+                    "DOCUMENTED status requires complete source identity; "
+                    f"missing {missing} for concept_code={self.concept_code!r}"
+                )
+            if ref.source_patient_id != self.patient_id:
+                raise ValueError(
+                    "DOCUMENTED evidence source_patient_id does not match "
+                    f"evidence patient_id (source={ref.source_patient_id!r}, "
+                    f"evidence={self.patient_id!r}) for concept_code={self.concept_code!r}"
+                )
+            if (
+                self.encounter_id is not None
+                and ref.source_encounter_id is not None
+                and ref.source_encounter_id != self.encounter_id
+            ):
+                raise ValueError(
+                    "DOCUMENTED evidence source_encounter_id conflicts with "
+                    f"evidence encounter_id (source={ref.source_encounter_id!r}, "
+                    f"evidence={self.encounter_id!r}) for concept_code={self.concept_code!r}"
+                )
+            if (
+                self.benefit_period_id is not None
+                and ref.source_benefit_period_id is not None
+                and ref.source_benefit_period_id != self.benefit_period_id
+            ):
+                raise ValueError(
+                    "DOCUMENTED evidence source_benefit_period_id conflicts with "
+                    f"evidence benefit_period_id (source={ref.source_benefit_period_id!r}, "
+                    f"evidence={self.benefit_period_id!r}) for concept_code={self.concept_code!r}"
+                )
 
     def __repr__(self) -> str:  # pragma: no cover - trivial
         return (
