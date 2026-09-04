@@ -65,6 +65,27 @@ def test_extract_text_from_plain_text_file():
     assert result.needs_manual_review is False
 
 
+def test_extraction_result_strips_embedded_nul_bytes():
+    """Scanned/OCR'd PDF text occasionally contains embedded NUL (0x00)
+    bytes, which PostgreSQL text columns reject outright ("A string
+    literal cannot contain NUL (0x00) characters"), previously failing
+    the entire document with no text, no AI findings, and no evidence.
+    Every ExtractionResult must come out NUL-free regardless of source."""
+    result = dis.ExtractionResult(text="Sodium 128\x00 mEq/L", method="ocr")
+    assert "\x00" not in result.text
+    assert result.text == "Sodium 128 mEq/L"
+
+
+def test_extract_text_from_plain_text_file_strips_nul_bytes():
+    result = dis.extract_text_from_file(
+        file_bytes=b"Sodium 128\x00 mEq/L (LOW)",
+        content_type="text/plain",
+        file_name="labs.txt",
+    )
+    assert "\x00" not in result.text
+    assert result.text == "Sodium 128 mEq/L (LOW)"
+
+
 def test_extract_text_from_docx_includes_paragraphs_and_tables():
     file_bytes = _make_docx_bytes(
         ["History and Physical", "Patient reports significant functional decline over 3 months."]
