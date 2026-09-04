@@ -114,10 +114,18 @@ EXPECTED_COMPRESSED_RECORDS_STILL_PRESENT = [
 
 @pytest.fixture()
 def repaired_state(db_session):
-    """Seed PR #34's Phase 2 expansion (which creates the compressed
-    aggregate records this repair targets) and then run the coverage-repair
-    script, handing back the resolved disease map. Safe to call repeatedly
-    -- both scripts are idempotent."""
+    """Explicitly seed this file's declared prerequisite (the five
+    pre-existing Neurologic diseases, via the ONE authoritative
+    `tests.ontology_neurologic_baseline` helper), then PR #34's Phase 2
+    expansion (which creates the compressed aggregate records this repair
+    targets), then run the coverage-repair script, handing back the
+    resolved disease map. Safe to call repeatedly -- every step here is
+    idempotent, so this never depends on another test module having
+    already built this baseline first."""
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
+
+    seed_base_neurologic_diseases(db_session)
+    db_session.commit()
     run_phase2_expansion(db_session)
     db_session.commit()
     run_coverage_repair(db_session)
@@ -271,6 +279,10 @@ def test_alzheimer_specific_hospice_criteria_not_attached_to_sdb(db_session, rep
 
 
 def test_second_run_creates_zero_new_rows(db_session):
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
+
+    seed_base_neurologic_diseases(db_session)
+    db_session.commit()
     run_phase2_expansion(db_session)
     db_session.commit()
     run_coverage_repair(db_session)

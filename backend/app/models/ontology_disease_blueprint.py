@@ -61,9 +61,10 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 from app.models.base import Base
+from app.ontology.treatment_identity import normalize_ontology_concept_name
 
 # ---------------------------------------------------------------------------
 # LEVEL 1: BODY SYSTEM
@@ -454,6 +455,7 @@ class OntologyDiseaseTreatment(Base):
     )
 
     treatment_name = Column(String(255), nullable=False)
+    normalized_name = Column(String(255), nullable=False, index=True)
     # DISEASE_DIRECTED | SUPPORTIVE | HOSPICE
     treatment_category = Column(String(32), nullable=False)
     description = Column(Text, nullable=True)
@@ -461,14 +463,17 @@ class OntologyDiseaseTreatment(Base):
     disease = relationship("OntologyDisease", back_populates="treatments")
 
     __table_args__ = (
-        UniqueConstraint(
-            "disease_id", "treatment_name", "treatment_category", name="uq_ontology_disease_treatment_disease_name"
-        ),
+        UniqueConstraint("disease_id", "normalized_name", name="uq_ont_dis_treat_disease_norm_name"),
         CheckConstraint(
             "treatment_category IN ('DISEASE_DIRECTED', 'SUPPORTIVE', 'HOSPICE')",
             name="ck_ontology_disease_treatment_category",
         ),
     )
+
+    @validates("treatment_name")
+    def _set_normalized_name(self, _key, value):
+        self.normalized_name = normalize_ontology_concept_name(value)
+        return value
 
 
 # ---------------------------------------------------------------------------
@@ -676,6 +681,7 @@ class OntologyDiseaseTreatmentLimitation(Base):
     )
 
     limitation_name = Column(String(255), nullable=False)
+    normalized_name = Column(String(255), nullable=False, index=True)
     # OPTIMALLY_TREATED | TREATMENT_FAILED | TREATMENT_INTOLERANT | NOT_A_CANDIDATE |
     # TREATMENT_DECLINED | TREATMENT_DISCONTINUED | TREATMENT_CONTRAINDICATED | COMFORT_FOCUSED
     limitation_category = Column(String(32), nullable=False)
@@ -690,10 +696,7 @@ class OntologyDiseaseTreatmentLimitation(Base):
     disease = relationship("OntologyDisease", back_populates="treatment_limitations")
 
     __table_args__ = (
-        UniqueConstraint(
-            "disease_id", "limitation_name", "limitation_category",
-            name="uq_ontology_disease_treatment_limitation_disease_name",
-        ),
+        UniqueConstraint("disease_id", "normalized_name", name="uq_ont_dis_txlim_disease_norm_name"),
         CheckConstraint(
             "limitation_category IN ("
             "'OPTIMALLY_TREATED', 'TREATMENT_FAILED', 'TREATMENT_INTOLERANT', 'NOT_A_CANDIDATE', "
@@ -702,6 +705,11 @@ class OntologyDiseaseTreatmentLimitation(Base):
             name="ck_ontology_disease_treatment_limitation_category",
         ),
     )
+
+    @validates("limitation_name")
+    def _set_limitation_normalized_name(self, _key, value):
+        self.normalized_name = normalize_ontology_concept_name(value)
+        return value
 
 
 # ---------------------------------------------------------------------------

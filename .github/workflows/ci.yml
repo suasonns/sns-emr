@@ -84,10 +84,44 @@ jobs:
       - name: Application imports
         run: python -c "import app.main"
 
-      - name: Tests
+      - name: Tests (isolated database)
         # Not yet gating: the suite has known failures inherited from the
-        # branch merge. Remove continue-on-error once it is green.
+        # branch merge (see test_only_authorized_files_changed, tracked as
+        # a historical test-infrastructure defect). Remove
+        # continue-on-error once it is green.
+        #
+        # Every job gets its OWN uniquely-named sns_emr_test_* database
+        # (derived from the checkout path + this job's GitHub run/attempt/
+        # job identity) via run_isolated_tests.py -- see
+        # backend/scripts/test_db_identity.py for the naming contract this
+        # enforces. This is required, not optional: running pytest directly
+        # against a fixed database name reintroduces the exact cross-run
+        # collision that infrastructure exists to prevent.
         continue-on-error: true
+        env:
+          TEST_RUN_ID: gh${{ github.run_id }}a${{ github.run_attempt }}
         run: |
           pip install pytest httpx
-          python -m pytest -q --tb=short
+          python scripts/run_isolated_tests.py --run-id "$TEST_RUN_ID" -- -q --tb=short --junitxml=junit-results.xml
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-junit-results
+          path: backend/junit-results.xml
+          if-no-files-found: ignore
+
+      - name: Verify no isolated test-database leaks remain
+        # Diagnostic only -- reports database names, never connection URLs
+        # or credentials.
+        if: always()
+        run: |
+          python -c "
+          import glob, os
+          leaked = glob.glob('.test_db_registry/*.json')
+          if leaked:
+              print('::error::Leaked test-database registry entries:', [os.path.basename(p) for p in leaked])
+          else:
+              print('No leaked test-database registry entries.')
+          "

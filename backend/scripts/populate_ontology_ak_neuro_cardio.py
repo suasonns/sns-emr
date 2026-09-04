@@ -29,6 +29,11 @@ from typing import Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.treatment_identity import (
+    concept_identity_key,
+    existing_rows_by_canonical_name,
+    reconcile_category,
+)
 
 # Importing the full model package pre-registers most ORM classes, but
 # app.models.poc (POCProblem etc.) is not re-exported from app/models/__init__.py,
@@ -65,6 +70,7 @@ APPROVED_DISEASE_NAMES = [
     "Prior Myocardial Infarction",
     "Atrial Fibrillation",
 ]
+IMPORTER_NAME = "populate_ontology_ak_neuro_cardio"
 
 # Disease-level evidence source label, keyed by stable disease name (matches
 # the disease-level ontology_evidence_rule.evidence_source values already
@@ -355,25 +361,46 @@ def populate_treatment_limitations(db: Session, diseases: Dict[str, OntologyDise
     inserted = 0
     for disease_name, rows in TREATMENT_LIMITATIONS.items():
         disease = diseases[disease_name]
+        existing_rows = existing_rows_by_canonical_name(
+            db.query(OntologyDiseaseTreatmentLimitation).filter_by(disease_id=disease.id).all(),
+            domain="TREATMENT_LIMITATION",
+            table_name=OntologyDiseaseTreatmentLimitation.__tablename__,
+            disease_id=disease.id,
+            importer_name=IMPORTER_NAME,
+            name_attr="limitation_name",
+            category_attr="limitation_category",
+        )
         for name, category, desc, evidence_req, hospice_rel in rows:
-            existing = (
-                db.query(OntologyDiseaseTreatmentLimitation)
-                .filter_by(disease_id=disease.id, limitation_name=name, limitation_category=category)
-                .one_or_none()
-            )
+            normalized_name = concept_identity_key("TREATMENT_LIMITATION", name)
+            existing = existing_rows.get(normalized_name)
             if existing is not None:
-                continue
-            db.add(
-                OntologyDiseaseTreatmentLimitation(
-                    id=uuid.uuid4(),
-                    disease_id=disease.id,
-                    limitation_name=name,
-                    limitation_category=category,
-                    description=desc,
-                    evidence_requirement=evidence_req,
-                    hospice_relevance=hospice_rel,
+                result = reconcile_category(
+                    domain="TREATMENT_LIMITATION",
+                    disease_id=existing.disease_id,
+                    normalized_name=existing.normalized_name,
+                    existing_row_id=existing.id,
+                    existing_display_name=existing.limitation_name,
+                    existing_category=existing.limitation_category,
+                    incoming_display_name=name,
+                    incoming_category=category,
+                    importer_name=IMPORTER_NAME,
                 )
+                if result.changed:
+                    existing.limitation_category = result.category
+                continue
+            row = OntologyDiseaseTreatmentLimitation(
+                id=uuid.uuid4(),
+                disease_id=disease.id,
+                limitation_name=name,
+                normalized_name=normalized_name,
+                limitation_category=category,
+                description=desc,
+                evidence_requirement=evidence_req,
+                hospice_relevance=hospice_rel,
             )
+            db.add(row)
+            db.flush()
+            existing_rows[normalized_name] = row
             inserted += 1
     db.flush()
     return inserted

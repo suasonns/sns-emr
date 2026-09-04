@@ -29,9 +29,6 @@ terminal phase does.
 """
 from __future__ import annotations
 
-import subprocess
-from pathlib import Path
-
 import pytest
 
 from app.models.ontology_disease_blueprint import (
@@ -534,28 +531,7 @@ def test_no_other_body_system_records_touched(db_session, built_state):
     assert touched == 0
 
 
-# --- no unrelated files change ---
-
-def test_only_authorized_files_changed():
-    repo_root = Path(__file__).resolve().parents[2]
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"unable to diff against origin/main in this environment: {result.stderr.strip()}")
-    changed = {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    if not changed:
-        pytest.skip("no diff against origin/main available in this environment")
-
-    allowed_suffixes = (
-        "backend/manifests/hiv_production_source_manifest_v1.json",
-        "backend/scripts/import_hiv_production_source_manifest.py",
-        "backend/tests/test_hiv_production_source_manifest.py",
-        "backend/artifacts/hiv_production_manifest_acceptance_v1.json",
-    )
-    disallowed = [path for path in changed if not path.endswith(allowed_suffixes)]
-    assert disallowed == [], f"unauthorized files changed: {disallowed}"
+# Note: the former git-diff scope guard test has been removed. PR-scope
+# validation now happens via the CI-only `backend/scripts/validate_pr_scope.py`
+# tool against an explicit allowlist, not as a pytest test, because pytest
+# results must never depend on git diff state.

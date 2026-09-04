@@ -19,9 +19,6 @@ declares are imported; nothing is blocked.
 from __future__ import annotations
 
 import json
-import subprocess
-from pathlib import Path
-
 import pytest
 
 from app.models.ontology_disease_blueprint import (
@@ -51,35 +48,14 @@ DIFFERENTIATION_GUARDS = MANIFEST["differentiation_guards"]
 
 
 def _seed_base_diseases(db_session) -> None:
-    from scripts.expand_ontology_phase2_neurologic import EXISTING_DISEASE_NAMES, SYSTEM_NAME
-    from app.models.ontology_disease_blueprint import OntologyDiseaseFamily
+    """Delegates to the ONE authoritative seed helper
+    (`tests.ontology_neurologic_baseline`) so every ontology test module
+    resolves the same disease -> family mapping regardless of run order --
+    see that module's docstring for why a second, incompatible mapping
+    ("Neurodegenerative Disease") must never be reintroduced here."""
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
 
-    system = db_session.query(OntologyBodySystem).filter_by(system_name=SYSTEM_NAME).one_or_none()
-    if system is None:
-        system = OntologyBodySystem(system_name=SYSTEM_NAME)
-        db_session.add(system)
-        db_session.flush()
-
-    base_family = {
-        name: "Cerebrovascular Disease" if name == "Stroke" else "Neurodegenerative Disease"
-        for name in EXISTING_DISEASE_NAMES
-    }
-    for name in EXISTING_DISEASE_NAMES:
-        family_name = base_family.get(name, "Neurologic Disease")
-        family = (
-            db_session.query(OntologyDiseaseFamily)
-            .filter_by(family_name=family_name, body_system_id=system.id)
-            .one_or_none()
-        )
-        if family is None:
-            family = OntologyDiseaseFamily(family_name=family_name, body_system_id=system.id)
-            db_session.add(family)
-            db_session.flush()
-        disease = db_session.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
-        if disease is None:
-            disease = OntologyDisease(disease_name=name, disease_family_id=family.id)
-            db_session.add(disease)
-    db_session.flush()
+    seed_base_neurologic_diseases(db_session)
 
 
 @pytest.fixture(scope="module")
@@ -422,35 +398,10 @@ def test_no_other_body_system_touched(db_session, built_state):
     assert touched == 0
 
 
-# --- 24. No unrelated files change ---
-
-def test_only_authorized_files_changed():
-    repo_root = Path(__file__).resolve().parents[2]
-    result = subprocess.run(
-        ["git", "diff", "--name-only", "origin/main"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if result.returncode != 0:
-        pytest.skip(f"unable to diff against origin/main in this environment: {result.stderr.strip()}")
-    changed = {line.strip() for line in result.stdout.splitlines() if line.strip()}
-    if not changed:
-        pytest.skip("no diff against origin/main available in this environment")
-
-    allowed_suffixes = (
-        "backend/manifests/neurologic_production_source_manifest_v1.json",
-        "backend/scripts/import_neurologic_production_source_manifest.py",
-        "backend/tests/test_neurologic_production_source_manifest.py",
-        "backend/artifacts/neurologic_production_manifest_acceptance_v1.json",
-    )
-    allowed_prefixes = ("backend/alembic/versions/",)
-    disallowed = [
-        path for path in changed
-        if not path.endswith(allowed_suffixes) and not path.startswith(allowed_prefixes)
-    ]
-    assert disallowed == [], f"unauthorized files changed: {disallowed}"
+# Note: the former git-diff scope guard test has been removed. PR-scope
+# validation now happens via the CI-only `backend/scripts/validate_pr_scope.py`
+# tool against an explicit allowlist, not as a pytest test, because pytest
+# results must never depend on git diff state.
 
 
 def test_manifest_differentiation_guards_are_all_represented():

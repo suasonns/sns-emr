@@ -125,31 +125,12 @@ GUARDS = MANIFEST["differentiation_guards"]
 
 
 def _seed_neuro_base_diseases(db_session) -> None:
-    system = db_session.query(OntologyBodySystem).filter_by(system_name=NEURO_SYSTEM_NAME).one_or_none()
-    if system is None:
-        system = OntologyBodySystem(system_name=NEURO_SYSTEM_NAME)
-        db_session.add(system)
-        db_session.flush()
-    base_family = {
-        name: "Cerebrovascular Disease" if name == "Stroke" else "Neurodegenerative Disease"
-        for name in EXISTING_DISEASE_NAMES
-    }
-    for name in EXISTING_DISEASE_NAMES:
-        family_name = base_family.get(name, "Neurologic Disease")
-        family = (
-            db_session.query(OntologyDiseaseFamily)
-            .filter_by(family_name=family_name, body_system_id=system.id)
-            .one_or_none()
-        )
-        if family is None:
-            family = OntologyDiseaseFamily(family_name=family_name, body_system_id=system.id)
-            db_session.add(family)
-            db_session.flush()
-        disease = db_session.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
-        if disease is None:
-            disease = OntologyDisease(disease_name=name, disease_family_id=family.id)
-            db_session.add(disease)
-    db_session.flush()
+    """Delegates to the ONE authoritative seed helper
+    (`tests.ontology_neurologic_baseline`) so every ontology test module
+    resolves the same disease -> family mapping regardless of run order."""
+    from tests.ontology_neurologic_baseline import seed_base_neurologic_diseases
+
+    seed_base_neurologic_diseases(db_session)
 
 
 def _build_full_baseline(session) -> None:

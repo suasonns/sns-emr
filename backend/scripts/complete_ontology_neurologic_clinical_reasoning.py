@@ -95,11 +95,15 @@ from app.models.ontology_disease_blueprint import (
     OntologyBodySystem,
     OntologyConceptVariantApplicability,
     OntologyDisease,
+    OntologyDiseaseEndStageFinding,
     OntologyDiseaseFamily,
+    OntologyDiseaseMedication,
+    OntologyDiseaseTreatment,
     OntologyDiseaseValidationResult,
     OntologyDiseaseVariant,
     OntologyEvidenceRule,
 )
+from app.ontology.disease_family_ownership import resolve_or_create_authoritative_disease
 
 # Reuse the already-committed Phase 2 module for disease-name constants,
 # the CONCEPT_DOMAINS registry, the generic simple-domain populate helper,
@@ -117,6 +121,7 @@ from scripts.expand_ontology_phase2_neurologic import (
 )
 
 ALL_DISEASE_NAMES = [STROKE, HEMIPLEGIA, HEMIPARESIS, CONTRACTURE, ALZ, SDB]
+IMPORTER_NAME = "complete_ontology_neurologic_clinical_reasoning"
 
 CONCEPT_TYPE_MODEL_MAP: Dict[str, Tuple[type, str]] = {
     concept_type: (model_cls, name_attr) for model_cls, concept_type, name_attr, _req in CONCEPT_DOMAINS
@@ -883,19 +888,21 @@ APPLICABILITY_DEFS: List[ApplicabilityDef] = [
 
 def _resolve_diseases(db: Session) -> Dict[str, OntologyDisease]:
     resolved: Dict[str, OntologyDisease] = {}
-    missing: List[str] = []
     for name in ALL_DISEASE_NAMES:
-        disease = db.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
-        if disease is None:
-            missing.append(name)
-        else:
-            resolved[name] = disease
-    if missing:
-        raise RuntimeError(
-            "Neurologic Clinical Reasoning Completion requires these six diseases to already exist "
-            f"(from the merged Phase 2 baseline) and was unable to resolve: {missing}. Aborting without "
-            "any writes."
-        )
+        try:
+            resolved[name] = resolve_or_create_authoritative_disease(
+                db,
+                disease_name=name,
+                importer_name=IMPORTER_NAME,
+                source_manifest=__file__,
+                create_if_missing=False,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "Neurologic Clinical Reasoning Completion requires these six diseases to already exist "
+                f"(from the merged Phase 2 baseline) and was unable to resolve: {name!r}. Aborting without "
+                "any writes."
+            ) from exc
     return resolved
 
 
@@ -1127,12 +1134,25 @@ DEFAULT_ACCEPTANCE_EXPORT_PATH = (
 
 def _concept_lookup(db: Session) -> Dict[Tuple[str, uuid.UUID], Dict[str, object]]:
     """Build a {(concept_type, concept_id): {name, domain}} map covering every
-    row in every CONCEPT_DOMAINS-registered table, scoped to nothing in
-    particular (concept ids are globally unique per table) so any
-    applicability row's concept_type/concept_id can be resolved to its
-    stored name -- read-only, no writes."""
+    row in every CONCEPT_DOMAINS-registered table, PLUS the additional
+    applicability-eligible concept domains (TREATMENT, MEDICATION,
+    END_STAGE_FINDING) that other production importers legitimately attach
+    Tier 5 applicability edges to on these same six diseases, but which are
+    outside the narrower CONCEPT_DOMAINS registry reused from Phase 2 (that
+    registry only enumerates the domains Phase 2/A-K itself populates).
+    Concept ids are globally unique per table, so this map is safe to build
+    with no disease scoping -- read-only, no writes."""
     lookup: Dict[Tuple[str, uuid.UUID], Dict[str, object]] = {}
     for model_cls, concept_type, name_attr, _requires_evidence in CONCEPT_DOMAINS:
+        name_col = getattr(model_cls, name_attr)
+        for row_id, row_name in db.query(model_cls.id, name_col).all():
+            lookup[(concept_type, row_id)] = {"name": row_name, "domain": concept_type}
+
+    for model_cls, concept_type, name_attr in (
+        (OntologyDiseaseTreatment, "TREATMENT", "treatment_name"),
+        (OntologyDiseaseMedication, "MEDICATION", "medication_name"),
+        (OntologyDiseaseEndStageFinding, "END_STAGE_FINDING", "finding_name"),
+    ):
         name_col = getattr(model_cls, name_attr)
         for row_id, row_name in db.query(model_cls.id, name_col).all():
             lookup[(concept_type, row_id)] = {"name": row_name, "domain": concept_type}

@@ -73,6 +73,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.treatment_identity import concept_identity_key
 
 import app.models.poc  # noqa: F401
 from app.models.ontology_disease_blueprint import (
@@ -394,7 +395,7 @@ def run(db: Session, manifest: dict | None = None) -> dict:
     concept_by_key: Dict[Tuple[str, str], object] = {}
     for concept_type, (model_cls, name_attr) in CONCEPT_DOMAIN_MODEL_MAP.items():
         for existing in db.query(model_cls).filter_by(disease_id=disease.id).all():
-            key = (concept_type, getattr(existing, name_attr).strip().lower())
+            key = (concept_type, concept_identity_key(concept_type, getattr(existing, name_attr)))
             concept_by_key[key] = existing
 
     variants_inserted = 0
@@ -430,7 +431,7 @@ def run(db: Session, manifest: dict | None = None) -> dict:
     for c in manifest.get("concepts", []):
         domain = c["domain"]
         name = c["name"]
-        normalized = name.strip().lower()
+        normalized = concept_identity_key(domain, name)
         key = (domain, normalized)
 
         if key in concept_by_key:

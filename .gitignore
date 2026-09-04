@@ -41,6 +41,7 @@ Thumbs.db
 .pytest_cache/
 htmlcov/
 backend/storage/test_documents_pytest/
+backend/.test_db_registry/
 backend/storage/documents/
 
 # ======================

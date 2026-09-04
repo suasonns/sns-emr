@@ -63,6 +63,12 @@ from typing import Dict, List, Tuple
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.ontology.disease_family_ownership import resolve_or_create_authoritative_disease
+from app.ontology.treatment_identity import (
+    concept_identity_key,
+    existing_rows_by_canonical_name,
+    reconcile_category,
+)
 
 import app.models.poc  # noqa: F401
 from app.models.ontology_disease_blueprint import (
@@ -93,6 +99,7 @@ ALZ = "Dementia Due To Alzheimer's Disease"
 SDB = "Senile Degeneration of Brain"
 
 ALL_DISEASE_NAMES = [STROKE, HEMIPLEGIA, HEMIPARESIS, CONTRACTURE, ALZ, SDB]
+IMPORTER_NAME = "complete_ontology_phase2_neurologic_coverage"
 
 CEREBROVASCULAR_SOURCE = (
     "General cerebrovascular-disease, hemiplegia/hemiparesis/contracture clinical "
@@ -561,19 +568,57 @@ def _resolve_diseases(db: Session) -> Dict[str, OntologyDisease]:
     missing -- this script never creates, renames, or re-families a
     disease, family, or body system."""
     resolved: Dict[str, OntologyDisease] = {}
-    missing: List[str] = []
     for name in ALL_DISEASE_NAMES:
-        disease = db.query(OntologyDisease).filter_by(disease_name=name).one_or_none()
-        if disease is None:
-            missing.append(name)
-        else:
-            resolved[name] = disease
-    if missing:
-        raise RuntimeError(
-            "Neurologic Phase 2 coverage repair requires these diseases to already exist "
-            f"and was unable to resolve: {missing}. Aborting without any writes."
-        )
+        try:
+            resolved[name] = resolve_or_create_authoritative_disease(
+                db,
+                disease_name=name,
+                importer_name=IMPORTER_NAME,
+                source_manifest=__file__,
+                create_if_missing=False,
+            )
+        except RuntimeError as exc:
+            raise RuntimeError(
+                "Neurologic Phase 2 coverage repair requires these diseases to already exist "
+                f"and was unable to resolve: {name!r}. Aborting without any writes."
+            ) from exc
     return resolved
+
+
+def _canonical_concept_rows(db: Session, model_cls, disease_id, name_attr: str, domain: str, category_attr: str):
+    return existing_rows_by_canonical_name(
+        db.query(model_cls).filter_by(disease_id=disease_id).all(),
+        domain=domain,
+        table_name=model_cls.__tablename__,
+        disease_id=disease_id,
+        importer_name=IMPORTER_NAME,
+        name_attr=name_attr,
+        category_attr=category_attr,
+    )
+
+
+def _reconcile_canonical_concept_category(
+    row,
+    *,
+    domain: str,
+    name_attr: str,
+    category_attr: str,
+    incoming_name: str,
+    incoming_category: str,
+) -> None:
+    result = reconcile_category(
+        domain=domain,
+        disease_id=row.disease_id,
+        normalized_name=row.normalized_name,
+        existing_row_id=row.id,
+        existing_display_name=getattr(row, name_attr),
+        existing_category=getattr(row, category_attr),
+        incoming_display_name=incoming_name,
+        incoming_category=incoming_category,
+        importer_name=IMPORTER_NAME,
+    )
+    if result.changed:
+        setattr(row, category_attr, result.category)
 
 
 def _populate_simple_domain(db, model_cls, rows_by_disease, diseases, unique_attrs, field_names) -> int:
@@ -637,10 +682,39 @@ def populate_prognostic_indicators(db, diseases) -> int:
 
 
 def populate_treatments(db, diseases) -> int:
-    return _populate_simple_domain(
-        db, OntologyDiseaseTreatment, TREATMENTS, diseases,
-        ["treatment_name", "treatment_category"], ["treatment_name", "treatment_category", "description"],
-    )
+    inserted = 0
+    for disease_name, rows in TREATMENTS.items():
+        disease = diseases[disease_name]
+        existing_rows = _canonical_concept_rows(
+            db, OntologyDiseaseTreatment, disease.id, "treatment_name", "TREATMENT", "treatment_category"
+        )
+        for name, category, desc in rows:
+            normalized_name = concept_identity_key("TREATMENT", name)
+            existing = existing_rows.get(normalized_name)
+            if existing is not None:
+                _reconcile_canonical_concept_category(
+                    existing,
+                    domain="TREATMENT",
+                    name_attr="treatment_name",
+                    category_attr="treatment_category",
+                    incoming_name=name,
+                    incoming_category=category,
+                )
+                continue
+            row = OntologyDiseaseTreatment(
+                id=uuid.uuid4(),
+                disease_id=disease.id,
+                treatment_name=name,
+                normalized_name=normalized_name,
+                treatment_category=category,
+                description=desc,
+            )
+            db.add(row)
+            db.flush()
+            existing_rows[normalized_name] = row
+            inserted += 1
+    db.flush()
+    return inserted
 
 
 def populate_medications(db, diseases) -> int:
@@ -668,20 +742,40 @@ def populate_treatment_limitations(db, diseases) -> int:
     inserted = 0
     for disease_name, rows in TREATMENT_LIMITATIONS.items():
         disease = diseases[disease_name]
+        existing_rows = _canonical_concept_rows(
+            db,
+            OntologyDiseaseTreatmentLimitation,
+            disease.id,
+            "limitation_name",
+            "TREATMENT_LIMITATION",
+            "limitation_category",
+        )
         for name, category, desc, evidence_req, hospice_rel in rows:
-            existing = (
-                db.query(OntologyDiseaseTreatmentLimitation)
-                .filter_by(disease_id=disease.id, limitation_name=name, limitation_category=category)
-                .one_or_none()
-            )
+            normalized_name = concept_identity_key("TREATMENT_LIMITATION", name)
+            existing = existing_rows.get(normalized_name)
             if existing is not None:
-                continue
-            db.add(
-                OntologyDiseaseTreatmentLimitation(
-                    id=uuid.uuid4(), disease_id=disease.id, limitation_name=name, limitation_category=category,
-                    description=desc, evidence_requirement=evidence_req, hospice_relevance=hospice_rel,
+                _reconcile_canonical_concept_category(
+                    existing,
+                    domain="TREATMENT_LIMITATION",
+                    name_attr="limitation_name",
+                    category_attr="limitation_category",
+                    incoming_name=name,
+                    incoming_category=category,
                 )
+                continue
+            row = OntologyDiseaseTreatmentLimitation(
+                id=uuid.uuid4(),
+                disease_id=disease.id,
+                limitation_name=name,
+                normalized_name=normalized_name,
+                limitation_category=category,
+                description=desc,
+                evidence_requirement=evidence_req,
+                hospice_relevance=hospice_rel,
             )
+            db.add(row)
+            db.flush()
+            existing_rows[normalized_name] = row
             inserted += 1
     db.flush()
     return inserted
