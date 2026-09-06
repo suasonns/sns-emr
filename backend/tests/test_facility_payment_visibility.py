@@ -1198,3 +1198,199 @@ def test_router_end_to_end_create_list_thresholds(client, db_session, billing_en
     assert list_response.json()["count"] >= 1
     assert thresholds_response.status_code == 200
     assert any(item["alert_type"] == "OVERDUE_90" for item in thresholds_response.json()["items"])
+
+
+def test_collections_report_collection_rate_and_outstanding_exclude_superseded(client, db_session, billing_enabled_tenant):
+    """Priority 2 CEO review: Collection Rate and Outstanding Amount must be
+    driven only by effective (non-superseded) records, even when the
+    superseded version carried a confirmed partial payment allocation."""
+    cycle = _make_billing_cycle(db_session, billing_enabled_tenant, month=9)
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP30")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Rate SNF", effective_date=date(2026, 9, 1))
+    claim = _make_claim(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        billing_cycle_id=cycle.id,
+        status="PAID",
+        payer_name="Medi-Cal",
+        total_charge=Decimal("2000.00"),
+        exported_days_ago=1,
+    )
+    remittance = _make_remittance(db_session, billing_enabled_tenant, payer_name="Medi-Cal", payment_date="20260905")
+    _make_payment(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        remittance_advice_id=remittance.id,
+        claim_id=claim.id,
+        paid_amount=Decimal("800.00"),
+        payment_date="20260905",
+    )
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        expected_amount="2000.00",
+        status="ACTIVE",
+    )
+    candidates = facility_payment_service.find_candidate_matches(db_session, expectation=expectation)
+    facility_payment_service.confirm_allocation(
+        db_session, allocation_id=candidates[0].id, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(expectation)
+    assert expectation.reconciliation_status == "PARTIALLY_PAID"
+    assert expectation.status == "PARTIALLY_PAID"
+
+    # Correct the (partially paid, non-terminal) version. The superseded
+    # predecessor keeps its $800 confirmed allocation on record (flagged for
+    # review), but the new effective version starts with $0 received against
+    # the corrected $2,500 expected amount.
+    corrected = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        expected_amount=Decimal("2500.00"),
+        correction_reason="Adjusted room and board amount after facility invoice review.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(expectation)
+    assert expectation.status == "SUPERSEDED"
+    # The corrected version has no allocations of its own yet, so it is
+    # correctly ACTIVE (nothing paid against this specific version) rather
+    # than inheriting PARTIALLY_PAID from the superseded predecessor's
+    # payment history — payment-derived status is recomputed per-version
+    # from that version's own confirmed allocations, distinct from the
+    # explicit-lifecycle-preservation rule (DRAFT never auto-activates).
+    assert corrected.status == "ACTIVE"
+
+    headers = _headers("BILLING", billing_enabled_tenant)
+    default_response = client.get(
+        f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}",
+        headers=headers,
+    )
+    assert default_response.status_code == 200, default_response.text
+    summary = default_response.json()["summary"]
+    # Only the effective (corrected) version's own totals should count:
+    # its own amount_received/outstanding, not anything from the superseded
+    # predecessor's confirmed allocation.
+    assert summary["total_expected"] == "2500.00"
+    assert Decimal(summary["total_outstanding"]) <= Decimal("2500.00")
+    # The superseded predecessor's $800 confirmed allocation must not leak
+    # into the effective-only totals.
+    assert Decimal(summary["total_received"]) < Decimal("800.00")
+    # Collection rate must be computed strictly from effective totals, i.e.
+    # total_received / total_expected using only the rows above; it must not
+    # be inflated or deflated by the superseded predecessor's $800 payment.
+    expected_rate = (Decimal(summary["total_received"]) / Decimal(summary["total_expected"])).quantize(Decimal("0.01"))
+    assert Decimal(summary["collection_rate"]) == expected_rate
+
+    all_statuses_response = client.get(
+        f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}&include_all_statuses=true",
+        headers=headers,
+    )
+    assert all_statuses_response.status_code == 200, all_statuses_response.text
+    all_summary = all_statuses_response.json()["summary"]
+    # With historical rows included, the superseded predecessor's $800
+    # confirmed allocation must reappear in the totals.
+    assert Decimal(all_summary["total_received"]) >= Decimal("800.00")
+
+
+def test_multi_correction_history_chain_supersedes_each_prior_version(db_session, billing_enabled_tenant):
+    """Priority 2 CEO review: repeated corrections must build a proper
+    V1 SUPERSEDED -> V2 SUPERSEDED -> V3 ACTIVE chain, never leaving more
+    than one non-superseded version and never breaking supersession links."""
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP31")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Chain SNF", effective_date=date(2026, 6, 1))
+    v1 = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        status="ACTIVE",
+        expected_amount="1000.00",
+    )
+    v2 = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=v1.id,
+        expected_amount=Decimal("1100.00"),
+        correction_reason="First correction: adjusted amount.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    v3 = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=v2.id,
+        expected_amount=Decimal("1200.00"),
+        correction_reason="Second correction: adjusted amount again.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(v1)
+    db_session.refresh(v2)
+    db_session.refresh(v3)
+
+    assert v1.status == "SUPERSEDED"
+    assert v2.status == "SUPERSEDED"
+    assert v3.status == "ACTIVE"
+    assert v1.superseded_by_expectation_id == v2.id
+    assert v2.superseded_by_expectation_id == v3.id
+    assert v2.supersedes_expectation_id == v1.id
+    assert v3.supersedes_expectation_id == v2.id
+    assert v1.version_number == 1
+    assert v2.version_number == 2
+    assert v3.version_number == 3
+
+    # A correction attempt against either earlier (now-SUPERSEDED) version
+    # must be rejected; only the current effective version is correctable.
+    with pytest.raises(HTTPException) as excinfo:
+        facility_payment_service.create_corrected_expectation_version(
+            db_session,
+            previous_expectation_id=v2.id,
+            expected_amount=Decimal("1300.00"),
+            correction_reason="Attempting to correct a stale, superseded version.",
+            user_id=TEST_USER_ID,
+            user_role="BILLING",
+        )
+    assert excinfo.value.status_code == 409
+
+
+def test_collections_report_is_tenant_isolated(client, db_session, billing_enabled_tenant):
+    """Priority 2 CEO review: Tenant A's facility payment data must never
+    appear in Tenant B's Financial Reporting Dataset (/collections-report),
+    regardless of include_all_statuses."""
+    other_tenant_id = _make_second_tenant(db_session, legal_name="Isolated Reporting Tenant")
+    other_patient = _make_patient(db_session, other_tenant_id, mrn_prefix="FVP32")
+    other_pos = _make_patient_pos(
+        db_session, other_tenant_id, other_patient.id, pos_type="SNF", facility_name="Other Tenant SNF", effective_date=date(2026, 6, 1)
+    )
+    _create_expectation(
+        db_session,
+        tenant_id=other_tenant_id,
+        patient_id=other_patient.id,
+        patient_pos_id=other_pos.id,
+        status="ACTIVE",
+        expected_amount="9999.00",
+    )
+
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP33")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Own Tenant SNF", effective_date=date(2026, 6, 1))
+    _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        status="ACTIVE",
+        expected_amount="500.00",
+    )
+
+    headers = _headers("BILLING", billing_enabled_tenant)
+    for include_all in ("false", "true"):
+        response = client.get(
+            f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}&include_all_statuses={include_all}",
+            headers=headers,
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert all(row["expected_amount"] != "9999.00" for row in payload["rows"])
+        assert Decimal(payload["summary"]["total_expected"]) < Decimal("9999.00")
