@@ -12,33 +12,68 @@ from app.billing.models.billing_provider_agency_assignment import (
     BillingProviderAgencyAssignment,
     BillingProviderAgencyServiceScope,
 )
+from app.billing.models.billing_provider_organization import BillingProviderOrganization
+from app.billing.models.billing_provider_organization_membership import (
+    BillingProviderOrganizationMembership,
+)
 from app.core.roles import access_scope_for_role, is_owner_role, normalize_role
 from app.core.tenant_scope import NON_AGENCY_TENANT_TYPES, list_billable_agency_tenants
 from app.models.tenant import Tenant
-from app.models.user import User
 
 
 def _now_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _provider_org_id_for_user(db: Session, user) -> UUID | None:
-    row = (
-        db.query(User.billing_provider_organization_id)
-        .filter(User.id == getattr(user, "user_id", None))
+def _effective_now_filter(start_column, end_column, *, at_time: datetime):
+    return (
+        start_column <= at_time,
+        or_(
+            end_column.is_(None),
+            end_column >= at_time,
+        ),
+    )
+
+
+def _user_tenant_row(db: Session, user):
+    return (
+        db.query(Tenant.id, Tenant.tenant_type)
+        .filter(Tenant.id == getattr(user, "tenant_id", None))
         .one_or_none()
     )
-    if row is None:
-        return None
-    return row[0]
 
 
-def _is_provider_affiliated_billing_user(db: Session, user) -> bool:
-    provider_org_id = _provider_org_id_for_user(db, user)
-    if provider_org_id is None:
-        return False
-    role = normalize_role(getattr(user, "role", None))
-    return bool(role) and (role == "PLATFORM_BILLING" or access_scope_for_role(role) == "billing")
+def _active_billing_provider_org_ids_for_user(
+    db: Session,
+    user,
+    *,
+    at_time: datetime | None = None,
+) -> list[UUID]:
+    user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    if user_id is None:
+        return []
+
+    rows = (
+        db.query(BillingProviderOrganizationMembership.billing_provider_organization_id)
+        .join(
+            BillingProviderOrganization,
+            BillingProviderOrganization.id
+            == BillingProviderOrganizationMembership.billing_provider_organization_id,
+        )
+        .filter(
+            BillingProviderOrganizationMembership.user_id == user_id,
+            BillingProviderOrganizationMembership.status == "ACTIVE",
+            BillingProviderOrganization.status == "ACTIVE",
+            *_effective_now_filter(
+                BillingProviderOrganizationMembership.effective_start_at,
+                BillingProviderOrganizationMembership.effective_end_at,
+                at_time=at_time or _now_utc(),
+            ),
+        )
+        .distinct()
+        .all()
+    )
+    return [UUID(str(row[0])) for row in rows]
 
 
 def _normalize_requested_ids(
@@ -107,6 +142,130 @@ def _resolve_plain_tenant_user_tenant_ids(
     return [own_tenant_id]
 
 
+def _resolve_effective_managed_billing_tenant_ids(
+    db: Session,
+    *,
+    requested_scope: str | None = None,
+    provider_org_ids: list[UUID] | None = None,
+    tenant_ids: list[UUID] | None = None,
+    at_time: datetime | None = None,
+) -> list[UUID]:
+    current_time = at_time or _now_utc()
+    query = (
+        db.query(BillingProviderAgencyAssignment.tenant_id)
+        .join(
+            BillingProviderOrganization,
+            BillingProviderOrganization.id
+            == BillingProviderAgencyAssignment.billing_provider_organization_id,
+        )
+        .join(
+            BillingProviderAgencyServiceScope,
+            BillingProviderAgencyServiceScope.assignment_id
+            == BillingProviderAgencyAssignment.id,
+        )
+        .filter(
+            BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
+            BillingProviderOrganization.status == "ACTIVE",
+            *_effective_now_filter(
+                BillingProviderAgencyAssignment.effective_start_at,
+                BillingProviderAgencyAssignment.effective_end_at,
+                at_time=current_time,
+            ),
+        )
+    )
+    if requested_scope is not None:
+        query = query.filter(BillingProviderAgencyServiceScope.scope == requested_scope)
+    if provider_org_ids is not None:
+        if not provider_org_ids:
+            return []
+        query = query.filter(
+            BillingProviderAgencyAssignment.billing_provider_organization_id.in_(provider_org_ids)
+        )
+    if tenant_ids is not None:
+        if not tenant_ids:
+            return []
+        query = query.filter(BillingProviderAgencyAssignment.tenant_id.in_(tenant_ids))
+    return [UUID(str(row[0])) for row in query.distinct().all()]
+
+
+def compute_tenant_financials_enabled_map(
+    db: Session,
+    tenant_ids: list[UUID | str] | tuple[UUID | str, ...],
+    *,
+    at_time: datetime | None = None,
+) -> dict[UUID, bool]:
+    normalized = [UUID(str(tenant_id)) for tenant_id in tenant_ids]
+    if not normalized:
+        return {}
+    enabled = set(
+        _resolve_effective_managed_billing_tenant_ids(
+            db,
+            tenant_ids=normalized,
+            at_time=at_time,
+        )
+    )
+    return {tenant_id: tenant_id in enabled for tenant_id in normalized}
+
+
+def compute_tenant_financials_enabled(
+    db: Session,
+    tenant_id: UUID | str,
+    *,
+    at_time: datetime | None = None,
+) -> bool:
+    normalized = UUID(str(tenant_id))
+    return compute_tenant_financials_enabled_map(
+        db,
+        [normalized],
+        at_time=at_time,
+    ).get(normalized, False)
+
+
+def windows_overlap(
+    start_a: datetime,
+    end_a: datetime | None,
+    start_b: datetime,
+    end_b: datetime | None,
+) -> bool:
+    normalized_end_a = end_a or datetime.max.replace(tzinfo=timezone.utc)
+    normalized_end_b = end_b or datetime.max.replace(tzinfo=timezone.utc)
+    return start_a <= normalized_end_b and start_b <= normalized_end_a
+
+
+def assert_no_conflicting_active_assignment(
+    db: Session,
+    *,
+    tenant_id: UUID | str,
+    billing_provider_organization_id: UUID | str,
+    effective_start_at: datetime,
+    effective_end_at: datetime | None,
+    exclude_assignment_id: UUID | str | None = None,
+) -> None:
+    query = db.query(BillingProviderAgencyAssignment).filter(
+        BillingProviderAgencyAssignment.tenant_id == UUID(str(tenant_id)),
+        BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
+        BillingProviderAgencyAssignment.billing_provider_organization_id
+        != UUID(str(billing_provider_organization_id)),
+    )
+    if exclude_assignment_id is not None:
+        query = query.filter(BillingProviderAgencyAssignment.id != UUID(str(exclude_assignment_id)))
+
+    for row in query.all():
+        if windows_overlap(
+            row.effective_start_at,
+            row.effective_end_at,
+            effective_start_at,
+            effective_end_at,
+        ):
+            # HYBRID multi-provider arrangements are not yet supported;
+            # only one provider may own a tenant's effective managed-
+            # billing period at a time.
+            raise HTTPException(
+                status_code=409,
+                detail="Conflicting active billing-provider assignment exists for this tenant.",
+            )
+
+
 def resolve_authorized_tenant_ids_for_scope(
     db: Session,
     *,
@@ -129,71 +288,61 @@ def resolve_authorized_tenant_ids_for_scope(
             all_agencies=all_agencies,
         )
 
-    if not _is_provider_affiliated_billing_user(db, user):
-        return _resolve_plain_tenant_user_tenant_ids(
-            user,
-            requested_tenant_id=requested_tenant_id,
-            requested_tenant_ids=requested_tenant_ids,
-            all_agencies=all_agencies,
-        )
-
-    provider_org_id = _provider_org_id_for_user(db, user)
-    if provider_org_id is None:
-        return []
-
+    provider_org_ids = _active_billing_provider_org_ids_for_user(db, user)
     explicit_requested_ids = _normalize_requested_ids(
         requested_tenant_id=requested_tenant_id,
         requested_tenant_ids=requested_tenant_ids,
     )
-    if explicit_requested_ids:
-        candidate_ids: list[UUID] | None = explicit_requested_ids
-    elif all_agencies:
-        candidate_ids = None
-    else:
-        own_tenant = (
-            db.query(Tenant.id, Tenant.tenant_type)
-            .filter(Tenant.id == getattr(user, "tenant_id", None))
-            .one_or_none()
-        )
-        if own_tenant and own_tenant.tenant_type not in NON_AGENCY_TENANT_TYPES:
-            candidate_ids = [UUID(str(own_tenant.id))]
+
+    if provider_org_ids:
+        if explicit_requested_ids:
+            candidate_ids: list[UUID] | None = explicit_requested_ids
+        elif all_agencies:
+            candidate_ids = None
         else:
+            own_tenant = _user_tenant_row(db, user)
+            if own_tenant and own_tenant.tenant_type not in NON_AGENCY_TENANT_TYPES:
+                candidate_ids = [UUID(str(own_tenant.id))]
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Select an agency tenant to view billing data.",
+                )
+
+        resolved = _resolve_effective_managed_billing_tenant_ids(
+            db,
+            requested_scope=requested_scope,
+            provider_org_ids=provider_org_ids,
+            tenant_ids=candidate_ids,
+        )
+        if explicit_requested_ids and not resolved:
             raise HTTPException(
-                status_code=400,
-                detail="Select an agency tenant to view billing data.",
+                status_code=403,
+                detail="You are not authorized to access billing data for the requested tenant.",
             )
+        return resolved
 
-    now = _now_utc()
-    query = (
-        db.query(BillingProviderAgencyAssignment.tenant_id)
-        .join(
-            BillingProviderAgencyServiceScope,
-            BillingProviderAgencyServiceScope.assignment_id == BillingProviderAgencyAssignment.id,
-        )
-        .join(Tenant, Tenant.id == BillingProviderAgencyAssignment.tenant_id)
-        .filter(
-            BillingProviderAgencyAssignment.billing_provider_organization_id == provider_org_id,
-            BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
-            BillingProviderAgencyAssignment.financials_enabled.is_(True),
-            BillingProviderAgencyServiceScope.scope == requested_scope,
-            Tenant.financials_enabled.is_(True),
-            ~Tenant.tenant_type.in_(sorted(NON_AGENCY_TENANT_TYPES)),
-            BillingProviderAgencyAssignment.effective_start_at <= now,
-            or_(
-                BillingProviderAgencyAssignment.effective_end_at.is_(None),
-                BillingProviderAgencyAssignment.effective_end_at >= now,
-            ),
-        )
-    )
-    if candidate_ids is not None:
-        query = query.filter(BillingProviderAgencyAssignment.tenant_id.in_(candidate_ids))
-
-    resolved = [UUID(str(row[0])) for row in query.distinct().all()]
-
-    if explicit_requested_ids and not resolved:
+    own_tenant = _user_tenant_row(db, user)
+    if role == "PLATFORM_BILLING" or (
+        access_scope_for_role(role) == "billing"
+        and own_tenant
+        and own_tenant.tenant_type in NON_AGENCY_TENANT_TYPES
+    ):
+        if explicit_requested_ids:
+            raise HTTPException(
+                status_code=403,
+                detail="You are not authorized to access billing data for the requested tenant.",
+            )
+        if all_agencies:
+            return []
         raise HTTPException(
-            status_code=403,
-            detail="You are not authorized to access billing data for the requested tenant.",
+            status_code=400,
+            detail="Select an assigned agency tenant to view billing data.",
         )
 
-    return resolved
+    return _resolve_plain_tenant_user_tenant_ids(
+        user,
+        requested_tenant_id=requested_tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )

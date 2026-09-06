@@ -208,6 +208,9 @@ from app.billing.models.billing_provider_agency_assignment import (
     BillingProviderAgencyAssignment,
     BillingProviderAgencyServiceScope,
 )
+from app.billing.models.billing_provider_organization_membership import (
+    BillingProviderOrganizationMembership,
+)
 from app.billing.models.facility_payment_expectation import FacilityPaymentExpectation
 from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
 from app.billing.models.facility_collection_alert import (

@@ -459,7 +459,14 @@ def confirm_allocation(
     user=Depends(get_current_user),
 ):
     _require_financial_access(user)
-    _get_allocation_for_user(db, user, allocation_id)
+    allocation = (
+        db.query(FacilityPaymentAllocation)
+        .filter(FacilityPaymentAllocation.id == allocation_id)
+        .one_or_none()
+    )
+    if allocation is None:
+        raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
+    _resolve_single_tenant_id(db, user, allocation.tenant_id)
     allocation = facility_service.confirm_allocation(
         db,
         allocation_id=allocation_id,
@@ -477,7 +484,14 @@ def reverse_allocation(
     user=Depends(get_current_user),
 ):
     _require_financial_access(user)
-    _get_allocation_for_user(db, user, allocation_id)
+    allocation = (
+        db.query(FacilityPaymentAllocation)
+        .filter(FacilityPaymentAllocation.id == allocation_id)
+        .one_or_none()
+    )
+    if allocation is None:
+        raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
+    _resolve_single_tenant_id(db, user, allocation.tenant_id)
     allocation = facility_service.reverse_allocation(
         db,
         allocation_id=allocation_id,

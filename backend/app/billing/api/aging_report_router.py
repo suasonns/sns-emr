@@ -62,7 +62,7 @@ def get_aging_report(
     resolved_tenant_ids = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="FINANCIAL_MONITORING",
+        requested_scope="AGING_REPORT",
         requested_tenant_id=tenant_id,
         requested_tenant_ids=requested_tenant_ids,
         all_agencies=all_agencies,

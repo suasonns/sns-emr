@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import (
-    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -24,11 +23,17 @@ BILLING_PROVIDER_ASSIGNMENT_STATUSES = {"ACTIVE", "SUSPENDED", "TERMINATED", "PE
 BILLING_PROVIDER_SERVICE_SCOPES = {
     "BILLING_READINESS",
     "CLAIMS",
+    "NOE_TRACKING",
+    "ELIGIBILITY",
+    "AUTHORIZATION_TRACKING",
     "PAYMENT_POSTING",
     "PAYMENT_RECONCILIATION",
     "FACILITY_COLLECTIONS",
+    "CREDIT_BALANCES",
+    "AGING_REPORT",
     "DENIALS_APPEALS",
-    "AUTHORIZATION",
+    "EDI",
+    "BILLING_REPORTS",
     "FINANCIAL_MONITORING",
     "CAP_MONITORING",
 }
@@ -59,18 +64,6 @@ class BillingProviderAgencyAssignment(BaseModel):
 
     effective_start_at = Column(DateTime(timezone=True), nullable=False)
     effective_end_at = Column(DateTime(timezone=True), nullable=True)
-
-    # Access for an external managed-billing user requires BOTH this
-    # assignment-level flag and tenants.financials_enabled to be true.
-    # Keeping both allows a future assignment to be prepared before the
-    # tenant-level owner toggle is switched on.
-    financials_enabled = Column(
-        Boolean,
-        nullable=False,
-        server_default=text("false"),
-        default=False,
-        index=True,
-    )
 
     updated_by = Column(
         UUID(as_uuid=True),
@@ -126,7 +119,7 @@ class BillingProviderAgencyServiceScope(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "scope IN ('BILLING_READINESS', 'CLAIMS', 'PAYMENT_POSTING', 'PAYMENT_RECONCILIATION', 'FACILITY_COLLECTIONS', 'DENIALS_APPEALS', 'AUTHORIZATION', 'FINANCIAL_MONITORING', 'CAP_MONITORING')",
+            "scope IN ('BILLING_READINESS', 'CLAIMS', 'NOE_TRACKING', 'ELIGIBILITY', 'AUTHORIZATION_TRACKING', 'PAYMENT_POSTING', 'PAYMENT_RECONCILIATION', 'FACILITY_COLLECTIONS', 'CREDIT_BALANCES', 'AGING_REPORT', 'DENIALS_APPEALS', 'EDI', 'BILLING_REPORTS', 'CAP_MONITORING', 'FINANCIAL_MONITORING')",
             name="ck_billing_provider_assignment_scope_valid",
         ),
         UniqueConstraint("assignment_id", "scope", name="uq_billing_provider_assignment_scope"),

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { COLORS, S } from '../design';
 import {
+  BILLING_PROVIDER_SERVICE_SCOPES,
   fetchOwnerTenants,
+  fetchBillingProviderOrganizations,
   createOwnerTenant,
   setOwnerTenantStatus,
   setOwnerTenantFinancials,
@@ -25,6 +27,21 @@ const EMPTY_FORM = {
   admin_password: '',
   admin_role: 'DPCS_ADMINISTRATOR',
 };
+
+const defaultFinancialsForm = () => ({
+  billing_provider_organization_id: '',
+  effective_start_at: new Date().toISOString().slice(0, 16),
+  effective_end_at: '',
+  service_scopes: ['FACILITY_COLLECTIONS'],
+  change_reason: '',
+});
+
+function humanizeScope(scope) {
+  return (scope || '')
+    .split('_')
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(' ');
+}
 
 function OnboardModal({ onClose, onCreated }) {
   const [form, setForm] = useState(EMPTY_FORM);
@@ -109,6 +126,7 @@ function OnboardModal({ onClose, onCreated }) {
 
 export default function TenantManagement() {
   const [tenants, setTenants] = useState([]);
+  const [providerOrganizations, setProviderOrganizations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -116,6 +134,7 @@ export default function TenantManagement() {
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState('');
   const [financialsBusy, setFinancialsBusy] = useState(false);
+  const [financialsForm, setFinancialsForm] = useState(defaultFinancialsForm());
 
   const load = async () => {
     setLoading(true);
@@ -137,6 +156,24 @@ export default function TenantManagement() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchBillingProviderOrganizations()
+      .then((data) => {
+        if (mounted) setProviderOrganizations(data.organizations || []);
+      })
+      .catch(() => {
+        if (mounted) setProviderOrganizations([]);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setFinancialsForm(defaultFinancialsForm());
+  }, [selected?.tenant_id]);
 
   const changeStatus = async (tenant, status) => {
     if (!tenant) return;
@@ -161,17 +198,33 @@ export default function TenantManagement() {
   const inactive = tenants.filter((t) => t.status === 'INACTIVE').length;
   const financialsEnabled = tenants.filter((t) => t.financials_enabled).length;
 
-  const changeFinancials = async (tenant, enabled) => {
+  const changeFinancials = async (tenant) => {
     if (!tenant) return;
-    const action = enabled ? 'enable' : 'disable';
+    const enabling = !tenant.financials_enabled;
+    const action = enabling ? 'enable' : 'disable';
     if (!window.confirm(`Are you sure you want to ${action} managed Financials access for "${tenant.display_name}"? This only affects external billing-provider access.`)) {
       return;
     }
     setFinancialsBusy(true);
     setStatusError('');
     try {
-      await setOwnerTenantFinancials(tenant.tenant_id, enabled);
+      const payload = enabling
+        ? {
+            financials_enabled: true,
+            billing_provider_organization_id: financialsForm.billing_provider_organization_id,
+            effective_start_at: new Date(financialsForm.effective_start_at).toISOString(),
+            effective_end_at: financialsForm.effective_end_at ? new Date(financialsForm.effective_end_at).toISOString() : null,
+            service_scopes: financialsForm.service_scopes,
+            change_reason: financialsForm.change_reason.trim() || undefined,
+          }
+        : {
+            financials_enabled: false,
+            effective_end_at: financialsForm.effective_end_at ? new Date(financialsForm.effective_end_at).toISOString() : null,
+            change_reason: financialsForm.change_reason.trim() || undefined,
+          };
+      await setOwnerTenantFinancials(tenant.tenant_id, payload);
       await load();
+      setFinancialsForm(defaultFinancialsForm());
     } catch (err) {
       setStatusError(err?.message || `Failed to ${action} Financials`);
     } finally {
@@ -291,7 +344,7 @@ export default function TenantManagement() {
                   type="button"
                   style={selected.financials_enabled ? { ...S.btn(COLORS.border), color: COLORS.white } : S.btn(COLORS.teal)}
                   disabled={financialsBusy}
-                  onClick={() => changeFinancials(selected, !selected.financials_enabled)}
+                  onClick={() => changeFinancials(selected)}
                 >
                   {financialsBusy
                     ? 'Working…'
@@ -329,6 +382,75 @@ export default function TenantManagement() {
                     {statusBusy ? 'Working…' : 'Mark Inactive'}
                   </button>
                 )}
+              </div>
+
+              <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+                {!selected.financials_enabled ? (
+                  <>
+                    <select
+                      style={{ ...S.select, width: '100%' }}
+                      value={financialsForm.billing_provider_organization_id}
+                      onChange={(e) => setFinancialsForm((prev) => ({ ...prev, billing_provider_organization_id: e.target.value }))}
+                    >
+                      <option value="">Select billing provider organization</option>
+                      {providerOrganizations
+                        .filter((org) => org.status === 'ACTIVE')
+                        .map((org) => (
+                          <option key={org.id} value={org.id}>{org.name}</option>
+                        ))}
+                    </select>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <input
+                        style={S.searchBar}
+                        type="datetime-local"
+                        value={financialsForm.effective_start_at}
+                        onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_start_at: e.target.value }))}
+                      />
+                      <input
+                        style={S.searchBar}
+                        type="datetime-local"
+                        value={financialsForm.effective_end_at}
+                        onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_end_at: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted, margin: '0 0 8px' }}>ALLOWED MANAGED-BILLING SCOPES</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        {BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => (
+                          <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
+                            <input
+                              type="checkbox"
+                              checked={financialsForm.service_scopes.includes(scope)}
+                              onChange={(e) =>
+                                setFinancialsForm((prev) => ({
+                                  ...prev,
+                                  service_scopes: e.target.checked
+                                    ? [...prev.service_scopes, scope]
+                                    : prev.service_scopes.filter((value) => value !== scope),
+                                }))
+                              }
+                            />
+                            {humanizeScope(scope)}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <input
+                    style={S.searchBar}
+                    type="datetime-local"
+                    value={financialsForm.effective_end_at}
+                    onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_end_at: e.target.value }))}
+                    placeholder="Effective end"
+                  />
+                )}
+                <textarea
+                  style={{ ...S.searchBar, minHeight: 80, resize: 'vertical' }}
+                  placeholder={selected.financials_enabled ? 'Reason for turning Financials off (optional)' : 'Reason for turning Financials on (optional)'}
+                  value={financialsForm.change_reason}
+                  onChange={(e) => setFinancialsForm((prev) => ({ ...prev, change_reason: e.target.value }))}
+                />
               </div>
             </>
           ) : (

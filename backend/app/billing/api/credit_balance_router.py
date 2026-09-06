@@ -47,7 +47,7 @@ def _resolve_report_scope(db: Session, user, tenant_id, tenant_ids, all_agencies
     resolved_tenant_ids = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="PAYMENT_RECONCILIATION",
+        requested_scope="CREDIT_BALANCES",
         requested_tenant_id=tenant_id,
         requested_tenant_ids=requested_tenant_ids,
         all_agencies=all_agencies,
@@ -146,7 +146,7 @@ def _get_authorized_case(db: Session, user, case_id: UUID) -> CreditBalanceCase:
     resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="PAYMENT_RECONCILIATION",
+        requested_scope="CREDIT_BALANCES",
         requested_tenant_id=case.tenant_id,
     )
     return case
@@ -174,7 +174,7 @@ def create_case(
     resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="PAYMENT_RECONCILIATION",
+        requested_scope="CREDIT_BALANCES",
         requested_tenant_id=claim.tenant_id,
     )
 
@@ -216,7 +216,7 @@ def list_cases(
     resolved = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="PAYMENT_RECONCILIATION",
+        requested_scope="CREDIT_BALANCES",
         requested_tenant_id=tenant_id,
         requested_tenant_ids=requested_tenant_ids,
         all_agencies=all_agencies,
@@ -296,7 +296,7 @@ def get_cms_838_export(
     resolved = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="PAYMENT_RECONCILIATION",
+        requested_scope="CREDIT_BALANCES",
         requested_tenant_id=tenant_id,
         requested_tenant_ids=requested_tenant_ids,
         all_agencies=all_agencies,

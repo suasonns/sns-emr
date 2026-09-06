@@ -63,7 +63,6 @@ function defaultAssignmentForm(tenantId = '') {
     relationship_status: 'PENDING',
     effective_start_at: new Date().toISOString().slice(0, 16),
     effective_end_at: '',
-    financials_enabled: false,
     service_scope: [],
   };
 }
@@ -294,7 +293,6 @@ export default function BillingLicensing() {
       relationship_status: assignment.relationship_status || 'PENDING',
       effective_start_at: assignment.effective_start_at ? assignment.effective_start_at.slice(0, 16) : new Date().toISOString().slice(0, 16),
       effective_end_at: assignment.effective_end_at ? assignment.effective_end_at.slice(0, 16) : '',
-      financials_enabled: Boolean(assignment.financials_enabled),
       service_scope: assignment.service_scope || [],
     });
   };
@@ -696,16 +694,6 @@ export default function BillingLicensing() {
                 onChange={(e) => setAssignmentForm((previous) => ({ ...previous, effective_end_at: e.target.value }))}
               />
             </div>
-
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={assignmentForm.financials_enabled}
-                onChange={(e) => setAssignmentForm((previous) => ({ ...previous, financials_enabled: e.target.checked }))}
-              />
-              Assignment financials enabled
-            </label>
-
             <div>
               <p style={{ ...S.sectionLabel, marginBottom: 8 }}>Service Scope</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -748,7 +736,7 @@ export default function BillingLicensing() {
                       {assignment.billing_provider_organization_name || 'Unknown Provider'} → {assignment.tenant_display_name || assignment.tenant_legal_name || 'Unknown Agency'}
                     </div>
                     <div style={{ color: COLORS.muted, fontSize: 12 }}>
-                      {assignment.relationship_status} • Financials {assignment.financials_enabled ? 'ON' : 'OFF'}
+                      {assignment.relationship_status}
                     </div>
                   </div>
                   <button type="button" style={{ ...S.btn(COLORS.border), color: COLORS.white }} onClick={() => beginEditAssignment(assignment)}>

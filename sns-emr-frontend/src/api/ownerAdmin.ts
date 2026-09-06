@@ -35,6 +35,7 @@ export type CreateTenantResponse = {
   legal_name: string;
   display_name: string;
   billing_enabled: boolean;
+  financials_enabled: boolean;
   admin_user: { id: string; email: string; role: string };
 };
 
@@ -147,13 +148,35 @@ export function setOwnerTenantStatus(
   );
 }
 
+export type OwnerTenantFinancialsPayload = {
+  financials_enabled: boolean;
+  billing_provider_organization_id?: string;
+  effective_start_at?: string;
+  effective_end_at?: string | null;
+  service_scopes?: BillingProviderServiceScope[];
+  change_reason?: string;
+};
+
+export type OwnerTenantFinancialsResponse = {
+  tenant_id: string;
+  financials_enabled: boolean;
+  current_assignment: {
+    assignment_id: string;
+    billing_provider_organization_id: string;
+    relationship_status: BillingProviderAssignmentStatus;
+    effective_start_at: string | null;
+    effective_end_at: string | null;
+    service_scopes: BillingProviderServiceScope[];
+  } | null;
+};
+
 export function setOwnerTenantFinancials(
   tenantId: string,
-  financials_enabled: boolean
-): Promise<{ tenant_id: string; financials_enabled: boolean }> {
-  return request<{ tenant_id: string; financials_enabled: boolean }>(
+  payload: OwnerTenantFinancialsPayload
+): Promise<OwnerTenantFinancialsResponse> {
+  return request<OwnerTenantFinancialsResponse>(
     `/api/owner/tenants/${tenantId}/financials`,
-    { method: "PATCH", body: { financials_enabled } }
+    { method: "PATCH", body: payload }
   );
 }
 
@@ -208,13 +231,19 @@ export function updateBillingProviderOrganization(
 export const BILLING_PROVIDER_SERVICE_SCOPES = [
   "BILLING_READINESS",
   "CLAIMS",
+  "NOE_TRACKING",
+  "ELIGIBILITY",
+  "AUTHORIZATION_TRACKING",
   "PAYMENT_POSTING",
   "PAYMENT_RECONCILIATION",
   "FACILITY_COLLECTIONS",
+  "CREDIT_BALANCES",
+  "AGING_REPORT",
   "DENIALS_APPEALS",
-  "AUTHORIZATION",
-  "FINANCIAL_MONITORING",
+  "EDI",
+  "BILLING_REPORTS",
   "CAP_MONITORING",
+  "FINANCIAL_MONITORING",
 ] as const;
 
 export type BillingProviderServiceScope = (typeof BILLING_PROVIDER_SERVICE_SCOPES)[number];
@@ -234,7 +263,6 @@ export type BillingProviderAssignment = {
   relationship_status: BillingProviderAssignmentStatus;
   effective_start_at: string | null;
   effective_end_at: string | null;
-  financials_enabled: boolean;
   service_scope: BillingProviderServiceScope[];
   created_by: string | null;
   updated_by: string | null;
@@ -248,7 +276,6 @@ export type BillingProviderAssignmentPayload = {
   relationship_status: BillingProviderAssignmentStatus;
   effective_start_at: string;
   effective_end_at?: string | null;
-  financials_enabled: boolean;
   service_scope: BillingProviderServiceScope[];
 };
 

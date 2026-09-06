@@ -17,6 +17,9 @@ from app.billing.models.billing_provider_organization import (
     BILLING_PROVIDER_ORGANIZATION_STATUSES,
     BillingProviderOrganization,
 )
+from app.billing.services.billing_provider_access_service import (
+    assert_no_conflicting_active_assignment,
+)
 from app.core.database import get_db
 from app.core.role_guards import require_owner
 from app.core.security import CurrentUser, get_current_user
@@ -61,7 +64,6 @@ class BillingProviderAssignmentPayload(BaseModel):
     relationship_status: str = Field(default="PENDING")
     effective_start_at: datetime
     effective_end_at: datetime | None = None
-    financials_enabled: bool = False
     service_scope: list[str] = Field(default_factory=list)
 
     @field_validator("relationship_status")
@@ -130,7 +132,6 @@ def _assignment_to_dict(assignment: BillingProviderAgencyAssignment) -> dict:
         "effective_end_at": assignment.effective_end_at.isoformat()
         if assignment.effective_end_at
         else None,
-        "financials_enabled": bool(assignment.financials_enabled),
         "service_scope": [scope.scope for scope in assignment.service_scopes],
         "created_by": str(assignment.created_by) if assignment.created_by else None,
         "updated_by": str(assignment.updated_by) if assignment.updated_by else None,
@@ -283,10 +284,24 @@ def create_billing_provider_assignment(
     user: CurrentUser = Depends(get_current_user),
 ):
     _require_platform_owner(user)
-    if db.get(BillingProviderOrganization, payload.billing_provider_organization_id) is None:
+    provider = db.get(BillingProviderOrganization, payload.billing_provider_organization_id)
+    if provider is None:
         raise HTTPException(status_code=404, detail="Billing provider organization not found")
     if db.get(Tenant, payload.tenant_id) is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if payload.relationship_status == "ACTIVE":
+        if provider.status != "ACTIVE":
+            raise HTTPException(
+                status_code=409,
+                detail="Billing provider organization must be ACTIVE to activate an assignment.",
+            )
+        assert_no_conflicting_active_assignment(
+            db,
+            tenant_id=payload.tenant_id,
+            billing_provider_organization_id=payload.billing_provider_organization_id,
+            effective_start_at=payload.effective_start_at,
+            effective_end_at=payload.effective_end_at,
+        )
 
     row = BillingProviderAgencyAssignment(
         billing_provider_organization_id=payload.billing_provider_organization_id,
@@ -294,7 +309,6 @@ def create_billing_provider_assignment(
         relationship_status=payload.relationship_status,
         effective_start_at=payload.effective_start_at,
         effective_end_at=payload.effective_end_at,
-        financials_enabled=payload.financials_enabled,
         created_by=user.user_id,
         updated_by=user.user_id,
     )
@@ -325,7 +339,6 @@ def create_billing_provider_assignment(
         metadata={
             "billing_provider_organization_id": str(payload.billing_provider_organization_id),
             "relationship_status": row.relationship_status,
-            "financials_enabled": row.financials_enabled,
             "service_scope": payload.service_scope,
         },
         commit=True,
@@ -349,17 +362,31 @@ def update_billing_provider_assignment(
     )
     if row is None:
         raise HTTPException(status_code=404, detail="Billing provider assignment not found")
-    if db.get(BillingProviderOrganization, payload.billing_provider_organization_id) is None:
+    provider = db.get(BillingProviderOrganization, payload.billing_provider_organization_id)
+    if provider is None:
         raise HTTPException(status_code=404, detail="Billing provider organization not found")
     if db.get(Tenant, payload.tenant_id) is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
+    if payload.relationship_status == "ACTIVE":
+        if provider.status != "ACTIVE":
+            raise HTTPException(
+                status_code=409,
+                detail="Billing provider organization must be ACTIVE to activate an assignment.",
+            )
+        assert_no_conflicting_active_assignment(
+            db,
+            tenant_id=payload.tenant_id,
+            billing_provider_organization_id=payload.billing_provider_organization_id,
+            effective_start_at=payload.effective_start_at,
+            effective_end_at=payload.effective_end_at,
+            exclude_assignment_id=row.id,
+        )
 
     row.billing_provider_organization_id = payload.billing_provider_organization_id
     row.tenant_id = payload.tenant_id
     row.relationship_status = payload.relationship_status
     row.effective_start_at = payload.effective_start_at
     row.effective_end_at = payload.effective_end_at
-    row.financials_enabled = payload.financials_enabled
     row.updated_by = user.user_id
     row.service_scopes[:] = [
         BillingProviderAgencyServiceScope(scope=scope) for scope in payload.service_scope
@@ -387,7 +414,6 @@ def update_billing_provider_assignment(
         metadata={
             "billing_provider_organization_id": str(payload.billing_provider_organization_id),
             "relationship_status": row.relationship_status,
-            "financials_enabled": row.financials_enabled,
             "service_scope": payload.service_scope,
         },
         commit=True,
