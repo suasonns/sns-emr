@@ -1009,6 +1009,128 @@ def test_residence_snapshot_diff_and_history_endpoints(client, db_session, billi
     assert diff_response.json()["has_changes"] is True
 
 
+def test_correcting_draft_preserves_draft_status_and_never_auto_activates(db_session, billing_enabled_tenant):
+    """Regression test: correcting a DRAFT must never bypass activate_expectation()'s
+    completeness/source validation by silently producing an ACTIVE version."""
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP26")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Draft Preserve SNF", effective_date=date(2026, 6, 1))
+    draft = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        status="DRAFT",
+        source="NOT_VERIFIED",
+    )
+    corrected = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=draft.id,
+        source="AUTHORIZED_MANUAL_ENTRY",
+        correction_reason="Supplying verified source before activation.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(draft)
+    assert draft.status == "SUPERSEDED"
+    assert corrected.status == "DRAFT"
+    assert corrected.status not in facility_payment_service.ACTIVATABLE_EXPECTATION_STATUSES
+
+    # Activation must still be an explicit, separately-validated step.
+    activated = facility_payment_service.activate_expectation(
+        db_session,
+        expectation_id=corrected.id,
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+        expected_row_version=corrected.row_version,
+    )
+    assert activated.status == "ACTIVE"
+
+
+def test_correcting_active_preserves_active_status(db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP27")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Active Preserve SNF", effective_date=date(2026, 6, 1))
+    expectation = _create_expectation(db_session, tenant_id=billing_enabled_tenant, patient_id=patient.id, patient_pos_id=pos.id, status="ACTIVE")
+    corrected = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        expected_amount=Decimal("1500.00"),
+        correction_reason="Amount corrected after intake review.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(expectation)
+    assert expectation.status == "SUPERSEDED"
+    assert corrected.status == "ACTIVE"
+
+
+def test_correction_rejects_terminal_status_previous_versions(db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP28")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Terminal SNF", effective_date=date(2026, 6, 1))
+    expectation = _create_expectation(db_session, tenant_id=billing_enabled_tenant, patient_id=patient.id, patient_pos_id=pos.id, status="ACTIVE")
+    facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        expected_amount=Decimal("1500.00"),
+        correction_reason="First correction.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(expectation)
+    assert expectation.status == "SUPERSEDED"
+
+    with pytest.raises(HTTPException) as excinfo:
+        facility_payment_service.create_corrected_expectation_version(
+            db_session,
+            previous_expectation_id=expectation.id,
+            expected_amount=Decimal("1600.00"),
+            correction_reason="Attempting to correct a superseded version.",
+            user_id=TEST_USER_ID,
+            user_role="BILLING",
+        )
+    assert excinfo.value.status_code == 409
+
+
+def test_collections_report_excludes_superseded_from_totals_by_default(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP29")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Rollup SNF", effective_date=date(2026, 6, 1))
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        status="ACTIVE",
+        expected_amount="1500.00",
+    )
+    corrected = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        expected_amount=Decimal("1500.00"),
+        correction_reason="Re-verified amount; no change.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    assert corrected.status == "ACTIVE"
+
+    default_response = client.get(
+        f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}",
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert default_response.status_code == 200, default_response.text
+    default_payload = default_response.json()
+    assert len(default_payload["rows"]) == 1
+    assert default_payload["rows"][0]["expectation_id"] == str(corrected.id)
+    assert default_payload["summary"]["total_expected"] == "1500.00"
+
+    all_statuses_response = client.get(
+        f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}&include_all_statuses=true",
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert all_statuses_response.status_code == 200, all_statuses_response.text
+    all_statuses_payload = all_statuses_response.json()
+    assert len(all_statuses_payload["rows"]) == 2
+    assert all_statuses_payload["summary"]["total_expected"] == "3000.00"
+
+
 def test_create_expectation_idempotency_returns_existing_row(db_session, billing_enabled_tenant):
     patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP26")
     request_id = uuid.uuid4()

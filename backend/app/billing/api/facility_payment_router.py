@@ -702,6 +702,14 @@ def get_collections_report(
     aging_bucket: str | None = Query(None),
     service_period_start: date | None = Query(None),
     service_period_end: date | None = Query(None),
+    include_all_statuses: bool = Query(
+        False,
+        description=(
+            "When true, include DRAFT/SUPERSEDED/CANCELLED/CLOSED expectations "
+            "in the report rows and totals for historical reporting. Defaults to "
+            "false so totals only reflect currently-effective obligations."
+        ),
+    ),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
@@ -709,6 +717,10 @@ def get_collections_report(
     query = db.query(FacilityPaymentExpectation).filter(
         FacilityPaymentExpectation.tenant_id.in_([str(tid) for tid in scoped_tenant_ids])
     )
+    if not include_all_statuses:
+        query = query.filter(
+            FacilityPaymentExpectation.status.in_(tuple(facility_service.EFFECTIVE_EXPECTATION_STATUSES))
+        )
     if residence_type:
         query = query.filter(FacilityPaymentExpectation.residence_type_snapshot == residence_type.strip().upper())
     if funding_source:

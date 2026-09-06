@@ -73,6 +73,13 @@ DEFAULT_ALERT_THRESHOLDS = {
 DEFAULT_PAYMENT_TERM_DAYS = 30
 PAYMENT_DERIVED_EXPECTATION_STATUSES = {"PARTIALLY_PAID", "PAID", "OVERPAID"}
 ACTIVATABLE_EXPECTATION_STATUSES = {"ACTIVE"} | PAYMENT_DERIVED_EXPECTATION_STATUSES
+# Statuses that represent a currently-effective financial obligation. Aggregate
+# rollups (Facility Collections report totals, collection rate, outstanding
+# balance) must only ever sum these — DRAFT, SUPERSEDED, CANCELLED, and
+# NOT_VERIFIED/CLOSED never represent live money owed and must never be
+# double-counted alongside the version that replaced them. History/detail
+# screens are unaffected and continue to show every version.
+EFFECTIVE_EXPECTATION_STATUSES = ACTIVATABLE_EXPECTATION_STATUSES
 MATCH_BASIS_EXACT_CLAIM_CONTROL_REFERENCE = "EXACT_CLAIM_CONTROL_REFERENCE"
 MATCH_BASIS_EXACT_CLAIM_ASSOCIATION = "EXACT_CLAIM_ASSOCIATION"
 MATCH_BASIS_PATIENT_PAYER_SERVICE_PERIOD_AMOUNT = "PATIENT_PAYER_SERVICE_PERIOD_AMOUNT"
@@ -732,6 +739,11 @@ def create_corrected_expectation_version(
     previous = _get_expectation(db, previous_expectation_id)
     if not correction_reason or not correction_reason.strip():
         raise HTTPException(status_code=400, detail="correction_reason is required.")
+    if previous.status in {"SUPERSEDED", "CANCELLED", "CLOSED"}:
+        raise HTTPException(
+            status_code=409,
+            detail=f"An expectation in {previous.status} status cannot be corrected.",
+        )
     _assert_expected_row_version(previous, expected_row_version)
 
     changed_expected_amount = (
@@ -771,7 +783,12 @@ def create_corrected_expectation_version(
         share_of_cost_amount=(
             share_of_cost_amount if share_of_cost_amount is not None else previous.share_of_cost_amount
         ),
-        status=status or "ACTIVE",
+        # Correction never implicitly activates a draft or otherwise changes
+        # lifecycle state on its own: the new version inherits the prior
+        # version's status unless the caller explicitly requests a valid
+        # transition. Activation must always go through activate_expectation()
+        # so its completeness/source validation cannot be bypassed.
+        status=status or previous_status,
         source=source or previous.source,
         expected_payer_name_snapshot=(
             expected_payer_name_snapshot
