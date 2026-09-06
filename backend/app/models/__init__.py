@@ -203,6 +203,11 @@ from app.billing.models.hospice_cap_record import HospiceCapRecord
 from app.billing.models.noe_edi_submission import NoeEdiSubmission
 from app.billing.models.election_addendum_request import ElectionAddendumRequest
 from app.billing.models.credit_balance_case import CreditBalanceCase, CreditBalanceCaseEvent
+from app.billing.models.billing_provider_organization import BillingProviderOrganization
+from app.billing.models.billing_provider_agency_assignment import (
+    BillingProviderAgencyAssignment,
+    BillingProviderAgencyServiceScope,
+)
 from app.billing.models.facility_payment_expectation import FacilityPaymentExpectation
 from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
 from app.billing.models.facility_collection_alert import (

@@ -90,6 +90,16 @@ class Tenant(BaseModel):
         index=True,
     )
 
+    # External managed-billing access control only. This does NOT replace
+    # billing_enabled, which continues to mean the agency itself has its own
+    # operating authority (EIN + PTAN) to bill.
+    financials_enabled = Column(
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+        index=True,
+    )
+
     # ---------------------------------------------------------
     # FACESHEET DEMOGRAPHIC PROTECTION
     # ---------------------------------------------------------

@@ -11,6 +11,7 @@ export type OwnerTenantSummary = {
   status: string;
   ai_enabled: boolean;
   billing_enabled: boolean;
+  financials_enabled: boolean;
   created_at: string;
   user_count: number;
   patient_count: number;
@@ -143,6 +144,145 @@ export function setOwnerTenantStatus(
   return request<{ tenant_id: string; status: TenantStatus }>(
     `/api/owner/tenants/${tenantId}/status`,
     { method: "PATCH", body: { status } }
+  );
+}
+
+export function setOwnerTenantFinancials(
+  tenantId: string,
+  financials_enabled: boolean
+): Promise<{ tenant_id: string; financials_enabled: boolean }> {
+  return request<{ tenant_id: string; financials_enabled: boolean }>(
+    `/api/owner/tenants/${tenantId}/financials`,
+    { method: "PATCH", body: { financials_enabled } }
+  );
+}
+
+export type BillingProviderOrganizationStatus = "ACTIVE" | "INACTIVE";
+
+export type BillingProviderOrganization = {
+  id: string;
+  name: string;
+  organization_type: string;
+  status: BillingProviderOrganizationStatus;
+  notes: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BillingProviderOrganizationPayload = {
+  name: string;
+  organization_type: string;
+  status: BillingProviderOrganizationStatus;
+  notes?: string;
+};
+
+export function fetchBillingProviderOrganizations(): Promise<{
+  organizations: BillingProviderOrganization[];
+}> {
+  return request<{ organizations: BillingProviderOrganization[] }>(
+    "/api/owner/billing-providers/organizations"
+  );
+}
+
+export function createBillingProviderOrganization(
+  payload: BillingProviderOrganizationPayload
+): Promise<BillingProviderOrganization> {
+  return request<BillingProviderOrganization>("/api/owner/billing-providers/organizations", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function updateBillingProviderOrganization(
+  organizationId: string,
+  payload: BillingProviderOrganizationPayload
+): Promise<BillingProviderOrganization> {
+  return request<BillingProviderOrganization>(
+    `/api/owner/billing-providers/organizations/${organizationId}`,
+    { method: "PATCH", body: payload }
+  );
+}
+
+export const BILLING_PROVIDER_SERVICE_SCOPES = [
+  "BILLING_READINESS",
+  "CLAIMS",
+  "PAYMENT_POSTING",
+  "PAYMENT_RECONCILIATION",
+  "FACILITY_COLLECTIONS",
+  "DENIALS_APPEALS",
+  "AUTHORIZATION",
+  "FINANCIAL_MONITORING",
+  "CAP_MONITORING",
+] as const;
+
+export type BillingProviderServiceScope = (typeof BILLING_PROVIDER_SERVICE_SCOPES)[number];
+export type BillingProviderAssignmentStatus =
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "TERMINATED"
+  | "PENDING";
+
+export type BillingProviderAssignment = {
+  id: string;
+  billing_provider_organization_id: string;
+  billing_provider_organization_name: string | null;
+  tenant_id: string;
+  tenant_display_name: string | null;
+  tenant_legal_name: string | null;
+  relationship_status: BillingProviderAssignmentStatus;
+  effective_start_at: string | null;
+  effective_end_at: string | null;
+  financials_enabled: boolean;
+  service_scope: BillingProviderServiceScope[];
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BillingProviderAssignmentPayload = {
+  billing_provider_organization_id: string;
+  tenant_id: string;
+  relationship_status: BillingProviderAssignmentStatus;
+  effective_start_at: string;
+  effective_end_at?: string | null;
+  financials_enabled: boolean;
+  service_scope: BillingProviderServiceScope[];
+};
+
+export function fetchBillingProviderAssignments(params?: {
+  tenant_id?: string;
+  billing_provider_organization_id?: string;
+}): Promise<{ assignments: BillingProviderAssignment[] }> {
+  const qs = new URLSearchParams();
+  if (params?.tenant_id) qs.set("tenant_id", params.tenant_id);
+  if (params?.billing_provider_organization_id) {
+    qs.set("billing_provider_organization_id", params.billing_provider_organization_id);
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<{ assignments: BillingProviderAssignment[] }>(
+    `/api/owner/billing-providers/assignments${suffix}`
+  );
+}
+
+export function createBillingProviderAssignment(
+  payload: BillingProviderAssignmentPayload
+): Promise<BillingProviderAssignment> {
+  return request<BillingProviderAssignment>("/api/owner/billing-providers/assignments", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function updateBillingProviderAssignment(
+  assignmentId: string,
+  payload: BillingProviderAssignmentPayload
+): Promise<BillingProviderAssignment> {
+  return request<BillingProviderAssignment>(
+    `/api/owner/billing-providers/assignments/${assignmentId}`,
+    { method: "PATCH", body: payload }
   );
 }
 

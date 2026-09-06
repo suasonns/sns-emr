@@ -11,7 +11,17 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { COLORS, S } from '../design';
-import { fetchOwnerTenants, fetchOwnerBillingLicensing } from '../../api/ownerAdmin';
+import {
+  BILLING_PROVIDER_SERVICE_SCOPES,
+  createBillingProviderAssignment,
+  createBillingProviderOrganization,
+  fetchBillingProviderAssignments,
+  fetchBillingProviderOrganizations,
+  fetchOwnerTenants,
+  fetchOwnerBillingLicensing,
+  updateBillingProviderAssignment,
+  updateBillingProviderOrganization,
+} from '../../api/ownerAdmin';
 
 const FILTER_TABS = [
   { key: 'ALL', label: 'All Clients' },
@@ -39,6 +49,25 @@ const OUTSTANDING_STATUS_COLOR = {
   OVERDUE: COLORS.red,
 };
 
+const EMPTY_ORG_FORM = {
+  name: '',
+  organization_type: 'MANAGED_BILLING_PROVIDER',
+  status: 'ACTIVE',
+  notes: '',
+};
+
+function defaultAssignmentForm(tenantId = '') {
+  return {
+    billing_provider_organization_id: '',
+    tenant_id: tenantId,
+    relationship_status: 'PENDING',
+    effective_start_at: new Date().toISOString().slice(0, 16),
+    effective_end_at: '',
+    financials_enabled: false,
+    service_scope: [],
+  };
+}
+
 function fmtMoney(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -62,6 +91,20 @@ function matchesFilter(client, filterKey) {
   return client.status === filterKey;
 }
 
+function fmtDateTime(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString();
+}
+
+function humanizeScope(scope) {
+  return (scope || '')
+    .split('_')
+    .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export default function BillingLicensing() {
   const [tenantOptions, setTenantOptions] = useState([]);
   const [selectedTenantId, setSelectedTenantId] = useState('');
@@ -69,6 +112,16 @@ export default function BillingLicensing() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeFilter, setActiveFilter] = useState('ALL');
+  const [providerOrganizations, setProviderOrganizations] = useState([]);
+  const [providerAssignments, setProviderAssignments] = useState([]);
+  const [providerLoading, setProviderLoading] = useState(true);
+  const [providerError, setProviderError] = useState('');
+  const [organizationForm, setOrganizationForm] = useState(EMPTY_ORG_FORM);
+  const [organizationBusy, setOrganizationBusy] = useState(false);
+  const [editingOrganizationId, setEditingOrganizationId] = useState('');
+  const [assignmentForm, setAssignmentForm] = useState(defaultAssignmentForm());
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [editingAssignmentId, setEditingAssignmentId] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -109,6 +162,34 @@ export default function BillingLicensing() {
     };
   }, [selectedTenantId]);
 
+  const loadProviderData = async () => {
+    setProviderLoading(true);
+    setProviderError('');
+    try {
+      const [orgs, assignments] = await Promise.all([
+        fetchBillingProviderOrganizations(),
+        fetchBillingProviderAssignments(),
+      ]);
+      setProviderOrganizations(orgs.organizations || []);
+      setProviderAssignments(assignments.assignments || []);
+    } catch (err) {
+      setProviderError(err?.message || 'Failed to load billing-provider assignments.');
+    } finally {
+      setProviderLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProviderData();
+  }, []);
+
+  useEffect(() => {
+    setAssignmentForm((previous) => ({
+      ...previous,
+      tenant_id: previous.tenant_id || selectedTenantId || '',
+    }));
+  }, [selectedTenantId]);
+
   const kpis = billingData?.kpis || {};
   const clients = billingData?.clients || [];
   const revenueByAgency = billingData?.revenue_by_agency || [];
@@ -125,6 +206,98 @@ export default function BillingLicensing() {
     () => revenueByAgency.reduce((max, r) => Math.max(max, Number(r.amount) || 0), 0),
     [revenueByAgency]
   );
+
+  const visibleAssignments = useMemo(
+    () => (
+      selectedTenantId
+        ? providerAssignments.filter((assignment) => assignment.tenant_id === selectedTenantId)
+        : providerAssignments
+    ),
+    [providerAssignments, selectedTenantId]
+  );
+
+  const resetOrganizationForm = () => {
+    setOrganizationForm(EMPTY_ORG_FORM);
+    setEditingOrganizationId('');
+  };
+
+  const resetAssignmentEditor = () => {
+    setAssignmentForm(defaultAssignmentForm(selectedTenantId || ''));
+    setEditingAssignmentId('');
+  };
+
+  const handleOrganizationSubmit = async (e) => {
+    e.preventDefault();
+    setOrganizationBusy(true);
+    setProviderError('');
+    const payload = {
+      ...organizationForm,
+      name: organizationForm.name.trim(),
+      organization_type: organizationForm.organization_type.trim(),
+      notes: organizationForm.notes.trim() || undefined,
+    };
+    try {
+      if (editingOrganizationId) {
+        await updateBillingProviderOrganization(editingOrganizationId, payload);
+      } else {
+        await createBillingProviderOrganization(payload);
+      }
+      resetOrganizationForm();
+      await loadProviderData();
+    } catch (err) {
+      setProviderError(err?.message || 'Failed to save billing-provider organization.');
+    } finally {
+      setOrganizationBusy(false);
+    }
+  };
+
+  const handleAssignmentSubmit = async (e) => {
+    e.preventDefault();
+    setAssignmentBusy(true);
+    setProviderError('');
+    const payload = {
+      ...assignmentForm,
+      effective_start_at: new Date(assignmentForm.effective_start_at).toISOString(),
+      effective_end_at: assignmentForm.effective_end_at ? new Date(assignmentForm.effective_end_at).toISOString() : null,
+      service_scope: assignmentForm.service_scope,
+    };
+    try {
+      if (editingAssignmentId) {
+        await updateBillingProviderAssignment(editingAssignmentId, payload);
+      } else {
+        await createBillingProviderAssignment(payload);
+      }
+      resetAssignmentEditor();
+      await loadProviderData();
+    } catch (err) {
+      setProviderError(err?.message || 'Failed to save billing-provider assignment.');
+    } finally {
+      setAssignmentBusy(false);
+    }
+  };
+
+  const beginEditOrganization = (organization) => {
+    setEditingOrganizationId(organization.id);
+    setOrganizationForm({
+      name: organization.name || '',
+      organization_type: organization.organization_type || '',
+      status: organization.status || 'ACTIVE',
+      notes: organization.notes || '',
+    });
+  };
+
+  const beginEditAssignment = (assignment) => {
+    setEditingAssignmentId(assignment.id);
+    setAssignmentForm({
+      billing_provider_organization_id: assignment.billing_provider_organization_id,
+      tenant_id: assignment.tenant_id,
+      relationship_status: assignment.relationship_status || 'PENDING',
+      effective_start_at: assignment.effective_start_at ? assignment.effective_start_at.slice(0, 16) : new Date().toISOString().slice(0, 16),
+      effective_end_at: assignment.effective_end_at ? assignment.effective_end_at.slice(0, 16) : '',
+      financials_enabled: Boolean(assignment.financials_enabled),
+      service_scope: assignment.service_scope || [],
+    });
+  };
 
   const kpiCards = [
     {
@@ -388,6 +561,217 @@ export default function BillingLicensing() {
             </div>
           </>
         )}
+      </div>
+
+      {providerError ? (
+        <div style={{ ...S.card, borderColor: COLORS.orange, color: COLORS.orange, fontSize: 13, marginTop: 24 }}>
+          {providerError}
+        </div>
+      ) : null}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, marginTop: 24 }}>
+        <div style={S.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={S.cardTitle}>Billing Provider Organizations</h3>
+            {providerLoading ? <span style={{ color: COLORS.muted, fontSize: 12 }}>Loading…</span> : null}
+          </div>
+
+          <form onSubmit={handleOrganizationSubmit} style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+            <input
+              style={S.searchBar}
+              placeholder="Organization name"
+              required
+              value={organizationForm.name}
+              onChange={(e) => setOrganizationForm((previous) => ({ ...previous, name: e.target.value }))}
+            />
+            <input
+              style={S.searchBar}
+              placeholder="Organization type"
+              required
+              value={organizationForm.organization_type}
+              onChange={(e) => setOrganizationForm((previous) => ({ ...previous, organization_type: e.target.value }))}
+            />
+            <select
+              style={S.select}
+              value={organizationForm.status}
+              onChange={(e) => setOrganizationForm((previous) => ({ ...previous, status: e.target.value }))}
+            >
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
+            </select>
+            <textarea
+              style={{ ...S.searchBar, minHeight: 84, resize: 'vertical' }}
+              placeholder="Notes (optional)"
+              value={organizationForm.notes}
+              onChange={(e) => setOrganizationForm((previous) => ({ ...previous, notes: e.target.value }))}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" style={S.btn(COLORS.teal)} disabled={organizationBusy}>
+                {organizationBusy ? 'Saving…' : editingOrganizationId ? 'Update Organization' : 'Create Organization'}
+              </button>
+              {editingOrganizationId ? (
+                <button type="button" style={{ ...S.btn(COLORS.border), color: COLORS.white }} onClick={resetOrganizationForm}>
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
+          </form>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {providerOrganizations.map((organization) => (
+              <div key={organization.id} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ color: COLORS.white, fontWeight: 700 }}>{organization.name}</div>
+                    <div style={{ color: COLORS.muted, fontSize: 12 }}>{organization.organization_type}</div>
+                  </div>
+                  <button type="button" style={{ ...S.btn(COLORS.border), color: COLORS.white }} onClick={() => beginEditOrganization(organization)}>
+                    Edit
+                  </button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: COLORS.muted }}>
+                  Status: {organization.status} {organization.notes ? `• ${organization.notes}` : ''}
+                </div>
+              </div>
+            ))}
+            {!providerLoading && providerOrganizations.length === 0 ? (
+              <p style={{ color: COLORS.muted, fontSize: 13, margin: 0 }}>No billing-provider organizations configured yet.</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div style={S.card}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <h3 style={S.cardTitle}>Agency Assignments</h3>
+            <span style={{ color: COLORS.muted, fontSize: 12 }}>
+              {selectedTenantId ? 'Filtered to selected agency' : 'All agencies'}
+            </span>
+          </div>
+
+          <form onSubmit={handleAssignmentSubmit} style={{ display: 'grid', gap: 10, marginBottom: 18 }}>
+            <select
+              style={S.select}
+              required
+              value={assignmentForm.billing_provider_organization_id}
+              onChange={(e) => setAssignmentForm((previous) => ({ ...previous, billing_provider_organization_id: e.target.value }))}
+            >
+              <option value="">Select billing provider</option>
+              {providerOrganizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>{organization.name}</option>
+              ))}
+            </select>
+            <select
+              style={S.select}
+              required
+              value={assignmentForm.tenant_id}
+              onChange={(e) => setAssignmentForm((previous) => ({ ...previous, tenant_id: e.target.value }))}
+            >
+              <option value="">Select agency</option>
+              {tenantOptions.map((tenant) => (
+                <option key={tenant.tenant_id} value={tenant.tenant_id}>{tenant.display_name || tenant.legal_name}</option>
+              ))}
+            </select>
+            <select
+              style={S.select}
+              value={assignmentForm.relationship_status}
+              onChange={(e) => setAssignmentForm((previous) => ({ ...previous, relationship_status: e.target.value }))}
+            >
+              <option value="PENDING">Pending</option>
+              <option value="ACTIVE">Active</option>
+              <option value="SUSPENDED">Suspended</option>
+              <option value="TERMINATED">Terminated</option>
+            </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <input
+                style={S.searchBar}
+                type="datetime-local"
+                required
+                value={assignmentForm.effective_start_at}
+                onChange={(e) => setAssignmentForm((previous) => ({ ...previous, effective_start_at: e.target.value }))}
+              />
+              <input
+                style={S.searchBar}
+                type="datetime-local"
+                value={assignmentForm.effective_end_at}
+                onChange={(e) => setAssignmentForm((previous) => ({ ...previous, effective_end_at: e.target.value }))}
+              />
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={assignmentForm.financials_enabled}
+                onChange={(e) => setAssignmentForm((previous) => ({ ...previous, financials_enabled: e.target.checked }))}
+              />
+              Assignment financials enabled
+            </label>
+
+            <div>
+              <p style={{ ...S.sectionLabel, marginBottom: 8 }}>Service Scope</p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => (
+                  <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
+                    <input
+                      type="checkbox"
+                      checked={assignmentForm.service_scope.includes(scope)}
+                      onChange={(e) => setAssignmentForm((previous) => ({
+                        ...previous,
+                        service_scope: e.target.checked
+                          ? [...previous.service_scope, scope]
+                          : previous.service_scope.filter((value) => value !== scope),
+                      }))}
+                    />
+                    {humanizeScope(scope)}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="submit" style={S.btn(COLORS.teal)} disabled={assignmentBusy}>
+                {assignmentBusy ? 'Saving…' : editingAssignmentId ? 'Update Assignment' : 'Create Assignment'}
+              </button>
+              {editingAssignmentId ? (
+                <button type="button" style={{ ...S.btn(COLORS.border), color: COLORS.white }} onClick={resetAssignmentEditor}>
+                  Cancel Edit
+                </button>
+              ) : null}
+            </div>
+          </form>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {visibleAssignments.map((assignment) => (
+              <div key={assignment.id} style={{ border: `1px solid ${COLORS.border}`, borderRadius: 10, padding: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div>
+                    <div style={{ color: COLORS.white, fontWeight: 700 }}>
+                      {assignment.billing_provider_organization_name || 'Unknown Provider'} → {assignment.tenant_display_name || assignment.tenant_legal_name || 'Unknown Agency'}
+                    </div>
+                    <div style={{ color: COLORS.muted, fontSize: 12 }}>
+                      {assignment.relationship_status} • Financials {assignment.financials_enabled ? 'ON' : 'OFF'}
+                    </div>
+                  </div>
+                  <button type="button" style={{ ...S.btn(COLORS.border), color: COLORS.white }} onClick={() => beginEditAssignment(assignment)}>
+                    Edit
+                  </button>
+                </div>
+                <div style={{ marginTop: 10, fontSize: 12, color: COLORS.muted }}>
+                  {fmtDateTime(assignment.effective_start_at)} → {assignment.effective_end_at ? fmtDateTime(assignment.effective_end_at) : 'Open-ended'}
+                </div>
+                <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {(assignment.service_scope || []).map((scope) => (
+                    <span key={`${assignment.id}-${scope}`} style={S.badge(COLORS.teal + '22', COLORS.teal)}>
+                      {humanizeScope(scope)}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {!providerLoading && visibleAssignments.length === 0 ? (
+              <p style={{ color: COLORS.muted, fontSize: 13, margin: 0 }}>No agency assignments configured yet.</p>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   );

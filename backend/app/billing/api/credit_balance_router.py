@@ -23,6 +23,9 @@ from sqlalchemy.orm import Session
 from app.billing.models.credit_balance_case import CreditBalanceCase
 from app.billing.scope import resolve_multi_agency_tenant_ids
 from app.billing.security import require_automated_billing, tenant_has_automated_billing
+from app.billing.services.billing_provider_access_service import (
+    resolve_authorized_tenant_ids_for_scope,
+)
 from app.billing.services import credit_balance_case_service as case_service
 from app.billing.services.claim_financials import (
     load_claim_financials,
@@ -40,7 +43,15 @@ router = APIRouter(prefix="/billing/credit-balance", tags=["Billing Reports"])
 
 
 def _resolve_report_scope(db: Session, user, tenant_id, tenant_ids, all_agencies) -> list[UUID]:
-    resolved_tenant_ids = resolve_multi_agency_tenant_ids(db, user, tenant_id, tenant_ids, all_agencies)
+    requested_tenant_ids = [value.strip() for value in (tenant_ids or "").split(",") if value.strip()] or None
+    resolved_tenant_ids = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="PAYMENT_RECONCILIATION",
+        requested_tenant_id=tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )
     if len(resolved_tenant_ids) == 1:
         require_automated_billing(db, str(resolved_tenant_ids[0]))
         return resolved_tenant_ids
@@ -132,7 +143,12 @@ def _get_authorized_case(db: Session, user, case_id: UUID) -> CreditBalanceCase:
     # Enforce the same tenant/billing-scope authorization as every other
     # billing endpoint -- a case can only be viewed/acted on if the caller
     # is authorized to view that case's tenant.
-    resolve_multi_agency_tenant_ids(db, user, case.tenant_id, None, False)
+    resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="PAYMENT_RECONCILIATION",
+        requested_tenant_id=case.tenant_id,
+    )
     return case
 
 
@@ -155,7 +171,12 @@ def create_case(
     if claim is None:
         raise HTTPException(status_code=404, detail="Claim not found.")
 
-    resolve_multi_agency_tenant_ids(db, user, claim.tenant_id, None, False)
+    resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="PAYMENT_RECONCILIATION",
+        requested_tenant_id=claim.tenant_id,
+    )
 
     claim_rows = load_claim_financials(db, [claim.tenant_id], require_exported=False)
     matching = next((r for r in claim_rows if r.claim_id == claim.id), None)
@@ -191,7 +212,15 @@ def list_cases(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    resolved = resolve_multi_agency_tenant_ids(db, user, tenant_id, tenant_ids, all_agencies)
+    requested_tenant_ids = [value.strip() for value in (tenant_ids or "").split(",") if value.strip()] or None
+    resolved = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="PAYMENT_RECONCILIATION",
+        requested_tenant_id=tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )
     query = db.query(CreditBalanceCase).filter(CreditBalanceCase.tenant_id.in_([str(t) for t in resolved]))
     if status:
         query = query.filter(CreditBalanceCase.status == status.upper())
@@ -263,7 +292,15 @@ def get_cms_838_export(
     "NOT_AVAILABLE_IN_SCHEMA" rather than fabricated; agencies must fill
     them from their PS&R/cost-report records when actually filing CMS-838.
     """
-    resolved = resolve_multi_agency_tenant_ids(db, user, tenant_id, tenant_ids, all_agencies)
+    requested_tenant_ids = [value.strip() for value in (tenant_ids or "").split(",") if value.strip()] or None
+    resolved = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="PAYMENT_RECONCILIATION",
+        requested_tenant_id=tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )
     query = (
         db.query(CreditBalanceCase)
         .filter(CreditBalanceCase.tenant_id.in_([str(t) for t in resolved]))

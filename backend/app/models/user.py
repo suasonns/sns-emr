@@ -20,6 +20,18 @@ class User(BaseModel):
         index=True,
     )
 
+    billing_provider_organization_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "billing_provider_organizations.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_users_billing_provider_organization_id",
+        ),
+        nullable=True,
+        index=True,
+    )
+
     # =========================================================
     # IDENTITY
     # =========================================================

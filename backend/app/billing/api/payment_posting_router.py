@@ -10,9 +10,11 @@ from sqlalchemy.orm import Session
 from app.billing.models.payment import Payment
 from app.billing.models.remittance_advice import RemittanceAdvice
 from app.billing.security import require_automated_billing
+from app.billing.services.billing_provider_access_service import (
+    resolve_authorized_tenant_ids_for_scope,
+)
 from app.core.database import get_db
 from app.core.security import get_current_user
-from app.core.tenant_scope import resolve_billing_scope_tenant_id
 
 router = APIRouter(prefix="/billing", tags=["Billing Payment Posting"])
 
@@ -34,7 +36,14 @@ def list_remittances(
     Payment Posting page: the electronic remittance registry, MTD payment
     totals, per-payer breakdown, and unmatched-payment worklist.
     """
-    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    scoped_tenant_id = str(
+        resolve_authorized_tenant_ids_for_scope(
+            db,
+            user=user,
+            requested_scope="PAYMENT_POSTING",
+            requested_tenant_id=tenant_id,
+        )[0]
+    )
     require_automated_billing(db, scoped_tenant_id)
 
     era_query = db.query(RemittanceAdvice).filter(RemittanceAdvice.tenant_id == scoped_tenant_id)

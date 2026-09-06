@@ -12,20 +12,26 @@ from app.billing.models.facility_collection_alert import FacilityCollectionAlert
 from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
 from app.billing.models.facility_payment_audit_log import FacilityPaymentAuditLog
 from app.billing.models.facility_payment_expectation import FacilityPaymentExpectation
-from app.billing.scope import resolve_multi_agency_tenant_ids
 from app.billing.security import require_automated_billing
+from app.billing.services.billing_provider_access_service import (
+    resolve_authorized_tenant_ids_for_scope,
+)
 from app.billing.services import facility_payment_service as facility_service
 from app.core.database import get_db
-from app.core.roles import BILLING_DEPARTMENT_ROLES, FINANCIAL_ADMIN_ROLES, access_scope_for_role, is_owner_role, normalize_role
+from app.core.roles import BILLING_DEPARTMENT_ROLES, FINANCIAL_ADMIN_ROLES, is_owner_role, normalize_role
 from app.core.security import get_current_user
-from app.core.tenant_scope import list_billable_agency_tenants, resolve_billing_scope_tenant_id
 
 router = APIRouter(prefix="/billing/facility-payments", tags=["Billing Reports"])
 
 
 def _can_access_financial_surfaces(user) -> bool:
     role = normalize_role(getattr(user, "role", None))
-    return bool(role) and (role in FINANCIAL_ADMIN_ROLES or role in BILLING_DEPARTMENT_ROLES or is_owner_role(role))
+    return bool(role) and (
+        role in FINANCIAL_ADMIN_ROLES
+        or role in BILLING_DEPARTMENT_ROLES
+        or role == "PLATFORM_BILLING"
+        or is_owner_role(role)
+    )
 
 
 def _require_financial_access(user) -> None:
@@ -39,24 +45,6 @@ def _require_threshold_admin(user) -> None:
         raise HTTPException(status_code=403, detail="Financial admin access required.")
 
 
-def _resolve_owner_tenant_ids(db: Session, tenant_id: UUID | None, tenant_ids: str | None, all_agencies: bool) -> list[UUID]:
-    billable = [UUID(row["tenant_id"]) for row in list_billable_agency_tenants(db)]
-    allowed = {tid for tid in billable}
-    if all_agencies:
-        return billable
-    if tenant_ids:
-        values = [UUID(v.strip()) for v in tenant_ids.split(",") if v.strip()]
-        unauthorized = [v for v in values if v not in allowed]
-        if unauthorized:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
-        return values
-    if tenant_id is not None:
-        if tenant_id not in allowed:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
-        return [tenant_id]
-    raise HTTPException(status_code=400, detail="Select a tenant to view facility payment data.")
-
-
 def _resolve_read_tenant_ids(
     db: Session,
     user,
@@ -65,17 +53,15 @@ def _resolve_read_tenant_ids(
     all_agencies: bool,
 ) -> list[UUID]:
     _require_financial_access(user)
-    role = normalize_role(getattr(user, "role", None))
-    if is_owner_role(role):
-        return _resolve_owner_tenant_ids(db, tenant_id, tenant_ids, all_agencies)
-    if role in BILLING_DEPARTMENT_ROLES:
-        resolved = resolve_multi_agency_tenant_ids(db, user, tenant_id, tenant_ids, all_agencies)
-    else:
-        if tenant_ids or all_agencies:
-            raise HTTPException(status_code=403, detail="Multi-agency facility payment access is limited to billing department users.")
-        if tenant_id is not None and str(tenant_id) != str(user.tenant_id):
-            raise HTTPException(status_code=403, detail="You may only view your own tenant's facility payment data.")
-        resolved = [user.tenant_id]
+    requested_tenant_ids = [value.strip() for value in (tenant_ids or "").split(",") if value.strip()] or None
+    resolved = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="FACILITY_COLLECTIONS",
+        requested_tenant_id=tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )
     for tid in resolved:
         require_automated_billing(db, str(tid))
     return resolved
@@ -83,15 +69,12 @@ def _resolve_read_tenant_ids(
 
 def _resolve_single_tenant_id(db: Session, user, tenant_id: UUID | None) -> UUID:
     _require_financial_access(user)
-    role = normalize_role(getattr(user, "role", None))
-    if is_owner_role(role):
-        return _resolve_owner_tenant_ids(db, tenant_id, None, False)[0]
-    if role not in BILLING_DEPARTMENT_ROLES and access_scope_for_role(role) == "billing":
-        if tenant_id is not None and str(tenant_id) != str(user.tenant_id):
-            raise HTTPException(status_code=403, detail="You may only view your own tenant's facility payment data.")
-        require_automated_billing(db, str(user.tenant_id))
-        return user.tenant_id
-    scoped = resolve_billing_scope_tenant_id(db, user, tenant_id)
+    scoped = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="FACILITY_COLLECTIONS",
+        requested_tenant_id=tenant_id,
+    )[0]
     require_automated_billing(db, str(scoped))
     return scoped
 

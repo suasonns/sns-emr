@@ -22,6 +22,9 @@ from sqlalchemy.orm import Session
 
 from app.billing.scope import resolve_multi_agency_tenant_ids
 from app.billing.security import require_automated_billing, tenant_has_automated_billing
+from app.billing.services.billing_provider_access_service import (
+    resolve_authorized_tenant_ids_for_scope,
+)
 from app.billing.services.aging_report_service import build_ar_aging_report
 from app.core.database import get_db
 from app.core.security import get_current_user
@@ -55,7 +58,15 @@ def get_aging_report(
     /export date (never service date), bucketed 0-30/31-60/61-90/91-120/120+.
     Grouped by agency, by payer, by bucket, and per-claim detail.
     """
-    resolved_tenant_ids = _resolve_scope_tenant_ids(db, user, tenant_id, tenant_ids, all_agencies)
+    requested_tenant_ids = [value.strip() for value in (tenant_ids or "").split(",") if value.strip()] or None
+    resolved_tenant_ids = resolve_authorized_tenant_ids_for_scope(
+        db,
+        user=user,
+        requested_scope="FINANCIAL_MONITORING",
+        requested_tenant_id=tenant_id,
+        requested_tenant_ids=requested_tenant_ids,
+        all_agencies=all_agencies,
+    )
 
     if len(resolved_tenant_ids) == 1:
         require_automated_billing(db, str(resolved_tenant_ids[0]))

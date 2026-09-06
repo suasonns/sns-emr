@@ -107,6 +107,7 @@ AUDIT_CATEGORY_ACTIONS: dict[str, set[str]] = {
         "OWNER_ENABLED_USER",
         "OWNER_RESET_USER_PASSWORD",
         "OWNER_SET_TENANT_STATUS",
+        "OWNER_SET_TENANT_FINANCIALS",
     },
 }
 
@@ -191,6 +192,7 @@ def list_tenants(
                     t.status,
                     t.ai_enabled,
                     t.billing_enabled,
+                    t.financials_enabled,
                     t.created_at,
                     (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id) AS user_count,
                     (SELECT COUNT(*) FROM patients p WHERE p.tenant_id = t.id) AS patient_count
@@ -235,6 +237,7 @@ def create_tenant(
         # Billing requires ein+ptan on file (see Tenant CHECK constraint);
         # only turn it on automatically when both were actually supplied.
         billing_enabled=bool(payload.ein and payload.ptan),
+        financials_enabled=False,
         created_by=getattr(user, "user_id", None) or getattr(user, "id", None),
     )
     db.add(tenant)
@@ -276,6 +279,7 @@ def create_tenant(
         "legal_name": tenant.legal_name,
         "display_name": tenant.display_name,
         "billing_enabled": tenant.billing_enabled,
+        "financials_enabled": tenant.financials_enabled,
         "admin_user": {
             "id": str(admin_user.id),
             "email": admin_user.email,
@@ -297,6 +301,10 @@ class SetTenantStatusPayload(BaseModel):
         if value not in VALID_TENANT_STATUSES:
             raise ValueError(f"status must be one of {sorted(VALID_TENANT_STATUSES)}")
         return value
+
+
+class SetTenantFinancialsPayload(BaseModel):
+    financials_enabled: bool
 
 
 @router.patch("/tenants/{target_tenant_id}/status")
@@ -337,6 +345,46 @@ def set_tenant_status(
     )
 
     return {"tenant_id": str(tenant.id), "status": tenant.status}
+
+
+@router.patch("/tenants/{target_tenant_id}/financials")
+def set_tenant_financials(
+    target_tenant_id: UUID,
+    payload: SetTenantFinancialsPayload,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    _require_platform_owner(user)
+
+    tenant = db.get(Tenant, target_tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    previous_value = bool(tenant.financials_enabled)
+    tenant.financials_enabled = payload.financials_enabled
+    db.commit()
+    db.refresh(tenant)
+
+    log_event(
+        db=db,
+        user_id=str(getattr(user, "user_id", None) or getattr(user, "id", None)),
+        tenant_id=str(tenant.id),
+        role=str(getattr(user, "role", None) or "OWNER"),
+        action="OWNER_SET_TENANT_FINANCIALS",
+        entity_type="tenant",
+        entity_id=str(tenant.id),
+        metadata={
+            "legal_name": tenant.legal_name,
+            "previous_financials_enabled": previous_value,
+            "new_financials_enabled": tenant.financials_enabled,
+        },
+        commit=True,
+    )
+
+    return {
+        "tenant_id": str(tenant.id),
+        "financials_enabled": bool(tenant.financials_enabled),
+    }
 
 
 # =========================================================
@@ -736,6 +784,7 @@ _SECURITY_PERMISSION_CHANGE_ACTIONS = [
     "OWNER_ENABLED_USER",
     "OWNER_DISABLED_USER",
     "OWNER_SET_TENANT_STATUS",
+    "OWNER_SET_TENANT_FINANCIALS",
     "PROVIDER_LINK_REMOVED",
     "PROVIDER_ACCESS_BLOCKED_UNLINKED",
 ]
@@ -949,5 +998,4 @@ def adoption_health(
             for row in trend_rows
         ],
     }
-
 

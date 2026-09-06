@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { COLORS, S } from '../design';
-import { fetchOwnerTenants, createOwnerTenant, setOwnerTenantStatus } from '../../api/ownerAdmin';
+import {
+  fetchOwnerTenants,
+  createOwnerTenant,
+  setOwnerTenantStatus,
+  setOwnerTenantFinancials,
+} from '../../api/ownerAdmin';
 
 const STATUS_COLOR = {
   ACTIVE: COLORS.green,
@@ -110,6 +115,7 @@ export default function TenantManagement() {
   const [selected, setSelected] = useState(null);
   const [statusBusy, setStatusBusy] = useState(false);
   const [statusError, setStatusError] = useState('');
+  const [financialsBusy, setFinancialsBusy] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -153,6 +159,25 @@ export default function TenantManagement() {
   const active = tenants.filter((t) => t.status === 'ACTIVE').length;
   const suspended = tenants.filter((t) => t.status === 'SUSPENDED').length;
   const inactive = tenants.filter((t) => t.status === 'INACTIVE').length;
+  const financialsEnabled = tenants.filter((t) => t.financials_enabled).length;
+
+  const changeFinancials = async (tenant, enabled) => {
+    if (!tenant) return;
+    const action = enabled ? 'enable' : 'disable';
+    if (!window.confirm(`Are you sure you want to ${action} managed Financials access for "${tenant.display_name}"? This only affects external billing-provider access.`)) {
+      return;
+    }
+    setFinancialsBusy(true);
+    setStatusError('');
+    try {
+      await setOwnerTenantFinancials(tenant.tenant_id, enabled);
+      await load();
+    } catch (err) {
+      setStatusError(err?.message || `Failed to ${action} Financials`);
+    } finally {
+      setFinancialsBusy(false);
+    }
+  };
 
   return (
     <div>
@@ -177,6 +202,7 @@ export default function TenantManagement() {
           { label: 'ACTIVE', value: String(active), desc: 'Currently operating', dot: COLORS.green },
           { label: 'INACTIVE', value: String(inactive), desc: 'Not yet in active use', dot: COLORS.orange },
           { label: 'SUSPENDED', value: String(suspended), desc: 'Access disabled', dot: COLORS.red },
+          { label: 'FINANCIALS ON', value: String(financialsEnabled), desc: 'Managed billing allowed', dot: COLORS.teal },
         ].map((s, i) => (
           <div key={i} style={S.statCard}>
             <div style={S.statDot(s.dot)} />
@@ -196,7 +222,7 @@ export default function TenantManagement() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  {['Agency Name', 'Status', 'Type', 'Patients', 'Users', 'Billing'].map((h) => (
+                  {['Agency Name', 'Status', 'Type', 'Patients', 'Users', 'Billing', 'Financials'].map((h) => (
                     <th key={h} style={{ ...S.tableHeader, textAlign: 'left' }}>{h}</th>
                   ))}
                 </tr>
@@ -216,11 +242,12 @@ export default function TenantManagement() {
                     <td style={S.tableCell}>{t.patient_count}</td>
                     <td style={S.tableCell}>{t.user_count}</td>
                     <td style={S.tableCell}>{t.billing_enabled ? 'Enabled' : 'Pending EIN/PTAN'}</td>
+                    <td style={S.tableCell}>{t.financials_enabled ? 'On' : 'Off'}</td>
                   </tr>
                 ))}
                 {tenants.length === 0 && (
                   <tr>
-                    <td style={S.tableCell} colSpan={6}>No tenants yet.</td>
+                    <td style={S.tableCell} colSpan={7}>No tenants yet.</td>
                   </tr>
                 )}
               </tbody>
@@ -242,6 +269,7 @@ export default function TenantManagement() {
                 { label: 'Type', value: selected.tenant_type },
                 { label: 'AI Enabled', value: selected.ai_enabled ? 'Yes' : 'No' },
                 { label: 'Billing Enabled', value: selected.billing_enabled ? 'Yes' : 'No (needs EIN/PTAN)' },
+                { label: 'Financials', value: selected.financials_enabled ? 'On' : 'Off' },
                 { label: 'Patients', value: selected.patient_count },
                 { label: 'Users', value: selected.user_count },
               ].map((d, i) => (
@@ -259,6 +287,18 @@ export default function TenantManagement() {
 
               <h4 style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, margin: '16px 0 12px' }}>Access Control</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  type="button"
+                  style={selected.financials_enabled ? { ...S.btn(COLORS.border), color: COLORS.white } : S.btn(COLORS.teal)}
+                  disabled={financialsBusy}
+                  onClick={() => changeFinancials(selected, !selected.financials_enabled)}
+                >
+                  {financialsBusy
+                    ? 'Working…'
+                    : selected.financials_enabled
+                      ? 'Turn Financials Off'
+                      : 'Turn Financials On'}
+                </button>
                 {selected.status !== 'ACTIVE' && (
                   <button
                     type="button"

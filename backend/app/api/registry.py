@@ -121,6 +121,7 @@ from app.billing.api.denials_router import router as denials_router
 from app.billing.api.payment_posting_router import router as payment_posting_router
 from app.billing.api.aging_report_router import router as aging_report_router
 from app.billing.api.credit_balance_router import router as credit_balance_router
+from app.billing.api.billing_provider_router import router as billing_provider_router
 from app.billing.api.facility_payment_router import router as facility_payment_router
 
 # ADR / TPE (OPTIONAL)
@@ -149,6 +150,7 @@ def register_routers(app: FastAPI) -> None:
     app.include_router(support_reference_router)
     app.include_router(owner_admin_router)
     app.include_router(owner_billing_licensing_router)
+    app.include_router(billing_provider_router)
 
     # =====================================================
     # Admin
