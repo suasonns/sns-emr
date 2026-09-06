@@ -32,9 +32,31 @@ const defaultFinancialsForm = () => ({
   billing_provider_organization_id: '',
   effective_start_at: new Date().toISOString().slice(0, 16),
   effective_end_at: '',
-  service_scopes: ['FACILITY_COLLECTIONS'],
+  service_scopes: [{ scope: 'FACILITY_COLLECTIONS', permission_level: 'VIEW' }],
   change_reason: '',
 });
+
+function hasScopeGrant(scopeEntries, scope) {
+  return (scopeEntries || []).some((entry) => entry.scope === scope);
+}
+
+function getScopePermission(scopeEntries, scope) {
+  return (scopeEntries || []).find((entry) => entry.scope === scope)?.permission_level || 'VIEW';
+}
+
+function toggleScopeGrant(scopeEntries, scope, checked) {
+  if (checked) {
+    if (hasScopeGrant(scopeEntries, scope)) return scopeEntries;
+    return [...scopeEntries, { scope, permission_level: 'VIEW' }];
+  }
+  return scopeEntries.filter((entry) => entry.scope !== scope);
+}
+
+function updateScopePermission(scopeEntries, scope, permissionLevel) {
+  return scopeEntries.map((entry) =>
+    entry.scope === scope ? { ...entry, permission_level: permissionLevel } : entry
+  );
+}
 
 function humanizeScope(scope) {
   return (scope || '')
@@ -417,21 +439,36 @@ export default function TenantManagement() {
                       <p style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted, margin: '0 0 8px' }}>ALLOWED MANAGED-BILLING SCOPES</p>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                         {BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => (
-                          <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
-                            <input
-                              type="checkbox"
-                              checked={financialsForm.service_scopes.includes(scope)}
-                              onChange={(e) =>
-                                setFinancialsForm((prev) => ({
-                                  ...prev,
-                                  service_scopes: e.target.checked
-                                    ? [...prev.service_scopes, scope]
-                                    : prev.service_scopes.filter((value) => value !== scope),
-                                }))
-                              }
-                            />
-                            {humanizeScope(scope)}
-                          </label>
+                          <div key={scope} style={{ display: 'grid', gap: 6, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
+                              <input
+                                type="checkbox"
+                                checked={hasScopeGrant(financialsForm.service_scopes, scope)}
+                                onChange={(e) =>
+                                  setFinancialsForm((prev) => ({
+                                    ...prev,
+                                    service_scopes: toggleScopeGrant(prev.service_scopes, scope, e.target.checked),
+                                  }))
+                                }
+                              />
+                              {humanizeScope(scope)}
+                            </label>
+                            {hasScopeGrant(financialsForm.service_scopes, scope) ? (
+                              <select
+                                style={{ ...S.select, width: '100%', fontSize: 12, padding: '8px 10px' }}
+                                value={getScopePermission(financialsForm.service_scopes, scope)}
+                                onChange={(e) =>
+                                  setFinancialsForm((prev) => ({
+                                    ...prev,
+                                    service_scopes: updateScopePermission(prev.service_scopes, scope, e.target.value),
+                                  }))
+                                }
+                              >
+                                <option value="VIEW">View</option>
+                                <option value="EDIT">Edit</option>
+                              </select>
+                            ) : null}
+                          </div>
                         ))}
                       </div>
                     </div>

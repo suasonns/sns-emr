@@ -8,9 +8,11 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.billing.models.billing_provider_agency_assignment import (
+    BILLING_PROVIDER_PERMISSION_LEVELS,
     BILLING_PROVIDER_SERVICE_SCOPES,
     BillingProviderAgencyAssignment,
     BillingProviderAgencyServiceScope,
+    normalize_billing_provider_permission_level,
 )
 from app.billing.models.billing_provider_organization import BillingProviderOrganization
 from app.billing.models.billing_provider_organization_membership import (
@@ -146,11 +148,15 @@ def _resolve_effective_managed_billing_tenant_ids(
     db: Session,
     *,
     requested_scope: str | None = None,
+    required_permission_level: str = "VIEW",
     provider_org_ids: list[UUID] | None = None,
     tenant_ids: list[UUID] | None = None,
     at_time: datetime | None = None,
 ) -> list[UUID]:
     current_time = at_time or _now_utc()
+    normalized_permission_level = normalize_billing_provider_permission_level(
+        required_permission_level
+    )
     query = (
         db.query(BillingProviderAgencyAssignment.tenant_id)
         .join(
@@ -175,6 +181,8 @@ def _resolve_effective_managed_billing_tenant_ids(
     )
     if requested_scope is not None:
         query = query.filter(BillingProviderAgencyServiceScope.scope == requested_scope)
+    if normalized_permission_level == "EDIT":
+        query = query.filter(BillingProviderAgencyServiceScope.permission_level == "EDIT")
     if provider_org_ids is not None:
         if not provider_org_ids:
             return []
@@ -271,6 +279,7 @@ def resolve_authorized_tenant_ids_for_scope(
     *,
     user,
     requested_scope: str,
+    required_permission_level: str = "VIEW",
     requested_tenant_id: UUID | str | None = None,
     requested_tenant_ids: list[UUID | str] | tuple[UUID | str, ...] | None = None,
     all_agencies: bool = False,
@@ -278,6 +287,12 @@ def resolve_authorized_tenant_ids_for_scope(
     requested_scope = (requested_scope or "").strip().upper()
     if requested_scope not in BILLING_PROVIDER_SERVICE_SCOPES:
         raise HTTPException(status_code=400, detail=f"Unknown billing scope '{requested_scope}'.")
+    normalized_permission_level = (required_permission_level or "VIEW").strip().upper()
+    if normalized_permission_level not in BILLING_PROVIDER_PERMISSION_LEVELS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown permission level '{required_permission_level}'.",
+        )
 
     role = normalize_role(getattr(user, "role", None))
     if is_owner_role(role):
@@ -312,6 +327,7 @@ def resolve_authorized_tenant_ids_for_scope(
         resolved = _resolve_effective_managed_billing_tenant_ids(
             db,
             requested_scope=requested_scope,
+            required_permission_level=normalized_permission_level,
             provider_org_ids=provider_org_ids,
             tenant_ids=candidate_ids,
         )

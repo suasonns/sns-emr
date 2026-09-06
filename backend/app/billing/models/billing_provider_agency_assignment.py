@@ -37,6 +37,25 @@ BILLING_PROVIDER_SERVICE_SCOPES = {
     "FINANCIAL_MONITORING",
     "CAP_MONITORING",
 }
+BILLING_PROVIDER_PERMISSION_LEVELS = {"VIEW", "EDIT"}
+
+
+def normalize_billing_provider_service_scope(scope: str) -> str:
+    normalized = (scope or "").strip().upper()
+    if normalized not in BILLING_PROVIDER_SERVICE_SCOPES:
+        raise ValueError(
+            f"service scope must be one of {sorted(BILLING_PROVIDER_SERVICE_SCOPES)}"
+        )
+    return normalized
+
+
+def normalize_billing_provider_permission_level(permission_level: str | None) -> str:
+    normalized = (permission_level or "VIEW").strip().upper()
+    if normalized not in BILLING_PROVIDER_PERMISSION_LEVELS:
+        raise ValueError(
+            f"permission level must be one of {sorted(BILLING_PROVIDER_PERMISSION_LEVELS)}"
+        )
+    return normalized
 
 
 class BillingProviderAgencyAssignment(BaseModel):
@@ -112,6 +131,11 @@ class BillingProviderAgencyServiceScope(Base):
     )
 
     scope = Column(String(64), nullable=False, index=True)
+    permission_level = Column(
+        String(16),
+        nullable=False,
+        server_default=text("'VIEW'"),
+    )
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -121,6 +145,10 @@ class BillingProviderAgencyServiceScope(Base):
         CheckConstraint(
             "scope IN ('BILLING_READINESS', 'CLAIMS', 'NOE_TRACKING', 'ELIGIBILITY', 'AUTHORIZATION_TRACKING', 'PAYMENT_POSTING', 'PAYMENT_RECONCILIATION', 'FACILITY_COLLECTIONS', 'CREDIT_BALANCES', 'AGING_REPORT', 'DENIALS_APPEALS', 'EDI', 'BILLING_REPORTS', 'CAP_MONITORING', 'FINANCIAL_MONITORING')",
             name="ck_billing_provider_assignment_scope_valid",
+        ),
+        CheckConstraint(
+            "permission_level IN ('VIEW', 'EDIT')",
+            name="ck_billing_provider_assignment_permission_level_valid",
         ),
         UniqueConstraint("assignment_id", "scope", name="uq_billing_provider_assignment_scope"),
         Index("ix_billing_provider_scope_assignment_scope", "assignment_id", "scope"),

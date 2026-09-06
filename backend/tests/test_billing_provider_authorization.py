@@ -14,6 +14,7 @@ from app.billing.models.billing_provider_organization import BillingProviderOrga
 from app.billing.models.billing_provider_organization_membership import (
     BillingProviderOrganizationMembership,
 )
+from app.billing.models.facility_collection_alert import FacilityCollectionAlert
 from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
 from app.billing.services import facility_payment_service
 from app.billing.services.billing_provider_access_service import (
@@ -165,16 +166,34 @@ def _create_assignment(
     )
     db_session.add(row)
     db_session.flush()
-    scopes = ["FACILITY_COLLECTIONS"] if service_scopes is None else service_scopes
+    scopes = (
+        [_scope_grant("FACILITY_COLLECTIONS")]
+        if service_scopes is None
+        else [_normalize_scope_grant(scope) for scope in service_scopes]
+    )
     for scope in scopes:
         db_session.add(
             BillingProviderAgencyServiceScope(
                 assignment_id=row.id,
-                scope=scope,
+                scope=scope["scope"],
+                permission_level=scope["permission_level"],
             )
         )
     db_session.commit()
     return row
+
+
+def _scope_grant(scope: str, permission_level: str = "VIEW") -> dict[str, str]:
+    return {"scope": scope, "permission_level": permission_level}
+
+
+def _normalize_scope_grant(scope) -> dict[str, str]:
+    if isinstance(scope, str):
+        return _scope_grant(scope)
+    return {
+        "scope": scope["scope"],
+        "permission_level": scope.get("permission_level", "VIEW"),
+    }
 
 
 def _make_facility_expectation(db_session, tenant_id: uuid.UUID, *, mrn_prefix: str):
@@ -279,7 +298,7 @@ def _activate_financials(
     owner_tenant_id: uuid.UUID,
     target_tenant_id: uuid.UUID,
     provider_org_id: uuid.UUID,
-    service_scopes: list[str],
+    service_scopes: list[str] | list[dict[str, str]],
     effective_start_at: datetime | None = None,
     effective_end_at: datetime | None = None,
     change_reason: str | None = None,
@@ -290,7 +309,7 @@ def _activate_financials(
         "effective_start_at": (
             effective_start_at or (datetime.now(timezone.utc) - timedelta(minutes=5))
         ).isoformat(),
-        "service_scopes": service_scopes,
+        "service_scopes": [_normalize_scope_grant(scope) for scope in service_scopes],
     }
     if effective_end_at is not None:
         payload["effective_end_at"] = effective_end_at.isoformat()
@@ -301,6 +320,31 @@ def _activate_financials(
         headers=_owner_headers(owner_tenant_id),
         json=payload,
     )
+
+
+def _make_alert(
+    db_session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID | None = None,
+    expectation_id: uuid.UUID | None = None,
+) -> FacilityCollectionAlert:
+    row = FacilityCollectionAlert(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        facility_payment_expectation_id=expectation_id,
+        alert_type="OVERDUE_90",
+        severity="HIGH",
+        expected_amount=Decimal("100.00"),
+        received_amount=Decimal("0.00"),
+        outstanding_amount=Decimal("100.00"),
+        days_outstanding=91,
+        status="OPEN",
+    )
+    db_session.add(row)
+    db_session.commit()
+    return row
 
 
 def _deactivate_financials(
@@ -701,7 +745,7 @@ def test_financial_monitoring_scope_does_not_grant_operational_edit_confirm_allo
         headers=_headers("PLATFORM_BILLING", provider_tenant_id),
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_facility_collections_scope_does_not_grant_payment_reconciliation_confirm(
@@ -726,7 +770,7 @@ def test_facility_collections_scope_does_not_grant_payment_reconciliation_confir
         headers=_headers("BILLING", provider_tenant_id),
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_platform_billing_can_view_but_cannot_edit_expectations(client, db_session):
@@ -763,6 +807,642 @@ def test_platform_billing_can_view_but_cannot_edit_expectations(client, db_sessi
 
     assert read_response.status_code == 200, read_response.text
     assert create_response.status_code == 403
+
+
+def test_assigned_managed_billing_viewer_can_view_but_cannot_edit_all_expectation_operations(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Viewer Facility Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="VIEWER")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Viewer SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    active_expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        authorization_reference="VIEWER-ACTIVE",
+    )
+    draft_expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        authorization_reference="VIEWER-DRAFT",
+        status="DRAFT",
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "VIEW")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{active_expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 200, read_response.text
+
+    edit_requests = [
+        (
+            "create",
+            client.post(
+                f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+                json={
+                    "patient_id": str(patient.id),
+                    "patient_pos_id": str(pos.id),
+                    "responsibility_category": "ROOM_AND_BOARD",
+                    "expected_funding_source": "MEDICAID_FFS",
+                    "expected_amount": "125.00",
+                    "service_period_start": "2026-04-01",
+                    "service_period_end": "2026-04-30",
+                    "source": "AUTHORIZED_MANUAL_ENTRY",
+                },
+                headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+            ),
+        ),
+        (
+            "activate",
+            client.post(
+                f"/billing/facility-payments/expectations/{draft_expectation.id}/activate",
+                json={},
+                headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+            ),
+        ),
+        (
+            "correct",
+            client.post(
+                f"/billing/facility-payments/expectations/{active_expectation.id}/correct",
+                json={
+                    "expected_amount": "150.00",
+                    "correction_reason": "Viewer must not correct",
+                },
+                headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+            ),
+        ),
+        (
+            "cancel",
+            client.post(
+                f"/billing/facility-payments/expectations/{active_expectation.id}/cancel",
+                json={"cancellation_reason": "Viewer must not cancel"},
+                headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+            ),
+        ),
+    ]
+
+    for label, response in edit_requests:
+        expected_status = 403 if label == "create" else 404
+        assert response.status_code == expected_status, f"{label}: {response.text}"
+
+
+def test_assigned_managed_billing_editor_can_create_expectation(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Editor Create Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="EDCREATE")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Editor Create SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "patient_pos_id": str(pos.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "250.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 200, response.text
+
+
+def test_assigned_managed_billing_editor_can_activate_expectation(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Editor Activate Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="EDACT")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Editor Activate SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    draft_expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        authorization_reference="EDACT-1",
+        status="DRAFT",
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations/{draft_expectation.id}/activate",
+        json={},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "ACTIVE"
+
+
+def test_assigned_managed_billing_editor_can_correct_expectation(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Editor Correct Agency")
+    _, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="EDCORR")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/correct",
+        json={
+            "expected_amount": "175.00",
+            "correction_reason": "Correcting expectation",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["supersedes_expectation_id"] == str(expectation.id)
+
+
+def test_assigned_managed_billing_editor_can_cancel_expectation(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Editor Cancel Agency")
+    _, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="EDCANC")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "Cancelling expectation"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "CANCELLED"
+
+
+def test_managed_billing_user_without_facility_collections_scope_is_denied_view_and_edit(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="No Facility Scope Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="NOSCOPE")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("PAYMENT_POSTING", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    create_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 404
+    assert create_response.status_code == 403
+
+
+def test_managed_billing_user_with_view_only_facility_collections_is_denied_every_edit_operation(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="View Only Edit Denial Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="VIEWEDIT")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="View Edit SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    active_expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        authorization_reference="VIEWEDIT-ACTIVE",
+    )
+    draft_expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        authorization_reference="VIEWEDIT-DRAFT",
+        status="DRAFT",
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "VIEW")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="BILLING")
+
+    responses = [
+        client.post(
+            f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+            json={
+                "patient_id": str(patient.id),
+                "patient_pos_id": str(pos.id),
+                "responsibility_category": "ROOM_AND_BOARD",
+                "expected_funding_source": "MEDICAID_FFS",
+                "expected_amount": "125.00",
+                "service_period_start": "2026-04-01",
+                "service_period_end": "2026-04-30",
+                "source": "AUTHORIZED_MANUAL_ENTRY",
+            },
+            headers=_headers("BILLING", provider_tenant_id),
+        ),
+        client.post(
+            f"/billing/facility-payments/expectations/{draft_expectation.id}/activate",
+            json={},
+            headers=_headers("BILLING", provider_tenant_id),
+        ),
+        client.post(
+            f"/billing/facility-payments/expectations/{active_expectation.id}/correct",
+            json={"expected_amount": "160.00", "correction_reason": "View-only user"},
+            headers=_headers("BILLING", provider_tenant_id),
+        ),
+        client.post(
+            f"/billing/facility-payments/expectations/{active_expectation.id}/cancel",
+            json={"cancellation_reason": "View-only user"},
+            headers=_headers("BILLING", provider_tenant_id),
+        ),
+    ]
+
+    assert responses[0].status_code == 403, responses[0].text
+    for response in responses[1:]:
+        assert response.status_code == 404, response.text
+
+
+def test_managed_billing_user_cannot_edit_unassigned_agency_even_with_edit_scope_elsewhere(
+    client,
+    db_session,
+):
+    assigned_tenant = _make_agency_tenant(db_session, legal_name="Assigned Edit Agency")
+    unassigned_tenant = _make_agency_tenant(db_session, legal_name="Unassigned Edit Agency")
+    patient = _make_patient(db_session, unassigned_tenant, mrn_prefix="UNASSIGN")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=assigned_tenant,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={unassigned_tenant}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 403
+
+
+def test_expired_membership_is_denied_for_view_and_edit_operations(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Expired Membership Dual Denial Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="EXPMIX")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _create_membership(
+        db_session,
+        provider_org_id=provider_org.id,
+        effective_start_at=datetime.now(timezone.utc) - timedelta(days=10),
+        effective_end_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    create_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 404
+    assert create_response.status_code == 403
+
+
+def test_expired_assignment_is_denied_for_view_and_edit_operations(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Expired Assignment Dual Denial Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="EXPASN")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+        effective_start_at=datetime.now(timezone.utc) - timedelta(days=10),
+        effective_end_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    create_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 404
+    assert create_response.status_code == 403
+
+
+def test_payment_reconciliation_view_only_is_denied_confirm_and_reverse(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Recon View Only Agency")
+    allocation = _make_confirmable_allocation(db_session, tenant_id)
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("PAYMENT_RECONCILIATION", "VIEW")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    confirm_response = client.post(
+        f"/billing/facility-payments/allocations/{allocation.id}/confirm",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    reverse_response = client.post(
+        f"/billing/facility-payments/allocations/{allocation.id}/reverse",
+        json={"reason": "View only"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert confirm_response.status_code == 404
+    assert reverse_response.status_code == 404
+
+
+def test_facility_collections_edit_alone_does_not_permit_payment_allocation_operations(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Facility Edit No Recon Agency")
+    allocation = _make_confirmable_allocation(db_session, tenant_id)
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    confirm_response = client.post(
+        f"/billing/facility-payments/allocations/{allocation.id}/confirm",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    reverse_response = client.post(
+        f"/billing/facility-payments/allocations/{allocation.id}/reverse",
+        json={"reason": "Wrong scope"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert confirm_response.status_code == 404
+    assert reverse_response.status_code == 404
+
+
+def test_managed_billing_alerts_require_financial_monitoring_scope_and_edit_for_mutation(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Managed Alerts Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="ALERT")
+    alert = _make_alert(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        expectation_id=expectation.id,
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FINANCIAL_MONITORING", "VIEW")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    list_response = client.get(
+        "/billing/facility-payments/alerts",
+        params={"tenant_id": str(tenant_id)},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    threshold_response = client.get(
+        "/billing/facility-payments/alert-thresholds",
+        params={"tenant_id": str(tenant_id)},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    resolve_response = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/resolve",
+        json={"resolution_evidence": "Handled"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert list_response.status_code == 200, list_response.text
+    assert threshold_response.status_code == 200, threshold_response.text
+    assert resolve_response.status_code == 404
+
+
+def test_managed_billing_alert_edit_permission_allows_resolve_and_threshold_update(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Managed Alert Edit Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="ALEDIT")
+    alert = _make_alert(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        expectation_id=expectation.id,
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=[_scope_grant("FINANCIAL_MONITORING", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    resolve_response = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/resolve",
+        json={"resolution_evidence": "Resolved by managed billing"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    threshold_response = client.put(
+        "/billing/facility-payments/alert-thresholds/OVERDUE_90",
+        params={"tenant_id": str(tenant_id)},
+        json={"enabled": True, "threshold_days": 120},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert resolve_response.status_code == 200, resolve_response.text
+    assert resolve_response.json()["status"] == "RESOLVED"
+    assert threshold_response.status_code == 200, threshold_response.text
+    assert threshold_response.json()["threshold_days"] == 120
+
+
+def test_cross_tenant_expectation_ids_preserve_not_found_convention_for_managed_billing(
+    client,
+    db_session,
+):
+    assigned_tenant = _make_agency_tenant(db_session, legal_name="Assigned Expectation Agency")
+    unassigned_tenant = _make_agency_tenant(db_session, legal_name="Unassigned Expectation Agency")
+    _, expectation = _make_facility_expectation(db_session, unassigned_tenant, mrn_prefix="XID")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=assigned_tenant,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    get_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    cancel_response = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "Cross-tenant"},
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert get_response.status_code == 404
+    assert cancel_response.status_code == 404
 
 
 def test_corrected_credit_balance_and_aging_scope_mappings_require_their_own_scopes(
@@ -947,6 +1627,98 @@ def test_financials_off_preserves_agency_own_tenant_billing_access(client, db_se
     assert response.json()["tenant_id"] == str(tenant_id)
 
 
+def test_financials_off_denies_managed_billing_view_and_edit(client, db_session, tenant):
+    target_tenant_id = _make_agency_tenant(db_session, legal_name="Financials Off Dual Denial Agency")
+    patient, expectation = _make_facility_expectation(db_session, target_tenant_id, mrn_prefix="OFFDUAL")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    activate = _activate_financials(
+        client,
+        owner_tenant_id=uuid.UUID(str(tenant.id)),
+        target_tenant_id=target_tenant_id,
+        provider_org_id=provider_org.id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    assert activate.status_code == 200, activate.text
+
+    deactivate = _deactivate_financials(
+        client,
+        owner_tenant_id=uuid.UUID(str(tenant.id)),
+        target_tenant_id=target_tenant_id,
+    )
+    assert deactivate.status_code == 200, deactivate.text
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    create_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={target_tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 404
+    assert create_response.status_code == 403
+
+
+def test_financials_off_preserves_agency_own_tenant_edit_access(client, db_session, tenant):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Tenant Edit Preserved Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="OWNEDIT")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Own Edit SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    provider_org = _make_billing_provider_organization(db_session)
+    activate = _activate_financials(
+        client,
+        owner_tenant_id=uuid.UUID(str(tenant.id)),
+        target_tenant_id=tenant_id,
+        provider_org_id=provider_org.id,
+        service_scopes=[_scope_grant("FACILITY_COLLECTIONS", "EDIT")],
+    )
+    assert activate.status_code == 200, activate.text
+    deactivate = _deactivate_financials(
+        client,
+        owner_tenant_id=uuid.UUID(str(tenant.id)),
+        target_tenant_id=tenant_id,
+    )
+    assert deactivate.status_code == 200, deactivate.text
+    _set_user_role_and_tenant(db_session, tenant_id=tenant_id, role="BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "patient_pos_id": str(pos.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("BILLING", tenant_id),
+    )
+
+    assert response.status_code == 200, response.text
+
+
 def test_financials_on_grants_only_selected_scopes(client, db_session, tenant):
     target_tenant_id = _make_agency_tenant(db_session, legal_name="Selected Scope Agency")
     _make_facility_expectation(db_session, target_tenant_id, mrn_prefix="SCOPED")
@@ -1095,9 +1867,49 @@ def test_platform_billing_cannot_reach_unrelated_clinical_routes(client, db_sess
     assert response.json()["detail"] == "Clinical access is not permitted for this role."
 
 
+def test_owner_is_denied_view_and_edit_facility_payment_endpoints_for_other_tenant(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Owner Denial Agency")
+    patient = _make_patient(db_session, tenant_id, mrn_prefix="OWNERDENY")
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Owner Denial SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    _make_facility_expectation(db_session, tenant_id, mrn_prefix="OWNERDENY")
+
+    view_response = client.get(
+        "/billing/facility-payments/collections-report",
+        headers=_owner_headers(uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")),
+        params={"tenant_id": str(tenant_id)},
+    )
+    edit_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "patient_pos_id": str(pos.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "125.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_owner_headers(uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")),
+    )
+
+    assert view_response.status_code == 403, view_response.text
+    assert edit_response.status_code == 403, edit_response.text
+
+
 def test_clinical_only_tenant_role_cannot_access_financial_routes(client, db_session):
     tenant_id = _make_agency_tenant(db_session, legal_name="Clinical Denial Agency")
-    _make_facility_expectation(db_session, tenant_id, mrn_prefix="CLIN")
+    _, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="CLIN")
     _set_user_role_and_tenant(db_session, tenant_id=tenant_id, role="RN")
 
     response = client.get(
@@ -1106,3 +1918,11 @@ def test_clinical_only_tenant_role_cannot_access_financial_routes(client, db_ses
     )
 
     assert response.status_code == 403
+
+    edit_response = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "Clinical user denied"},
+        headers=_headers("RN", tenant_id),
+    )
+
+    assert edit_response.status_code == 403

@@ -67,6 +67,28 @@ function defaultAssignmentForm(tenantId = '') {
   };
 }
 
+function hasScopeGrant(scopeEntries, scope) {
+  return (scopeEntries || []).some((entry) => entry.scope === scope);
+}
+
+function getScopePermission(scopeEntries, scope) {
+  return (scopeEntries || []).find((entry) => entry.scope === scope)?.permission_level || 'VIEW';
+}
+
+function toggleScopeGrant(scopeEntries, scope, checked) {
+  if (checked) {
+    if (hasScopeGrant(scopeEntries, scope)) return scopeEntries;
+    return [...scopeEntries, { scope, permission_level: 'VIEW' }];
+  }
+  return scopeEntries.filter((entry) => entry.scope !== scope);
+}
+
+function updateScopePermission(scopeEntries, scope, permissionLevel) {
+  return scopeEntries.map((entry) =>
+    entry.scope === scope ? { ...entry, permission_level: permissionLevel } : entry
+  );
+}
+
 function fmtMoney(value) {
   if (value === null || value === undefined || Number.isNaN(Number(value))) return '—';
   return `$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -698,19 +720,32 @@ export default function BillingLicensing() {
               <p style={{ ...S.sectionLabel, marginBottom: 8 }}>Service Scope</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 {BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => (
-                  <label key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={assignmentForm.service_scope.includes(scope)}
-                      onChange={(e) => setAssignmentForm((previous) => ({
-                        ...previous,
-                        service_scope: e.target.checked
-                          ? [...previous.service_scope, scope]
-                          : previous.service_scope.filter((value) => value !== scope),
-                      }))}
-                    />
-                    {humanizeScope(scope)}
-                  </label>
+                  <div key={scope} style={{ display: 'grid', gap: 6, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, color: COLORS.white, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={hasScopeGrant(assignmentForm.service_scope, scope)}
+                        onChange={(e) => setAssignmentForm((previous) => ({
+                          ...previous,
+                          service_scope: toggleScopeGrant(previous.service_scope, scope, e.target.checked),
+                        }))}
+                      />
+                      {humanizeScope(scope)}
+                    </label>
+                    {hasScopeGrant(assignmentForm.service_scope, scope) ? (
+                      <select
+                        style={{ ...S.select, width: '100%', fontSize: 12, padding: '8px 10px' }}
+                        value={getScopePermission(assignmentForm.service_scope, scope)}
+                        onChange={(e) => setAssignmentForm((previous) => ({
+                          ...previous,
+                          service_scope: updateScopePermission(previous.service_scope, scope, e.target.value),
+                        }))}
+                      >
+                        <option value="VIEW">View</option>
+                        <option value="EDIT">Edit</option>
+                      </select>
+                    ) : null}
+                  </div>
                 ))}
               </div>
             </div>
@@ -747,9 +782,9 @@ export default function BillingLicensing() {
                   {fmtDateTime(assignment.effective_start_at)} → {assignment.effective_end_at ? fmtDateTime(assignment.effective_end_at) : 'Open-ended'}
                 </div>
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {(assignment.service_scope || []).map((scope) => (
-                    <span key={`${assignment.id}-${scope}`} style={S.badge(COLORS.teal + '22', COLORS.teal)}>
-                      {humanizeScope(scope)}
+                  {(assignment.service_scope || []).map((scopeEntry) => (
+                    <span key={`${assignment.id}-${scopeEntry.scope}`} style={S.badge(COLORS.teal + '22', COLORS.teal)}>
+                      {humanizeScope(scopeEntry.scope)} ({scopeEntry.permission_level})
                     </span>
                   ))}
                 </div>

@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.billing.models.billing_provider_agency_assignment import (
     BILLING_PROVIDER_ASSIGNMENT_STATUSES,
-    BILLING_PROVIDER_SERVICE_SCOPES,
     BillingProviderAgencyAssignment,
     BillingProviderAgencyServiceScope,
+    normalize_billing_provider_permission_level,
+    normalize_billing_provider_service_scope,
 )
 from app.billing.models.billing_provider_organization import (
     BILLING_PROVIDER_ORGANIZATION_STATUSES,
@@ -59,12 +60,26 @@ class BillingProviderOrganizationPayload(BaseModel):
 
 
 class BillingProviderAssignmentPayload(BaseModel):
+    class ServiceScopeEntry(BaseModel):
+        scope: str
+        permission_level: str = Field(default="VIEW")
+
+        @field_validator("scope")
+        @classmethod
+        def _scope_valid(cls, value: str) -> str:
+            return normalize_billing_provider_service_scope(value)
+
+        @field_validator("permission_level")
+        @classmethod
+        def _permission_level_valid(cls, value: str) -> str:
+            return normalize_billing_provider_permission_level(value)
+
     billing_provider_organization_id: UUID
     tenant_id: UUID
     relationship_status: str = Field(default="PENDING")
     effective_start_at: datetime
     effective_end_at: datetime | None = None
-    service_scope: list[str] = Field(default_factory=list)
+    service_scope: list[ServiceScopeEntry] = Field(default_factory=list)
 
     @field_validator("relationship_status")
     @classmethod
@@ -76,19 +91,29 @@ class BillingProviderAssignmentPayload(BaseModel):
             )
         return value
 
-    @field_validator("service_scope")
+    @field_validator("service_scope", mode="before")
     @classmethod
-    def _service_scope_valid(cls, values: list[str]) -> list[str]:
-        normalized: list[str] = []
+    def _service_scope_valid(cls, values) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
         seen: set[str] = set()
         for value in values:
-            scope = value.strip().upper()
-            if scope not in BILLING_PROVIDER_SERVICE_SCOPES:
-                raise ValueError(
-                    f"service_scope entries must be within {sorted(BILLING_PROVIDER_SERVICE_SCOPES)}"
-                )
+            if isinstance(value, str):
+                value = {"scope": value, "permission_level": "VIEW"}
+            elif isinstance(value, cls.ServiceScopeEntry):
+                value = value.model_dump()
+            elif not isinstance(value, dict):
+                raise ValueError("service_scope entries must be strings or {scope, permission_level} objects")
+            scope = normalize_billing_provider_service_scope(value.get("scope", ""))
+            permission_level = normalize_billing_provider_permission_level(
+                value.get("permission_level")
+            )
             if scope not in seen:
-                normalized.append(scope)
+                normalized.append(
+                    {
+                        "scope": scope,
+                        "permission_level": permission_level,
+                    }
+                )
                 seen.add(scope)
         return normalized
 
@@ -132,7 +157,13 @@ def _assignment_to_dict(assignment: BillingProviderAgencyAssignment) -> dict:
         "effective_end_at": assignment.effective_end_at.isoformat()
         if assignment.effective_end_at
         else None,
-        "service_scope": [scope.scope for scope in assignment.service_scopes],
+        "service_scope": [
+            {
+                "scope": scope.scope,
+                "permission_level": scope.permission_level,
+            }
+            for scope in assignment.service_scopes
+        ],
         "created_by": str(assignment.created_by) if assignment.created_by else None,
         "updated_by": str(assignment.updated_by) if assignment.updated_by else None,
         "created_at": assignment.created_at.isoformat() if assignment.created_at else None,
@@ -315,7 +346,13 @@ def create_billing_provider_assignment(
     db.add(row)
     db.flush()
     for scope in payload.service_scope:
-        db.add(BillingProviderAgencyServiceScope(assignment_id=row.id, scope=scope))
+        db.add(
+            BillingProviderAgencyServiceScope(
+                assignment_id=row.id,
+                scope=scope.scope,
+                permission_level=scope.permission_level,
+            )
+        )
     db.commit()
     row = (
         db.query(BillingProviderAgencyAssignment)
@@ -339,7 +376,7 @@ def create_billing_provider_assignment(
         metadata={
             "billing_provider_organization_id": str(payload.billing_provider_organization_id),
             "relationship_status": row.relationship_status,
-            "service_scope": payload.service_scope,
+            "service_scope": [scope.model_dump() for scope in payload.service_scope],
         },
         commit=True,
     )
@@ -389,7 +426,11 @@ def update_billing_provider_assignment(
     row.effective_end_at = payload.effective_end_at
     row.updated_by = user.user_id
     row.service_scopes[:] = [
-        BillingProviderAgencyServiceScope(scope=scope) for scope in payload.service_scope
+        BillingProviderAgencyServiceScope(
+            scope=scope.scope,
+            permission_level=scope.permission_level,
+        )
+        for scope in payload.service_scope
     ]
     db.commit()
     row = (
@@ -414,7 +455,7 @@ def update_billing_provider_assignment(
         metadata={
             "billing_provider_organization_id": str(payload.billing_provider_organization_id),
             "relationship_status": row.relationship_status,
-            "service_scope": payload.service_scope,
+            "service_scope": [scope.model_dump() for scope in payload.service_scope],
         },
         commit=True,
     )

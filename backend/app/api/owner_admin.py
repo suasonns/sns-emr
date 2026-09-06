@@ -20,9 +20,10 @@ from sqlalchemy.orm import Session
 
 from app.api.staff import _generate_temp_password, _issue_password_reset_link
 from app.billing.models.billing_provider_agency_assignment import (
-    BILLING_PROVIDER_SERVICE_SCOPES,
     BillingProviderAgencyAssignment,
     BillingProviderAgencyServiceScope,
+    normalize_billing_provider_permission_level,
+    normalize_billing_provider_service_scope,
 )
 from app.billing.models.billing_provider_organization import BillingProviderOrganization
 from app.billing.services.billing_provider_access_service import (
@@ -322,26 +323,50 @@ class SetTenantStatusPayload(BaseModel):
 
 
 class SetTenantFinancialsPayload(BaseModel):
+    class ServiceScopeEntry(BaseModel):
+        scope: str
+        permission_level: str = Field(default="VIEW")
+
+        @field_validator("scope")
+        @classmethod
+        def _scope_valid(cls, value: str) -> str:
+            return normalize_billing_provider_service_scope(value)
+
+        @field_validator("permission_level")
+        @classmethod
+        def _permission_level_valid(cls, value: str) -> str:
+            return normalize_billing_provider_permission_level(value)
+
     financials_enabled: bool
     billing_provider_organization_id: UUID | None = None
     effective_start_at: datetime | None = None
     effective_end_at: datetime | None = None
-    service_scopes: list[str] = Field(default_factory=list)
+    service_scopes: list[ServiceScopeEntry] = Field(default_factory=list)
     change_reason: str | None = Field(default=None, max_length=1000)
 
-    @field_validator("service_scopes")
+    @field_validator("service_scopes", mode="before")
     @classmethod
-    def _service_scope_valid(cls, values: list[str]) -> list[str]:
-        normalized: list[str] = []
+    def _service_scope_valid(cls, values) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
         seen: set[str] = set()
         for value in values:
-            scope = value.strip().upper()
-            if scope not in BILLING_PROVIDER_SERVICE_SCOPES:
-                raise ValueError(
-                    f"service_scopes entries must be within {sorted(BILLING_PROVIDER_SERVICE_SCOPES)}"
-                )
+            if isinstance(value, str):
+                value = {"scope": value, "permission_level": "VIEW"}
+            elif isinstance(value, cls.ServiceScopeEntry):
+                value = value.model_dump()
+            elif not isinstance(value, dict):
+                raise ValueError("service_scopes entries must be strings or {scope, permission_level} objects")
+            scope = normalize_billing_provider_service_scope(value.get("scope", ""))
+            permission_level = normalize_billing_provider_permission_level(
+                value.get("permission_level")
+            )
             if scope not in seen:
-                normalized.append(scope)
+                normalized.append(
+                    {
+                        "scope": scope,
+                        "permission_level": permission_level,
+                    }
+                )
                 seen.add(scope)
         return normalized
 
@@ -420,7 +445,13 @@ def _tenant_financials_response(db: Session, tenant_id: UUID) -> dict:
             "effective_end_at": assignment.effective_end_at.isoformat()
             if assignment.effective_end_at
             else None,
-            "service_scopes": [scope.scope for scope in assignment.service_scopes],
+            "service_scopes": [
+                {
+                    "scope": scope.scope,
+                    "permission_level": scope.permission_level,
+                }
+                for scope in assignment.service_scopes
+            ],
         },
     }
 
@@ -525,7 +556,10 @@ def set_tenant_financials(
             row.effective_end_at = payload.effective_end_at
             row.updated_by = actor_user_id
         row.service_scopes[:] = [
-            BillingProviderAgencyServiceScope(scope=scope)
+            BillingProviderAgencyServiceScope(
+                scope=scope.scope,
+                permission_level=scope.permission_level,
+            )
             for scope in payload.service_scopes
         ]
     else:
@@ -572,7 +606,7 @@ def set_tenant_financials(
             "effective_end_at": payload.effective_end_at.isoformat()
             if payload.effective_end_at
             else None,
-            "service_scopes": payload.service_scopes,
+            "service_scopes": [scope.model_dump() for scope in payload.service_scopes],
             "change_reason": payload.change_reason,
         },
         commit=True,

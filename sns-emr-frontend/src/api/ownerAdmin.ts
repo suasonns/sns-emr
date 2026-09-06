@@ -153,7 +153,7 @@ export type OwnerTenantFinancialsPayload = {
   billing_provider_organization_id?: string;
   effective_start_at?: string;
   effective_end_at?: string | null;
-  service_scopes?: BillingProviderServiceScope[];
+  service_scopes?: BillingProviderServiceScopeGrant[];
   change_reason?: string;
 };
 
@@ -166,7 +166,7 @@ export type OwnerTenantFinancialsResponse = {
     relationship_status: BillingProviderAssignmentStatus;
     effective_start_at: string | null;
     effective_end_at: string | null;
-    service_scopes: BillingProviderServiceScope[];
+    service_scopes: BillingProviderServiceScopeGrant[];
   } | null;
 };
 
@@ -245,8 +245,15 @@ export const BILLING_PROVIDER_SERVICE_SCOPES = [
   "CAP_MONITORING",
   "FINANCIAL_MONITORING",
 ] as const;
+export const BILLING_PROVIDER_PERMISSION_LEVELS = ["VIEW", "EDIT"] as const;
 
 export type BillingProviderServiceScope = (typeof BILLING_PROVIDER_SERVICE_SCOPES)[number];
+export type BillingProviderPermissionLevel =
+  (typeof BILLING_PROVIDER_PERMISSION_LEVELS)[number];
+export type BillingProviderServiceScopeGrant = {
+  scope: BillingProviderServiceScope;
+  permission_level: BillingProviderPermissionLevel;
+};
 export type BillingProviderAssignmentStatus =
   | "ACTIVE"
   | "SUSPENDED"
@@ -263,7 +270,7 @@ export type BillingProviderAssignment = {
   relationship_status: BillingProviderAssignmentStatus;
   effective_start_at: string | null;
   effective_end_at: string | null;
-  service_scope: BillingProviderServiceScope[];
+  service_scope: BillingProviderServiceScopeGrant[];
   created_by: string | null;
   updated_by: string | null;
   created_at: string | null;
@@ -276,7 +283,7 @@ export type BillingProviderAssignmentPayload = {
   relationship_status: BillingProviderAssignmentStatus;
   effective_start_at: string;
   effective_end_at?: string | null;
-  service_scope: BillingProviderServiceScope[];
+  service_scope: BillingProviderServiceScopeGrant[];
 };
 
 export function fetchBillingProviderAssignments(params?: {

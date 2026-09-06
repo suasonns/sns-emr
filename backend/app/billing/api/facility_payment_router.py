@@ -18,7 +18,7 @@ from app.billing.services.billing_provider_access_service import (
 )
 from app.billing.services import facility_payment_service as facility_service
 from app.core.database import get_db
-from app.core.roles import BILLING_DEPARTMENT_ROLES, FINANCIAL_ADMIN_ROLES, is_owner_role, normalize_role
+from app.core.roles import BILLING_DEPARTMENT_ROLES, FINANCIAL_ADMIN_ROLES, normalize_role
 from app.core.security import get_current_user
 
 router = APIRouter(prefix="/billing/facility-payments", tags=["Billing Reports"])
@@ -30,7 +30,6 @@ def _can_access_financial_surfaces(user) -> bool:
         role in FINANCIAL_ADMIN_ROLES
         or role in BILLING_DEPARTMENT_ROLES
         or role == "PLATFORM_BILLING"
-        or is_owner_role(role)
     )
 
 
@@ -39,14 +38,8 @@ def _require_financial_access(user) -> None:
         raise HTTPException(status_code=403, detail="Facility payment visibility is limited to billing and finance roles.")
 
 
-def _require_threshold_admin(user) -> None:
-    role = normalize_role(getattr(user, "role", None))
-    if not (role in FINANCIAL_ADMIN_ROLES or is_owner_role(role)):
-        raise HTTPException(status_code=403, detail="Financial admin access required.")
-
-
 def _require_financial_edit_access(user) -> None:
-    _require_threshold_admin(user)
+    _require_financial_access(user)
 
 
 def _resolve_read_tenant_ids(
@@ -62,6 +55,7 @@ def _resolve_read_tenant_ids(
         db,
         user=user,
         requested_scope="FACILITY_COLLECTIONS",
+        required_permission_level="VIEW",
         requested_tenant_id=tenant_id,
         requested_tenant_ids=requested_tenant_ids,
         all_agencies=all_agencies,
@@ -77,24 +71,38 @@ def _resolve_single_tenant_id(
     tenant_id: UUID | None,
     *,
     requested_scope: str = "FACILITY_COLLECTIONS",
+    required_permission_level: str = "VIEW",
 ) -> UUID:
     _require_financial_access(user)
     scoped = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
         requested_scope=requested_scope,
+        required_permission_level=required_permission_level,
         requested_tenant_id=tenant_id,
     )[0]
     require_automated_billing(db, str(scoped))
     return scoped
 
 
-def _get_expectation_for_user(db: Session, user, expectation_id: UUID) -> FacilityPaymentExpectation:
+def _get_expectation_for_user(
+    db: Session,
+    user,
+    expectation_id: UUID,
+    *,
+    required_permission_level: str = "VIEW",
+) -> FacilityPaymentExpectation:
     expectation = db.query(FacilityPaymentExpectation).filter(FacilityPaymentExpectation.id == expectation_id).one_or_none()
     if expectation is None:
         raise HTTPException(status_code=404, detail="Facility payment expectation not found.")
     try:
-        authorized_tenant_id = _resolve_single_tenant_id(db, user, expectation.tenant_id)
+        authorized_tenant_id = _resolve_single_tenant_id(
+            db,
+            user,
+            expectation.tenant_id,
+            requested_scope="FACILITY_COLLECTIONS",
+            required_permission_level=required_permission_level,
+        )
     except HTTPException as exc:
         if exc.status_code in {403, 404, 400}:
             raise HTTPException(status_code=404, detail="Facility payment expectation not found.") from exc
@@ -104,21 +112,56 @@ def _get_expectation_for_user(db: Session, user, expectation_id: UUID) -> Facili
     return expectation
 
 
-def _get_allocation_for_user(db: Session, user, allocation_id: UUID) -> FacilityPaymentAllocation:
+def _get_allocation_for_user(
+    db: Session,
+    user,
+    allocation_id: UUID,
+    *,
+    requested_scope: str = "FACILITY_COLLECTIONS",
+    required_permission_level: str = "VIEW",
+) -> FacilityPaymentAllocation:
     allocation = db.query(FacilityPaymentAllocation).filter(FacilityPaymentAllocation.id == allocation_id).one_or_none()
     if allocation is None:
         raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
-    expectation = _get_expectation_for_user(db, user, allocation.facility_payment_expectation_id)
-    if str(expectation.id) != str(allocation.facility_payment_expectation_id):
+    try:
+        authorized_tenant_id = _resolve_single_tenant_id(
+            db,
+            user,
+            allocation.tenant_id,
+            requested_scope=requested_scope,
+            required_permission_level=required_permission_level,
+        )
+    except HTTPException as exc:
+        if exc.status_code in {403, 404, 400}:
+            raise HTTPException(status_code=404, detail="Facility payment allocation not found.") from exc
+        raise
+    if str(authorized_tenant_id) != str(allocation.tenant_id):
         raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
     return allocation
 
 
-def _get_alert_for_user(db: Session, user, alert_id: UUID) -> FacilityCollectionAlert:
+def _get_alert_for_user(
+    db: Session,
+    user,
+    alert_id: UUID,
+    *,
+    required_permission_level: str = "VIEW",
+) -> FacilityCollectionAlert:
     alert = db.query(FacilityCollectionAlert).filter(FacilityCollectionAlert.id == alert_id).one_or_none()
     if alert is None:
         raise HTTPException(status_code=404, detail="Facility collection alert not found.")
-    authorized_tenant_id = _resolve_single_tenant_id(db, user, alert.tenant_id)
+    try:
+        authorized_tenant_id = _resolve_single_tenant_id(
+            db,
+            user,
+            alert.tenant_id,
+            requested_scope="FINANCIAL_MONITORING",
+            required_permission_level=required_permission_level,
+        )
+    except HTTPException as exc:
+        if exc.status_code in {403, 404, 400}:
+            raise HTTPException(status_code=404, detail="Facility collection alert not found.") from exc
+        raise
     if str(authorized_tenant_id) != str(alert.tenant_id):
         raise HTTPException(status_code=404, detail="Facility collection alert not found.")
     return alert
@@ -417,7 +460,13 @@ def create_expectation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    scoped_tenant_id = _resolve_single_tenant_id(db, user, tenant_id)
+    scoped_tenant_id = _resolve_single_tenant_id(
+        db,
+        user,
+        tenant_id,
+        requested_scope="FACILITY_COLLECTIONS",
+        required_permission_level="EDIT",
+    )
     expectation = facility_service.create_facility_payment_expectation(
         db,
         tenant_id=scoped_tenant_id,
@@ -462,7 +511,12 @@ def activate_expectation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    _get_expectation_for_user(db, user, expectation_id)
+    _get_expectation_for_user(
+        db,
+        user,
+        expectation_id,
+        required_permission_level="EDIT",
+    )
     expectation = facility_service.activate_expectation(
         db,
         expectation_id=expectation_id,
@@ -481,7 +535,12 @@ def cancel_expectation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    _get_expectation_for_user(db, user, expectation_id)
+    _get_expectation_for_user(
+        db,
+        user,
+        expectation_id,
+        required_permission_level="EDIT",
+    )
     expectation = facility_service.cancel_expectation(
         db,
         expectation_id=expectation_id,
@@ -539,7 +598,12 @@ def correct_expectation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    existing = _get_expectation_for_user(db, user, expectation_id)
+    existing = _get_expectation_for_user(
+        db,
+        user,
+        expectation_id,
+        required_permission_level="EDIT",
+    )
     corrected = facility_service.create_corrected_expectation_version(
         db,
         previous_expectation_id=expectation_id,
@@ -584,18 +648,12 @@ def confirm_allocation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    allocation = (
-        db.query(FacilityPaymentAllocation)
-        .filter(FacilityPaymentAllocation.id == allocation_id)
-        .one_or_none()
-    )
-    if allocation is None:
-        raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
-    _resolve_single_tenant_id(
+    allocation = _get_allocation_for_user(
         db,
         user,
-        allocation.tenant_id,
+        allocation_id,
         requested_scope="PAYMENT_RECONCILIATION",
+        required_permission_level="EDIT",
     )
     allocation = facility_service.confirm_allocation(
         db,
@@ -614,18 +672,12 @@ def reverse_allocation(
     user=Depends(get_current_user),
 ):
     _require_financial_edit_access(user)
-    allocation = (
-        db.query(FacilityPaymentAllocation)
-        .filter(FacilityPaymentAllocation.id == allocation_id)
-        .one_or_none()
-    )
-    if allocation is None:
-        raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
-    _resolve_single_tenant_id(
+    allocation = _get_allocation_for_user(
         db,
         user,
-        allocation.tenant_id,
+        allocation_id,
         requested_scope="PAYMENT_RECONCILIATION",
+        required_permission_level="EDIT",
     )
     allocation = facility_service.reverse_allocation(
         db,
@@ -776,7 +828,13 @@ def list_alerts(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    scoped_tenant_id = _resolve_single_tenant_id(db, user, tenant_id)
+    scoped_tenant_id = _resolve_single_tenant_id(
+        db,
+        user,
+        tenant_id,
+        requested_scope="FINANCIAL_MONITORING",
+        required_permission_level="VIEW",
+    )
     query = db.query(FacilityCollectionAlert).filter(FacilityCollectionAlert.tenant_id == scoped_tenant_id)
     if status:
         query = query.filter(FacilityCollectionAlert.status == status.strip().upper())
@@ -792,7 +850,12 @@ def resolve_alert(
     user=Depends(get_current_user),
 ):
     _require_financial_access(user)
-    _get_alert_for_user(db, user, alert_id)
+    _get_alert_for_user(
+        db,
+        user,
+        alert_id,
+        required_permission_level="EDIT",
+    )
     alert = facility_service.resolve_alert(
         db,
         alert_id=alert_id,
@@ -809,7 +872,13 @@ def get_alert_thresholds(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    scoped_tenant_id = _resolve_single_tenant_id(db, user, tenant_id)
+    scoped_tenant_id = _resolve_single_tenant_id(
+        db,
+        user,
+        tenant_id,
+        requested_scope="FINANCIAL_MONITORING",
+        required_permission_level="VIEW",
+    )
     return {"items": facility_service.list_thresholds(db, tenant_id=scoped_tenant_id)}
 
 
@@ -821,8 +890,14 @@ def put_alert_threshold(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    _require_threshold_admin(user)
-    scoped_tenant_id = _resolve_single_tenant_id(db, user, tenant_id)
+    _require_financial_edit_access(user)
+    scoped_tenant_id = _resolve_single_tenant_id(
+        db,
+        user,
+        tenant_id,
+        requested_scope="FINANCIAL_MONITORING",
+        required_permission_level="EDIT",
+    )
     row = facility_service.update_threshold(
         db,
         tenant_id=scoped_tenant_id,
