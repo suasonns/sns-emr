@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Column, DateTime, ForeignKey, Index, Numeric, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -56,6 +56,8 @@ class FacilityPaymentAllocation(Base):
         server_default=text("'PROPOSED'"),
         index=True,
     )
+    flagged_for_review = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    flagged_reason = Column(Text, nullable=True)
     match_basis = Column(String(64), nullable=False)
     notes = Column(Text, nullable=True)
     reconciled_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

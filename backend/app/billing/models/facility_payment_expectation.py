@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     Date,
@@ -56,9 +57,32 @@ FACILITY_FUNDING_SOURCES = {
 FACILITY_EXPECTATION_STATUSES = {
     "DRAFT",
     "ACTIVE",
+    "PARTIALLY_PAID",
+    "PAID",
+    "OVERPAID",
+    "NOT_VERIFIED",
     "SUPERSEDED",
     "CANCELLED",
     "CLOSED",
+}
+
+FACILITY_EXPECTATION_SOURCES = {
+    "VERIFIED_PAYER_RULE",
+    "VERIFIED_CONTRACT",
+    "VERIFIED_AUTHORIZATION",
+    "VERIFIED_FACILITY_ARRANGEMENT",
+    "AUTHORIZED_MANUAL_ENTRY",
+    "VERIFIED_IMPORT",
+    "NOT_VERIFIED",
+}
+
+FACILITY_DUE_DATE_SOURCES = {
+    "VERIFIED_PAYER_RULE",
+    "VERIFIED_CONTRACT",
+    "VERIFIED_AUTHORIZATION",
+    "TENANT_CONFIGURED_TERM",
+    "AUTHORIZED_MANUAL_ENTRY",
+    "SYSTEM_FALLBACK",
 }
 
 FACILITY_RECONCILIATION_STATUSES = {
@@ -128,9 +152,12 @@ class FacilityPaymentExpectation(Base):
     service_period_start = Column(Date, nullable=False, index=True)
     service_period_end = Column(Date, nullable=False, index=True)
     due_date = Column(Date, nullable=True, index=True)
+    due_date_source = Column(String(32), nullable=False, server_default=text("'SYSTEM_FALLBACK'"))
+    payment_term_verified = Column(Boolean, nullable=False, default=False, server_default=text("false"))
     authorization_reference = Column(String(255), nullable=True)
+    contract_reference = Column(String(255), nullable=True)
     share_of_cost_amount = Column(Numeric(12, 2), nullable=True)
-    status = Column(String(32), nullable=False, default="ACTIVE", server_default=text("'ACTIVE'"), index=True)
+    status = Column(String(32), nullable=False, default="DRAFT", server_default=text("'DRAFT'"), index=True)
     version_number = Column(Integer, nullable=False, default=1, server_default=text("1"))
     supersedes_expectation_id = Column(
         UUID(as_uuid=True),
@@ -143,7 +170,13 @@ class FacilityPaymentExpectation(Base):
         nullable=True,
     )
     correction_reason = Column(Text, nullable=True)
-    source = Column(String(32), nullable=False, default="MANUAL", server_default=text("'MANUAL'"))
+    cancellation_reason = Column(Text, nullable=True)
+    cancelled_at = Column(DateTime(timezone=True), nullable=True)
+    cancelled_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    notes = Column(Text, nullable=True)
+    source = Column(String(32), nullable=False, default="NOT_VERIFIED", server_default=text("'NOT_VERIFIED'"))
+    row_version = Column(Integer, nullable=False, default=1, server_default=text("1"))
+    client_request_id = Column(UUID(as_uuid=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     reconciliation_status = Column(
@@ -185,11 +218,31 @@ class FacilityPaymentExpectation(Base):
             "service_period_end >= service_period_start",
             name="ck_facility_payment_expectation_service_period_valid",
         ),
+        CheckConstraint(
+            "status IN ('DRAFT', 'ACTIVE', 'PARTIALLY_PAID', 'PAID', 'OVERPAID', 'NOT_VERIFIED', 'SUPERSEDED', 'CANCELLED', 'CLOSED')",
+            name="ck_facility_payment_expectation_status_valid",
+        ),
+        CheckConstraint(
+            "source IN ('VERIFIED_PAYER_RULE', 'VERIFIED_CONTRACT', 'VERIFIED_AUTHORIZATION', 'VERIFIED_FACILITY_ARRANGEMENT', 'AUTHORIZED_MANUAL_ENTRY', 'VERIFIED_IMPORT', 'NOT_VERIFIED')",
+            name="ck_facility_payment_expectation_source_valid",
+        ),
+        CheckConstraint(
+            "due_date_source IN ('VERIFIED_PAYER_RULE', 'VERIFIED_CONTRACT', 'VERIFIED_AUTHORIZATION', 'TENANT_CONFIGURED_TERM', 'AUTHORIZED_MANUAL_ENTRY', 'SYSTEM_FALLBACK')",
+            name="ck_facility_payment_expectation_due_date_source_valid",
+        ),
         Index("ix_facility_payment_expectation_tenant_patient", "tenant_id", "patient_id"),
         Index("ix_facility_payment_expectation_tenant_status", "tenant_id", "status"),
         Index(
             "ix_facility_payment_expectation_tenant_reconciliation_status",
             "tenant_id",
             "reconciliation_status",
+        ),
+        Index(
+            "ix_facility_payment_expectation_tenant_patient_client_request",
+            "tenant_id",
+            "patient_id",
+            "client_request_id",
+            unique=True,
+            postgresql_where=text("client_request_id IS NOT NULL"),
         ),
     )

@@ -5,7 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.billing.models.facility_collection_alert import FacilityCollectionAlert
@@ -45,6 +45,10 @@ def _require_threshold_admin(user) -> None:
         raise HTTPException(status_code=403, detail="Financial admin access required.")
 
 
+def _require_financial_edit_access(user) -> None:
+    _require_threshold_admin(user)
+
+
 def _resolve_read_tenant_ids(
     db: Session,
     user,
@@ -67,12 +71,18 @@ def _resolve_read_tenant_ids(
     return resolved
 
 
-def _resolve_single_tenant_id(db: Session, user, tenant_id: UUID | None) -> UUID:
+def _resolve_single_tenant_id(
+    db: Session,
+    user,
+    tenant_id: UUID | None,
+    *,
+    requested_scope: str = "FACILITY_COLLECTIONS",
+) -> UUID:
     _require_financial_access(user)
     scoped = resolve_authorized_tenant_ids_for_scope(
         db,
         user=user,
-        requested_scope="FACILITY_COLLECTIONS",
+        requested_scope=requested_scope,
         requested_tenant_id=tenant_id,
     )[0]
     require_automated_billing(db, str(scoped))
@@ -127,6 +137,8 @@ def _allocation_to_dict(allocation: FacilityPaymentAllocation) -> dict:
         "amount_applied": str(facility_service._q2(allocation.amount_applied)),
         "payment_date": allocation.payment_date,
         "allocation_status": allocation.allocation_status,
+        "flagged_for_review": allocation.flagged_for_review,
+        "flagged_reason": allocation.flagged_reason,
         "match_basis": allocation.match_basis,
         "notes": allocation.notes,
         "reconciled_by": str(allocation.reconciled_by) if allocation.reconciled_by else None,
@@ -173,7 +185,10 @@ def _expectation_to_dict(db: Session, expectation: FacilityPaymentExpectation, *
         "service_period_start": expectation.service_period_start.isoformat(),
         "service_period_end": expectation.service_period_end.isoformat(),
         "due_date": expectation.due_date.isoformat() if expectation.due_date else None,
+        "due_date_source": expectation.due_date_source,
+        "payment_term_verified": expectation.payment_term_verified,
         "authorization_reference": expectation.authorization_reference,
+        "contract_reference": expectation.contract_reference,
         "share_of_cost_amount": (
             str(facility_service._q2(expectation.share_of_cost_amount))
             if expectation.share_of_cost_amount is not None
@@ -181,12 +196,18 @@ def _expectation_to_dict(db: Session, expectation: FacilityPaymentExpectation, *
         ),
         "status": expectation.status,
         "version_number": expectation.version_number,
+        "row_version": expectation.row_version,
         "supersedes_expectation_id": str(expectation.supersedes_expectation_id) if expectation.supersedes_expectation_id else None,
         "superseded_by_expectation_id": (
             str(expectation.superseded_by_expectation_id) if expectation.superseded_by_expectation_id else None
         ),
         "correction_reason": expectation.correction_reason,
+        "cancellation_reason": expectation.cancellation_reason,
+        "cancelled_at": expectation.cancelled_at.isoformat() if expectation.cancelled_at else None,
+        "cancelled_by": str(expectation.cancelled_by) if expectation.cancelled_by else None,
+        "notes": expectation.notes,
         "source": expectation.source,
+        "client_request_id": str(expectation.client_request_id) if expectation.client_request_id else None,
         "created_by": str(expectation.created_by) if expectation.created_by else None,
         "updated_by": str(expectation.updated_by) if expectation.updated_by else None,
         "created_at": expectation.created_at.isoformat() if expectation.created_at else None,
@@ -262,7 +283,8 @@ def _alert_to_dict(alert: FacilityCollectionAlert) -> dict:
 
 
 class ExpectationCreateRequest(BaseModel):
-    tenant_id: UUID | None = None
+    model_config = ConfigDict(extra="forbid")
+
     patient_id: UUID
     patient_pos_id: UUID | None = None
     responsibility_category: str
@@ -274,14 +296,17 @@ class ExpectationCreateRequest(BaseModel):
     service_period_end: date
     due_date: date | None = None
     authorization_reference: str | None = None
+    contract_reference: str | None = None
     share_of_cost_amount: Decimal | None = None
-    status: str = "ACTIVE"
-    source: str = "MANUAL"
+    source: str = "NOT_VERIFIED"
     expected_payer_name_snapshot: str | None = None
+    notes: str | None = None
+    client_request_id: UUID | None = None
 
 
 class ExpectationCorrectRequest(BaseModel):
-    tenant_id: UUID | None = None
+    model_config = ConfigDict(extra="forbid")
+
     patient_pos_id: UUID | None = None
     responsibility_category: str | None = None
     expected_funding_source: str | None = None
@@ -292,25 +317,44 @@ class ExpectationCorrectRequest(BaseModel):
     service_period_end: date | None = None
     due_date: date | None = None
     authorization_reference: str | None = None
+    contract_reference: str | None = None
     share_of_cost_amount: Decimal | None = None
-    status: str | None = None
     source: str | None = None
     expected_payer_name_snapshot: str | None = None
+    notes: str | None = None
+    expected_row_version: int | None = None
     correction_reason: str
 
 
 class ReverseAllocationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     reason: str
 
 
 class ResolveAlertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     resolution_evidence: str
 
 
 class ThresholdUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
     threshold_amount: Decimal | None = None
     threshold_days: int | None = None
+
+
+class ExpectationActivateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_row_version: int | None = None
+
+
+class ExpectationCancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    cancellation_reason: str
+    force: bool = False
+    expected_row_version: int | None = None
 
 
 @router.get("/expectations")
@@ -368,10 +412,12 @@ def list_expectations(
 @router.post("/expectations")
 def create_expectation(
     payload: ExpectationCreateRequest,
+    tenant_id: UUID | None = Query(None, description="Agency tenant to create for."),
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    scoped_tenant_id = _resolve_single_tenant_id(db, user, payload.tenant_id)
+    _require_financial_edit_access(user)
+    scoped_tenant_id = _resolve_single_tenant_id(db, user, tenant_id)
     expectation = facility_service.create_facility_payment_expectation(
         db,
         tenant_id=scoped_tenant_id,
@@ -386,10 +432,12 @@ def create_expectation(
         service_period_end=payload.service_period_end,
         due_date=payload.due_date,
         authorization_reference=payload.authorization_reference,
+        contract_reference=payload.contract_reference,
         share_of_cost_amount=payload.share_of_cost_amount,
-        status=payload.status,
         source=payload.source,
         expected_payer_name_snapshot=payload.expected_payer_name_snapshot,
+        notes=payload.notes,
+        client_request_id=payload.client_request_id,
         user_id=getattr(user, "user_id", None),
         user_role=getattr(user, "role", None),
     )
@@ -406,6 +454,83 @@ def get_expectation(
     return _expectation_to_dict(db, expectation, include_related=True)
 
 
+@router.post("/expectations/{expectation_id}/activate")
+def activate_expectation(
+    expectation_id: UUID,
+    payload: ExpectationActivateRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_edit_access(user)
+    _get_expectation_for_user(db, user, expectation_id)
+    expectation = facility_service.activate_expectation(
+        db,
+        expectation_id=expectation_id,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+        expected_row_version=payload.expected_row_version,
+    )
+    return _expectation_to_dict(db, expectation, include_related=True)
+
+
+@router.post("/expectations/{expectation_id}/cancel")
+def cancel_expectation(
+    expectation_id: UUID,
+    payload: ExpectationCancelRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_edit_access(user)
+    _get_expectation_for_user(db, user, expectation_id)
+    expectation = facility_service.cancel_expectation(
+        db,
+        expectation_id=expectation_id,
+        cancellation_reason=payload.cancellation_reason,
+        force=payload.force,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+        expected_row_version=payload.expected_row_version,
+    )
+    return _expectation_to_dict(db, expectation, include_related=True)
+
+
+@router.get("/expectations/{expectation_id}/history")
+def get_expectation_history(
+    expectation_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    expectation = _get_expectation_for_user(db, user, expectation_id)
+    history = facility_service.expectation_history(db, expectation_id=expectation.id)
+    return {
+        "current_expectation_id": str(expectation.id),
+        "items": [
+            {
+                "id": str(item.id),
+                "version_number": item.version_number,
+                "status": item.status,
+                "correction_reason": item.correction_reason,
+                "cancellation_reason": item.cancellation_reason,
+                "created_by": str(item.created_by) if item.created_by else None,
+                "corrected_by": str(item.updated_by) if item.updated_by else None,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+            }
+            for item in history
+        ],
+    }
+
+
+@router.get("/expectations/{expectation_id}/residence-snapshot-diff")
+def get_residence_snapshot_diff(
+    expectation_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    expectation = _get_expectation_for_user(db, user, expectation_id)
+    return facility_service.residence_snapshot_diff(db, expectation_id=expectation.id)
+
+
 @router.post("/expectations/{expectation_id}/correct")
 def correct_expectation(
     expectation_id: UUID,
@@ -413,16 +538,15 @@ def correct_expectation(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    _require_financial_access(user)
+    _require_financial_edit_access(user)
     existing = _get_expectation_for_user(db, user, expectation_id)
-    if payload.tenant_id and str(payload.tenant_id) != str(existing.tenant_id):
-        raise HTTPException(status_code=400, detail="tenant_id must match the existing expectation tenant.")
     corrected = facility_service.create_corrected_expectation_version(
         db,
         previous_expectation_id=expectation_id,
         correction_reason=payload.correction_reason,
         user_id=getattr(user, "user_id", None),
         user_role=getattr(user, "role", None),
+        expected_row_version=payload.expected_row_version,
         patient_pos_id=payload.patient_pos_id,
         responsibility_category=payload.responsibility_category,
         expected_funding_source=payload.expected_funding_source,
@@ -433,10 +557,11 @@ def correct_expectation(
         service_period_end=payload.service_period_end,
         due_date=payload.due_date,
         authorization_reference=payload.authorization_reference,
+        contract_reference=payload.contract_reference,
         share_of_cost_amount=payload.share_of_cost_amount,
-        status=payload.status,
         source=payload.source,
         expected_payer_name_snapshot=payload.expected_payer_name_snapshot,
+        notes=payload.notes,
     )
     return _expectation_to_dict(db, corrected, include_related=True)
 
@@ -458,7 +583,7 @@ def confirm_allocation(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    _require_financial_access(user)
+    _require_financial_edit_access(user)
     allocation = (
         db.query(FacilityPaymentAllocation)
         .filter(FacilityPaymentAllocation.id == allocation_id)
@@ -466,7 +591,12 @@ def confirm_allocation(
     )
     if allocation is None:
         raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
-    _resolve_single_tenant_id(db, user, allocation.tenant_id)
+    _resolve_single_tenant_id(
+        db,
+        user,
+        allocation.tenant_id,
+        requested_scope="PAYMENT_RECONCILIATION",
+    )
     allocation = facility_service.confirm_allocation(
         db,
         allocation_id=allocation_id,
@@ -483,7 +613,7 @@ def reverse_allocation(
     db: Session = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    _require_financial_access(user)
+    _require_financial_edit_access(user)
     allocation = (
         db.query(FacilityPaymentAllocation)
         .filter(FacilityPaymentAllocation.id == allocation_id)
@@ -491,7 +621,12 @@ def reverse_allocation(
     )
     if allocation is None:
         raise HTTPException(status_code=404, detail="Facility payment allocation not found.")
-    _resolve_single_tenant_id(db, user, allocation.tenant_id)
+    _resolve_single_tenant_id(
+        db,
+        user,
+        allocation.tenant_id,
+        requested_scope="PAYMENT_RECONCILIATION",
+    )
     allocation = facility_service.reverse_allocation(
         db,
         allocation_id=allocation_id,
@@ -604,7 +739,10 @@ def get_collections_report(
                 "outstanding_amount": row["outstanding_amount"],
                 "most_recent_payment_date": row["most_recent_payment_date"],
                 "due_date": row["due_date"],
+                "due_date_source": row["due_date_source"],
+                "payment_term_verified": row["payment_term_verified"],
                 "days_outstanding": row["aging"]["days_outstanding"],
+                "status": row["status"],
                 "reconciliation_status": row["reconciliation_status"],
                 "aging_bucket": row["aging"]["aging_bucket"],
                 "expectation_id": row["id"],

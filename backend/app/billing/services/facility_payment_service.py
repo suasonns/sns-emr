@@ -28,7 +28,9 @@ from app.billing.models.facility_payment_audit_log import (
     FacilityPaymentAuditLog,
 )
 from app.billing.models.facility_payment_expectation import (
+    FACILITY_DUE_DATE_SOURCES,
     FACILITY_EXPECTATION_STATUSES,
+    FACILITY_EXPECTATION_SOURCES,
     FACILITY_FUNDING_SOURCES,
     FACILITY_RECONCILIATION_STATUSES,
     RESPONSIBILITY_CATEGORIES,
@@ -69,6 +71,8 @@ DEFAULT_ALERT_THRESHOLDS = {
 }
 
 DEFAULT_PAYMENT_TERM_DAYS = 30
+PAYMENT_DERIVED_EXPECTATION_STATUSES = {"PARTIALLY_PAID", "PAID", "OVERPAID"}
+ACTIVATABLE_EXPECTATION_STATUSES = {"ACTIVE"} | PAYMENT_DERIVED_EXPECTATION_STATUSES
 MATCH_BASIS_EXACT_CLAIM_CONTROL_REFERENCE = "EXACT_CLAIM_CONTROL_REFERENCE"
 MATCH_BASIS_EXACT_CLAIM_ASSOCIATION = "EXACT_CLAIM_ASSOCIATION"
 MATCH_BASIS_PATIENT_PAYER_SERVICE_PERIOD_AMOUNT = "PATIENT_PAYER_SERVICE_PERIOD_AMOUNT"
@@ -121,6 +125,23 @@ def _validate_choice(value: str | None, allowed: Iterable[str], field_name: str)
     if normalized not in allowed:
         raise HTTPException(status_code=400, detail=f"{field_name} must be one of {sorted(allowed)}.")
     return normalized
+
+
+def _bump_row_version(expectation: FacilityPaymentExpectation) -> None:
+    expectation.row_version = int(expectation.row_version or 0) + 1
+
+
+def _assert_expected_row_version(
+    expectation: FacilityPaymentExpectation,
+    expected_row_version: int | None,
+) -> None:
+    if expected_row_version is None:
+        return
+    if int(expectation.row_version or 0) != int(expected_row_version):
+        raise HTTPException(
+            status_code=409,
+            detail="This facility payment expectation was updated by someone else. Reload and retry.",
+        )
 
 
 def _validate_tenant_patient(db: Session, tenant_id: UUID, patient_id: UUID) -> Patient:
@@ -207,6 +228,63 @@ def _snapshot_fields(
         "primary_payer_name_snapshot": primary_payer_name,
         "secondary_payer_name_snapshot": secondary_payer_name,
     }
+
+
+def resolve_due_date(
+    db: Session,
+    *,
+    tenant_id: UUID,
+    patient_id: UUID,
+    service_period_end: date,
+    explicit_due_date: date | None,
+    authorization_reference: str | None,
+    contract_reference: str | None,
+) -> tuple[date, str, bool]:
+    # Precedence slots 1-4 are intentionally stubbed today: this codebase does
+    # not yet persist verified payer-rule, contract, authorization, or tenant-
+    # configured payment-term sources for facility expectations. When those data
+    # sources are added, wire them here without changing callers.
+    _ = (db, tenant_id, patient_id, authorization_reference, contract_reference)
+    if explicit_due_date is not None:
+        return explicit_due_date, "AUTHORIZED_MANUAL_ENTRY", True
+    return service_period_end + timedelta(days=DEFAULT_PAYMENT_TERM_DAYS), "SYSTEM_FALLBACK", False
+
+
+def _flag_allocations_for_review(
+    db: Session,
+    *,
+    expectation: FacilityPaymentExpectation,
+    reason: str,
+    user_id: UUID | None,
+    user_role: str | None,
+    confirmed_only: bool = False,
+) -> list[UUID]:
+    query = db.query(FacilityPaymentAllocation).filter(
+        FacilityPaymentAllocation.facility_payment_expectation_id == expectation.id,
+        FacilityPaymentAllocation.tenant_id == expectation.tenant_id,
+        FacilityPaymentAllocation.allocation_status != "REVERSED",
+    )
+    if confirmed_only:
+        query = query.filter(FacilityPaymentAllocation.allocation_status == "CONFIRMED")
+    allocations = query.order_by(FacilityPaymentAllocation.created_at.asc()).all()
+    flagged_ids: list[UUID] = []
+    for allocation in allocations:
+        allocation.flagged_for_review = True
+        allocation.flagged_reason = reason
+        flagged_ids.append(allocation.id)
+        _write_audit(
+            db,
+            tenant_id=allocation.tenant_id,
+            entity_type="ALLOCATION",
+            entity_id=allocation.id,
+            field_name="FLAGGED_FOR_REVIEW",
+            previous_value=False,
+            new_value=True,
+            user_id=user_id,
+            role=user_role,
+            reason=reason,
+        )
+    return flagged_ids
 
 
 def _write_audit(
@@ -336,6 +414,15 @@ def compute_rollup(db: Session, expectation: FacilityPaymentExpectation) -> Expe
 def _recompute_expectation(db: Session, expectation: FacilityPaymentExpectation) -> ExpectationRollup:
     rollup = compute_rollup(db, expectation)
     expectation.reconciliation_status = rollup.reconciliation_status
+    if expectation.status in ACTIVATABLE_EXPECTATION_STATUSES:
+        if rollup.confirmed_amount == Decimal("0.00"):
+            expectation.status = "ACTIVE"
+        elif rollup.confirmed_amount < rollup.expected_amount:
+            expectation.status = "PARTIALLY_PAID"
+        elif rollup.confirmed_amount == rollup.expected_amount:
+            expectation.status = "PAID"
+        else:
+            expectation.status = "OVERPAID"
     db.flush()
     return rollup
 
@@ -352,16 +439,35 @@ def create_facility_payment_expectation(
     service_period_start: date,
     service_period_end: date,
     due_date: date | None = None,
+    due_date_source: str | None = None,
+    payment_term_verified: bool | None = None,
     frequency: str | None = None,
     authorization_reference: str | None = None,
+    contract_reference: str | None = None,
     share_of_cost_amount: Decimal | None = None,
-    status: str = "ACTIVE",
-    source: str = "MANUAL",
+    status: str = "DRAFT",
+    source: str = "NOT_VERIFIED",
     expected_payer_name_snapshot: str | None = None,
+    notes: str | None = None,
+    client_request_id: UUID | None = None,
     currency: str = "USD",
     user_id: UUID | None = None,
     user_role: str | None = None,
+    auto_commit: bool = True,
 ) -> FacilityPaymentExpectation:
+    if client_request_id is not None:
+        existing = (
+            db.query(FacilityPaymentExpectation)
+            .filter(
+                FacilityPaymentExpectation.tenant_id == tenant_id,
+                FacilityPaymentExpectation.patient_id == patient_id,
+                FacilityPaymentExpectation.client_request_id == client_request_id,
+            )
+            .one_or_none()
+        )
+        if existing is not None:
+            return existing
+
     _validate_tenant_patient(db, tenant_id, patient_id)
     responsibility_category = _validate_choice(
         responsibility_category, RESPONSIBILITY_CATEGORIES, "responsibility_category"
@@ -370,6 +476,7 @@ def create_facility_payment_expectation(
         expected_funding_source, FACILITY_FUNDING_SOURCES, "expected_funding_source"
     )
     status = _validate_choice(status, FACILITY_EXPECTATION_STATUSES, "status")
+    source = _validate_choice(source, FACILITY_EXPECTATION_SOURCES, "source")
     expected_amount = _q2(expected_amount)
     if expected_amount < Decimal("0.00"):
         raise HTTPException(status_code=400, detail="expected_amount must be >= 0.")
@@ -392,6 +499,21 @@ def create_facility_payment_expectation(
         expected_funding_source=expected_funding_source,
         expected_payer_name_snapshot=expected_payer_name_snapshot,
     )
+    resolved_due_date, resolved_due_date_source, resolved_payment_term_verified = resolve_due_date(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        service_period_end=service_period_end,
+        explicit_due_date=due_date,
+        authorization_reference=authorization_reference,
+        contract_reference=contract_reference,
+    )
+    if due_date_source is not None:
+        resolved_due_date_source = _validate_choice(
+            due_date_source, FACILITY_DUE_DATE_SOURCES, "due_date_source"
+        )
+    if payment_term_verified is not None:
+        resolved_payment_term_verified = bool(payment_term_verified)
 
     expectation = FacilityPaymentExpectation(
         tenant_id=tenant_id,
@@ -403,12 +525,17 @@ def create_facility_payment_expectation(
         frequency=frequency,
         service_period_start=service_period_start,
         service_period_end=service_period_end,
-        due_date=due_date,
+        due_date=resolved_due_date,
+        due_date_source=resolved_due_date_source,
+        payment_term_verified=resolved_payment_term_verified,
         authorization_reference=authorization_reference,
+        contract_reference=contract_reference,
         share_of_cost_amount=share_of_cost_amount,
         status=status,
         version_number=1,
-        source=(source or "MANUAL").strip().upper(),
+        source=source,
+        notes=notes.strip() if isinstance(notes, str) and notes.strip() else None,
+        client_request_id=client_request_id,
         created_by=user_id,
         updated_by=user_id,
         **snapshot,
@@ -428,13 +555,151 @@ def create_facility_payment_expectation(
             "expected_amount": expectation.expected_amount,
             "status": expectation.status,
             "version_number": expectation.version_number,
+            "due_date": expectation.due_date,
+            "due_date_source": expectation.due_date_source,
+            "payment_term_verified": expectation.payment_term_verified,
+            "source": expectation.source,
         },
+        user_id=user_id,
+        role=user_role,
+    )
+    if auto_commit:
+        db.commit()
+        db.refresh(expectation)
+        if expectation.status not in {"DRAFT", "CANCELLED", "SUPERSEDED", "CLOSED"}:
+            evaluate_alerts_for_expectation(db, expectation=expectation, user_id=user_id, user_role=user_role)
+            db.refresh(expectation)
+    return expectation
+
+
+def activate_expectation(
+    db: Session,
+    *,
+    expectation_id: UUID,
+    user_id: UUID,
+    user_role: str | None = None,
+    expected_row_version: int | None = None,
+) -> FacilityPaymentExpectation:
+    expectation = _get_expectation(db, expectation_id)
+    _assert_expected_row_version(expectation, expected_row_version)
+    if expectation.status in ACTIVATABLE_EXPECTATION_STATUSES:
+        return expectation
+    if expectation.status != "DRAFT":
+        raise HTTPException(status_code=409, detail="Only DRAFT expectations can be activated.")
+    missing_fields: list[str] = []
+    for field_name in (
+        "responsibility_category",
+        "expected_funding_source",
+        "expected_amount",
+        "service_period_start",
+        "service_period_end",
+    ):
+        if getattr(expectation, field_name, None) in (None, ""):
+            missing_fields.append(field_name)
+    if expectation.source == "NOT_VERIFIED":
+        missing_fields.append("source")
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Expectation is incomplete and cannot be activated. Missing or unverified: {', '.join(missing_fields)}.",
+        )
+
+    previous_status = expectation.status
+    expectation.status = "ACTIVE"
+    expectation.updated_by = user_id
+    expectation.cancelled_at = None
+    expectation.cancelled_by = None
+    expectation.cancellation_reason = None
+    _bump_row_version(expectation)
+    _recompute_expectation(db, expectation)
+    _write_audit(
+        db,
+        tenant_id=expectation.tenant_id,
+        entity_type="EXPECTATION",
+        entity_id=expectation.id,
+        field_name="EXPECTATION_ACTIVATED",
+        previous_value=previous_status,
+        new_value=expectation.status,
         user_id=user_id,
         role=user_role,
     )
     db.commit()
     db.refresh(expectation)
     evaluate_alerts_for_expectation(db, expectation=expectation, user_id=user_id, user_role=user_role)
+    db.refresh(expectation)
+    return expectation
+
+
+def cancel_expectation(
+    db: Session,
+    *,
+    expectation_id: UUID,
+    cancellation_reason: str,
+    user_id: UUID,
+    user_role: str | None = None,
+    expected_row_version: int | None = None,
+    force: bool = False,
+) -> FacilityPaymentExpectation:
+    expectation = _get_expectation(db, expectation_id)
+    _assert_expected_row_version(expectation, expected_row_version)
+    if not cancellation_reason or not cancellation_reason.strip():
+        raise HTTPException(status_code=400, detail="cancellation_reason is required.")
+    if expectation.status == "CANCELLED":
+        return expectation
+    if expectation.status in {"SUPERSEDED", "CLOSED"}:
+        raise HTTPException(status_code=409, detail="This expectation cannot be cancelled from its current status.")
+
+    confirmed_allocations = (
+        db.query(FacilityPaymentAllocation)
+        .filter(
+            FacilityPaymentAllocation.facility_payment_expectation_id == expectation.id,
+            FacilityPaymentAllocation.tenant_id == expectation.tenant_id,
+            FacilityPaymentAllocation.allocation_status == "CONFIRMED",
+        )
+        .order_by(FacilityPaymentAllocation.created_at.asc())
+        .all()
+    )
+    if confirmed_allocations and not force:
+        raise HTTPException(
+            status_code=409,
+            detail="Confirmed allocations exist for this expectation. Re-submit with force=true after acknowledging allocation review.",
+        )
+
+    previous_status = expectation.status
+    expectation.status = "CANCELLED"
+    expectation.cancellation_reason = cancellation_reason.strip()
+    expectation.cancelled_at = _now()
+    expectation.cancelled_by = user_id
+    expectation.updated_by = user_id
+    _bump_row_version(expectation)
+
+    flagged_ids: list[UUID] = []
+    if confirmed_allocations:
+        flagged_ids = _flag_allocations_for_review(
+            db,
+            expectation=expectation,
+            reason="Expectation was cancelled after payments had already been applied; review these allocations.",
+            user_id=user_id,
+            user_role=user_role,
+            confirmed_only=True,
+        )
+
+    _write_audit(
+        db,
+        tenant_id=expectation.tenant_id,
+        entity_type="EXPECTATION",
+        entity_id=expectation.id,
+        field_name="EXPECTATION_CANCELLED",
+        previous_value=previous_status,
+        new_value={
+            "status": expectation.status,
+            "flagged_allocation_ids": flagged_ids,
+        },
+        user_id=user_id,
+        role=user_role,
+        reason=expectation.cancellation_reason,
+    )
+    db.commit()
     db.refresh(expectation)
     return expectation
 
@@ -446,6 +711,7 @@ def create_corrected_expectation_version(
     correction_reason: str,
     user_id: UUID,
     user_role: str | None = None,
+    expected_row_version: int | None = None,
     patient_pos_id: UUID | None = None,
     responsibility_category: str | None = None,
     expected_funding_source: str | None = None,
@@ -455,20 +721,34 @@ def create_corrected_expectation_version(
     due_date: date | None = None,
     frequency: str | None = None,
     authorization_reference: str | None = None,
+    contract_reference: str | None = None,
     share_of_cost_amount: Decimal | None = None,
     status: str | None = None,
     source: str | None = None,
     expected_payer_name_snapshot: str | None = None,
+    notes: str | None = None,
     currency: str | None = None,
 ) -> FacilityPaymentExpectation:
     previous = _get_expectation(db, previous_expectation_id)
     if not correction_reason or not correction_reason.strip():
         raise HTTPException(status_code=400, detail="correction_reason is required.")
+    _assert_expected_row_version(previous, expected_row_version)
+
+    changed_expected_amount = (
+        expected_amount is not None and _q2(expected_amount) != _q2(previous.expected_amount)
+    )
+    changed_service_period = any(
+        [
+            service_period_start is not None and service_period_start != previous.service_period_start,
+            service_period_end is not None and service_period_end != previous.service_period_end,
+        ]
+    )
 
     correlation_id = uuid.uuid4()
     previous_status = previous.status
     previous.status = "SUPERSEDED"
     previous.updated_by = user_id
+    _bump_row_version(previous)
 
     corrected = create_facility_payment_expectation(
         db,
@@ -485,6 +765,9 @@ def create_corrected_expectation_version(
         authorization_reference=(
             authorization_reference if authorization_reference is not None else previous.authorization_reference
         ),
+        contract_reference=(
+            contract_reference if contract_reference is not None else previous.contract_reference
+        ),
         share_of_cost_amount=(
             share_of_cost_amount if share_of_cost_amount is not None else previous.share_of_cost_amount
         ),
@@ -495,15 +778,30 @@ def create_corrected_expectation_version(
             if expected_payer_name_snapshot is not None
             else previous.expected_payer_name_snapshot
         ),
+        notes=notes if notes is not None else previous.notes,
         currency=currency or previous.currency,
         user_id=user_id,
         user_role=user_role,
+        auto_commit=False,
     )
     corrected.version_number = int(previous.version_number or 1) + 1
     corrected.supersedes_expectation_id = previous.id
     corrected.correction_reason = correction_reason.strip()
     corrected.updated_by = user_id
     previous.superseded_by_expectation_id = corrected.id
+
+    flagged_ids: list[UUID] = []
+    if changed_expected_amount or changed_service_period:
+        flagged_ids = _flag_allocations_for_review(
+            db,
+            expectation=previous,
+            reason=(
+                "Expectation correction changed the expected amount and/or service period; "
+                "review prior allocations before relying on them."
+            ),
+            user_id=user_id,
+            user_role=user_role,
+        )
 
     _write_audit(
         db,
@@ -531,6 +829,20 @@ def create_corrected_expectation_version(
         reason=correction_reason,
         correlation_id=correlation_id,
     )
+    if flagged_ids:
+        _write_audit(
+            db,
+            tenant_id=previous.tenant_id,
+            entity_type="EXPECTATION",
+            entity_id=previous.id,
+            field_name="ALLOCATIONS_FLAGGED_FOR_REVIEW",
+            previous_value=None,
+            new_value={"allocation_ids": flagged_ids},
+            user_id=user_id,
+            role=user_role,
+            reason=correction_reason,
+            correlation_id=correlation_id,
+        )
     db.commit()
     db.refresh(previous)
     db.refresh(corrected)
@@ -787,12 +1099,14 @@ def confirm_allocation(
                 detail="This payment is already confirmed against another expectation and cannot be double-counted.",
             )
     previous_reconciliation_status = allocation.expectation.reconciliation_status
+    previous_expectation_status = allocation.expectation.status
     previous_status = allocation.allocation_status
     allocation.allocation_status = "CONFIRMED"
     allocation.reconciled_by = user_id
     allocation.reconciled_at = _now()
     expectation = allocation.expectation
     expectation.updated_by = user_id
+    _bump_row_version(expectation)
     rollup = _recompute_expectation(db, expectation)
     _write_audit(
         db,
@@ -816,6 +1130,18 @@ def confirm_allocation(
         user_id=user_id,
         role=user_role,
     )
+    if previous_expectation_status != expectation.status:
+        _write_audit(
+            db,
+            tenant_id=expectation.tenant_id,
+            entity_type="EXPECTATION",
+            entity_id=expectation.id,
+            field_name="status",
+            previous_value=previous_expectation_status,
+            new_value=expectation.status,
+            user_id=user_id,
+            role=user_role,
+        )
     db.commit()
     db.refresh(allocation)
     db.refresh(expectation)
@@ -842,6 +1168,8 @@ def reverse_allocation(
     expectation = allocation.expectation
     expectation.updated_by = user_id
     previous_reconciliation_status = expectation.reconciliation_status
+    previous_expectation_status = expectation.status
+    _bump_row_version(expectation)
     rollup = _recompute_expectation(db, expectation)
     _write_audit(
         db,
@@ -867,6 +1195,19 @@ def reverse_allocation(
         role=user_role,
         reason=reason,
     )
+    if previous_expectation_status != expectation.status:
+        _write_audit(
+            db,
+            tenant_id=expectation.tenant_id,
+            entity_type="EXPECTATION",
+            entity_id=expectation.id,
+            field_name="status",
+            previous_value=previous_expectation_status,
+            new_value=expectation.status,
+            user_id=user_id,
+            role=user_role,
+            reason=reason,
+        )
     db.commit()
     db.refresh(allocation)
     db.refresh(expectation)
@@ -877,12 +1218,12 @@ def reverse_allocation(
 def compute_aging(expectation: FacilityPaymentExpectation, *, as_of: date | None = None) -> dict:
     as_of = as_of or date.today()
     basis_date = expectation.due_date
-    basis_source = "due_date" if expectation.due_date else None
+    basis_source = expectation.due_date_source if expectation.due_date else None
     if basis_date is None and expectation.service_period_end is not None:
         # No payer-specific payment terms exist yet, so aging defaults to
         # service_period_end + 30 days until tenant/payer term configuration exists.
         basis_date = expectation.service_period_end + timedelta(days=DEFAULT_PAYMENT_TERM_DAYS)
-        basis_source = "service_period_end_plus_30"
+        basis_source = "SYSTEM_FALLBACK"
     if basis_date is None:
         return {
             "aging_status": "NOT_VERIFIED",
@@ -1007,6 +1348,8 @@ def evaluate_alerts_for_expectation(
     user_id: UUID | None = None,
     user_role: str | None = None,
 ) -> list[FacilityCollectionAlert]:
+    if expectation.status in {"DRAFT", "CANCELLED", "SUPERSEDED", "CLOSED"}:
+        return []
     rollup = _recompute_expectation(db, expectation)
     aging = compute_aging(expectation)
     alerts: list[FacilityCollectionAlert] = []
@@ -1292,6 +1635,82 @@ def update_threshold(
     db.commit()
     db.refresh(row)
     return row
+
+
+def expectation_history(
+    db: Session,
+    *,
+    expectation_id: UUID,
+) -> list[FacilityPaymentExpectation]:
+    current = _get_expectation(db, expectation_id)
+    root = current
+    backward_seen: set[UUID] = set()
+    while root.supersedes_expectation_id and root.supersedes_expectation_id not in backward_seen:
+        backward_seen.add(root.id)
+        root = _get_expectation(db, root.supersedes_expectation_id)
+
+    items: list[FacilityPaymentExpectation] = []
+    forward_seen: set[UUID] = set()
+    cursor: FacilityPaymentExpectation | None = root
+    while cursor is not None and cursor.id not in forward_seen:
+        forward_seen.add(cursor.id)
+        items.append(cursor)
+        if cursor.superseded_by_expectation_id is None:
+            break
+        cursor = _get_expectation(db, cursor.superseded_by_expectation_id)
+    return items
+
+
+def residence_snapshot_diff(
+    db: Session,
+    *,
+    expectation_id: UUID,
+) -> dict:
+    expectation = _get_expectation(db, expectation_id)
+    current_pos = _select_patient_pos(
+        db,
+        tenant_id=expectation.tenant_id,
+        patient_id=expectation.patient_id,
+        patient_pos_id=None,
+    )
+    if current_pos is None and expectation.patient_pos_id is not None:
+        current_pos = _select_patient_pos(
+            db,
+            tenant_id=expectation.tenant_id,
+            patient_id=expectation.patient_id,
+            patient_pos_id=expectation.patient_pos_id,
+        )
+    primary_payer_name, secondary_payer_name = resolve_primary_secondary_payer_names(db, expectation.patient_id)
+
+    def _diff(snapshot, current):
+        return {
+            "snapshot": snapshot.isoformat() if isinstance(snapshot, date) else snapshot,
+            "current": current.isoformat() if isinstance(current, date) else current,
+            "changed": snapshot != current,
+        }
+
+    fields = {
+        "facility_name": _diff(expectation.facility_name_snapshot, current_pos.facility_name if current_pos else None),
+        "residence_type": _diff(expectation.residence_type_snapshot, current_pos.pos_type if current_pos else None),
+        "room_number": _diff(expectation.room_number_snapshot, current_pos.room_number if current_pos else None),
+        "residence_start_date": _diff(
+            expectation.residence_start_date_snapshot,
+            current_pos.effective_date if current_pos else None,
+        ),
+        "residence_end_date": _diff(
+            expectation.residence_end_date_snapshot,
+            current_pos.end_date if current_pos else None,
+        ),
+        "primary_payer_name": _diff(expectation.primary_payer_name_snapshot, primary_payer_name),
+        "secondary_payer_name": _diff(expectation.secondary_payer_name_snapshot, secondary_payer_name),
+    }
+    return {
+        "expectation_id": str(expectation.id),
+        "patient_id": str(expectation.patient_id),
+        "patient_pos_id": str(expectation.patient_pos_id) if expectation.patient_pos_id else None,
+        "has_changes": any(item["changed"] for item in fields.values()),
+        "fields": fields,
+    }
 
 
 def expectation_patient_context(db: Session, expectation: FacilityPaymentExpectation) -> dict:

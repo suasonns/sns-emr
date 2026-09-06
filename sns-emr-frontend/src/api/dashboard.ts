@@ -294,6 +294,69 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   throw lastError ?? new Error(`Request failed: ${url}`);
 }
 
+export class DashboardApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "DashboardApiError";
+    this.status = status;
+  }
+}
+
+async function facilityFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const token = getAccessToken();
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const candidates = [`${base}${url}`, ...(base ? [`http://localhost:8000${url}`] : [])];
+
+  let lastError: Error | null = null;
+  for (const candidate of candidates) {
+    try {
+      const requestHeaders = (init?.headers ?? {}) as Record<string, string>;
+      const response = await fetch(candidate, {
+        credentials: "include",
+        ...init,
+        headers: {
+          ...requestHeaders,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      });
+
+      if (response.status === 401) {
+        clearAccessToken();
+        clearCurrentUser();
+        throw new DashboardApiError(401, "Session expired. Please sign in again.");
+      }
+
+      if (!response.ok) {
+        let detail = `Request failed: ${url}`;
+        try {
+          const payload = await response.json();
+          if (payload?.detail) detail = String(payload.detail);
+        } catch {
+          // ignore and keep generic detail
+        }
+        throw new DashboardApiError(response.status, detail);
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
+      if (candidate === candidates[candidates.length - 1]) break;
+    }
+  }
+
+  throw lastError ?? new Error(`Request failed: ${url}`);
+}
+
+async function facilityPost<T>(url: string, body: unknown): Promise<T> {
+  return facilityFetch<T>(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // =========================================================
 // DASHBOARD CALLS
 // =========================================================
@@ -775,6 +838,8 @@ export type FacilityPaymentAging = {
   aging_status: string;
   aging_bucket: string | null;
   days_outstanding: number | null;
+  aging_basis_date?: string | null;
+  aging_basis_source?: string | null;
 };
 
 export type FacilityPaymentExpectation = {
@@ -802,14 +867,23 @@ export type FacilityPaymentExpectation = {
   service_period_start: string;
   service_period_end: string;
   due_date: string | null;
+  due_date_source: string;
+  payment_term_verified: boolean;
   authorization_reference: string | null;
+  contract_reference: string | null;
   share_of_cost_amount: string | null;
   status: string;
   version_number: number;
+  row_version: number;
   supersedes_expectation_id: string | null;
   superseded_by_expectation_id: string | null;
   correction_reason: string | null;
+  cancellation_reason: string | null;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  notes: string | null;
   source: string;
+  client_request_id: string | null;
   created_by: string | null;
   updated_by: string | null;
   created_at: string | null;
@@ -833,12 +907,108 @@ export type FacilityPaymentAllocation = {
   amount_applied: string;
   payment_date: string | null;
   allocation_status: string;
+  flagged_for_review: boolean;
+  flagged_reason: string | null;
   match_basis: string;
   notes: string | null;
   reconciled_by: string | null;
   reconciled_at: string | null;
   created_at: string | null;
   updated_at: string | null;
+};
+
+export type FacilityPaymentAuditEntry = {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  field_name: string;
+  previous_value: string | null;
+  new_value: string | null;
+  user_id: string | null;
+  role: string | null;
+  reason: string | null;
+  supporting_reference: string | null;
+  correlation_id: string | null;
+  created_at: string | null;
+};
+
+export type FacilityPaymentExpectationDetail = FacilityPaymentExpectation & {
+  allocations?: FacilityPaymentAllocation[];
+  audit_summary?: {
+    total_entries: number;
+    entries: FacilityPaymentAuditEntry[];
+  };
+};
+
+export type FacilityPaymentExpectationHistoryItem = {
+  id: string;
+  version_number: number;
+  status: string;
+  correction_reason: string | null;
+  cancellation_reason: string | null;
+  created_by: string | null;
+  corrected_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type FacilityPaymentExpectationHistoryResponse = {
+  current_expectation_id: string;
+  items: FacilityPaymentExpectationHistoryItem[];
+};
+
+export type FacilitySnapshotDiffField = {
+  snapshot: string | null;
+  current: string | null;
+  changed: boolean;
+};
+
+export type FacilityPaymentResidenceSnapshotDiffResponse = {
+  expectation_id: string;
+  patient_id: string;
+  patient_pos_id: string | null;
+  has_changes: boolean;
+  fields: Record<string, FacilitySnapshotDiffField>;
+};
+
+export type FacilityPaymentExpectationCreatePayload = {
+  patient_id: string;
+  patient_pos_id?: string;
+  responsibility_category: string;
+  expected_funding_source: string;
+  expected_amount: string;
+  currency?: string;
+  frequency?: string;
+  service_period_start: string;
+  service_period_end: string;
+  due_date?: string;
+  authorization_reference?: string;
+  contract_reference?: string;
+  share_of_cost_amount?: string;
+  source?: string;
+  expected_payer_name_snapshot?: string;
+  notes?: string;
+  client_request_id?: string;
+};
+
+export type FacilityPaymentExpectationCorrectPayload = {
+  patient_pos_id?: string;
+  responsibility_category?: string;
+  expected_funding_source?: string;
+  expected_amount?: string;
+  currency?: string;
+  frequency?: string;
+  service_period_start?: string;
+  service_period_end?: string;
+  due_date?: string;
+  authorization_reference?: string;
+  contract_reference?: string;
+  share_of_cost_amount?: string;
+  source?: string;
+  expected_payer_name_snapshot?: string;
+  notes?: string;
+  expected_row_version?: number;
+  correction_reason: string;
 };
 
 export function fetchFacilityPaymentExpectations(
@@ -871,40 +1041,88 @@ export function fetchFacilityPaymentExpectations(
   if (params?.service_period_end) search.set("service_period_end", params.service_period_end);
   const query = search.toString();
   const base = `/billing/facility-payments/expectations${query ? `?${query}` : ""}`;
-  return fetchJson(withTenantId(base, tenantId));
+  return facilityFetch(withTenantId(base, tenantId));
 }
 
 export function createFacilityPaymentExpectation(
-  payload: Record<string, unknown>
-): Promise<FacilityPaymentExpectation> {
-  return postJson<FacilityPaymentExpectation>("/billing/facility-payments/expectations", payload);
+  payload: FacilityPaymentExpectationCreatePayload,
+  tenantId?: string | null
+): Promise<FacilityPaymentExpectationDetail> {
+  return facilityPost<FacilityPaymentExpectationDetail>(
+    withTenantId("/billing/facility-payments/expectations", tenantId),
+    payload
+  );
 }
 
 export function correctFacilityPaymentExpectation(
   expectationId: string,
-  payload: Record<string, unknown>
-): Promise<FacilityPaymentExpectation> {
-  return postJson<FacilityPaymentExpectation>(
+  payload: FacilityPaymentExpectationCorrectPayload
+): Promise<FacilityPaymentExpectationDetail> {
+  return facilityPost<FacilityPaymentExpectationDetail>(
     `/billing/facility-payments/expectations/${expectationId}/correct`,
     payload
+  );
+}
+
+export function activateFacilityPaymentExpectation(
+  expectationId: string,
+  payload: { expected_row_version?: number }
+): Promise<FacilityPaymentExpectationDetail> {
+  return facilityPost<FacilityPaymentExpectationDetail>(
+    `/billing/facility-payments/expectations/${expectationId}/activate`,
+    payload
+  );
+}
+
+export function cancelFacilityPaymentExpectation(
+  expectationId: string,
+  payload: { cancellation_reason: string; force?: boolean; expected_row_version?: number }
+): Promise<FacilityPaymentExpectationDetail> {
+  return facilityPost<FacilityPaymentExpectationDetail>(
+    `/billing/facility-payments/expectations/${expectationId}/cancel`,
+    payload
+  );
+}
+
+export function fetchFacilityPaymentExpectationDetail(
+  expectationId: string
+): Promise<FacilityPaymentExpectationDetail> {
+  return facilityFetch<FacilityPaymentExpectationDetail>(
+    `/billing/facility-payments/expectations/${expectationId}`
+  );
+}
+
+export function fetchFacilityPaymentExpectationHistory(
+  expectationId: string
+): Promise<FacilityPaymentExpectationHistoryResponse> {
+  return facilityFetch<FacilityPaymentExpectationHistoryResponse>(
+    `/billing/facility-payments/expectations/${expectationId}/history`
+  );
+}
+
+export function fetchFacilityPaymentResidenceSnapshotDiff(
+  expectationId: string
+): Promise<FacilityPaymentResidenceSnapshotDiffResponse> {
+  return facilityFetch<FacilityPaymentResidenceSnapshotDiffResponse>(
+    `/billing/facility-payments/expectations/${expectationId}/residence-snapshot-diff`
   );
 }
 
 export function fetchFacilityPaymentCandidates(
   expectationId: string
 ): Promise<{ count: number; items: FacilityPaymentAllocation[] }> {
-  return fetchJson(`/billing/facility-payments/expectations/${expectationId}/candidates`);
+  return facilityFetch(`/billing/facility-payments/expectations/${expectationId}/candidates`);
 }
 
 export function confirmFacilityPaymentAllocation(allocationId: string): Promise<FacilityPaymentAllocation> {
-  return postJson<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/confirm`, {});
+  return facilityPost<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/confirm`, {});
 }
 
 export function reverseFacilityPaymentAllocation(
   allocationId: string,
   reason: string
 ): Promise<FacilityPaymentAllocation> {
-  return postJson<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/reverse`, {
+  return facilityPost<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/reverse`, {
     reason,
   });
 }
@@ -925,7 +1143,10 @@ export type FacilityCollectionsReportRow = {
   outstanding_amount: string;
   most_recent_payment_date: string | null;
   due_date: string | null;
+  due_date_source: string;
+  payment_term_verified: boolean;
   days_outstanding: number | null;
+  status: string;
   reconciliation_status: string;
   aging_bucket: string | null;
   expectation_id: string;
@@ -973,7 +1194,7 @@ export function fetchFacilityCollectionsReport(
   if (params?.service_period_end) search.set("service_period_end", params.service_period_end);
   const query = search.toString();
   const base = `/billing/facility-payments/collections-report${query ? `?${query}` : ""}`;
-  return fetchJson(withTenantId(base, tenantId));
+  return facilityFetch(withTenantId(base, tenantId));
 }
 
 export type FacilityCollectionAlert = {
@@ -1005,14 +1226,14 @@ export function fetchFacilityCollectionAlerts(
   if (status) search.set("status", status);
   const query = search.toString();
   const base = `/billing/facility-payments/alerts${query ? `?${query}` : ""}`;
-  return fetchJson(withTenantId(base, tenantId));
+  return facilityFetch(withTenantId(base, tenantId));
 }
 
 export function resolveFacilityCollectionAlert(
   alertId: string,
   resolutionEvidence: string
 ): Promise<FacilityCollectionAlert> {
-  return postJson<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/resolve`, {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/resolve`, {
     resolution_evidence: resolutionEvidence,
   });
 }

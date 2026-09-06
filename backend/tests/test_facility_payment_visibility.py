@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.billing.models.facility_collection_alert import FacilityCollectionAlert
+from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
 from app.billing.models.facility_payment_audit_log import FacilityPaymentAuditLog
 from app.billing.models.facility_payment_expectation import FacilityPaymentExpectation
 from app.billing.models.patient_pos import PatientPOS
@@ -119,6 +120,11 @@ def _create_expectation(
     expected_payer_name_snapshot: str | None = "Medi-Cal",
     share_of_cost_amount: str | None = None,
     authorization_reference: str | None = None,
+    contract_reference: str | None = None,
+    notes: str | None = None,
+    status: str = "ACTIVE",
+    source: str = "AUTHORIZED_MANUAL_ENTRY",
+    client_request_id: uuid.UUID | None = None,
 ) -> FacilityPaymentExpectation:
     return facility_payment_service.create_facility_payment_expectation(
         db_session,
@@ -132,8 +138,13 @@ def _create_expectation(
         service_period_end=service_period_end,
         due_date=due_date,
         authorization_reference=authorization_reference,
+        contract_reference=contract_reference,
         expected_payer_name_snapshot=expected_payer_name_snapshot,
         share_of_cost_amount=Decimal(share_of_cost_amount) if share_of_cost_amount is not None else None,
+        notes=notes,
+        status=status,
+        source=source,
+        client_request_id=client_request_id,
         user_id=TEST_USER_ID,
         user_role="BILLING",
     )
@@ -346,6 +357,7 @@ def test_confirmed_allocation_exact_amount_marks_paid(db_session, billing_enable
     rollup = facility_payment_service.compute_rollup(db_session, expectation)
     assert payment is not None
     assert expectation.reconciliation_status == "PAID"
+    assert expectation.status == "PAID"
     assert rollup.confirmed_amount == Decimal("1000.00")
 
 
@@ -383,6 +395,7 @@ def test_partial_payment_marks_partially_paid(db_session, billing_enabled_tenant
     facility_payment_service.confirm_allocation(db_session, allocation_id=candidates[0].id, user_id=TEST_USER_ID, user_role="BILLING")
     db_session.refresh(expectation)
     assert expectation.reconciliation_status == "PARTIALLY_PAID"
+    assert expectation.status == "PARTIALLY_PAID"
 
 
 def test_missing_payment_aging_uses_due_date_then_service_period_plus_30(db_session, billing_enabled_tenant):
@@ -410,7 +423,7 @@ def test_missing_payment_aging_uses_due_date_then_service_period_plus_30(db_sess
     aging_term = facility_payment_service.compute_aging(expectation_term)
     assert aging_due["aging_bucket"] == "91-120"
     assert aging_term["aging_bucket"] == "0-30"
-    assert aging_term["aging_basis_source"] == "service_period_end_plus_30"
+    assert aging_term["aging_basis_source"] == "SYSTEM_FALLBACK"
 
 
 def test_overpayment_marks_overpaid(db_session, billing_enabled_tenant):
@@ -447,6 +460,7 @@ def test_overpayment_marks_overpaid(db_session, billing_enabled_tenant):
     facility_payment_service.confirm_allocation(db_session, allocation_id=candidates[0].id, user_id=TEST_USER_ID, user_role="BILLING")
     db_session.refresh(expectation)
     assert expectation.reconciliation_status == "OVERPAID"
+    assert expectation.status == "OVERPAID"
 
 
 def test_reversing_confirmed_allocation_recomputes_status(db_session, billing_enabled_tenant):
@@ -485,6 +499,7 @@ def test_reversing_confirmed_allocation_recomputes_status(db_session, billing_en
     db_session.refresh(expectation)
     assert reversed_allocation.allocation_status == "REVERSED"
     assert expectation.reconciliation_status == "EXPECTED"
+    assert expectation.status == "ACTIVE"
 
 
 def test_unmatched_candidate_creates_manual_review_allocation(db_session, billing_enabled_tenant):
@@ -738,6 +753,290 @@ def test_correction_versioning_preserves_old_snapshot_and_writes_audit(db_sessio
     assert corrected.version_number == expectation.version_number + 1
     audit_rows = db_session.query(FacilityPaymentAuditLog).filter(FacilityPaymentAuditLog.correlation_id.isnot(None)).all()
     assert audit_rows
+
+
+def test_create_endpoint_defaults_to_draft_and_manual_due_date_source(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP19")
+    pos = _make_patient_pos(
+        db_session,
+        billing_enabled_tenant,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Draft SNF",
+        effective_date=date(2026, 4, 1),
+    )
+    response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={billing_enabled_tenant}",
+        json={
+            "patient_id": str(patient.id),
+            "patient_pos_id": str(pos.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "875.50",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "due_date": "2026-05-15",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "DRAFT"
+    assert payload["row_version"] == 1
+    assert payload["due_date_source"] == "AUTHORIZED_MANUAL_ENTRY"
+    assert payload["payment_term_verified"] is True
+
+
+def test_create_endpoint_rejects_protected_fields(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP20")
+    response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={billing_enabled_tenant}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "100.00",
+            "service_period_start": "2026-05-01",
+            "service_period_end": "2026-05-31",
+            "status": "ACTIVE",
+        },
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert response.status_code == 422
+
+
+def test_activate_expectation_requires_complete_verified_source(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP21")
+    draft = facility_payment_service.create_facility_payment_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        responsibility_category="ROOM_AND_BOARD",
+        expected_funding_source="MEDICAID_FFS",
+        expected_amount=Decimal("100.00"),
+        service_period_start=date(2026, 6, 1),
+        service_period_end=date(2026, 6, 30),
+        source="NOT_VERIFIED",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    response = client.post(
+        f"/billing/facility-payments/expectations/{draft.id}/activate",
+        json={"expected_row_version": draft.row_version},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert response.status_code == 400
+    assert "source" in response.text
+
+
+def test_activate_expectation_promotes_draft_and_writes_audit(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP22")
+    draft = facility_payment_service.create_facility_payment_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        responsibility_category="ROOM_AND_BOARD",
+        expected_funding_source="MEDICAID_FFS",
+        expected_amount=Decimal("250.00"),
+        service_period_start=date(2026, 7, 1),
+        service_period_end=date(2026, 7, 31),
+        source="AUTHORIZED_MANUAL_ENTRY",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    response = client.post(
+        f"/billing/facility-payments/expectations/{draft.id}/activate",
+        json={"expected_row_version": draft.row_version},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["status"] == "ACTIVE"
+    assert payload["row_version"] == 2
+    audit = (
+        db_session.query(FacilityPaymentAuditLog)
+        .filter(
+            FacilityPaymentAuditLog.entity_id == draft.id,
+            FacilityPaymentAuditLog.field_name == "EXPECTATION_ACTIVATED",
+        )
+        .one_or_none()
+    )
+    assert audit is not None
+
+
+def test_correction_conflict_and_allocation_review_flags(client, db_session, billing_enabled_tenant):
+    cycle = _make_billing_cycle(db_session, billing_enabled_tenant, month=8)
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP23")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Flag SNF", effective_date=date(2026, 8, 1))
+    claim = _make_claim(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        billing_cycle_id=cycle.id,
+        status="PAID",
+        payer_name="Medi-Cal",
+        total_charge=Decimal("500.00"),
+        exported_days_ago=1,
+    )
+    remittance = _make_remittance(db_session, billing_enabled_tenant, payer_name="Medi-Cal", payment_date="20260810")
+    _make_payment(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        remittance_advice_id=remittance.id,
+        claim_id=claim.id,
+        paid_amount=Decimal("500.00"),
+        payment_date="20260810",
+    )
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        expected_amount="500.00",
+    )
+    allocation = facility_payment_service.find_candidate_matches(db_session, expectation=expectation)[0]
+    facility_payment_service.confirm_allocation(
+        db_session, allocation_id=allocation.id, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    stale = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/correct",
+        json={"expected_amount": "600.00", "correction_reason": "Raise amount.", "expected_row_version": 0},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert stale.status_code == 409
+
+    good = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/correct",
+        json={
+            "expected_amount": "600.00",
+            "service_period_end": "2026-08-30",
+            "correction_reason": "Adjusted service month.",
+            "expected_row_version": expectation.row_version,
+        },
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    assert good.status_code == 200, good.text
+    db_session.expire_all()
+    flagged = db_session.get(FacilityPaymentAllocation, allocation.id)
+    assert flagged is not None
+    assert flagged.flagged_for_review is True
+    assert flagged.flagged_reason is not None
+
+
+def test_cancellation_requires_reason_and_force_when_confirmed_allocations(client, db_session, billing_enabled_tenant):
+    cycle = _make_billing_cycle(db_session, billing_enabled_tenant, month=9)
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP24")
+    pos = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="Cancel SNF", effective_date=date(2026, 9, 1))
+    claim = _make_claim(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        billing_cycle_id=cycle.id,
+        status="PAID",
+        payer_name="Medi-Cal",
+        total_charge=Decimal("400.00"),
+        exported_days_ago=1,
+    )
+    remittance = _make_remittance(db_session, billing_enabled_tenant, payer_name="Medi-Cal", payment_date="20260915")
+    _make_payment(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        remittance_advice_id=remittance.id,
+        claim_id=claim.id,
+        paid_amount=Decimal("400.00"),
+        payment_date="20260915",
+    )
+    expectation = _create_expectation(db_session, tenant_id=billing_enabled_tenant, patient_id=patient.id, patient_pos_id=pos.id, expected_amount="400.00")
+    allocation = facility_payment_service.find_candidate_matches(db_session, expectation=expectation)[0]
+    facility_payment_service.confirm_allocation(db_session, allocation_id=allocation.id, user_id=TEST_USER_ID, user_role="BILLING")
+
+    missing_reason = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "", "expected_row_version": expectation.row_version},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    blocked = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "Void expectation", "expected_row_version": expectation.row_version},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    forced = client.post(
+        f"/billing/facility-payments/expectations/{expectation.id}/cancel",
+        json={"cancellation_reason": "Void expectation", "force": True, "expected_row_version": expectation.row_version},
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+
+    assert missing_reason.status_code == 400
+    assert blocked.status_code == 409
+    assert forced.status_code == 200, forced.text
+    payload = forced.json()
+    assert payload["status"] == "CANCELLED"
+    assert payload["cancelled_by"] == str(TEST_USER_ID)
+    db_session.expire_all()
+    flagged = db_session.get(FacilityPaymentAllocation, allocation.id)
+    assert flagged is not None
+    assert flagged.flagged_for_review is True
+
+
+def test_residence_snapshot_diff_and_history_endpoints(client, db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP25")
+    pos1 = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="SNF", facility_name="History SNF", effective_date=date(2026, 10, 1))
+    expectation = _create_expectation(db_session, tenant_id=billing_enabled_tenant, patient_id=patient.id, patient_pos_id=pos1.id)
+    pos2 = _make_patient_pos(db_session, billing_enabled_tenant, patient.id, pos_type="ALF", facility_name="History ALF", effective_date=date(2026, 10, 15))
+    corrected = facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        patient_pos_id=pos2.id,
+        correction_reason="Residence changed.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+        expected_row_version=expectation.row_version,
+    )
+
+    history_response = client.get(
+        f"/billing/facility-payments/expectations/{corrected.id}/history",
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+    diff_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}/residence-snapshot-diff",
+        headers=_headers("BILLING", billing_enabled_tenant),
+    )
+
+    assert history_response.status_code == 200
+    assert [item["version_number"] for item in history_response.json()["items"]] == [1, 2]
+    assert diff_response.status_code == 200
+    assert diff_response.json()["has_changes"] is True
+
+
+def test_create_expectation_idempotency_returns_existing_row(db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FVP26")
+    request_id = uuid.uuid4()
+    first = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        client_request_id=request_id,
+        due_date=None,
+        status="DRAFT",
+        source="NOT_VERIFIED",
+    )
+    second = facility_payment_service.create_facility_payment_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        responsibility_category="ROOM_AND_BOARD",
+        expected_funding_source="MEDICAID_FFS",
+        expected_amount=Decimal("1000.00"),
+        service_period_start=date(2026, 3, 1),
+        service_period_end=date(2026, 3, 31),
+        client_request_id=request_id,
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    assert first.id == second.id
+    assert first.due_date_source == "SYSTEM_FALLBACK"
+    assert first.payment_term_verified is False
 
 
 def test_collections_report_empty_state(client, db_session, billing_enabled_tenant):

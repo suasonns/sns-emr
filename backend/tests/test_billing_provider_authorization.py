@@ -704,6 +704,67 @@ def test_financial_monitoring_scope_does_not_grant_operational_edit_confirm_allo
     assert response.status_code == 403
 
 
+def test_facility_collections_scope_does_not_grant_payment_reconciliation_confirm(
+    client,
+    db_session,
+):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Facility Readonly Scope Agency")
+    allocation = _make_confirmable_allocation(db_session, tenant_id)
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=["FACILITY_COLLECTIONS"],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="BILLING")
+
+    response = client.post(
+        f"/billing/facility-payments/allocations/{allocation.id}/confirm",
+        headers=_headers("BILLING", provider_tenant_id),
+    )
+
+    assert response.status_code == 403
+
+
+def test_platform_billing_can_view_but_cannot_edit_expectations(client, db_session):
+    tenant_id = _make_agency_tenant(db_session, legal_name="Platform View Only Agency")
+    patient, expectation = _make_facility_expectation(db_session, tenant_id, mrn_prefix="PVONLY")
+    provider_org = _make_billing_provider_organization(db_session)
+    provider_tenant_id = _make_provider_tenant(db_session)
+    _create_membership(db_session, provider_org_id=provider_org.id)
+    _create_assignment(
+        db_session,
+        provider_org_id=provider_org.id,
+        tenant_id=tenant_id,
+        service_scopes=["FACILITY_COLLECTIONS"],
+    )
+    _set_user_role_and_tenant(db_session, tenant_id=provider_tenant_id, role="PLATFORM_BILLING")
+
+    read_response = client.get(
+        f"/billing/facility-payments/expectations/{expectation.id}",
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+    create_response = client.post(
+        f"/billing/facility-payments/expectations?tenant_id={tenant_id}",
+        json={
+            "patient_id": str(patient.id),
+            "responsibility_category": "ROOM_AND_BOARD",
+            "expected_funding_source": "MEDICAID_FFS",
+            "expected_amount": "100.00",
+            "service_period_start": "2026-04-01",
+            "service_period_end": "2026-04-30",
+            "source": "AUTHORIZED_MANUAL_ENTRY",
+        },
+        headers=_headers("PLATFORM_BILLING", provider_tenant_id),
+    )
+
+    assert read_response.status_code == 200, read_response.text
+    assert create_response.status_code == 403
+
+
 def test_corrected_credit_balance_and_aging_scope_mappings_require_their_own_scopes(
     client,
     db_session,
