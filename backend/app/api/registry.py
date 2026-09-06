@@ -120,6 +120,7 @@ from app.billing.api.claims_router import router as claims_router
 from app.billing.api.denials_router import router as denials_router
 from app.billing.api.payment_posting_router import router as payment_posting_router
 from app.billing.api.aging_report_router import router as aging_report_router
+from app.billing.api.credit_balance_router import router as credit_balance_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -248,6 +249,7 @@ def register_routers(app: FastAPI) -> None:
         denials_router,
         payment_posting_router,
         aging_report_router,
+        credit_balance_router,
         patient_orders_router,
         fax_router,
         lab_catalog_router,

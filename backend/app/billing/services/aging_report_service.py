@@ -7,7 +7,10 @@ persisted by app.billing.models.claim.Claim,
 app.billing.models.payment.Payment,
 app.billing.models.payment_adjustment.PaymentAdjustment, and
 app.billing.models.denial.Denial -- the same tables backing the Claims
-Management, Payment Posting, and Denials & Appeals pages.
+Management, Payment Posting, and Denials & Appeals pages. Per-claim totals
+are computed by the shared app.billing.services.claim_financials module,
+which is also used by the Credit Balance Report so both reports never
+diverge on the underlying arithmetic.
 
 BUSINESS RULE (approved 2026-09-05):
     Outstanding Balance = Total Charges
@@ -19,7 +22,7 @@ BUSINESS RULE (approved 2026-09-05):
     Claims whose computed balance is <= 0 (fully paid, or overpaid) are
     excluded from this report -- an overpayment is a credit-balance
     concern, not an aging/collection concern (see the separate Credit
-    Balance Report).
+    Balance Report, app.billing.services.credit_balance_service).
 
 AGING CLOCK (approved 2026-09-05):
     Days outstanding are measured from the claim's submission/export date
@@ -39,16 +42,9 @@ from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.billing.models.claim import Claim
-from app.billing.models.denial import Denial
-from app.billing.models.payment import Payment
-from app.billing.models.payment_adjustment import PaymentAdjustment
-from app.models.patient import Patient
-from app.models.patient_facesheet import PatientFaceSheet
-from app.models.tenant import Tenant
+from app.billing.services.claim_financials import agency_display_names, load_claim_financials
 
 AGING_BUCKETS = ["0-30", "31-60", "61-90", "91-120", "120+"]
 
@@ -65,11 +61,6 @@ def _bucket_for_days(days: int) -> str:
     return "120+"
 
 
-def _patient_name(first_name: str | None, middle_name: str | None, last_name: str | None) -> str | None:
-    parts = [p for p in (first_name, middle_name, last_name) if p]
-    return " ".join(parts) if parts else None
-
-
 @dataclass
 class _BucketTotals:
     total_outstanding: Decimal = field(default_factory=lambda: Decimal("0.00"))
@@ -78,6 +69,17 @@ class _BucketTotals:
     def add(self, amount: Decimal) -> None:
         self.total_outstanding += amount
         self.claim_count += 1
+
+
+def _empty_report(as_of: date) -> dict:
+    return {
+        "as_of": as_of.isoformat(),
+        "summary": {"total_outstanding": "0.00", "claim_count": 0, "average_days_outstanding": 0},
+        "by_bucket": [{"bucket": b, "total_outstanding": "0.00", "claim_count": 0} for b in AGING_BUCKETS],
+        "by_payer": [],
+        "by_agency": [],
+        "claims": [],
+    }
 
 
 def build_ar_aging_report(
@@ -95,85 +97,13 @@ def build_ar_aging_report(
     as_of = as_of or date.today()
 
     if not tenant_ids:
-        return {
-            "as_of": as_of.isoformat(),
-            "summary": {"total_outstanding": "0.00", "claim_count": 0, "average_days_outstanding": 0},
-            "by_bucket": [{"bucket": b, "total_outstanding": "0.00", "claim_count": 0} for b in AGING_BUCKETS],
-            "by_payer": [],
-            "by_agency": [],
-            "claims": [],
-        }
+        return _empty_report(as_of)
 
-    tenant_id_strs = [str(t) for t in tenant_ids]
-
-    # 1) Submitted claims for these tenants (aging clock requires exported_at).
-    claim_rows = (
-        db.query(
-            Claim.id.label("claim_id"),
-            Claim.tenant_id.label("tenant_id"),
-            Claim.patient_id.label("patient_id"),
-            Claim.payer_name.label("payer_name"),
-            Claim.total_charge.label("total_charge"),
-            Claim.status.label("status"),
-            Claim.claim_control_number.label("claim_control_number"),
-            Claim.exported_at.label("exported_at"),
-            Patient.mrn.label("mrn"),
-            PatientFaceSheet.first_name.label("patient_first_name"),
-            PatientFaceSheet.middle_name.label("patient_middle_name"),
-            PatientFaceSheet.last_name.label("patient_last_name"),
-        )
-        .join(Patient, Patient.id == Claim.patient_id)
-        .outerjoin(PatientFaceSheet, PatientFaceSheet.patient_id == Patient.id)
-        .filter(Claim.tenant_id.in_(tenant_id_strs))
-        .filter(Claim.exported_at.isnot(None))
-        .all()
-    )
-
+    claim_rows = load_claim_financials(db, tenant_ids, require_exported=True)
     if not claim_rows:
-        return {
-            "as_of": as_of.isoformat(),
-            "summary": {"total_outstanding": "0.00", "claim_count": 0, "average_days_outstanding": 0},
-            "by_bucket": [{"bucket": b, "total_outstanding": "0.00", "claim_count": 0} for b in AGING_BUCKETS],
-            "by_payer": [],
-            "by_agency": [],
-            "claims": [],
-        }
+        return _empty_report(as_of)
 
-    claim_ids = [r.claim_id for r in claim_rows]
-
-    # 2) Posted payments per claim.
-    payments_by_claim: dict = dict(
-        db.query(Payment.claim_id, func.coalesce(func.sum(Payment.paid_amount), 0))
-        .filter(Payment.claim_id.in_(claim_ids))
-        .group_by(Payment.claim_id)
-        .all()
-    )
-
-    # 3) 835 CAS adjustments per claim (all group codes -- CO/PR/OA/PI/CR).
-    adjustments_by_claim: dict = dict(
-        db.query(Payment.claim_id, func.coalesce(func.sum(PaymentAdjustment.amount), 0))
-        .join(PaymentAdjustment, PaymentAdjustment.payment_id == Payment.id)
-        .filter(Payment.claim_id.in_(claim_ids))
-        .group_by(Payment.claim_id)
-        .all()
-    )
-
-    # 4) Biller-initiated write-offs (denials explicitly marked WRITTEN_OFF).
-    write_offs_by_claim: dict = dict(
-        db.query(Denial.claim_id, func.coalesce(func.sum(Denial.denied_amount), 0))
-        .filter(Denial.claim_id.in_(claim_ids))
-        .filter(Denial.status == "WRITTEN_OFF")
-        .group_by(Denial.claim_id)
-        .all()
-    )
-
-    # 5) Agency display names for the "By Agency" breakdown.
-    agency_names: dict = {
-        str(t.id): (t.display_name or t.legal_name)
-        for t in db.query(Tenant.id, Tenant.display_name, Tenant.legal_name)
-        .filter(Tenant.id.in_(tenant_id_strs))
-        .all()
-    }
+    agency_names = agency_display_names(db, tenant_ids)
 
     bucket_totals: dict[str, _BucketTotals] = {b: _BucketTotals() for b in AGING_BUCKETS}
     payer_totals: dict[str, dict] = defaultdict(lambda: {"total_outstanding": Decimal("0.00"), "claim_count": 0, "by_bucket": {b: Decimal("0.00") for b in AGING_BUCKETS}})
@@ -184,15 +114,10 @@ def build_ar_aging_report(
     total_days_weighted = 0
 
     for r in claim_rows:
-        total_charge = Decimal(str(r.total_charge or 0))
-        posted_payments = Decimal(str(payments_by_claim.get(r.claim_id, 0)))
-        adjustments = Decimal(str(adjustments_by_claim.get(r.claim_id, 0)))
-        write_offs = Decimal(str(write_offs_by_claim.get(r.claim_id, 0)))
-
-        outstanding = total_charge - posted_payments - adjustments - write_offs
+        outstanding = r.net_balance
 
         # Fully paid/overpaid claims are not an aging/collection concern --
-        # they belong on the (separate, not-yet-built) Credit Balance Report.
+        # they belong on the (separate) Credit Balance Report.
         if outstanding <= 0:
             continue
 
@@ -220,15 +145,15 @@ def build_ar_aging_report(
                 "tenant_id": agency_id,
                 "agency_name": agency_name,
                 "patient_id": str(r.patient_id),
-                "patient_name": _patient_name(r.patient_first_name, r.patient_middle_name, r.patient_last_name),
+                "patient_name": r.patient_name,
                 "mrn": r.mrn,
                 "payer_name": payer_name,
                 "claim_control_number": r.claim_control_number,
                 "status": r.status,
-                "total_charge": str(total_charge.quantize(Decimal("0.01"))),
-                "posted_payments": str(posted_payments.quantize(Decimal("0.01"))),
-                "adjustments": str(adjustments.quantize(Decimal("0.01"))),
-                "write_offs": str(write_offs.quantize(Decimal("0.01"))),
+                "total_charge": str(r.total_charge.quantize(Decimal("0.01"))),
+                "posted_payments": str(r.posted_payments.quantize(Decimal("0.01"))),
+                "adjustments": str(r.adjustments.quantize(Decimal("0.01"))),
+                "write_offs": str(r.write_offs.quantize(Decimal("0.01"))),
                 "outstanding_balance": str(outstanding.quantize(Decimal("0.01"))),
                 "exported_at": r.exported_at.isoformat() if r.exported_at else None,
                 "days_outstanding": days_outstanding,

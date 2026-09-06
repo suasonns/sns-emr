@@ -243,6 +243,57 @@ async function fetchJson<T>(url: string): Promise<T> {
   throw lastError ?? new Error(`Request failed: ${url}`);
 }
 
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const token = getAccessToken();
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  const candidates = [
+    `${base}${url}`,
+    ...(base ? [`http://localhost:8000${url}`] : []),
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const candidate of candidates) {
+    try {
+      const res = await fetch(candidate, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (res.status === 401 || res.status === 403) {
+        clearAccessToken();
+        clearCurrentUser();
+        throw new Error("Session expired. Please sign in again.");
+      }
+
+      if (!res.ok) {
+        let detail = `Request failed: ${url}`;
+        try {
+          const payload = await res.json();
+          if (payload?.detail) detail = payload.detail;
+        } catch {
+          // ignore -- fall back to the generic message
+        }
+        throw new Error(detail);
+      }
+
+      return (await res.json()) as T;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
+      if (candidate === candidates[candidates.length - 1]) {
+        break;
+      }
+    }
+  }
+
+  throw lastError ?? new Error(`Request failed: ${url}`);
+}
+
 // =========================================================
 // DASHBOARD CALLS
 // =========================================================
@@ -533,6 +584,186 @@ export function fetchAgingReport(
   const query = search.toString();
   const base = `/billing/aging-report${query ? `?${query}` : ""}`;
   return fetchJson<AgingReportResponse>(withTenantId(base, tenantId));
+}
+
+// Credit Balance Report -- claim-level overpayment detection + patient/
+// account summary, plus a controlled case-lifecycle workflow (see backend
+// credit_balance_service / credit_balance_case_service). Claim-level is
+// the authoritative grain; patient_accounts is a summary only and never
+// nets away/suppresses an individual claim's credit balance.
+export type Money = { amount: string; currency: string };
+
+export type CreditBalancePatientAccount = {
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  tenant_id: string;
+  agency_name: string;
+  payer_names: string[];
+  // Billing context surfaced from existing PatientPayer.priority_order /
+  // is_primary -- not a new payer subsystem. Null when not resolvable.
+  primary_payer_name: string | null;
+  secondary_payer_name: string | null;
+  total_charges: Money;
+  total_payments: Money;
+  total_adjustments: Money;
+  total_write_offs: Money;
+  total_positive_ar: Money;
+  total_credit_balance: Money;
+  net_patient_account_balance: Money;
+  claims_with_credit: number;
+  oldest_unresolved_credit: string | null;
+};
+
+export type CreditBalanceClaimItem = {
+  claim_id: string;
+  tenant_id: string;
+  agency_name: string;
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  payer_name: string;
+  // Billing context surfaced from existing PatientPayer.priority_order /
+  // is_primary -- a claim may be billed to a payer that differs from the
+  // patient's on-file primary (e.g. billed to Medicare while the
+  // patient's primary changed since), so both are shown.
+  primary_payer_name: string | null;
+  secondary_payer_name: string | null;
+  // "If available" operational fields -- amounts posted specifically by
+  // the primary/secondary payer (matched via the posting remittance's
+  // payer_name). Zero, not fabricated, when nothing posted yet.
+  primary_payer_paid: Money;
+  secondary_payer_paid: Money;
+  most_recent_payment_date: string | null;
+  claim_control_number: string | null;
+  status: string;
+  total_charge: Money;
+  posted_payments: Money;
+  adjustments: Money;
+  write_offs: Money;
+  credit_amount: Money;
+  exported_at: string | null;
+  payment_count: number;
+  // Mechanical detection only (2+ payments with the exact same amount) --
+  // never a system-inferred root cause. See reason_code on the case for
+  // the human-reviewed determination (DUPLICATE_PAYMENT / POSTING_ERROR /
+  // COB_ISSUE / MSP_ISSUE / RECOUPMENT_TIMING / OTHER).
+  potential_duplicate_payment: boolean;
+  medicare_classification: string;
+  data_completeness: string;
+  case_id: string | null;
+  case_status: string;
+  reason_code: string | null;
+};
+
+export type CreditBalanceReportResponse = {
+  generated_at: string;
+  as_of_date: string;
+  summary: {
+    total_potential_credits: Money;
+    claim_count: number;
+    patient_count: number;
+  };
+  patient_accounts: CreditBalancePatientAccount[];
+  claim_credit_items: CreditBalanceClaimItem[];
+};
+
+export function fetchCreditBalanceReport(
+  tenantId?: string | null,
+  params?: { tenant_ids?: string[]; all_agencies?: boolean; as_of?: string }
+): Promise<CreditBalanceReportResponse> {
+  const search = new URLSearchParams();
+  if (params?.tenant_ids && params.tenant_ids.length > 0) search.set("tenant_ids", params.tenant_ids.join(","));
+  if (params?.all_agencies) search.set("all_agencies", "true");
+  if (params?.as_of) search.set("as_of", params.as_of);
+  const query = search.toString();
+  const base = `/billing/credit-balance/report${query ? `?${query}` : ""}`;
+  return fetchJson<CreditBalanceReportResponse>(withTenantId(base, tenantId));
+}
+
+export type CreditBalanceCaseEvent = {
+  action: string;
+  previous_status: string | null;
+  new_status: string | null;
+  reason: string;
+  performed_by: string;
+  source_transaction_reference: string | null;
+  amount_before: string | null;
+  amount_after: string | null;
+  created_at: string | null;
+};
+
+export type CreditBalanceCase = {
+  case_id: string;
+  tenant_id: string;
+  claim_id: string;
+  patient_id: string;
+  status: string;
+  medicare_classification: string;
+  reason_code: string | null;
+  // Billing context surfaced from existing PatientPayer.priority_order /
+  // is_primary -- not a new payer subsystem. Null when not resolvable.
+  primary_payer_name: string | null;
+  secondary_payer_name: string | null;
+  credit_amount_at_detection: Money;
+  amount_repaid: Money;
+  amount_recouped: Money;
+  amount_reallocated: Money;
+  repayment_method: string | null;
+  assigned_to: string | null;
+  notes: string | null;
+  detected_at: string | null;
+  review_started_at: string | null;
+  identified_at: string | null;
+  confirmed_at: string | null;
+  repayment_due_at: string | null;
+  repaid_at: string | null;
+  recouped_at: string | null;
+  reallocated_at: string | null;
+  resolved_at: string | null;
+  events: CreditBalanceCaseEvent[];
+};
+
+export function fetchCreditBalanceCases(
+  tenantId?: string | null,
+  params?: { tenant_ids?: string[]; all_agencies?: boolean; status?: string; medicare_reportable?: string }
+): Promise<{ cases: CreditBalanceCase[] }> {
+  const search = new URLSearchParams();
+  if (params?.tenant_ids && params.tenant_ids.length > 0) search.set("tenant_ids", params.tenant_ids.join(","));
+  if (params?.all_agencies) search.set("all_agencies", "true");
+  if (params?.status) search.set("status", params.status);
+  if (params?.medicare_reportable) search.set("medicare_reportable", params.medicare_reportable);
+  const query = search.toString();
+  const base = `/billing/credit-balance/cases${query ? `?${query}` : ""}`;
+  return fetchJson<{ cases: CreditBalanceCase[] }>(withTenantId(base, tenantId));
+}
+
+export function openCreditBalanceCase(claimId: string): Promise<CreditBalanceCase> {
+  return postJson<CreditBalanceCase>("/billing/credit-balance/cases", { claim_id: claimId });
+}
+
+// Enumerated root-cause reason codes a biller may select when confirming a
+// case (e.g. after reviewing a "Potential Duplicate Payment" flag). The
+// system never infers one of these automatically -- see
+// app.billing.services.credit_balance_case_service.DUPLICATE_PAYMENT_REASON_CODES.
+export function fetchCreditBalanceReasonCodes(): Promise<{ reason_codes: string[] }> {
+  return fetchJson<{ reason_codes: string[] }>("/billing/credit-balance/reason-codes");
+}
+
+export function performCreditBalanceCaseAction(
+  caseId: string,
+  payload: {
+    action: string;
+    reason: string;
+    source_transaction_reference?: string;
+    amount?: string;
+    repayment_due_at?: string;
+    repayment_method?: string;
+    reason_code?: string;
+    medicare_classification?: string;
+  }
+): Promise<CreditBalanceCase> {
+  return postJson<CreditBalanceCase>(`/billing/credit-balance/cases/${caseId}/actions`, payload);
 }
 
 export type BillingReadinessPatientRow = {

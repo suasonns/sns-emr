@@ -4,7 +4,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from app.billing.api.aging_report_router import _resolve_scope_tenant_ids
+from app.billing.scope import resolve_multi_agency_tenant_ids as _resolve_scope_tenant_ids
 from app.billing.models.billing_cycle import BillingCycle
 from app.billing.models.claim import Claim
 from app.billing.models.denial import Denial
@@ -117,13 +117,13 @@ def _make_claim(
     return claim
 
 
-def _make_remittance(db_session, tenant_id: uuid.UUID) -> RemittanceAdvice:
+def _make_remittance(db_session, tenant_id: uuid.UUID, *, payer_name: str = "Medicare", payment_date: str = "20260301") -> RemittanceAdvice:
     ra = RemittanceAdvice(
         id=uuid.uuid4(),
         tenant_id=tenant_id,
-        payer_name="Medicare",
+        payer_name=payer_name,
         total_paid_amount=Decimal("0.00"),
-        payment_date="20260301",
+        payment_date=payment_date,
         claim_count=1,
         status="POSTED",
     )
@@ -139,6 +139,7 @@ def _make_payment(
     remittance_advice_id: uuid.UUID,
     claim_id: uuid.UUID,
     paid_amount: Decimal,
+    payment_date: str | None = None,
 ) -> Payment:
     payment = Payment(
         id=uuid.uuid4(),
@@ -146,6 +147,7 @@ def _make_payment(
         remittance_advice_id=remittance_advice_id,
         claim_id=claim_id,
         paid_amount=paid_amount,
+        payment_date=payment_date,
         match_status="MATCHED",
     )
     db_session.add(payment)

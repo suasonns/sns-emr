@@ -202,6 +202,7 @@ from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
 from app.billing.models.hospice_cap_record import HospiceCapRecord
 from app.billing.models.noe_edi_submission import NoeEdiSubmission
 from app.billing.models.election_addendum_request import ElectionAddendumRequest
+from app.billing.models.credit_balance_case import CreditBalanceCase, CreditBalanceCaseEvent
 
 # ---------------------------------------------------------
 # ✅ POC PHYSICIAN APPROVAL TRACKING
