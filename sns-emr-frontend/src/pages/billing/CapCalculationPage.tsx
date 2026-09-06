@@ -176,7 +176,7 @@ export default function CapCalculationPage() {
         }
       />
 
-      <HipaaBanner message='Under HIPAA "Minimum Necessary" guidelines, this view shows administrative financial tallies only. Beneficiary count and collected amount are billing-department-entered figures sourced from the agency\'s real NGS PS&R cap report — this system does not compute or fabricate them.' />
+      <HipaaBanner message={"Under HIPAA \"Minimum Necessary\" guidelines, this view shows administrative financial tallies only. Beneficiary count and collected amount are billing-department-entered figures sourced from the agency's real NGS PS&R cap report — this system does not compute or fabricate them."} />
 
       {error ? (
         <Alert severity="error" sx={{ mb: 2 }}>
