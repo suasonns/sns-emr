@@ -465,6 +465,76 @@ export function fetchNoeTracking(
   return fetchJson<NoeTrackingResponse>(withTenantId(base, tenantId));
 }
 
+// AR Aging Report -- pure calculation over existing claims/payment/
+// adjustment/denial records (see backend aging_report_service). No new
+// data store. Buckets are fixed: 0-30 / 31-60 / 61-90 / 91-120 / 120+.
+export type AgingBucketTotal = {
+  bucket: string;
+  total_outstanding: string;
+  claim_count: number;
+};
+
+export type AgingPayerTotal = {
+  payer_name: string;
+  total_outstanding: string;
+  claim_count: number;
+  by_bucket: Record<string, string>;
+};
+
+export type AgingAgencyTotal = {
+  tenant_id: string;
+  agency_name: string;
+  total_outstanding: string;
+  claim_count: number;
+  by_bucket: Record<string, string>;
+};
+
+export type AgingClaimRow = {
+  claim_id: string;
+  tenant_id: string;
+  agency_name: string;
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  payer_name: string;
+  claim_control_number: string | null;
+  status: string;
+  total_charge: string;
+  posted_payments: string;
+  adjustments: string;
+  write_offs: string;
+  outstanding_balance: string;
+  exported_at: string | null;
+  days_outstanding: number;
+  bucket: string;
+};
+
+export type AgingReportResponse = {
+  as_of: string;
+  summary: {
+    total_outstanding: string;
+    claim_count: number;
+    average_days_outstanding: number;
+  };
+  by_bucket: AgingBucketTotal[];
+  by_payer: AgingPayerTotal[];
+  by_agency: AgingAgencyTotal[];
+  claims: AgingClaimRow[];
+};
+
+export function fetchAgingReport(
+  tenantId?: string | null,
+  params?: { tenant_ids?: string[]; all_agencies?: boolean; as_of?: string }
+): Promise<AgingReportResponse> {
+  const search = new URLSearchParams();
+  if (params?.tenant_ids && params.tenant_ids.length > 0) search.set("tenant_ids", params.tenant_ids.join(","));
+  if (params?.all_agencies) search.set("all_agencies", "true");
+  if (params?.as_of) search.set("as_of", params.as_of);
+  const query = search.toString();
+  const base = `/billing/aging-report${query ? `?${query}` : ""}`;
+  return fetchJson<AgingReportResponse>(withTenantId(base, tenantId));
+}
+
 export type BillingReadinessPatientRow = {
   patient_id: string;
   mrn: string | null;

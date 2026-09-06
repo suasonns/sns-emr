@@ -21,6 +21,7 @@ import PaymentsOutlinedIcon from "@mui/icons-material/PaymentsOutlined";
 import NotificationsActiveOutlinedIcon from "@mui/icons-material/NotificationsActiveOutlined";
 import BarChartOutlinedIcon from "@mui/icons-material/BarChartOutlined";
 import GppMaybeOutlinedIcon from "@mui/icons-material/GppMaybeOutlined";
+import TrendingDownOutlinedIcon from "@mui/icons-material/TrendingDownOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 
 import { logout } from "../../api/auth";
@@ -47,6 +48,7 @@ const NAV_ITEMS = [
   { label: "Payment Posting", path: "/billing/payment-posting", icon: PaymentsOutlinedIcon },
   { label: "NOE Tracking", path: "/billing/noe-tracking", icon: NotificationsActiveOutlinedIcon },
   { label: "CAP Calculation", path: "/billing/cap-calculation", icon: GppMaybeOutlinedIcon },
+  { label: "Aging Report", path: "/billing/aging-report", icon: TrendingDownOutlinedIcon },
   { label: "Reports", path: "/billing/reports", icon: BarChartOutlinedIcon },
   { label: "Settings", path: "/billing/settings", icon: SettingsOutlinedIcon },
 ];
