@@ -259,6 +259,35 @@ def run_document_intelligence(*, document_id: UUID) -> None:
     finally:
         facesheet_db.close()
 
+    # ------------------------------
+    # CONTACT HARVESTING -- separate try/except, own DB session, so a
+    # parsing/persistence failure here can never affect the
+    # document-intelligence, evidence-harvest, or facesheet-population
+    # work already committed above. Reuses the single shared reconciler
+    # (contact_harvest_service.harvest_patient_contacts_from_document) --
+    # no contact parsing/matching logic is duplicated here. A conflicting
+    # value is queued as a PatientContactSuggestion, never silently
+    # applied over an existing contact.
+    # ------------------------------
+    contact_db = SessionLocal()
+    try:
+        doc = contact_db.query(DocumentRecord).filter(DocumentRecord.id == document_id).one_or_none()
+        if not doc or not doc.patient_id:
+            return
+
+        from app.services.contact_harvest_service import harvest_patient_contacts_from_document
+
+        harvest_patient_contacts_from_document(contact_db, document=doc)
+        contact_db.commit()
+    except Exception:
+        contact_db.rollback()
+        logger.exception(
+            "document_intelligence_job: failed to harvest contacts for document_id=%s",
+            document_id,
+        )
+    finally:
+        contact_db.close()
+
 
 def _guess_content_type(file_path: str) -> str:
     from app.services.document_storage import guess_document_content_type

@@ -31,6 +31,8 @@ DPOA = "DPOA"
 HEALTHCARE_AGENT = "HEALTHCARE_AGENT"
 DECISION_MAKER = "DECISION_MAKER"
 EMERGENCY_CONTACT = "EMERGENCY_CONTACT"
+GUARDIAN = "GUARDIAN"
+CONSERVATOR = "CONSERVATOR"
 
 ALLOWED_CONTACT_ROLES = {
     PRIMARY_CAREGIVER,
@@ -39,6 +41,8 @@ ALLOWED_CONTACT_ROLES = {
     HEALTHCARE_AGENT,
     DECISION_MAKER,
     EMERGENCY_CONTACT,
+    GUARDIAN,
+    CONSERVATOR,
 }
 
 ALLOWED_CONTACT_SOURCES = {
@@ -47,6 +51,7 @@ ALLOWED_CONTACT_SOURCES = {
     "ACP",
     "CONSENT",
     "OTHER",
+    "DOCUMENT_HARVEST",
 }
 
 _SOURCE_ALIASES = {
@@ -56,6 +61,8 @@ _SOURCE_ALIASES = {
     "ADVANCED_CARE_PLANNING": "ACP",
     "CONSENTS": "CONSENT",
     "FACESHEET_MIGRATION": "FACESHEET",
+    "DOCUMENT_UPLOAD": "DOCUMENT_HARVEST",
+    "HARVEST": "DOCUMENT_HARVEST",
 }
 
 CONTACT_ROLE_LABELS = {
@@ -65,6 +72,21 @@ CONTACT_ROLE_LABELS = {
     HEALTHCARE_AGENT: "Healthcare Agent",
     DECISION_MAKER: "Decision Maker",
     EMERGENCY_CONTACT: "Emergency Contact",
+    GUARDIAN: "Guardian",
+    CONSERVATOR: "Conservator",
+}
+
+# HOW the current value arrived, distinct from `source` (WHICH module).
+ATTRIBUTION_HARVESTED = "HARVESTED"
+ATTRIBUTION_MANUAL = "MANUAL"
+ATTRIBUTION_CALCULATED = "CALCULATED"
+ATTRIBUTION_IMPORTED = "IMPORTED"
+
+ALLOWED_ATTRIBUTION_SOURCES = {
+    ATTRIBUTION_HARVESTED,
+    ATTRIBUTION_MANUAL,
+    ATTRIBUTION_CALCULATED,
+    ATTRIBUTION_IMPORTED,
 }
 
 # Legacy PatientFaceSheet column prefixes mirrored for backward
@@ -120,14 +142,32 @@ def set_patient_contact(
     name: str | None = None,
     relationship_to_patient: str | None = None,
     phone: str | None = None,
+    email: str | None = None,
     address: str | None = None,
+    is_preferred: bool | None = None,
     updated_by=None,
+    attribution_source: str | None = None,
+    source_document_id=None,
+    source_document_name: str | None = None,
+    source_document_page: int | None = None,
+    extractor_version: str | None = None,
+    extraction_timestamp: datetime | None = None,
+    is_manual_entry: bool = False,
 ) -> PatientContact | None:
     """
     Upsert the single shared record for (patient_id, role).
 
     A no-op (all fields None/unset) is ignored rather than clearing an
     existing contact - callers should only pass the fields that changed.
+
+    `is_manual_entry=True` (used by the human-facing contact-entry
+    endpoint) stamps manual_override/manual_override_by/
+    manual_override_at so that any LATER conflicting document-harvested
+    value is always queued for review instead of silently applied - see
+    app.services.contact_harvest_service. This function itself never
+    resolves a conflict; callers responsible for harvesting (rather than
+    direct human entry) must check for an existing, differing value
+    themselves before calling this.
     """
 
     normalized_role = normalize_contact_role(role)
@@ -138,7 +178,8 @@ def set_patient_contact(
         raise ValueError("tenant_id is required")
 
     has_any_value = any(
-        value is not None for value in (name, relationship_to_patient, phone, address)
+        value is not None
+        for value in (name, relationship_to_patient, phone, email, address, is_preferred)
     )
     if not has_any_value:
         return None
@@ -171,10 +212,41 @@ def set_patient_contact(
         row.relationship_to_patient = relationship_to_patient
     if phone is not None:
         row.phone = phone
+    if email is not None:
+        row.email = email
+    if is_preferred is not None:
+        row.is_preferred = is_preferred
     if address is not None:
         row.address = address
 
     row.source = normalized_source
+
+    if attribution_source is not None:
+        normalized_attribution = str(attribution_source).strip().upper()
+        row.attribution_source = (
+            normalized_attribution
+            if normalized_attribution in ALLOWED_ATTRIBUTION_SOURCES
+            else ATTRIBUTION_MANUAL
+        )
+    elif is_manual_entry:
+        row.attribution_source = ATTRIBUTION_MANUAL
+
+    if source_document_id is not None:
+        row.source_document_id = source_document_id
+    if source_document_name is not None:
+        row.source_document_name = source_document_name
+    if source_document_page is not None:
+        row.source_document_page = source_document_page
+    if extractor_version is not None:
+        row.extractor_version = extractor_version
+    if extraction_timestamp is not None:
+        row.extraction_timestamp = extraction_timestamp
+
+    if is_manual_entry:
+        row.manual_override = True
+        row.manual_override_by = updated_by
+        row.manual_override_at = now
+
     row.updated_by = updated_by
     row.updated_at = now
     db.flush()
