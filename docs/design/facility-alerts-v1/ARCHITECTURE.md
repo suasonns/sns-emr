@@ -1,6 +1,11 @@
-# Priority 3 — Facility Collection Alert Platform: Discovery & Architecture Spec (v1)
+# Priority 3 — Facility Collection Alert Platform: Discovery Report (v1)
 
-Status: DRAFT — pending CEO/Product Owner sign-off on Section 7.
+Status: **SUPERSEDED as the authoritative spec.** This document remains as
+the discovery record (raw inventory, capability audit, gap analysis).
+The consolidated, authoritative document for sign-off is now
+`FINAL_ARCHITECTURE_SPEC.md` in this same directory — read that one for
+the locked architecture, UI screens, permission matrix, dead-alert
+disposition plan, and open questions.
 **No implementation code in this branch. Discovery + spec only.**
 
 Priority 3 is reframed per CEO directive from "Build Alerts" to
