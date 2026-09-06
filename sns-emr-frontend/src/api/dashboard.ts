@@ -766,6 +766,257 @@ export function performCreditBalanceCaseAction(
   return postJson<CreditBalanceCase>(`/billing/credit-balance/cases/${caseId}/actions`, payload);
 }
 
+// Facility & Residence Payment Visibility -- expected facility/room-and-
+// board/share-of-cost obligations reconciled against the *existing*
+// Payment/RemittanceAdvice pipeline. See
+// app.billing.services.facility_payment_service. Nothing here duplicates
+// payment or remittance data; allocations only reference existing IDs.
+export type FacilityPaymentAging = {
+  aging_status: string;
+  aging_bucket: string | null;
+  days_outstanding: number | null;
+};
+
+export type FacilityPaymentExpectation = {
+  id: string;
+  tenant_id: string;
+  patient_id: string;
+  patient_pos_id: string | null;
+  patient_name: string | null;
+  mrn: string | null;
+  agency_name: string | null;
+  facility_name_snapshot: string | null;
+  residence_type_snapshot: string | null;
+  room_number_snapshot: string | null;
+  residence_start_date_snapshot: string | null;
+  residence_end_date_snapshot: string | null;
+  expected_funding_source_snapshot: string | null;
+  expected_payer_name_snapshot: string | null;
+  primary_payer_name_snapshot: string | null;
+  secondary_payer_name_snapshot: string | null;
+  responsibility_category: string;
+  expected_funding_source: string;
+  expected_amount: string;
+  currency: string;
+  frequency: string | null;
+  service_period_start: string;
+  service_period_end: string;
+  due_date: string | null;
+  authorization_reference: string | null;
+  share_of_cost_amount: string | null;
+  status: string;
+  version_number: number;
+  supersedes_expectation_id: string | null;
+  superseded_by_expectation_id: string | null;
+  correction_reason: string | null;
+  source: string;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  reconciliation_status: string;
+  amount_received: string;
+  outstanding_amount: string;
+  most_recent_payment_date: string | null;
+  aging: FacilityPaymentAging;
+};
+
+export type FacilityPaymentAllocation = {
+  id: string;
+  tenant_id: string;
+  facility_payment_expectation_id: string;
+  payment_id: string | null;
+  remittance_advice_id: string | null;
+  claim_id: string | null;
+  payment_adjustment_id: string | null;
+  payer_name: string | null;
+  amount_applied: string;
+  payment_date: string | null;
+  allocation_status: string;
+  match_basis: string;
+  notes: string | null;
+  reconciled_by: string | null;
+  reconciled_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export function fetchFacilityPaymentExpectations(
+  tenantId?: string | null,
+  params?: {
+    tenant_ids?: string[];
+    all_agencies?: boolean;
+    patient_id?: string;
+    status?: string;
+    reconciliation_status?: string;
+    responsibility_category?: string;
+    funding_source?: string;
+    residence_type?: string;
+    aging_bucket?: string;
+    service_period_start?: string;
+    service_period_end?: string;
+  }
+): Promise<{ count: number; items: FacilityPaymentExpectation[] }> {
+  const search = new URLSearchParams();
+  if (params?.tenant_ids && params.tenant_ids.length > 0) search.set("tenant_ids", params.tenant_ids.join(","));
+  if (params?.all_agencies) search.set("all_agencies", "true");
+  if (params?.patient_id) search.set("patient_id", params.patient_id);
+  if (params?.status) search.set("status", params.status);
+  if (params?.reconciliation_status) search.set("reconciliation_status", params.reconciliation_status);
+  if (params?.responsibility_category) search.set("responsibility_category", params.responsibility_category);
+  if (params?.funding_source) search.set("funding_source", params.funding_source);
+  if (params?.residence_type) search.set("residence_type", params.residence_type);
+  if (params?.aging_bucket) search.set("aging_bucket", params.aging_bucket);
+  if (params?.service_period_start) search.set("service_period_start", params.service_period_start);
+  if (params?.service_period_end) search.set("service_period_end", params.service_period_end);
+  const query = search.toString();
+  const base = `/billing/facility-payments/expectations${query ? `?${query}` : ""}`;
+  return fetchJson(withTenantId(base, tenantId));
+}
+
+export function createFacilityPaymentExpectation(
+  payload: Record<string, unknown>
+): Promise<FacilityPaymentExpectation> {
+  return postJson<FacilityPaymentExpectation>("/billing/facility-payments/expectations", payload);
+}
+
+export function correctFacilityPaymentExpectation(
+  expectationId: string,
+  payload: Record<string, unknown>
+): Promise<FacilityPaymentExpectation> {
+  return postJson<FacilityPaymentExpectation>(
+    `/billing/facility-payments/expectations/${expectationId}/correct`,
+    payload
+  );
+}
+
+export function fetchFacilityPaymentCandidates(
+  expectationId: string
+): Promise<{ count: number; items: FacilityPaymentAllocation[] }> {
+  return fetchJson(`/billing/facility-payments/expectations/${expectationId}/candidates`);
+}
+
+export function confirmFacilityPaymentAllocation(allocationId: string): Promise<FacilityPaymentAllocation> {
+  return postJson<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/confirm`, {});
+}
+
+export function reverseFacilityPaymentAllocation(
+  allocationId: string,
+  reason: string
+): Promise<FacilityPaymentAllocation> {
+  return postJson<FacilityPaymentAllocation>(`/billing/facility-payments/allocations/${allocationId}/reverse`, {
+    reason,
+  });
+}
+
+export type FacilityCollectionsReportRow = {
+  agency_name: string;
+  patient_name: string | null;
+  mrn: string | null;
+  facility_name_snapshot: string | null;
+  residence_type_snapshot: string | null;
+  service_period: { start: string; end: string };
+  responsibility_category: string;
+  expected_funding_source: string;
+  primary_payer_name: string | null;
+  secondary_payer_name: string | null;
+  expected_amount: string;
+  amount_received: string;
+  outstanding_amount: string;
+  most_recent_payment_date: string | null;
+  due_date: string | null;
+  days_outstanding: number | null;
+  reconciliation_status: string;
+  aging_bucket: string | null;
+  expectation_id: string;
+};
+
+export type FacilityCollectionsReportResponse = {
+  rows: FacilityCollectionsReportRow[];
+  summary: {
+    total_expected: string;
+    total_received: string;
+    total_outstanding: string;
+    partially_paid_count: number;
+    unmatched_payments_count: number;
+    overdue_obligations_count: number;
+    reconciliation_exceptions_count: number;
+    collection_rate: string;
+  };
+};
+
+export function fetchFacilityCollectionsReport(
+  tenantId?: string | null,
+  params?: {
+    tenant_ids?: string[];
+    all_agencies?: boolean;
+    residence_type?: string;
+    funding_source?: string;
+    payer_name?: string;
+    responsibility_category?: string;
+    reconciliation_status?: string;
+    aging_bucket?: string;
+    service_period_start?: string;
+    service_period_end?: string;
+  }
+): Promise<FacilityCollectionsReportResponse> {
+  const search = new URLSearchParams();
+  if (params?.tenant_ids && params.tenant_ids.length > 0) search.set("tenant_ids", params.tenant_ids.join(","));
+  if (params?.all_agencies) search.set("all_agencies", "true");
+  if (params?.residence_type) search.set("residence_type", params.residence_type);
+  if (params?.funding_source) search.set("funding_source", params.funding_source);
+  if (params?.payer_name) search.set("payer_name", params.payer_name);
+  if (params?.responsibility_category) search.set("responsibility_category", params.responsibility_category);
+  if (params?.reconciliation_status) search.set("reconciliation_status", params.reconciliation_status);
+  if (params?.aging_bucket) search.set("aging_bucket", params.aging_bucket);
+  if (params?.service_period_start) search.set("service_period_start", params.service_period_start);
+  if (params?.service_period_end) search.set("service_period_end", params.service_period_end);
+  const query = search.toString();
+  const base = `/billing/facility-payments/collections-report${query ? `?${query}` : ""}`;
+  return fetchJson(withTenantId(base, tenantId));
+}
+
+export type FacilityCollectionAlert = {
+  id: string;
+  tenant_id: string;
+  patient_id: string | null;
+  facility_payment_expectation_id: string | null;
+  alert_type: string;
+  severity: string;
+  expected_amount: string | null;
+  received_amount: string | null;
+  outstanding_amount: string | null;
+  due_date: string | null;
+  days_outstanding: number | null;
+  status: string;
+  assigned_to: string | null;
+  resolution_evidence: string | null;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export function fetchFacilityCollectionAlerts(
+  tenantId?: string | null,
+  status?: string
+): Promise<{ count: number; items: FacilityCollectionAlert[] }> {
+  const search = new URLSearchParams();
+  if (status) search.set("status", status);
+  const query = search.toString();
+  const base = `/billing/facility-payments/alerts${query ? `?${query}` : ""}`;
+  return fetchJson(withTenantId(base, tenantId));
+}
+
+export function resolveFacilityCollectionAlert(
+  alertId: string,
+  resolutionEvidence: string
+): Promise<FacilityCollectionAlert> {
+  return postJson<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/resolve`, {
+    resolution_evidence: resolutionEvidence,
+  });
+}
+
 export type BillingReadinessPatientRow = {
   patient_id: string;
   mrn: string | null;
