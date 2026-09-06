@@ -284,3 +284,94 @@ export type OwnerAdoptionHealthResponse = {
 export function fetchOwnerAdoptionHealth(): Promise<OwnerAdoptionHealthResponse> {
   return request<OwnerAdoptionHealthResponse>("/api/owner/adoption-health");
 }
+
+// ─── Billing & Licensing (Owner Portal) ──────────────────────────────
+// Backed by GET /api/owner/billing-licensing (see
+// backend/app/api/owner_billing_licensing.py). Returns real data once
+// subscription/invoice/payment rows exist for a tenant; otherwise
+// `data_available` is false and BillingLicensing.jsx renders an honest
+// "not available yet" state rather than fabricating figures.
+
+export type OwnerBillingKpis = {
+  total_monthly_revenue: number | null;
+  outstanding_invoice_count: number | null;
+  outstanding_invoice_total: number | null;
+  active_agencies: number | null;
+  licensed_agencies: number | null;
+  avg_revenue_per_agency: number | null;
+};
+
+export type OwnerBillingClientStatus = "PAID" | "OVERDUE" | "PENDING" | "TRIAL";
+
+export type OwnerBillingClient = {
+  tenant_id: string;
+  agency_name: string;
+  plan_type: string;
+  seats_used: number | null;
+  seats_licensed: number | null;
+  monthly_rate: number | null;
+  last_payment_date: string | null;
+  status: OwnerBillingClientStatus;
+  balance_due: number | null;
+};
+
+export type OwnerRevenueByAgency = {
+  tenant_id: string;
+  agency_name: string;
+  amount: number;
+  pct_of_top: number;
+};
+
+export type OwnerBillingPaymentStatus = "SUCCESS" | "PENDING" | "OVERDUE";
+
+export type OwnerRecentPayment = {
+  tenant_id: string;
+  agency_name: string;
+  occurred_at: string;
+  amount: number;
+  status: OwnerBillingPaymentStatus;
+};
+
+export type OwnerUpcomingOutstanding = {
+  tenant_id: string;
+  agency_name: string;
+  due_date: string;
+  amount: number;
+  status: "UPCOMING" | "OVERDUE";
+};
+
+export type OwnerLicenseAllocation = {
+  plan_label: string;
+  seats_used: number;
+  seats_total: number;
+};
+
+export type OwnerBillingLicensingResponse = {
+  kpis: OwnerBillingKpis;
+  clients: OwnerBillingClient[];
+  revenue_by_agency: OwnerRevenueByAgency[];
+  recent_payments: OwnerRecentPayment[];
+  upcoming_outstandings: OwnerUpcomingOutstanding[];
+  license_allocations: OwnerLicenseAllocation[];
+  total_seats_used: number | null;
+  total_seats_allocated: number | null;
+  data_available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type OwnerBillingLicensingParams = {
+  tenantId?: string;
+  quarterStart?: string;
+  quarterEnd?: string;
+};
+
+export function fetchOwnerBillingLicensing(
+  params: OwnerBillingLicensingParams = {}
+): Promise<OwnerBillingLicensingResponse> {
+  const qs = new URLSearchParams();
+  if (params.tenantId) qs.set("tenant_id", params.tenantId);
+  if (params.quarterStart) qs.set("period_start", params.quarterStart);
+  if (params.quarterEnd) qs.set("period_end", params.quarterEnd);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<OwnerBillingLicensingResponse>(`/api/owner/billing-licensing${suffix}`);
+}

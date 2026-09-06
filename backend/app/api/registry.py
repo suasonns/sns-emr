@@ -6,6 +6,7 @@ from app.api import auth, auth_whoami
 # OWNER / SUPPORT
 from app.api.support_reference import router as support_reference_router
 from app.api.owner_admin import router as owner_admin_router
+from app.api.owner_billing_licensing import router as owner_billing_licensing_router
 
 # ADMIN
 from app.api.admin.chart_export import router as admin_chart_export_router
@@ -144,6 +145,7 @@ def register_routers(app: FastAPI) -> None:
     # =====================================================
     app.include_router(support_reference_router)
     app.include_router(owner_admin_router)
+    app.include_router(owner_billing_licensing_router)
 
     # =====================================================
     # Admin

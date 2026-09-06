@@ -7,6 +7,7 @@ import {
   UserManagement,
   AuditLogs,
   Analytics,
+  BillingLicensing,
   Settings,
   AICommandCenter,
 } from './pages';
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { key: 'users', label: 'User Management', icon: '👥' },
   { key: 'audit', label: 'Audit Logs', icon: '📋' },
   { key: 'analytics', label: 'Analytics', icon: '📈' },
+  { key: 'billing', label: 'Billing & Licensing', icon: '💳' },
   { key: 'settings', label: 'Settings', icon: '⚙️' },
   { key: 'ai', label: 'AI Command Center', icon: '🤖' },
 ];
@@ -153,6 +155,8 @@ export default function OwnerDashboard() {
         return <AuditLogs {...pageProps} />;
       case 'analytics':
         return <Analytics {...pageProps} />;
+      case 'billing':
+        return <BillingLicensing />;
       case 'settings':
         return <Settings {...pageProps} />;
       case 'ai':

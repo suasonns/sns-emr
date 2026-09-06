@@ -225,6 +225,17 @@ from app.models.certification import Certification, CertificationStatusEvent
 from app.models.f2f_encounter import F2FEncounter, F2FEncounterStatusEvent
 
 # ---------------------------------------------------------
+# ✅ OWNER / PLATFORM BILLING (SNS ↔ tenant subscription billing --
+#    distinct from app.billing.* which is tenant ↔ payer claim billing)
+# ---------------------------------------------------------
+
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.tenant_subscription import TenantSubscription
+from app.models.platform_invoice import PlatformInvoice
+from app.models.platform_payment import PlatformPayment
+from app.models.license_allocation import LicenseAllocation
+
+# ---------------------------------------------------------
 # ✅ EXPORT (REQUIRED)
 # ---------------------------------------------------------
 
