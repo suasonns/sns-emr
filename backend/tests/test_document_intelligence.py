@@ -65,6 +65,27 @@ def test_extract_text_from_plain_text_file():
     assert result.needs_manual_review is False
 
 
+def test_extraction_result_strips_embedded_nul_bytes():
+    """Scanned/OCR'd PDF text occasionally contains embedded NUL (0x00)
+    bytes, which PostgreSQL text columns reject outright ("A string
+    literal cannot contain NUL (0x00) characters"), previously failing
+    the entire document with no text, no AI findings, and no evidence.
+    Every ExtractionResult must come out NUL-free regardless of source."""
+    result = dis.ExtractionResult(text="Sodium 128\x00 mEq/L", method="ocr")
+    assert "\x00" not in result.text
+    assert result.text == "Sodium 128 mEq/L"
+
+
+def test_extract_text_from_plain_text_file_strips_nul_bytes():
+    result = dis.extract_text_from_file(
+        file_bytes=b"Sodium 128\x00 mEq/L (LOW)",
+        content_type="text/plain",
+        file_name="labs.txt",
+    )
+    assert "\x00" not in result.text
+    assert result.text == "Sodium 128 mEq/L (LOW)"
+
+
 def test_extract_text_from_docx_includes_paragraphs_and_tables():
     file_bytes = _make_docx_bytes(
         ["History and Physical", "Patient reports significant functional decline over 3 months."]
@@ -271,6 +292,215 @@ def test_run_document_intelligence_populates_text_and_harvests(
     )
     assert len(evidence_records) == 1
     assert "Sodium 128" in evidence_records[0].original_documentation
+
+
+def test_run_document_intelligence_auto_populates_facesheet_from_hnp_text(
+    db_session, monkeypatch, tmp_path
+):
+    """An uploaded document whose text parses as an HNP record (name/MRN/DOB
+    present) must auto-populate the patient's facesheet and primary
+    diagnosis via the SAME shared persist_patient_from_hnp_extraction()
+    service /patients/from-hnp uses -- with source_document_id stamped for
+    provenance. AI is left unconfigured so no network calls occur."""
+
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+
+    from app.services import document_storage as storage_module
+
+    storage_module.get_document_storage.cache_clear()
+    monkeypatch.setenv("DOCUMENT_STORAGE_PROVIDER", "local")
+    monkeypatch.setenv("DOCUMENT_STORAGE_DIR", str(tmp_path))
+
+    hnp_text = (
+        "Name: Test Patient\n"
+        "MRN: DOCINT-HNP-001\n"
+        "Date of birth: 03/14/1945\n"
+        "Sex: Female\n"
+        "Address: 100 Sample Ave\n"
+        "Diagnosis: Chronic obstructive pulmonary disease Noted on: 2026-01-05\n"
+    )
+
+    document_id = uuid.uuid4()
+    object_key = storage_module.build_document_key(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_id=document_id,
+        content_type="text/plain",
+    )
+    storage = storage_module.get_document_storage()
+    storage.put(
+        object_key,
+        io.BytesIO(hnp_text.encode("utf-8")),
+        content_type="text/plain",
+        max_bytes=storage_module.max_upload_bytes_from_env(),
+    )
+
+    doc = DocumentRecord(
+        id=document_id,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_type="HNP",
+        source="EXTERNAL",
+        file_name="hnp.txt",
+        file_path=object_key,
+        extracted_values={},
+        document_text=None,
+        uploaded_by=TEST_USER_ID,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    from app.services.evidence import document_harvest_job as job_module
+
+    monkeypatch.setattr(
+        job_module,
+        "SessionLocal",
+        lambda: db_session.get_bind().pool and _TestSessionProxy(db_session),
+    )
+
+    run_document_intelligence(document_id=document_id)
+
+    db_session.expire_all()
+
+    from app.models.patient_facesheet import PatientFaceSheet
+
+    facesheet = (
+        db_session.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .one()
+    )
+    assert facesheet.first_name == "Test"
+    assert facesheet.last_name == "Patient"
+    assert "obstructive" in (facesheet.secondary_diagnoses or "").lower() or (
+        facesheet.primary_diagnosis
+    )
+    assert facesheet.source_document_id == document_id
+
+    # Existing patient's MRN is authoritative and is never overwritten by
+    # a document-extracted value (persist_patient_from_hnp_extraction only
+    # backfills mrn when the existing patient record has none).
+    refreshed_patient = db_session.get(Patient, patient.id)
+    assert refreshed_patient.mrn == patient.mrn
+
+
+def test_run_document_intelligence_never_overwrites_existing_patient_name(
+    db_session, monkeypatch, tmp_path
+):
+    """Real production defect, found via manual multi-document upload
+    validation: this facesheet-auto-populate step runs unconditionally on
+    EVERY uploaded document's extracted text, not just genuine H&P
+    records. A lower-confidence document (an insurance authorization form,
+    a cover letter, an orders packet) can incidentally satisfy
+    parse_hnp_text's generic "Name:"/"MRN:"/"Date of birth:" patterns on
+    unrelated text and silently overwrite a patient's real, previously-
+    confirmed name with garbage. Once a facesheet already has a name, a
+    later document's parse must never overwrite it -- only backfill a
+    genuinely missing name, exactly like the existing mrn policy."""
+
+    monkeypatch.delenv("AZURE_OPENAI_ENDPOINT", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_API_VERSION", raising=False)
+    monkeypatch.delenv("AZURE_OPENAI_DEPLOYMENT", raising=False)
+
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+
+    from app.models.patient_facesheet import PatientFaceSheet
+
+    facesheet = PatientFaceSheet(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        first_name="Margaret",
+        last_name="Kessler",
+        dob=patient.date_of_birth,
+        primary_diagnosis=patient.primary_diagnosis,
+        created_by=TEST_USER_ID,
+        updated_by=TEST_USER_ID,
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(facesheet)
+    db_session.commit()
+
+    from app.services import document_storage as storage_module
+
+    storage_module.get_document_storage.cache_clear()
+    monkeypatch.setenv("DOCUMENT_STORAGE_PROVIDER", "local")
+    monkeypatch.setenv("DOCUMENT_STORAGE_DIR", str(tmp_path))
+
+    # An unrelated document (e.g. an insurance authorization) whose OCR
+    # text incidentally contains enough matching fields to pass
+    # parse_hnp_text's minimal validation, with a name AND a DOB that do
+    # NOT belong to this patient -- reproducing the real defect exactly
+    # and covering the parallel DOB-overwrite risk in the same function.
+    unrelated_text = (
+        "Name: Birth Order\n"
+        f"MRN: {patient.mrn}\n"
+        "Date of birth: 01/01/1900\n"
+        "Diagnosis: Authorization pending Noted on: 2026-01-05\n"
+    )
+
+    document_id = uuid.uuid4()
+    object_key = storage_module.build_document_key(
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_id=document_id,
+        content_type="text/plain",
+    )
+    storage = storage_module.get_document_storage()
+    storage.put(
+        object_key,
+        io.BytesIO(unrelated_text.encode("utf-8")),
+        content_type="text/plain",
+        max_bytes=storage_module.max_upload_bytes_from_env(),
+    )
+
+    doc = DocumentRecord(
+        id=document_id,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        document_type="INSURANCE_AUTHORIZATION",
+        source="EXTERNAL",
+        file_name="auth.txt",
+        file_path=object_key,
+        extracted_values={},
+        document_text=None,
+        uploaded_by=TEST_USER_ID,
+        uploaded_at=datetime.now(timezone.utc),
+    )
+    db_session.add(doc)
+    db_session.commit()
+
+    from app.services.evidence import document_harvest_job as job_module
+
+    monkeypatch.setattr(
+        job_module,
+        "SessionLocal",
+        lambda: db_session.get_bind().pool and _TestSessionProxy(db_session),
+    )
+
+    run_document_intelligence(document_id=document_id)
+
+    db_session.expire_all()
+
+    refreshed_facesheet = (
+        db_session.query(PatientFaceSheet)
+        .filter(PatientFaceSheet.patient_id == patient.id)
+        .one()
+    )
+    assert refreshed_facesheet.first_name == "Margaret"
+    assert refreshed_facesheet.last_name == "Kessler"
+    # DOB is an identity field just like name -- must not be overwritten
+    # by the unrelated document's (wrong) "Date of birth: 01/01/1900".
+    assert refreshed_facesheet.dob == patient.date_of_birth
+    refreshed_patient = db_session.get(Patient, patient.id)
+    assert refreshed_patient.date_of_birth == patient.date_of_birth
 
 
 class _TestSessionProxy:

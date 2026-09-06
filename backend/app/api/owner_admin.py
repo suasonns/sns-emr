@@ -7,17 +7,30 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import time
 import uuid
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, EmailStr, Field, field_validator
-from sqlalchemy import text
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from sqlalchemy import or_, text
 from sqlalchemy.orm import Session
 
 from app.api.staff import _generate_temp_password, _issue_password_reset_link
+from app.billing.models.billing_provider_agency_assignment import (
+    BillingProviderAgencyAssignment,
+    BillingProviderAgencyServiceScope,
+    normalize_billing_provider_permission_level,
+    normalize_billing_provider_service_scope,
+)
+from app.billing.models.billing_provider_organization import BillingProviderOrganization
+from app.billing.services.billing_provider_access_service import (
+    assert_no_conflicting_active_assignment,
+    compute_tenant_financials_enabled,
+    compute_tenant_financials_enabled_map,
+)
 from app.core.database import get_db
 from app.core.role_guards import require_owner
 from app.core.security import CurrentUser, get_current_user, hash_password
@@ -107,6 +120,7 @@ AUDIT_CATEGORY_ACTIONS: dict[str, set[str]] = {
         "OWNER_ENABLED_USER",
         "OWNER_RESET_USER_PASSWORD",
         "OWNER_SET_TENANT_STATUS",
+        "OWNER_SET_TENANT_FINANCIALS",
     },
 }
 
@@ -202,8 +216,16 @@ def list_tenants(
         .mappings()
         .all()
     )
-
-    return {"tenants": [dict(row) for row in rows]}
+    financials_map = compute_tenant_financials_enabled_map(
+        db,
+        [UUID(row["tenant_id"]) for row in rows],
+    )
+    tenants = []
+    for row in rows:
+        payload = dict(row)
+        payload["financials_enabled"] = financials_map.get(UUID(payload["tenant_id"]), False)
+        tenants.append(payload)
+    return {"tenants": tenants}
 
 
 @router.post("/tenants", status_code=201)
@@ -276,6 +298,7 @@ def create_tenant(
         "legal_name": tenant.legal_name,
         "display_name": tenant.display_name,
         "billing_enabled": tenant.billing_enabled,
+        "financials_enabled": compute_tenant_financials_enabled(db, tenant.id),
         "admin_user": {
             "id": str(admin_user.id),
             "email": admin_user.email,
@@ -297,6 +320,140 @@ class SetTenantStatusPayload(BaseModel):
         if value not in VALID_TENANT_STATUSES:
             raise ValueError(f"status must be one of {sorted(VALID_TENANT_STATUSES)}")
         return value
+
+
+class SetTenantFinancialsPayload(BaseModel):
+    class ServiceScopeEntry(BaseModel):
+        scope: str
+        permission_level: str = Field(default="VIEW")
+
+        @field_validator("scope")
+        @classmethod
+        def _scope_valid(cls, value: str) -> str:
+            return normalize_billing_provider_service_scope(value)
+
+        @field_validator("permission_level")
+        @classmethod
+        def _permission_level_valid(cls, value: str) -> str:
+            return normalize_billing_provider_permission_level(value)
+
+    financials_enabled: bool
+    billing_provider_organization_id: UUID | None = None
+    effective_start_at: datetime | None = None
+    effective_end_at: datetime | None = None
+    service_scopes: list[ServiceScopeEntry] = Field(default_factory=list)
+    change_reason: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("service_scopes", mode="before")
+    @classmethod
+    def _service_scope_valid(cls, values) -> list[dict[str, str]]:
+        normalized: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for value in values:
+            if isinstance(value, str):
+                value = {"scope": value, "permission_level": "VIEW"}
+            elif isinstance(value, cls.ServiceScopeEntry):
+                value = value.model_dump()
+            elif not isinstance(value, dict):
+                raise ValueError("service_scopes entries must be strings or {scope, permission_level} objects")
+            scope = normalize_billing_provider_service_scope(value.get("scope", ""))
+            permission_level = normalize_billing_provider_permission_level(
+                value.get("permission_level")
+            )
+            if scope not in seen:
+                normalized.append(
+                    {
+                        "scope": scope,
+                        "permission_level": permission_level,
+                    }
+                )
+                seen.add(scope)
+        return normalized
+
+    @field_validator("change_reason")
+    @classmethod
+    def _change_reason_trimmed(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        trimmed = value.strip()
+        return trimmed or None
+
+    @model_validator(mode="after")
+    def _validate_financials_transition(self):
+        if self.financials_enabled:
+            if self.billing_provider_organization_id is None:
+                raise ValueError("billing_provider_organization_id is required when turning Financials on")
+            if self.effective_start_at is None:
+                raise ValueError("effective_start_at is required when turning Financials on")
+            if not self.service_scopes:
+                raise ValueError("service_scopes must contain at least one value when turning Financials on")
+            if self.effective_start_at is not None and self.effective_start_at > datetime.now(timezone.utc):
+                raise ValueError("effective_start_at cannot be in the future when turning Financials on")
+            if (
+                self.effective_end_at is not None
+                and self.effective_start_at is not None
+                and self.effective_end_at < self.effective_start_at
+            ):
+                raise ValueError("effective_end_at must be on or after effective_start_at")
+        return self
+
+
+def _current_financials_assignment(db: Session, tenant_id: UUID):
+    now = datetime.now(timezone.utc)
+    return (
+        db.query(BillingProviderAgencyAssignment)
+        .join(
+            BillingProviderOrganization,
+            BillingProviderOrganization.id
+            == BillingProviderAgencyAssignment.billing_provider_organization_id,
+        )
+        .join(
+            BillingProviderAgencyServiceScope,
+            BillingProviderAgencyServiceScope.assignment_id == BillingProviderAgencyAssignment.id,
+        )
+        .filter(
+            BillingProviderAgencyAssignment.tenant_id == tenant_id,
+            BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
+            BillingProviderOrganization.status == "ACTIVE",
+            BillingProviderAgencyAssignment.effective_start_at <= now,
+            or_(
+                BillingProviderAgencyAssignment.effective_end_at.is_(None),
+                BillingProviderAgencyAssignment.effective_end_at >= now,
+            ),
+        )
+        .order_by(BillingProviderAgencyAssignment.effective_start_at.desc())
+        .first()
+    )
+
+
+def _tenant_financials_response(db: Session, tenant_id: UUID) -> dict:
+    assignment = _current_financials_assignment(db, tenant_id)
+    return {
+        "tenant_id": str(tenant_id),
+        "financials_enabled": compute_tenant_financials_enabled(db, tenant_id),
+        "current_assignment": None
+        if assignment is None
+        else {
+            "assignment_id": str(assignment.id),
+            "billing_provider_organization_id": str(
+                assignment.billing_provider_organization_id
+            ),
+            "relationship_status": assignment.relationship_status,
+            "effective_start_at": assignment.effective_start_at.isoformat()
+            if assignment.effective_start_at
+            else None,
+            "effective_end_at": assignment.effective_end_at.isoformat()
+            if assignment.effective_end_at
+            else None,
+            "service_scopes": [
+                {
+                    "scope": scope.scope,
+                    "permission_level": scope.permission_level,
+                }
+                for scope in assignment.service_scopes
+            ],
+        },
+    }
 
 
 @router.patch("/tenants/{target_tenant_id}/status")
@@ -337,6 +494,124 @@ def set_tenant_status(
     )
 
     return {"tenant_id": str(tenant.id), "status": tenant.status}
+
+
+@router.patch("/tenants/{target_tenant_id}/financials")
+def set_tenant_financials(
+    target_tenant_id: UUID,
+    payload: SetTenantFinancialsPayload,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    _require_platform_owner(user)
+
+    tenant = db.get(Tenant, target_tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    actor_user_id = getattr(user, "user_id", None) or getattr(user, "id", None)
+    previous_value = compute_tenant_financials_enabled(db, tenant.id)
+
+    if payload.financials_enabled:
+        provider = db.get(BillingProviderOrganization, payload.billing_provider_organization_id)
+        if provider is None:
+            raise HTTPException(status_code=404, detail="Billing provider organization not found")
+        if provider.status != "ACTIVE":
+            raise HTTPException(
+                status_code=409,
+                detail="Billing provider organization must be ACTIVE to enable Financials.",
+            )
+
+        assert_no_conflicting_active_assignment(
+            db,
+            tenant_id=tenant.id,
+            billing_provider_organization_id=provider.id,
+            effective_start_at=payload.effective_start_at,
+            effective_end_at=payload.effective_end_at,
+        )
+
+        row = (
+            db.query(BillingProviderAgencyAssignment)
+            .filter(
+                BillingProviderAgencyAssignment.tenant_id == tenant.id,
+                BillingProviderAgencyAssignment.billing_provider_organization_id == provider.id,
+                BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
+            )
+            .order_by(BillingProviderAgencyAssignment.effective_start_at.desc())
+            .first()
+        )
+        if row is None:
+            row = BillingProviderAgencyAssignment(
+                billing_provider_organization_id=provider.id,
+                tenant_id=tenant.id,
+                relationship_status="ACTIVE",
+                effective_start_at=payload.effective_start_at,
+                effective_end_at=payload.effective_end_at,
+                created_by=actor_user_id,
+                updated_by=actor_user_id,
+            )
+            db.add(row)
+        else:
+            row.relationship_status = "ACTIVE"
+            row.effective_start_at = payload.effective_start_at
+            row.effective_end_at = payload.effective_end_at
+            row.updated_by = actor_user_id
+        row.service_scopes[:] = [
+            BillingProviderAgencyServiceScope(
+                scope=scope.scope,
+                permission_level=scope.permission_level,
+            )
+            for scope in payload.service_scopes
+        ]
+    else:
+        end_at = payload.effective_end_at or datetime.now(timezone.utc)
+        active_rows = (
+            db.query(BillingProviderAgencyAssignment)
+            .filter(
+                BillingProviderAgencyAssignment.tenant_id == tenant.id,
+                BillingProviderAgencyAssignment.relationship_status == "ACTIVE",
+            )
+            .all()
+        )
+        for row in active_rows:
+            if end_at < row.effective_start_at:
+                raise HTTPException(
+                    status_code=400,
+                    detail="effective_end_at cannot be earlier than the active assignment start.",
+                )
+            row.relationship_status = "TERMINATED"
+            row.effective_end_at = end_at
+            row.updated_by = actor_user_id
+
+    db.commit()
+    db.refresh(tenant)
+
+    log_event(
+        db=db,
+        user_id=str(actor_user_id),
+        tenant_id=str(tenant.id),
+        role=str(getattr(user, "role", None) or "OWNER"),
+        action="OWNER_SET_TENANT_FINANCIALS",
+        entity_type="tenant",
+        entity_id=str(tenant.id),
+        metadata={
+            "legal_name": tenant.legal_name,
+            "previous_financials_enabled": previous_value,
+            "new_financials_enabled": compute_tenant_financials_enabled(db, tenant.id),
+            "billing_provider_organization_id": str(payload.billing_provider_organization_id)
+            if payload.billing_provider_organization_id
+            else None,
+            "effective_start_at": payload.effective_start_at.isoformat()
+            if payload.effective_start_at
+            else None,
+            "effective_end_at": payload.effective_end_at.isoformat()
+            if payload.effective_end_at
+            else None,
+            "service_scopes": [scope.model_dump() for scope in payload.service_scopes],
+            "change_reason": payload.change_reason,
+        },
+        commit=True,
+    )
+    return _tenant_financials_response(db, tenant.id)
 
 
 # =========================================================
@@ -736,6 +1011,7 @@ _SECURITY_PERMISSION_CHANGE_ACTIONS = [
     "OWNER_ENABLED_USER",
     "OWNER_DISABLED_USER",
     "OWNER_SET_TENANT_STATUS",
+    "OWNER_SET_TENANT_FINANCIALS",
     "PROVIDER_LINK_REMOVED",
     "PROVIDER_ACCESS_BLOCKED_UNLINKED",
 ]
@@ -949,5 +1225,3 @@ def adoption_health(
             for row in trend_rows
         ],
     }
-
-

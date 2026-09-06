@@ -39,6 +39,7 @@ ALLOWED_PHYSICIAN_SOURCES = {
     "RNICA",
     "ADMISSION",
     "PHYSICIAN_DIRECTORY",
+    "TENANT_DEFAULT",
     "OTHER",
 }
 
@@ -239,3 +240,86 @@ def _mirror_to_legacy_facesheet_fields(
         facesheet.updated_at = now
     if updated_by and hasattr(facesheet, "updated_by"):
         facesheet.updated_by = updated_by
+
+
+def apply_tenant_default_medical_director(
+    db: Session,
+    *,
+    tenant_id,
+    patient_id,
+    updated_by=None,
+) -> PatientPhysicianAssignment | None:
+    """
+    Prepopulate a NEW patient's Medical Director assignment from the
+    tenant's configured default (Tenant.default_medical_director_physician_id).
+
+    The hospice Medical Director is an agency governance decision, never
+    something hospital documents determine -- this must never be called
+    from document/HNP harvesting code paths.
+
+    Precedence, per the multi-tenant design directive: an explicit
+    per-patient assignment always wins over the tenant default, and the
+    tenant default always wins over leaving the field blank. This function
+    is therefore a strict no-op if:
+      - a MEDICAL_DIRECTOR assignment already exists for this patient
+        (someone already set one, explicitly or via an earlier call), or
+      - the tenant has no default_medical_director_physician_id configured
+        (shows as NOT_CONFIGURED in the UI -- never falls back to another
+        tenant's physician, a dev seed, or SNS Hospice Solutions), or
+      - the configured physician_id does not resolve to a physician in
+        THIS tenant's own directory (belt-and-suspenders alongside the
+        composite DB foreign key on tenants).
+    """
+
+    from app.models.physician import Physician
+    from app.models.tenant import Tenant
+
+    existing = get_physician_assignments(db, patient_id=patient_id, tenant_id=tenant_id)
+    if MEDICAL_DIRECTOR in existing:
+        return None
+
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None or not tenant.default_medical_director_physician_id:
+        return None
+
+    physician = (
+        db.query(Physician)
+        .filter(
+            Physician.id == tenant.default_medical_director_physician_id,
+            Physician.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if physician is None:
+        return None
+
+    display_name = physician.display_name or " ".join(
+        part for part in (physician.first_name, physician.last_name) if part
+    ).strip()
+    if not display_name:
+        return None
+
+    return set_physician_assignment(
+        db,
+        patient_id=patient_id,
+        tenant_id=tenant_id,
+        role=MEDICAL_DIRECTOR,
+        source="TENANT_DEFAULT",
+        name=display_name,
+        address=", ".join(
+            part
+            for part in (
+                physician.address_street,
+                physician.address_city,
+                physician.address_state,
+                physician.address_zip,
+            )
+            if part
+        )
+        or None,
+        phone=physician.phone,
+        fax=physician.fax,
+        npi=physician.npi,
+        physician_id=physician.id,
+        updated_by=updated_by,
+    )

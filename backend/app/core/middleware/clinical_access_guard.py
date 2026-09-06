@@ -56,6 +56,8 @@ async def clinical_access_guard(request: Request, call_next):
 
     if access_scope == "tenant":
         return await call_next(request)
+    if role == "PLATFORM_BILLING" and billing_route_allowed:
+        return await call_next(request)
     if access_scope == "platform" and platform_route_allowed:
         return await call_next(request)
     if access_scope == "billing" and billing_route_allowed:

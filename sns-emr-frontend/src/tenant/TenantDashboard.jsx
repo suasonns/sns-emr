@@ -17,6 +17,7 @@ import { hasRouteAccess } from '../utils/authorization';
 import { formatRoleLabel } from '../utils/roleLabel';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
+import BrandLogo from '../components/BrandLogo';
 
 export { COLORS, S } from './design';
 
@@ -119,15 +120,8 @@ export default function TenantDashboard() {
       <div style={{ width: 220, background: COLORS.card, borderRight: `1px solid ${COLORS.border}`, padding: '24px 0', display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '0 20px', marginBottom: 32 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <img
-              src="/brand/sns-logo-light.svg"
-              alt="SNS logo"
-              onError={(event) => {
-                const target = event.currentTarget;
-                if (!target.src.endsWith('/brand/sns-logo-icon.svg')) {
-                  target.src = '/brand/sns-logo-icon.svg';
-                }
-              }}
+            <BrandLogo
+              variant="light"
               style={{ width: 220, height: 'auto', display: 'block' }}
             />
           </div>

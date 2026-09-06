@@ -7,6 +7,7 @@ import {
   UserManagement,
   AuditLogs,
   Analytics,
+  BillingLicensing,
   Settings,
   AICommandCenter,
 } from './pages';
@@ -17,6 +18,7 @@ import { getCurrentUser } from '../api/session';
 import { hasRouteAccess } from '../utils/authorization';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
+import BrandLogo from '../components/BrandLogo';
 
 export { COLORS, S };
 
@@ -27,6 +29,7 @@ const NAV_ITEMS = [
   { key: 'users', label: 'User Management', icon: '👥' },
   { key: 'audit', label: 'Audit Logs', icon: '📋' },
   { key: 'analytics', label: 'Analytics', icon: '📈' },
+  { key: 'billing', label: 'Billing & Licensing', icon: '💳' },
   { key: 'settings', label: 'Settings', icon: '⚙️' },
   { key: 'ai', label: 'AI Command Center', icon: '🤖' },
 ];
@@ -152,6 +155,8 @@ export default function OwnerDashboard() {
         return <AuditLogs {...pageProps} />;
       case 'analytics':
         return <Analytics {...pageProps} />;
+      case 'billing':
+        return <BillingLicensing />;
       case 'settings':
         return <Settings {...pageProps} />;
       case 'ai':
@@ -205,15 +210,8 @@ export default function OwnerDashboard() {
     <div style={S.container}>
       <div style={S.sidebar}>
         <div style={S.logo}>
-          <img
-            src="/brand/sns-logo-light.svg"
-            alt="SNS logo"
-            onError={(event) => {
-              const target = event.currentTarget;
-              if (!target.src.endsWith('/brand/sns-logo-icon.svg')) {
-                target.src = '/brand/sns-logo-icon.svg';
-              }
-            }}
+          <BrandLogo
+            variant="light"
             style={{ width: 150, height: 'auto', display: 'block', margin: '0 auto' }}
           />
         </div>

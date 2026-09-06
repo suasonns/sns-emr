@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { COLORS, S } from '../design';
 import VendorManagement from './VendorManagement';
 import OrderPackManagement from './OrderPackManagement';
-import { getAgencyProfile } from '../../api/agencyProfile';
+import { getAgencyProfile, updateAgencyProfile } from '../../api/agencyProfile';
 import { listStaff } from '../../api/staff';
+import { listPhysicians } from '../../api/physicians';
 
 // Honest placeholder for settings domains that have no backend persistence
 // yet (Notifications / Clinical templates / Billing config / Integrations).
@@ -101,9 +102,131 @@ function NotificationsTab() {
   );
 }
 
+// Facesheet Protection Mode options mirror the tenant-configurable modes
+// enforced server-side (backend/app/api/agency_profile.py).
+const FACESHEET_PROTECTION_MODES = [
+  { value: 'REQUIRE_REVIEW', label: 'Require Review (default) — document-sourced changes to existing demographics must be accepted by staff' },
+  { value: 'WARN', label: 'Warn — show a review flag but do not block saves' },
+  { value: 'OFF', label: 'Off — no demographic-change review required' },
+];
+
 function ClinicalTab() {
+  const [profile, setProfile] = useState(null);
+  const [physicianOptions, setPhysicianOptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const [selectedPhysicianId, setSelectedPhysicianId] = useState('');
+  const [protectionMode, setProtectionMode] = useState('REQUIRE_REVIEW');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getAgencyProfile(), listPhysicians({ status: 'active' })])
+      .then(([profileData, physicians]) => {
+        if (cancelled) return;
+        setProfile(profileData);
+        setPhysicianOptions(physicians || []);
+        setSelectedPhysicianId(profileData?.default_medical_director?.physician_id || '');
+        setProtectionMode(profileData?.facesheet_protection_mode || 'REQUIRE_REVIEW');
+      })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load agency clinical settings'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const handleSave = () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+    updateAgencyProfile({
+      facesheet_protection_mode: protectionMode,
+      default_medical_director_physician_id: selectedPhysicianId || '',
+    })
+      .then((updated) => {
+        setProfile(updated);
+        setSaveSuccess(true);
+      })
+      .catch((err) => setSaveError(err?.response?.data?.detail || err?.message || 'Failed to save clinical settings'))
+      .finally(() => setSaving(false));
+  };
+
+  const dirty = profile
+    ? selectedPhysicianId !== (profile.default_medical_director?.physician_id || '') ||
+      protectionMode !== (profile.facesheet_protection_mode || 'REQUIRE_REVIEW')
+    : false;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Default Medical Director</div>
+        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20, lineHeight: 1.6 }}>
+          Agency-level default used when a new patient has no explicit Medical Director assignment yet.
+          This is never harvested from hospital documents — the hospice agency, not the hospital, determines
+          the hospice Medical Director. A patient-specific assignment always overrides this default.
+        </div>
+        {loading && <div style={{ fontSize: 13, color: COLORS.muted }}>Loading…</div>}
+        {error && <div style={{ fontSize: 13, color: COLORS.red }}>{error}</div>}
+        {!loading && !error && (
+          <>
+            <select
+              style={{ ...S.select, width: '100%' }}
+              value={selectedPhysicianId}
+              onChange={(e) => { setSelectedPhysicianId(e.target.value); setSaveSuccess(false); }}
+            >
+              <option value="">Not configured</option>
+              {physicianOptions.map((physician) => (
+                <option key={physician.id} value={physician.id}>
+                  {physician.display_name || `${physician.first_name || ''} ${physician.last_name || ''}`.trim() || physician.npi || physician.id}
+                </option>
+              ))}
+            </select>
+            {physicianOptions.length === 0 && (
+              <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 8 }}>
+                No active physicians on record yet — add one in the Physician Directory before setting a default.
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div style={{ ...S.card, marginBottom: 0, padding: 24 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.white, marginBottom: 4 }}>Facesheet Protection Mode</div>
+        <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 20, lineHeight: 1.6 }}>
+          Controls how conflicting demographic values found in newly uploaded documents (Name, DOB, MRN, Gender,
+          Address, Phone, Insurance, MBI) are handled. Existing populated fields are never silently overwritten —
+          this only controls whether a human review step is required or just a warning is shown.
+        </div>
+        {!loading && !error && (
+          <select
+            style={{ ...S.select, width: '100%' }}
+            value={protectionMode}
+            onChange={(e) => { setProtectionMode(e.target.value); setSaveSuccess(false); }}
+          >
+            {FACESHEET_PROTECTION_MODES.map((mode) => (
+              <option key={mode.value} value={mode.value}>{mode.label}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {!loading && !error && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            style={{ ...S.btn(COLORS.teal), opacity: saving || !dirty ? 0.6 : 1, cursor: saving || !dirty ? 'not-allowed' : 'pointer' }}
+            onClick={handleSave}
+            disabled={saving || !dirty}
+          >
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+          {saveError && <span style={{ fontSize: 13, color: COLORS.red }}>{saveError}</span>}
+          {saveSuccess && !dirty && <span style={{ fontSize: 13, color: COLORS.green }}>Saved.</span>}
+        </div>
+      )}
+
       <NotAvailableCard
         title="Documentation Templates"
         note="Not available yet — clinical note templates are hardcoded per note type in this release; there is no configurable template library or backend model for it."

@@ -32,6 +32,10 @@ import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
 import EligibilityVerificationPage from "./pages/billing/EligibilityVerificationPage";
 import PaymentPostingPage from "./pages/billing/PaymentPostingPage";
 import ReportsPage from "./pages/billing/ReportsPage";
+import CapCalculationPage from "./pages/billing/CapCalculationPage";
+import AgingReportPage from "./pages/billing/AgingReportPage";
+import CreditBalanceReportPage from "./pages/billing/CreditBalanceReportPage";
+import FacilityCollectionsReportPage from "./pages/billing/FacilityCollectionsReportPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
@@ -83,6 +87,10 @@ export default function App() {
           <Route path="denials" element={<DenialsAppealsPage />} />
           <Route path="eligibility" element={<EligibilityVerificationPage />} />
           <Route path="payment-posting" element={<PaymentPostingPage />} />
+          <Route path="cap-calculation" element={<CapCalculationPage />} />
+          <Route path="aging-report" element={<AgingReportPage />} />
+          <Route path="credit-balance-report" element={<CreditBalanceReportPage />} />
+          <Route path="facility-collections" element={<FacilityCollectionsReportPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>
         <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />

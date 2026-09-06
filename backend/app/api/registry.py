@@ -6,6 +6,7 @@ from app.api import auth, auth_whoami
 # OWNER / SUPPORT
 from app.api.support_reference import router as support_reference_router
 from app.api.owner_admin import router as owner_admin_router
+from app.api.owner_billing_licensing import router as owner_billing_licensing_router
 
 # ADMIN
 from app.api.admin.chart_export import router as admin_chart_export_router
@@ -118,6 +119,10 @@ from app.billing.api.noe_tracking_router import router as noe_tracking_router
 from app.billing.api.claims_router import router as claims_router
 from app.billing.api.denials_router import router as denials_router
 from app.billing.api.payment_posting_router import router as payment_posting_router
+from app.billing.api.aging_report_router import router as aging_report_router
+from app.billing.api.credit_balance_router import router as credit_balance_router
+from app.billing.api.billing_provider_router import router as billing_provider_router
+from app.billing.api.facility_payment_router import router as facility_payment_router
 
 # ADR / TPE (OPTIONAL)
 try:
@@ -144,6 +149,8 @@ def register_routers(app: FastAPI) -> None:
     # =====================================================
     app.include_router(support_reference_router)
     app.include_router(owner_admin_router)
+    app.include_router(owner_billing_licensing_router)
+    app.include_router(billing_provider_router)
 
     # =====================================================
     # Admin
@@ -244,6 +251,9 @@ def register_routers(app: FastAPI) -> None:
         claims_router,
         denials_router,
         payment_posting_router,
+        aging_report_router,
+        credit_balance_router,
+        facility_payment_router,
         patient_orders_router,
         fax_router,
         lab_catalog_router,

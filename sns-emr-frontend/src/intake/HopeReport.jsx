@@ -11,8 +11,8 @@ import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import { defaultPatient } from "./ConsentNotifications";
 import mapRnIcaToHopeReport from "./hopeReportMapper";
+import BrandLogo from "../components/BrandLogo";
 
-const LOGO_SRC = "/brand/sns-logo-dark.svg";
 const MED_ORDER_LINKS = {
   N0510: { section: "add-md-order", label: "Open physician orders" },
   N0520: { section: "add-md-order", label: "Open bowel-regimen order" },
@@ -224,7 +224,7 @@ export default function HopeReport({
         <div style={styles.paper}>
           <div style={styles.headerRow}>
             <div style={styles.headerMeta}>
-              <img src={LOGO_SRC} alt="SNS Hospice Solutions" style={styles.logo} />
+              <BrandLogo variant="dark" style={styles.logo} />
               <div>
                 <div style={styles.title}>{report.agency.name}</div>
                 <div style={styles.subtitle}>{report.agency.address} | Tel: {report.agency.phone} | Fax: {report.agency.fax}</div>

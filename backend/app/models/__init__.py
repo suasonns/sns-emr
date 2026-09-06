@@ -55,6 +55,7 @@ from app.models.post_death_bereavement_assessment import PostDeathBereavementAss
 from app.models.bereavement_letter_tracker import BereavementLetterTracker
 from app.models.bereavement_communication_note import BereavementCommunicationNote
 from app.models.patient_evidence import PatientEvidenceRecord, PatientHarvestedSignal
+from app.models.facesheet_field_suggestion import FacesheetFieldSuggestion
 
 # ---------------------------------------------------------
 # ✅ CLINICAL DOMAIN
@@ -201,6 +202,22 @@ from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
 from app.billing.models.hospice_cap_record import HospiceCapRecord
 from app.billing.models.noe_edi_submission import NoeEdiSubmission
 from app.billing.models.election_addendum_request import ElectionAddendumRequest
+from app.billing.models.credit_balance_case import CreditBalanceCase, CreditBalanceCaseEvent
+from app.billing.models.billing_provider_organization import BillingProviderOrganization
+from app.billing.models.billing_provider_agency_assignment import (
+    BillingProviderAgencyAssignment,
+    BillingProviderAgencyServiceScope,
+)
+from app.billing.models.billing_provider_organization_membership import (
+    BillingProviderOrganizationMembership,
+)
+from app.billing.models.facility_payment_expectation import FacilityPaymentExpectation
+from app.billing.models.facility_payment_allocation import FacilityPaymentAllocation
+from app.billing.models.facility_collection_alert import (
+    FacilityCollectionAlert,
+    FacilityCollectionAlertThreshold,
+)
+from app.billing.models.facility_payment_audit_log import FacilityPaymentAuditLog
 
 # ---------------------------------------------------------
 # ✅ POC PHYSICIAN APPROVAL TRACKING
@@ -222,6 +239,17 @@ from app.models.patient_code_status import PatientCodeStatus
 from app.models.physician_order import PhysicianOrder, PhysicianOrderStatusEvent
 from app.models.certification import Certification, CertificationStatusEvent
 from app.models.f2f_encounter import F2FEncounter, F2FEncounterStatusEvent
+
+# ---------------------------------------------------------
+# ✅ OWNER / PLATFORM BILLING (SNS ↔ tenant subscription billing --
+#    distinct from app.billing.* which is tenant ↔ payer claim billing)
+# ---------------------------------------------------------
+
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.tenant_subscription import TenantSubscription
+from app.models.platform_invoice import PlatformInvoice
+from app.models.platform_payment import PlatformPayment
+from app.models.license_allocation import LicenseAllocation
 
 # ---------------------------------------------------------
 # ✅ EXPORT (REQUIRED)

@@ -78,6 +78,18 @@ class ExtractionResult:
     needs_manual_review: bool = False
     image_base64: str | None = None  # populated only when method == "vision"
 
+    def __post_init__(self) -> None:
+        # Scanned/OCR'd text (and, more rarely, a PDF's native text layer)
+        # can contain embedded NUL (0x00) bytes -- an artifact PostgreSQL's
+        # text/string columns reject outright ("A string literal cannot
+        # contain NUL (0x00) characters"), which previously failed the
+        # entire document (no text, no AI findings, no evidence, no
+        # facesheet population) for any document whose OCR output happened
+        # to contain one. Every extraction path funnels through here, so
+        # every text/method combination is protected identically.
+        if self.text and "\x00" in self.text:
+            object.__setattr__(self, "text", self.text.replace("\x00", ""))
+
 
 def extract_text_from_file(
     *, file_bytes: bytes, content_type: str, file_name: str | None = None

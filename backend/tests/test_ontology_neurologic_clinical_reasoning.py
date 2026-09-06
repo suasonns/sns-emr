@@ -35,6 +35,7 @@ and Senile Degeneration of Brain. These tests assert that:
 from __future__ import annotations
 
 import json
+import uuid
 
 import pytest
 
@@ -383,6 +384,147 @@ def test_second_run_creates_zero_new_rows(db_session, built_state):
     assert counts["variant_evidence_rules_inserted"] == 0
     assert counts["concept_evidence_rules_inserted"] == 0
     assert counts["unresolved_applicability_defs"] == []
+
+
+def test_cross_manifest_variant_reconciles_parent_and_ownership(db_session, monkeypatch):
+    """Defect regression (2026-09-03): when a DIFFERENT importer (e.g. the
+    Neurologic Production Source Manifest) creates a
+    (disease, dimension, normalized_name) variant first -- with no parent
+    link and a foreign source_reference -- this script must adopt and
+    repair that row, not silently accept it as-is.
+
+    Uses a synthetic dimension/name pair that no production manifest or
+    other test touches, so this is safe to run regardless of what other
+    tests have already populated in the (non-tenant-scoped, not reset
+    between tests) ontology tables."""
+    import scripts.complete_ontology_neurologic_clinical_reasoning as reasoning_script
+    from app.models.ontology_disease_blueprint import OntologyDiseaseVariant
+
+    _seed_base_diseases(db_session)
+    db_session.commit()
+    run_phase2_script(db_session)
+    db_session.commit()
+    stroke = db_session.query(OntologyDisease).filter_by(disease_name=STROKE).one()
+
+    dimension = "MECHANISM"
+    monkeypatch.setattr(reasoning_script, "VARIANT_DEFS", [
+        (STROKE, "Test Only Ischemic Stroke", dimension, None, "synthetic parent"),
+        (STROKE, "Test Only Embolic Stroke", dimension, "Test Only Ischemic Stroke", "synthetic child"),
+    ])
+
+    # Simulate the foreign manifest importer: it creates both rows as flat,
+    # unlinked rows carrying its own ownership tag.
+    foreign_ischemic = OntologyDiseaseVariant(
+        id=uuid.uuid4(), disease_id=stroke.id, parent_variant_id=None,
+        variant_name="Test Only Ischemic Stroke", normalized_name="test only ischemic stroke",
+        variant_dimension=dimension,
+        source_reference="neurologic_production_source_manifest_v1",
+    )
+    foreign_embolic = OntologyDiseaseVariant(
+        id=uuid.uuid4(), disease_id=stroke.id, parent_variant_id=None,
+        variant_name="Test Only Embolic Stroke", normalized_name="test only embolic stroke",
+        variant_dimension=dimension,
+        source_reference="neurologic_production_source_manifest_v1",
+    )
+    db_session.add(foreign_ischemic)
+    db_session.add(foreign_embolic)
+    db_session.commit()
+
+    reasoning_script.populate_variants(db_session, {STROKE: stroke})
+    db_session.commit()
+
+    try:
+        ischemic = _variant(db_session, stroke, dimension, "Test Only Ischemic Stroke")
+        embolic = _variant(db_session, stroke, dimension, "Test Only Embolic Stroke")
+        assert ischemic.id == foreign_ischemic.id
+        assert embolic.id == foreign_embolic.id
+        assert embolic.parent_variant_id == ischemic.id
+        assert ischemic.source_reference is None
+        assert embolic.source_reference is None
+    finally:
+        # This test's synthetic rows are not tenant-scoped and would
+        # otherwise leak into other tests' own_variant_count assertions
+        # (ontology tables are shared/not reset between tests). Clean up
+        # explicitly regardless of assertion outcome.
+        db_session.query(OntologyDiseaseVariant).filter(
+            OntologyDiseaseVariant.id.in_([foreign_ischemic.id, foreign_embolic.id])
+        ).delete(synchronize_session=False)
+        db_session.commit()
+
+
+def test_populate_variants_fails_explicitly_on_ambiguous_parent(db_session, monkeypatch):
+    """If a pre-existing variant already has a parent_variant_id that
+    conflicts with the authoritative hierarchy's expected parent, this must
+    fail loudly rather than silently overwrite or silently keep the wrong
+    parent."""
+    import scripts.complete_ontology_neurologic_clinical_reasoning as reasoning_script
+    from app.models.ontology_disease_blueprint import OntologyDiseaseVariant
+
+    _seed_base_diseases(db_session)
+    db_session.commit()
+    run_phase2_script(db_session)
+    db_session.commit()
+    stroke = db_session.query(OntologyDisease).filter_by(disease_name=STROKE).one()
+
+    dimension = "MECHANISM"
+    monkeypatch.setattr(reasoning_script, "VARIANT_DEFS", [
+        (STROKE, "Test Only Correct Parent Stroke", dimension, None, "synthetic correct parent"),
+        (STROKE, "Test Only Ambiguous Child Stroke", dimension, "Test Only Correct Parent Stroke", "synthetic child"),
+    ])
+
+    correct_parent = OntologyDiseaseVariant(
+        id=uuid.uuid4(), disease_id=stroke.id, parent_variant_id=None,
+        variant_name="Test Only Correct Parent Stroke", normalized_name="test only correct parent stroke",
+        variant_dimension=dimension,
+    )
+    decoy = OntologyDiseaseVariant(
+        id=uuid.uuid4(), disease_id=stroke.id, parent_variant_id=None,
+        variant_name="Test Only Decoy Stroke", normalized_name="test only decoy stroke",
+        variant_dimension=dimension,
+    )
+    db_session.add(correct_parent)
+    db_session.add(decoy)
+    db_session.flush()
+    conflicting_child = OntologyDiseaseVariant(
+        id=uuid.uuid4(), disease_id=stroke.id, parent_variant_id=decoy.id,
+        variant_name="Test Only Ambiguous Child Stroke", normalized_name="test only ambiguous child stroke",
+        variant_dimension=dimension,
+    )
+    db_session.add(conflicting_child)
+    db_session.commit()
+
+    try:
+        with pytest.raises(RuntimeError, match="conflicts with the authoritative hierarchy"):
+            reasoning_script.populate_variants(db_session, {STROKE: stroke})
+    finally:
+        # Not tenant-scoped; clean up explicitly so these synthetic rows
+        # don't leak into other tests' own_variant_count assertions.
+        db_session.rollback()
+        db_session.query(OntologyDiseaseVariant).filter(
+            OntologyDiseaseVariant.id.in_([correct_parent.id, decoy.id, conflicting_child.id])
+        ).delete(synchronize_session=False)
+        db_session.commit()
+
+
+def test_populate_variants_fails_explicitly_on_missing_required_parent(db_session, monkeypatch):
+    """If VARIANT_DEFS ordering is ever broken such that a child's parent
+    has not been processed yet, populate_variants must fail explicitly
+    instead of silently creating an orphaned root variant."""
+    import scripts.complete_ontology_neurologic_clinical_reasoning as reasoning_script
+
+    _seed_base_diseases(db_session)
+    db_session.commit()
+    run_phase2_script(db_session)
+    db_session.commit()
+    stroke = db_session.query(OntologyDisease).filter_by(disease_name=STROKE).one()
+
+    broken_defs = [
+        (STROKE, "Embolic Stroke", "MECHANISM", "Ischemic Stroke", "child before parent"),
+    ]
+    monkeypatch.setattr(reasoning_script, "VARIANT_DEFS", broken_defs)
+
+    with pytest.raises(RuntimeError, match="was not resolved"):
+        reasoning_script.populate_variants(db_session, {STROKE: stroke})
 
 
 def test_painful_muscle_spasm_exists_as_atomic_contracture_symptom(db_session, built_state):

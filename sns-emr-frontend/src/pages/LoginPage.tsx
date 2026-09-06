@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { isAgencySelectionRequired, login, type LoginAgencyOption } from "../api/auth";
 import { canAccessPath, getDefaultRoute } from "../utils/authorization";
+import BrandLogo from "../components/BrandLogo";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -83,17 +84,9 @@ export default function LoginPage() {
    >
      <Container maxWidth="sm" sx={{ position: "relative", zIndex: 1, maxWidth: 500 }}>
        <Box sx={{ width: "100%", display: "grid", gap: 2, justifyItems: "center" }}>
-         <Box
-           component="img"
-           src="/brand/sns-logo-dark.svg"
-           alt="SNS Hospice Solutions"
-           onError={(event) => {
-             const target = event.currentTarget as HTMLImageElement;
-             if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
-               target.src = "/brand/sns-logo-icon.svg";
-             }
-           }}
-           sx={{
+         <BrandLogo
+           variant="dark"
+           style={{
              width: "100%",
              maxWidth: 620,
              height: "auto",

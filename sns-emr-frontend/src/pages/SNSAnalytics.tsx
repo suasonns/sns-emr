@@ -27,6 +27,7 @@ import { listIdgSessions, type IDGSessionSummary } from "../api/idgWorkspace";
 import { getCurrentUser } from "../api/session";
 import { listStaff, type StaffRecord } from "../api/staff";
 import PortalShell from "../components/PortalShell";
+import BrandLogo from "../components/BrandLogo";
 import { canAccessBilling } from "../utils/featureAccess";
 import SNSNewReports from "./SNSNewReports";
 import TenantBillingOutcomes from "./TenantBillingOutcomes";
@@ -485,15 +486,8 @@ export function Navbar() {
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, backgroundColor: C.navy, padding: "12px 24px", minHeight: 80, boxSizing: "border-box" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <img
-            src="/brand/sns-logo-light.svg"
-            alt="SNS logo"
-            onError={(event) => {
-              const target = event.currentTarget as HTMLImageElement;
-              if (!target.src.endsWith("/brand/sns-logo-icon.svg")) {
-                target.src = "/brand/sns-logo-icon.svg";
-              }
-            }}
+          <BrandLogo
+            variant="light"
             style={{ width: 170, height: "auto", display: "block" }}
           />
         </div>

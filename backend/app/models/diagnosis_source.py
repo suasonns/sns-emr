@@ -42,6 +42,15 @@ class DiagnosisSource(Base):
 
     is_active = Column(Boolean, nullable=False, server_default="true", index=True)
 
+    # Canonical source-document provenance -- see PatientDiagnosis.source_document_id
+    # for the same contract. Nullable; points at the single existing
+    # Patient Chart -> Documents record (document_records.id).
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_records.id"),
+        nullable=True,
+    )
+
     created_at = Column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

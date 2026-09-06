@@ -236,6 +236,18 @@ class PatientDiagnosis(Base):
         nullable=True,
     )
 
+    # Canonical source-document provenance: the Patient Chart -> Documents
+    # record (document_records.id) this diagnosis was extracted from, when
+    # it originated from an uploaded document rather than direct clinician
+    # entry. Nullable -- most diagnoses are entered directly and have no
+    # source document. Never a second/duplicate document store; always
+    # points back to the single existing DocumentRecord.
+    source_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("document_records.id"),
+        nullable=True,
+    )
+
     # ---------------------------------------------------------
     # Physician-Signed Governing Document
     # ---------------------------------------------------------

@@ -11,6 +11,7 @@ export type OwnerTenantSummary = {
   status: string;
   ai_enabled: boolean;
   billing_enabled: boolean;
+  financials_enabled: boolean;
   created_at: string;
   user_count: number;
   patient_count: number;
@@ -34,6 +35,7 @@ export type CreateTenantResponse = {
   legal_name: string;
   display_name: string;
   billing_enabled: boolean;
+  financials_enabled: boolean;
   admin_user: { id: string; email: string; role: string };
 };
 
@@ -143,6 +145,178 @@ export function setOwnerTenantStatus(
   return request<{ tenant_id: string; status: TenantStatus }>(
     `/api/owner/tenants/${tenantId}/status`,
     { method: "PATCH", body: { status } }
+  );
+}
+
+export type OwnerTenantFinancialsPayload = {
+  financials_enabled: boolean;
+  billing_provider_organization_id?: string;
+  effective_start_at?: string;
+  effective_end_at?: string | null;
+  service_scopes?: BillingProviderServiceScopeGrant[];
+  change_reason?: string;
+};
+
+export type OwnerTenantFinancialsResponse = {
+  tenant_id: string;
+  financials_enabled: boolean;
+  current_assignment: {
+    assignment_id: string;
+    billing_provider_organization_id: string;
+    relationship_status: BillingProviderAssignmentStatus;
+    effective_start_at: string | null;
+    effective_end_at: string | null;
+    service_scopes: BillingProviderServiceScopeGrant[];
+  } | null;
+};
+
+export function setOwnerTenantFinancials(
+  tenantId: string,
+  payload: OwnerTenantFinancialsPayload
+): Promise<OwnerTenantFinancialsResponse> {
+  return request<OwnerTenantFinancialsResponse>(
+    `/api/owner/tenants/${tenantId}/financials`,
+    { method: "PATCH", body: payload }
+  );
+}
+
+export type BillingProviderOrganizationStatus = "ACTIVE" | "INACTIVE";
+
+export type BillingProviderOrganization = {
+  id: string;
+  name: string;
+  organization_type: string;
+  status: BillingProviderOrganizationStatus;
+  notes: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BillingProviderOrganizationPayload = {
+  name: string;
+  organization_type: string;
+  status: BillingProviderOrganizationStatus;
+  notes?: string;
+};
+
+export function fetchBillingProviderOrganizations(): Promise<{
+  organizations: BillingProviderOrganization[];
+}> {
+  return request<{ organizations: BillingProviderOrganization[] }>(
+    "/api/owner/billing-providers/organizations"
+  );
+}
+
+export function createBillingProviderOrganization(
+  payload: BillingProviderOrganizationPayload
+): Promise<BillingProviderOrganization> {
+  return request<BillingProviderOrganization>("/api/owner/billing-providers/organizations", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function updateBillingProviderOrganization(
+  organizationId: string,
+  payload: BillingProviderOrganizationPayload
+): Promise<BillingProviderOrganization> {
+  return request<BillingProviderOrganization>(
+    `/api/owner/billing-providers/organizations/${organizationId}`,
+    { method: "PATCH", body: payload }
+  );
+}
+
+export const BILLING_PROVIDER_SERVICE_SCOPES = [
+  "BILLING_READINESS",
+  "CLAIMS",
+  "NOE_TRACKING",
+  "ELIGIBILITY",
+  "AUTHORIZATION_TRACKING",
+  "PAYMENT_POSTING",
+  "PAYMENT_RECONCILIATION",
+  "FACILITY_COLLECTIONS",
+  "CREDIT_BALANCES",
+  "AGING_REPORT",
+  "DENIALS_APPEALS",
+  "EDI",
+  "BILLING_REPORTS",
+  "CAP_MONITORING",
+  "FINANCIAL_MONITORING",
+] as const;
+export const BILLING_PROVIDER_PERMISSION_LEVELS = ["VIEW", "EDIT"] as const;
+
+export type BillingProviderServiceScope = (typeof BILLING_PROVIDER_SERVICE_SCOPES)[number];
+export type BillingProviderPermissionLevel =
+  (typeof BILLING_PROVIDER_PERMISSION_LEVELS)[number];
+export type BillingProviderServiceScopeGrant = {
+  scope: BillingProviderServiceScope;
+  permission_level: BillingProviderPermissionLevel;
+};
+export type BillingProviderAssignmentStatus =
+  | "ACTIVE"
+  | "SUSPENDED"
+  | "TERMINATED"
+  | "PENDING";
+
+export type BillingProviderAssignment = {
+  id: string;
+  billing_provider_organization_id: string;
+  billing_provider_organization_name: string | null;
+  tenant_id: string;
+  tenant_display_name: string | null;
+  tenant_legal_name: string | null;
+  relationship_status: BillingProviderAssignmentStatus;
+  effective_start_at: string | null;
+  effective_end_at: string | null;
+  service_scope: BillingProviderServiceScopeGrant[];
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type BillingProviderAssignmentPayload = {
+  billing_provider_organization_id: string;
+  tenant_id: string;
+  relationship_status: BillingProviderAssignmentStatus;
+  effective_start_at: string;
+  effective_end_at?: string | null;
+  service_scope: BillingProviderServiceScopeGrant[];
+};
+
+export function fetchBillingProviderAssignments(params?: {
+  tenant_id?: string;
+  billing_provider_organization_id?: string;
+}): Promise<{ assignments: BillingProviderAssignment[] }> {
+  const qs = new URLSearchParams();
+  if (params?.tenant_id) qs.set("tenant_id", params.tenant_id);
+  if (params?.billing_provider_organization_id) {
+    qs.set("billing_provider_organization_id", params.billing_provider_organization_id);
+  }
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<{ assignments: BillingProviderAssignment[] }>(
+    `/api/owner/billing-providers/assignments${suffix}`
+  );
+}
+
+export function createBillingProviderAssignment(
+  payload: BillingProviderAssignmentPayload
+): Promise<BillingProviderAssignment> {
+  return request<BillingProviderAssignment>("/api/owner/billing-providers/assignments", {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function updateBillingProviderAssignment(
+  assignmentId: string,
+  payload: BillingProviderAssignmentPayload
+): Promise<BillingProviderAssignment> {
+  return request<BillingProviderAssignment>(
+    `/api/owner/billing-providers/assignments/${assignmentId}`,
+    { method: "PATCH", body: payload }
   );
 }
 
@@ -283,4 +457,95 @@ export type OwnerAdoptionHealthResponse = {
 
 export function fetchOwnerAdoptionHealth(): Promise<OwnerAdoptionHealthResponse> {
   return request<OwnerAdoptionHealthResponse>("/api/owner/adoption-health");
+}
+
+// ─── Billing & Licensing (Owner Portal) ──────────────────────────────
+// Backed by GET /api/owner/billing-licensing (see
+// backend/app/api/owner_billing_licensing.py). Returns real data once
+// subscription/invoice/payment rows exist for a tenant; otherwise
+// `data_available` is false and BillingLicensing.jsx renders an honest
+// "not available yet" state rather than fabricating figures.
+
+export type OwnerBillingKpis = {
+  total_monthly_revenue: number | null;
+  outstanding_invoice_count: number | null;
+  outstanding_invoice_total: number | null;
+  active_agencies: number | null;
+  licensed_agencies: number | null;
+  avg_revenue_per_agency: number | null;
+};
+
+export type OwnerBillingClientStatus = "PAID" | "OVERDUE" | "PENDING" | "TRIAL";
+
+export type OwnerBillingClient = {
+  tenant_id: string;
+  agency_name: string;
+  plan_type: string;
+  seats_used: number | null;
+  seats_licensed: number | null;
+  monthly_rate: number | null;
+  last_payment_date: string | null;
+  status: OwnerBillingClientStatus;
+  balance_due: number | null;
+};
+
+export type OwnerRevenueByAgency = {
+  tenant_id: string;
+  agency_name: string;
+  amount: number;
+  pct_of_top: number;
+};
+
+export type OwnerBillingPaymentStatus = "SUCCESS" | "PENDING" | "OVERDUE";
+
+export type OwnerRecentPayment = {
+  tenant_id: string;
+  agency_name: string;
+  occurred_at: string;
+  amount: number;
+  status: OwnerBillingPaymentStatus;
+};
+
+export type OwnerUpcomingOutstanding = {
+  tenant_id: string;
+  agency_name: string;
+  due_date: string;
+  amount: number;
+  status: "UPCOMING" | "OVERDUE";
+};
+
+export type OwnerLicenseAllocation = {
+  plan_label: string;
+  seats_used: number;
+  seats_total: number;
+};
+
+export type OwnerBillingLicensingResponse = {
+  kpis: OwnerBillingKpis;
+  clients: OwnerBillingClient[];
+  revenue_by_agency: OwnerRevenueByAgency[];
+  recent_payments: OwnerRecentPayment[];
+  upcoming_outstandings: OwnerUpcomingOutstanding[];
+  license_allocations: OwnerLicenseAllocation[];
+  total_seats_used: number | null;
+  total_seats_allocated: number | null;
+  data_available: boolean;
+  unavailable_reason: string | null;
+};
+
+export type OwnerBillingLicensingParams = {
+  tenantId?: string;
+  quarterStart?: string;
+  quarterEnd?: string;
+};
+
+export function fetchOwnerBillingLicensing(
+  params: OwnerBillingLicensingParams = {}
+): Promise<OwnerBillingLicensingResponse> {
+  const qs = new URLSearchParams();
+  if (params.tenantId) qs.set("tenant_id", params.tenantId);
+  if (params.quarterStart) qs.set("period_start", params.quarterStart);
+  if (params.quarterEnd) qs.set("period_end", params.quarterEnd);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return request<OwnerBillingLicensingResponse>(`/api/owner/billing-licensing${suffix}`);
 }

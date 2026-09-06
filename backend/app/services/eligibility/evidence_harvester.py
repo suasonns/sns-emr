@@ -43,6 +43,7 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         "fast_stage_rank": None,
         "fast_stage_at_or_beyond_7a": None,
         "nyha_class": None,
+        "ecog_score": None,
         "kps_or_pps_lt_70": None,
         "kps_or_pps_declining": None,
         "adl_dependency_count": None,
@@ -165,6 +166,16 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         ],
     )
     facts["nyha_class"] = _normalize_nyha_class(raw_nyha)
+
+    raw_ecog = _first_value(
+        sources,
+        [
+            "ecog",
+            "ecog_score",
+            "ecog_score_current",
+        ],
+    )
+    facts["ecog_score"] = _normalize_ecog_score(raw_ecog)
 
     if facts["kps"] is not None or facts["pps"] is not None:
         facts["kps_or_pps_lt_70"] = any(
@@ -929,6 +940,18 @@ def _normalize_nyha_class(value: Any) -> str | None:
     return normalized or None
 
 
+def _normalize_ecog_score(value: Any) -> int | None:
+    """ECOG performance status is an integer 0-5. Out-of-range values are
+    treated as a normalization failure (returns None) rather than silently
+    clamped, so the caller can distinguish MISSING from UNVERIFIED."""
+    number = _normalize_int(value)
+    if number is None:
+        return None
+    if number < 0 or number > 5:
+        return None
+    return number
+
+
 def _to_bool(value: Any) -> bool | None:
     if value is None:
         return None
@@ -943,6 +966,129 @@ def _to_bool(value: Any) -> bool | None:
         if normalized in {"false", "no", "n", "0", "absent", "negative", "off"}:
             return False
     return None
+
+
+# =========================================================
+# LEGACY COMPATIBILITY ADAPTER (superseded design note)
+# =========================================================
+#
+# harvest_clinical_facts() above remains the single source of truth for
+# legacy extraction logic; nothing here duplicates it. LegacyEvidenceAdapter
+# wraps its output into the typed ClinicalEvidenceBundle/ClinicalEvidenceItem
+# contracts for existing callers that only have an opaque, duck-typed
+# `patient` payload (dict / object with dict-like attributes) and no database
+# session.
+#
+# ARCHITECTURAL CORRECTION: an earlier version of this wrapper labeled every
+# present value DOCUMENTED. That is wrong -- a value read from an opaque
+# duck-typed payload with no database session cannot be traced to an
+# identifiable source record, author, or recording timestamp, so it must
+# never be conflated with a verified persisted clinical fact. This adapter
+# now labels present values UNVERIFIED (origin=LEGACY_ADAPTER) instead.
+# DOCUMENTED is reserved for the authoritative, database-backed
+# ClinicalEvidenceHarvester in app/services/eligibility/
+# clinical_evidence_harvester.py, which resolves evidence to real ORM
+# records with identifiable source_record_id/source_model/source_table.
+# ClinicalEvidenceItem.__post_init__ enforces this at construction time
+# (DOCUMENTED without origin=AUTHORITATIVE_DATABASE raises ValueError).
+
+from dataclasses import dataclass as _dataclass
+from datetime import datetime as _datetime, timezone as _timezone
+from typing import Optional as _Optional
+from uuid import UUID as _UUID
+
+from app.domain.clinical_runtime.contracts import (
+    ClinicalEvidenceBundle,
+    ClinicalEvidenceItem,
+    ClinicalSourceReference,
+    EvidenceOrigin,
+    EvidenceStatus,
+)
+
+
+@_dataclass(frozen=True)
+class PatientEvidenceContext:
+    """
+    Explicit typed input to LegacyEvidenceAdapter.harvest_legacy().
+
+    `patient` is the same opaque duck-typed payload harvest_clinical_facts()
+    already accepts (dict, or object exposing dict-like clinical-data
+    attributes). It is intentionally left untyped here (Any is not imported
+    to keep the boundary obvious) -- it is a legacy-shaped input being
+    adapted into the typed pipeline, not a new contract.
+    """
+
+    patient_id: _UUID
+    patient: Any
+    encounter_id: _Optional[str] = None
+    benefit_period_id: _Optional[_UUID] = None
+
+
+class LegacyEvidenceAdapter:
+    """
+    Typed wrapper around harvest_clinical_facts() producing a
+    ClinicalEvidenceBundle with origin=EvidenceOrigin.LEGACY_ADAPTER.
+
+    Guarantees:
+      - never returns an eligibility, prognosis, certification,
+        recertification, or discharge conclusion (this class only classifies
+        and packages facts; it draws no clinical conclusions)
+      - deterministic ordering (items sorted by concept_code)
+      - one evidence item per fact key (harvest_clinical_facts already
+        dedupes across its candidate sources internally)
+      - never labels a value DOCUMENTED -- an opaque duck-typed payload with
+        no database session has no identifiable source record, so present
+        values are UNVERIFIED and absent values are MISSING
+    """
+
+    def harvest_legacy(self, context: PatientEvidenceContext) -> ClinicalEvidenceBundle:
+        facts = harvest_clinical_facts(context.patient)
+        generated_at = _datetime.now(_timezone.utc)
+
+        items: list[ClinicalEvidenceItem] = []
+        for concept_code in sorted(facts.keys()):
+            normalized_value = facts[concept_code]
+            status = (
+                EvidenceStatus.UNVERIFIED
+                if normalized_value is not None
+                else EvidenceStatus.MISSING
+            )
+
+            source_reference = ClinicalSourceReference(
+                source_type="LEGACY_STRUCTURED_FIELD",
+                source_field=concept_code,
+            )
+
+            items.append(
+                ClinicalEvidenceItem(
+                    evidence_id=f"{context.patient_id}:{concept_code}:legacy",
+                    patient_id=context.patient_id,
+                    concept_code=concept_code,
+                    canonical_name=concept_code,
+                    status=status,
+                    source_reference=source_reference,
+                    encounter_id=context.encounter_id,
+                    benefit_period_id=context.benefit_period_id,
+                    observed_value=normalized_value,
+                    normalized_value=normalized_value,
+                    recorded_at=generated_at if normalized_value is not None else None,
+                    extraction_method="LEGACY_STRUCTURED_FIELD_LOOKUP",
+                    origin=EvidenceOrigin.LEGACY_ADAPTER,
+                    warnings=["LEGACY_UNATTRIBUTED: no identifiable source record"]
+                    if normalized_value is not None
+                    else [],
+                )
+            )
+
+        return ClinicalEvidenceBundle(
+            patient_id=context.patient_id,
+            items=items,
+            encounter_id=context.encounter_id,
+            benefit_period_id=context.benefit_period_id,
+            generated_at=generated_at,
+        )
+
+
 
 
 def _coalesce_bool(*values: Any) -> bool | None:
