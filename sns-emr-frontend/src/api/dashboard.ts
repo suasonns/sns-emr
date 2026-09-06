@@ -1179,6 +1179,7 @@ export function fetchFacilityCollectionsReport(
     aging_bucket?: string;
     service_period_start?: string;
     service_period_end?: string;
+    include_all_statuses?: boolean;
   }
 ): Promise<FacilityCollectionsReportResponse> {
   const search = new URLSearchParams();
@@ -1192,6 +1193,7 @@ export function fetchFacilityCollectionsReport(
   if (params?.aging_bucket) search.set("aging_bucket", params.aging_bucket);
   if (params?.service_period_start) search.set("service_period_start", params.service_period_start);
   if (params?.service_period_end) search.set("service_period_end", params.service_period_end);
+  if (params?.include_all_statuses) search.set("include_all_statuses", "true");
   const query = search.toString();
   const base = `/billing/facility-payments/collections-report${query ? `?${query}` : ""}`;
   return facilityFetch(withTenantId(base, tenantId));

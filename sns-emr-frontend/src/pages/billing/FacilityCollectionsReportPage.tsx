@@ -315,6 +315,7 @@ export default function FacilityCollectionsReportPage() {
   const [fundingSource, setFundingSource] = useState("");
   const [reconciliationStatus, setReconciliationStatus] = useState("");
   const [agingBucket, setAgingBucket] = useState("");
+  const [includeAllStatuses, setIncludeAllStatuses] = useState(false);
 
   const [selectedExpectationId, setSelectedExpectationId] = useState<string | null>(null);
   const [detail, setDetail] = useState<FacilityPaymentExpectationDetail | null>(null);
@@ -344,6 +345,14 @@ export default function FacilityCollectionsReportPage() {
     null
   );
 
+  // Reset the selection only on an actual context switch (agency/view mode),
+  // not on every report refresh. This is intentionally decoupled from the
+  // rows-fetch effect below.
+  useEffect(() => {
+    setSelectedExpectationId(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedAgencyId, viewMode]);
+
   useEffect(() => {
     if (viewMode === "single" && !selectedAgencyId) {
       setLoading(false);
@@ -361,20 +370,28 @@ export default function FacilityCollectionsReportPage() {
             funding_source: fundingSource || undefined,
             reconciliation_status: reconciliationStatus || undefined,
             aging_bucket: agingBucket || undefined,
+            include_all_statuses: includeAllStatuses || undefined,
           })
         : fetchFacilityCollectionsReport(selectedAgencyId, {
             responsibility_category: responsibilityCategory || undefined,
             funding_source: fundingSource || undefined,
             reconciliation_status: reconciliationStatus || undefined,
             aging_bucket: agingBucket || undefined,
+            include_all_statuses: includeAllStatuses || undefined,
           });
     request
       .then((res) => {
         if (!isMounted) return;
         setData(res);
-        if (selectedExpectationId && !res.rows.some((row) => row.expectation_id === selectedExpectationId)) {
-          setSelectedExpectationId(res.rows[0]?.expectation_id ?? null);
-        } else if (!selectedExpectationId && res.rows[0]) {
+        // Only default to the first row when nothing is selected yet. The
+        // report's rows only reflect currently-effective statuses by
+        // default (DRAFT/SUPERSEDED/CANCELLED are excluded from totals and
+        // rows), but an expectation the user explicitly selected — including
+        // one they just created as a DRAFT — must stay selected across
+        // reloads/filter changes. The detail panel fetches by ID directly,
+        // independent of this filtered row list, so a selection outside the
+        // current filter still renders correctly.
+        if (!selectedExpectationId && res.rows[0]) {
           setSelectedExpectationId(res.rows[0].expectation_id);
         }
       })
@@ -394,6 +411,7 @@ export default function FacilityCollectionsReportPage() {
     fundingSource,
     reconciliationStatus,
     agingBucket,
+    includeAllStatuses,
     reloadToken,
     selectedExpectationId,
   ]);
@@ -637,6 +655,17 @@ export default function FacilityCollectionsReportPage() {
               <MenuItem value="">All</MenuItem>
               {AGING_BUCKETS.map((value) => <MenuItem key={value} value={value}>{value} days</MenuItem>)}
             </TextField>
+            <FormControlLabel
+              sx={{ ml: 0 }}
+              control={
+                <Checkbox
+                  size="small"
+                  checked={includeAllStatuses}
+                  onChange={(e) => setIncludeAllStatuses(e.target.checked)}
+                />
+              }
+              label="Show drafts, superseded & cancelled (historical)"
+            />
           </Box>
 
           {loading ? (
