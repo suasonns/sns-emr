@@ -105,12 +105,49 @@ def test_fallback_summary_used_when_not_configured(monkeypatch):
 
     assert summary.ai_generated is False
     assert summary.model is None
-    assert "Jane Doe" in summary.overview
-    assert any("Adult failure to thrive" in item for item in summary.clinical_highlights)
-    assert any("visit" in item.lower() for item in summary.recent_activity)
-    assert any("HUV1" in item for item in summary.open_concerns)
-    assert any("OVERDUE_90" in item for item in summary.billing_concerns)
-    assert summary.follow_up
+    assert "Jane Doe" in summary.hospice_clinical_picture
+    assert any("Dementia" in item for item in summary.primary_hospice_drivers)
+    assert any("Adult failure to thrive" in item for item in summary.evidence_of_decline)
+    assert any("visit" in item.lower() for item in summary.recent_clinical_events)
+    assert any("HUV1" in item for item in summary.open_operational_concerns)
+    assert any("OVERDUE_90" in item for item in summary.open_operational_concerns)
+
+
+def test_hospice_diagnosis_prioritization_leads_with_driver_not_first_diagnosis():
+    """CHF (a hospice driver) must lead the narrative even when a
+    non-driver diagnosis (CKD/anemia) is labeled "primary" in the raw
+    chart data -- this is the exact Loren regression the prioritization
+    logic exists to prevent."""
+    context = {
+        "full_name": "Loren B Shields",
+        "primary_diagnosis": "Anemia due to CKD stage 3A",
+        "secondary_diagnoses": [
+            "Chronic systolic heart failure",
+            "Moderate protein calorie malnutrition",
+            "Right dominant hemiplegia/hemiparesis, late effect of stroke",
+            "Type 2 diabetes with peripheral neuropathy",
+            "Hyperlipidemia",
+        ],
+        "benefit_period": None,
+        "recent_visits": [],
+        "recent_notes": [],
+        "open_tasks": [],
+        "open_alerts": [],
+    }
+
+    summary = patient_ai_summary_service.generate_patient_ai_summary(context)
+
+    assert any("heart failure" in item.lower() for item in summary.primary_hospice_drivers)
+    assert any("malnutrition" in item.lower() for item in summary.evidence_of_decline)
+    assert any("hemiplegia" in item.lower() for item in summary.evidence_of_decline)
+    assert any("ckd" in item.lower() or "anemia" in item.lower() for item in summary.major_comorbidities)
+
+    picture = summary.hospice_clinical_picture.lower()
+    driver_index = picture.find("heart failure")
+    ckd_index = picture.find("ckd")
+    assert driver_index != -1
+    # CHF (hospice driver) must appear before CKD in the narrative, not after.
+    assert ckd_index == -1 or driver_index < ckd_index
 
 
 def test_fallback_summary_never_raises_on_empty_context(monkeypatch):
@@ -119,12 +156,13 @@ def test_fallback_summary_never_raises_on_empty_context(monkeypatch):
     summary = patient_ai_summary_service.generate_patient_ai_summary({})
 
     assert summary.ai_generated is False
-    assert summary.overview
-    assert summary.clinical_highlights == ()
-    assert summary.recent_activity == ()
-    assert summary.open_concerns == ()
-    assert summary.billing_concerns == ()
-    assert summary.follow_up
+    assert summary.hospice_clinical_picture
+    assert summary.primary_hospice_drivers == ()
+    assert summary.evidence_of_decline == ()
+    assert summary.major_comorbidities == ()
+    assert summary.recent_clinical_events == ()
+    assert summary.clinical_risks
+    assert summary.open_operational_concerns
 
 
 def test_ai_path_used_when_configured_and_call_succeeds(monkeypatch):
@@ -135,12 +173,13 @@ def test_ai_path_used_when_configured_and_call_succeeds(monkeypatch):
 
     def fake_call(context, config):
         return patient_ai_summary_service.PatientAiSummary(
-            overview="AI-generated overview.",
-            clinical_highlights=("AI highlight",),
-            recent_activity=("AI activity",),
-            open_concerns=("AI concern",),
-            billing_concerns=(),
-            follow_up=("AI follow-up",),
+            hospice_clinical_picture="AI-generated hospice clinical picture.",
+            primary_hospice_drivers=("AI driver",),
+            evidence_of_decline=("AI decline evidence",),
+            major_comorbidities=("AI comorbidity",),
+            recent_clinical_events=("AI event",),
+            clinical_risks=(),
+            open_operational_concerns=("AI concern",),
             generated_at=datetime.now(timezone.utc).isoformat(),
             model=config["deployment"],
             ai_generated=True,
@@ -152,7 +191,7 @@ def test_ai_path_used_when_configured_and_call_succeeds(monkeypatch):
 
     assert summary.ai_generated is True
     assert summary.model == "test-deployment"
-    assert summary.overview == "AI-generated overview."
+    assert summary.hospice_clinical_picture == "AI-generated hospice clinical picture."
 
 
 def test_ai_path_falls_back_when_call_fails(monkeypatch):
@@ -169,7 +208,7 @@ def test_ai_path_falls_back_when_call_fails(monkeypatch):
     summary = patient_ai_summary_service.generate_patient_ai_summary({"full_name": "Jane Doe"})
 
     assert summary.ai_generated is False
-    assert "Jane Doe" in summary.overview
+    assert "Jane Doe" in summary.hospice_clinical_picture
 
 
 # ---------------------------------------------------------------------
@@ -198,10 +237,10 @@ def test_patient_ai_summary_endpoint_returns_gathered_facts(client, db_session, 
     assert body["patient"]["id"] == str(patient.id)
     assert body["ai_generated"] is False
     assert body["model"] is None
-    assert "Jane Doe" in body["overview"]
-    assert "recent_activity" in body
-    assert any("HUV1" in item for item in body["open_concerns"])
-    assert any("OVERDUE_90" in item for item in body["billing_concerns"])
+    assert "Jane Doe" in body["hospice_clinical_picture"]
+    assert "recent_clinical_events" in body
+    assert any("HUV1" in item for item in body["open_operational_concerns"])
+    assert any("OVERDUE_90" in item for item in body["open_operational_concerns"])
     assert body["generated_at"]
 
 

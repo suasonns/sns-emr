@@ -469,7 +469,7 @@ const PatientChart = () => {
         {aiSummary && (
           <>
             <div style={{ ...boardCard, marginBottom: 10 }}>
-              <div style={boardHeader}>Patient Overview</div>
+              <div style={boardHeader}>Hospice Clinical Picture</div>
               <div
                 style={{
                   color: colors.muted, fontSize: 11, fontStyle: 'italic', lineHeight: 1.4,
@@ -479,18 +479,19 @@ const PatientChart = () => {
               >
                 AI Generated Summary. Review source documentation before making clinical, operational, or billing decisions.
               </div>
-              <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.5 }}>{aiSummary.overview}</div>
+              <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.5 }}>{aiSummary.hospice_clinical_picture}</div>
               <div style={{ color: colors.muted, fontSize: 10.5, marginTop: 8 }}>
                 {aiSummary.ai_generated ? `AI-generated (${aiSummary.model || 'model unavailable'})` : 'Generated from current chart data'}
                 {aiSummary.generated_at ? ` • ${new Date(aiSummary.generated_at).toLocaleString()}` : ''}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
-              {renderList('Clinical Highlights', aiSummary.clinical_highlights)}
-              {renderList('Recent Activity', aiSummary.recent_activity)}
-              {renderList('Open Clinical Concerns', aiSummary.open_concerns)}
-              {renderList('Billing Concerns', aiSummary.billing_concerns)}
-              {renderList('Follow-Up Topics', aiSummary.follow_up)}
+              {renderList('Primary Hospice Drivers', aiSummary.primary_hospice_drivers)}
+              {renderList('Evidence of Decline', aiSummary.evidence_of_decline)}
+              {renderList('Major Comorbidities', aiSummary.major_comorbidities)}
+              {renderList('Recent Clinical Events', aiSummary.recent_clinical_events)}
+              {renderList('Clinical Risks', aiSummary.clinical_risks)}
+              {renderList('Open Operational Concerns', aiSummary.open_operational_concerns)}
             </div>
           </>
         )}
