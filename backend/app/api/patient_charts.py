@@ -288,8 +288,16 @@ def _gather_patient_ai_summary_context(db: Session, patient: Patient) -> dict:
             PatientDiagnosis.patient_id == patient.id,
             PatientDiagnosis.diagnosis_type.in_(["SECONDARY", "COMORBIDITY"]),
         )
-        .order_by(PatientDiagnosis.created_at.desc())
-        .limit(8)
+        # Diagnoses imported together (e.g. from a bulk chart/document import)
+        # commonly share one identical created_at timestamp, which made a bare
+        # `ORDER BY created_at DESC` non-deterministic and, combined with a
+        # small LIMIT, could silently drop clinically significant diagnoses
+        # (observed: chronic systolic heart failure omitted for a patient with
+        # 23 secondary diagnoses imported in a single batch). Add `id` as a
+        # stable tiebreaker and raise the cap well above any real chart's
+        # secondary-diagnosis count so nothing is arbitrarily excluded.
+        .order_by(PatientDiagnosis.created_at.desc(), PatientDiagnosis.id.desc())
+        .limit(25)
         .all()
     )
     secondary_diagnoses = [
