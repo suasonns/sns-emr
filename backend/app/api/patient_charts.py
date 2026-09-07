@@ -8,10 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
+from app.billing.models.facility_collection_alert import (
+    FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES,
+    FacilityCollectionAlert,
+)
 from app.core.database import get_db
 from app.core.patient_access import get_authorized_patient
 from app.core.security import CurrentUser, get_current_user
+from app.models.benefit_period import BenefitPeriod
 from app.models.patient import Patient
+from app.models.patient_diagnosis import PatientDiagnosis
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.certification import Certification
 from app.models.f2f_encounter import F2FEncounter
@@ -25,6 +31,7 @@ from app.services.bereavement_aggregation_engine import (
     BereavementNoteInput,
 )
 from app.services.eligibility.engine import evaluate_hospice_eligibility
+from app.services.patient_ai_summary_service import generate_patient_ai_summary
 from app.services.patient_assignment_service import list_patient_assignments
 from app.services.physician_sync_service import ATTENDING, get_physician_assignments
 
@@ -253,6 +260,167 @@ def get_patient_chart_summary(
         },
         "compliance_summary": get_patient_compliance(patient_id, db, user),
         "volunteer_summary": get_patient_volunteer_schedule(patient_id, db, user),
+    }
+
+
+def _gather_patient_ai_summary_context(db: Session, patient: Patient) -> dict:
+    """Collects the small, already-existing set of chart facts the AI
+    Patient Summary is grounded in -- diagnosis, current benefit period,
+    recent visits, recent notes (metadata only), open tasks, and open
+    billing alerts. Read-only: no new tables, no new queries beyond what
+    the rest of this router already does elsewhere for these same facts.
+    """
+    face_sheet = _latest_facesheet(db, patient)
+
+    primary_dx_row = (
+        db.query(PatientDiagnosis)
+        .filter(PatientDiagnosis.patient_id == patient.id, PatientDiagnosis.diagnosis_type == "PRIMARY")
+        .order_by(PatientDiagnosis.created_at.desc())
+        .first()
+    )
+    primary_diagnosis = (
+        (primary_dx_row.display_name or primary_dx_row.diagnosis_description) if primary_dx_row else None
+    ) or patient.primary_diagnosis
+
+    secondary_rows = (
+        db.query(PatientDiagnosis)
+        .filter(
+            PatientDiagnosis.patient_id == patient.id,
+            PatientDiagnosis.diagnosis_type.in_(["SECONDARY", "COMORBIDITY"]),
+        )
+        .order_by(PatientDiagnosis.created_at.desc())
+        .limit(8)
+        .all()
+    )
+    secondary_diagnoses = [
+        (row.display_name or row.diagnosis_description or "").strip()
+        for row in secondary_rows
+        if (row.display_name or row.diagnosis_description)
+    ]
+    if not secondary_diagnoses and face_sheet and face_sheet.secondary_diagnoses:
+        secondary_diagnoses = [
+            part.strip() for part in face_sheet.secondary_diagnoses.split(";") if part.strip()
+        ]
+
+    current_benefit_period = (
+        db.query(BenefitPeriod)
+        .filter(BenefitPeriod.patient_id == patient.id, BenefitPeriod.is_current.is_(True))
+        .order_by(BenefitPeriod.period_number.desc())
+        .first()
+    )
+    benefit_period = (
+        {
+            "benefit_type": current_benefit_period.benefit_type,
+            "period_number": current_benefit_period.period_number,
+            "start_date": _serialize_date(current_benefit_period.start_date),
+            "end_date": _serialize_date(current_benefit_period.end_date),
+        }
+        if current_benefit_period
+        else None
+    )
+
+    visit_rows = _load_visit_rows(db, patient.id, limit=5, ascending=False)
+    recent_visits = [
+        {
+            "visit_datetime": _serialize_datetime(visit["visit_datetime"]),
+            "visit_type": visit["visit_type"],
+            "discipline": visit["visit_discipline"],
+            "status": visit["status"],
+        }
+        for visit in visit_rows
+    ]
+
+    note_rows = (
+        db.query(ClinicalNote)
+        .filter(ClinicalNote.patient_id == patient.id)
+        .order_by(ClinicalNote.encounter_date.desc(), ClinicalNote.created_at.desc())
+        .limit(5)
+        .all()
+    )
+    recent_notes = [
+        {
+            "note_type": note.note_type,
+            "discipline": note.discipline,
+            "encounter_date": _serialize_date(note.encounter_date),
+            "status": note.status,
+        }
+        for note in note_rows
+    ]
+
+    task_rows = (
+        db.query(Task)
+        .filter(
+            Task.patient_id == patient.id,
+            Task.status.notin_([TaskStatus.COMPLETED, TaskStatus.WAIVED]),
+        )
+        .order_by(Task.due_date.asc().nullslast())
+        .limit(10)
+        .all()
+    )
+    open_tasks = [
+        {
+            "task_type": _enum_value(task.task_type),
+            "status": _enum_value(task.status),
+            "priority": task.priority,
+            "due_date": _serialize_date(task.due_date),
+        }
+        for task in task_rows
+    ]
+
+    alert_rows = (
+        db.query(FacilityCollectionAlert)
+        .filter(
+            FacilityCollectionAlert.patient_id == patient.id,
+            FacilityCollectionAlert.status.in_(FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES),
+        )
+        .order_by(FacilityCollectionAlert.created_at.desc())
+        .limit(10)
+        .all()
+    )
+    open_alerts = [
+        {
+            "alert_type": alert.alert_type,
+            "severity": alert.severity,
+            "status": alert.status,
+            "outstanding_amount": float(alert.outstanding_amount) if alert.outstanding_amount is not None else None,
+            "days_outstanding": alert.days_outstanding,
+        }
+        for alert in alert_rows
+    ]
+
+    return {
+        "full_name": _patient_full_name(db, patient),
+        "primary_diagnosis": primary_diagnosis,
+        "secondary_diagnoses": secondary_diagnoses,
+        "benefit_period": benefit_period,
+        "recent_visits": recent_visits,
+        "recent_notes": recent_notes,
+        "open_tasks": open_tasks,
+        "open_alerts": open_alerts,
+    }
+
+
+@router.get("/{patient_id}/ai-summary")
+def get_patient_ai_summary(
+    patient_id: UUID,
+    db: Session = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    """AI Patient Summary (Priority 3 small AI feature): a short,
+    discussion-ready overview generated from already-verified chart facts.
+    Read-only -- nothing here is persisted or fed back into the chart.
+    """
+    patient = _load_patient(db, patient_id, user)
+    context = _gather_patient_ai_summary_context(db, patient)
+    summary = generate_patient_ai_summary(context)
+
+    return {
+        "patient": {
+            "id": str(patient.id),
+            "mrn": patient.mrn,
+            "full_name": context["full_name"],
+        },
+        **summary.to_dict(),
     }
 
 

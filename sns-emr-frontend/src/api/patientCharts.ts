@@ -335,3 +335,30 @@ export async function finalizePatientDischarge(
   const response = await api.post(`/patients/${patientId}/discharge/finalize`, payload);
   return response.data;
 }
+
+// ---------------------------------------------------------------------
+// AI Patient Summary (Priority 3 small AI feature): read-only,
+// discussion-ready overview generated from already-verified chart facts.
+// Nothing here is persisted or written back to the chart.
+// ---------------------------------------------------------------------
+
+export type PatientAiSummaryResponse = {
+  patient: {
+    id: string;
+    mrn: string;
+    full_name: string;
+  };
+  overview: string;
+  clinical_highlights: string[];
+  open_concerns: string[];
+  billing_concerns: string[];
+  follow_up: string[];
+  generated_at: string;
+  model: string | null;
+  ai_generated: boolean;
+};
+
+export async function fetchPatientAiSummary(patientId: string) {
+  const response = await api.get<PatientAiSummaryResponse>(`/patient-charts/${patientId}/ai-summary`);
+  return response.data;
+}
