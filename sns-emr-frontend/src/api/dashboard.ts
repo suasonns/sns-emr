@@ -357,6 +357,14 @@ async function facilityPost<T>(url: string, body: unknown): Promise<T> {
   });
 }
 
+async function facilityPut<T>(url: string, body: unknown): Promise<T> {
+  return facilityFetch<T>(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 // =========================================================
 // DASHBOARD CALLS
 // =========================================================
@@ -1213,12 +1221,44 @@ export type FacilityCollectionAlert = {
   days_outstanding: number | null;
   status: string;
   assigned_to: string | null;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+  snoozed_until: string | null;
+  dismissal_reason_code: string | null;
   resolution_evidence: string | null;
   resolved_by: string | null;
   resolved_at: string | null;
   created_at: string | null;
   updated_at: string | null;
 };
+
+// Statuses/severities/alert types/snooze presets/dismissal reason codes
+// mirror the enums enforced server-side in
+// app/billing/models/facility_collection_alert.py -- kept here only for
+// display/filtering convenience, not re-validated client-side.
+export const ALERT_STATUSES = [
+  "OPEN",
+  "ACKNOWLEDGED",
+  "IN_PROGRESS",
+  "SNOOZED",
+  "DISMISSED",
+  "RESOLVED",
+  "AUTO_RESOLVED",
+  "SUPPRESSED",
+  "EXPIRED",
+] as const;
+
+export const ALERT_SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
+
+export const ALERT_SNOOZE_PRESETS = ["24_HOURS", "3_DAYS", "7_DAYS", "14_DAYS", "30_DAYS"] as const;
+
+export const ALERT_DISMISSAL_REASON_CODES = [
+  "FALSE_POSITIVE",
+  "DUPLICATE_ALERT",
+  "KNOWN_EXCEPTION",
+  "BUSINESS_APPROVED",
+  "OTHER",
+] as const;
 
 export function fetchFacilityCollectionAlerts(
   tenantId?: string | null,
@@ -1238,6 +1278,95 @@ export function resolveFacilityCollectionAlert(
   return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/resolve`, {
     resolution_evidence: resolutionEvidence,
   });
+}
+
+export function acknowledgeAlert(alertId: string): Promise<FacilityCollectionAlert> {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/acknowledge`, {});
+}
+
+export function startAlertProgress(alertId: string): Promise<FacilityCollectionAlert> {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/start-progress`, {});
+}
+
+export function snoozeAlert(
+  alertId: string,
+  preset: string,
+  note?: string
+): Promise<FacilityCollectionAlert> {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/snooze`, {
+    preset,
+    note: note || undefined,
+  });
+}
+
+export function dismissAlert(
+  alertId: string,
+  reasonCode: string,
+  comment?: string
+): Promise<FacilityCollectionAlert> {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/dismiss`, {
+    reason_code: reasonCode,
+    comment: comment || undefined,
+  });
+}
+
+export function reassignAlert(
+  alertId: string,
+  assignedTo: string | null,
+  note: string
+): Promise<FacilityCollectionAlert> {
+  return facilityPost<FacilityCollectionAlert>(`/billing/facility-payments/alerts/${alertId}/reassign`, {
+    assigned_to: assignedTo,
+    note,
+  });
+}
+
+export type FacilityCollectionAlertHistoryItem = {
+  id: string;
+  field_name: string | null;
+  previous_value: string | null;
+  new_value: string | null;
+  user_id: string | null;
+  role: string | null;
+  reason: string | null;
+  supporting_reference: string | null;
+  created_at: string | null;
+};
+
+export function fetchAlertHistory(
+  alertId: string
+): Promise<{ alert_id: string; items: FacilityCollectionAlertHistoryItem[] }> {
+  return facilityFetch(`/billing/facility-payments/alerts/${alertId}/history`);
+}
+
+export type FacilityCollectionAlertThreshold = {
+  id: string | null;
+  tenant_id: string;
+  alert_type: string;
+  enabled: boolean;
+  threshold_amount: string | null;
+  threshold_days: number | null;
+  is_default: boolean;
+};
+
+export function fetchAlertThresholds(
+  tenantId?: string | null
+): Promise<{ items: FacilityCollectionAlertThreshold[] }> {
+  return facilityFetch(withTenantId("/billing/facility-payments/alert-thresholds", tenantId));
+}
+
+export function updateAlertThreshold(
+  alertType: string,
+  update: {
+    enabled: boolean;
+    threshold_amount?: string | null;
+    threshold_days?: number | null;
+    justification?: string | null;
+  },
+  tenantId?: string | null
+): Promise<FacilityCollectionAlertThreshold> {
+  const base = `/billing/facility-payments/alert-thresholds/${encodeURIComponent(alertType)}`;
+  return facilityPut<FacilityCollectionAlertThreshold>(withTenantId(base, tenantId), update);
 }
 
 export type BillingReadinessPatientRow = {

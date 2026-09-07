@@ -1468,6 +1468,47 @@ def test_alert_reassign_requires_note(client, db_session, billing_enabled_tenant
     assert with_note.json()["assigned_to"] == str(TEST_USER_ID)
 
 
+def test_alert_history_returns_audit_entries_for_transitions(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV27")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    headers = _headers("BILLING", billing_enabled_tenant)
+
+    client.post(f"/billing/facility-payments/alerts/{alert.id}/acknowledge", headers=headers)
+    client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/reassign",
+        json={"assigned_to": str(TEST_USER_ID), "note": "Assigning to self."},
+        headers=headers,
+    )
+
+    history = client.get(f"/billing/facility-payments/alerts/{alert.id}/history", headers=headers)
+    assert history.status_code == 200, history.text
+    body = history.json()
+    assert body["alert_id"] == str(alert.id)
+    field_names = [item["field_name"] for item in body["items"]]
+    assert "status" in field_names
+    assert "assigned_to" in field_names
+    reassignment_entry = next(item for item in body["items"] if item["field_name"] == "assigned_to")
+    assert reassignment_entry["new_value"] == str(TEST_USER_ID)
+    assert reassignment_entry["reason"] == "Assigning to self."
+
+
+def test_alert_history_excludes_other_tenants_alerts(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV28")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    other_tenant_headers = _headers("BILLING", uuid.uuid4())
+
+    history = client.get(
+        f"/billing/facility-payments/alerts/{alert.id}/history", headers=other_tenant_headers
+    )
+    assert history.status_code == 404
+
+
 def test_reopen_due_snoozed_alerts_returns_alert_to_open(db_session, billing_enabled_tenant):
     _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV22")
     alerts = facility_payment_service.evaluate_alerts_for_expectation(
