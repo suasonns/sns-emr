@@ -36,6 +36,8 @@ import CapCalculationPage from "./pages/billing/CapCalculationPage";
 import AgingReportPage from "./pages/billing/AgingReportPage";
 import CreditBalanceReportPage from "./pages/billing/CreditBalanceReportPage";
 import FacilityCollectionsReportPage from "./pages/billing/FacilityCollectionsReportPage";
+import AlertInboxPage from "./pages/billing/AlertInboxPage";
+import AlertThresholdsPage from "./pages/billing/AlertThresholdsPage";
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
@@ -91,6 +93,8 @@ export default function App() {
           <Route path="aging-report" element={<AgingReportPage />} />
           <Route path="credit-balance-report" element={<CreditBalanceReportPage />} />
           <Route path="facility-collections" element={<FacilityCollectionsReportPage />} />
+          <Route path="alerts" element={<AlertInboxPage />} />
+          <Route path="alert-thresholds" element={<AlertThresholdsPage />} />
           <Route path="reports" element={<ReportsPage />} />
         </Route>
         <Route path="/analytics" element={<RequireRoleAccess access="analytics"><SNSAnalytics /></RequireRoleAccess>} />

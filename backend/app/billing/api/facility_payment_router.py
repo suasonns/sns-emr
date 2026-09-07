@@ -996,6 +996,42 @@ def reassign_alert(
     return _alert_to_dict(alert)
 
 
+@router.get("/alerts/{alert_id}/history")
+def get_alert_history(
+    alert_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    alert = _get_alert_for_user(db, user, alert_id, required_permission_level="VIEW")
+    audit_rows = (
+        db.query(FacilityPaymentAuditLog)
+        .filter(
+            FacilityPaymentAuditLog.tenant_id == alert.tenant_id,
+            FacilityPaymentAuditLog.entity_type == "ALERT",
+            FacilityPaymentAuditLog.entity_id == alert.id,
+        )
+        .order_by(FacilityPaymentAuditLog.created_at.desc())
+        .all()
+    )
+    return {
+        "alert_id": str(alert.id),
+        "items": [
+            {
+                "id": str(row.id),
+                "field_name": row.field_name,
+                "previous_value": row.previous_value,
+                "new_value": row.new_value,
+                "user_id": str(row.user_id) if row.user_id else None,
+                "role": row.role,
+                "reason": row.reason,
+                "supporting_reference": row.supporting_reference,
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            for row in audit_rows[:50]
+        ],
+    }
+
+
 @router.get("/alert-thresholds")
 def get_alert_thresholds(
     tenant_id: UUID | None = Query(None, description="Agency tenant to view."),
