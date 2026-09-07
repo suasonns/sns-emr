@@ -350,6 +350,7 @@ export type PatientAiSummaryResponse = {
   };
   overview: string;
   clinical_highlights: string[];
+  recent_activity: string[];
   open_concerns: string[];
   billing_concerns: string[];
   follow_up: string[];

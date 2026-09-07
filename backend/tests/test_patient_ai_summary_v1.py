@@ -107,6 +107,7 @@ def test_fallback_summary_used_when_not_configured(monkeypatch):
     assert summary.model is None
     assert "Jane Doe" in summary.overview
     assert any("Adult failure to thrive" in item for item in summary.clinical_highlights)
+    assert any("visit" in item.lower() for item in summary.recent_activity)
     assert any("HUV1" in item for item in summary.open_concerns)
     assert any("OVERDUE_90" in item for item in summary.billing_concerns)
     assert summary.follow_up
@@ -120,6 +121,7 @@ def test_fallback_summary_never_raises_on_empty_context(monkeypatch):
     assert summary.ai_generated is False
     assert summary.overview
     assert summary.clinical_highlights == ()
+    assert summary.recent_activity == ()
     assert summary.open_concerns == ()
     assert summary.billing_concerns == ()
     assert summary.follow_up
@@ -135,6 +137,7 @@ def test_ai_path_used_when_configured_and_call_succeeds(monkeypatch):
         return patient_ai_summary_service.PatientAiSummary(
             overview="AI-generated overview.",
             clinical_highlights=("AI highlight",),
+            recent_activity=("AI activity",),
             open_concerns=("AI concern",),
             billing_concerns=(),
             follow_up=("AI follow-up",),
@@ -196,6 +199,7 @@ def test_patient_ai_summary_endpoint_returns_gathered_facts(client, db_session, 
     assert body["ai_generated"] is False
     assert body["model"] is None
     assert "Jane Doe" in body["overview"]
+    assert "recent_activity" in body
     assert any("HUV1" in item for item in body["open_concerns"])
     assert any("OVERDUE_90" in item for item in body["billing_concerns"])
     assert body["generated_at"]

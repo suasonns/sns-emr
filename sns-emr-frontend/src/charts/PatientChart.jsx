@@ -470,6 +470,15 @@ const PatientChart = () => {
           <>
             <div style={{ ...boardCard, marginBottom: 10 }}>
               <div style={boardHeader}>Patient Overview</div>
+              <div
+                style={{
+                  color: colors.muted, fontSize: 11, fontStyle: 'italic', lineHeight: 1.4,
+                  marginBottom: 8, padding: '6px 8px', borderRadius: 6,
+                  backgroundColor: mode === 'light' ? '#f9edd7' : '#f59e0b15', border: `1px solid ${colors.border}`,
+                }}
+              >
+                AI Generated Summary. Review source documentation before making clinical, operational, or billing decisions.
+              </div>
               <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.5 }}>{aiSummary.overview}</div>
               <div style={{ color: colors.muted, fontSize: 10.5, marginTop: 8 }}>
                 {aiSummary.ai_generated ? `AI-generated (${aiSummary.model || 'model unavailable'})` : 'Generated from current chart data'}
@@ -478,9 +487,10 @@ const PatientChart = () => {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
               {renderList('Clinical Highlights', aiSummary.clinical_highlights)}
-              {renderList('Open Concerns', aiSummary.open_concerns)}
+              {renderList('Recent Activity', aiSummary.recent_activity)}
+              {renderList('Open Clinical Concerns', aiSummary.open_concerns)}
               {renderList('Billing Concerns', aiSummary.billing_concerns)}
-              {renderList('Areas For Follow-Up', aiSummary.follow_up)}
+              {renderList('Follow-Up Topics', aiSummary.follow_up)}
             </div>
           </>
         )}

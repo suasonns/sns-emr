@@ -43,6 +43,7 @@ DEFAULT_TIMEOUT_SECONDS = 20.0
 _SECTION_KEYS = (
     "overview",
     "clinical_highlights",
+    "recent_activity",
     "open_concerns",
     "billing_concerns",
     "follow_up",
@@ -53,6 +54,7 @@ _SECTION_KEYS = (
 class PatientAiSummary:
     overview: str
     clinical_highlights: tuple[str, ...] = field(default_factory=tuple)
+    recent_activity: tuple[str, ...] = field(default_factory=tuple)
     open_concerns: tuple[str, ...] = field(default_factory=tuple)
     billing_concerns: tuple[str, ...] = field(default_factory=tuple)
     follow_up: tuple[str, ...] = field(default_factory=tuple)
@@ -64,6 +66,7 @@ class PatientAiSummary:
         return {
             "overview": self.overview,
             "clinical_highlights": list(self.clinical_highlights),
+            "recent_activity": list(self.recent_activity),
             "open_concerns": list(self.open_concerns),
             "billing_concerns": list(self.billing_concerns),
             "follow_up": list(self.follow_up),
@@ -111,8 +114,8 @@ short phrases or short sentences, not clinical documentation prose.
 
 Respond ONLY with JSON of the exact shape:
 {"overview": "<1-2 sentence plain-language overview>", "clinical_highlights": ["<short phrase>", ...], \
-"open_concerns": ["<short phrase>", ...], "billing_concerns": ["<short phrase>", ...], \
-"follow_up": ["<short phrase>", ...]}
+"recent_activity": ["<short phrase>", ...], "open_concerns": ["<short phrase>", ...], \
+"billing_concerns": ["<short phrase>", ...], "follow_up": ["<short phrase>", ...]}
 """
 
 
@@ -139,15 +142,17 @@ def _fallback_summary(context: dict[str, Any]) -> PatientAiSummary:
         clinical_highlights.append(f"Primary diagnosis: {primary_dx}")
     for dx in context.get("secondary_diagnoses") or []:
         clinical_highlights.append(f"Secondary diagnosis: {dx}")
+
+    recent_activity: list[str] = []
     visits = context.get("recent_visits") or []
     if visits:
         latest = visits[0]
-        clinical_highlights.append(
+        recent_activity.append(
             f"Most recent visit: {latest.get('visit_type') or 'visit'} on {latest.get('visit_datetime') or 'unknown date'}"
         )
     notes = context.get("recent_notes") or []
     if notes:
-        clinical_highlights.append(f"{len(notes)} recent note(s) on file")
+        recent_activity.append(f"{len(notes)} recent note(s) on file")
 
     open_concerns: list[str] = []
     for task in context.get("open_tasks") or []:
@@ -178,6 +183,7 @@ def _fallback_summary(context: dict[str, Any]) -> PatientAiSummary:
     return PatientAiSummary(
         overview=overview,
         clinical_highlights=tuple(clinical_highlights),
+        recent_activity=tuple(recent_activity),
         open_concerns=tuple(open_concerns),
         billing_concerns=tuple(billing_concerns),
         follow_up=tuple(follow_up),
@@ -232,6 +238,7 @@ def _call_azure_openai(context: dict[str, Any], config: dict[str, str]) -> Patie
     return PatientAiSummary(
         overview=overview,
         clinical_highlights=_string_list("clinical_highlights"),
+        recent_activity=_string_list("recent_activity"),
         open_concerns=_string_list("open_concerns"),
         billing_concerns=_string_list("billing_concerns"),
         follow_up=_string_list("follow_up"),
