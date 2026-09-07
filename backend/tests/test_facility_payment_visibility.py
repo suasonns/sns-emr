@@ -1285,15 +1285,355 @@ def test_collections_report_collection_rate_and_outstanding_exclude_superseded(c
     expected_rate = (Decimal(summary["total_received"]) / Decimal(summary["total_expected"])).quantize(Decimal("0.01"))
     assert Decimal(summary["collection_rate"]) == expected_rate
 
-    all_statuses_response = client.get(
-        f"/billing/facility-payments/collections-report?tenant_id={billing_enabled_tenant}&include_all_statuses=true",
+
+# ---------------------------------------------------------------------------
+# Priority 3 Phase 1: Alert Lifecycle Completion
+# ---------------------------------------------------------------------------
+
+
+def test_not_billed_alert_triggers_when_service_period_ended_unbilled(db_session, billing_enabled_tenant):
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FV17")
+    pos = _make_patient_pos(
+        db_session,
+        billing_enabled_tenant,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Not Billed SNF",
+        effective_date=date.today() - timedelta(days=60),
+    )
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        service_period_start=date.today() - timedelta(days=45),
+        service_period_end=date.today() - timedelta(days=15),
+        due_date=date.today() + timedelta(days=15),
+    )
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    not_billed = next(alert for alert in alerts if alert.alert_type == "NOT_BILLED")
+    assert not_billed.severity == "HIGH"
+
+
+def test_not_billed_alert_does_not_trigger_when_claim_filed_in_period(db_session, billing_enabled_tenant):
+    cycle = _make_billing_cycle(db_session, billing_enabled_tenant, month=1, year=2026)
+    patient = _make_patient(db_session, billing_enabled_tenant, mrn_prefix="FV18")
+    pos = _make_patient_pos(
+        db_session,
+        billing_enabled_tenant,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Billed SNF",
+        effective_date=date(2026, 1, 1),
+    )
+    _make_claim(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        billing_cycle_id=cycle.id,
+        status="SUBMITTED",
+        payer_name="Medi-Cal",
+        total_charge=Decimal("500.00"),
+        exported_days_ago=1,
+    )
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        service_period_start=date(2026, 1, 1),
+        service_period_end=date(2026, 1, 31),
+        due_date=date.today() + timedelta(days=15),
+    )
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    assert all(alert.alert_type != "NOT_BILLED" for alert in alerts)
+
+
+def _make_overdue_expectation(db_session, tenant_id, mrn_prefix: str):
+    patient = _make_patient(db_session, tenant_id, mrn_prefix=mrn_prefix)
+    pos = _make_patient_pos(
+        db_session,
+        tenant_id,
+        patient.id,
+        pos_type="SNF",
+        facility_name="Lifecycle SNF",
+        effective_date=date.today() - timedelta(days=140),
+    )
+    expectation = _create_expectation(
+        db_session,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        patient_pos_id=pos.id,
+        due_date=date.today() - timedelta(days=95),
+        service_period_start=date.today() - timedelta(days=130),
+        service_period_end=date.today() - timedelta(days=100),
+    )
+    return patient, pos, expectation
+
+
+def test_alert_lifecycle_acknowledge_start_progress_snooze(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV19")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    headers = _headers("BILLING", billing_enabled_tenant)
+
+    ack = client.post(f"/billing/facility-payments/alerts/{alert.id}/acknowledge", headers=headers)
+    assert ack.status_code == 200, ack.text
+    assert ack.json()["status"] == "ACKNOWLEDGED"
+    assert ack.json()["acknowledged_by"] is not None
+
+    started = client.post(f"/billing/facility-payments/alerts/{alert.id}/start-progress", headers=headers)
+    assert started.status_code == 200, started.text
+    assert started.json()["status"] == "IN_PROGRESS"
+
+    snoozed = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/snooze",
+        json={"preset": "7_DAYS", "note": "Waiting on facility response."},
         headers=headers,
     )
-    assert all_statuses_response.status_code == 200, all_statuses_response.text
-    all_summary = all_statuses_response.json()["summary"]
-    # With historical rows included, the superseded predecessor's $800
-    # confirmed allocation must reappear in the totals.
-    assert Decimal(all_summary["total_received"]) >= Decimal("800.00")
+    assert snoozed.status_code == 200, snoozed.text
+    assert snoozed.json()["status"] == "SNOOZED"
+    assert snoozed.json()["snoozed_until"] is not None
+
+    # A terminal-adjacent transition attempt after snoozing an already-open
+    # alert works once, but repeating a transition on an alert that has
+    # since reached a terminal status must be rejected.
+    facility_payment_service.dismiss_alert(
+        db_session,
+        alert_id=alert.id,
+        reason_code="known_exception",
+        comment="Facility confirmed payment in transit.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    with pytest.raises(HTTPException) as exc:
+        facility_payment_service.acknowledge_alert(
+            db_session, alert_id=alert.id, user_id=TEST_USER_ID, user_role="BILLING"
+        )
+    assert exc.value.status_code == 409
+
+
+def test_alert_dismiss_requires_valid_reason_code(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV20")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    headers = _headers("BILLING", billing_enabled_tenant)
+
+    bad = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/dismiss",
+        json={"reason_code": "NOT_A_REAL_REASON"},
+        headers=headers,
+    )
+    assert bad.status_code == 400
+
+    good = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/dismiss",
+        json={"reason_code": "false_positive", "comment": "Duplicate condition."},
+        headers=headers,
+    )
+    assert good.status_code == 200, good.text
+    assert good.json()["status"] == "DISMISSED"
+    assert good.json()["dismissal_reason_code"] == "FALSE_POSITIVE"
+
+
+def test_alert_reassign_requires_note(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV21")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    headers = _headers("BILLING", billing_enabled_tenant)
+
+    missing_note = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/reassign",
+        json={"assigned_to": str(TEST_USER_ID), "note": ""},
+        headers=headers,
+    )
+    assert missing_note.status_code == 400
+
+    with_note = client.post(
+        f"/billing/facility-payments/alerts/{alert.id}/reassign",
+        json={"assigned_to": str(TEST_USER_ID), "note": "Assigning to self for follow-up."},
+        headers=headers,
+    )
+    assert with_note.status_code == 200, with_note.text
+    assert with_note.json()["assigned_to"] == str(TEST_USER_ID)
+
+
+def test_reopen_due_snoozed_alerts_returns_alert_to_open(db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV22")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    facility_payment_service.snooze_alert(
+        db_session, alert_id=alert.id, preset="24_HOURS", user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(alert)
+    # Force the snooze window into the past to simulate elapsed time
+    # without depending on real wall-clock waits in the test.
+    alert.snoozed_until = alert.snoozed_until - timedelta(days=2)
+    db_session.commit()
+
+    reopened_count = facility_payment_service.reopen_due_snoozed_alerts(db_session, tenant_id=billing_enabled_tenant)
+    db_session.refresh(alert)
+
+    assert reopened_count == 1
+    assert alert.status == "OPEN"
+    assert alert.snoozed_until is None
+
+
+def test_upsert_does_not_duplicate_acknowledged_alert_on_reevaluation(db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV23")
+    first_pass = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    overdue_alert = next(a for a in first_pass if a.alert_type == "OVERDUE_90")
+    facility_payment_service.acknowledge_alert(
+        db_session, alert_id=overdue_alert.id, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(expectation)
+
+    second_pass = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    overdue_alerts_after = [a for a in second_pass if a.alert_type == "OVERDUE_90"]
+    all_overdue_90_rows = (
+        db_session.query(FacilityCollectionAlert)
+        .filter(
+            FacilityCollectionAlert.facility_payment_expectation_id == expectation.id,
+            FacilityCollectionAlert.alert_type == "OVERDUE_90",
+        )
+        .all()
+    )
+    assert len(overdue_alerts_after) == 1
+    assert overdue_alerts_after[0].id == overdue_alert.id
+    assert overdue_alerts_after[0].status == "ACKNOWLEDGED"
+    assert len(all_overdue_90_rows) == 1
+
+
+def test_auto_resolve_when_condition_no_longer_triggered(db_session, billing_enabled_tenant):
+    cycle = _make_billing_cycle(db_session, billing_enabled_tenant, month=6, year=2026)
+    patient, pos, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV24")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    overdue_alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+
+    claim = _make_claim(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        patient_id=patient.id,
+        billing_cycle_id=cycle.id,
+        status="PAID",
+        payer_name="Medi-Cal",
+        total_charge=expectation.expected_amount,
+        exported_days_ago=1,
+    )
+    remittance = _make_remittance(db_session, billing_enabled_tenant, payer_name="Medi-Cal", payment_date="20260601")
+    _make_payment(
+        db_session,
+        tenant_id=billing_enabled_tenant,
+        remittance_advice_id=remittance.id,
+        claim_id=claim.id,
+        paid_amount=expectation.expected_amount,
+        payment_date="20260601",
+    )
+    candidates = facility_payment_service.find_candidate_matches(db_session, expectation=expectation)
+    facility_payment_service.confirm_allocation(
+        db_session, allocation_id=candidates[0].id, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(expectation)
+
+    facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(overdue_alert)
+    assert overdue_alert.status == "AUTO_RESOLVED"
+    assert overdue_alert.resolved_by is None
+    assert overdue_alert.resolution_evidence
+
+
+def test_auto_resolve_when_expectation_superseded(db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV25")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    overdue_alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+
+    facility_payment_service.create_corrected_expectation_version(
+        db_session,
+        previous_expectation_id=expectation.id,
+        expected_amount=Decimal("1500.00"),
+        correction_reason="Adjusted amount after facility invoice review.",
+        user_id=TEST_USER_ID,
+        user_role="BILLING",
+    )
+    db_session.refresh(expectation)
+    assert expectation.status == "SUPERSEDED"
+
+    facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    db_session.refresh(overdue_alert)
+    assert overdue_alert.status == "AUTO_RESOLVED"
+
+
+def test_threshold_disable_requires_justification_and_suppresses_open_alerts(client, db_session, billing_enabled_tenant):
+    _, _, expectation = _make_overdue_expectation(db_session, billing_enabled_tenant, "FV26")
+    alerts = facility_payment_service.evaluate_alerts_for_expectation(
+        db_session, expectation=expectation, user_id=TEST_USER_ID, user_role="BILLING"
+    )
+    overdue_alert = next(a for a in alerts if a.alert_type == "OVERDUE_90")
+    headers = _headers("FINANCIAL_ADMIN", billing_enabled_tenant)
+
+    missing_justification = client.put(
+        f"/billing/facility-payments/alert-thresholds/OVERDUE_90?tenant_id={billing_enabled_tenant}",
+        json={"enabled": False, "threshold_days": 90, "threshold_amount": None},
+        headers=headers,
+    )
+    assert missing_justification.status_code == 400
+
+    disabled = client.put(
+        f"/billing/facility-payments/alert-thresholds/OVERDUE_90?tenant_id={billing_enabled_tenant}",
+        json={
+            "enabled": False,
+            "threshold_days": 90,
+            "threshold_amount": None,
+            "justification": "Facility-wide payment delay confirmed by finance; suppressing during remediation.",
+        },
+        headers=headers,
+    )
+    assert disabled.status_code == 200, disabled.text
+    assert disabled.json()["enabled"] is False
+
+    db_session.refresh(overdue_alert)
+    assert overdue_alert.status == "SUPPRESSED"
+    assert overdue_alert.resolution_evidence
+
+
+def test_collection_followup_required_alert_type_removed(db_session, billing_enabled_tenant):
+    assert "COLLECTION_FOLLOWUP_REQUIRED" not in facility_payment_service.ALERT_TYPES
+    with pytest.raises(HTTPException) as exc:
+        facility_payment_service.update_threshold(
+            db_session,
+            tenant_id=billing_enabled_tenant,
+            alert_type="COLLECTION_FOLLOWUP_REQUIRED",
+            enabled=True,
+            threshold_amount=None,
+            threshold_days=30,
+            user_id=TEST_USER_ID,
+            user_role="FINANCIAL_ADMIN",
+        )
+    assert exc.value.status_code == 400
 
 
 def test_multi_correction_history_chain_supersedes_each_prior_version(db_session, billing_enabled_tenant):

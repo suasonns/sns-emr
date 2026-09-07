@@ -317,6 +317,10 @@ def _alert_to_dict(alert: FacilityCollectionAlert) -> dict:
         "days_outstanding": alert.days_outstanding,
         "status": alert.status,
         "assigned_to": str(alert.assigned_to) if alert.assigned_to else None,
+        "acknowledged_by": str(alert.acknowledged_by) if alert.acknowledged_by else None,
+        "acknowledged_at": alert.acknowledged_at.isoformat() if alert.acknowledged_at else None,
+        "snoozed_until": alert.snoozed_until.isoformat() if alert.snoozed_until else None,
+        "dismissal_reason_code": alert.dismissal_reason_code,
         "resolution_evidence": alert.resolution_evidence,
         "resolved_by": str(alert.resolved_by) if alert.resolved_by else None,
         "resolved_at": alert.resolved_at.isoformat() if alert.resolved_at else None,
@@ -379,11 +383,30 @@ class ResolveAlertRequest(BaseModel):
     resolution_evidence: str
 
 
+class SnoozeAlertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    preset: str
+    note: str | None = None
+
+
+class DismissAlertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason_code: str
+    comment: str | None = None
+
+
+class ReassignAlertRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    assigned_to: UUID | None = None
+    note: str
+
+
 class ThresholdUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = True
     threshold_amount: Decimal | None = None
     threshold_days: int | None = None
+    justification: str | None = None
 
 
 class ExpectationActivateRequest(BaseModel):
@@ -847,6 +870,7 @@ def list_alerts(
         requested_scope="FINANCIAL_MONITORING",
         required_permission_level="VIEW",
     )
+    facility_service.reopen_due_snoozed_alerts(db, tenant_id=scoped_tenant_id)
     query = db.query(FacilityCollectionAlert).filter(FacilityCollectionAlert.tenant_id == scoped_tenant_id)
     if status:
         query = query.filter(FacilityCollectionAlert.status == status.strip().upper())
@@ -873,6 +897,100 @@ def resolve_alert(
         alert_id=alert_id,
         user_id=getattr(user, "user_id", None),
         resolution_evidence=payload.resolution_evidence,
+        user_role=getattr(user, "role", None),
+    )
+    return _alert_to_dict(alert)
+
+
+@router.post("/alerts/{alert_id}/acknowledge")
+def acknowledge_alert(
+    alert_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_access(user)
+    _get_alert_for_user(db, user, alert_id, required_permission_level="EDIT")
+    alert = facility_service.acknowledge_alert(
+        db,
+        alert_id=alert_id,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+    )
+    return _alert_to_dict(alert)
+
+
+@router.post("/alerts/{alert_id}/start-progress")
+def start_alert_progress(
+    alert_id: UUID,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_access(user)
+    _get_alert_for_user(db, user, alert_id, required_permission_level="EDIT")
+    alert = facility_service.start_alert_progress(
+        db,
+        alert_id=alert_id,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+    )
+    return _alert_to_dict(alert)
+
+
+@router.post("/alerts/{alert_id}/snooze")
+def snooze_alert(
+    alert_id: UUID,
+    payload: SnoozeAlertRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_access(user)
+    _get_alert_for_user(db, user, alert_id, required_permission_level="EDIT")
+    alert = facility_service.snooze_alert(
+        db,
+        alert_id=alert_id,
+        preset=payload.preset,
+        note=payload.note,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+    )
+    return _alert_to_dict(alert)
+
+
+@router.post("/alerts/{alert_id}/dismiss")
+def dismiss_alert(
+    alert_id: UUID,
+    payload: DismissAlertRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_access(user)
+    _get_alert_for_user(db, user, alert_id, required_permission_level="EDIT")
+    alert = facility_service.dismiss_alert(
+        db,
+        alert_id=alert_id,
+        reason_code=payload.reason_code,
+        comment=payload.comment,
+        user_id=getattr(user, "user_id", None),
+        user_role=getattr(user, "role", None),
+    )
+    return _alert_to_dict(alert)
+
+
+@router.post("/alerts/{alert_id}/reassign")
+def reassign_alert(
+    alert_id: UUID,
+    payload: ReassignAlertRequest,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    _require_financial_access(user)
+    _get_alert_for_user(db, user, alert_id, required_permission_level="EDIT")
+    alert = facility_service.reassign_alert(
+        db,
+        alert_id=alert_id,
+        new_assignee_id=payload.assigned_to,
+        note=payload.note,
+        user_id=getattr(user, "user_id", None),
         user_role=getattr(user, "role", None),
     )
     return _alert_to_dict(alert)
@@ -917,6 +1035,7 @@ def put_alert_threshold(
         enabled=payload.enabled,
         threshold_amount=payload.threshold_amount,
         threshold_days=payload.threshold_days,
+        justification=payload.justification,
         user_id=getattr(user, "user_id", None),
         user_role=getattr(user, "role", None),
     )
