@@ -1,8 +1,16 @@
 """create platform billing/licensing tables (subscription_plans, tenant_subscriptions, platform_invoices, platform_payments, license_allocations)
 
 Revision ID: e4f5a6b7c8d9
-Revises: d2e3f4a5b6c7
+Revises: c1d4e5f6a7b8
 Create Date: 2026-09-05
+
+Note (hotfix/alembic-graph-reconciliation): this migration originally
+declared down_revision = "d2e3f4a5b6c7" (add_contact_harvesting_attribution),
+assuming feature/patient-contact-harvesting would merge to main first. It
+never did, leaving that revision id unresolvable on main and splitting the
+graph into two disconnected heads. Repointed to c1d4e5f6a7b8, the actual
+main-line head at the time this migration was authored. No schema changes;
+forward-only graph reconciliation only.
 """
 
 from typing import Sequence, Union
@@ -12,7 +20,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "e4f5a6b7c8d9"
-down_revision: Union[str, Sequence[str], None] = "d2e3f4a5b6c7"
+down_revision: Union[str, Sequence[str], None] = "c1d4e5f6a7b8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
