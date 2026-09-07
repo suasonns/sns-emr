@@ -14,7 +14,10 @@ from sqlalchemy.orm import Session
 
 from app.billing.models.claim import Claim
 from app.billing.models.facility_collection_alert import (
+    FACILITY_COLLECTION_ALERT_DISMISSAL_REASON_CODES,
+    FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES,
     FACILITY_COLLECTION_ALERT_SEVERITIES,
+    FACILITY_COLLECTION_ALERT_SNOOZE_PRESETS,
     FACILITY_COLLECTION_ALERT_STATUSES,
     FacilityCollectionAlert,
     FacilityCollectionAlertThreshold,
@@ -47,7 +50,14 @@ from app.models.patient_payer import PatientPayer
 from app.models.tenant import Tenant
 
 ALERT_TYPES = {
+    # Category A -- deferred future candidates (Architecture Spec Section 11):
+    # declared for validation/threshold-config compatibility only, no trigger
+    # logic exists or is added in Priority 3. Each requires materially new
+    # correlation logic (absence-detection / secondary-payer correlation)
+    # tracked as its own follow-up story.
     "EXPECTATION_MISSING",
+    "SECONDARY_PAYER_PAYMENT_MISSING",
+    # Live alert types (triggered by evaluate_alerts_for_expectation):
     "FUNDING_SOURCE_NOT_VERIFIED",
     "NOT_BILLED",
     "PAYMENT_NOT_RECEIVED_BY_DUE_DATE",
@@ -57,10 +67,29 @@ ALERT_TYPES = {
     "OVERDUE_90",
     "UNMATCHED_PAYMENT_REQUIRES_RECONCILIATION",
     "AMOUNT_MISMATCH",
-    "SECONDARY_PAYER_PAYMENT_MISSING",
     "SHARE_OF_COST_OUTSTANDING",
     "BALANCE_EXCEEDS_THRESHOLD",
-    "COLLECTION_FOLLOWUP_REQUIRED",
+    # NOTE: COLLECTION_FOLLOWUP_REQUIRED (Category B, deprecated) has been
+    # retired -- its purpose was fully redundant with OVERDUE_30/60/90.
+}
+
+# Alert types whose underlying trigger condition can be detected as cleared
+# by the system, so an open alert is eligible for AUTO_RESOLVED. Per
+# Architecture Spec Decision 7, auto-resolution applies to every live,
+# threshold/condition-driven alert type -- there is no "investigation-only"
+# alert type in the current inventory that must stay strictly user-resolved.
+AUTO_RESOLVABLE_ALERT_TYPES = {
+    "FUNDING_SOURCE_NOT_VERIFIED",
+    "NOT_BILLED",
+    "PAYMENT_NOT_RECEIVED_BY_DUE_DATE",
+    "PARTIALLY_PAID",
+    "OVERDUE_30",
+    "OVERDUE_60",
+    "OVERDUE_90",
+    "UNMATCHED_PAYMENT_REQUIRES_RECONCILIATION",
+    "AMOUNT_MISMATCH",
+    "SHARE_OF_COST_OUTSTANDING",
+    "BALANCE_EXCEEDS_THRESHOLD",
 }
 
 DEFAULT_ALERT_THRESHOLDS = {
@@ -1312,13 +1341,17 @@ def _upsert_open_alert(
 ) -> FacilityCollectionAlert:
     _validate_choice(alert_type, ALERT_TYPES, "alert_type")
     _validate_choice(severity, FACILITY_COLLECTION_ALERT_SEVERITIES, "severity")
+    # Match against ANY non-terminal alert of this type, not only "OPEN".
+    # Otherwise an ACKNOWLEDGED/IN_PROGRESS/SNOOZED alert for a condition
+    # that is still true would get a duplicate fresh OPEN alert alongside it
+    # every time the expectation is re-evaluated.
     alert = (
         db.query(FacilityCollectionAlert)
         .filter(
             FacilityCollectionAlert.tenant_id == tenant_id,
             FacilityCollectionAlert.facility_payment_expectation_id == expectation_id,
             FacilityCollectionAlert.alert_type == alert_type,
-            FacilityCollectionAlert.status == "OPEN",
+            FacilityCollectionAlert.status.in_(FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES),
         )
         .one_or_none()
     )
@@ -1358,6 +1391,48 @@ def _upsert_open_alert(
     return alert
 
 
+def _auto_resolve_alert(
+    db: Session,
+    alert: FacilityCollectionAlert,
+    *,
+    system_note: str,
+) -> None:
+    previous_status = alert.status
+    alert.status = "AUTO_RESOLVED"
+    alert.resolution_evidence = system_note
+    alert.resolved_by = None
+    alert.resolved_at = _now()
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="status",
+        previous_value=previous_status,
+        new_value=alert.status,
+        user_id=None,
+        role="SYSTEM",
+        reason=system_note,
+    )
+
+
+def _auto_resolve_non_terminal_alerts_for_expectation(
+    db: Session,
+    *,
+    expectation_id: UUID,
+    system_note: str,
+    only_alert_types: set[str] | None = None,
+) -> None:
+    query = db.query(FacilityCollectionAlert).filter(
+        FacilityCollectionAlert.facility_payment_expectation_id == expectation_id,
+        FacilityCollectionAlert.status.in_(FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES),
+    )
+    if only_alert_types is not None:
+        query = query.filter(FacilityCollectionAlert.alert_type.in_(only_alert_types))
+    for alert in query.all():
+        _auto_resolve_alert(db, alert, system_note=system_note)
+
+
 def evaluate_alerts_for_expectation(
     db: Session,
     *,
@@ -1366,6 +1441,15 @@ def evaluate_alerts_for_expectation(
     user_role: str | None = None,
 ) -> list[FacilityCollectionAlert]:
     if expectation.status in {"DRAFT", "CANCELLED", "SUPERSEDED", "CLOSED"}:
+        # Digital Dust Rule (Architecture Spec Decision 7): an expectation
+        # that is no longer effective can't keep dangling OPEN/ACKNOWLEDGED/
+        # IN_PROGRESS/SNOOZED alerts referencing it forever.
+        _auto_resolve_non_terminal_alerts_for_expectation(
+            db,
+            expectation_id=expectation.id,
+            system_note=f"Auto-resolved: expectation status changed to {expectation.status}.",
+        )
+        db.commit()
         return []
     rollup = _recompute_expectation(db, expectation)
     aging = compute_aging(expectation)
@@ -1380,6 +1464,48 @@ def evaluate_alerts_for_expectation(
                 patient_id=expectation.patient_id,
                 expectation_id=expectation.id,
                 alert_type="FUNDING_SOURCE_NOT_VERIFIED",
+                severity="HIGH",
+                expected_amount=rollup.expected_amount,
+                received_amount=rollup.confirmed_amount,
+                outstanding_amount=rollup.outstanding_amount,
+                due_date=expectation.due_date,
+                days_outstanding=aging["days_outstanding"],
+                user_id=user_id,
+                user_role=user_role,
+            )
+        )
+
+    not_billed_condition = (
+        rollup.confirmed_amount == Decimal("0.00")
+        and rollup.unconfirmed_allocation_count == 0
+        and expectation.service_period_end is not None
+        and expectation.service_period_end < date.today()
+        and not (
+            db.query(Claim.id)
+            .filter(
+                Claim.tenant_id == expectation.tenant_id,
+                Claim.patient_id == expectation.patient_id,
+                Claim.service_date >= expectation.service_period_start,
+                Claim.service_date <= expectation.service_period_end,
+            )
+            .first()
+        )
+    )
+    if not_billed_condition:
+        # NOT_BILLED (Architecture Spec Decision 1, severity HIGH): the
+        # service period has ended with no claim ever filed and no payment
+        # posted -- distinct from OVERDUE_* (billed, awaiting payment) and
+        # from reconciliation_status (which never actually sets a
+        # NOT_BILLED value; this trigger is computed independently so it
+        # cannot regress any of the existing reconciliation_status-based
+        # tests/reporting).
+        alerts.append(
+            _upsert_open_alert(
+                db,
+                tenant_id=expectation.tenant_id,
+                patient_id=expectation.patient_id,
+                expectation_id=expectation.id,
+                alert_type="NOT_BILLED",
                 severity="HIGH",
                 expected_amount=rollup.expected_amount,
                 received_amount=rollup.confirmed_amount,
@@ -1539,6 +1665,19 @@ def evaluate_alerts_for_expectation(
             )
         )
 
+    # Condition-cleared auto-resolve (Architecture Spec Decision 7 / Digital
+    # Dust Rule): any non-terminal alert of an auto-resolvable type whose
+    # trigger condition did NOT fire in this evaluation pass is closed
+    # automatically rather than left open indefinitely.
+    triggered_alert_types = {alert.alert_type for alert in alerts}
+    stale_types = AUTO_RESOLVABLE_ALERT_TYPES - triggered_alert_types
+    _auto_resolve_non_terminal_alerts_for_expectation(
+        db,
+        expectation_id=expectation.id,
+        system_note="Auto-resolved: triggering condition no longer detected.",
+        only_alert_types=stale_types,
+    )
+
     db.commit()
     return alerts
 
@@ -1552,6 +1691,7 @@ def resolve_alert(
     user_role: str | None = None,
 ) -> FacilityCollectionAlert:
     alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
     if not resolution_evidence or not resolution_evidence.strip():
         raise HTTPException(status_code=400, detail="resolution_evidence is required.")
     previous_status = alert.status
@@ -1570,6 +1710,215 @@ def resolve_alert(
         user_id=user_id,
         role=user_role,
         reason=resolution_evidence,
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def _require_alert_non_terminal(alert: FacilityCollectionAlert) -> None:
+    if alert.status not in FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Alert is already {alert.status} and cannot be transitioned further.",
+        )
+
+
+def acknowledge_alert(
+    db: Session,
+    *,
+    alert_id: UUID,
+    user_id: UUID,
+    user_role: str | None = None,
+) -> FacilityCollectionAlert:
+    alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
+    previous_status = alert.status
+    alert.status = "ACKNOWLEDGED"
+    alert.acknowledged_by = user_id
+    alert.acknowledged_at = _now()
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="status",
+        previous_value=previous_status,
+        new_value=alert.status,
+        user_id=user_id,
+        role=user_role,
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def start_alert_progress(
+    db: Session,
+    *,
+    alert_id: UUID,
+    user_id: UUID,
+    user_role: str | None = None,
+) -> FacilityCollectionAlert:
+    alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
+    previous_status = alert.status
+    alert.status = "IN_PROGRESS"
+    if alert.acknowledged_by is None:
+        # Starting work implies acknowledgement, even if the user skipped
+        # the explicit acknowledge step.
+        alert.acknowledged_by = user_id
+        alert.acknowledged_at = _now()
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="status",
+        previous_value=previous_status,
+        new_value=alert.status,
+        user_id=user_id,
+        role=user_role,
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def snooze_alert(
+    db: Session,
+    *,
+    alert_id: UUID,
+    preset: str,
+    user_id: UUID,
+    user_role: str | None = None,
+    note: str | None = None,
+) -> FacilityCollectionAlert:
+    normalized_preset = _validate_choice(preset, FACILITY_COLLECTION_ALERT_SNOOZE_PRESETS, "preset")
+    alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
+    previous_status = alert.status
+    days = FACILITY_COLLECTION_ALERT_SNOOZE_PRESETS[normalized_preset]
+    alert.status = "SNOOZED"
+    alert.snoozed_until = _now() + timedelta(days=days)
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="status",
+        previous_value=previous_status,
+        new_value=alert.status,
+        user_id=user_id,
+        role=user_role,
+        reason=note,
+        supporting_reference=normalized_preset,
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def reopen_due_snoozed_alerts(db: Session, *, tenant_id: UUID) -> int:
+    """Return SNOOZED alerts whose snoozed_until has passed back to OPEN.
+
+    Called opportunistically (alert list load, expectation re-evaluation) --
+    no new scheduler/cron job is introduced.
+    """
+    due = (
+        db.query(FacilityCollectionAlert)
+        .filter(
+            FacilityCollectionAlert.tenant_id == tenant_id,
+            FacilityCollectionAlert.status == "SNOOZED",
+            FacilityCollectionAlert.snoozed_until.isnot(None),
+            FacilityCollectionAlert.snoozed_until <= _now(),
+        )
+        .all()
+    )
+    for alert in due:
+        alert.status = "OPEN"
+        alert.snoozed_until = None
+        _write_audit(
+            db,
+            tenant_id=alert.tenant_id,
+            entity_type="ALERT",
+            entity_id=alert.id,
+            field_name="status",
+            previous_value="SNOOZED",
+            new_value="OPEN",
+            user_id=None,
+            role="SYSTEM",
+            reason="Snooze period elapsed; alert automatically reopened.",
+        )
+    if due:
+        db.commit()
+    return len(due)
+
+
+def dismiss_alert(
+    db: Session,
+    *,
+    alert_id: UUID,
+    user_id: UUID,
+    reason_code: str,
+    comment: str | None = None,
+    user_role: str | None = None,
+) -> FacilityCollectionAlert:
+    normalized_reason = _validate_choice(
+        reason_code, FACILITY_COLLECTION_ALERT_DISMISSAL_REASON_CODES, "reason_code"
+    )
+    alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
+    previous_status = alert.status
+    alert.status = "DISMISSED"
+    alert.dismissal_reason_code = normalized_reason
+    alert.resolution_evidence = comment.strip() if comment and comment.strip() else None
+    alert.resolved_by = user_id
+    alert.resolved_at = _now()
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="status",
+        previous_value=previous_status,
+        new_value=alert.status,
+        user_id=user_id,
+        role=user_role,
+        reason=comment or normalized_reason,
+        supporting_reference=normalized_reason,
+    )
+    db.commit()
+    db.refresh(alert)
+    return alert
+
+
+def reassign_alert(
+    db: Session,
+    *,
+    alert_id: UUID,
+    new_assignee_id: UUID | None,
+    user_id: UUID,
+    note: str,
+    user_role: str | None = None,
+) -> FacilityCollectionAlert:
+    if not note or not note.strip():
+        raise HTTPException(status_code=400, detail="A note is required to reassign an alert.")
+    alert = _get_alert(db, alert_id)
+    _require_alert_non_terminal(alert)
+    previous_assignee = alert.assigned_to
+    alert.assigned_to = new_assignee_id
+    _write_audit(
+        db,
+        tenant_id=alert.tenant_id,
+        entity_type="ALERT",
+        entity_id=alert.id,
+        field_name="assigned_to",
+        previous_value=previous_assignee,
+        new_value=new_assignee_id,
+        user_id=user_id,
+        role=user_role,
+        reason=note.strip(),
     )
     db.commit()
     db.refresh(alert)
@@ -1610,6 +1959,7 @@ def update_threshold(
     enabled: bool,
     threshold_amount: Decimal | None,
     threshold_days: int | None,
+    justification: str | None = None,
     user_id: UUID | None = None,
     user_role: str | None = None,
 ) -> FacilityCollectionAlertThreshold:
@@ -1631,6 +1981,12 @@ def update_threshold(
         "threshold_amount": row.threshold_amount,
         "threshold_days": row.threshold_days,
     }
+    is_disabling = bool(previous["enabled"]) and not bool(enabled)
+    if is_disabling and (not justification or not justification.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail="justification is required to disable an alert type.",
+        )
     row.enabled = bool(enabled)
     row.threshold_amount = _q2(threshold_amount) if threshold_amount is not None else None
     row.threshold_days = threshold_days
@@ -1648,7 +2004,40 @@ def update_threshold(
         },
         user_id=user_id,
         role=user_role,
+        reason=justification,
     )
+    if is_disabling:
+        # SUPPRESSED (Architecture Spec Section 2/11): a policy-disabled
+        # alert type must not leave its existing non-terminal alerts
+        # dangling OPEN -- they are administratively closed with the
+        # justification captured above, not deleted.
+        suppressed = (
+            db.query(FacilityCollectionAlert)
+            .filter(
+                FacilityCollectionAlert.tenant_id == tenant_id,
+                FacilityCollectionAlert.alert_type == alert_type,
+                FacilityCollectionAlert.status.in_(FACILITY_COLLECTION_ALERT_NON_TERMINAL_STATUSES),
+            )
+            .all()
+        )
+        for alert in suppressed:
+            previous_status = alert.status
+            alert.status = "SUPPRESSED"
+            alert.resolution_evidence = justification.strip()
+            alert.resolved_by = user_id
+            alert.resolved_at = _now()
+            _write_audit(
+                db,
+                tenant_id=tenant_id,
+                entity_type="ALERT",
+                entity_id=alert.id,
+                field_name="status",
+                previous_value=previous_status,
+                new_value="SUPPRESSED",
+                user_id=user_id,
+                role=user_role,
+                reason=justification,
+            )
     db.commit()
     db.refresh(row)
     return row
