@@ -606,7 +606,10 @@ Registry section.
   Intervention → Response → Teaching → Plan); caregiver capability assessment; direct RN
   intervention documentation; scope-of-practice delegation language (LVN/CHHA musculoskeletal
   care).
-- Patient ID: `1fcea12a-24c9-498b-8b9d-0fdc9fc54aa8`.
+- Patient ID: `3ea2f6fa-8dd9-4e3c-9b7d-009ddbe17ab0`. RNICA assessment ID:
+  `1fcea12a-24c9-498b-8b9d-0fdc9fc54aa8`. (Corrected 2026-09-08: this section previously labeled
+  the assessment ID as the patient ID — verified against the database while producing the Demo
+  Readiness Report, `docs/planning/demo_readiness_thursday.md`.)
 - Discovered/used in: nearly every discovery in Section 16 (Discovery Log) — the primary
   regression patient for this engine's development cycle.
 
@@ -617,10 +620,19 @@ Registry section.
 - Purpose: cancer pathway validation.
 - Validates: ECOG performance status; cancer-decline documentation; hospitalization narrative
   content; election-of-hospice workflow language.
+- Patient ID: `53fe69e1-fcd5-4b49-8203-9b890b18b7d6`. RNICA assessment ID:
+  `cb060604-405d-4b09-b4dc-e313542d4a31`.
 - Role in this project: used only as an **authenticity benchmark** for how an experienced hospice
   RN naturally documents workflow — never as a template to copy, mirror, or structurally imitate
   (see Section 12, Authenticity Test). Narrative rules derived from Norma must be justified by the
   underlying clinical/regulatory requirement she illustrates, not by matching her wording.
+- **Known data gap (found 2026-09-08, see Demo Readiness Report,
+  `docs/planning/demo_readiness_thursday.md`)**: her structured `performanceStatus.ecog` field is
+  currently blank and no ECOG value has been harvested from evidence either, so the ECOG
+  validation this patient is meant to support cannot currently be demonstrated end-to-end. Her
+  cancer diagnosis is correctly present at the patient level but not on this specific RNICA
+  assessment's `diagnoses.primaryDiagnosis` field. This is a data-entry gap in the demo record,
+  not a defect in the narrative engine — narrative generation itself succeeds.
 
 ---
 
@@ -629,6 +641,14 @@ Registry section.
 - Purpose: dementia pathway validation.
 - Validates: FAST staging and interpretation; cognitive-decline documentation; dementia-specific
   assessment and safety workflow (wandering, aspiration risk, decision-making capacity).
+- Patient ID: `ba24830e-19f8-4b84-bbf3-e88374a6db25`. RNICA assessment ID:
+  `5d39cc37-19a2-4e83-a1dc-46c8dcefc94b`.
+- **Known data gap (found 2026-09-08, see Demo Readiness Report)**: her structured
+  `performanceStatus.fast` field is currently blank and no FAST value has been harvested from
+  evidence either, so the FAST validation this patient is meant to support cannot currently be
+  demonstrated end-to-end. Her dementia diagnosis (ICD-10 G31.1) is correctly on file. This is a
+  data-entry gap in the demo record, not a defect in the narrative engine — narrative generation
+  itself succeeds.
 
 ---
 
