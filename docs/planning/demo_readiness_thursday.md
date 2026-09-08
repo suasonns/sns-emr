@@ -14,6 +14,16 @@ through an authenticated HTTP request, because no test bearer token was availabl
 session. **A real click-through in the browser, logged in as a real user, has not yet been done
 and is the single most important remaining action before Thursday** (see Section 9).
 
+**Update (2026-09-08, later same day)**: the Kessler FAST gap identified below has been **fixed**.
+A full pipeline trace found her FAST value (and KPS/PPS) genuinely present in her already-uploaded
+source PDF but never transcribed into the structured field; `backend/scripts/
+populate_kessler_performance_status_from_pdf.py` corrected this from the cited source, and
+Kessler's narrative/Evidence Center were re-verified successfully. Norma's ECOG gap was traced the
+same way and found to be a **genuine absence in her source data** (confirmed via full-text search
+of all 7 of her evidence records) — per instruction, no value was fabricated for her; this remains
+an open, documented gap. See `docs/clinical/rnica-architecture-map.md`, Section 13 (Resolved
+Findings), Section 14 (Open Gaps, item 8), and Section 16 (Discovery Log) for the full trace.
+
 ---
 
 ## Section 1 — Feature Inventory
@@ -25,7 +35,7 @@ and is the single most important remaining action before Thursday** (see Section
 | Documentation Insights panel (new) | Y | Y (new this cycle) | Y, with a live walkthrough first — see Section 3 |
 | Narrative V2 preview (new backend + new UI trigger) | Y | Y (new this cycle) | Y, but **budget 30–40 seconds of visible wait per generation** — see Section 2 |
 | Evidence Center (new patient-chart panel) | Y | Y (new this cycle) | Y — verified functional, see Section 4 |
-| Performance Status fields (PPS/KPS/NYHA/FAST/ECOG) | Y (scale interpretation additions) | Y (interpretation text added; underlying fields pre-existing) | **CONDITIONAL — see Section 2.** PPS/KPS/NYHA confirmed populated for Loren; ECOG is blank for Norma; FAST is blank for Kessler |
+| Performance Status fields (PPS/KPS/NYHA/FAST/ECOG) | Y (scale interpretation additions) | Y (interpretation text added; underlying fields pre-existing) | **PASS for Loren and Kessler; CONDITIONAL for Norma — see Section 2.** PPS/KPS/NYHA confirmed populated for Loren; PPS/KPS/FAST fixed and confirmed populated for Kessler; ECOG remains genuinely blank for Norma (no source data exists) |
 | Disease Category Detection (CHF/Cancer/Dementia routing) | Y (new file) | Y (new this cycle) | Y — 12/12 unit tests passing |
 | Patient chart navigation / sidebar | Y (one new nav entry added) | Y (additive only) | Y |
 | Facesheet, Diagnoses, Medications (existing screens) | N (not touched by this branch) | N | Y — unaffected by this cycle's changes |
@@ -39,20 +49,22 @@ and is the single most important remaining action before Thursday** (see Section
 |---|---|
 | RNICA generation works | **PASS** — `generate_rnica_narrative_v2()` invoked directly against all three assessments; all three returned a complete result with no exception |
 | Loren validates | **PASS** — narrative generated, `full_text` 9,005 characters, 1 documentation gap detected, PPS 40%/KPS 40/NYHA IV all present in structured data |
-| Norma validates | **PASS with a data gap** — narrative generated (8,346 characters, 4 documentation gaps detected), but her structured `performanceStatus.ecog` field is **blank**, and no ECOG value was found in harvested evidence either |
-| Kessler validates | **PASS with a data gap** — narrative generated (8,743 characters, 5 documentation gaps detected), but her structured `performanceStatus.fast` field is **blank**, and no FAST value was found in harvested evidence either |
+| Norma validates | **PASS with a documented data gap** — narrative generated (8,346 characters, 4 documentation gaps detected). Her structured `performanceStatus.ecog` field is **blank**; a full-text trace of all 7 of her evidence records confirmed no ECOG/performance-status value exists anywhere in her source data. Not fixed — no value fabricated, per instruction |
+| Kessler validates | **PASS — FIXED 2026-09-08.** Narrative generated (8,743 characters). Her `performanceStatus.fast` field was blank; traced to a transcription gap (the value existed in her already-uploaded source PDF as `"7-E"` but was never entered). Fixed via `backend/scripts/populate_kessler_performance_status_from_pdf.py` (kps=30, pps=30%, fast=7e, all cited to source); re-verified: narrative now reads "She is at FAST 7e, with advanced dementia no longer able to smile..." |
 | PPS displays | **PASS** — confirmed populated for Loren (`40%`) |
 | KPS displays | **PASS** — confirmed populated for Loren (`40`) |
 | NYHA displays | **PASS** — confirmed populated for Loren (`IV`) |
-| FAST displays | **FAIL for the planned demo patient.** Kessler's FAST field is empty in the database. Her primary diagnosis (dementia, ICD-10 G31.1) is correctly on file, so disease-category detection and general narrative content will still work, but there is nothing to show on screen if the script specifically calls out "watch FAST display." |
-| ECOG displays | **FAIL for the planned demo patient.** Norma's ECOG field is empty, and her structured `diagnoses.primaryDiagnosis` field on the RNICA form itself is also blank (her cancer diagnosis exists only at the patient level, not on this specific assessment). No ECOG value was found anywhere. |
+| FAST displays | **PASS — FIXED 2026-09-08.** Kessler's FAST field is now populated (7e) with full clinical interpretation ("no longer able to smile... advanced or end-stage dementia"), transcribed from her real source document. Confirmed via regenerated narrative and `scale_clinical_evidence` output. |
+| ECOG displays | **FAIL — genuine data gap, not fixed.** Norma's ECOG field is empty, and a full-text trace of all 7 of her source documents confirmed no ECOG or any performance-status value exists anywhere in her source material. Her cancer diagnosis is correctly on file at the patient level; her structured `diagnoses.primaryDiagnosis` field on this specific RNICA assessment is also blank (a separate, smaller gap). Per explicit instruction, no value has been fabricated for her — this remains open. |
 | Narrative generates | **PASS** for all three patients, no exceptions |
 | No runtime errors | **PASS** — zero exceptions across all three narrative generations and all three evidence-center calls. One non-fatal log line appeared for every call: `"Tenant context unavailable; returning mandatory rules only"` — expected in this test methodology (direct function call, no request/tenant middleware) and very likely a non-issue in the real authenticated app, but **not yet confirmed live in-browser** |
 
 **Bottom line for Section 2**: the narrative engine itself is stable and error-free across all
-three reference patients. The two failures are **data gaps in the demo patients' records**, not
-code defects — PPS/KPS/NYHA are proven to work; FAST and ECOG have no bug found, but also no data
-to display for Kessler/Norma today.
+three reference patients. Kessler's FAST gap has been fixed — it was a transcription gap, and the
+real source value now displays correctly. Norma's ECOG gap remains open — traced fully and
+confirmed to be a genuine absence in her source data, not a bug, and per instruction no value was
+fabricated to close it. **Loren: PASS. Kessler: PASS. Norma: PASS with one documented, un-fixable
+(without new source data) open item.**
 
 ---
 
@@ -151,22 +163,28 @@ Kessler.
 | Open RNICA | Assessment confirmed to exist (`1fcea12a-...`) | Assessment confirmed to exist (`cb060604-...`) | Assessment confirmed to exist (`5d39cc37-...`) |
 | Generate Narrative | **PASS** — 9,005 chars, ~37s | **PASS** — 8,346 chars, ~31s | **PASS** — 8,743 chars, ~31s |
 | View Documentation Insights | Verified at service layer; not yet clicked through in-browser | Same | Same |
-| View Performance Status | **PASS** — PPS/KPS/NYHA all populated and correct | **GAP** — ECOG is blank; nothing will display for the one scale this patient is supposed to demonstrate | **GAP** — FAST is blank; nothing will display for the one scale this patient is supposed to demonstrate |
-| View Supporting Evidence | **PASS** — Evidence Center returns cleanly | **PASS** — Evidence Center returns cleanly | **PASS** — Evidence Center returns cleanly |
-| Confirm no errors | **PASS** — zero exceptions | **PASS** — zero exceptions (aside from the missing-data gap above, which is not an error) | **PASS** — zero exceptions (aside from the missing-data gap above, which is not an error) |
+| View Performance Status | **PASS** — PPS/KPS/NYHA all populated and correct | **GAP (open, documented)** — ECOG is blank; confirmed via full-text trace that no ECOG value exists in her source data; nothing to display for this one scale | **PASS (fixed 2026-09-08)** — PPS/KPS/FAST now all populated and correct, transcribed from her real source document |
+| View Supporting Evidence | **PASS** — Evidence Center returns cleanly | **PASS** — Evidence Center returns cleanly | **PASS** — Evidence Center returns cleanly, re-verified after the fix |
+| Confirm no errors | **PASS** — zero exceptions | **PASS** — zero exceptions (aside from the missing-data gap above, which is not an error) | **PASS** — zero exceptions |
 
 **Timing note**: each Narrative V2 generation took 30–37 seconds. If this is shown live, either
 narrate through the wait, pre-generate before walking the room through it, or set audience
 expectations up front ("this calls a live AI model, it takes about half a minute").
 
-**Data gap note**: the ECOG (Norma) and FAST (Kessler) gaps are the most important finding in this
-entire report for the demo script specifically. Recommended options, in order of preference:
-1. Enter the missing ECOG score for Norma and FAST score for Kessler before Thursday (fastest,
-   lowest-risk fix — this is a data-entry gap, not a code defect).
-2. If there isn't time, adjust the live script to not specifically claim "watch the ECOG/FAST
-   score display" for these two patients — show the rest of their narrative and evidence
-   (which works correctly) and demonstrate ECOG/FAST/PPS/KPS/NYHA display generically using Loren
-   instead, where PPS/KPS/NYHA are all confirmed populated.
+**Data gap note (updated 2026-09-08)**: Kessler's FAST gap has been **fixed** —
+`backend/scripts/populate_kessler_performance_status_from_pdf.py` transcribed her real,
+already-uploaded source-document values (kps=30, pps=30%, fast=7e), each cited to the literal
+source table. Re-verified via regenerated narrative and `scale_clinical_evidence`. Norma's ECOG
+gap remains **open by design** — a full-text trace of all 7 of her evidence records confirmed no
+ECOG value exists anywhere in her source data, and per instruction no value was fabricated to
+close it. Recommended options for the demo script, in order of preference:
+1. Demonstrate FAST via Kessler as planned (now working) and demonstrate PPS/KPS/NYHA via Loren
+   as planned (already working). For the ECOG beat, either substitute a caveat ("Norma's record
+   doesn't have a documented ECOG score — that's a real-world data gap this system surfaces
+   rather than hides") or skip the ECOG-specific claim for Norma and show her narrative/evidence
+   content instead, which works correctly.
+2. If a real ECOG assessment becomes available before Thursday (e.g. a new document upload), it
+   can be transcribed the same way Kessler's FAST was — from a real, cited source only.
 
 ---
 
@@ -184,9 +202,13 @@ entire report for the demo script specifically. Recommended options, in order of
   deleted lines in existing, heavily-used code have not been manually walked through live — this
   is a real gap in verification, not a known defect, and should be closed with a short manual
   pass before Thursday.
-- Two **data gaps**, not code defects, were found: Norma's ECOG and Kessler's FAST scores are
-  blank in the database. These will make two specific demo beats ("watch ECOG/FAST display")
-  fail to show anything, though nothing will error or crash.
+- **Kessler's FAST gap is fixed** — traced to a data-entry/transcription gap (the value existed
+  in her source document but was never entered) and corrected from the cited real source. Loren,
+  Kessler now both fully PASS all three regression patients' performance-status checks.
+- **Norma's ECOG gap remains open** — traced fully and confirmed to be a genuine absence in her
+  source data, not a code defect and not an oversight. Per explicit instruction, no value was
+  fabricated to close it. This is the one remaining known limitation for Thursday, and it should
+  be handled with a script adjustment (see Section 9), not treated as a blocker.
 - No database/schema/migration risk exists in this cycle at all.
 - Verification today was performed by calling backend services directly, not through the real
   authenticated browser flow — a final in-browser click-through, logged in as a real user, has
@@ -196,8 +218,9 @@ entire report for the demo script specifically. Recommended options, in order of
 **Before Thursday, in priority order**:
 1. Do one authenticated, in-browser click-through of the full demo script for all three patients
    (the one verification step not yet completed).
-2. Either populate Norma's ECOG and Kessler's FAST scores, or adjust the script to demonstrate all
-   five scales using Loren instead and treat Norma/Kessler as narrative/evidence-only demos.
+2. Decide how to handle the Norma/ECOG demo beat given the confirmed genuine data gap (see
+   Section 9 for the two recommended options) — this is a presentation-script decision now, not
+   an engineering task.
 3. Manually exercise the existing Clinical Narrative card inside `RNICA.jsx` to confirm the 34
    deleted lines didn't remove anything a presenter would rely on.
 4. Delete `backend/backend.pid`.

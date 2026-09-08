@@ -329,6 +329,7 @@ Gaps) because it has been resolved, add its entry here rather than deleting it.
 | RNICA lacked any direct RN-performed hands-on action (teaching/instruction only) | RNICA flow guidance never required at least one hands-on RN action distinct from delegated instruction | Added requirement for at least one or two RN-performed actions (e.g. repositioning, offloading) | Yes — regenerated narrative includes "I repositioned him in bed... offloaded pressure from the right heel" |
 | RN narrative claimed to personally perform stretching/massage/routine ROM | No scope-of-practice distinction between RN and LVN/CHHA tasks | Added explicit scope-of-practice rule: routine stretching/massage/repositioning-schedule is LVN/CHHA-delegated, stated in the plan of care, not an RN-performed action | Yes — regenerated narrative reads "I instructed the LVN/CHHA to provide passive range-of-motion, massage, and repositioning every two hours as part of the plan of care" |
 | Stale saved narrative in a real patient record still showed old report-style headers, even though the live engine had already been rewritten | UI/DB held a previously-generated narrative that was never regenerated after the engine was fixed | Regenerated fresh output via the current engine and persisted it into the patient's `RnicaAssessment.form_data.diagnoses.clinicalNarrative` | Yes — confirms this was a stale-data issue, not an engine defect, at the time it was found |
+| Kessler's regression-test FAST validation failed — `performanceStatus.fast` was blank | Traced full pipeline (source document → extraction → database → API → Performance Status → narrative → Evidence Center). Her already-uploaded source PDF (`kessler_hnp_chart_consents.pdf`) literally contains the value in its raw OCR'd text — `"KPS 30 7-E FAST PPS 30 NYHA"` — but it was never transcribed into the structured `RnicaAssessment.form_data.performanceStatus` fields. Confirmed via direct full-text search of her `PatientEvidenceRecord` rows and full JSON walk of her assessment's `form_data`. This is a data-entry/transcription gap, not a narrative-engine defect — no automated scale-extraction pipeline exists in this system today; PPS/KPS/NYHA/FAST/ECOG are RN-entered structured fields (confirmed by inspecting how Loren's reference values were populated: a manual transcription script, `backend/scripts/populate_loren_shields.py`, not an AI extraction step) | `backend/scripts/populate_kessler_performance_status_from_pdf.py` transcribes the literal source-document value into `kps=30`, `pps=30%`, `fast=7e` (each with a justification quoting the source table). NYHA intentionally left blank — not present in the source row for this dementia patient | Yes — regenerated Kessler narrative now includes "She is at FAST 7e, with advanced dementia no longer able to smile..." and `scale_clinical_evidence` returns a fully-interpreted FAST 7e entry alongside PPS/KPS; Evidence Center re-confirmed functional after the fix |
 
 ---
 
@@ -372,6 +373,20 @@ patient record:
    scope-of-practice corrections described in Sections 7–9 were validated and fixed against
    RNICA specifically. They live in shared prompt sections used by all five visit types, but have
    not yet been re-verified end-to-end against UPDATE/RECERT/PRN/DEATH output specifically.
+8. **Norma has no ECOG value anywhere** — traced the full pipeline (source documents → harvested
+   evidence → structured field → API → narrative) on 2026-09-08 while investigating the Kessler
+   FAST gap above. Unlike Kessler's FAST value, a full-text search across all 7 of Norma's
+   `PatientEvidenceRecord` source documents for "ECOG," "KPS," "PPS," "performance status," and
+   "Karnofsky" found **zero matches** — no performance-status scale of any kind appears anywhere
+   in her uploaded source material. Her cancer diagnosis is correctly on file at the patient
+   level (`Patient.primary_diagnosis` = "Metastatic breast cancer, Stage IV, with bone
+   metastasis"), and her structured `diagnoses.primaryDiagnosis` field on this specific RNICA
+   assessment is also blank (a separate, smaller data-entry gap). Per the explicit instruction not
+   to fabricate values that do not exist in source data, **no ECOG value has been created for
+   her.** This is documented here as a genuine, currently-unresolved data gap, not fixed. If a
+   real ECOG assessment becomes available for her (e.g. a future document upload, or an RN
+   performs and documents one live), populate it the same way Kessler's FAST was populated —
+   transcribed from a real, cited source, never invented.
 
 These items are the active roadmap for this narrative engine. When one is resolved, move it out
 of this section into Section 13 (Resolved Findings) and update the relevant section above (do not
@@ -585,6 +600,40 @@ require explicit judgment sentences without reintroducing banned AI-summary voic
 
 ---
 
+**2026-09-08**
+
+**Finding**: Regression-testing the three permanent validation patients found Norma's ECOG and
+Kessler's FAST performance-status fields both blank in `performanceStatus`. Per instruction, a
+full pipeline trace (source document → evidence extraction → database → API → Performance Status
+→ narrative → Evidence Center) was performed for each before deciding whether to fix or document.
+
+**Impact**: The two failures had different root causes despite looking identical on the surface.
+Kessler's source PDF (`kessler_hnp_chart_consents.pdf`) was already uploaded and OCR'd, and its
+raw extracted text literally contains the value (`"KPS 30 7-E FAST PPS 30 NYHA"`) — it was simply
+never transcribed into the structured field, a data-entry gap. Norma's evidence records (all 7,
+full-text searched) contain **no** ECOG/KPS/PPS/performance-status mention anywhere — a genuine
+absence in her source data, not an extraction bug. This trace also surfaced that there is no
+automated scale-extraction pipeline in this system at all — PPS/KPS/NYHA/FAST/ECOG are RN-entered
+structured fields (confirmed by how Loren's reference values were originally populated: a manual
+transcription script, not an AI extraction step).
+
+**Decision**: Fixed Kessler via `backend/scripts/populate_kessler_performance_status_from_pdf.py`,
+transcribing the literal, cited source-document values (kps=30, pps=30%, fast=7e) — nothing
+fabricated, every value quotes its source. Did NOT fix Norma — no real value exists to transcribe,
+and per explicit instruction, no value should be fabricated. Norma's gap is documented (Section
+14, item 8) as an open, unresolved item until real ECOG source data exists.
+
+**Alternatives considered**: inferring or estimating an ECOG value for Norma from her diagnosis
+severity was considered and explicitly rejected — this would be exactly the kind of fabricated
+clinical value the architecture map's authenticity standard exists to prevent.
+
+**Status**: Kessler — Resolved. Norma — Open (by design, not an oversight).
+
+**Reference**: Section 13 (Resolved Findings), Section 14 (Open Gaps, item 8), Section 17 (Test
+Patient Registry), Section 18 (Regression Test Matrix).
+
+---
+
 ## Section 17 — Test Patient Registry
 
 Purpose: preserve the regression patients used to discover and validate architecture decisions in
@@ -627,12 +676,15 @@ Registry section.
   (see Section 12, Authenticity Test). Narrative rules derived from Norma must be justified by the
   underlying clinical/regulatory requirement she illustrates, not by matching her wording.
 - **Known data gap (found 2026-09-08, see Demo Readiness Report,
-  `docs/planning/demo_readiness_thursday.md`)**: her structured `performanceStatus.ecog` field is
-  currently blank and no ECOG value has been harvested from evidence either, so the ECOG
-  validation this patient is meant to support cannot currently be demonstrated end-to-end. Her
-  cancer diagnosis is correctly present at the patient level but not on this specific RNICA
-  assessment's `diagnoses.primaryDiagnosis` field. This is a data-entry gap in the demo record,
-  not a defect in the narrative engine — narrative generation itself succeeds.
+  `docs/planning/demo_readiness_thursday.md`; confirmed genuine and traced fully on 2026-09-08 —
+  see Section 14, Open Gaps, item 8)**: her structured `performanceStatus.ecog` field is currently
+  blank, and a full-text trace across all 7 of her uploaded source documents found **zero**
+  mentions of ECOG, KPS, PPS, or any performance-status scale — this is a genuine absence in her
+  source data, not an extraction or transcription bug (contrast with Kessler's FAST, which existed
+  in source but was untranscribed). No value has been fabricated. Her cancer diagnosis is
+  correctly present at the patient level but not on this specific RNICA assessment's
+  `diagnoses.primaryDiagnosis` field. This is a data-entry gap in the demo record, not a defect in
+  the narrative engine — narrative generation itself succeeds.
 
 ---
 
@@ -644,11 +696,13 @@ Registry section.
 - Patient ID: `ba24830e-19f8-4b84-bbf3-e88374a6db25`. RNICA assessment ID:
   `5d39cc37-19a2-4e83-a1dc-46c8dcefc94b`.
 - **Known data gap (found 2026-09-08, see Demo Readiness Report)**: her structured
-  `performanceStatus.fast` field is currently blank and no FAST value has been harvested from
-  evidence either, so the FAST validation this patient is meant to support cannot currently be
-  demonstrated end-to-end. Her dementia diagnosis (ICD-10 G31.1) is correctly on file. This is a
-  data-entry gap in the demo record, not a defect in the narrative engine — narrative generation
-  itself succeeds.
+  `performanceStatus.fast` field was blank until the same day — traced to a data-entry/
+  transcription gap (the value existed in her already-uploaded source PDF but was never
+  transcribed), **not** a genuine absence. Fixed via
+  `backend/scripts/populate_kessler_performance_status_from_pdf.py` (kps=30, pps=30%, fast=7e,
+  each cited to the literal source-document table). See Section 13 (Resolved Findings) for the
+  full trace. Her dementia diagnosis (ICD-10 G31.1) is correctly on file. Narrative generation
+  succeeds and now includes a fully-interpreted FAST 7e entry.
 
 ---
 
@@ -671,14 +725,18 @@ should be treated as a candidate for future automation, not as a reason to skip 
 | Direct RN Intervention (Section 6, Section 13 row 5) | Loren | At least one specific, observable RN-performed hands-on action is documented | Narrative contains a concrete RN-performed action distinct from teaching/instruction |
 | Scope of Practice — Musculoskeletal Delegation (Section 9) | Loren | Routine ROM/massage/repositioning attributed to LVN/CHHA via delegation in the plan of care, not to the RN as her own ongoing action | Narrative reads "I instructed the LVN/CHHA to provide..." rather than "I perform/provide..." for these tasks |
 | CHF Pathway (Section 10) | Loren | PPS, KPS, and NYHA scores are present with clinical interpretation, not raw values alone | Scores appear in narrative with meaning explained, and appear correctly in the Performance Status data |
-| Cancer Pathway (Section 10) | Norma | ECOG score present with interpretation; cancer-decline evidence documented | Score and decline evidence present and interpreted in generated narrative |
-| Dementia Pathway (Section 10) | Kessler | FAST score present with interpretation; cognitive-decline documentation present | Score and cognitive-decline evidence present and interpreted in generated narrative |
+| Cancer Pathway (Section 10) | Norma | ECOG score present with interpretation; cancer-decline evidence documented | **CURRENTLY FAILING (documented, not fabricated) — see Section 14, item 8.** No ECOG value exists anywhere in Norma's source documents (confirmed via full-text trace 2026-09-08); narrative and Evidence Center still generate successfully, but ECOG specifically cannot be verified until real source data exists |
+| Dementia Pathway (Section 10) | Kessler | PPS, KPS, and FAST scores present with clinical interpretation; cognitive-decline documentation present | **PASS (fixed 2026-09-08)** — Score and cognitive-decline evidence present and interpreted in generated narrative ("She is at FAST 7e, with advanced dementia no longer able to smile..."); verified via `scale_clinical_evidence` output after running `backend/scripts/populate_kessler_performance_status_from_pdf.py` (see Section 13, Resolved Findings) |
 | Workflow Reasoning Chain (Section 5) | Loren | Finding → Judgment → Intervention → Response → Teaching → Plan present for at least Pain, Respiratory, and Skin domains | Manual domain-by-domain audit of a generated narrative against the six-step chain |
 | Authenticity Test (Section 12) | Loren, Norma, Kessler | An experienced hospice RN would sign the note as an Initial Comprehensive Assessment without rewriting most of it | Hide document type/metadata/headers and have an RN, Clinical Manager, or QA reviewer read the narrative alone |
 
 Known gap: GI/GU and Safety domain reasoning-chain completeness (Section 14, items 1–2) does not
 yet have a passing row in this matrix — it cannot be marked as a protected rule until it is
 resolved. Add a row here at the same time it is resolved and logged in Section 16.
+
+Known gap: Norma's ECOG value (row above) cannot pass until real source data exists — this is a
+data gap, not a code defect, and must not be closed by fabricating a value (see Section 14, item
+8, and the Test Patient Registry entry for Norma in Section 17).
 
 ---
 
