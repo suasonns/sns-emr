@@ -30,6 +30,7 @@ import {
   RNICA_ASSESSMENT_MODULES,
   validateBodyMapRegions,
 } from "./rn-ica/rnIcaClinicalNavigation";
+import { diagnosesIncludeDiseaseCategory } from "./rn-ica/diseaseCategoryDetection";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import {
@@ -65,6 +66,7 @@ import {
   mergeRnicaPocDuplicateProblems,
   getStructuredFindingsAnalytics,
   getRnProductivityMetrics,
+  previewRnicaNarrativeV2,
 } from "../api/icaAssessments";
 import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
@@ -123,13 +125,13 @@ import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
 import {
-  buildClinicalNarrative,
   DISEASE_TRAJECTORY_OPTIONS,
   isLegacyDiseaseTrajectoryValue,
   getDiseaseTrajectoryLabel,
   computeNarrativeContextFingerprint,
   evaluateNarrativeQualityGate,
-} from "../intake/clinicalNarrativeBuilder";
+} from "../intake/narrativeSupport";
+import { getScaleInterpretation } from "../intake/scaleInterpretations";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
@@ -484,9 +486,10 @@ const INITIAL_FORM = {
     // separate from lcdEligibilityNarrative (distinct purpose/field, never
     // merged/read by the other). clinicalNarrative is populated either by
     // manual RN typing or by an explicit "Build Draft from Documented
-    // Findings" click that runs the deterministic, non-AI
-    // buildClinicalNarrative() template renderer — it is never generated
-    // automatically and never silently overwrites existing text.
+    // Findings" click that requests a preview from the backend RNICA V2
+    // narrative service (rnica_narrative_v2_service.py) — it is never
+    // generated automatically, never generated locally in the frontend,
+    // and never silently overwrites existing text.
     clinicalNarrative: "",
     clinicalNarrativeReviewed: false,
     // rnAddendum / clinicianClarification are pre-lock working fields
@@ -2063,14 +2066,371 @@ function LcdSupportingEvidenceCard({ diagnosesData, updateField }) {
 // This card is deliberately separate from LcdEligibilityCard /
 // lcdEligibilityNarrative (distinct field, distinct purpose — the RN's
 // documented clinical findings narrative vs. the physician's LCD
-// eligibility-support narrative). The deterministic
-// buildClinicalNarrative() template renderer runs ONLY on an explicit
-// "Build Draft from Documented Findings" click — never on mount, never
-// on formData changes, never during save/validation/navigation. No AI
-// service, AI flag, or AI control exists anywhere in this card.
+// eligibility-support narrative). "Build Draft from Documented Findings"
+// requests a preview from the backend RNICA V2 narrative service
+// (generate_rnica_narrative_v2() / previewRnicaNarrativeV2 —
+// rnica_narrative_v2_service.py), the single active narrative-composition
+// engine — never on mount, never on formData changes, never during
+// save/validation/navigation, only on this explicit click. An assessment
+// that has not yet been saved (no assessmentId) cannot request a draft at
+// all; no narrative is ever generated locally in the frontend.
 // ════════════════════════════════════════════════════════════════
-function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked, hospiceNarrativeContext }) {
+// Documentation Insights panel — human-facing labels for the internal
+// suggested_fields dot-paths returned by detect_documentation_gaps() in
+// rnica_narrative_v2_service.py. Clinicians never see the raw field paths
+// or section keys; only these labels.
+const DOC_INSIGHTS_FIELD_LABELS = {
+  "performanceStatus.pps": "PPS",
+  "performanceStatus.fast": "FAST",
+  "performanceStatus.kps": "KPS",
+  "musculoskeletal.adl.eating": "Feeding / Eating",
+  "musculoskeletal.adl.transferring": "Transfers",
+  "nutrition.weightLossPastSixMonths": "Weight Loss (6 mo)",
+  "nutrition.dietType": "Diet Type",
+  "psychosocial.distressRating": "Distress Rating",
+  "psychosocial.familySocialSupport": "Family / Social Support",
+  "symptomImpact.pain": "Pain",
+  "symptomImpact.shortnessOfBreath": "Shortness of Breath",
+  "symptomImpact.constipation": "Constipation",
+  "skin.wounds": "Wound Documentation",
+  "diagnoses.recentHospitalizations": "Recent Hospitalizations",
+  "diagnoses.recentErVisits": "Recent ER Visits",
+};
+
+const DOC_INSIGHTS_SECTION_LABELS = {
+  performanceStatus: "Performance Status",
+  musculoskeletal: "Musculoskeletal / ADLs",
+  nutrition: "Nutrition",
+  psychosocial: "Psychosocial",
+  symptomImpact: "Symptom Impact",
+  skin: "Skin / Wounds",
+  diagnoses: "Diagnoses & Utilization",
+};
+
+// ════════════════════════════════════════════════════════════════
+// DOCUMENTATION INSIGHTS — compares the RN visit discussion (AI Draft
+// structured findings + harvested evidence) against the structured RNICA
+// fields already on this assessment and surfaces evidence-supported gaps,
+// plus an on-demand Narrative V2 preview. Read-only until the RN
+// explicitly chooses "Insert into Clinical Narrative" — never
+// auto-populates a field, never auto-scores PPS/KPS/FAST/ADLs. Reuses the
+// existing POST /visits/rnica/{assessment_id}/narrative-v2/preview
+// endpoint; no new backend surface.
+// ════════════════════════════════════════════════════════════════
+function DocumentationInsightsPanel({ assessmentId, locked, styles, COLORS, narrative, onNavigateToSection, onInsertNarrative, onInsertLcdSection }) {
+  const [status, setStatus] = useState("idle"); // idle | loading | ready | error
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+  const [dismissedTopics, setDismissedTopics] = useState([]);
+  const [showNarrativePreview, setShowNarrativePreview] = useState(false);
   const [pendingReplace, setPendingReplace] = useState(false);
+  const [lcdInserted, setLcdInserted] = useState(false);
+
+  const runCheck = async () => {
+    if (!assessmentId || status === "loading") return;
+    setStatus("loading");
+    setError("");
+    try {
+      const preview = await previewRnicaNarrativeV2(assessmentId);
+      setResult(preview);
+      setDismissedTopics([]);
+      setShowNarrativePreview(false);
+      setPendingReplace(false);
+      setLcdInserted(false);
+      setStatus("ready");
+    } catch (err) {
+      setError(err?.message || "Unable to review documentation right now.");
+      setStatus("error");
+    }
+  };
+
+  const handleInsert = () => {
+    if (!result?.full_text) return;
+    if (narrative.trim()) {
+      setPendingReplace(true);
+      return;
+    }
+    onInsertNarrative(result.full_text);
+    setPendingReplace(false);
+  };
+
+  const visibleGaps = (result?.documentation_gaps_detected || []).filter((g) => !dismissedTopics.includes(g.topic));
+
+  return (
+    <div style={{
+      marginTop: 12, marginBottom: 16, padding: 14, borderRadius: 10,
+      border: `1px solid ${COLORS.border || "#E2E8F0"}`, background: COLORS.subtleBg || "#F8FAFC",
+    }}>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: COLORS.dark, marginBottom: 8, letterSpacing: 0.3 }}>
+        DOCUMENTATION INSIGHTS
+      </div>
+
+      {status === "idle" && (
+        <div>
+          <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>
+            Review the RN visit discussion and existing chart documentation for possible missing clinical details.
+          </div>
+          <button type="button" style={styles.btnSecondary} onClick={runCheck} disabled={locked || !assessmentId}>
+            Check Documentation
+          </button>
+        </div>
+      )}
+
+      {status === "loading" && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray }}>
+          Reviewing RN findings and current RNICA documentation…
+        </div>
+      )}
+
+      {status === "error" && (
+        <div>
+          <div style={{ fontSize: 12.5, color: COLORS.danger || COLORS.warning, marginBottom: 8 }}>{error}</div>
+          <button type="button" style={styles.btnSecondary} onClick={runCheck}>Retry</button>
+        </div>
+      )}
+
+      {status === "ready" && result && (
+        <div>
+          {(result.documentation_conflicts_detected || []).length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, color: COLORS.dark, marginBottom: 8, fontWeight: 700 }}>
+                Needs RN confirmation before the narrative is generated:
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {result.documentation_conflicts_detected.map((conflict) => {
+                  const sectionKeys = [...new Set((conflict.suggested_fields || []).map((f) => f.split(".")[0]))];
+                  return (
+                    <div
+                      key={conflict.topic}
+                      style={{ padding: 10, borderRadius: 8, border: `1px solid ${COLORS.warning}`, background: COLORS.warningBoxBg }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>
+                        {conflict.topic}: conflicting statements found
+                      </div>
+                      <div style={{ fontSize: 12, color: COLORS.dark, marginBottom: 6 }}>{conflict.message}</div>
+                      {(conflict.conflicting_statuses || []).length > 0 && (
+                        <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 6 }}>
+                          Conflicting descriptions on file: {conflict.conflicting_statuses.join(" vs. ")}
+                        </div>
+                      )}
+                      {(conflict.supporting_quotes || []).map((q, i) => (
+                        <div key={i} style={{ fontSize: 11.5, fontStyle: "italic", color: COLORS.gray, marginBottom: 2 }}>
+                          "{q}"
+                        </div>
+                      ))}
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                        {sectionKeys.map((sk) => (
+                          <button
+                            key={sk}
+                            type="button"
+                            style={styles.btnSecondary}
+                            onClick={() => onNavigateToSection && onNavigateToSection(sk)}
+                          >
+                            Confirm in {DOC_INSIGHTS_SECTION_LABELS[sk] || sk}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {visibleGaps.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 10 }}>
+              No evidence-supported documentation opportunities were detected from the current visit recording and RNICA
+              assessment.
+            </div>
+          ) : (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12.5, color: COLORS.dark, marginBottom: 8 }}>
+                {visibleGaps.length} documentation {visibleGaps.length === 1 ? "opportunity" : "opportunities"} found:
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {visibleGaps.map((gap) => {
+                  const sectionKeys = [...new Set((gap.suggested_fields || []).map((f) => f.split(".")[0]))];
+                  const fieldLabels = (gap.suggested_fields || []).map(
+                    (f) => DOC_INSIGHTS_FIELD_LABELS[f] || f.split(".").slice(1).join(" ")
+                  );
+                  return (
+                    <div
+                      key={gap.topic}
+                      style={{ padding: 10, borderRadius: 8, border: `1px solid ${COLORS.border || "#E2E8F0"}`, background: "#fff" }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.teal || COLORS.dark, marginBottom: 4 }}>
+                        {gap.topic}
+                      </div>
+                      <div style={{ fontSize: 12, color: COLORS.dark, marginBottom: 6 }}>{gap.message}</div>
+                      {(gap.supporting_quotes || []).length > 0 && (
+                        <div style={{ marginBottom: 6 }}>
+                          {gap.supporting_quotes.map((q, i) => (
+                            <div key={i} style={{ fontSize: 11.5, fontStyle: "italic", color: COLORS.gray, marginBottom: 2 }}>
+                              "{q}"
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+                        Recommended review: {fieldLabels.join(", ")}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {sectionKeys.map((sk) => (
+                          <button
+                            key={sk}
+                            type="button"
+                            style={styles.btnSecondary}
+                            onClick={() => onNavigateToSection && onNavigateToSection(sk)}
+                          >
+                            Review {DOC_INSIGHTS_SECTION_LABELS[sk] || sk}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          style={styles.btnSecondary}
+                          onClick={() => setDismissedTopics((prev) => [...prev, gap.topic])}
+                        >
+                          Dismiss for This Review
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: showNarrativePreview ? 10 : 0 }}>
+            <button type="button" style={styles.btnSecondary} onClick={runCheck}>
+              Re-check Documentation
+            </button>
+            {!showNarrativePreview && (
+              <button type="button" style={styles.btnPrimary} onClick={() => setShowNarrativePreview(true)}>
+                Generate Narrative Preview
+              </button>
+            )}
+          </div>
+
+          {!result.ai_configured && (
+            <div style={{ fontSize: 11.5, color: COLORS.warning, marginTop: 6 }}>
+              AI narrative composition is not configured in this environment; only documentation gaps are available.
+            </div>
+          )}
+
+          {showNarrativePreview && result.full_text && (
+            <div style={{ borderTop: `1px solid ${COLORS.border || "#E2E8F0"}`, paddingTop: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.dark }}>Narrative V2 Preview</span>
+                <span style={{ display: "flex", gap: 8 }}>
+                  <button type="button" style={styles.btnSecondary} onClick={runCheck}>Regenerate</button>
+                  <button type="button" style={styles.btnSecondary} onClick={() => setShowNarrativePreview(false)}>Close</button>
+                </span>
+              </div>
+              <div style={{
+                whiteSpace: "pre-wrap", fontSize: 12, color: COLORS.dark, background: "#fff",
+                border: `1px solid ${COLORS.border || "#E2E8F0"}`, borderRadius: 8, padding: 12,
+                maxHeight: 320, overflowY: "auto", marginBottom: 8,
+              }}>
+                {result.full_text}
+              </div>
+
+              {pendingReplace ? (
+                <div style={{
+                  padding: 10, borderRadius: 8, border: `1px solid ${COLORS.warning}`,
+                  background: COLORS.warningBoxBg, fontSize: 12.5, color: COLORS.dark,
+                }}>
+                  <div style={{ marginBottom: 8 }}>
+                    A clinical narrative already exists below. Inserting this preview will replace the current text.
+                  </div>
+                  <button type="button" style={styles.btnSecondary} onClick={() => setPendingReplace(false)}>Cancel</button>
+                  <button
+                    type="button"
+                    style={{ ...styles.btnPrimary, marginLeft: 8 }}
+                    onClick={() => {
+                      onInsertNarrative(result.full_text);
+                      setPendingReplace(false);
+                    }}
+                  >
+                    Replace with This Narrative
+                  </button>
+                </div>
+              ) : (
+                <button type="button" style={styles.btnPrimary} onClick={handleInsert} disabled={locked}>
+                  Insert into Clinical Narrative
+                </button>
+              )}
+            </div>
+          )}
+
+          {result.lcd_support_section && onInsertLcdSection && (
+            <div style={{ borderTop: `1px solid ${COLORS.border || "#E2E8F0"}`, marginTop: 12, paddingTop: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.dark, marginBottom: 6 }}>
+                LCD / Hospice Eligibility Support (patient-specific)
+              </div>
+              <div style={{
+                whiteSpace: "pre-wrap", fontSize: 12, color: COLORS.dark, background: "#fff",
+                border: `1px solid ${COLORS.border || "#E2E8F0"}`, borderRadius: 8, padding: 12,
+                maxHeight: 220, overflowY: "auto", marginBottom: 8,
+              }}>
+                {result.lcd_support_section}
+              </div>
+              <div style={{ fontSize: 11.5, color: COLORS.gray, marginBottom: 8 }}>
+                Inserts or refreshes only this subsection inside the Clinical Narrative below — the rest of the RN's
+                narrative is preserved.
+              </div>
+              {lcdInserted ? (
+                <div style={{ fontSize: 12, color: COLORS.teal || COLORS.dark }}>Inserted into the Clinical Narrative below.</div>
+              ) : (
+                <button
+                  type="button"
+                  style={styles.btnSecondary}
+                  disabled={locked}
+                  onClick={() => {
+                    onInsertLcdSection(result.lcd_support_section);
+                    setLcdInserted(true);
+                  }}
+                >
+                  Insert LCD Support Only
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Merges only the "LCD / HOSPICE ELIGIBILITY SUPPORT" subsection into the
+// current clinical narrative text, leaving every other RN-authored section
+// untouched. If that heading already exists in the current narrative, its
+// block is replaced in place (no duplicate section); otherwise the new
+// subsection is appended. Generic string-splice, not tied to any one
+// section's wording.
+function mergeLcdSupportSection(existingNarrative, lcdParagraph) {
+  const header = "LCD / HOSPICE ELIGIBILITY SUPPORT";
+  const block = `${header}\n${lcdParagraph}`.trim();
+  const text = (existingNarrative || "").trim();
+  if (!text) return block;
+  const headerIndex = text.indexOf(header);
+  if (headerIndex === -1) {
+    return `${text}\n\n${block}`;
+  }
+  // Find the next blank-line-followed-by-ALL-CAPS-heading after this one,
+  // or end of string, to know where the existing LCD block ends.
+  const rest = text.slice(headerIndex + header.length);
+  const nextHeadingMatch = rest.match(/\n\n[A-Z][A-Z /&]{3,60}\n/);
+  const blockEnd = nextHeadingMatch ? headerIndex + header.length + nextHeadingMatch.index : text.length;
+  return `${text.slice(0, headerIndex)}${block}${text.slice(blockEnd)}`.trim();
+}
+
+// Exported (in addition to the default RNICA export) solely so
+// clinicalNarrativeCard.test.jsx can unit-test its unsaved-assessment /
+// V2-failure / replace-confirmation / save-and-continue behavior in
+// isolation, without mounting the entire multi-thousand-line RNICA form.
+export function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked, hospiceNarrativeContext, assessmentId, onNavigateToSection, onSaveNow }) {
+  const [pendingReplace, setPendingReplace] = useState(false);
+  const [draftStatus, setDraftStatus] = useState("idle"); // idle | loading | error | saving
+  const [draftError, setDraftError] = useState("");
   const narrative = diagnosesData?.clinicalNarrative || "";
   const trajectory = diagnosesData?.diseaseTrajectory || "";
   const isLegacyTrajectory = isLegacyDiseaseTrajectoryValue(trajectory);
@@ -2101,6 +2461,14 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
   const qualityGate = evaluateNarrativeQualityGate(narrative);
 
   const handleBuildDraft = () => {
+    if (!assessmentId) {
+      // Unsaved assessment: no local narrative is ever generated. The RN
+      // must save the assessment first so the draft can be produced
+      // against complete, current documentation.
+      setDraftStatus("error");
+      setDraftError("SAVE_REQUIRED");
+      return;
+    }
     if (narrative.trim()) {
       setPendingReplace(true);
       return;
@@ -2108,15 +2476,82 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
     applyDraft();
   };
 
-  const applyDraft = () => {
-    const draft = buildClinicalNarrative(fullFormData, hospiceNarrativeContext?.patient || {}, hospiceNarrativeContext?.hospiceContext || {});
-    updateField("clinicalNarrative", draft.text);
-    updateField("clinicalNarrativeContextFingerprint", currentContextFingerprint);
-    // Replacing the narrative content always resets review — a
-    // previously reviewed narrative cannot remain "reviewed" once its
-    // text has changed.
-    updateField("clinicalNarrativeReviewed", false);
+  // The RNICA V2 narrative service (rnica_narrative_v2_service.py) is the
+  // single, active clinical narrative-composition engine. There is no
+  // local/offline narrative generation of any kind — an assessment
+  // without an assessmentId (never yet saved) cannot request a draft at
+  // all; see handleSaveThenBuildDraft for the save-first path.
+  const applyDraft = async () => {
     setPendingReplace(false);
+    if (!assessmentId) {
+      setDraftStatus("error");
+      setDraftError("SAVE_REQUIRED");
+      return;
+    }
+    setDraftStatus("loading");
+    setDraftError("");
+    try {
+      const preview = await previewRnicaNarrativeV2(assessmentId);
+      const text = preview?.full_text || "";
+      updateField("clinicalNarrative", text);
+      updateField("clinicalNarrativeContextFingerprint", currentContextFingerprint);
+      // Replacing the narrative content always resets review — a
+      // previously reviewed narrative cannot remain "reviewed" once its
+      // text has changed.
+      updateField("clinicalNarrativeReviewed", false);
+      setDraftStatus("idle");
+    } catch (err) {
+      setDraftStatus("error");
+      setDraftError(err?.message || "Unable to generate the narrative draft right now.");
+    }
+  };
+
+  // Saves the assessment first (preserving every entered field — this
+  // never touches clinicalNarrative or any other documented value), then,
+  // once a real assessment record exists, automatically requests the
+  // narrative draft the RN originally asked for.
+  const handleSaveThenBuildDraft = async () => {
+    if (!onSaveNow) {
+      setDraftStatus("error");
+      setDraftError("SAVE_REQUIRED");
+      return;
+    }
+    setDraftStatus("saving");
+    setDraftError("");
+    try {
+      const result = await onSaveNow();
+      if (!result?.assessmentId) {
+        throw new Error("The assessment could not be saved. Please try again.");
+      }
+      // assessmentId now flows down from the parent on next render; the RN
+      // can immediately continue with the draft using the freshly-saved
+      // assessment record.
+      setDraftStatus("idle");
+      setDraftError("");
+    } catch (err) {
+      setDraftStatus("error");
+      setDraftError(err?.message || "The assessment could not be saved. Please try again.");
+    }
+  };
+
+  // Shared by "Build Draft from Documented Findings" (above) and the
+  // Documentation Insights "Insert into Clinical Narrative" action below —
+  // both write only to the one authoritative narrative field
+  // (diagnoses.clinicalNarrative), never finalization.clinicalNarrative,
+  // and both reset review status since the text changed.
+  const insertNarrativeText = (text) => {
+    updateField("clinicalNarrative", text);
+    updateField("clinicalNarrativeContextFingerprint", currentContextFingerprint);
+    updateField("clinicalNarrativeReviewed", false);
+  };
+
+  // Insert/refresh ONLY the LCD subsection, preserving every other manual
+  // edit the RN has already made to the narrative — never a full replace.
+  const insertLcdSection = (lcdParagraph) => {
+    const merged = mergeLcdSupportSection(narrative, lcdParagraph);
+    updateField("clinicalNarrative", merged);
+    updateField("clinicalNarrativeContextFingerprint", currentContextFingerprint);
+    updateField("clinicalNarrativeReviewed", false);
   };
 
   const handleNarrativeChange = (value) => {
@@ -2184,16 +2619,32 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
       <div style={{ marginTop: 12, marginBottom: 8 }}>
         <button
           type="button"
-          style={{ ...styles.btnSecondary, opacity: locked ? 0.5 : 1 }}
+          style={{ ...styles.btnSecondary, opacity: locked || draftStatus === "loading" || draftStatus === "saving" ? 0.5 : 1 }}
           onClick={handleBuildDraft}
-          disabled={locked}
+          disabled={locked || draftStatus === "loading" || draftStatus === "saving"}
         >
-          Build Draft from Documented Findings
+          {draftStatus === "loading" ? "Generating Draft…" : "Build Draft from Documented Findings"}
         </button>
         <span style={{ marginLeft: 10, fontSize: 11.5, color: COLORS.gray }}>
-          Assembles a draft strictly from already-documented fields on this assessment. It never runs automatically and never
-          determines eligibility, prognosis, or disease trajectory.
+          Generates a draft from this assessment's documented findings using the RN Initial Comprehensive Assessment narrative
+          engine. It never runs automatically and never determines eligibility, prognosis, or disease trajectory.
         </span>
+        {draftStatus === "error" && draftError === "SAVE_REQUIRED" && (
+          <div style={{ marginTop: 6, fontSize: 12.5, color: COLORS.dark }}>
+            Save the assessment before generating the clinical narrative so the draft can use the complete current
+            documentation. All entered fields are preserved.
+            {" "}
+            <button type="button" style={styles.btnSecondary} onClick={handleSaveThenBuildDraft}>Save Assessment</button>
+          </div>
+        )}
+        {draftStatus === "saving" && (
+          <div style={{ marginTop: 6, fontSize: 12.5, color: COLORS.gray }}>Saving assessment…</div>
+        )}
+        {draftStatus === "error" && draftError !== "SAVE_REQUIRED" && (
+          <div style={{ marginTop: 6, fontSize: 12.5, color: COLORS.danger || COLORS.warning }}>
+            {draftError} <button type="button" style={styles.btnSecondary} onClick={applyDraft}>Retry</button>
+          </div>
+        )}
       </div>
 
       {pendingReplace && (
@@ -2206,6 +2657,17 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
           <button type="button" style={{ ...styles.btnPrimary, marginLeft: 8 }} onClick={applyDraft}>Replace with New Draft</button>
         </div>
       )}
+
+      <DocumentationInsightsPanel
+        assessmentId={assessmentId}
+        locked={locked}
+        styles={styles}
+        COLORS={COLORS}
+        narrative={narrative}
+        onNavigateToSection={onNavigateToSection}
+        onInsertNarrative={insertNarrativeText}
+        onInsertLcdSection={insertLcdSection}
+      />
 
       <FormTextarea
         label="Diagnoses Narrative"
@@ -2635,8 +3097,14 @@ function DmeStatusCard({ data, updateField, styles, COLORS }) {
 // CMS carve-out for a second, distinct cancer diagnosis.
 // ════════════════════════════════════════════════════════════════
 const HOPE_COMORBIDITY_CATEGORIES = [
-  { key: "cancer", hopeCode: "I0100", label: "Cancer", group: "Cancer", regex: /^C\d/i },
-  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", group: "Heart/Circulation", regex: /^I50/i },
+  {
+    key: "cancer", hopeCode: "I0100", label: "Cancer", group: "Cancer", regex: /^C\d/i,
+    descriptionKeywords: ["cancer", "carcinoma", "malignan", "neoplasm", "metasta", "sarcoma", "lymphoma", "leukemia"],
+  },
+  {
+    key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", group: "Heart/Circulation", regex: /^I50/i,
+    descriptionKeywords: ["heart failure", "chf", "cardiomyopathy", "pulmonary edema"],
+  },
   { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", group: "Heart/Circulation", regex: /^I7[03]/i },
   { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
   { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", group: "Gastrointestinal", regex: /^K7[0-4]/i },
@@ -2645,7 +3113,10 @@ const HOPE_COMORBIDITY_CATEGORIES = [
   { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
   { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
   { key: "stroke", hopeCode: "I4501", label: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
-  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
+  {
+    key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i,
+    descriptionKeywords: ["dementia", "alzheimer"],
+  },
   { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
   { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
   { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", group: "Pulmonary", regex: /^J44/i },
@@ -2659,20 +3130,6 @@ function matchesCategory(icd10, regex) {
 
 function categorizeIcd10(icd10) {
   return HOPE_COMORBIDITY_CATEGORIES.find((cat) => matchesCategory(icd10, cat.regex)) || null;
-}
-
-// Used to gate disease-specific performance scales (NYHA/FAST/ECOG) in the
-// Performance Status section so the RN only sees the scale relevant to this
-// patient's actual diagnoses, checking both the primary diagnosis and every
-// secondary diagnosis (not just the principal one) against the same
-// ICD-10 category regexes used for HOPE comorbidity categorization above.
-function diagnosesIncludeCategory(diagnosesData, categoryKey) {
-  const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
-  if (!category) return false;
-  const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
-  if (matchesCategory(primaryIcd10, category.regex)) return true;
-  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
-  return secondaryDx.some((dx) => matchesCategory(dx?.icd10, category.regex));
 }
 
 function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
@@ -8480,7 +8937,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, hospiceNarrativeContext = {}) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, hospiceNarrativeContext = {}, onSaveNow = undefined) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
   const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
@@ -8548,9 +9005,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   // Disease-specific performance scales only apply to patients with the
   // matching diagnosis (primary or secondary): NYHA needs CHF/heart
   // failure, FAST needs dementia, ECOG needs cancer.
-  const showNyha = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "heartFailure");
-  const showFast = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "dementia");
-  const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "cancer");
+  const showNyha = sectionKey === "performanceStatus" && diagnosesIncludeDiseaseCategory(fullFormData?.diagnoses, "CHF");
+  const showFast = sectionKey === "performanceStatus" && diagnosesIncludeDiseaseCategory(fullFormData?.diagnoses, "DEMENTIA");
+  const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeDiseaseCategory(fullFormData?.diagnoses, "CANCER");
 
   return (
     <>
@@ -8602,17 +9059,26 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
-        if (sectionKey === "diagnoses" && card.customRenderer === "clinicalNarrative") {
+        if (sectionKey === "finalization" && card.customRenderer === "clinicalNarrative") {
+          // Storage vs. workflow location are intentionally decoupled: the
+          // authoritative field remains diagnoses.clinicalNarrative (the
+          // one field attestation validation checks), but the RN works
+          // with it here, in Finalization, matching the expected
+          // Nursing Assessment -> Finalization -> Clinical Narrative ->
+          // Addendum -> Clarification -> Review -> Lock workflow.
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <ClinicalNarrativeCard
-                diagnosesData={data}
+                diagnosesData={fullFormData?.diagnoses}
                 fullFormData={fullFormData}
-                updateField={u}
+                updateField={(path, val) => update("diagnoses", path, val)}
                 styles={styles}
                 COLORS={COLORS}
                 locked={locked}
                 hospiceNarrativeContext={hospiceNarrativeContext}
+                assessmentId={assessmentId}
+                onNavigateToSection={onNavigateToSection}
+                onSaveNow={onSaveNow}
               />
             </Card>
           );
@@ -8958,10 +9424,40 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
                     placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
                   break;
-                case "select":
+                case "select": {
                   rendered = <FormSelect label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                  // Performance-scale scores (PPS/KPS/NYHA/FAST/ECOG) are
+                  // meaningless to most readers as a bare number/code --
+                  // show the published clinical meaning directly beneath
+                  // the score whenever a value is selected, so the
+                  // interpretation is visible without the reader having to
+                  // memorize what each scale means.
+                  if (sectionKey === "performanceStatus" && ["pps", "kps", "nyha", "fast", "ecog"].includes(fieldForRender.path)) {
+                    const interp = getScaleInterpretation(fieldForRender.path, value);
+                    if (interp) {
+                      rendered = (
+                        <div>
+                          {rendered}
+                          <div style={{ marginTop: 6, fontSize: 12, lineHeight: 1.4 }}>
+                            <div style={{ color: COLORS.textSecondary || "#6b7280" }}>
+                              <strong>Current:</strong> {interp.label} {interp.value}
+                            </div>
+                            <div style={{ marginTop: 2, color: COLORS.textSecondary || "#6b7280" }}>
+                              <strong>Desired:</strong> {interp.label} {interp.value} — {interp.functionalInterpretation}
+                            </div>
+                            {interp.whyItMatters && (
+                              <div style={{ marginTop: 2, fontStyle: "italic", color: COLORS.textSecondary || "#6b7280" }}>
+                                Why it matters: {interp.whyItMatters}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                  }
                   break;
+                }
                 case "radio":
                   rendered = <FormRadioGroup label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} />;
@@ -9231,10 +9727,6 @@ const SECTION_CONFIGS = {
       {
         title: "LCD Supporting Evidence",
         customRenderer: "lcdSupportingEvidence",
-      },
-      {
-        title: "Clinical Narrative & Disease Trajectory",
-        customRenderer: "clinicalNarrative",
       },
     ],
   },
@@ -9999,10 +10491,11 @@ const SECTION_CONFIGS = {
     title: "Finalization & Signature",
     subtitle: "Completion, certification, clinician signature",
     cards: [
-      { id: "rnica-clinical-narrative", title: "Clinical Narrative", fields: [
-        { type: "textarea", label: "Clinical narrative", path: "clinicalNarrative", rows: 8, required: true,
-          placeholder: "Synthesize the completed whole-patient assessment findings, changes, interventions, response, risks, and plan. Review all source-linked draft content before attestation." },
-      ]},
+      {
+        id: "rnica-clinical-narrative",
+        title: "Clinical Narrative & Disease Trajectory",
+        customRenderer: "clinicalNarrative",
+      },
       { title: "Amendments", customRenderer: "finalReviewDashboard", fields: [] },
       { title: "Completion Status", cms: "F2000/F2100/F2200", fields: [
         { type: "checkbox", label: "Signature Certification — I certify this assessment is complete and accurate", path: "signatureCertification" },
@@ -10905,7 +11398,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // opening/closing this never touches `formData` or `activeSection`.
   const [actionCenterOpen, setActionCenterOpen] = useState(false);
 
-  const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
+  const { markPersisted, resetAutosaveTracking, saveNow } = useAssessmentAutosave({
     formData,
     assessmentId,
     setAssessmentId,
@@ -11692,7 +12185,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, hospiceNarrativeContext)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, hospiceNarrativeContext, saveNow)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -11700,8 +12193,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   });
 
-  // Feeds buildClinicalNarrative() with the resolved, chart-authoritative
-  // hospice reasoning context (see rnica_intelligence.py
+  // Feeds the RNICA V2 narrative service (rnica_narrative_v2_service.py,
+  // the sole active clinical narrative-composition engine) with the
+  // resolved, chart-authoritative hospice reasoning context (see rnica_intelligence.py
   // build_hospice_reasoning_panel()) and the chart/draft diagnosis-sync
   // check (see visits.py _build_chart_diagnosis_sync()) so the "Build
   // Draft from Documented Findings" narrative uses the current chart
@@ -11746,6 +12240,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             onNavigateToSection,
             assessmentUiProfile,
             hospiceNarrativeContext,
+            saveNow,
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 

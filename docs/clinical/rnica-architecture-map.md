@@ -330,6 +330,8 @@ Gaps) because it has been resolved, add its entry here rather than deleting it.
 | RN narrative claimed to personally perform stretching/massage/routine ROM | No scope-of-practice distinction between RN and LVN/CHHA tasks | Added explicit scope-of-practice rule: routine stretching/massage/repositioning-schedule is LVN/CHHA-delegated, stated in the plan of care, not an RN-performed action | Yes — regenerated narrative reads "I instructed the LVN/CHHA to provide passive range-of-motion, massage, and repositioning every two hours as part of the plan of care" |
 | Stale saved narrative in a real patient record still showed old report-style headers, even though the live engine had already been rewritten | UI/DB held a previously-generated narrative that was never regenerated after the engine was fixed | Regenerated fresh output via the current engine and persisted it into the patient's `RnicaAssessment.form_data.diagnoses.clinicalNarrative` | Yes — confirms this was a stale-data issue, not an engine defect, at the time it was found |
 | Kessler's regression-test FAST validation failed — `performanceStatus.fast` was blank | Traced full pipeline (source document → extraction → database → API → Performance Status → narrative → Evidence Center). Her already-uploaded source PDF (`kessler_hnp_chart_consents.pdf`) literally contains the value in its raw OCR'd text — `"KPS 30 7-E FAST PPS 30 NYHA"` — but it was never transcribed into the structured `RnicaAssessment.form_data.performanceStatus` fields. Confirmed via direct full-text search of her `PatientEvidenceRecord` rows and full JSON walk of her assessment's `form_data`. This is a data-entry/transcription gap, not a narrative-engine defect — no automated scale-extraction pipeline exists in this system today; PPS/KPS/NYHA/FAST/ECOG are RN-entered structured fields (confirmed by inspecting how Loren's reference values were populated: a manual transcription script, `backend/scripts/populate_loren_shields.py`, not an AI extraction step) | `backend/scripts/populate_kessler_performance_status_from_pdf.py` transcribes the literal source-document value into `kps=30`, `pps=30%`, `fast=7e` (each with a justification quoting the source table). NYHA intentionally left blank — not present in the source row for this dementia patient | Yes — regenerated Kessler narrative now includes "She is at FAST 7e, with advanced dementia no longer able to smile..." and `scale_clinical_evidence` returns a fully-interpreted FAST 7e entry alongside PPS/KPS; Evidence Center re-confirmed functional after the fix |
+| Duplicate narrative writers — the "Build Draft from Documented Findings" button produced pre-redesign report-style headers (HOSPICE CLINICAL PICTURE / REASON FOR HOSPICE ADMISSION / EVIDENCE OF DECLINE / DISEASE-SPECIFIC SUPPORT), which are explicitly banned anti-patterns (Section 11), while narratives generated through Documentation Insights did not | `diagnoses.clinicalNarrative` is a single storage field, but had two independent writers: the frontend deterministic template (`sns-emr-frontend/src/intake/clinicalNarrativeBuilder.js` → `buildClinicalNarrative()`), wired to "Build Draft from Documented Findings", and the backend RNICA V2 engine (`generate_rnica_narrative_v2()`), reachable only via Documentation Insights' "Insert into Clinical Narrative". Whichever was clicked most recently determined what the RN saw, with no indicator of which engine produced it | Repointed "Build Draft from Documented Findings" (`ClinicalNarrativeCard.applyDraft()` in `RNICA.jsx`) to call `previewRnicaNarrativeV2()` — the same `POST /rnica/{assessment_id}/narrative-v2/preview` endpoint Documentation Insights already uses — instead of the local template. `buildClinicalNarrative()` is retained only as an offline fallback for an assessment with no `assessmentId` yet (never saved) or if the API call fails, so the button never goes fully dead; it is no longer a second active narrative-composition path. Corrected the stale docstring on `preview_rnica_narrative_v2` (`backend/app/api/visits.py`), which still described the old fixed 10-section report format | **Yes — VERIFIED_WORKING_END_TO_END, live browser, all three regression patients (2026-09-08).** Backend-only verification (direct `generate_rnica_narrative_v2()` calls) was insufficient and produced a false PASS: a live screenshot of Norma's browser session showed the button still displaying a previously-saved pre-fix legacy narrative, because an earlier in-session regeneration was never explicitly saved. Root cause traced live in-browser with instrumented network capture (`window.fetch`/`XMLHttpRequest` hooked before interaction): confirmed correct worktree/commit (`feature/production-hnp-clinical-runtime @ 65b2187`, matching the on-page build banner) and correct running processes: (1) clicked "Build Draft from Documented Findings" → "Replace with New Draft" live for Norma; network capture proved `POST /visits/rnica/cb060604.../narrative-v2/preview` → `200 OK` with the V2 JSON response body (`ai_configured: true`, `section1`/`section9` fields); (2) resulting textarea (8,678 chars) contained zero legacy headers, included PPS 20%/KPS 20/ECOG 4 with clinical interpretation, and the on-screen "Narrative Quality Gate: FAIL" banner cleared to "must be reviewed" (passing); (3) captured the autosave `PUT /visits/rnica/cb060604...` → `200 OK`; (4) hard-reloaded the page and re-navigated Nursing Assessment → RNICA record → Finalization — the identical 8,678-char V2 narrative persisted, proving it survives reload and is not just in-memory state. Repeated the same live click→network-capture→persist check for Kessler (assessment `5d39cc37...`) — confirmed `POST .../narrative-v2/preview` → `200 OK`, FAST 7e/PPS 30%/KPS 30 present with interpretation, zero legacy headers. Loren was confirmed live (PPS 40%/KPS 40/NYHA IV, zero legacy headers) earlier the same day using the identical browser click-through method. |
+| **LEGACY FRONTEND NARRATIVE WRITER REMOVED** — a "reachable only when unsaved/on API failure" fallback was judged unacceptable: any code path capable of producing the banned report-style narrative is a live risk regardless of how rarely it fires | The item above only demoted `buildClinicalNarrative()` to a fallback; the function, its report-style template, and its 31 KB file still existed and were still importable/callable | Deleted `sns-emr-frontend/src/intake/clinicalNarrativeBuilder.js` and its test file entirely — no rename, no "historical reference" retention. `ClinicalNarrativeCard.applyDraft()` (`RNICA.jsx`) no longer has an `!assessmentId` branch that generates any narrative locally; V2 preview (`previewRnicaNarrativeV2()`) is the only call in the function. The shared, engine-agnostic infrastructure the old file also contained — Disease Trajectory constants/helpers, `computeNarrativeContextFingerprint()` (staleness detection), `evaluateNarrativeQualityGate()` (field-dump/leakage linter) — was extracted, unchanged, into a new module `sns-emr-frontend/src/intake/narrativeSupport.js` (with `narrativeSupport.test.js` covering it) so removing the banned writer did not regress staleness detection or the quality gate that originally caught the Norma field-dump. New unsaved-assessment UX: `handleBuildDraft()` shows a save-first message with no technical jargon ("Save the assessment before generating the clinical narrative so the draft can use the complete current documentation. All entered fields are preserved.") and a "Save Assessment" button wired to a new `saveNow()` action added to `useAssessmentAutosave()` (an explicit, awaitable version of the existing 30s background autosave, reusing the identical create/update logic) — no assessment field is read, cleared, or overwritten by this path. V2-failure behavior is unchanged (already correct): shows the error, offers Retry, never falls back to any local narrative, and never overwrites existing narrative text or RN edits. Repo-wide search confirms zero remaining references to `clinicalNarrativeBuilder`/`buildClinicalNarrative` outside this table, `narrativeSupport.js`'s explanatory doc-comment, and a historical comment in `rnica_narrative_v2_service.py` | Yes — `narrativeSupport.test.js` (14 tests, ported/adapted from the deleted file's non-legacy-writer test cases) and a new `ClinicalNarrativeCard.test.jsx` (6 tests: saved-assessment path calls only `previewRnicaNarrativeV2`; unsaved-assessment path shows the jargon-free save prompt and calls nothing; Save Assessment invokes `onSaveNow()`; V2 failure shows Retry with no fallback text ever written; existing-narrative replacement requires explicit confirmation; a successful draft writes narrative text + fingerprint + reset review status together) all pass. Full frontend suite: 276/276 passing across 19 files. `tsc -b` reports zero errors introduced by this change (pre-existing, unrelated MUI type errors in `FacilityCollectionsReportPage.tsx` confirmed present on the unmodified baseline via `git stash`). Re-ran the full live click→network-trace→save→reload verification in-browser for Loren/Norma/Kessler after this change: all three continued to show V2-only narratives with zero legacy headers and correct scale values (PPS/KPS/NYHA for Loren, PPS/KPS/ECOG for Norma, PPS/KPS/FAST for Kessler) |
 
 ---
 
@@ -387,10 +389,65 @@ patient record:
    real ECOG assessment becomes available for her (e.g. a future document upload, or an RN
    performs and documents one live), populate it the same way Kessler's FAST was populated —
    transcribed from a real, cited source, never invented.
+   **CORRECTION (2026-09-08, later same day — see Discovery Log entry below)**: this item's
+   conclusion is superseded, not retracted. Norma's `performanceStatus` now contains
+   `kps="20"`, `pps="20%"`, `ecog="4"` — entered directly by clinical staff through the RNICA
+   form as valid manual clinician documentation (confirmed by the reporting clinician). This is
+   a legitimate structured finding, not a fabricated value; the earlier "genuinely absent"
+   conclusion was correct **only for document-harvested evidence**, which is still true — no
+   source document contains these values. See Open Gaps items 9–11 below for the systemic gaps
+   this surfaced.
+9. **No provenance is recorded for manually-entered structured fields** — `RnicaAssessment` has a
+   working provenance mechanism, `field_provenance` (a list of `{path, value, section, signal_id,
+   confidence, recorded_at, source_type, concept_code, source_excerpt}` records), populated
+   automatically for document-harvested findings (confirmed for Norma: 22 entries, all
+   `source_type=DOCUMENT_UPLOAD`, covering vitals/cardiovascular/GI/neuro/infection fields).
+   However, `performanceStatus.*` fields (kps/pps/ecog/fast/nyha) have **zero** `field_provenance`
+   entries for Norma even though they are now populated — confirming these were typed directly
+   into the form and bypass the provenance pipeline entirely. There is no `source_type` value for
+   `RN_MANUAL_ENTRY`, no capture of which user entered/confirmed a value, and no timestamp for
+   manual saves. Any structured field a clinician types directly (not just Performance Status)
+   has this same gap. **Required future behavior**: every write path that sets a structured RNICA
+   field — not only the AI-harvest path — should append a `field_provenance` entry, with a new
+   `source_type=RN_MANUAL_ENTRY` (or `RN_CONFIRMED_AI_FINDING` when a suggested value is accepted
+   as-is), the acting user, and a save timestamp.
+10. **RNICA draft saves are not audited** — traced `PATCH /rnica/{assessment_id}` →
+    `update_rnica_assessment` (`backend/app/api/visits.py:1177`) end-to-end: it calls
+    `db.commit()` directly with no call into the audit service anywhere in the function. By
+    contrast, `lock_rnica_assessment` (same file, ~line 1333) does write an `AuditLog` row
+    (`entity_type="rnica_assessment"`) when an assessment is signed/locked. Net effect: every
+    draft edit — including a clinician typing in Performance Status values — is invisible to
+    `AuditLog`; only the final lock/sign event is captured. This is why "who populated Norma's
+    ECOG and when" could not be answered from the audit trail and had to be inferred from
+    `updated_at` and the absence of a matching provenance entry. **Required future behavior**:
+    `update_rnica_assessment` should write an audit entry per save (at minimum: assessment id,
+    user, timestamp, and which top-level `formData` sections changed), without necessarily
+    diffing every nested field.
+11. ~~Two independent code paths write the one authoritative narrative field~~ — **Resolved
+    2026-09-08, see Section 13.** "Build Draft from Documented Findings" now calls the backend V2
+    preview endpoint instead of the local `clinicalNarrativeBuilder.js` template.
 
 These items are the active roadmap for this narrative engine. When one is resolved, move it out
 of this section into Section 13 (Resolved Findings) and update the relevant section above (do not
 just delete it).
+
+---
+
+## Test Data Policy
+
+All patients currently in this development environment (Loren, Norma, Kessler, and any others)
+are **development and regression-test records, not production clinical data.** Test records may
+be cleaned and repopulated using a documented, reproducible process when stale, conflicting,
+duplicated, or obsolete test-state residue prevents reliable regression validation. Production
+clinical-data retention, immutability, and amendment rules (e.g. the locked/signed-assessment
+correction workflow) do not apply to disposable development fixtures — but conversely, production
+system behavior must never be modeled on destructive test-data cleanup logic; the two are
+intentionally separate concerns. See `docs/testing/rnica-test-patient-manifest.md` for the
+current registry of test patients and their expected state.
+
+As of 2026-09-08, no cleanup/repopulation was required — all three regression patients
+(Loren/Norma/Kessler) passed validation against their existing data once the narrative-writer
+conflict (Section 13) was fixed; see Section 18 (Regression Test Matrix).
 
 ---
 
@@ -634,6 +691,203 @@ Patient Registry), Section 18 (Regression Test Matrix).
 
 ---
 
+**2026-09-08**
+
+**Finding**: Later the same day, a report that Norma's displayed narrative still resembled a
+pre-redesign report format ("HOSPICE CLINICAL PICTURE / REASON FOR HOSPICE ADMISSION / EVIDENCE
+OF DECLINE / DISEASE-SPECIFIC SUPPORT") triggered a full re-investigation, since those exact
+headers are banned anti-patterns (Section 11). Investigation found: (1) no new recording or
+document exists for Norma — her `DocumentRecord`/`PatientEvidenceRecord` rows are unchanged since
+2026-09-04, confirmed by file count, timestamps, and SHA-256 hash comparison of the session's
+duplicate attachment set; (2) her `performanceStatus` had changed since the prior entry above —
+`kps="20", pps="20%", ecog="4"` were now present, confirmed by the reporting clinician to be
+manually entered documentation, not fabricated or test data; (3) the legacy-style headers come
+from a second, independent narrative generator (`clinicalNarrativeBuilder.js`, a deterministic
+frontend template wired to the "Build Draft from Documented Findings" button), not from the RNICA
+V2 engine or from stale AI output; (4) manually-entered structured fields (Performance Status
+here, but any field entered this way) receive **no** `field_provenance` record, unlike
+document-harvested fields, which do; (5) RNICA draft saves are not written to `AuditLog` at all
+(only lock/sign events are) — confirmed by reading `update_rnica_assessment` end-to-end, not
+assumed.
+
+**Impact**: The earlier same-day conclusion "Norma's ECOG is genuinely absent" was correct only
+for document-harvested evidence — it did not anticipate a clinician entering the value directly
+through the form afterward, a valid and expected part of the RNICA workflow. Surfaced three
+systemic gaps beyond Norma specifically: no provenance for manual entries, no audit trail for
+draft saves, and two independently-writable code paths for one narrative field with no in-UI
+indicator of which produced the currently-displayed text.
+
+**Decision**: Norma's manually-entered values were left untouched (not reverted, not treated as
+test data). No code changes were made to the narrative engine, provenance system, or audit
+pipeline in this pass — investigation and documentation only, given the imminent deployment date.
+Recommended future direction: repoint "Build Draft from Documented Findings" to the backend V2
+preview endpoint (ADAPTER, not RETIRE, for `clinicalNarrativeBuilder.js`); extend
+`field_provenance` writes to manual-entry save paths with a new `RN_MANUAL_ENTRY` source type;
+add an audit-log write to `update_rnica_assessment`.
+
+**Alternatives considered**: building a full Source Management UI (multi-document view, soft
+delete, Set Active/Archive actions) before the deployment date was proposed and explicitly
+deferred — it requires a schema migration and new write paths, which conflicts with the
+deployment freeze already in effect.
+
+**Status**: Open — see Section 14, Open Gaps, items 9–11 (this entry supersedes, not retracts,
+the "Norma ECOG genuinely absent" framing in the entry above; both are true for their scope:
+absent from documents, present from manual entry).
+
+**Reference**: Section 11 (Anti-Patterns), Section 14 (Open Gaps, items 8–11), Section 17 (Test
+Patient Registry).
+
+---
+
+**2026-09-08**
+
+**Finding**: Consolidated the narrative-generation path per explicit direction to declare the
+backend RNICA V2 service the single narrative-composition engine. Also confirmed, after further
+clarification, that Norma's manually-entered PPS 20%/KPS 20/ECOG 4 are legitimate RN documentation
+(not test artifacts) — a manual clinical entry is a valid source type, distinct from but equal in
+standing to document-harvested evidence; the earlier framing that treated a missing source
+citation as a validity problem was itself a mistake to correct, not the data.
+
+**Decision**: Repointed "Build Draft from Documented Findings" (`ClinicalNarrativeCard.applyDraft()`
+in `sns-emr-frontend/src/components/RNICA.jsx`) to call `previewRnicaNarrativeV2()` — the same
+`POST /rnica/{assessment_id}/narrative-v2/preview` endpoint Documentation Insights already used —
+instead of the local `clinicalNarrativeBuilder.js` template. The local template is retained only
+as an offline fallback (no `assessmentId` yet, or the API call fails) so the button never goes
+fully dead; it is no longer a second active narrative-composition path. Corrected the stale
+docstring on `preview_rnica_narrative_v2` (`backend/app/api/visits.py`), which still described the
+old fixed 10-section report format. Did **not** touch Norma's manually-entered values, and did not
+build a full Source Management UI, provenance redesign, or audit-framework redesign in this pass
+— those remain open (Section 14, items 9–10) per explicit instruction not to expand scope before
+deployment.
+
+**Verified**: direct backend calls to `generate_rnica_narrative_v2()` for all three regression
+patients — Loren (PPS/KPS/NYHA present), Norma (PPS 20%/KPS 20/ECOG 4 present, correctly reflects
+her manual entry), Kessler (PPS/KPS/FAST present) — confirm free-flowing prose narratives with
+zero occurrences of the banned legacy headers ("hospice clinical picture," "reason for hospice
+admission," "evidence of decline," "disease-specific support"). No cleanup/repopulation of test
+patient data was required — see Test Data Policy section and Section 18 (Regression Test Matrix).
+
+**Alternatives considered**: clearing or "fixing" Norma's manually-entered values to restore a
+provenance-clean state was proposed in an earlier pass and explicitly rejected — punishing valid
+staff documentation for a system-design gap (missing provenance capture) was identified as the
+wrong tradeoff.
+
+**Status**: Resolved (narrative SSOT). Open (manual-entry provenance, draft-save audit — see
+Section 14, items 9–10, tracked separately and intentionally not solved in this pass).
+
+**Reference**: Section 11 (Anti-Patterns), Section 13 (Resolved Findings), Section 14 (Open Gaps,
+items 9–10), Test Data Policy, `docs/testing/rnica-test-patient-manifest.md`.
+
+---
+
+**2026-09-08**
+
+**Finding**: Backend-only verification of the duplicate-narrative-writer fix (direct calls to
+`generate_rnica_narrative_v2()`, plus a browser-automation click-through that read the resulting
+textarea in-memory but never explicitly confirmed the value was saved and reloaded) produced a
+false PASS. A live screenshot of Norma's assessment in a separate, real browser session showed
+"Build Draft from Documented Findings" with the *previously-saved* pre-fix legacy narrative still
+displayed ("HOSPICE CLINICAL PICTURE" / "REASON FOR HOSPICE ADMISSION" / etc.) and the on-page
+"Narrative Quality Gate: FAIL" banner still present, directly contradicting the "Resolved" status
+already recorded in Section 13.
+
+**Impact**: Compile success, API success, and even a browser-automation click that reads updated
+state in-memory are all insufficient evidence that a fix is live for an end user — none of them
+prove the result was persisted and would survive a real reload. The gap: an earlier
+verification pass regenerated Norma's narrative once, observed the correct V2 text in the
+textarea, and stopped there without an explicit save-then-reload check, so it could not detect
+whether the update was ever durable. Investigating the screenshot as the acceptance test (per
+explicit instruction) surfaced no new engine defect — the live button, when actually clicked and
+network-traced, worked correctly — but it did expose that the verification method itself had a
+gap.
+
+**Decision**: Re-ran the full live-browser acceptance test with instrumented request capture
+(hooked `window.fetch`/`XMLHttpRequest` before interacting) rather than trusting DOM reads or
+backend logs alone: (1) confirmed the running frontend/backend processes and Git commit
+(`feature/production-hnp-clinical-runtime @ 65b2187`) matched the on-page build banner and the
+worktree containing the fix; (2) clicked "Build Draft from Documented Findings" → "Replace with
+New Draft" live for Norma and captured the exact network request —
+`POST /visits/rnica/cb060604.../narrative-v2/preview` → `200 OK`, matching the expected V2
+endpoint, not `clinicalNarrativeBuilder.js`; (3) confirmed the resulting narrative (8,678 chars)
+had zero legacy headers, correctly incorporated PPS 20%/KPS 20/ECOG 4 with interpretation, and the
+Narrative Quality Gate banner cleared to passing; (4) captured the autosave
+`PUT /visits/rnica/cb060604...` → `200 OK`; (5) hard-reloaded the page, re-navigated to the same
+Finalization section, and confirmed the identical persisted text was still present — proving
+durability, not just in-memory state. Repeated the click→trace→persist sequence for Kessler with
+the same result (FAST 7e/PPS 30%/KPS 30 present, zero legacy headers, `200 OK` on both the preview
+and autosave calls). No code changes were required — the underlying fix from the prior entry was
+already correct; only the verification method was insufficient.
+
+**Alternatives considered**: dismissing the screenshot as a stale cache or a different
+worktree/build was considered and explicitly rejected without proof; Step 1 (confirm active
+source tree) was performed first and ruled both out before any other explanation was accepted.
+
+**Status**: Resolved — narrative SSOT fix now carries `VERIFIED_WORKING_END_TO_END` evidence
+(live browser, instrumented network capture, save-then-reload persistence), not backend-only
+evidence. See the updated "Verified" column for this finding in Section 13.
+
+**Reference**: Section 11 (Anti-Patterns), Section 13 (Resolved Findings), Section 17 (Test
+Patient Registry), Section 18 (Regression Test Matrix).
+
+---
+
+**2026-09-08**
+
+**Finding**: A "reachable only when unsaved or on API failure" fallback was still judged
+unacceptable — `buildClinicalNarrative()` and its 31 KB file (`clinicalNarrativeBuilder.js`)
+continued to exist, remained importable, and still contained the banned report-style template
+(HOSPICE CLINICAL PICTURE / REASON FOR HOSPICE ADMISSION / EVIDENCE OF DECLINE /
+DISEASE-SPECIFIC SUPPORT), even though the prior entry's fix meant it could not fire for any
+saved patient record in practice.
+
+**Impact**: A latent code path capable of producing an explicitly banned anti-pattern is a live
+architectural risk regardless of how narrow its reachability is today — a future refactor could
+easily reintroduce a call to it, or the "unsaved assessment" condition could become reachable
+again without anyone noticing. "Provably unreachable in current code" is not the same guarantee
+as "does not exist."
+
+**Decision**: Deleted `clinicalNarrativeBuilder.js` and `clinicalNarrativeBuilder.test.js`
+entirely — no rename, no move to a "legacy/" folder, no retention as historical reference in
+source. The engine-agnostic infrastructure the file also held — `DISEASE_TRAJECTORY_OPTIONS` /
+`isLegacyDiseaseTrajectoryValue` / `getDiseaseTrajectoryLabel`, `computeNarrativeContextFingerprint()`
+(staleness detection), and `evaluateNarrativeQualityGate()` (the field-dump/leakage linter that
+originally caught the Norma legacy-header regression) — was extracted unchanged into a new module,
+`sns-emr-frontend/src/intake/narrativeSupport.js`, with its own test file. `RNICA.jsx`'s
+`ClinicalNarrativeCard.applyDraft()` no longer has an `!assessmentId` branch that generates any
+narrative locally; requesting `previewRnicaNarrativeV2()` is the only way a draft narrative is ever
+produced. For an assessment that has not yet been saved, `handleBuildDraft()` now shows a
+save-first message using only plain clinical language — no "assessmentId," "API," "backend,"
+"V2," or "fallback" appears in the user-facing text — with a "Save Assessment" button that calls
+a new `saveNow()` action added to `useAssessmentAutosave()` (an explicit, awaitable version of the
+same create/update logic the existing 30-second background autosave already uses); no field the RN
+entered is read, cleared, or overwritten by this path. V2-failure behavior needed no change: it
+already showed the error, offered Retry, and never fell back to any local narrative or overwrote
+existing text.
+
+**Alternatives considered**: keeping `buildClinicalNarrative()` behind an additional guard/feature
+flag was rejected — a disabled-but-present banned template is still a latent risk and does not
+meet "removed completely."
+
+**Status**: Resolved. Verified via: (1) repository-wide search confirming zero remaining
+references to `clinicalNarrativeBuilder`/`buildClinicalNarrative` outside this log, the Section 13
+row above, `narrativeSupport.js`'s explanatory comment, and a historical comment in
+`rnica_narrative_v2_service.py`; (2) 14/14 tests passing in the new `narrativeSupport.test.js`
+(ported from the deleted file's non-legacy-writer coverage) and 6/6 new tests passing in
+`ClinicalNarrativeCard.test.jsx` (saved-assessment path, unsaved-assessment save-first message with
+no jargon, Save Assessment action, V2 failure/Retry with no fallback, existing-narrative replace
+confirmation, and narrative+fingerprint+review-reset written together); (3) full frontend suite
+276/276 passing across 19 files; (4) `tsc -b` introduces zero new errors (pre-existing, unrelated
+MUI type errors in `FacilityCollectionsReportPage.tsx` confirmed present on the unmodified
+baseline); (5) re-ran the full live click→network-trace→save→reload verification in-browser for
+Loren, Norma, and Kessler after this change — all three continue to show V2-only narratives with
+zero legacy headers and correct scale values.
+
+**Reference**: Section 11 (Anti-Patterns), Section 13 (Resolved Findings, "LEGACY FRONTEND
+NARRATIVE WRITER REMOVED"), Section 17 (Test Patient Registry), Section 18 (Regression Test
+Matrix).
+
+---
+
 ## Section 17 — Test Patient Registry
 
 Purpose: preserve the regression patients used to discover and validate architecture decisions in
@@ -685,6 +939,13 @@ Registry section.
   correctly present at the patient level but not on this specific RNICA assessment's
   `diagnoses.primaryDiagnosis` field. This is a data-entry gap in the demo record, not a defect in
   the narrative engine — narrative generation itself succeeds.
+- **UPDATE (2026-09-08, later same day)**: `performanceStatus` is no longer blank —
+  `kps="20"`, `pps="20%"`, `ecog="4"` were entered directly by clinical staff through the RNICA
+  form. This is valid `RN_MANUAL_ENTRY`-class documentation, not fabricated/test data (source type
+  not yet captured in `field_provenance` — see Section 14, item 9). This does not reverse the
+  document-harvest finding above (still true: no source document contains these values) — it adds
+  a second, equally valid source class the earlier framing hadn't accounted for. Regenerated V2
+  narrative confirmed to include "She is at ECOG 4..." correctly.
 
 ---
 
@@ -725,7 +986,7 @@ should be treated as a candidate for future automation, not as a reason to skip 
 | Direct RN Intervention (Section 6, Section 13 row 5) | Loren | At least one specific, observable RN-performed hands-on action is documented | Narrative contains a concrete RN-performed action distinct from teaching/instruction |
 | Scope of Practice — Musculoskeletal Delegation (Section 9) | Loren | Routine ROM/massage/repositioning attributed to LVN/CHHA via delegation in the plan of care, not to the RN as her own ongoing action | Narrative reads "I instructed the LVN/CHHA to provide..." rather than "I perform/provide..." for these tasks |
 | CHF Pathway (Section 10) | Loren | PPS, KPS, and NYHA scores are present with clinical interpretation, not raw values alone | Scores appear in narrative with meaning explained, and appear correctly in the Performance Status data |
-| Cancer Pathway (Section 10) | Norma | ECOG score present with interpretation; cancer-decline evidence documented | **CURRENTLY FAILING (documented, not fabricated) — see Section 14, item 8.** No ECOG value exists anywhere in Norma's source documents (confirmed via full-text trace 2026-09-08); narrative and Evidence Center still generate successfully, but ECOG specifically cannot be verified until real source data exists |
+| Cancer Pathway (Section 10) | Norma | ECOG score present with interpretation; cancer-decline evidence documented | **PASS (as of 2026-09-08, manual clinician entry)** — `performanceStatus.ecog="4"`/`kps="20"`/`pps="20%"` entered by clinical staff through the RNICA form; regenerated V2 narrative confirmed to include "She is at ECOG 4..." with interpretation. Still no ECOG value in any uploaded source document (see Section 17) — passes on the manual-entry source class, not document-harvest |
 | Dementia Pathway (Section 10) | Kessler | PPS, KPS, and FAST scores present with clinical interpretation; cognitive-decline documentation present | **PASS (fixed 2026-09-08)** — Score and cognitive-decline evidence present and interpreted in generated narrative ("She is at FAST 7e, with advanced dementia no longer able to smile..."); verified via `scale_clinical_evidence` output after running `backend/scripts/populate_kessler_performance_status_from_pdf.py` (see Section 13, Resolved Findings) |
 | Workflow Reasoning Chain (Section 5) | Loren | Finding → Judgment → Intervention → Response → Teaching → Plan present for at least Pain, Respiratory, and Skin domains | Manual domain-by-domain audit of a generated narrative against the six-step chain |
 | Authenticity Test (Section 12) | Loren, Norma, Kessler | An experienced hospice RN would sign the note as an Initial Comprehensive Assessment without rewriting most of it | Hide document type/metadata/headers and have an RN, Clinical Manager, or QA reviewer read the narrative alone |
@@ -734,9 +995,10 @@ Known gap: GI/GU and Safety domain reasoning-chain completeness (Section 14, ite
 yet have a passing row in this matrix — it cannot be marked as a protected rule until it is
 resolved. Add a row here at the same time it is resolved and logged in Section 16.
 
-Known gap: Norma's ECOG value (row above) cannot pass until real source data exists — this is a
-data gap, not a code defect, and must not be closed by fabricating a value (see Section 14, item
-8, and the Test Patient Registry entry for Norma in Section 17).
+All three regression patients (Loren, Norma, Kessler) pass as of 2026-09-08. Norma's ECOG passes
+via manual clinician entry rather than document harvest — this is a valid but distinct source
+class (Section 14, item 9 tracks the still-open gap that this source class isn't yet captured in
+`field_provenance`).
 
 ---
 

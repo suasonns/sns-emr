@@ -89,64 +89,77 @@ export function useAssessmentAutosave<T>({
     lastPersistedAssessmentIdRef.current = nextAssessmentId ?? null;
   }, []);
 
+  // Shared save logic used by both the background interval tick and
+  // saveNow() (an explicit, user-triggered "save right now" call — e.g.
+  // from the clinical narrative card, which requires a real
+  // assessmentId to exist before it can request a V2 narrative preview).
+  // Unlike the interval tick, saveNow() lets the caller await the result
+  // and see/handle a thrown error directly, instead of only logging it.
+  const runAutosave = useCallback(async (): Promise<{ assessmentId: string | null; skipped: boolean }> => {
+    const currentPatientId = patientIdRef.current;
+    if (!currentPatientId || lockedRef.current || savingRef.current || autosavingRef.current) {
+      return { assessmentId: assessmentIdRef.current ?? null, skipped: true };
+    }
+
+    const currentFormData = formDataRef.current;
+    const serializedFormData = serializeFormData(currentFormData);
+    const currentAssessmentId = assessmentIdRef.current ?? null;
+
+    if (
+      currentAssessmentId
+      && lastPersistedPayloadRef.current === serializedFormData
+      && lastPersistedAssessmentIdRef.current === currentAssessmentId
+    ) {
+      return { assessmentId: currentAssessmentId, skipped: true };
+    }
+
+    autosavingRef.current = true;
+    try {
+      let nextAssessmentId = currentAssessmentId;
+      if (nextAssessmentId) {
+        await updateFnRef.current(nextAssessmentId, currentFormData);
+      } else {
+        const result = await saveFnRef.current(currentPatientId, currentFormData);
+        nextAssessmentId = result?.assessmentId ?? null;
+        if (!nextAssessmentId) {
+          throw new Error("Autosave create did not return an assessmentId.");
+        }
+        setAssessmentIdRef.current?.(nextAssessmentId);
+      }
+
+      lastPersistedPayloadRef.current = serializedFormData;
+      lastPersistedAssessmentIdRef.current = nextAssessmentId;
+      console.info(`[assessment-autosave] Saved assessment ${nextAssessmentId} for patient ${currentPatientId}.`);
+      return { assessmentId: nextAssessmentId, skipped: false };
+    } finally {
+      autosavingRef.current = false;
+    }
+  }, []);
+
+  const saveNow = useCallback(async () => {
+    return runAutosave();
+  }, [runAutosave]);
+
   useEffect(() => {
     if (!intervalMs || intervalMs <= 0) {
       return undefined;
     }
 
-    const tick = async () => {
-      const currentPatientId = patientIdRef.current;
-      if (!currentPatientId || lockedRef.current || savingRef.current || autosavingRef.current) {
-        return;
-      }
-
-      const currentFormData = formDataRef.current;
-      const serializedFormData = serializeFormData(currentFormData);
-      const currentAssessmentId = assessmentIdRef.current ?? null;
-
-      if (
-        lastPersistedPayloadRef.current === serializedFormData
-        && lastPersistedAssessmentIdRef.current === currentAssessmentId
-      ) {
-        return;
-      }
-
-      autosavingRef.current = true;
-      try {
-        let nextAssessmentId = currentAssessmentId;
-        if (nextAssessmentId) {
-          await updateFnRef.current(nextAssessmentId, currentFormData);
-        } else {
-          const result = await saveFnRef.current(currentPatientId, currentFormData);
-          nextAssessmentId = result?.assessmentId ?? null;
-          if (!nextAssessmentId) {
-            throw new Error("Autosave create did not return an assessmentId.");
-          }
-          setAssessmentIdRef.current?.(nextAssessmentId);
-        }
-
-        lastPersistedPayloadRef.current = serializedFormData;
-        lastPersistedAssessmentIdRef.current = nextAssessmentId;
-        console.info(`[assessment-autosave] Saved assessment ${nextAssessmentId} for patient ${currentPatientId}.`);
-      } catch (error) {
-        console.warn("[assessment-autosave] Background save failed.", error);
-      } finally {
-        autosavingRef.current = false;
-      }
-    };
-
     const timer = window.setInterval(() => {
-      void tick();
+      runAutosave().catch((error) => {
+        console.warn("[assessment-autosave] Background save failed.", error);
+      });
     }, intervalMs);
 
     return () => {
       autosavingRef.current = false;
       window.clearInterval(timer);
     };
-  }, [intervalMs, patientId]);
+  }, [intervalMs, patientId, runAutosave]);
 
   return {
     markPersisted,
     resetAutosaveTracking,
+    saveNow,
   };
 }
