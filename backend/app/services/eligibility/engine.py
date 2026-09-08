@@ -246,12 +246,30 @@ def _evaluate_group(group, facts):
         actual = _get_field_value(facts, criterion.get("field"))
         expected = criterion.get("expected")
         matched = _compare(actual, expected, criterion.get("operator"))
+        # Verified defect fix: a criterion whose backing fact was never
+        # documented (actual is None -- see _get_field_value, which returns
+        # None specifically when the fact is absent from the harvested
+        # payload) is NOT clinically the same thing as a documented fact
+        # that fails the comparison. Both previously collapsed to the same
+        # boolean `matched: False`, so an undocumented ejection fraction and
+        # a documented-but-insufficient ejection fraction were
+        # indistinguishable to every downstream consumer (RNICA guidance,
+        # documentation-gap reporting, the hospice narrative). `status`
+        # makes that distinction explicit without changing the existing
+        # `matched` boolean any other caller may already depend on.
+        if actual is None:
+            status = "UNKNOWN"
+        elif matched:
+            status = "MET"
+        else:
+            status = "NOT_MET"
         evaluated.append({
             "criterion_id": criterion.get("criterion_id"),
             "description": criterion.get("description"),
             "actual": actual,
             "expected": expected,
             "matched": matched,
+            "status": status,
         })
 
     rule = (group.get("rule") or "ALL_REQUIRED").upper()
@@ -287,10 +305,25 @@ def evaluate_lcd_criteria(guideline, patient=None, facts=None):
 
     overall = _evaluate_overall_combination(guideline, group_results)
 
+    # Flattened, group-independent view of every criterion evaluated across
+    # every group, tagged with which group it came from. RNICA guidance,
+    # documentation-gap reporting, and the hospice narrative need a simple
+    # "what's MET / NOT_MET / UNKNOWN" list -- they should not each have to
+    # re-implement walking criteria_groups -> criteria to get it.
+    all_criteria = [
+        {**criterion, "group_id": group_result.get("group_id"), "group_name": group_result.get("group_name")}
+        for group_result in group_results
+        for criterion in group_result.get("criteria", [])
+    ]
+
     return {
         "guideline": guideline.get("disease"),
         "eligible": overall,
         "group_results": group_results,
+        "all_criteria": all_criteria,
+        "met_criteria": [c for c in all_criteria if c["status"] == "MET"],
+        "not_met_criteria": [c for c in all_criteria if c["status"] == "NOT_MET"],
+        "unknown_criteria": [c for c in all_criteria if c["status"] == "UNKNOWN"],
         "source_document": guideline.get("source_document"),
         "lcd_reference": guideline.get("lcd_reference"),
     }

@@ -1745,53 +1745,53 @@ export const CONCEPT_REGISTRY = {
     writes: [],
     valueSlot: { kind: "numeric", path: "oxygenTherapy.satOnO2", minValue: 0, maxValue: 100, maxLen: null },
   },
-  NEURO_N0500_0: {
+  NEURO_COG_REPETITION_0: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0500", value: "0", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.repetition", value: "0", op: "set", section: null }],
   },
-  NEURO_N0500_1: {
+  NEURO_COG_REPETITION_1: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0500", value: "1", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.repetition", value: "1", op: "set", section: null }],
   },
-  NEURO_N0500_2: {
+  NEURO_COG_REPETITION_2: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0500", value: "2", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.repetition", value: "2", op: "set", section: null }],
   },
-  NEURO_N0500_3: {
+  NEURO_COG_REPETITION_3: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0500", value: "3", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.repetition", value: "3", op: "set", section: null }],
   },
-  NEURO_N0510_0: {
+  NEURO_COG_RECALL_0: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0510", value: "0", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.recall", value: "0", op: "set", section: null }],
   },
-  NEURO_N0510_1: {
+  NEURO_COG_RECALL_1: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0510", value: "1", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.recall", value: "1", op: "set", section: null }],
   },
-  NEURO_N0510_2: {
+  NEURO_COG_RECALL_2: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0510", value: "2", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.recall", value: "2", op: "set", section: null }],
   },
-  NEURO_N0510_3: {
+  NEURO_COG_RECALL_3: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0510", value: "3", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.recall", value: "3", op: "set", section: null }],
   },
-  NEURO_N0520_0: {
+  NEURO_COG_ORIENTATION_0: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0520", value: "0", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.orientation", value: "0", op: "set", section: null }],
   },
-  NEURO_N0520_1: {
+  NEURO_COG_ORIENTATION_1: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0520", value: "1", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.orientation", value: "1", op: "set", section: null }],
   },
-  NEURO_N0520_2: {
+  NEURO_COG_ORIENTATION_2: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0520", value: "2", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.orientation", value: "2", op: "set", section: null }],
   },
-  NEURO_N0520_3: {
+  NEURO_COG_ORIENTATION_3: {
     section: "neurological",
-    writes: [{ path: "hopeItems.n0520", value: "3", op: "set", section: null }],
+    writes: [{ path: "cognitiveScreen.orientation", value: "3", op: "set", section: null }],
   },
   NEURO_SENSORY_AID_GLASSES: {
     section: "neurological",

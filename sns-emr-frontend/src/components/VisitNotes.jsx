@@ -11,6 +11,7 @@ import {
   getVisitNote,
   updateVisitNote,
   finalizeVisitNote,
+  designateVisitAsHuv,
   listVisitNotesForPatient,
   listAssignableStaff,
 } from "../api/visitNotes";
@@ -1018,6 +1019,13 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [validationErrors, setValidationErrors] = useState([]);
+  // HOPE Update Visit (HUV1/HUV2) designation prompt -- surfaced by the
+  // finalize response's hope_huv_opportunity field when this RN visit
+  // falls in the HUV1 (day 6-15) or HUV2 (day 16-30) window and neither
+  // is already satisfied by a symptom-triggered timepoint. Never
+  // auto-designated; the RN must explicitly answer YES/NO here.
+  const [huvPrompt, setHuvPrompt] = useState(null);
+  const [huvDeciding, setHuvDeciding] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState("top");
   const [compactNav, setCompactNav] = useState(typeof window !== "undefined" ? window.innerWidth < 1080 : false);
 
@@ -1129,14 +1137,33 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
     setMessage("");
     updateVisitNote(visitId, content)
       .then(() => finalizeVisitNote(visitId))
-      .then(() => {
+      .then((response) => {
         setVisitStatus("FINALIZED");
         setMessage("Visit note signed and submitted.");
         setValidationErrors([]);
+        if (response && response.hope_huv_opportunity) {
+          setHuvPrompt(response.hope_huv_opportunity);
+        }
         onSaved?.();
       })
       .catch((reason) => setError(reason.message || "Unable to sign and submit this visit note."))
       .finally(() => setFinalizing(false));
+  };
+
+  const decideHuvPrompt = (useVisit) => {
+    if (!huvPrompt) return;
+    if (!useVisit) {
+      setHuvPrompt(null);
+      return;
+    }
+    setHuvDeciding(true);
+    designateVisitAsHuv(visitId, huvPrompt.huv_type)
+      .then(() => {
+        setMessage(`Visit designated as ${huvPrompt.huv_type} for HOPE.`);
+        setHuvPrompt(null);
+      })
+      .catch((reason) => setError(reason.message || `Unable to designate this visit as ${huvPrompt.huv_type}.`))
+      .finally(() => setHuvDeciding(false));
   };
 
   if (loading) {
@@ -1150,6 +1177,34 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
       {message ? <div style={{ color: COLORS.success || "#0d9488", fontSize: 12.5 }}>{message}</div> : null}
       <ValidationErrorSummary errors={validationErrors} onJump={scrollToSection} COLORS={COLORS} />
       {isFinalized ? <div style={styles.infoBox}>This visit note has been signed and submitted and can no longer be edited.</div> : null}
+      {huvPrompt ? (
+        <div
+          style={{
+            border: `1px solid ${COLORS.accent || "#0d9488"}`,
+            background: COLORS.accentSoft || "#ecfdf5",
+            borderRadius: 8,
+            padding: "10px 12px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+            fontSize: 12.5,
+          }}
+        >
+          <div style={{ fontWeight: 600 }}>
+            HOPE Opportunity Detected: this visit falls within the {huvPrompt.huv_type} window (day {huvPrompt.day_number} of{" "}
+            {huvPrompt.window_start}{"\u2013"}{huvPrompt.window_end}), and no HOPE Update Visit has been completed yet.
+          </div>
+          <div>Use this visit for {huvPrompt.huv_type}?</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => decideHuvPrompt(true)} disabled={huvDeciding} style={{ ...styles.btnPrimary, opacity: huvDeciding ? 0.65 : 1 }}>
+              Yes, use for {huvPrompt.huv_type}
+            </button>
+            <button type="button" onClick={() => decideHuvPrompt(false)} disabled={huvDeciding} style={{ ...styles.btnSecondary, opacity: huvDeciding ? 0.65 : 1 }}>
+              No
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <Section anchorId={anchor("top")}>
         <VisitDetailsCard content={content} onChange={setContent} disabled={isFinalized} styles={styles} COLORS={COLORS} discipline={discipline} />

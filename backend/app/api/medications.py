@@ -547,6 +547,14 @@ def list_medications_for_patient(
                 "start_date": m.start_date,
                 "end_date": m.end_date,
                 "status": "active" if m.end_date is None else "discontinued",
+                # Drug class membership (e.g. "OPIOIDS", "LAXATIVES") from the
+                # same deterministic classification drug_safety_service.py
+                # already uses for allergy/interaction checks. Exposed here so
+                # the frontend can derive CMS HOPE Section N (N0500 Scheduled
+                # Opioid / N0510 PRN Opioid / N0520 Bowel Regimen) suggestions
+                # from the actual medication list instead of maintaining a
+                # second, disconnected classification source on the client.
+                "drug_classes": sorted(get_drug_classes(_canonical_for_med_row(alias_map, m))),
                 "flags": ["DUPLICATE_ACTIVE_MED"]
                 if (m.end_date is None and m.id in duplicate_ids)
                 else [],

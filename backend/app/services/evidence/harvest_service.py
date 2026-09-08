@@ -218,20 +218,27 @@ def _run_ai_extraction(
 
 
 def list_pending_structured_findings(db: Session, patient_id: UUID) -> list[dict[str, Any]]:
-    """Return every not-yet-reviewed harvested signal for `patient_id` that
-    carries at least one validated StructuredFinding.
+    """Return every not-yet-reviewed harvested signal for `patient_id`.
 
     This is the read side of the RNICA structured-findings application
     layer: each entry pairs one signal's provenance (excerpt, source type,
     recorded_at) with the concept-coded findings extracted from it, so the
     frontend can offer an "Apply to RNICA field(s)" action per signal
     without ever seeing an un-validated field_path/value pair -- only what
-    already passed `validate_findings()` at harvest time is ever returned
-    here.
+    already passed `validate_findings()` at harvest time is ever offered
+    for application.
 
-    Signals with an empty `structured_findings` list are excluded entirely
-    -- this is scoped to structured-findings consumption only, not a
-    general narrative-signal review queue.
+    A signal whose `structured_findings` came back empty (the model found
+    no concept in CONCEPT_REGISTRY it could confidently match) is NOT
+    dropped from this response. Silently excluding it would make a real,
+    harvested piece of clinical evidence invisible to the RN -- it must
+    instead be returned with `status="UNMAPPED_REQUIRES_REVIEW"` so the
+    frontend can render it in a review queue instead of an apply queue.
+    Every row returned here always has a `status` of either "MAPPED"
+    (>=1 validated structured finding, eligible for apply) or
+    "UNMAPPED_REQUIRES_REVIEW" (no concept match, review-only). Reconciling
+    `harvested count == mapped + unmapped` for the NEW review_status subset
+    is enforced by this contract.
     """
 
     rows = (
@@ -248,18 +255,27 @@ def list_pending_structured_findings(db: Session, patient_id: UUID) -> list[dict
     results: list[dict[str, Any]] = []
     for row in rows:
         findings = row.structured_findings or []
-        if not findings:
-            continue
-        results.append(
-            {
-                "id": str(row.id),
-                "source_type": row.source_type,
-                "clinical_system": row.clinical_system,
-                "recorded_at": row.recorded_at.isoformat() if row.recorded_at else None,
-                "original_text_excerpt": row.original_text_excerpt,
-                "structured_findings": findings,
-            }
-        )
+        entry: dict[str, Any] = {
+            "id": str(row.id),
+            "signal_key": row.signal_key,
+            "signal_text": row.signal_text,
+            "source_type": row.source_type,
+            "clinical_system": row.clinical_system,
+            "recorded_at": row.recorded_at.isoformat() if row.recorded_at else None,
+            "original_text_excerpt": row.original_text_excerpt,
+            "confidence": row.confidence,
+            "structured_findings": findings,
+        }
+        if findings:
+            entry["status"] = "MAPPED"
+        else:
+            entry["status"] = "UNMAPPED_REQUIRES_REVIEW"
+            entry["unmapped_reason"] = (
+                "No concept_code in CONCEPT_REGISTRY matched this signal at "
+                "extraction time -- add or route a canonical concept in "
+                "app/services/evidence/structured_findings.py, then re-harvest."
+            )
+        results.append(entry)
     return results
 
 

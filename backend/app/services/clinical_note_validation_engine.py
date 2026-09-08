@@ -399,6 +399,15 @@ RN_ICA_REQUIRED_FIELD_GROUPS = [
         "label": "Clinical Narrative",
         "section": "Finalization",
         "paths": [
+            # Single-current-narrative consolidation: diagnoses.clinicalNarrative
+            # is the one field RNICA.jsx's ClinicalNarrativeCard actually
+            # renders/reviews and the one the RN attestation gate requires
+            # (see updateField("clinicalNarrative", ...) in RNICA.jsx).
+            # finalization.clinicalNarrative is a retired duplicate writer
+            # (previously populated only by the visit-recording AI insert
+            # path) kept here only as a fallback for any pre-existing notes
+            # that already carry it.
+            "diagnoses.clinicalNarrative",
             "finalization.clinicalNarrative",
             "assessment_summary",
             "nursing_summary",

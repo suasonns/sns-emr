@@ -67,6 +67,7 @@ from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.admission_action_request import AdmissionActionRequest
 from app.models.plan_of_care import PlanOfCare
+from app.models.poc import POCProblem, POCGoal, POCIntervention  # noqa: F401 (referenced by string in PlanOfCareVersion relationships; must load first)
 from app.models.plan_of_care_version import PlanOfCareVersion
 from app.models.rnica_amendment import RnicaAmendment
 from app.models.msw_ica_assessment import MswIcaAssessment

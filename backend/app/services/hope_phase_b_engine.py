@@ -9,13 +9,16 @@ from typing import Any, Optional
 from sqlalchemy.orm import Session
 
 from app.models.enums import (
+    CompletionReferenceType,
     TaskOrigin,
     TaskRegulatoryBasis,
     TaskStatus,
     TaskType,
 )
+from app.models.admission import Admission
 from app.models.sfv_requirement import SFVRequirement
 from app.models.task import Task
+from app.services.task_completion_evidence import complete_task_with_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,7 @@ logger = logging.getLogger(__name__)
 SOURCE_INITIAL_RN_ICA = "INITIAL_RN_ICA"
 SOURCE_HUV1 = "HUV1"
 SOURCE_HUV2 = "HUV2"
+SOURCE_RN_VISIT = "RN_VISIT"
 
 TASK_TYPE_SFV = "SFV"
 TASK_TYPE_HUV1 = "HUV1"
@@ -38,6 +42,13 @@ DISCIPLINE_LPN = "LPN"
 VISIT_MODE_IN_PERSON = "IN_PERSON"
 
 MODERATE_OR_SEVERE = {"MODERATE", "SEVERE"}
+
+# Regulatory day windows an RN visit must fall inside to be eligible for
+# HUV1/HUV2 designation. Same bounds validate_huv_visit_completion() uses.
+HUV_DAY_WINDOWS = {
+    TASK_TYPE_HUV1: (6, 15),
+    TASK_TYPE_HUV2: (16, 30),
+}
 
 
 @dataclass
@@ -327,8 +338,8 @@ def maybe_trigger_sfv_from_hope_timepoint(
     pain_impact: Any,
     non_pain_impact: Any,
 ) -> TriggerOutcome:
-    if trigger_source_type not in {SOURCE_INITIAL_RN_ICA, SOURCE_HUV1, SOURCE_HUV2}:
-        raise ValueError("SFV trigger source must be INITIAL_RN_ICA, HUV1, or HUV2")
+    if trigger_source_type not in {SOURCE_INITIAL_RN_ICA, SOURCE_HUV1, SOURCE_HUV2, SOURCE_RN_VISIT}:
+        raise ValueError("SFV trigger source must be INITIAL_RN_ICA, HUV1, HUV2, or RN_VISIT")
 
     symptom_group = _symptom_group_from_inputs(pain_impact, non_pain_impact)
     if symptom_group is None:
@@ -516,4 +527,220 @@ def process_huv_finalize(
         trigger_datetime=completed_visit_datetime,
         pain_impact=j2051_pain_impact,
         non_pain_impact=j2051_non_pain_impact,
+    )
+
+
+def process_rn_visit_finalize_for_sfv(
+    *,
+    db: Session,
+    tenant_id,
+    patient_id,
+    visit_id,
+    visit_datetime: datetime,
+    j2051_pain_impact: Any,
+    j2051_non_pain_impact: Any,
+):
+    """
+    SFV is symptom-triggered, not a HUV designation. Per business rule,
+    ANY RN or LVN visit that turns up a moderate/severe HOPE symptom
+    trigger (J2051 pain/non-pain impact) must generate an SFV requirement
+    due 48 hours later -- independent of whether this same visit is later
+    (or was already) used for HUV1/HUV2. This is the general-purpose path
+    for a visit that is NOT the INITIAL_RN_ICA and has NOT already
+    completed an HUV1/HUV2 task at finalize time (those two cases label
+    the trigger source as INITIAL_RN_ICA/HUV1/HUV2 instead, via
+    process_initial_rn_ica_finalize / process_huv_finalize).
+    """
+    return maybe_trigger_sfv_from_hope_timepoint(
+        db=db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        trigger_source_type=SOURCE_RN_VISIT,
+        trigger_reference_id=visit_id,
+        trigger_datetime=visit_datetime,
+        pain_impact=j2051_pain_impact,
+        non_pain_impact=j2051_non_pain_impact,
+    )
+
+
+# =========================================================================
+# HUV1/HUV2 PROMPT-DRIVEN DESIGNATION
+#
+# HUV1/HUV2 are NOT auto-satisfied and NOT auto-converted from a
+# supervisory (CHHA/LVN) visit. Per the HOPE SFV Guide business rule:
+# HUV1/HUV2 are a designation applied to an already-existing, already-
+# finalized RN Visit -- not a new visit type, not a new assessment type,
+# not a new table. The pre-existing Task row (task_type HUV1/HUV2,
+# created by create_huv_tasks_from_initial_rn_ica()) IS the HUV1/HUV2
+# requirement; designating a visit completes that Task using the normal
+# VISIT-evidence completion path, with the decision audited on the Task
+# itself (completed_by/completed_at/completion_metadata).
+# =========================================================================
+
+def _election_datetime_for_patient(db: Session, *, tenant_id, patient_id) -> Optional[datetime]:
+    admission = (
+        db.query(Admission)
+        .filter(Admission.tenant_id == tenant_id, Admission.patient_id == patient_id)
+        .order_by(Admission.created_at.desc())
+        .first()
+    )
+    if not admission:
+        return None
+    return (
+        admission.election_signed_at
+        or admission.soc_date
+        or admission.effective_date
+        or admission.admission_date
+    )
+
+
+def _open_huv_task(db: Session, *, tenant_id, patient_id, huv_type: str) -> Optional[Task]:
+    return (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.patient_id == patient_id,
+            Task.task_type == _task_type_member(huv_type),
+            Task.status != _task_status_completed(),
+        )
+        .order_by(Task.due_at.asc())
+        .first()
+    )
+
+
+def _huv_already_satisfied(db: Session, *, tenant_id, patient_id, huv_type: str) -> bool:
+    """True when a Task of this HUV type is already COMPLETED (whether by
+    an earlier designation or by symptom-triggered process_huv_finalize),
+    or no such Task exists at all (nothing to designate)."""
+    task = (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.patient_id == patient_id,
+            Task.task_type == _task_type_member(huv_type),
+        )
+        .order_by(Task.due_at.asc())
+        .first()
+    )
+    if task is None:
+        return True
+    return task.status == _task_status_completed()
+
+
+def detect_huv_designation_opportunity(
+    *,
+    db: Session,
+    tenant_id,
+    patient_id,
+    visit,
+) -> Optional[dict]:
+    """
+    Pure detection -- never mutates state. Returns
+    {"huv_type", "window_start", "window_end", "day_number"} when a
+    finalized RN visit falls inside the HUV1 (day 6-15) or HUV2
+    (day 16-30) window and that HUV is not already satisfied, so the
+    caller can prompt the RN: "This visit qualifies as HUV1/HUV2 -- use
+    this visit for HUV1/HUV2?" Returns None when there is nothing to
+    prompt for (wrong discipline, not finalized, no election date on
+    file, outside both windows, or already satisfied).
+    """
+    discipline = _normalize_discipline(
+        getattr(visit, "visit_discipline", None) or getattr(visit, "visit_type", None) or ""
+    )
+    if discipline != DISCIPLINE_RN:
+        return None
+    if not getattr(visit, "finalized_at", None):
+        return None
+
+    election_datetime = _election_datetime_for_patient(db, tenant_id=tenant_id, patient_id=patient_id)
+    if not election_datetime:
+        return None
+
+    visit_datetime = visit.visit_datetime
+    day_number = _day_number_from_election(election_datetime, visit_datetime)
+
+    for huv_type, (start_day, end_day) in HUV_DAY_WINDOWS.items():
+        if not (start_day <= day_number <= end_day):
+            continue
+        if _huv_already_satisfied(db, tenant_id=tenant_id, patient_id=patient_id, huv_type=huv_type):
+            continue
+        return {
+            "huv_type": huv_type,
+            "window_start": (election_datetime + timedelta(days=start_day)).date().isoformat(),
+            "window_end": (election_datetime + timedelta(days=end_day)).date().isoformat(),
+            "day_number": day_number,
+        }
+    return None
+
+
+def designate_visit_as_huv(
+    *,
+    db: Session,
+    tenant_id,
+    patient_id,
+    visit,
+    huv_type: str,
+    selected_by,
+    reason: str | None = None,
+) -> Task:
+    """
+    Records the RN's explicit YES answer to "use this visit for
+    HUV1/HUV2?" -- completes the pre-existing HUV1/HUV2 Task using this
+    visit as VISIT evidence (the same completion path symptom-triggered
+    HUV satisfaction uses), with a survey-defensible audit trail stored on
+    that same Task row (completed_by, completed_at, completion_metadata).
+    Never creates a new visit, assessment, or table. Re-validates the
+    regulatory day window server-side so a designation can never bypass
+    it, even if the prompt was somehow bypassed client-side.
+    """
+    if huv_type not in HUV_DAY_WINDOWS:
+        raise ValueError("HUV type must be HUV1 or HUV2")
+
+    discipline = _normalize_discipline(
+        getattr(visit, "visit_discipline", None) or getattr(visit, "visit_type", None) or ""
+    )
+    if not getattr(visit, "finalized_at", None):
+        raise ValueError("Visit must be finalized before it can be designated as HUV1/HUV2")
+
+    election_datetime = _election_datetime_for_patient(db, tenant_id=tenant_id, patient_id=patient_id)
+    if not election_datetime:
+        raise ValueError("No hospice election date on file; cannot validate HUV window")
+
+    # Same rule symptom-triggered HUV matching uses -- raises with the
+    # real reason (wrong discipline or outside the day-6-15/16-30 window)
+    # if this visit does not actually qualify.
+    validate_huv_visit_completion(
+        election_datetime=election_datetime,
+        completed_visit_datetime=visit.visit_datetime,
+        discipline=discipline,
+        task_type_name=huv_type,
+    )
+
+    if _huv_already_satisfied(db, tenant_id=tenant_id, patient_id=patient_id, huv_type=huv_type):
+        raise ValueError(f"{huv_type} is already satisfied for this patient")
+
+    task = _open_huv_task(db, tenant_id=tenant_id, patient_id=patient_id, huv_type=huv_type)
+    if task is None:
+        raise ValueError(f"No open {huv_type} task exists for this patient")
+
+    start_day, end_day = HUV_DAY_WINDOWS[huv_type]
+    day_number = _day_number_from_election(election_datetime, visit.visit_datetime)
+
+    completion_metadata = {
+        "designation_reason": reason,
+        "original_visit_type": str(getattr(visit, "visit_type", None) or ""),
+        "soc_date": election_datetime.isoformat(),
+        "window_start": (election_datetime + timedelta(days=start_day)).date().isoformat(),
+        "window_end": (election_datetime + timedelta(days=end_day)).date().isoformat(),
+        "day_number": day_number,
+        "designated_from_visit_id": str(visit.id),
+    }
+
+    return complete_task_with_evidence(
+        db,
+        task_id=task.id,
+        completion_reference_type=CompletionReferenceType.VISIT,
+        completion_reference_id=visit.id,
+        completed_by=selected_by,
+        completion_metadata=completion_metadata,
     )

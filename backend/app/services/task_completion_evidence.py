@@ -201,6 +201,7 @@ def complete_task_with_evidence(
     completion_reference_id: uuid.UUID | None,
     completed_by: uuid.UUID | None,
     completed_at: Optional[datetime] = None,
+    completion_metadata: Optional[dict] = None,
 ) -> Task:
     """
     Complete a task using explicit evidence references.
@@ -211,6 +212,10 @@ def complete_task_with_evidence(
     - completion_reference_type must be populated
     - completion_reference_id must be populated
     - completed_by is recorded when the model supports it
+    - completion_metadata (optional) is recorded when the model supports
+      it -- free-form audit detail for completions that need more than a
+      bare evidence reference (e.g. HUV1/HUV2 designation: reason,
+      original_visit_type, soc_date, window bounds).
 
     Idempotency:
     - If the task is already completed with the same evidence, return it.
@@ -275,6 +280,9 @@ def complete_task_with_evidence(
 
     if hasattr(task, "completed_by"):
         task.completed_by = completed_by
+
+    if completion_metadata is not None and hasattr(task, "completion_metadata"):
+        task.completion_metadata = completion_metadata
 
     if hasattr(task, "updated_at"):
         task.updated_at = when

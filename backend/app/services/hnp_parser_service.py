@@ -17,6 +17,7 @@ class HnpPatientRecord:
     phone: str | None = None
     email: str | None = None
     primary_diagnosis: str | None = None
+    suggested_hospice_driver: str | None = None
     diagnoses: list[str] | None = None
     diagnosis_entries: list[dict[str, Any]] | None = None
     raw_text: str = ""
@@ -158,6 +159,112 @@ def _classify_diagnosis(value: str) -> dict[str, Any]:
     }
 
 
+# Deterministic, keyword-tiered hospice-relevance scorer used ONLY to rank
+# which extracted diagnosis is offered as a *suggested* hospice driver. This
+# is NOT clinical decision-making and NOT an AI/ML model -- it is a coarse,
+# reviewable heuristic that replaces the previous "first diagnosis in the
+# document" positional pick, which was discovered to select diagnoses
+# alphabetically (an artifact of how some source systems order problem
+# lists) rather than by any clinical significance. The value this produces
+# is always a *suggestion* -- see persist_patient_from_hnp_extraction, which
+# never applies it to an existing patient's confirmed primary diagnosis
+# without routing through the standard facesheet-suggestion review queue.
+_TIER3_HOSPICE_RELEVANCE_TERMS = (
+    "heart failure",
+    "chf",
+    "cardiomyopathy",
+    "copd",
+    "chronic obstructive",
+    "respiratory failure",
+    "end-stage renal",
+    "end stage renal",
+    "esrd",
+    "renal failure",
+    "cancer",
+    "carcinoma",
+    "malignan",
+    "metasta",
+    "als",
+    "amyotrophic",
+    "dementia",
+    "alzheimer",
+    "cirrhosis",
+    "liver failure",
+    "hepatic failure",
+    "stroke",
+    "cva",
+    "hemiplegia",
+    "hemiparesis",
+    "failure to thrive",
+    "terminal",
+)
+
+_TIER2_HOSPICE_RELEVANCE_TERMS = (
+    "malnutrition",
+    "protein-calorie",
+    "protein calorie",
+    "diabetes",
+    "dm 2",
+    "dm2",
+    "coronary artery disease",
+    "chronic kidney disease",
+    "ckd stage 4",
+    "ckd stage 5",
+    "functional decline",
+    "weight loss",
+    "pressure ulcer",
+    "wound",
+    "immobility",
+    "dysphagia",
+    "aspiration",
+)
+
+
+def _hospice_relevance_score(description: str) -> int:
+    """Coarse clinical-relevance tier for a single diagnosis description.
+
+    Higher is more hospice-relevant. This is deliberately simple and
+    transparent (keyword-tier matching, no ML/AI) so it can be reviewed and
+    adjusted by clinical staff -- its only job is to stop a diagnosis from
+    being selected as the suggested hospice driver merely because of its
+    position or alphabetical rank in the source document.
+    """
+    lowered = (description or "").lower()
+    if any(term in lowered for term in _TIER3_HOSPICE_RELEVANCE_TERMS):
+        return 30
+    if any(term in lowered for term in _TIER2_HOSPICE_RELEVANCE_TERMS):
+        return 20
+    return 10
+
+
+def _select_suggested_hospice_driver(diagnosis_entries: list[dict[str, Any]]) -> str | None:
+    """Pick the extracted diagnosis to *suggest* as the hospice driver.
+
+    Only considers entries classified as "current" (excludes negated,
+    uncertain, historical, and symptom-only entries -- see
+    _classify_diagnosis). Among current entries, picks the highest scoring
+    by _hospice_relevance_score, breaking ties by document order. Falls
+    back to the first extracted diagnosis (previous behavior) only if no
+    entry is classified as "current", so callers always get a candidate
+    when one exists.
+
+    This function never decides a patient's clinical primary diagnosis --
+    it only produces a suggestion for a human (or a downstream reconciled
+    review-queue write) to confirm.
+    """
+    if not diagnosis_entries:
+        return None
+
+    current_entries = [e for e in diagnosis_entries if e.get("status") == "current"]
+    candidates = current_entries or diagnosis_entries
+
+    best_entry = max(
+        candidates,
+        key=lambda e: _hospice_relevance_score(str(e.get("description") or "")),
+    )
+    return str(best_entry.get("description") or "") or None
+
+
 def _extract_diagnoses(text: str) -> tuple[list[str], list[dict[str, Any]]]:
     diagnoses: list[str] = []
     diagnosis_entries: list[dict[str, Any]] = []
@@ -224,7 +331,16 @@ def parse_hnp_text(raw_text: str) -> HnpPatientRecord | None:
     email = _extract_first_match(r"Email:\s*([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})", text)
 
     diagnoses, diagnosis_entries = _extract_diagnoses(text)
-    primary = diagnoses[0] if diagnoses else None
+    # NOTE: the previous implementation used `diagnoses[0]` -- whichever
+    # diagnosis happened to appear first in the source document -- as the
+    # patient's "primary diagnosis". That is a positional artifact, not a
+    # clinical judgment (source systems may order problem lists
+    # alphabetically, chronologically, or arbitrarily). We now compute a
+    # clinically-scored *suggestion* instead; see
+    # _select_suggested_hospice_driver and persist_patient_from_hnp_extraction
+    # for how/when this suggestion is allowed to reach a patient record.
+    suggested_hospice_driver = _select_suggested_hospice_driver(diagnosis_entries)
+    primary = suggested_hospice_driver
 
     dob = _parse_date(dob_raw)
     if not mrn or not dob:
@@ -240,6 +356,7 @@ def parse_hnp_text(raw_text: str) -> HnpPatientRecord | None:
         phone=phone,
         email=email,
         primary_diagnosis=primary,
+        suggested_hospice_driver=suggested_hospice_driver,
         diagnoses=diagnoses,
         diagnosis_entries=diagnosis_entries,
         raw_text=text,
@@ -264,6 +381,7 @@ def build_hnp_summary(payload: dict[str, Any] | str) -> dict[str, Any]:
         "phone": parsed.phone,
         "email": parsed.email,
         "primary_diagnosis": parsed.primary_diagnosis,
+        "suggested_hospice_driver": parsed.suggested_hospice_driver,
         "diagnoses": parsed.diagnoses or [],
         "diagnosis_entries": parsed.diagnosis_entries or [],
     }

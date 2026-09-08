@@ -16,7 +16,7 @@ from sqlalchemy import (
     String,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -169,6 +169,23 @@ class Task(Base):
     )
 
     completion_reference_id = Column(UUID(as_uuid=True), nullable=True)
+
+    # Who completed the task (e.g. the RN who designated a visit as
+    # HUV1/HUV2). Previously unset -- complete_task_with_evidence() always
+    # tried `if hasattr(task, "completed_by")`, which was always False.
+    completed_by = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
+    # Free-form audit detail for completions that need more than a bare
+    # evidence reference to be survey-defensible -- e.g. HUV1/HUV2
+    # designation stores {reason, original_visit_type, soc_date,
+    # window_start, window_end, day_number} here rather than in a
+    # separate designation table, since the Task row already *is* the
+    # HUV1/HUV2 requirement being satisfied.
+    completion_metadata = Column(JSONB, nullable=True)
 
     # =====================================================
     # AUDIT

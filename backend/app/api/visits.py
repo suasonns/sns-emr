@@ -50,7 +50,7 @@ from app.services.eligibility.engine import detect_lcd_config
 from app.models.msw_ica_assessment import MswIcaAssessment, merge_msw_ica_form_data
 from app.models.scica_assessment import ScicaAssessment, merge_scica_form_data
 from app.services.icd_intelligence import gather_patient_evidence
-from app.services.rnica_intelligence import build_rnica_intelligence
+from app.services.rnica_intelligence import build_rnica_intelligence, build_hospice_reasoning_panel
 from app.services.evidence.harvest_service import (
     get_rn_productivity_metrics,
     get_structured_findings_acceptance_analytics,
@@ -75,8 +75,11 @@ from app.services.visit_compliance_guards import (
     enforce_commlog_for_visit_status_change,)
 from app.services.hope_phase_b_engine import (
     complete_sfv_requirement_from_visit,
+    designate_visit_as_huv,
+    detect_huv_designation_opportunity,
     process_huv_finalize,
     process_initial_rn_ica_finalize,
+    process_rn_visit_finalize_for_sfv,
     TASK_TYPE_HUV1,
     TASK_TYPE_HUV2,
     validate_huv_visit_completion,)
@@ -126,7 +129,7 @@ def _normalize_rnica_assessment_type(
     return normalized
 
 
-def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool = True) -> dict:
+def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool = True, db: Session | None = None) -> dict:
     workflow = rnica_hope_workflow_service.current_metadata(record)
     payload = {
         "assessmentId": str(record.id),
@@ -148,7 +151,83 @@ def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool
         form_data["finalization"] = finalization
         payload["formData"] = form_data
         payload["fieldProvenance"] = record.field_provenance or []
+        # Verified defect fix: an unlocked RNICA draft's diagnoses.primaryDiagnosis
+        # is a client-owned snapshot that is never reconciled if the patient's
+        # authoritative primary_diagnosis (chart header / patients table) is
+        # corrected after the draft was last saved. Rather than silently
+        # overwrite the RN's saved form data (which would destroy their
+        # documentation and could be lost on next save), surface the
+        # mismatch explicitly so it is visible and actionable in the RNICA
+        # UI. Locked/signed assessments are never touched or flagged this
+        # way -- they are the historical record of what was documented at
+        # the time.
+        payload["chartDiagnosisSync"] = _build_chart_diagnosis_sync(db, record)
+        # Symmetric fix for the same gap class: the RNICA's own
+        # diagnoses.secondaryDiagnoses list is a manually-typed snapshot
+        # that is never pre-populated or reconciled from the authoritative
+        # PatientDiagnosis SECONDARY/COMORBIDITY rows. Rather than silently
+        # writing them in, expose what the chart currently holds so the RN
+        # can explicitly pull in any not already documented here (same
+        # explicit-action pattern as chartDiagnosisSync above).
+        payload["chartSecondaryDiagnoses"] = _build_chart_secondary_diagnoses(db, record)
     return payload
+
+
+def _build_chart_secondary_diagnoses(db: Session | None, record: RnicaAssessment) -> list[dict] | None:
+    if db is None or record.locked:
+        return None
+    from app.services.diagnosis_resolver import resolve_current_diagnosis_context
+
+    resolved = resolve_current_diagnosis_context(db, record.patient_id)
+    if not resolved.get("available"):
+        return None
+    chart_rows = (resolved.get("secondary") or []) + (resolved.get("comorbidities") or [])
+    existing = record.form_data.get("diagnoses", {}).get("secondaryDiagnoses", []) if record.form_data else []
+    existing_keys = {
+        (str(d.get("icd10") or "").strip().upper(), str(d.get("description") or "").strip().upper())
+        for d in existing
+    }
+    missing = []
+    for row in chart_rows:
+        key = (str(row.get("icd10_code") or "").strip().upper(), str(row.get("description") or "").strip().upper())
+        if key in existing_keys:
+            continue
+        missing.append({
+            "icd10": row.get("icd10_code"),
+            "description": row.get("description"),
+            "sourceRecordId": row.get("source_record_id"),
+            "diagnosisType": row.get("diagnosis_type"),
+        })
+    return missing
+
+
+def _build_chart_diagnosis_sync(db: Session | None, record: RnicaAssessment) -> dict | None:
+    if db is None or record.locked:
+        return None
+    # Single-source-of-truth fix: this previously read Patient.primary_diagnosis
+    # directly and used its own ad-hoc substring-match comparison, which is
+    # both a stale-projection risk (Patient.primary_diagnosis can itself lag
+    # behind the authoritative PatientDiagnosis table) and a weaker/looser
+    # equality check than the shared resolver's conflict detector. Now
+    # delegates both resolution and conflict comparison to the one shared
+    # module (app.services.diagnosis_resolver) so no second independent
+    # diagnosis-matching rule exists anywhere in the codebase.
+    from app.services.diagnosis_resolver import (
+        detect_rnica_diagnosis_conflict,
+        resolve_current_diagnosis_context,
+    )
+
+    resolved = resolve_current_diagnosis_context(db, record.patient_id)
+    chart_primary_diagnosis = (resolved.get("primary") or {}).get("description")
+    if not chart_primary_diagnosis:
+        return None
+    rnica_primary = _flatten_rnica_primary_diagnosis(record.form_data or {})
+    conflict = detect_rnica_diagnosis_conflict(resolved, {"description": rnica_primary} if rnica_primary else None)
+    return {
+        "chartPrimaryDiagnosis": chart_primary_diagnosis,
+        "rnicaPrimaryDiagnosis": rnica_primary,
+        "matches": conflict is None,
+    }
 
 
 def _assessment_visit_date_from_form_data(form_data: dict | None, *, fallback_datetime: datetime | None = None) -> str | None:
@@ -255,6 +334,15 @@ def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, hu
 def _flatten_rnica_primary_diagnosis(form_data: dict) -> str | None:
     primary = ((form_data or {}).get("diagnoses") or {}).get("primaryDiagnosis") or {}
     icd10 = str(primary.get("icd10") or "").strip()
+    # "N/A" is a placeholder for "no code documented", not a real ICD-10
+    # value -- treat it the same as blank (matches the convention already
+    # used elsewhere, e.g. rnica_intelligence.py's terminal_icd10 handling
+    # and the chart-diagnosis "Add from chart" list builder). Without this,
+    # a diagnosis with an undocumented code would never satisfy the
+    # description-only equality check in detect_rnica_diagnosis_conflict()
+    # against the chart's own code-less value, producing a false conflict.
+    if icd10.upper() == "N/A":
+        icd10 = ""
     description = str(primary.get("description") or "").strip()
     if description and icd10:
         return f"{description} ({icd10})"
@@ -930,7 +1018,7 @@ def get_rnica_assessment(
         raise HTTPException(status_code=404, detail="Assessment not found")
     get_authorized_patient(db, record.patient_id, current_user)
     return {
-        **_serialize_rnica_assessment(record),
+        **_serialize_rnica_assessment(record, db=db),
     }
 @router.get("/rnica/by-patient/{patient_id}")
 def get_rnica_assessment_by_patient(
@@ -968,7 +1056,7 @@ def get_rnica_assessment_by_patient(
     record = next((item for item in records if not item.locked), None) or (records[0] if records else None)
     if not record:
         return {"assessmentId": None, "assessmentType": normalized_assessment_type}
-    return _serialize_rnica_assessment(record)
+    return _serialize_rnica_assessment(record, db=db)
 
 
 @router.get("/rnica/by-patient/{patient_id}/records")
@@ -1669,11 +1757,14 @@ def get_rnica_intelligence(
     patient_id = str(record.patient_id) if record.patient_id else None
     patient_evidence = gather_patient_evidence(db, patient_id) if patient_id else {"text": "", "source_count": 0, "diagnosis_sources": [], "clinical_notes": []}
     structured_findings_signals = list_pending_structured_findings(db, record.patient_id) if record.patient_id else []
+    hospice_reasoning = build_hospice_reasoning_panel(db, patient_id) if patient_id else None
     intelligence = build_rnica_intelligence(
         record.form_data or {},
         patient_id=patient_id,
         patient_evidence=patient_evidence,
         structured_findings_signals=structured_findings_signals,
+        hospice_reasoning=hospice_reasoning,
+        db=db,
     )
     return intelligence
 
@@ -2766,6 +2857,15 @@ class VisitMutationResponse(BaseModel):
     completed_task_types: list[str] = Field(
         default_factory=list,
         description="Tasks completed as a result of this action",
+    )
+    hope_huv_opportunity: dict | None = Field(
+        default=None,
+        description=(
+            "Present when this finalized RN visit qualifies for HUV1/HUV2 "
+            "designation and neither is already satisfied. The caller "
+            "should prompt the RN (\"This visit qualifies as HUV1/HUV2 -- "
+            "use it?\") rather than auto-designating it."
+        ),
     )
 
 
@@ -3923,7 +4023,8 @@ def _run_phase_b_finalize_hooks(
         visit=visit,
         request_id=request_id,
     )
-    if "INITIAL_RN_ICA" in completed_task_types:
+    is_initial_rn_ica = "INITIAL_RN_ICA" in completed_task_types
+    if is_initial_rn_ica:
         logger.info(
             "PHASE_B_HOOK: INITIAL_RN_ICA_TRIGGER visit_id=%s patient_id=%s request_id=%s",
             str(visit.id),
@@ -3970,7 +4071,8 @@ def _run_phase_b_finalize_hooks(
         db=db,
         visit=visit,
     )
-    if completed_huv_type in {"HUV1", "HUV2"}:
+    is_huv_completion = (not is_initial_rn_ica) and completed_huv_type in {"HUV1", "HUV2"}
+    if is_huv_completion:
         logger.info(
             "PHASE_B_HOOK: HUV_TRIGGER visit_id=%s huv_type=%s patient_id=%s request_id=%s",
             str(visit.id),
@@ -3996,6 +4098,29 @@ def _run_phase_b_finalize_hooks(
             result,
             request_id,
         )
+    if not is_initial_rn_ica and not is_huv_completion:
+        # SFV is symptom-triggered and independent of HUV1/HUV2 designation:
+        # ANY RN/LVN visit with a qualifying moderate/severe HOPE symptom
+        # impact must generate its own SFV requirement here, regardless of
+        # whether this same visit is later designated (or was already
+        # designated) as an HUV. HUV designation never substitutes for SFV.
+        normalized_visit_discipline = (visit.visit_discipline or "").strip().upper()
+        if normalized_visit_discipline in {"RN", "LVN", "LPN", "LPN/LVN"}:
+            sfv_result = process_rn_visit_finalize_for_sfv(
+                db=db,
+                tenant_id=visit.tenant_id,
+                patient_id=visit.patient_id,
+                visit_id=visit.id,
+                visit_datetime=visit.visit_datetime,
+                j2051_pain_impact=pain_impact,
+                j2051_non_pain_impact=non_pain_impact,
+            )
+            logger.info(
+                "PHASE_B_HOOK: RN_VISIT_SFV_RESULT visit_id=%s result=%s request_id=%s",
+                str(visit.id),
+                sfv_result,
+                request_id,
+            )
 # =========================================================
 # VISIT STATUS CHANGE
 # =========================================================
@@ -6549,12 +6674,114 @@ def finalize_visit(
             status_code=500,
             detail=f"Visit finalization failed: {exc}",
         )
+    hope_huv_opportunity = None
+    try:
+        hope_huv_opportunity = detect_huv_designation_opportunity(
+            db=db,
+            tenant_id=visit.tenant_id,
+            patient_id=visit.patient_id,
+            visit=visit,
+        )
+    except Exception:
+        logger.exception(
+            "FINALIZE: HUV_OPPORTUNITY_DETECTION_FAILED visit_id=%s request_id=%s",
+            str(visit.id),
+            request_id,
+        )
     return VisitMutationResponse(
         status="finalized",
         visit_id=str(visit.id),
         request_id=request_id,
         completed_task_types=completed_task_types,
+        hope_huv_opportunity=hope_huv_opportunity,
     )
+
+
+class DesignateHuvPayload(BaseModel):
+    huv_type: str
+    reason: str | None = None
+
+
+class DesignateHuvResponse(BaseModel):
+    status: str
+    huv_type: str
+    task_id: str
+    visit_id: str
+    request_id: str
+
+
+@router.post("/{visit_id}/designate-huv", response_model=DesignateHuvResponse)
+def designate_visit_as_huv_route(
+    visit_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    payload: DesignateHuvPayload,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """
+    RN's explicit YES answer to the "This visit qualifies as HUV1/HUV2 --
+    use this visit?" prompt surfaced by finalize_visit()'s
+    hope_huv_opportunity field. Designates an already-finalized RN visit
+    as HUV1/HUV2 by completing the pre-existing HUV task with this visit
+    as evidence -- never creates a new visit, assessment, or table. There
+    is no automatic/silent path to this outcome; it only happens via this
+    explicit RN-initiated call.
+    """
+    request_id = _get_request_id(request, response)
+    user_id = current_user.user_id
+    visit = _load_visit_for_update(db, visit_id)
+    get_authorized_patient(db, visit.patient_id, current_user)
+    _set_db_context(db, visit.tenant_id, user_id, request_id)
+
+    huv_type = (payload.huv_type or "").strip().upper()
+    if huv_type not in {TASK_TYPE_HUV1, TASK_TYPE_HUV2}:
+        raise HTTPException(status_code=422, detail="huv_type must be HUV1 or HUV2")
+
+    try:
+        task = designate_visit_as_huv(
+            db=db,
+            tenant_id=visit.tenant_id,
+            patient_id=visit.patient_id,
+            visit=visit,
+            huv_type=huv_type,
+            selected_by=user_id,
+            reason=payload.reason,
+        )
+        _safe_log_event(
+            db=db,
+            user_id=user_id,
+            action="DESIGNATE_HUV",
+            entity_type="visit",
+            entity_id=visit.id,
+            request_id=request_id,
+            metadata={"huv_type": huv_type, "task_id": str(task.id), "reason": payload.reason},
+        )
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "DESIGNATE_HUV: FAILED visit_id=%s huv_type=%s request_id=%s",
+            str(visit.id),
+            huv_type,
+            request_id,
+        )
+        raise HTTPException(status_code=500, detail=f"HUV designation failed: {exc}")
+
+    return DesignateHuvResponse(
+        status="designated",
+        huv_type=huv_type,
+        task_id=str(task.id),
+        visit_id=str(visit.id),
+        request_id=request_id,
+    )
+
 # =========================================================
 # Pydantic model rebuild (REQUIRED FOR FASTAPI + V2)
 # =========================================================VisitStatusUpdate.model_rebuild()VisitCreateRequest.model_rebuild()RefusalRequest.model_rebuild()VisitMutationResponse.model_rebuild()VisitReopenRequest.model_rebuild()VisitCreateResponse.model_rebuild()RefusalResponse.model_rebuild()

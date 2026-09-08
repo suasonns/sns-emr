@@ -62,7 +62,7 @@ class SFVRequirement(TenantScopedMixin, BaseModel):
 
     __table_args__ = (
         CheckConstraint(
-            "trigger_source_type IN ('INITIAL_RN_ICA', 'HUV1', 'HUV2')",
+            "trigger_source_type IN ('INITIAL_RN_ICA', 'HUV1', 'HUV2', 'RN_VISIT')",
             name="ck_sfv_requirements_trigger_source_type",
         ),
         CheckConstraint(

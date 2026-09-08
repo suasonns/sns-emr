@@ -38,6 +38,7 @@ export type MedicationRecord = {
   start_date: string;
   end_date: string | null;
   status: "active" | "discontinued";
+  drug_classes?: string[];
   flags: string[];
   ui_hint?: { row_color?: string };
   entered_by_name?: string | null;

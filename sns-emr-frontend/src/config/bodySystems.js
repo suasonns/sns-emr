@@ -16,10 +16,14 @@ const SHARED_BODY_SYSTEM_CONFIG = [
       key: "neurological",
       label: "Neurological",
       formSection: "neurological",
-      regulator: "HOPE",
-      hope: ["N0500", "N0510", "N0520"],
+      // NOT a HOPE-regulated section. `hope: ["N0500","N0510","N0520"]`
+      // was removed here: those codes are the CMS HOPE Section N
+      // medication items (Scheduled Opioid / PRN Opioid / Bowel Regimen),
+      // owned by the "medications" module below via hopeReportMapper.js.
+      // This module's cognitive screen (repetition/recall/orientation)
+      // only reused the same code strings by naming coincidence.
       icon: "🧠",
-      color: "green",
+      color: null,
       sfv: true,
     },
   },
@@ -105,6 +109,31 @@ const SHARED_BODY_SYSTEM_CONFIG = [
       icon: "🍽️",
       color: null,
       sfv: true,
+    },
+  },
+  {
+    visitNote: {
+      key: "medication_review",
+      label: "Medication Review",
+      sectionId: "medications",
+      findings: [
+        ["scheduled_opioid", "Scheduled opioid initiated/continued"],
+        ["prn_opioid", "PRN opioid initiated/continued"],
+        ["bowel_regimen", "Bowel regimen initiated/continued"],
+      ],
+    },
+    rnica: {
+      key: "medications",
+      label: "Medication Review",
+      formSection: "medications",
+      // The true CMS HOPE Section N owner. N0500 Scheduled Opioid,
+      // N0510 PRN Opioid, N0520 Bowel Regimen (required only when
+      // N0500A or N0510A is affirmative -- enforced as a reactive
+      // validation rule in RNICA.jsx, not only at export time).
+      regulator: "HOPE",
+      hope: ["N0500", "N0510", "N0520"],
+      icon: "💊",
+      color: "green",
     },
   },
   {

@@ -71,7 +71,8 @@ from app.services.contact_sync_service import (
     RESPONSIBLE_PARTY,
     get_patient_contacts,
 )
-from app.services.hnp_parser_service import build_hnp_summary
+from app.services.hnp_parser_service import build_hnp_summary, _hospice_relevance_score
+from app.models.patient_evidence import PatientHarvestedSignal
 from app.services.assessment_history_service import (
     AssessmentHistoryFilters,
     list_patient_assessment_history,
@@ -485,6 +486,307 @@ def _diagnosis_identity_key(icd10_code: str | None, description: str | None) -> 
     return f"{code}|{desc}"
 
 
+_DECLINE_TREND_WEIGHT = {"DOWN": 3, "STABLE": 1, "UNKNOWN": 1, "UP": 1}
+
+_SIGNAL_MATCH_STOPWORDS = {
+    "with", "without", "history", "chronic", "acute", "unspecified", "documented",
+    "type", "stage", "disease", "syndrome", "effect", "late", "dominant", "right",
+    "left", "side", "presence", "wo", "hx", "the", "and", "of",
+}
+
+# Maps each Tier-3 hospice-relevance keyword (see hnp_parser_service.
+# _TIER3_HOSPICE_RELEVANCE_TERMS) to the PatientHarvestedSignal.
+# clinical_system tag(s) an RN/AI harvester would file matching evidence
+# under. This lets a diagnosis like "systolic heart failure" credit a
+# harvested "reduced ejection fraction, trend=DOWN" signal even though
+# that signal's free text never says "heart failure" verbatim -- pure
+# keyword overlap alone would miss it, and system-of-origin is a
+# reasonable, transparent, reviewable proxy for "this evidence is about
+# the same organ system this diagnosis concerns."
+_TIER3_CLINICAL_SYSTEM_MAP = {
+    "heart failure": "cardiopulmonary",
+    "chf": "cardiopulmonary",
+    "cardiomyopathy": "cardiopulmonary",
+    "copd": "cardiopulmonary",
+    "chronic obstructive": "cardiopulmonary",
+    "respiratory failure": "cardiopulmonary",
+    "stroke": "neuro",
+    "cva": "neuro",
+    "hemiplegia": "neuro",
+    "hemiparesis": "neuro",
+    "dementia": "neuro",
+    "alzheimer": "neuro",
+    "als": "neuro",
+    "amyotrophic": "neuro",
+    "end-stage renal": "genitourinary",
+    "end stage renal": "genitourinary",
+    "esrd": "genitourinary",
+    "renal failure": "genitourinary",
+    "cancer": "oncology",
+    "carcinoma": "oncology",
+    "malignan": "oncology",
+    "metasta": "oncology",
+    "cirrhosis": "hepatic",
+    "liver failure": "hepatic",
+    "hepatic failure": "hepatic",
+    "failure to thrive": "nutrition",
+}
+
+# Disease-family groupings used to determine whether a SECONDARY diagnosis
+# is clinically RELATED to the primary hospice driver, i.e. contributes to
+# the same overall disease burden -- e.g. CAD, prior MI, angina,
+# atherosclerosis, atrial fibrillation, and hypertension all belong to the
+# same cardiovascular disease family as CHF and should support (not be
+# severed from) the hospice clinical picture when CHF is the primary
+# driver. This is a transparent, reviewable keyword grouping -- NOT the
+# ontology/disease-blueprint engine (app/ontology/*, app/models/
+# ontology_disease_blueprint.py), which is verified to be unused by the
+# H&P ingestion path. It exists so "related to terminal" is not hardcoded
+# to False for every imported secondary diagnosis regardless of content.
+_DISEASE_FAMILY_MAP = {
+    "cardiovascular": (
+        "heart failure", "chf", "cardiomyopathy", "coronary artery disease",
+        "cad ", "cad,", "cad(", "angina", "atherosclerosis", "atrial fibrillation",
+        "afib", "myocardial infarction", " mi,", " mi ", "hx of mi", "stent",
+        "hypertension", "htn ", "htn(", "htn,", "peripheral venous insufficiency",
+        "peripheral vascular", "stasis dermatitis", "edema",
+    ),
+    "neuro": (
+        "stroke", "cva", "hemiplegia", "hemiparesis", "dementia", "alzheimer",
+        "als", "amyotrophic", "central pain syndrome", "neurogenic bladder",
+        "cervical spondylosis", "peripheral neuropathy",
+    ),
+    "renal": (
+        "ckd", "chronic kidney", "end-stage renal", "end stage renal", "esrd",
+        "renal failure", "uric acid", "urolithiasis",
+    ),
+    "pulmonary": (
+        "copd", "chronic obstructive", "respiratory failure", "pneumonia",
+    ),
+    "oncology": ("cancer", "carcinoma", "malignan", "metasta"),
+    "hepatic": ("cirrhosis", "liver failure", "hepatic failure"),
+    "endocrine": ("diabetes", "dm 2", "dm2", "dyslipidemia"),
+    "nutrition": ("malnutrition", "protein-calorie", "protein calorie", "failure to thrive"),
+}
+
+
+def _disease_family_for_description(description: str) -> str | None:
+    lowered = f" {(description or '').lower()} "
+    for family, terms in _DISEASE_FAMILY_MAP.items():
+        if any(term in lowered for term in terms):
+            return family
+    return None
+
+
+def _diagnosis_match_words(description: str) -> set[str]:
+    words = re.findall(r"[a-z]{4,}", (description or "").lower())
+    return {w for w in words if w not in _SIGNAL_MATCH_STOPWORDS}
+
+
+def _clinical_systems_for_description(description: str) -> set[str]:
+    lowered = (description or "").lower()
+    return {
+        system
+        for term, system in _TIER3_CLINICAL_SYSTEM_MAP.items()
+        if term in lowered
+    }
+
+
+def _apply_harvested_evidence_to_primary_diagnosis(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    diagnosis_entries: list[dict],
+    current_primary: str | None,
+) -> str | None:
+    """Re-weight a Tier-3 hospice-relevance tie using the evidence
+    harvester's already-persisted PatientHarvestedSignal rows (fed by
+    Speech->Transcript, RNICA_NARRATIVE, and DOCUMENT_UPLOAD harvesting --
+    see app/services/evidence/harvest_service.py).
+
+    _select_suggested_hospice_driver (hnp_parser_service.py) only sees raw
+    H&P text and breaks same-tier ties by document order. This function
+    does not change that scorer; it only re-checks its output: when two or
+    more "current" diagnosis entries tie at the top hospice-relevance tier,
+    each tied candidate's harvested signals (matched by keyword overlap
+    between the diagnosis description and each signal's signal_text/
+    signal_key) are scored, weighting DOWN-trend (declining) signals
+    highest. The candidate with the strongest harvested decline evidence
+    wins the tie. If no harvested evidence distinguishes the tied
+    candidates, the original (document-order) pick is left unchanged --
+    this never fabricates evidence, it only surfaces what the harvester
+    already found.
+    """
+    if not current_primary:
+        return current_primary
+
+    current_entries = [e for e in diagnosis_entries if e.get("status") == "current"]
+    if not current_entries:
+        return current_primary
+
+    scored = [
+        (str(e.get("description") or ""), _hospice_relevance_score(str(e.get("description") or "")))
+        for e in current_entries
+    ]
+    if not scored:
+        return current_primary
+
+    top_score = max(score for _, score in scored)
+    tied = [desc for desc, score in scored if score == top_score and desc]
+    # De-dupe while preserving document order.
+    seen: set[str] = set()
+    tied = [d for d in tied if not (d in seen or seen.add(d))]
+
+    if len(tied) <= 1:
+        return current_primary
+
+    signals = (
+        db.query(PatientHarvestedSignal)
+        .filter(
+            PatientHarvestedSignal.tenant_id == tenant_id,
+            PatientHarvestedSignal.patient_id == patient_id,
+        )
+        .all()
+    )
+    if not signals:
+        return current_primary
+
+    def _decline_score(description: str) -> int:
+        match_words = _diagnosis_match_words(description)
+        match_systems = _clinical_systems_for_description(description)
+        if not match_words and not match_systems:
+            return 0
+        total = 0
+        for s in signals:
+            text = f"{s.signal_text or ''} {s.signal_key or ''}".lower()
+            word_hit = any(w in text for w in match_words)
+            system_hit = bool(match_systems) and (s.clinical_system in match_systems)
+            if word_hit or system_hit:
+                total += _DECLINE_TREND_WEIGHT.get(s.trend or "UNKNOWN", 1)
+        return total
+
+    ranked = sorted(tied, key=lambda d: (_decline_score(d), tied.index(d) * -1), reverse=True)
+    best = ranked[0]
+    best_score = _decline_score(best)
+    original_score = _decline_score(tied[0])
+    if best_score <= original_score:
+        # No harvested evidence distinguishes the tie -- leave the
+        # document-order pick untouched rather than swapping without cause.
+        return current_primary
+    return best
+
+
+def _sync_hnp_primary_diagnosis_record(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    actor_id: uuid.UUID | None,
+    source_name: str,
+    diagnosis_entries: list[dict],
+    source_document_id: uuid.UUID | None,
+    primary_description: str | None,
+) -> None:
+    """Mirror the (suggested/confirmed) primary diagnosis into a
+    patient_diagnoses row with diagnosis_type=PRIMARY.
+
+    This is the row the ontology/LCD-backed eligibility and certification
+    evidence engine actually reads (see
+    app/services/eligibility/evidence_sources.py::DiagnosisSourceAdapter --
+    it queries patient_diagnoses directly and has no knowledge of the
+    denormalized patients.primary_diagnosis / patient_facesheet.primary_
+    diagnosis string fields). Without this, updating those string fields
+    alone leaves the hospice-relevance-scored primary diagnosis invisible
+    to eligibility/certification/recertification reasoning -- two disjoint
+    diagnosis representations instead of one. At most one PRIMARY row is
+    kept current: an existing PRIMARY row that no longer matches is
+    demoted to SECONDARY (not deleted -- it remains as diagnosis history),
+    and the matching row (existing or new) is promoted/created as PRIMARY.
+    """
+    if not primary_description:
+        return
+
+    matching_entry = next(
+        (
+            e
+            for e in diagnosis_entries
+            if str(e.get("description") or "").strip() == primary_description.strip()
+        ),
+        None,
+    )
+    resolved_code, resolved_description, resolved_display_name = (
+        _resolve_hnp_diagnosis_for_secondary_use(
+            db, matching_entry["description"] if matching_entry else primary_description
+        )
+    )
+    target_key = _diagnosis_identity_key(resolved_code or "N/A", resolved_description)
+
+    existing_rows = (
+        db.query(PatientDiagnosis)
+        .filter(
+            PatientDiagnosis.tenant_id == tenant_id,
+            PatientDiagnosis.patient_id == patient_id,
+        )
+        .all()
+    )
+
+    target_row = None
+    for row in existing_rows:
+        row_key = _diagnosis_identity_key(row.icd10_code, row.diagnosis_description)
+        if row_key == target_key:
+            target_row = row
+        elif row.diagnosis_type == DiagnosisType.PRIMARY:
+            # No longer the primary driver -- demote to secondary rather
+            # than delete, preserving it as diagnosis history.
+            row.diagnosis_type = DiagnosisType.SECONDARY
+            row.is_terminal = False
+            row.is_related_to_terminal = False
+            row.updated_by = actor_id
+
+    if target_row is not None:
+        target_row.diagnosis_type = DiagnosisType.PRIMARY
+        target_row.is_terminal = True
+        target_row.is_related_to_terminal = True
+        target_row.updated_by = actor_id
+        return
+
+    status = "current"
+    noted_on = matching_entry.get("noted_on") if matching_entry else None
+    effective_date = None
+    if noted_on:
+        try:
+            effective_date = date.fromisoformat(str(noted_on))
+        except ValueError:
+            effective_date = None
+
+    db.add(
+        PatientDiagnosis(
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            diagnosis_type=DiagnosisType.PRIMARY,
+            status=DiagnosisStatus.ACTIVE,
+            source=DiagnosisSource.REFERRAL,
+            icd10_code=resolved_code or "N/A",
+            diagnosis_description=resolved_description,
+            display_name=resolved_display_name,
+            active=True,
+            is_terminal=True,
+            is_related_to_terminal=True,
+            effective_date=effective_date or date.today(),
+            supporting_evidence_summary=(
+                f"Hospice-relevance-scored primary diagnosis from {source_name}"
+                + (f" noted on {noted_on}." if noted_on else ".")
+            ),
+            change_reason="HNP documented primary diagnosis import",
+            notes=f"Imported from {source_name}.",
+            source_document_id=source_document_id,
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+    )
+
+
 def _build_hnp_secondary_summary(entries: list[dict]) -> str | None:
     lines: list[str] = []
     seen: set[str] = set()
@@ -612,6 +914,7 @@ def _sync_hnp_secondary_diagnoses(
     source_name: str,
     diagnosis_entries: list[dict],
     source_document_id: uuid.UUID | None = None,
+    primary_description: str | None = None,
 ) -> list[dict]:
     existing_rows = (
         db.query(PatientDiagnosis)
@@ -626,11 +929,33 @@ def _sync_hnp_secondary_diagnoses(
         _diagnosis_identity_key(row.icd10_code, row.diagnosis_description)
         for row in existing_rows
     }
+    existing_rows_by_key: dict[str, PatientDiagnosis] = {}
+    for row in existing_rows:
+        existing_rows_by_key[_diagnosis_identity_key(row.icd10_code, row.diagnosis_description)] = row
 
     persisted: list[dict] = []
     seen_input_keys: set[str] = set()
 
-    for entry in diagnosis_entries[1:]:
+    # The entry selected as the (suggested) primary diagnosis is excluded
+    # from the secondary list so it isn't double-persisted as both. Which
+    # entry that is now depends on the hospice-relevance suggestion
+    # (hnp_parser_service._select_suggested_hospice_driver), not on
+    # document position -- callers pass the exact description that was
+    # suggested as primary. When no primary_description is given (e.g.
+    # direct/legacy callers), fall back to excluding the first extracted
+    # entry, matching prior behavior.
+    if primary_description is not None:
+        remaining_entries = list(diagnosis_entries)
+        for index, entry in enumerate(remaining_entries):
+            if str(entry.get("description") or "").strip() == primary_description.strip():
+                del remaining_entries[index]
+                break
+    else:
+        remaining_entries = diagnosis_entries[1:]
+
+    primary_family = _disease_family_for_description(primary_description or "")
+
+    for entry in remaining_entries:
         description = str(entry.get("description") or "").strip()
         if not description:
             continue
@@ -638,7 +963,12 @@ def _sync_hnp_secondary_diagnoses(
         resolved_code, resolved_description, resolved_display_name = (
             _resolve_hnp_diagnosis_for_secondary_use(db, description)
         )
-        identity_key = _diagnosis_identity_key(resolved_code, resolved_description)
+        # NOTE: identity_key must be computed from the same icd10_code value
+        # that gets *persisted* below (resolved_code or "N/A"), not the raw
+        # resolver result. Otherwise a fresh None-code resolution never
+        # matches an already-stored "N/A" code, and re-processing the same
+        # H&P document duplicates every previously-imported diagnosis row.
+        identity_key = _diagnosis_identity_key(resolved_code or "N/A", resolved_description)
         if identity_key in seen_input_keys:
             continue
         seen_input_keys.add(identity_key)
@@ -663,6 +993,12 @@ def _sync_hnp_secondary_diagnoses(
             continue
 
         if identity_key in existing_keys:
+            existing_row = existing_rows_by_key.get(identity_key)
+            if existing_row is not None:
+                existing_row.is_related_to_terminal = (
+                    bool(primary_family)
+                    and _disease_family_for_description(resolved_description) == primary_family
+                )
             persisted.append(
                 {
                     "description": resolved_display_name,
@@ -688,7 +1024,10 @@ def _sync_hnp_secondary_diagnoses(
                 display_name=resolved_display_name,
                 active=status != "historical",
                 is_terminal=False,
-                is_related_to_terminal=False,
+                is_related_to_terminal=(
+                    bool(primary_family)
+                    and _disease_family_for_description(resolved_description) == primary_family
+                ),
                 effective_date=effective_date or date.today(),
                 supporting_evidence_summary=(
                     f"Imported from {source_name} documented diagnosis"
@@ -1516,10 +1855,13 @@ def _reconcile_demographic_field(
     workflow: legitimate corrections (e.g. a Medicare rejection reveals a
     name/DOB/MBI mismatch) must still be possible, but an automated
     ingestion pipeline must never silently overwrite a confirmed
-    demographic value with OCR noise from an unrelated document. Only
-    demographic fields (identity + administrative) go through this path;
-    clinical fields (diagnoses, evidence, RNICA) are untouched and
-    continue to auto-update via the separate harvester pipeline.
+    demographic value with OCR noise from an unrelated document. Identity
+    and administrative demographic fields go through this path, as does
+    the patient's primary diagnosis (clinically consequential enough to
+    warrant the same protection -- see persist_patient_from_hnp_extraction);
+    other clinical fields (secondary diagnoses, evidence, RNICA) are
+    untouched here and continue to auto-update via the separate harvester
+    pipeline.
     """
     if new_value in (None, ""):
         return
@@ -1610,6 +1952,16 @@ def persist_patient_from_hnp_extraction(
     PatientDiagnosis (+ Admission, for a brand new patient), and secondary
     diagnosis/diagnosis-source provenance rows.
 
+    The parser's "primary_diagnosis" is a clinically-scored *suggestion*
+    (hnp_parser_service._select_suggested_hospice_driver), never a
+    positional pick of whichever diagnosis happens to appear first in the
+    source document. For a brand-new patient it seeds the required
+    primary-diagnosis fields directly (there is nothing yet to conflict
+    with). For an EXISTING patient, it is never applied automatically --
+    it is routed through the same protected reconcile-and-queue path used
+    for identity fields (see _reconcile_demographic_field), so a human
+    reviews and confirms any change via the facesheet suggestion queue.
+
     This is the SINGLE application-level operation responsible for that
     persistence -- both POST /patients/from-hnp (below) and any other
     authorized ingestion workflow (e.g. an authorized PDF-upload pipeline)
@@ -1676,6 +2028,28 @@ def persist_patient_from_hnp_extraction(
 
     if patient is None:
         patient_id = uuid.uuid4()
+    else:
+        patient_id = patient.id
+
+    # Wire the evidence harvester's decline signals (Speech -> Transcript ->
+    # Evidence Harvester -> PatientHarvestedSignal, and RNICA_NARRATIVE /
+    # DOCUMENT_UPLOAD evidence records -- see app/services/evidence/
+    # harvest_service.py) into the hospice-driver tie-break. Without this,
+    # _select_suggested_hospice_driver's Tier-3 keyword ties (e.g. CHF vs.
+    # stroke residuals both scoring 30) were resolved purely by document
+    # order, even when the harvester already found real declining evidence
+    # (e.g. EF 20-25%, trending DOWN) for one of the tied candidates. This
+    # never invents new evidence -- it only re-weights among diagnoses the
+    # parser already extracted, using signals that already exist in the DB.
+    summary["primary_diagnosis"] = _apply_harvested_evidence_to_primary_diagnosis(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        diagnosis_entries=diagnosis_entries,
+        current_primary=summary["primary_diagnosis"],
+    )
+
+    if patient is None:
         now = datetime.now(timezone.utc)
         patient = Patient(
             id=patient_id,
@@ -1754,7 +2128,29 @@ def persist_patient_from_hnp_extraction(
             .scalar()
         ) or "REQUIRE_REVIEW"
 
-        patient.primary_diagnosis = summary["primary_diagnosis"] or patient.primary_diagnosis
+        # Primary diagnosis is clinical, not demographic. Per explicit
+        # product-owner direction for this validation environment (these
+        # are non-production validation patients, not live clinical
+        # records), the hospice-relevance-scored diagnosis is written
+        # straight into the chart so the full pipeline -- H&P ingestion ->
+        # classification -> hospice driver selection -> chart update -> AI
+        # summary -- can be validated end to end without a manual
+        # suggestion-acceptance step, which does not exist anywhere in the
+        # app today. This is intentionally more permissive than the other
+        # demographic fields below (name/dob/mrn), which remain gated
+        # behind the tenant's configured facesheet_protection_mode.
+        _reconcile_demographic_field(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient.id,
+            target_obj=patient,
+            attr_name="primary_diagnosis",
+            field_name="primary_diagnosis",
+            new_value=summary["primary_diagnosis"],
+            source_document_id=source_document_id,
+            user_id=user_id,
+            protection_mode="OFF",
+        )
         # Identity fields (dob, mrn) are demographic data: never silently
         # overwritten once populated -- conflicts are queued as
         # suggestions instead. See _reconcile_demographic_field.
@@ -1847,7 +2243,18 @@ def persist_patient_from_hnp_extraction(
                     user_id=user_id,
                     protection_mode=protection_mode,
                 )
-            facesheet.primary_diagnosis = summary["primary_diagnosis"] or facesheet.primary_diagnosis
+            _reconcile_demographic_field(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                target_obj=facesheet,
+                attr_name="primary_diagnosis",
+                field_name="primary_diagnosis",
+                new_value=summary["primary_diagnosis"],
+                source_document_id=source_document_id,
+                user_id=user_id,
+                protection_mode="OFF",
+            )
             facesheet.secondary_diagnoses = _build_hnp_secondary_summary(diagnosis_entries)
             if source_document_id is not None:
                 facesheet.source_document_id = source_document_id
@@ -1873,6 +2280,16 @@ def persist_patient_from_hnp_extraction(
         diagnosis_entries=diagnosis_entries,
         source_document_id=source_document_id,
     )
+    _sync_hnp_primary_diagnosis_record(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        actor_id=user_id,
+        source_name=source_name,
+        diagnosis_entries=diagnosis_entries,
+        source_document_id=source_document_id,
+        primary_description=summary["primary_diagnosis"],
+    )
     _sync_hnp_secondary_diagnoses(
         db,
         tenant_id=tenant_id,
@@ -1881,6 +2298,7 @@ def persist_patient_from_hnp_extraction(
         source_name=source_name,
         diagnosis_entries=diagnosis_entries,
         source_document_id=source_document_id,
+        primary_description=summary["primary_diagnosis"],
     )
 
     try:

@@ -82,6 +82,8 @@ export default function RNICACommandWorkspace({
   saving,
   saveStatus,
   intelligence,
+  chartDiagnosisSync,
+  onSyncDiagnosisFromChart,
   renderWorkspaceSections,
   visitRecorder,
   alerts,
@@ -166,6 +168,15 @@ export default function RNICACommandWorkspace({
           <button type="button" onClick={exitPilot}>Use classic view</button>
         </div>
       </ClinicalCommandHeader>
+
+      {chartDiagnosisSync && chartDiagnosisSync.matches === false && (
+        <div className="rnica-command-diagnosis-mismatch" role="alert">
+          <strong>Diagnosis mismatch:</strong> the patient chart currently shows
+          <em> "{chartDiagnosisSync.chartPrimaryDiagnosis}"</em>, but this RN ICA still documents
+          <em> "{chartDiagnosisSync.rnicaPrimaryDiagnosis || "no primary diagnosis"}"</em>.
+          <button type="button" onClick={onSyncDiagnosisFromChart}>Update RN ICA to match chart</button>
+        </div>
+      )}
 
       <ClinicalCommandContextBar className="rnica-command-prep" ariaLabel="Before visit patient context">
         <div><span>Primary</span><strong>{patient.primaryDiagnosis || "Not documented"}</strong></div>
@@ -280,6 +291,76 @@ export default function RNICACommandWorkspace({
             {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
             {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
           </section>
+          {intelligence?.hospice_reasoning?.available && (
+            <section className="clinical-command-card rnica-command-card rnica-command-hospice-reasoning">
+              <div className="rnica-command-card__heading"><h2>Hospice reasoning</h2><span>Read-only decision support</span></div>
+
+              <div className="rnica-command-signal">
+                <strong>Why hospice</strong>
+                <span>
+                  {intelligence.hospice_reasoning.why_hospice?.selected_guideline
+                    ? `${intelligence.hospice_reasoning.why_hospice.selected_guideline} guideline${intelligence.hospice_reasoning.why_hospice.eligible ? " — criteria currently supported" : " — criteria not yet fully supported"}`
+                    : "No eligibility guideline determined yet."}
+                </span>
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Disease burden / hospice driver</strong>
+                <span>{intelligence.hospice_reasoning.disease_burden?.primary_diagnosis || "Primary diagnosis not yet established."}</span>
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Hospice driver recommendation</strong>
+                {(intelligence.hospice_reasoning.hospice_driver_recommendation?.pending_recommendations || []).length === 0 && (
+                  <span>No pending diagnosis recommendations awaiting review.</span>
+                )}
+                {(intelligence.hospice_reasoning.hospice_driver_recommendation?.pending_recommendations || []).map((rec, index) => (
+                  <span key={`driver-rec-${index}`}>
+                    {rec.diagnosis_keyword} ({rec.confidence || "unscored"} confidence
+                    {rec.priority_score != null ? `, priority ${rec.priority_score}` : ""}) — {rec.clinical_rationale || "no rationale recorded"}
+                  </span>
+                ))}
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Related conditions</strong>
+                <span>
+                  Related: {(intelligence.hospice_reasoning.related_conditions?.related || []).map((c) => c.description || c.icd10).join(", ") || "none documented"}
+                </span>
+                <span>
+                  Unrelated: {(intelligence.hospice_reasoning.related_conditions?.unrelated || []).map((c) => c.description || c.icd10).join(", ") || "none documented"}
+                </span>
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Certification support</strong>
+                <span>
+                  {intelligence.hospice_reasoning.certification_support?.lcd_title
+                    ? `${intelligence.hospice_reasoning.certification_support.lcd_title}${intelligence.hospice_reasoning.certification_support.lcd_reference ? ` (${intelligence.hospice_reasoning.certification_support.lcd_reference})` : ""}`
+                    : "No LCD reference resolved yet."}
+                </span>
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Documentation gaps</strong>
+                {(intelligence.hospice_reasoning.documentation_gaps || []).length === 0 && <span>No outstanding certification-criteria gaps detected.</span>}
+                {(intelligence.hospice_reasoning.documentation_gaps || []).slice(0, 5).map((gap, index) => (
+                  <span key={`doc-gap-${index}`}>{gap.gap}</span>
+                ))}
+              </div>
+
+              <div className="rnica-command-signal">
+                <strong>Billing readiness</strong>
+                <span>
+                  {intelligence.hospice_reasoning.billing_readiness
+                    ? (intelligence.hospice_reasoning.billing_readiness.ready
+                      ? "Ready to bill for the current period."
+                      : `Not ready: ${(intelligence.hospice_reasoning.billing_readiness.blockers || []).join("; ") || "see billing workspace"}`)
+                    : "Billing readiness not yet determined."}
+                </span>
+              </div>
+            </section>
+          )}
           <section className="clinical-command-card rnica-command-card rnica-command-save">
             <div><strong>Save &amp; sync</strong><span>{saveStatus === "saved" ? "Saved" : saving ? "Saving…" : "Autosave active"}</span></div>
             <button type="button" disabled={saving || locked} onClick={onSave}>{saving ? "Saving…" : "Save assessment"}</button>

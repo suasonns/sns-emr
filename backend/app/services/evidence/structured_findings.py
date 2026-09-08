@@ -1221,53 +1221,62 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     ),
 
     # ═══════════════════════════ NEUROLOGICAL (coverage expansion) ═══
-    "NEURO_N0500_0": ConceptMapping(
-        "NEURO_N0500_0", "neurological", "N0500: None",
-        (_fw("hopeItems.n0500", "0"),),
+    # NOTE: these are a cognitive screen (repetition/recall/temporal
+    # orientation), NOT the CMS HOPE Section N medication items (N0500
+    # Scheduled Opioid / N0510 PRN Opioid / N0520 Bowel Regimen). This
+    # concept family and its RNICA field path were previously misnamed
+    # after the official HOPE N-codes purely by coincidental key reuse --
+    # a semantic collision, not an intentional dual meaning. Renamed here;
+    # see neurological.cognitiveScreen.{repetition,recall,orientation} in
+    # RNICA.jsx. Real HOPE Section N is owned by hopeReportMapper.js /
+    # formData.medications.{scheduledOpioid,prnOpioid,bowelRegimen}.
+    "NEURO_COG_REPETITION_0": ConceptMapping(
+        "NEURO_COG_REPETITION_0", "neurological", "Cognitive repetition screen: None",
+        (_fw("cognitiveScreen.repetition", "0"),),
     ),
-    "NEURO_N0500_1": ConceptMapping(
-        "NEURO_N0500_1", "neurological", "N0500: One word",
-        (_fw("hopeItems.n0500", "1"),),
+    "NEURO_COG_REPETITION_1": ConceptMapping(
+        "NEURO_COG_REPETITION_1", "neurological", "Cognitive repetition screen: One word",
+        (_fw("cognitiveScreen.repetition", "1"),),
     ),
-    "NEURO_N0500_2": ConceptMapping(
-        "NEURO_N0500_2", "neurological", "N0500: Two words",
-        (_fw("hopeItems.n0500", "2"),),
+    "NEURO_COG_REPETITION_2": ConceptMapping(
+        "NEURO_COG_REPETITION_2", "neurological", "Cognitive repetition screen: Two words",
+        (_fw("cognitiveScreen.repetition", "2"),),
     ),
-    "NEURO_N0500_3": ConceptMapping(
-        "NEURO_N0500_3", "neurological", "N0500: Three words",
-        (_fw("hopeItems.n0500", "3"),),
+    "NEURO_COG_REPETITION_3": ConceptMapping(
+        "NEURO_COG_REPETITION_3", "neurological", "Cognitive repetition screen: Three words",
+        (_fw("cognitiveScreen.repetition", "3"),),
     ),
-    "NEURO_N0510_0": ConceptMapping(
-        "NEURO_N0510_0", "neurological", "N0510: None",
-        (_fw("hopeItems.n0510", "0"),),
+    "NEURO_COG_RECALL_0": ConceptMapping(
+        "NEURO_COG_RECALL_0", "neurological", "Cognitive recall screen: None",
+        (_fw("cognitiveScreen.recall", "0"),),
     ),
-    "NEURO_N0510_1": ConceptMapping(
-        "NEURO_N0510_1", "neurological", "N0510: One",
-        (_fw("hopeItems.n0510", "1"),),
+    "NEURO_COG_RECALL_1": ConceptMapping(
+        "NEURO_COG_RECALL_1", "neurological", "Cognitive recall screen: One",
+        (_fw("cognitiveScreen.recall", "1"),),
     ),
-    "NEURO_N0510_2": ConceptMapping(
-        "NEURO_N0510_2", "neurological", "N0510: Two",
-        (_fw("hopeItems.n0510", "2"),),
+    "NEURO_COG_RECALL_2": ConceptMapping(
+        "NEURO_COG_RECALL_2", "neurological", "Cognitive recall screen: Two",
+        (_fw("cognitiveScreen.recall", "2"),),
     ),
-    "NEURO_N0510_3": ConceptMapping(
-        "NEURO_N0510_3", "neurological", "N0510: Three",
-        (_fw("hopeItems.n0510", "3"),),
+    "NEURO_COG_RECALL_3": ConceptMapping(
+        "NEURO_COG_RECALL_3", "neurological", "Cognitive recall screen: Three",
+        (_fw("cognitiveScreen.recall", "3"),),
     ),
-    "NEURO_N0520_0": ConceptMapping(
-        "NEURO_N0520_0", "neurological", "N0520: None correct",
-        (_fw("hopeItems.n0520", "0"),),
+    "NEURO_COG_ORIENTATION_0": ConceptMapping(
+        "NEURO_COG_ORIENTATION_0", "neurological", "Cognitive temporal orientation screen: None correct",
+        (_fw("cognitiveScreen.orientation", "0"),),
     ),
-    "NEURO_N0520_1": ConceptMapping(
-        "NEURO_N0520_1", "neurological", "N0520: Year correct",
-        (_fw("hopeItems.n0520", "1"),),
+    "NEURO_COG_ORIENTATION_1": ConceptMapping(
+        "NEURO_COG_ORIENTATION_1", "neurological", "Cognitive temporal orientation screen: Year correct",
+        (_fw("cognitiveScreen.orientation", "1"),),
     ),
-    "NEURO_N0520_2": ConceptMapping(
-        "NEURO_N0520_2", "neurological", "N0520: Month correct",
-        (_fw("hopeItems.n0520", "2"),),
+    "NEURO_COG_ORIENTATION_2": ConceptMapping(
+        "NEURO_COG_ORIENTATION_2", "neurological", "Cognitive temporal orientation screen: Month correct",
+        (_fw("cognitiveScreen.orientation", "2"),),
     ),
-    "NEURO_N0520_3": ConceptMapping(
-        "NEURO_N0520_3", "neurological", "N0520: Day of week correct",
-        (_fw("hopeItems.n0520", "3"),),
+    "NEURO_COG_ORIENTATION_3": ConceptMapping(
+        "NEURO_COG_ORIENTATION_3", "neurological", "Cognitive temporal orientation screen: Day of week correct",
+        (_fw("cognitiveScreen.orientation", "3"),),
     ),
     "NEURO_SENSORY_AID_GLASSES": ConceptMapping(
         "NEURO_SENSORY_AID_GLASSES", "neurological", "Glasses",

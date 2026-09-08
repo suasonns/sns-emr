@@ -454,6 +454,24 @@ export async function finalizeVisitNote(visitId: string): Promise<unknown> {
   return unwrap(api.post(`/visits/${visitId}/finalize`, {}), "Unable to sign and submit this visit note");
 }
 
+/**
+ * RN's explicit YES answer to the "This visit qualifies as HUV1/HUV2 --
+ * use it?" prompt. Designates an already-finalized RN visit as HUV1/HUV2
+ * by completing the pre-existing HUV task with this visit as evidence --
+ * never creates a new visit, assessment, or table. There is no automatic
+ * path to this outcome; it only happens via this explicit call.
+ */
+export async function designateVisitAsHuv(
+  visitId: string,
+  huvType: "HUV1" | "HUV2",
+  reason?: string
+): Promise<unknown> {
+  return unwrap(
+    api.post(`/visits/${visitId}/designate-huv`, { huv_type: huvType, reason: reason || null }),
+    "Unable to designate this visit as a HOPE Update Visit"
+  );
+}
+
 /** Combined RN/LVN + MSW ICA + SC ICA timeline for a patient's Visit Notes board. */
 export async function listVisitNotesForPatient(patientId: string): Promise<VisitNoteTimelineEntry[]> {
   return unwrap(

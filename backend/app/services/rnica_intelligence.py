@@ -1,8 +1,42 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+import logging
+from datetime import date, datetime, timezone
 from typing import Any, Iterable
+
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
+
+
+from dataclasses import dataclass, field as _dataclass_field
+
+
+@dataclass
+class _EligibilitySecondaryDx:
+    """Adapts a patient_diagnoses row into the shape the eligibility
+    engine expects for `patient.secondary_diagnoses` entries (`.icd10`,
+    `.description`, `.is_related`)."""
+
+    icd10: str | None
+    description: str | None
+    is_related: bool
+
+
+@dataclass
+class _EligibilityPatientAdapter:
+    """Read-only adapter supplying the attribute names
+    app.services.eligibility.engine actually reads (see
+    _build_eligibility_sections docstring for why this is required)."""
+
+    id: Any
+    tenant_id: Any
+    primary_diagnosis_description: str | None
+    primary_diagnosis_code: str | None
+    admission_date: Any
+    secondary_diagnoses: list = _dataclass_field(default_factory=list)
 
 
 def _as_text(value: Any) -> str:
@@ -179,6 +213,8 @@ def build_rnica_intelligence(
     patient_id: str | None = None,
     patient_evidence: dict[str, Any] | None = None,
     structured_findings_signals: list[dict[str, Any]] | None = None,
+    hospice_reasoning: dict[str, Any] | None = None,
+    db: Session | None = None,
 ) -> dict[str, Any]:
     payload = form_data or {}
     findings, recommendations, evidence, missing = _collect_findings(payload)
@@ -190,6 +226,24 @@ def build_rnica_intelligence(
     priority = "low"
     highest = max((item.get("severity", "low") for item in findings), default="low", key=lambda level: {"low": 0, "moderate": 1, "high": 2}[level])
     priority = highest
+
+    # Single authoritative diagnosis resolution -- every consumer (RNICA,
+    # disease blueprint, LCD, certification, narrative, billing readiness)
+    # must read this instead of independently selecting Patient.primary_diagnosis,
+    # PatientFaceSheet.primary_diagnosis, or the RNICA form's own diagnoses
+    # snapshot. Conflict detection against this assessment's own (possibly
+    # stale) diagnoses.primaryDiagnosis field is intentionally NOT
+    # duplicated here -- that is already handled end-to-end by
+    # `_build_chart_diagnosis_sync` in app/api/visits.py (banner + "Update
+    # RN ICA to match chart" button, already wired in
+    # RNICACommandWorkspace.jsx). Adding a second conflict mechanism here
+    # would itself violate the single-source-of-truth rule this fix exists
+    # to enforce -- see diagnosis_resolver.py module docstring.
+    diagnosis_context = None
+    if db is not None and patient_id:
+        from app.services.diagnosis_resolver import resolve_current_diagnosis_context
+
+        diagnosis_context = resolve_current_diagnosis_context(db, patient_id)
 
     return {
         "mode": "recommendation_only",
@@ -220,4 +274,343 @@ def build_rnica_intelligence(
         # apply layer can offer to populate directly into blank RNICA
         # fields. Never auto-applied; always requires an explicit RN action.
         "structured_findings_signals": structured_findings_signals or [],
+        # Structured, read-only hospice reasoning panel -- assembled from
+        # existing wired engines (eligibility/LCD engine, diagnosis
+        # recommendation service, patient_diagnoses relatedness, billing
+        # readiness service). See build_hospice_reasoning_panel(). Never
+        # auto-applies anything; display only.
+        "hospice_reasoning": hospice_reasoning or _empty_hospice_reasoning(),
+        # Single authoritative diagnosis resolution (see
+        # app.services.diagnosis_resolver) -- resolved primary/secondary/
+        # comorbidities from PatientDiagnosis. Chart-vs-RNICA conflict
+        # detection is intentionally not duplicated here; see
+        # _build_chart_diagnosis_sync in app/api/visits.py.
+        "diagnosis_context": diagnosis_context,
+    }
+
+
+def _empty_hospice_reasoning() -> dict[str, Any]:
+    return {
+        "available": False,
+        "why_hospice": None,
+        "disease_burden": None,
+        "hospice_driver_recommendation": None,
+        "related_conditions": {"terminal": [], "related": [], "unrelated": []},
+        "documentation_gaps": [],
+        "certification_support": None,
+        "billing_readiness": None,
+    }
+
+
+def build_hospice_reasoning_panel(db: Session, patient_id: str) -> dict[str, Any]:
+    """
+    Assembles the read-only "hospice reasoning" panel shown in the RNICA
+    workspace from EXISTING, already-wired engines. This function does not
+    implement new clinical logic -- it queries/calls:
+
+      - app.services.eligibility.engine.evaluate_hospice_eligibility()
+        (LCD/eligibility criteria evaluation) -> why_hospice,
+        certification_support, documentation_gaps
+      - app.models.patient_diagnosis.PatientDiagnosis rows
+        (terminal / related / unrelated classification already stored on
+        the chart) -> related_conditions, disease_burden
+      - diagnosis_recommendations table (written by
+        ReasoningResultToRecommendationService, already wired from visit
+        finalize / ICA lock / F2F finalize / certification signing)
+        -> hospice_driver_recommendation
+      - app.billing.services.billing_readiness_service
+        .check_patient_billing_readiness() -> billing_readiness
+
+    Every section is fetched independently and defensively: a failure in
+    one section (e.g. no eligibility guideline configured yet) never
+    blocks the others from rendering. This is display-only -- nothing
+    here writes to the chart, certifications, or billing records.
+    """
+    # This panel is now a thin VIEW over the shared, versioned Hospice
+    # Clinical Context (see hospice_clinical_context.py) -- it no longer
+    # re-derives these sections itself. This is the fix for "multiple
+    # sources of truth": the context is built once per call and every
+    # section here is read from it, not recomputed independently.
+    from app.services.hospice_clinical_context import build_hospice_clinical_context
+
+    context = build_hospice_clinical_context(db, patient_id)
+
+    panel = _empty_hospice_reasoning()
+    panel["available"] = context["available"]
+    if not context["available"]:
+        return panel
+
+    panel["related_conditions"] = context["related_conditions"]
+    panel["why_hospice"] = context["why_hospice"]
+    panel["disease_burden"] = context["disease_burden"]
+    panel["certification_support"] = context["certification_support"]
+    panel["documentation_gaps"] = context["documentation_gaps"]
+    panel["hospice_driver_recommendation"] = context["hospice_driver_recommendation"]
+    panel["billing_readiness"] = context["billing_readiness"]
+    panel["context_version"] = context["context_version"]
+    panel["pipeline_run_id"] = context["pipeline_run_id"]
+    panel["generated_at"] = context["generated_at"]
+
+    return panel
+
+
+def _load_patient_for_reasoning(db: Session, patient_id: str) -> Any | None:
+    try:
+        from app.models.patient import Patient
+
+        return db.query(Patient).filter(Patient.id == patient_id).first()
+    except Exception:
+        logger.exception("hospice_reasoning: failed to load patient %s", patient_id)
+        return None
+
+
+def _build_eligibility_sections(
+    patient: Any, related_conditions: dict[str, list[dict]]
+) -> tuple[dict | None, dict | None, dict | None, list[dict]]:
+    """
+    Evaluates hospice eligibility/LCD support for `patient`.
+
+    IMPORTANT ADAPTER NOTE (verified defect, fixed here): the eligibility
+    engine (app.services.eligibility.engine) reads patient facts via
+    attribute names such as `primary_diagnosis_description`,
+    `primary_diagnosis_code`, and `terminal_diagnosis_category`. The real
+    `Patient` ORM model does NOT define any of these columns -- it only
+    has `primary_diagnosis` (free text). Passing a raw `Patient` row
+    directly into `evaluate_hospice_eligibility()` therefore always
+    silently falls back to the GENERAL_DECLINE_TERMINAL_STATUS pathway
+    with no diagnosis facts at all, for every patient, regardless of what
+    is actually charted. This is NOT a per-patient bug.
+
+    The fix here is a thin, read-only adapter that supplies the engine's
+    expected attribute names from data that is already authoritative on
+    the chart: the patient's terminal diagnosis row in `patient_diagnoses`
+    (already computed in `related_conditions` above) falling back to the
+    patient's free-text `primary_diagnosis` column. No new diagnosis
+    source is introduced -- this only maps existing fields onto the
+    engine's existing (undocumented) contract.
+    """
+    terminal_entries = related_conditions.get("terminal") or []
+    terminal_description = None
+    terminal_icd10 = None
+    if terminal_entries:
+        terminal_description = terminal_entries[0].get("description")
+        code = terminal_entries[0].get("icd10")
+        terminal_icd10 = code if code and code != "N/A" else None
+    if not terminal_description:
+        terminal_description = getattr(patient, "primary_diagnosis", None)
+
+    secondary_entries = (related_conditions.get("related") or []) + (related_conditions.get("unrelated") or [])
+    secondary_diagnoses = [
+        _EligibilitySecondaryDx(
+            icd10=entry.get("icd10") if entry.get("icd10") != "N/A" else None,
+            description=entry.get("description"),
+            is_related=entry in (related_conditions.get("related") or []),
+        )
+        for entry in secondary_entries
+    ]
+
+    adapter = _EligibilityPatientAdapter(
+        id=getattr(patient, "id", None),
+        tenant_id=getattr(patient, "tenant_id", None),
+        primary_diagnosis_description=terminal_description,
+        primary_diagnosis_code=terminal_icd10,
+        admission_date=getattr(patient, "admission_date", None),
+        secondary_diagnoses=secondary_diagnoses,
+    )
+
+    try:
+        from app.services.eligibility.engine import evaluate_hospice_eligibility
+
+        admission_date = adapter.admission_date or date.today()
+        result = evaluate_hospice_eligibility(adapter, admission_date)
+    except Exception as exc:
+        logger.info("hospice_reasoning: eligibility evaluation unavailable: %s", exc)
+        return None, None, None, []
+
+    criteria = result.get("criteria_summary") or {}
+    # Verified defect (see engine.py _evaluate_group / evaluate_lcd_criteria
+    # comments): this used to read criteria.get("met")/criteria.get("unmet"),
+    # keys the engine never returns -- the real per-criterion detail lives in
+    # met_criteria / not_met_criteria / unknown_criteria. That is why
+    # supporting_criteria and documentation_gaps always came back empty even
+    # when HEART_FAILURE was correctly selected.
+    met_criteria = criteria.get("met_criteria") or []
+    not_met_criteria = criteria.get("not_met_criteria") or []
+    unknown_criteria = criteria.get("unknown_criteria") or []
+
+    def _criterion_text(item: dict) -> str:
+        return item.get("description") or item.get("criterion_id") or _as_text(item)
+
+    # A criterion whose backing fact was never documented (UNKNOWN) is not
+    # the same clinical statement as one whose documented fact fails the
+    # comparison (NOT_MET) -- collapsing them previously made "not eligible"
+    # indistinguishable from "insufficient documentation."
+    if not_met_criteria:
+        result_status = "NOT_MET"
+    elif unknown_criteria:
+        result_status = "INSUFFICIENT_DOCUMENTATION"
+    elif met_criteria and result.get("eligible"):
+        result_status = "MET"
+    else:
+        result_status = "NOT_MET" if not criteria else "EVALUATION_UNAVAILABLE"
+
+    why_hospice = {
+        "eligible": result.get("eligible"),
+        "result_status": result_status,
+        "selected_guideline": result.get("selected_guideline"),
+        "lcd_title": result.get("lcd_title"),
+        "supporting_criteria": [_criterion_text(item) for item in met_criteria],
+        "unmet_criteria": [_criterion_text(item) for item in not_met_criteria],
+    }
+    disease_burden = {
+        "guideline": result.get("selected_guideline"),
+        "primary_diagnosis": getattr(patient, "primary_diagnosis_description", None)
+        or getattr(patient, "primary_diagnosis", None),
+    }
+    certification_support = {
+        "lcd_id": result.get("lcd_id"),
+        "lcd_title": result.get("lcd_title"),
+        "lcd_reference": result.get("lcd_reference"),
+        "source_document": result.get("source_document"),
+        "eligible": result.get("eligible"),
+        "result_status": result_status,
+    }
+    # Missing facts (UNKNOWN) become RNICA documentation guidance -- this is
+    # the actual "what still needs to be documented" list, distinct from
+    # criteria that were documented and failed.
+    documentation_gaps = [
+        {"gap": _criterion_text(item), "category": "missing_evidence_for_certification"}
+        for item in unknown_criteria
+    ]
+
+    return why_hospice, disease_burden, certification_support, documentation_gaps
+
+
+def _build_related_conditions(
+    db: Session, patient: Any, diagnosis_resolved: dict[str, Any] | None = None
+) -> dict[str, list[dict]]:
+    """
+    Verified defect (Invariant 1 -- diagnosis consistency, fixed here):
+    this previously re-derived "terminal" independently by scanning
+    PatientDiagnosis.is_terminal, a SECOND diagnosis-identity path
+    parallel to app.services.diagnosis_resolver.resolve_current_diagnosis_
+    context(). The two could disagree (e.g. a row flagged is_terminal=True
+    that is not diagnosis_type=PRIMARY/status=ACTIVE), silently feeding
+    LCD/certification support a different "terminal diagnosis" than the
+    one RNICA/chart-sync treat as authoritative -- exactly the disconnected-
+    source failure mode this fix exists to close.
+
+    Fix: when a resolved diagnosis context is supplied, its `primary` is
+    the single terminal entry (never independently re-derived); the
+    PatientDiagnosis is_related_to_terminal rows classify only the
+    remaining (non-primary) related/unrelated conditions.
+    """
+    result = {"terminal": [], "related": [], "unrelated": []}
+    try:
+        from app.models.patient_diagnosis import PatientDiagnosis
+
+        rows = (
+            db.query(PatientDiagnosis)
+            .filter(PatientDiagnosis.patient_id == patient.id, PatientDiagnosis.active.is_(True))
+            .all()
+        )
+    except Exception:
+        logger.exception("hospice_reasoning: failed to load patient diagnoses for %s", getattr(patient, "id", None))
+        return result
+
+    primary_record_id = None
+    if diagnosis_resolved and diagnosis_resolved.get("available") and diagnosis_resolved.get("primary"):
+        primary = diagnosis_resolved["primary"]
+        primary_record_id = primary.get("source_record_id")
+        result["terminal"].append(
+            {"icd10": primary.get("icd10_code"), "description": primary.get("description")}
+        )
+
+    for row in rows:
+        if primary_record_id is not None and str(row.id) == str(primary_record_id):
+            continue
+        entry = {
+            "icd10": row.icd10_code,
+            "description": row.diagnosis_description or row.display_name,
+        }
+        if row.is_terminal:
+            if primary_record_id is None:
+                # No resolver context available -- fall back to the
+                # legacy is_terminal scan rather than silently dropping
+                # the row (unavailable_reason already surfaces this case
+                # to callers upstream).
+                result["terminal"].append(entry)
+            # else: resolver is authoritative; a second is_terminal=True
+            # row here is a data-integrity condition, not a second truth
+            # -- it is intentionally excluded from "terminal" and falls
+            # through to related/unrelated below via is_related_to_terminal.
+        elif row.is_related_to_terminal:
+            result["related"].append(entry)
+        else:
+            result["unrelated"].append(entry)
+
+    return result
+
+
+def _build_driver_recommendation(db: Session, patient: Any) -> dict[str, Any] | None:
+    try:
+        rows = db.execute(
+            text(
+                """
+                SELECT diagnosis_keyword, recommended_status, confidence, priority_score,
+                       is_terminal_candidate, is_related_to_terminal_candidate,
+                       clinical_rationale, supporting_evidence_summary, recommendation_status,
+                       created_at
+                FROM diagnosis_recommendations
+                WHERE patient_id = :patient_id
+                  AND recommendation_status = 'PENDING_REVIEW'
+                ORDER BY priority_score DESC NULLS LAST, created_at DESC
+                LIMIT 5
+                """
+            ),
+            {"patient_id": str(patient.id)},
+        ).mappings().all()
+    except Exception:
+        logger.exception("hospice_reasoning: failed to load diagnosis_recommendations for %s", getattr(patient, "id", None))
+        return None
+
+    if not rows:
+        return {"pending_recommendations": []}
+
+    return {
+        "pending_recommendations": [
+            {
+                "diagnosis_keyword": row["diagnosis_keyword"],
+                "recommended_status": row["recommended_status"],
+                "confidence": row["confidence"],
+                "priority_score": row["priority_score"],
+                "is_terminal_candidate": row["is_terminal_candidate"],
+                "is_related_to_terminal_candidate": row["is_related_to_terminal_candidate"],
+                "clinical_rationale": row["clinical_rationale"],
+                "supporting_evidence_summary": row["supporting_evidence_summary"],
+            }
+            for row in rows
+        ]
+    }
+
+
+def _build_billing_readiness(db: Session, patient: Any) -> dict[str, Any] | None:
+    try:
+        from app.billing.services.billing_readiness_service import check_patient_billing_readiness
+
+        result = check_patient_billing_readiness(
+            db,
+            tenant_id=str(getattr(patient, "tenant_id", None)),
+            patient_id=str(patient.id),
+            service_date=date.today(),
+        )
+    except Exception as exc:
+        logger.info("hospice_reasoning: billing readiness unavailable for %s: %s", getattr(patient, "id", None), exc)
+        return None
+
+    return {
+        "ready": result.ready,
+        "blockers": result.blockers,
+        "warnings": result.warnings,
+        "period_number": result.period_number,
     }

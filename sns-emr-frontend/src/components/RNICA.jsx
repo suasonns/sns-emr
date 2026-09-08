@@ -89,6 +89,7 @@ import {
   addPatientAllergy,
   removePatientAllergy,
 } from "../api/medications";
+import { deriveSectionNFromMedications } from "../intake/sectionNDerivation";
 import {
   listOrderTemplates,
   importOrderTemplate,
@@ -126,6 +127,8 @@ import {
   DISEASE_TRAJECTORY_OPTIONS,
   isLegacyDiseaseTrajectoryValue,
   getDiseaseTrajectoryLabel,
+  computeNarrativeContextFingerprint,
+  evaluateNarrativeQualityGate,
 } from "../intake/clinicalNarrativeBuilder";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
@@ -572,6 +575,15 @@ const INITIAL_FORM = {
       nighttimeSymptoms: [], response: "",
       notes: "",
     },
+    // Renamed from `hopeItems: { n0500, n0510, n0520 }` — those literal
+    // property names collided with the official CMS HOPE Section N
+    // medication item codes (N0500 Scheduled Opioid, N0510 PRN Opioid,
+    // N0520 Bowel Regimen), which are an unrelated concept owned by
+    // hopeReportMapper.js / formData.medications.*. This is a cognitive
+    // screen (repetition/recall/temporal orientation), never a HOPE
+    // Section N medication response. `hopeItems` is READ_ONLY_LEGACY
+    // below (one-time migration read only; no new writes).
+    cognitiveScreen: { repetition: "", recall: "", orientation: "" },
     hopeItems: { n0500: "", n0510: "", n0520: "" },
     notes: "",
   },
@@ -644,6 +656,21 @@ const INITIAL_FORM = {
     continence: "",
     feedingTube: { present: false, type: "", site: "" },
     ostomy: { present: false, type: "", condition: "" },
+    notes: "",
+  },
+
+  // ─── 11B. MEDICATION REVIEW (HOPE Section N) ──────
+  // Authoritative source for CMS HOPE Section N: N0500 Scheduled Opioid,
+  // N0510 PRN Opioid, N0520 Bowel Regimen. Field shape matches
+  // hopeReportMapper.js's existing export contract exactly (no second
+  // storage format). N0520 (bowelRegimen) is required whenever either
+  // opioid item is affirmative -- enforced in validateForm() below as a
+  // reactive, blocking rule, not only computed at export time.
+  medications: {
+    scheduledOpioid: false, scheduledOpioidDate: "",
+    prnOpioid: false, prnOpioidDate: "",
+    bowelRegimen: false, bowelRegimenDate: "",
+    reviewedBy: "", reviewDate: "",
     notes: "",
   },
 
@@ -1045,16 +1072,36 @@ function validateRNICA(formData, mode = "ica") {
       warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
     }
 
-    // Neurological ? BIMS N0500-N0520
-    if (!formData.neurological.hopeItems.n0500) {
-      warnings["neurological.hopeItems.n0500"] = "HOPE N0500: BIMS repetition required";
+    // Neurological — BIMS cognitive screen (repetition/recall/orientation).
+    // NOT HOPE N0500-N0520 — those are Section N medication items
+    // (Scheduled Opioid / PRN Opioid / Bowel Regimen), owned by
+    // hopeReportMapper.js / formData.medications.*. Renamed to remove the
+    // collision; this is an internal RN cognitive-screen completeness
+    // check only, not a CMS HOPE requirement.
+    if (!formData.neurological.cognitiveScreen.repetition) {
+      warnings["neurological.cognitiveScreen.repetition"] = "BIMS repetition (cognitive screen) required";
     }
 
     // Imminent Death ? J0050
     if (!formData.imminentDeath.appearsThreeDaysOrLess) {
       warnings["imminentDeath.appearsThreeDaysOrLess"] = "HOPE J0050: Prognosis assessment required";
     }
+
+    // Medication Review — HOPE Section N (N0500/N0510/N0520). N0520 (bowel
+    // regimen) is only a CMS-meaningful answer once an opioid trigger
+    // exists (see hopeReportMapper.js's opioidPresent-gated derivation), so
+    // this is a hard, blocking rule only when N0500 or N0510 is affirmative
+    // — it does not require bowelRegimen for patients without any opioid.
+    const medsReview = formData.medications || {};
+    const sectionNOpioidPresent = Boolean(medsReview.scheduledOpioid || medsReview.prnOpioid);
+    if (sectionNOpioidPresent && !medsReview.bowelRegimen && !formData.gastrointestinal?.reasonBowelRegimenNotInitiated?.trim()) {
+      errors["medications.bowelRegimen"] = "HOPE N0520: Bowel regimen must be documented (or a reason it could not be initiated) whenever a scheduled or PRN opioid (N0500/N0510) is affirmative";
+    }
+    if (!medsReview.reviewedBy || !medsReview.reviewDate) {
+      warnings["medications.reviewedBy"] = "Medication Review (HOPE Section N) has not been signed off by an RN yet";
+    }
   }
+
 
   // Skin ? Braden
   if (!formData.skin.braden.total) {
@@ -1088,8 +1135,20 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   // Finalization ? signature
-  if (!formData.finalization.clinicalNarrative) {
-    errors["finalization.clinicalNarrative"] = "Clinical narrative is required before attestation";
+  // Verified defect fix: this used to check formData.finalization.clinicalNarrative,
+  // a second, independently-writable narrative field never shown for RN
+  // review (see handleInsertAiNarrative above). diagnoses.clinicalNarrative
+  // is the one narrative field the Diagnoses card actually renders/reviews,
+  // so it is now the single source this gate checks.
+  if (!formData.diagnoses.clinicalNarrative) {
+    errors["diagnoses.clinicalNarrative"] = "Clinical narrative is required before attestation";
+  } else if (evaluateNarrativeQualityGate(formData.diagnoses.clinicalNarrative).status === "FAIL") {
+    // Narrative Quality Gate (Task 6): a narrative that still reads as a
+    // field dump (raw camelCase keys, "Label: value" lines, internal IDs)
+    // cannot be attested regardless of the reviewed checkbox state.
+    errors["diagnoses.clinicalNarrative"] = "Clinical narrative fails the Narrative Quality Gate and must be corrected before attestation";
+  } else if (!formData.diagnoses.clinicalNarrativeReviewed) {
+    errors["diagnoses.clinicalNarrativeReviewed"] = "Clinical narrative must be reviewed before attestation";
   }
   if (!formData.finalization.clinicianSignature) {
     errors["finalization.clinicianSignature"] = "Clinician signature required";
@@ -2010,11 +2069,36 @@ function LcdSupportingEvidenceCard({ diagnosesData, updateField }) {
 // on formData changes, never during save/validation/navigation. No AI
 // service, AI flag, or AI control exists anywhere in this card.
 // ════════════════════════════════════════════════════════════════
-function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked }) {
+function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, styles, COLORS, locked, hospiceNarrativeContext }) {
   const [pendingReplace, setPendingReplace] = useState(false);
   const narrative = diagnosesData?.clinicalNarrative || "";
   const trajectory = diagnosesData?.diseaseTrajectory || "";
   const isLegacyTrajectory = isLegacyDiseaseTrajectoryValue(trajectory);
+
+  // Narrative versioning / staleness (Task 4/5): the fingerprint of the
+  // clinical context at the moment the narrative was last built/edited is
+  // compared against the fingerprint of the CURRENT live context on every
+  // render. A mismatch while the narrative is still marked "reviewed"
+  // means the underlying facts moved after the RN signed off on them --
+  // surfaced here, never silently ignored and never auto-regenerated.
+  const currentContextFingerprint = computeNarrativeContextFingerprint(
+    fullFormData,
+    hospiceNarrativeContext?.patient || {},
+    hospiceNarrativeContext?.hospiceContext || {}
+  );
+  const storedContextFingerprint = diagnosesData?.clinicalNarrativeContextFingerprint || null;
+  const isStale = Boolean(
+    narrative.trim() &&
+    diagnosesData?.clinicalNarrativeReviewed &&
+    storedContextFingerprint &&
+    storedContextFingerprint !== currentContextFingerprint
+  );
+
+  // Narrative Quality Gate (Task 6): a deterministic lint over the final
+  // text, independent of which control produced it (template draft or an
+  // inserted voice-recording note). Blocks field-dump/leakage patterns
+  // from being presented as clinically reviewable text.
+  const qualityGate = evaluateNarrativeQualityGate(narrative);
 
   const handleBuildDraft = () => {
     if (narrative.trim()) {
@@ -2025,8 +2109,9 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
   };
 
   const applyDraft = () => {
-    const draft = buildClinicalNarrative(fullFormData, {});
+    const draft = buildClinicalNarrative(fullFormData, hospiceNarrativeContext?.patient || {}, hospiceNarrativeContext?.hospiceContext || {});
     updateField("clinicalNarrative", draft.text);
+    updateField("clinicalNarrativeContextFingerprint", currentContextFingerprint);
     // Replacing the narrative content always resets review — a
     // previously reviewed narrative cannot remain "reviewed" once its
     // text has changed.
@@ -2131,12 +2216,38 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
         placeholder="Document the patient's clinical presentation and supporting findings in your own words, or click Build Draft from Documented Findings above."
       />
 
+      {isStale && (
+        <div role="alert" style={{
+          padding: 10, borderRadius: 8, border: `1px solid ${COLORS.warning}`,
+          background: COLORS.warningBoxBg, margin: "8px 0", fontSize: 12.5, color: COLORS.dark,
+        }}>
+          <strong>Narrative may be out of date:</strong> clinical context (diagnosis, functional status, symptoms, or
+          related findings) has changed since this narrative was reviewed. Please re-review the narrative below against
+          current documented findings before relying on it.
+        </div>
+      )}
+
+      {narrative.trim() && qualityGate.status === "FAIL" && (
+        <div role="alert" style={{
+          padding: 10, borderRadius: 8, border: `1px solid ${COLORS.danger || COLORS.warning}`,
+          background: COLORS.warningBoxBg, margin: "8px 0", fontSize: 12.5, color: COLORS.dark,
+        }}>
+          <strong>Narrative Quality Gate: FAIL.</strong> This text cannot be marked reviewed until it reads as clinical
+          synthesis rather than raw chart data:
+          <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+            {qualityGate.reasons.map((r) => (
+              <li key={r.code}>{r.detail}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0 16px" }}>
         <input
           type="checkbox"
           id="clinicalNarrativeReviewed"
           checked={!!diagnosesData?.clinicalNarrativeReviewed}
-          disabled={locked}
+          disabled={locked || qualityGate.status === "FAIL"}
           onChange={(e) => updateField("clinicalNarrativeReviewed", e.target.checked)}
         />
         <label htmlFor="clinicalNarrativeReviewed" style={{ fontSize: 13, color: COLORS.dark }}>
@@ -2173,7 +2284,7 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
 // SECONDARY DIAGNOSES — add/edit/remove list (feeds HOPE comorbidity
 // auto-detection below and hopeReportMapper.js diagnosisEntries()).
 // ════════════════════════════════════════════════════════════════
-function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
+function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false, chartSecondaryDiagnoses = null }) {
   const rows = diagnosesData?.secondaryDiagnoses || [];
   const [showAll, setShowAll] = useState(false);
   const visibleRows = workspacePilot && !showAll ? rows.slice(0, 7) : rows;
@@ -2191,9 +2302,38 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
 
   const removeRow = (idx) => setRows(rows.filter((_, i) => i !== idx));
 
+  const missingFromChart = chartSecondaryDiagnoses || [];
+  const pullFromChart = () => {
+    if (missingFromChart.length === 0) return;
+    const additions = missingFromChart.map((d) => ({
+      icd10: d.icd10 && d.icd10 !== "N/A" ? d.icd10 : "",
+      description: d.description || "",
+      relatedToTerminal: true,
+    }));
+    setRows([...rows, ...additions]);
+  };
+
+  const chartSyncBanner = missingFromChart.length > 0 && (
+    <div
+      role="alert"
+      style={{
+        marginBottom: 10, padding: "8px 10px", borderRadius: 6,
+        border: `1px solid ${COLORS.warningBorder || "#e0a800"}`,
+        background: COLORS.warningBg || "#fff8e1", fontSize: 12.5,
+      }}
+    >
+      <strong>{missingFromChart.length}</strong> chart diagnos{missingFromChart.length === 1 ? "is" : "es"} not yet listed here
+      (from the patient's authoritative diagnosis record).{" "}
+      <button type="button" onClick={pullFromChart} style={{ marginLeft: 6 }}>
+        Add from chart
+      </button>
+    </div>
+  );
+
   if (workspacePilot) {
     return (
       <div className="rnica-diagnosis-ledger">
+        {chartSyncBanner}
         <div className="rnica-diagnosis-ledger__summary">
           <p>
             Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist.
@@ -2259,6 +2399,7 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
 
   return (
     <div>
+      {chartSyncBanner}
       <p style={{ fontSize: 12, color: COLORS.gray, marginTop: -4, marginBottom: 10 }}>
         All other active diagnoses contributing to the plan of care. Marking a diagnosis as
         "related to terminal illness" is used for hospice benefit-period documentation and does
@@ -6143,6 +6284,155 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
   );
 }
 
+// CMS HOPE Section N is a clinical-workflow harvest, not a medication-class
+// lookup engine. N0500 (Scheduled Opioid) and N0510 (PRN Opioid) belong to
+// the pain-assessment workflow — the RN documents them as clinical
+// questions ("Is a scheduled opioid initiated/continued for this patient's
+// pain?" / "Is a PRN opioid available for breakthrough pain?"), the same
+// way HospiceMD's legacy production workflow treats them. The Current
+// Medications list is evidence that SUPPORTS that clinical judgment; it
+// never replaces it, so this card only ever displays the medication
+// evidence as read-only reference text — it does not auto-fill or assert
+// a Yes/No answer. `deriveSectionNFromMedications()` (sectionNDerivation.js)
+// is reused here purely to summarize which active medications look
+// opioid-related, for the RN's own cross-check.
+function OpioidRegimenCard({ patientId, medsData, updateMeds, styles, COLORS }) {
+  const [medications, setMedications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!patientId) return;
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    listMedications(patientId)
+      .then((list) => { if (active) setMedications(list || []); })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Failed to load medications for Section N reference:", err);
+        setLoadError(err?.response?.data?.detail || "Unable to load Current Medications.");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [patientId]);
+
+  const evidence = useMemo(() => deriveSectionNFromMedications(medications), [medications]);
+
+  const handleDateChange = (field, checked) => {
+    updateMeds(field, checked);
+    if (checked) {
+      updateMeds(`${field}Date`, new Date().toISOString().slice(0, 10));
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(medsData?.scheduledOpioid)}
+            onChange={(e) => handleDateChange("scheduledOpioid", e.target.checked)}
+          />
+          N0500: Scheduled opioid initiated/continued for pain
+        </label>
+        <input
+          type="date"
+          style={{ ...styles.input, width: 160, marginTop: 4, marginLeft: 26 }}
+          value={medsData?.scheduledOpioidDate || ""}
+          onChange={(e) => updateMeds("scheduledOpioidDate", e.target.value)}
+        />
+      </div>
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
+          <input
+            type="checkbox"
+            checked={Boolean(medsData?.prnOpioid)}
+            onChange={(e) => handleDateChange("prnOpioid", e.target.checked)}
+          />
+          N0510: PRN opioid available for breakthrough pain
+        </label>
+        <input
+          type="date"
+          style={{ ...styles.input, width: 160, marginTop: 4, marginLeft: 26 }}
+          value={medsData?.prnOpioidDate || ""}
+          onChange={(e) => updateMeds("prnOpioidDate", e.target.value)}
+        />
+      </div>
+
+      {loading && <div style={styles.infoBox}>Loading Current Medications (supporting evidence)…</div>}
+      {loadError && <div style={styles.infoBox}>{loadError}</div>}
+      {!loading && !loadError && (
+        <div style={{ ...styles.infoBox, fontSize: 11.5 }}>
+          <strong>Current Medications reference (evidence only — does not set the answer above):</strong>
+          <div style={{ marginTop: 4 }}>
+            Opioid-classified active medications: {evidence.derivedFrom.scheduledOpioid.concat(evidence.derivedFrom.prnOpioid).join("; ") || "none documented"}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// CMS HOPE N0520 (Bowel Regimen) belongs to the GI/Bowel assessment
+// workflow, mirroring HospiceMD's legacy production checkbox "Even though
+// opioids prescribed bowel regimen could not be initiated" — an exception
+// pathway attached to the Bowel assessment, not a standalone medication
+// module. N0520 is only a CMS-meaningful answer once an opioid trigger
+// exists (N0500 or N0510 affirmative, documented in the Pain assessment
+// above); this card reads that trigger from formData.medications and pairs
+// the positive "bowel regimen initiated/continued" answer with the
+// existing `gastrointestinal.reasonBowelRegimenNotInitiated` exception
+// text field for the negative case.
+function BowelRegimenExceptionCard({ giData, medsData, updateGi, updateMeds, styles, COLORS }) {
+  const opioidPresent = Boolean(medsData?.scheduledOpioid || medsData?.prnOpioid);
+
+  if (!opioidPresent) {
+    return (
+      <div style={styles.infoBox}>
+        N0520 not applicable — no scheduled or PRN opioid documented in the Pain assessment (N0500/N0510).
+      </div>
+    );
+  }
+
+  const bowelRegimen = Boolean(medsData?.bowelRegimen);
+
+  const handleToggle = (checked) => {
+    updateMeds("bowelRegimen", checked);
+    if (checked) updateMeds("bowelRegimenDate", new Date().toISOString().slice(0, 10));
+  };
+
+  return (
+    <div>
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
+        <input type="checkbox" checked={bowelRegimen} onChange={(e) => handleToggle(e.target.checked)} />
+        N0520: Bowel regimen initiated/continued
+      </label>
+      <input
+        type="date"
+        style={{ ...styles.input, width: 160, marginTop: 4, marginLeft: 26 }}
+        value={medsData?.bowelRegimenDate || ""}
+        onChange={(e) => updateMeds("bowelRegimenDate", e.target.value)}
+      />
+      {!bowelRegimen && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ fontSize: 12, color: "#f59e0b", fontWeight: 700 }}>
+            An opioid is documented but bowel regimen is not yet marked initiated — document why in
+            "Reason Bowel Regimen Could Not Be Initiated" below (matches HospiceMD's exception workflow).
+          </div>
+          <textarea
+            style={{ ...styles.textarea, width: "100%", marginTop: 6 }}
+            placeholder="Even though opioid prescribed, bowel regimen could not be initiated because..."
+            value={giData?.reasonBowelRegimenNotInitiated || ""}
+            onChange={(e) => updateGi("reasonBowelRegimenNotInitiated", e.target.value)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SEVERITY_COLORS = {
   CONTRAINDICATED: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
   MAJOR: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
@@ -8190,7 +8480,7 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, hospiceNarrativeContext = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
   const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
@@ -8322,6 +8612,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 styles={styles}
                 COLORS={COLORS}
                 locked={locked}
+                hospiceNarrativeContext={hospiceNarrativeContext}
               />
             </Card>
           );
@@ -8330,7 +8621,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "diagnoses" && card.customRenderer === "secondaryDiagnoses") {
           return (
             <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <SecondaryDiagnosesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
+              <SecondaryDiagnosesCard
+                diagnosesData={data}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+                workspacePilot={workspacePilot}
+                chartSecondaryDiagnoses={hospiceNarrativeContext?.chartSecondaryDiagnoses}
+              />
             </Card>
           );
         }
@@ -8428,6 +8726,35 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 diarrhea={data?.diarrhea}
                 existingValue={data?.constipation}
                 updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "pain" && card.customRenderer === "opioidRegimenReview") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <OpioidRegimenCard
+                patientId={patientId}
+                medsData={fullFormData?.medications}
+                updateMeds={(path, val) => update("medications", path, val)}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "gastrointestinal" && card.customRenderer === "bowelRegimenException") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <BowelRegimenExceptionCard
+                giData={data}
+                medsData={fullFormData?.medications}
+                updateGi={u}
+                updateMeds={(path, val) => update("medications", path, val)}
                 styles={styles}
                 COLORS={COLORS}
               />
@@ -8836,6 +9163,7 @@ const SECTION_CONFIGS = {
           { type: "textarea", label: "Pain Management Plan", path: "painManagementPlan" },
         ],
       },
+      { title: "Opioid Regimen — HOPE N0500/N0510", hopeCode: "N0500/N0510", customRenderer: "opioidRegimenReview" },
     ],
   },
 
@@ -8904,6 +9232,10 @@ const SECTION_CONFIGS = {
         title: "LCD Supporting Evidence",
         customRenderer: "lcdSupportingEvidence",
       },
+      {
+        title: "Clinical Narrative & Disease Trajectory",
+        customRenderer: "clinicalNarrative",
+      },
     ],
   },
 
@@ -8962,10 +9294,10 @@ const SECTION_CONFIGS = {
 
   neurological: {
     title: "Neurological / Mental / Sensory",
-    subtitle: "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
+    subtitle: "Consciousness, orientation, cognition, BIMS, sleep/rest",
     cards: [
       {
-        title: "Mental Status", hopeCode: "N0500", fields: [
+        title: "Mental Status", fields: [
           { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
@@ -8976,10 +9308,10 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "BIMS (Brief Interview for Mental Status)", hopeCode: "N0500-N0520", fields: [
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        title: "BIMS (Brief Interview for Mental Status)", fields: [
+          { type: "select", label: "Repetition (3-item recall setup)", path: "cognitiveScreen.repetition", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "Recall", path: "cognitiveScreen.recall", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "Temporal Orientation", path: "cognitiveScreen.orientation", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
         ],
       },
       {
@@ -9141,8 +9473,8 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
         { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
-        { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
+      { title: "Bowel Regimen re: Opioid Therapy — HOPE N0520", hopeCode: "N0520", customRenderer: "bowelRegimenException" },
       { title: "Feeding Devices", fields: [
         { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },
         { type: "select", label: "Tube Type", path: "feedingTube.type", options: ["NG", "PEG", "PEJ", "G-tube", "J-tube"] },
@@ -9974,6 +10306,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [finalizationReadiness, setFinalizationReadiness] = useState(null);
   const [intelligence, setIntelligence] = useState(null);
   const [intelligenceLoading, setIntelligenceLoading] = useState(false);
+  const [chartDiagnosisSync, setChartDiagnosisSync] = useState(null);
+  const [chartSecondaryDiagnoses, setChartSecondaryDiagnoses] = useState(null);
 
   // --- Structured Findings application layer (dedicated, separate from ---
   // --- the narrative AI-signal review workflow above) ---------------------
@@ -9985,6 +10319,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // signal from the visible list immediately, without waiting on a full
   // intelligence refetch.
   const [pendingStructuredSignals, setPendingStructuredSignals] = useState([]);
+  // Signals the harvester could not map to any CONCEPT_REGISTRY concept
+  // (status === "UNMAPPED_REQUIRES_REVIEW"). These are read-only in this
+  // workflow — never eligible for Apply/Dismiss-as-applied — but must
+  // still be visible to the RN instead of silently vanishing, so every
+  // harvested signal has a terminal, visible outcome: MAPPED (applied,
+  // pending, or conflicting) or UNMAPPED_REQUIRES_REVIEW.
+  const [unmappedStructuredSignals, setUnmappedStructuredSignals] = useState([]);
   const [structuredFindingsBusyId, setStructuredFindingsBusyId] = useState(null);
   const [structuredFindingsError, setStructuredFindingsError] = useState("");
   // Provenance: every field ever populated by an applied structured finding,
@@ -10009,7 +10350,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const [rnProductivityMetrics, setRnProductivityMetrics] = useState(null);
 
   useEffect(() => {
-    setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
+    const all = intelligence?.structured_findings_signals || [];
+    setPendingStructuredSignals(all.filter((s) => s.status !== "UNMAPPED_REQUIRES_REVIEW"));
+    setUnmappedStructuredSignals(all.filter((s) => s.status === "UNMAPPED_REQUIRES_REVIEW"));
   }, [intelligence]);
 
   useEffect(() => {
@@ -10264,18 +10607,30 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // Clinical Narrative entry. Returns true if the narrative was written,
   // false if a narrative already existed (so the calling VisitRecorderCard
   // button can tell the RN their existing text was preserved).
+  //
+  // Verified defect fix (duplicate current-narrative field): this used to
+  // write into formData.finalization.clinicalNarrative -- a second,
+  // independently-writable "current narrative" field that the attestation
+  // gate checked but the Diagnoses card's ClinicalNarrativeCard (the one
+  // DPCS/RN actually see and review) never read. That meant a visit
+  // recording could silently satisfy attestation with a narrative no
+  // reviewer ever saw, while a separately-built diagnoses.clinicalNarrative
+  // draft could exist untouched -- two "current" narratives for one
+  // assessment. There is now exactly one current-narrative field:
+  // diagnoses.clinicalNarrative. Inserting here also clears the review
+  // flag, matching applyDraft()'s contract in ClinicalNarrativeCard.
   const handleInsertAiNarrative = useCallback(
     async (narrativeText, sourceRecordingId) => {
       if (!narrativeText || !narrativeText.trim()) return false;
-      if (formData.finalization?.clinicalNarrative) return false;
+      if (formData.diagnoses?.clinicalNarrative) return false;
 
       const nextFormData = {
         ...formData,
-        finalization: { ...formData.finalization, clinicalNarrative: narrativeText },
+        diagnoses: { ...formData.diagnoses, clinicalNarrative: narrativeText, clinicalNarrativeReviewed: false },
       };
 
       const provenanceEntry = {
-        section: "finalization",
+        section: "diagnoses",
         path: "clinicalNarrative",
         value: narrativeText,
         concept_code: "AI_NOTE_DRAFT_NARRATIVE",
@@ -10458,6 +10813,42 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const handleApplyAllNonConflicting = useCallback(() => {
     return applyStructuredSignalsBulk(pendingStructuredSignals, "Apply All Non-Conflicting");
   }, [applyStructuredSignalsBulk, pendingStructuredSignals]);
+
+  // Server-side RNICA "Draft Builder" reuse: prepopulate an assessment from
+  // already-harvested pre-assessment evidence the moment
+  // pendingStructuredSignals become available, instead of requiring the RN
+  // to click "Apply All Non-Conflicting" manually before documenting
+  // anything. This calls the exact same applyStructuredSignalsBulk() path
+  // the manual button uses (same provenance capture, same conflict
+  // detection, same persist-before-mark-applied ordering) -- no second
+  // evidence-mapping pipeline.
+  //
+  // IMPORTANT (live-validation finding): pendingStructuredSignals is only
+  // ever populated from getRNICAIntelligence(assessmentId) (see the
+  // `assessmentId ? getRnicaIntelligence(assessmentId) : null` wiring
+  // above), which requires assessmentId to already be non-null. A guard of
+  // `assessmentId === null` can therefore never be true at the same time
+  // pendingStructuredSignals has items -- that combination is structurally
+  // unreachable, so an earlier version of this effect never actually fired
+  // in a live run (confirmed by browser + DB inspection: the signal stayed
+  // NEW and no fields were populated). The correct "genuinely new" signal
+  // is instead "no structured finding has ever been auto/manually applied
+  // to this specific assessment yet", which we key off assessmentId itself
+  // (falling back to a stable "new" sentinel before one exists) so the
+  // effect fires at most once per assessment per mount. Re-opening an
+  // assessment that already has pending-but-conflicting signals is safe:
+  // handleApplyAllNonConflicting() only ever touches non-conflicting,
+  // still-NEW signals and never overwrites an RN-entered value, so this is
+  // idempotent to call again. A locked/signed assessment is never touched.
+  const autoAppliedAssessmentRef = useRef(null);
+  useEffect(() => {
+    if (locked) return;
+    if (pendingStructuredSignals.length === 0) return;
+    const key = assessmentId || "new";
+    if (autoAppliedAssessmentRef.current === key) return;
+    autoAppliedAssessmentRef.current = key;
+    handleApplyAllNonConflicting();
+  }, [assessmentId, locked, pendingStructuredSignals, handleApplyAllNonConflicting]);
 
   const handleApplySelected = useCallback(() => {
     const selected = pendingStructuredSignals.filter((s) => selectedStructuredSignalIds.has(s.id));
@@ -10849,10 +11240,30 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setIntelligence(null);
           setIntelligenceError("");
           setStructuredFieldProvenance([]);
+          setChartDiagnosisSync(null);
+          setChartSecondaryDiagnoses(null);
           return null;
         }
         if (data.formData) {
           const merged = deepMergeFormData(INITIAL_FORM, data.formData);
+          // One-time read-only migration: `neurological.hopeItems.n0500/
+          // n0510/n0520` is a deprecated (READ_ONLY_LEGACY) path name that
+          // collided with the official CMS HOPE Section N medication item
+          // codes. It never held HOPE medication data -- only the
+          // cognitive BIMS-style screen now stored under
+          // `neurological.cognitiveScreen.*`. If an older draft has a
+          // value under the legacy path and the new path is still blank,
+          // surface it under the new path so nothing already documented
+          // by an RN silently disappears. This never writes back to the
+          // legacy path and autosave only ever writes the new path going
+          // forward.
+          const legacyCog = merged?.neurological?.hopeItems;
+          const currentCog = merged?.neurological?.cognitiveScreen;
+          if (legacyCog && currentCog) {
+            if (!currentCog.repetition && legacyCog.n0500) currentCog.repetition = legacyCog.n0500;
+            if (!currentCog.recall && legacyCog.n0510) currentCog.recall = legacyCog.n0510;
+            if (!currentCog.orientation && legacyCog.n0520) currentCog.orientation = legacyCog.n0520;
+          }
           setFormData(merged);
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
@@ -10863,6 +11274,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         setStructuredFieldProvenance(Array.isArray(data.fieldProvenance) ? data.fieldProvenance : []);
         setLocked(!!data.locked);
         setLockedAt(data.lockedAt || null);
+        setChartDiagnosisSync(data.chartDiagnosisSync || null);
+        setChartSecondaryDiagnoses(Array.isArray(data.chartSecondaryDiagnoses) ? data.chartSecondaryDiagnoses : null);
         return data;
       })
       .then((data) => {
@@ -10910,6 +11323,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     });
     setSaveStatus(null);
   }, []);
+
+  // Verified defect fix (chart/RNICA diagnosis mismatch): an unlocked
+  // RNICA draft's primary diagnosis is a one-time snapshot the RN typed
+  // in, so it goes stale if the authoritative chart diagnosis
+  // (patients.primary_diagnosis) is corrected afterward. The backend
+  // exposes this as `chartDiagnosisSync` (see _build_chart_diagnosis_sync
+  // in app/api/visits.py) but never silently overwrites the saved draft.
+  // This handler lets the RN explicitly pull the current chart value into
+  // the form with one action; nothing is changed until they do this (or
+  // save over it manually) and it is never available for locked/signed
+  // assessments.
+  const syncPrimaryDiagnosisFromChart = useCallback(() => {
+    if (!chartDiagnosisSync?.chartPrimaryDiagnosis) return;
+    updateField("diagnoses", "primaryDiagnosis.description", chartDiagnosisSync.chartPrimaryDiagnosis);
+    updateField("diagnoses", "primaryDiagnosis.icd10", "");
+    setChartDiagnosisSync((prev) => (prev ? { ...prev, matches: true, rnicaPrimaryDiagnosis: prev.chartPrimaryDiagnosis } : prev));
+  }, [chartDiagnosisSync, updateField]);
 
   // Auto-derive all HOPE J2051 A-H Symptom Impact ratings from the
   // clinical sections elsewhere in this same RNICA where each symptom is
@@ -11262,13 +11692,36 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
               : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
+                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, hospiceNarrativeContext)
                 : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
       </div>
     );
   });
+
+  // Feeds buildClinicalNarrative() with the resolved, chart-authoritative
+  // hospice reasoning context (see rnica_intelligence.py
+  // build_hospice_reasoning_panel()) and the chart/draft diagnosis-sync
+  // check (see visits.py _build_chart_diagnosis_sync()) so the "Build
+  // Draft from Documented Findings" narrative uses the current chart
+  // diagnosis and hospice reasoning instead of only the raw, possibly
+  // stale RNICA form snapshot.
+  const hospiceReasoning = intelligence?.hospice_reasoning;
+  const hospiceNarrativeContext = {
+    patient: patientSummary?.patient || {},
+    chartSecondaryDiagnoses,
+    hospiceContext: {
+      currentDiagnosisDescription: chartDiagnosisSync?.chartPrimaryDiagnosis || patientSummary?.patient?.primary_diagnosis || null,
+      diagnosisMismatch: chartDiagnosisSync?.matches === false,
+      whyHospice: hospiceReasoning?.why_hospice || null,
+      diseaseBurden: hospiceReasoning?.disease_burden || null,
+      hospiceDriverRecommendation: hospiceReasoning?.hospice_driver_recommendation || null,
+      relatedConditions: hospiceReasoning?.related_conditions || null,
+      certificationSupport: hospiceReasoning?.certification_support || null,
+      documentationGaps: hospiceReasoning?.documentation_gaps || [],
+    },
+  };
 
   const renderWorkspaceSections = () => routes.map((route) => {
     const config = SECTION_CONFIGS[route.formSection];
@@ -11292,6 +11745,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             true,
             onNavigateToSection,
             assessmentUiProfile,
+            hospiceNarrativeContext,
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
@@ -11339,6 +11793,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           saving={saving}
           saveStatus={saveStatus}
           intelligence={intelligence}
+          chartDiagnosisSync={chartDiagnosisSync}
+          onSyncDiagnosisFromChart={syncPrimaryDiagnosisFromChart}
           isOngoingAssessment={isOngoing}
           renderWorkspaceSections={renderWorkspaceSections}
           visitRecorder={(
@@ -11450,6 +11906,43 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           </div>
         </div>
       </div>
+
+      {chartDiagnosisSync && chartDiagnosisSync.matches === false && (
+        <div
+          role="alert"
+          style={{
+            margin: "0 24px 12px",
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: `1px solid ${COLORS.warning}`,
+            background: "#FFF7E6",
+            fontSize: 13,
+            color: COLORS.dark,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <span>
+            <strong>Diagnosis mismatch:</strong> the patient chart currently shows
+            <em> "{chartDiagnosisSync.chartPrimaryDiagnosis}"</em>, but this RN ICA still documents
+            <em> "{chartDiagnosisSync.rnicaPrimaryDiagnosis || "no primary diagnosis"}"</em>.
+          </span>
+          <button
+            type="button"
+            onClick={syncPrimaryDiagnosisFromChart}
+            style={{
+              fontSize: 12, fontWeight: 700, padding: "6px 12px", borderRadius: 6,
+              border: `1px solid ${COLORS.warning}`, background: COLORS.warning, color: COLORS.white, cursor: "pointer",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Update RN ICA to match chart
+          </button>
+        </div>
+      )}
 
       {/* ── Visit Meta — logistics/payroll tracking (type of visit, reason, time in/out, staff, discipline, care level) ── */}
       <div style={{ padding: "0 24px 12px" }}>
@@ -12054,6 +12547,39 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   </div>
                 </div>
               ))}
+
+              {unmappedStructuredSignals.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, marginBottom: 6 }}>
+                    Unmapped harvested findings — requires review ({unmappedStructuredSignals.length})
+                  </div>
+                  <div style={{ fontSize: 10, color: COLORS.gray, marginBottom: 8 }}>
+                    These were harvested from source documentation but do not yet map to a
+                    recognized RNICA concept. They are never auto-applied and never affect the
+                    narrative, LCD, or certification support — review manually and document
+                    directly if clinically relevant.
+                  </div>
+                  {unmappedStructuredSignals.map((signal) => (
+                    <div
+                      key={signal.id}
+                      style={{ marginBottom: 8, padding: 10, borderRadius: 8, background: COLORS.bg, border: `1px solid ${COLORS.error}` }}
+                    >
+                      <div style={{ fontSize: 10, color: COLORS.gray, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                        {signal.source_type}{signal.recorded_at ? ` • ${new Date(signal.recorded_at).toLocaleDateString()}` : ""}
+                        {signal.signal_key ? ` • ${signal.signal_key}` : ""}
+                      </div>
+                      {signal.original_text_excerpt && (
+                        <div style={{ fontSize: 11, fontStyle: "italic", color: COLORS.dark, marginBottom: 6 }}>
+                          &ldquo;{signal.original_text_excerpt}&rdquo;
+                        </div>
+                      )}
+                      {signal.unmapped_reason && (
+                        <div style={{ fontSize: 10, color: COLORS.gray }}>{signal.unmapped_reason}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {structuredFieldProvenance.length > 0 && (
                 <div style={{ marginTop: 12 }}>

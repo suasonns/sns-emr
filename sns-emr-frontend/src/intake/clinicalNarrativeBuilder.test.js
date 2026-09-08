@@ -6,6 +6,8 @@ import {
   getDiseaseTrajectoryLabel,
   hasDocumentedValue,
   buildClinicalNarrative,
+  computeNarrativeContextFingerprint,
+  evaluateNarrativeQualityGate,
 } from "./clinicalNarrativeBuilder";
 
 describe("hasDocumentedValue", () => {
@@ -165,6 +167,72 @@ describe("buildClinicalNarrative — no inference / no auto trajectory / no elig
   });
 });
 
+describe("buildClinicalNarrative — hospiceContext (structured hospice reasoning, not a field dump)", () => {
+  it("uses the chart's current diagnosis over a stale draft snapshot and flags the mismatch", () => {
+    const formData = { diagnoses: { primaryDiagnosis: { description: "ANEMIA DUE TO CKD STAGE 3A" } } };
+    const hospiceContext = {
+      currentDiagnosisDescription: "SYSTOLIC HEART FAILURE, CHRONIC",
+      diagnosisMismatch: true,
+    };
+    const result = buildClinicalNarrative(formData, {}, hospiceContext);
+    expect(result.text).toContain("HOSPICE CLINICAL PICTURE");
+    expect(result.text).toContain("Current chart diagnosis is documented as SYSTOLIC HEART FAILURE, CHRONIC");
+    expect(result.text).toContain("ANEMIA DUE TO CKD STAGE 3A");
+    expect(result.text).toContain("DOCUMENTATION GAPS");
+    expect(result.text).toContain("does not match the current chart diagnosis");
+  });
+
+  it("renders REASON FOR HOSPICE and DISEASE-SPECIFIC SUPPORT from resolved eligibility output, using support-status language rather than an eligibility determination", () => {
+    const hospiceContext = {
+      currentDiagnosisDescription: "SYSTOLIC HEART FAILURE, CHRONIC",
+      whyHospice: { selected_guideline: "HEART_FAILURE", eligible: true, supporting_criteria: ["NYHA Class IV documented"] },
+      certificationSupport: { lcd_reference: "LCD Hospice Eligibility Determination – Heart Disease", source_document: "CAD, CHF.pdf" },
+    };
+    const result = buildClinicalNarrative({}, {}, hospiceContext);
+    expect(result.text).toContain("REASON FOR HOSPICE ADMISSION");
+    expect(result.text).toContain("HEART_FAILURE guideline");
+    expect(result.text).toContain("criteria currently supported by documented evidence");
+    expect(result.text).toContain("not a final eligibility determination");
+    expect(result.text).toContain("DISEASE-SPECIFIC SUPPORT");
+    expect(result.text).toContain("NYHA Class IV documented");
+    expect(result.text).toContain("LCD Hospice Eligibility Determination – Heart Disease");
+  });
+
+  it("lists related and unrelated conditions from relatedness classification under RELATED CONDITIONS AND COMORBID DISEASE BURDEN", () => {
+    const hospiceContext = {
+      relatedConditions: {
+        related: [{ description: "Coronary artery disease" }, { description: "Atrial fibrillation" }],
+        unrelated: [{ description: "Hemiplegia" }],
+      },
+    };
+    const result = buildClinicalNarrative({}, {}, hospiceContext);
+    expect(result.text).toContain("RELATED CONDITIONS AND COMORBID DISEASE BURDEN");
+    expect(result.text).toContain("Coronary artery disease, Atrial fibrillation");
+    expect(result.text).toContain("not contributing to the terminal hospice picture: Hemiplegia");
+  });
+
+  it("lists outstanding documentation-gap items under DOCUMENTATION GAPS", () => {
+    const hospiceContext = { documentationGaps: [{ gap: "Ejection fraction not documented" }] };
+    const result = buildClinicalNarrative({}, {}, hospiceContext);
+    expect(result.text).toContain("DOCUMENTATION GAPS");
+    expect(result.text).toContain("Ejection fraction not documented");
+  });
+
+  it("omits hospice-context sections entirely when no hospiceContext is supplied (backward compatible)", () => {
+    const formData = { performanceStatus: { pps: "40" } };
+    const result = buildClinicalNarrative(formData, {});
+    expect(result.text).not.toContain("REASON FOR HOSPICE ADMISSION");
+    expect(result.text).not.toContain("DISEASE-SPECIFIC SUPPORT");
+    expect(result.text).not.toContain("DOCUMENTATION GAPS");
+  });
+
+  it("always ends with the fixed Plan of Care pointer sentence under RN FOLLOW-UP when any content exists", () => {
+    const result = buildClinicalNarrative({ performanceStatus: { pps: "40" } }, {});
+    expect(result.text).toContain("RN FOLLOW-UP");
+    expect(result.text.trim().endsWith("See current Plan of Care for active problems, goals, and interventions.")).toBe(true);
+  });
+});
+
 describe("Disease Trajectory — stable keys and legacy values", () => {
   it("exposes stable value keys distinct from display labels", () => {
     expect(DISEASE_TRAJECTORY_OPTIONS.map((o) => o.value)).toEqual([
@@ -186,5 +254,79 @@ describe("Disease Trajectory — stable keys and legacy values", () => {
 
   it("resolves a stable-key value to its friendly label", () => {
     expect(getDiseaseTrajectoryLabel("SLOW_STEADY_DECLINE")).toBe("Slow, steady decline");
+  });
+});
+
+describe("computeNarrativeContextFingerprint — staleness detection input", () => {
+  it("is stable across repeated calls with identical inputs", () => {
+    const formData = { diagnoses: { primaryDiagnosis: { description: "CHF" } } };
+    const patient = { age: 76 };
+    const hospiceContext = { currentDiagnosisDescription: "CHF" };
+    const a = computeNarrativeContextFingerprint(formData, patient, hospiceContext);
+    const b = computeNarrativeContextFingerprint(formData, patient, hospiceContext);
+    expect(a).toBe(b);
+  });
+
+  it("is stable regardless of object key order", () => {
+    const hospiceContextA = { currentDiagnosisDescription: "CHF", whyHospice: { selected_guideline: "X" } };
+    const hospiceContextB = { whyHospice: { selected_guideline: "X" }, currentDiagnosisDescription: "CHF" };
+    const a = computeNarrativeContextFingerprint({}, {}, hospiceContextA);
+    const b = computeNarrativeContextFingerprint({}, {}, hospiceContextB);
+    expect(a).toBe(b);
+  });
+
+  it("changes when the resolved primary diagnosis changes", () => {
+    const before = computeNarrativeContextFingerprint({}, {}, { currentDiagnosisDescription: "ANEMIA DUE TO CKD STAGE 3A" });
+    const after = computeNarrativeContextFingerprint({}, {}, { currentDiagnosisDescription: "SYSTOLIC HEART FAILURE, CHRONIC" });
+    expect(before).not.toBe(after);
+  });
+
+  it("changes when documented functional status changes", () => {
+    const before = computeNarrativeContextFingerprint({ performanceStatus: { pps: "40" } }, {}, {});
+    const after = computeNarrativeContextFingerprint({ performanceStatus: { pps: "20" } }, {}, {});
+    expect(before).not.toBe(after);
+  });
+
+  it("does not change when an irrelevant field (e.g. visit logistics) changes", () => {
+    const before = computeNarrativeContextFingerprint({ visitMeta: { typeOfVisit: "In-Person" } }, {}, {});
+    const after = computeNarrativeContextFingerprint({ visitMeta: { typeOfVisit: "Telephone" } }, {}, {});
+    expect(before).toBe(after);
+  });
+});
+
+describe("evaluateNarrativeQualityGate — field-dump / leakage detection", () => {
+  it("PASSes real clinical prose produced by buildClinicalNarrative", () => {
+    const result = buildClinicalNarrative(
+      { performanceStatus: { pps: "40" }, diagnoses: { primaryDiagnosis: { description: "CHF" } } },
+      { age: 76, sex: "Male" },
+      { currentDiagnosisDescription: "SYSTOLIC HEART FAILURE, CHRONIC" }
+    );
+    const gate = evaluateNarrativeQualityGate(result.text);
+    expect(gate.status).toBe("PASS");
+    expect(gate.reasons).toEqual([]);
+  });
+
+  it("FAILs an empty narrative", () => {
+    expect(evaluateNarrativeQualityGate("").status).toBe("FAIL");
+    expect(evaluateNarrativeQualityGate("   ").status).toBe("FAIL");
+  });
+
+  it("FAILs raw camelCase field-key leakage", () => {
+    const gate = evaluateNarrativeQualityGate("neurologicalAffectedSide: Left");
+    expect(gate.status).toBe("FAIL");
+    expect(gate.reasons.some((r) => r.code === "CAMELCASE_FIELD_KEY")).toBe(true);
+  });
+
+  it("FAILs a raw label/value field-dump line", () => {
+    const gate = evaluateNarrativeQualityGate("Primary Diagnosis Description: ANEMIA DUE TO CKD STAGE 3A");
+    expect(gate.status).toBe("FAIL");
+  });
+
+  it("FAILs an embedded internal record identifier (UUID)", () => {
+    const gate = evaluateNarrativeQualityGate(
+      "Patient reports improvement. source_record_id 3ea2f6fa-8dd9-4e3c-9b7d-009ddbe17ab0 was referenced."
+    );
+    expect(gate.status).toBe("FAIL");
+    expect(gate.reasons.some((r) => r.code === "INTERNAL_ID_REFERENCE")).toBe(true);
   });
 });

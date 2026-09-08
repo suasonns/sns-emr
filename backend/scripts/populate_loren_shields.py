@@ -294,7 +294,7 @@ def build_form_data():
                 "sleepPattern": "Satisfied w/ sleep", "averageSleepHours": "6-8",
                 "sleepAids": [], "restfulness": "Per PCG, uninterrupted sleep at night", "notes": "",
             },
-            "hopeItems": {"n0500": "", "n0510": "", "n0520": ""},
+            "cognitiveScreen": {"repetition": "", "recall": "", "orientation": ""},
             "notes": "Alert and oriented x3, able to verbalize needs and discomfort.",
         },
 

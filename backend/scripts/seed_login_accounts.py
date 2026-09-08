@@ -14,6 +14,7 @@ if str(BASE_DIR) not in sys.path:
 load_dotenv(BASE_DIR / ".env.local", override=False)
 load_dotenv(override=False)
 
+import app.models  # noqa: E402,F401 (registers every SQLAlchemy model before the first query)
 from app.core.database import SessionLocal  # noqa: E402
 from app.services.admin_bootstrap_service import provision_development_logins  # noqa: E402
 
