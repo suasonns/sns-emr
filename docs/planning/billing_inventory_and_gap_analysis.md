@@ -411,6 +411,137 @@ draft gap table in Section 3, which remains as supporting detail):
 
 ---
 
+# SECTION 10 — BILLING SSOT AUDIT (STATUS: COMPLETE)
+
+The SSOT audit itself was already completed in **Section 6** above
+(2026-09-08 pass) — this section is a status marker plus the rollup
+verdict, not a re-audit, per instruction not to repeat completed work.
+
+**Rollup verdict**: 9 of 12 audited data domains are **CLEAN** (single
+writer, no duplication) — Patient/Payer identity, Benefit Period,
+Certification, Claim financials, NOE/NOTR submission, Credit Balance
+case, Facility Payment expectation/allocation. 3 are **PARTIAL/UNKNOWN**
+and carry forward as open items into the Gap List (Section 8) and
+Maturity Score (Section 11) rather than being repeated here:
+- Claim.status (confirmed enforcement-bypass — Gap #7)
+- Admission status denormalization (`Patient.admission_status` vs.
+  `AdmissionStatusHistory`) — needs a one-time confirmation that only one
+  code path writes both
+- Payments/remittance_advices writer — unidentified (Gap #2)
+
+No further SSOT investigation is planned unless one of these three specific
+open items needs resolution before a specific engineering task depends on it.
+
+---
+
+# SECTION 11 — BILLING MATURITY SCORE
+
+Scoring rubric per functional domain, 0–5 scale:
+**0** = missing, **1** = stub/placeholder only, **2** = partial/read-only,
+**3** = functional core with confirmed gaps, **4** = solid with minor
+caveats, **5** = fully implemented, audited, production-grade.
+
+| Domain | Score | Basis |
+|---|---|---|
+| Election / Election Addendum | 4 | Deadline compliance calc real; revocation/re-election gap keeps it off 5 |
+| Benefit Period | 5 | Storage, rollover calc, display, downstream consumers all confirmed real |
+| Certification / Recertification | 5 | Full lifecycle + F2F enforcement + audit trail, physician-signer enforced |
+| NOE / NOTR | 4 | Submission tracking + real 837I generation + penalty calc; PDF generation endpoint unread |
+| Claim Preparation (lines, financials) | 4 | Real claim-line building and balance computation; pricing depends on placeholder rate schedule (domain below) |
+| Revenue Code / Rate Schedule | 1 | Hardcoded map + explicit placeholder rate schedule + `$0.00` fallback |
+| Claim Status Tracking | 3 | Real state machine, but confirmed enforcement bypass in EDI-export write path |
+| Claim Export / EDI Generation | 4 | Real 837I file generation, batch tracking, claim marked SENT |
+| Claim Transmission (to payer/clearinghouse) | 0 | No transmission channel found — file is generated and stops there |
+| Payment Posting (read/monitoring) | 4 | Real ERA registry, MTD totals, payer breakdown, unmatched worklist |
+| Payment Posting (write/matching) | 0–1 | No in-app posting/matching action found; ingestion writer unidentified |
+| Credit Balance Case Management | 5 | Full lifecycle, audited events, reason codes, tenant scoping |
+| CMS-838 Export | 3 | Real, but self-reports schema gaps (MBI/ICN/ToB/dates NOT_AVAILABLE) |
+| Facility Payment (expectations/allocations/alerts) | 4 | Full lifecycle real; allocation precedence slots 1–4 internally stubbed |
+| Hospice Cap Calculation | 4 | Real calc against published CMS values; cross-agency transfer attribution flagged as an accuracy risk by the code's own comments |
+| Billing Readiness (patient + tenant) | 4 | Real, enforced 4-point pre-check; does not cover pricing accuracy or transmission (see Section 9 map) |
+| Reports (Aging/Credit Balance/Facility Collections/Cap) | 4 | All real, live | 
+| Reports (scheduled/exportable) | 0 | Explicitly not implemented |
+| Referral/Admission linkage into billing | 1 | Models exist; automatic linkage into election/billing not confirmed |
+| Discharge linkage into billing | 2 | Rich fields exist on Patient; no confirmed automatic billing-closure trigger, no dedicated audit trail |
+| Revocation handling | 1 | Explicit TODO for re-election/gap handling |
+| Transfer handling | 0 | No dedicated model; only referenced as a risk in cap-service comments |
+| Billing Provider / Agency Access Control | 5 | Full org/assignment/scope model, consistently enforced across every router |
+
+**Overall weighted maturity**: approximately **3.1 / 5** — the system is
+strong in the compliance-heavy middle of the pipeline (certification,
+benefit period, NOE, claim preparation) and weak at the financial edges
+(rate configuration, claim transmission, payment ingestion) and at the
+clinical-operational edges (referral/admission linkage, revocation,
+transfer).
+
+---
+
+# SECTION 12 — THURSDAY DEMO READINESS MATRIX
+
+| Feature | Demo status | What to say | What NOT to say |
+|---|---|---|---|
+| Billing Dashboard / Readiness | 🟢 GREEN | "Confirms every patient has a signed cert, F2F when required, active POC, NOE on file, and a resolvable payer sequence before billing" | Don't say readiness confirms pricing accuracy |
+| Benefit Period tracking | 🟢 GREEN | Full storage/rollover/display, safe to demo live | — |
+| Certification / Recertification lifecycle | 🟢 GREEN | Draft→sign→finalize, physician-only signing, audit trail | — |
+| NOE Tracking + 837I generation | 🟢 GREEN | Real EDI text generation, late-penalty calc | Don't claim PDF generation works — unverified |
+| Claims Management / Claim Status | 🟡 YELLOW | State machine is real | Don't claim the status can never be corrupted — the EDI re-export path bypasses the transition check |
+| Claim Export (837I file) | 🟡 YELLOW | "Generates a valid 837I claim file and marks the claim SENT" | **Do not say the system electronically transmits/submits claims to a clearinghouse or payer** — no transmission channel found |
+| Denials & Appeals | 🟢 GREEN | Real registry | — |
+| Eligibility Verification | 🟢 GREEN | Real check + roster | — |
+| Payment Posting | 🟡 YELLOW | "Shows received ERAs, MTD totals, unmatched worklist" | Don't say staff can post/match payments in-app — no write action found; don't claim to know where the data comes from |
+| Cap Calculation | 🟢 GREEN | Real calc vs. published CMS values | Caveat: cross-agency transfer attribution is a known accuracy risk per the code's own comments |
+| Aging Report | 🟢 GREEN | Live and real | — |
+| Credit Balance Report + Case Management | 🟢 GREEN | Full case lifecycle, reason codes, audit events | — |
+| CMS-838 Export | 🟡 YELLOW | "Produces a CMS-838-shaped export for Medicare-reportable cases" | Don't say it's fileable as-is — several required fields are explicitly `NOT_AVAILABLE_IN_SCHEMA` |
+| Facility Collections / Facility Payment lifecycle | 🟢 GREEN | Full expectation/allocation/alert lifecycle | Caveat: allocation precedence slots 1–4 are internally stubbed |
+| Reports (general snapshot) | 🟡 YELLOW | Live in-app view is real | Don't say reports can be scheduled or exported to PDF/CSV — not implemented |
+| Settings | 🔴 RED | — | It's a placeholder ("Coming Soon") screen, don't open it live |
+| Revenue code / rate configuration | 🔴 RED | — | Do not demo pricing as configurable — it's a hardcoded map + placeholder rate schedule |
+| Revocation handling | 🔴 RED | — | Don't claim revoked patients' benefit periods/re-elections are fully handled — explicit TODO in code |
+| Referral/Admission → billing auto-linkage | 🔴 RED (unverified) | — | Don't claim this is automatic without a direct verification read first |
+| Discharge → billing closure | 🔴 RED (unverified) | — | Don't claim discharge automatically finalizes billing without verification first |
+
+**Overall demo-readiness color**: 🟡 YELLOW — a strong, honest demo is
+very achievable by leading with the 🟢 GREEN items (readiness,
+certification, benefit period, NOE, cap, aging, credit balance, facility
+collections) and being explicit and confident about the 🟡/🔴 caveats
+rather than avoiding them; nothing found this pass indicates a 🔴 item was
+ever falsely presented as done.
+
+---
+
+# SECTION 13 — AI BILLING PRIORITIZATION MATRIX
+
+Scope reminder, per explicit instruction: **no AI that writes claims, and
+no AI-generated billing/eligibility/certification/discharge decisions.**
+Every item below is detection, monitoring, or summarization only — the
+same constraint as Section 4, now scored for prioritization.
+
+Scored on **Impact** (1–5, business value if built) × **Effort** (1–5,
+lower = easier) × **Risk** (1–5, lower = safer to ship) → **Priority
+Score = Impact ÷ Effort ÷ Risk-weight**, ranked descending.
+
+| # | AI opportunity | Impact | Effort | Risk | Priority | Rationale |
+|---|---|---|---|---|---|---|
+| 1 | Revenue leakage detection (flag claims hitting the `$0.00` fallback or unmapped revenue codes) | 5 | 2 | 1 | **HIGHEST** | Directly protects revenue; purely a detection query over existing data (claim lines vs. `_map_revenue_code()`), no new data model needed, zero decision-making involved |
+| 2 | Claim-readiness blocker summarization (narrate existing `check_patient_billing_readiness` blockers) | 4 | 1 | 1 | **HIGHEST** | Cheapest to build — the structured blocker data already exists; this is pure narrative rendering of existing computed facts, same safe pattern already proven by the recert evidence-synthesis work |
+| 3 | Certification/F2F due-date monitoring & alerting | 4 | 2 | 1 | **HIGH** | Data already tracked in `CertificationStatusEvent`/benefit period; purely a proactive surfacing layer, no new judgment |
+| 4 | Benefit period / cap-year threshold monitoring | 4 | 2 | 1 | **HIGH** | Same pattern, existing `hospice_cap_service.py`/`benefit_period_service.py` data |
+| 5 | Documentation completeness monitoring (visit notes/POC gaps before claim prep) | 3 | 3 | 2 | **MEDIUM** | Valuable but requires reading across visit-note/POC data not yet centrally exposed for this purpose — more integration effort |
+| 6 | Billing queue prioritization / triage ranking | 3 | 2 | 2 | **MEDIUM** | Useful, but needs care that "priority" ranking doesn't drift into an implicit billing recommendation — must stay purely urgency/deadline-based sorting |
+| 7 | Claim-readiness narrative rollup at the tenant level (cross-agency) | 3 | 3 | 2 | **MEDIUM** | Same building blocks as #2, but aggregated — more moving parts, still low risk |
+| 8 | Missing-billing-data detection (broader than current readiness blockers) | 3 | 3 | 3 | **MEDIUM-LOW** | Would need to define what "missing" means beyond current checks — some risk of scope creep into judgment territory if not carefully bounded |
+
+**Recommendation**: build #1 and #2 first if/when AI billing work is
+greenlit — both are low-effort, low-risk, and high-impact, and reuse the
+same safe read-only narrative pattern already validated by the recert
+reasoning framework (`build_recertification_evidence_summary`). Do **not**
+begin any of this work now — per instruction, this matrix is for future
+prioritization only.
+
+
+---
+
 # SECTION 9 — BILLING READINESS MAP
 
 A single map of exactly what feeds the two central readiness computations
