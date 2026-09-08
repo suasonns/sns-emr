@@ -7,13 +7,18 @@ narrative for RN review, written in the voice of a hospice RN admission
 note rather than an AI-generated clinical/audit report. It never writes to
 the assessment. The RN decides whether to copy any of the generated text
 into diagnoses.clinicalNarrative (the one narrative field that is
-quality-gated and reviewed -- see clinicalNarrativeBuilder.js).
+quality-gated and reviewed -- see narrativeSupport.js's
+evaluateNarrativeQualityGate()). The legacy frontend deterministic
+narrative writer (clinicalNarrativeBuilder.js / buildClinicalNarrative())
+that this module's docstring used to reference has been removed entirely;
+this backend V2 service is now the sole clinical-narrative-composition
+engine (see docs/clinical/rnica-architecture-map.md, Section 13).
 
 The opening admission-context paragraph and the closing quick-reference
 (terminal diagnosis/level of care/performance scales/code status) and
 plan-of-care pointer are assembled deterministically from documented
-fields only -- never invented, matching the same philosophy as
-buildClinicalNarrative() in the frontend. The body of the narrative
+fields only -- never invented, matching the same "documented fields only,
+never invented" philosophy the removed frontend writer once followed. The body of the narrative
 (functional status and decline, body-system assessment findings in RN
 workflow order, symptom burden, nutrition/elimination, safety/skin,
 psychosocial/caregiver situation, interventions with teaching woven in
