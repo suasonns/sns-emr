@@ -60,12 +60,11 @@ def list_benefit_periods(
 @router.post("/", summary="Create or rollover benefit period")
 def rollover_benefit_period_endpoint(
     patient_id: str,
-    tenant_id: str,
     election_date: str,
     start_date: str,
     benefit_type: str,  # "INITIAL" or "RECERT"
     db: Session = Depends(get_db),
-    user=Depends(require_roles(["RN", "Administrator"])),
+    user: CurrentUser = Depends(require_roles(["RN", "Administrator"])),
 ):
     """
     Enterprise-safe endpoint for benefit period creation / rollover.
@@ -73,6 +72,10 @@ def rollover_benefit_period_endpoint(
     - Automatically determines period_number
     - Enforces only ONE active benefit period
     - Idempotent-safe behavior
+    - `tenant_id` is always derived from the authenticated caller's own
+      tenant context (never accepted from the client) and the patient is
+      authorized against that tenant before any mutation, matching the
+      GET endpoint above -- Eligibility Traceability Epic, Workstream 1.
     """
 
     try:
@@ -86,21 +89,27 @@ def rollover_benefit_period_endpoint(
 
     try:
         parsed_patient_id = UUID(patient_id)
-        parsed_tenant_id = UUID(tenant_id)
     except Exception:
         raise HTTPException(
             status_code=422,
-            detail="Invalid UUID format for patient_id or tenant_id.",
+            detail="Invalid UUID format for patient_id.",
         )
+
+    # Fail closed on cross-tenant access: this raises (404/403 per
+    # get_authorized_patient's contract) before any benefit-period or
+    # audit-event mutation is attempted if the patient does not belong to
+    # the authenticated caller's tenant.
+    get_authorized_patient(db, parsed_patient_id, user)
 
     try:
         bp = rollover_benefit_period(
             db=db,
-            tenant_id=parsed_tenant_id,
+            tenant_id=user.tenant_id,
             patient_id=parsed_patient_id,
             election_date=parsed_election_date,
             start_date=parsed_start_date,
             benefit_type=benefit_type.upper(),
+            actor_user_id=user.user_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
