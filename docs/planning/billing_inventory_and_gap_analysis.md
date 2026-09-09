@@ -1988,17 +1988,19 @@ and a re-categorization of every finding into business-facing gap language — n
 conclusion was reversed or newly discovered; every item above traces to evidence already established in
 Phases 1-50.
 
-## IMPLEMENTATION PLANNING — Eligibility Traceability Epic
+## IMPLEMENTATION PLANNING — Eligibility Traceability Epic (full engineering plan)
 
-Full detail: `eligibility_traceability_epic.md`. Per directive, review/research/documentation phases are
-now complete; this is the engineering-ready specification for the "Hospice Reimbursement Chronology"
-epic (Phase 49/58), covering exactly the 5 requested scope items — BenefitPeriod audit trail, eligibility
-chronology, readiness persistence, user attribution, eligibility timeline reporting — and none of the
-still-deferred AI features (Billing Readiness Engine, Revenue Leakage, Claim Risk AI, Biller Command
-Center, Certification/Recertification Monitors). It specifies two new tables
-(`benefit_period_status_events`, `billing_readiness_verdicts`), one new read-only chronology service, one
-new reporting endpoint, and a strict build sequence (audit trail + readiness persistence first, in
-parallel; chronology composition second; timeline reporting last). It resolves nothing new — every
-scope item traces to a gap already confirmed in Phases 1-58 — and it changes no code itself. No
-production code has changed. No billing feature or AI has been built.
+Full detail: `eligibility_traceability_epic.md`. Per directive, all review/research/compliance-summary
+work is complete; this is the final, complete engineering plan (no further review documents planned
+unless implementation reveals a blocker) for the "Hospice Reimbursement Chronology" epic, covering 6
+workstreams — BenefitPeriod Audit Trail, Eligibility Chronology Layer, Billing Readiness Persistence,
+User Attribution, Eligibility Timeline Report, and Certification→BenefitPeriod→Claim Linkage — each with
+Problem/Current State/Target State/DB/API/Backend/Frontend/Migration/Testing/Verification/Risk/
+Dependencies. Two new tables (`benefit_period_status_events`, `billing_readiness_verdicts`), one new
+chronology service, one new reporting endpoint. One workstream (Certification→BenefitPeriod→Claim
+linkage) flags a real product decision (hard gate vs. soft record) requiring explicit sign-off rather
+than an assumed default. Implementation order, sprint breakdown, and dependency graph are specified;
+recommended first PR is Workstream 1 alone (BenefitPeriod Audit Trail — highest value, lowest risk, no
+product decision required, no blocking dependency). No production code has changed. No billing feature
+or AI has been built.
 
