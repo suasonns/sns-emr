@@ -1,4 +1,5 @@
-import { clearAccessToken, clearCurrentUser, getAccessToken } from "./session";
+import { getAccessToken } from "./session";
+import { ensureFreshAccessToken, redirectToLogin } from "./client";
 
 // src/api/dashboard.ts
 
@@ -199,39 +200,79 @@ export type PatientComplianceDetailResponse = {
 // =========================================================
 // FETCH UTIL
 // =========================================================
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const token = getAccessToken();
+//
+// Session-stability correction (billing navigation sign-out defect):
+// every helper below now shares one authenticated-fetch core
+// (`authorizedFetch`) instead of duplicating raw `fetch()` + ad hoc
+// 401/403 handling per helper. Previously each helper independently
+// treated *both* 401 and 403 as "Session expired" and immediately
+// cleared the session -- bypassing the single-flight refresh-and-retry
+// flow that api/client.ts's axios interceptor already implements for
+// every other API call in the app. That bypass is what caused a user
+// navigating Dashboard -> Billing Readiness -> Eligibility -> Payment
+// Posting -> Claims to get signed out mid-session the moment their
+// access token naturally expired (or on any transient 401), even
+// though a perfectly valid refresh token existed.
+//
+// Corrected behavior:
+//   - 401 (access token expired/invalid): attempt exactly one shared,
+//     single-flight token refresh (api/client.ts's ensureFreshAccessToken,
+//     the same one used by the axios client -- so a billing page and a
+//     non-billing page hitting expiration at the same instant share the
+//     same in-flight /auth/refresh call, never two). If refresh
+//     succeeds, the original request is retried once with the new
+//     token and the caller never sees an error. Only if the refresh
+//     token itself is missing/invalid/expired do we clear the session
+//     and redirect to /login with the "Session expired" message -- a
+//     confirmed expiration, not a guess.
+//   - 403 (tenant suspended / role/authorization denial): never treated
+//     as session expiration and never clears a valid session. The
+//     backend's own detail message (e.g. "This agency's platform
+//     access is currently suspended") is surfaced to the caller as-is.
+async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
   const candidates = [
     `${base}${url}`,
     ...(base ? [`http://localhost:8000${url}`] : []),
   ];
 
+  const buildHeaders = (token: string | null): HeadersInit => ({
+    ...((init.headers as Record<string, string>) ?? {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  });
+
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
     try {
-      const res = await fetch(candidate, {
+      let response = await fetch(candidate, {
         credentials: "include",
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
+        ...init,
+        headers: buildHeaders(getAccessToken()),
       });
 
-      if (res.status === 401 || res.status === 403) {
-        clearAccessToken();
-        clearCurrentUser();
-        throw new Error("Session expired. Please sign in again.");
+      if (response.status === 401) {
+        // Single-flight, shared with every other API call in the app --
+        // never a second concurrent /auth/refresh call.
+        const newAccessToken = await ensureFreshAccessToken();
+        if (!newAccessToken) {
+          redirectToLogin();
+          throw new DashboardApiError(401, "Session expired. Please sign in again.");
+        }
+        response = await fetch(candidate, {
+          credentials: "include",
+          ...init,
+          headers: buildHeaders(newAccessToken),
+        });
+        if (response.status === 401) {
+          // Retried once with a fresh token and still unauthorized --
+          // a confirmed, non-recoverable expiration.
+          redirectToLogin();
+          throw new DashboardApiError(401, "Session expired. Please sign in again.");
+        }
       }
 
-      if (!res.ok) {
-        throw new Error(`Request failed: ${url}`);
-      }
-
-      return (await res.json()) as T;
+      return response;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
       if (candidate === candidates[candidates.length - 1]) {
@@ -243,55 +284,15 @@ async function fetchJson<T>(url: string): Promise<T> {
   throw lastError ?? new Error(`Request failed: ${url}`);
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const token = getAccessToken();
-  const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const candidates = [
-    `${base}${url}`,
-    ...(base ? [`http://localhost:8000${url}`] : []),
-  ];
-
-  let lastError: Error | null = null;
-
-  for (const candidate of candidates) {
-    try {
-      const res = await fetch(candidate, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (res.status === 401 || res.status === 403) {
-        clearAccessToken();
-        clearCurrentUser();
-        throw new Error("Session expired. Please sign in again.");
-      }
-
-      if (!res.ok) {
-        let detail = `Request failed: ${url}`;
-        try {
-          const payload = await res.json();
-          if (payload?.detail) detail = payload.detail;
-        } catch {
-          // ignore -- fall back to the generic message
-        }
-        throw new Error(detail);
-      }
-
-      return (await res.json()) as T;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
-      if (candidate === candidates[candidates.length - 1]) {
-        break;
-      }
-    }
+async function extractErrorDetail(response: Response, url: string): Promise<string> {
+  let detail = `Request failed: ${url}`;
+  try {
+    const payload = await response.json();
+    if (payload?.detail) detail = String(payload.detail);
+  } catch {
+    // ignore -- fall back to the generic message
   }
-
-  throw lastError ?? new Error(`Request failed: ${url}`);
+  return detail;
 }
 
 export class DashboardApiError extends Error {
@@ -304,49 +305,38 @@ export class DashboardApiError extends Error {
   }
 }
 
-async function facilityFetch<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = getAccessToken();
-  const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const candidates = [`${base}${url}`, ...(base ? [`http://localhost:8000${url}`] : [])];
+async function fetchJson<T>(url: string): Promise<T> {
+  const response = await authorizedFetch(url);
 
-  let lastError: Error | null = null;
-  for (const candidate of candidates) {
-    try {
-      const requestHeaders = (init?.headers ?? {}) as Record<string, string>;
-      const response = await fetch(candidate, {
-        credentials: "include",
-        ...init,
-        headers: {
-          ...requestHeaders,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (response.status === 401) {
-        clearAccessToken();
-        clearCurrentUser();
-        throw new DashboardApiError(401, "Session expired. Please sign in again.");
-      }
-
-      if (!response.ok) {
-        let detail = `Request failed: ${url}`;
-        try {
-          const payload = await response.json();
-          if (payload?.detail) detail = String(payload.detail);
-        } catch {
-          // ignore and keep generic detail
-        }
-        throw new DashboardApiError(response.status, detail);
-      }
-
-      return (await response.json()) as T;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
-      if (candidate === candidates[candidates.length - 1]) break;
-    }
+  if (!response.ok) {
+    throw new DashboardApiError(response.status, await extractErrorDetail(response, url));
   }
 
-  throw lastError ?? new Error(`Request failed: ${url}`);
+  return (await response.json()) as T;
+}
+
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const response = await authorizedFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new DashboardApiError(response.status, await extractErrorDetail(response, url));
+  }
+
+  return (await response.json()) as T;
+}
+
+async function facilityFetch<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await authorizedFetch(url, init);
+
+  if (!response.ok) {
+    throw new DashboardApiError(response.status, await extractErrorDetail(response, url));
+  }
+
+  return (await response.json()) as T;
 }
 
 async function facilityPost<T>(url: string, body: unknown): Promise<T> {

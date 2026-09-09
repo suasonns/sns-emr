@@ -29,7 +29,7 @@ api.interceptors.request.use((config) => {
 // stored password, and never an infinite retry loop.
 let refreshPromise: Promise<string | null> | null = null;
 
-function redirectToLogin() {
+export function redirectToLogin() {
   clearAccessToken();
   clearRefreshToken();
   clearCurrentUser();
@@ -54,6 +54,23 @@ async function performRefresh(): Promise<string | null> {
   }
 }
 
+// Exported single-flight refresh entry point. Any caller (this module's own
+// axios interceptor below, or the raw-fetch helpers in api/dashboard.ts)
+// awaiting this concurrently shares the same in-flight /auth/refresh call --
+// there is only ever one refresh request in flight at a time regardless of
+// how many protected requests failed with an expired access token at once.
+// Returns the new access token on success, or null if the refresh token is
+// missing/invalid/expired (caller must then treat this as a confirmed
+// session expiration, not a retryable error).
+export function ensureFreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = performRefresh().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -71,12 +88,7 @@ api.interceptors.response.use(
     }
     originalRequest._retriedAfterRefresh = true;
 
-    if (!refreshPromise) {
-      refreshPromise = performRefresh().finally(() => {
-        refreshPromise = null;
-      });
-    }
-    const newAccessToken = await refreshPromise;
+    const newAccessToken = await ensureFreshAccessToken();
 
     if (!newAccessToken) {
       redirectToLogin();

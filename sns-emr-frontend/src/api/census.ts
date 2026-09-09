@@ -1,4 +1,5 @@
 import { getAccessToken } from "./session";
+import { ensureFreshAccessToken, redirectToLogin } from "./client";
 
 export type CensusCategory = "ALL" | "ACTIVE" | "DISCHARGED" | "DECEASED" | "REVOKED";
 
@@ -25,9 +26,13 @@ export type CensusWorkspaceResponse = {
   patients: CensusPatientRow[];
 };
 
+// Session-stability correction: only a 401 (access token expired/invalid)
+// attempts the shared single-flight refresh-and-retry; a 403 (tenant
+// suspended / role denial) is never treated as session expiration and
+// never clears a valid session (see api/dashboard.ts's authorizedFetch
+// for the fuller rationale -- this module mirrors the same fix).
 async function fetchJson<T>(url: string): Promise<T> {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const token = getAccessToken();
   const candidates = [
     `${base}${url}`,
     ...(base ? [`http://localhost:8000${url}`] : []),
@@ -37,13 +42,26 @@ async function fetchJson<T>(url: string): Promise<T> {
 
   for (const candidate of candidates) {
     try {
-      const res = await fetch(candidate, {
+      const token = getAccessToken();
+      let res = await fetch(candidate, {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
-      if (res.status === 401 || res.status === 403) {
-        throw new Error("Session expired. Please sign in again.");
+      if (res.status === 401) {
+        const newAccessToken = await ensureFreshAccessToken();
+        if (!newAccessToken) {
+          redirectToLogin();
+          throw new Error("Session expired. Please sign in again.");
+        }
+        res = await fetch(candidate, {
+          credentials: "include",
+          headers: { Authorization: `Bearer ${newAccessToken}` },
+        });
+        if (res.status === 401) {
+          redirectToLogin();
+          throw new Error("Session expired. Please sign in again.");
+        }
       }
 
       if (!res.ok) {
@@ -65,3 +83,4 @@ async function fetchJson<T>(url: string): Promise<T> {
 export function fetchCensusWorkspace(): Promise<CensusWorkspaceResponse> {
   return fetchJson<CensusWorkspaceResponse>("/audit-dashboard/census");
 }
+

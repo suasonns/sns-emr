@@ -1,4 +1,5 @@
-import { clearAccessToken, clearCurrentUser, getAccessToken } from "./session";
+import { getAccessToken } from "./session";
+import { ensureFreshAccessToken, redirectToLogin } from "./client";
 
 // src/api/ownerAdmin.ts
 // Platform-owner-only tenant onboarding calls.
@@ -81,28 +82,40 @@ async function request<T>(
   url: string,
   options: { method?: "GET" | "POST" | "PATCH"; body?: unknown } = {}
 ): Promise<T> {
-  const token = getAccessToken();
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
   const candidates = [`${base}${url}`, ...(base ? [`http://localhost:8000${url}`] : [])];
+
+  const buildInit = (token: string | null) => ({
+    method: options.method ?? "GET",
+    credentials: "include" as RequestCredentials,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+  });
 
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
     try {
-      const res = await fetch(candidate, {
-        method: options.method ?? "GET",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-      });
+      let res = await fetch(candidate, buildInit(getAccessToken()));
 
+      // Session-stability correction: attempt exactly one shared,
+      // single-flight token refresh before treating a 401 as a
+      // confirmed session expiration (see api/dashboard.ts's
+      // authorizedFetch for the fuller rationale).
       if (res.status === 401) {
-        clearAccessToken();
-        clearCurrentUser();
-        throw new Error("Session expired. Please sign in again.");
+        const newAccessToken = await ensureFreshAccessToken();
+        if (!newAccessToken) {
+          redirectToLogin();
+          throw new Error("Session expired. Please sign in again.");
+        }
+        res = await fetch(candidate, buildInit(newAccessToken));
+        if (res.status === 401) {
+          redirectToLogin();
+          throw new Error("Session expired. Please sign in again.");
+        }
       }
 
       if (!res.ok) {
