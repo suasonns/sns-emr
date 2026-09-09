@@ -84,3 +84,21 @@ report an ungated reality — it should not be built as a substitute for
 fixing the gating itself, only as a complement to it once gating exists.
 Calculation logic, expiration detection, and recert detection are
 otherwise unchanged from the original spec and remain accurate.
+
+## Phase 14 addendum (2026-09-08) — gap check against the certification lifecycle states
+
+Cross-checked against `certification_gated_eligibility_model.md`. Would the spec's design, if built
+today, detect each state?
+
+| State | Would monitor detect it? |
+|---|---|
+| Missing certification | Yes — absence of any `Certification` row for the patient/period is a direct query. |
+| Draft certification | Yes — `status='DRAFT'` is a real, queryable value (same query pattern as the existing `cti_pending_signature_count` dashboard widget). |
+| Unsigned certification | Yes — `signed_at IS NULL` combined with `status IN ('DRAFT','PENDING_SIGNATURE')` is directly queryable. |
+| Expired certification | Yes — `expires_at < now()` is already a proven query pattern (`dashboard_service.py` `cti_expiring_query`). |
+| Missing recertification | Yes, as an absence-of-row query for `cert_type='RECERT'` scoped to the next expected period — not yet a built query, but no new schema needed. |
+| Recert due soon | Yes — same pattern as `cti_expiring` (15-day window already exists as a working template). |
+| Recert overdue | **Gap** — this specific derived state (expired + no successor cert in any pre-finalized or finalized status) is not currently computed anywhere; it requires a new query, not new storage. |
+
+No gaps require new tables or columns. The only net-new logic is the "Recert Overdue" derived query
+(distinguishing "cert expired but nothing pending" from "cert expired, next one in progress").

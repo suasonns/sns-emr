@@ -1456,3 +1456,80 @@ This phase re-prioritizes findings only; the eligibility-gating fix
 recommended in E.1 has not been implemented and awaits explicit
 go-ahead.
 
+## PHASE 10 — Eligibility Integrity Review (index)
+
+Full detail: `eligibility_integrity_review.md`, `certification_gated_eligibility_model.md`. Addenda
+appended to `benefit_period_engine_review.md` (Phase 12/13), `certification_monitor_spec.md`
+(Phase 14), `billing_readiness_spec.md` (Phase 15).
+
+### A. Eligibility Integrity Assessment
+A patient can currently enter a new benefit period with no certification of any kind on file (missing,
+draft, expired, or a claimed recert with no actual recertification event). The gap exists at exactly
+one function (`rollover_benefit_period`, `app/services/benefit_period_service.py`) and its one caller
+endpoint (`POST /benefits/`). No other code path creates or advances a benefit period.
+
+### B. Certification-Gating Assessment
+`Certification` itself has a real, correct lifecycle (`DRAFT → PENDING_SIGNATURE → FINALIZED →
+SUPERSEDED`) with a genuine, already-working append-only audit trail (`CertificationStatusEvent`).
+The gap is not that certifications are poorly modeled — it is that `BenefitPeriod` creation never
+reads that model at all. Fixing this is a scoped, well-understood change: add one query
+(`_has_finalized_certification`-equivalent, a function that already exists and works correctly for
+billing-readiness) as a precondition inside `rollover_benefit_period`, before the existing
+locking/idempotency/chronology logic runs.
+
+### C. Benefit Period Protection Assessment
+Technical protections (locking, idempotency, atomic commit/rollback) are correct and proven by
+execution (4/4 guardrail tests). Newly confirmed this phase: the idempotency check is exact-tuple-only
+and does not prevent two *different* `start_date` values from producing two plausible "next" periods
+for the same patient — a distinct data-integrity gap, separate from certification gating. No
+update/correct/delete operation exists for benefit periods at all (not even ungated) — those lifecycle
+actions are simply not implemented as code paths.
+
+### D. Audit Trail Assessment
+Confirmed narrower than earlier stated: the audit-trail gap is specific to `BenefitPeriod` (no
+`created_by` population, no status-event table), not organization-wide. `Certification` already has a
+working, real audit trail using the exact pattern (`created_by` FK + append-only status-event table)
+that would fix the `BenefitPeriod` gap if replicated. An auditor cannot today reconstruct benefit-period
+transition history for a patient; they can for certification transition history.
+
+### E. Compliance Assessment
+CMS hospice election-period rules (42 CFR §418.21/§418.22) require a valid, physician-signed
+certification/recertification before the corresponding benefit period is billable. SNS's
+billing-readiness layer already correctly enforces this at claim time
+(`check_patient_billing_readiness` → `_has_finalized_certification`, real and working). The compliance
+exposure is that a `BenefitPeriod` can exist and be marked `is_current=True` in the system of record
+before that check ever runs — an auditor or surveyor reviewing raw benefit-period data (not filtered
+through the billing-readiness lens) could see a "current" period with no supporting certification.
+
+### F. Final Priority Order
+1. Certification-gate `rollover_benefit_period` (add the missing precondition check).
+2. Add `BenefitPeriod` audit trail (`created_by` population + status-event table, mirroring
+   `Certification`'s existing pattern).
+3. Tighten idempotency to prevent duplicate "next" periods with differing `start_date`.
+4. Benefit Period Monitor (only meaningful once 1–3 are in place).
+5. Certification Monitor (Recert Overdue derived query, per Phase 14 addendum).
+6. Billing Readiness Engine enhancements (already largely built; extend per Phase 15 addendum).
+7. Claim Status Governance fix (pre-existing, documented in Phase 5/6).
+8. Revenue Leakage Detection.
+9. NOE Dashboard / Remittance UI / LOC Validation / Biller Command Center.
+10. Claim Risk AI (last, per repeated explicit instruction).
+
+### G. Recommended First Engineering Task
+Add a single precondition check inside `rollover_benefit_period`, before its existing
+locking/idempotency logic: query for a `Certification` row matching
+`(tenant_id, patient_id, cert_type, status='FINALIZED', signed_at IS NOT NULL)` appropriate to the
+requested `benefit_type` (`INITIAL` or `RECERT`), and raise if none exists. This reuses an
+already-proven query shape (`_has_finalized_certification` in `billing_readiness_service.py`) rather
+than inventing new logic, and directly closes the Q1/Q2 gap in `eligibility_integrity_review.md`.
+
+### Direct answer restated
+**Can an ineligible patient become billable? NO — not today.** A benefit period can be created without
+certification, but `check_patient_billing_readiness` independently re-verifies certification at claim
+time and will block billing if it's missing. The integrity failure is that the *system of record*
+(the `BenefitPeriod` table itself) can contain uncertified "current" periods, not that an uncertified
+claim can currently be submitted successfully. Both facts are true simultaneously and are not in
+tension: the front door (benefit-period creation) is open; the back door (claim submission) is locked.
+
+No production code has changed. No billing feature or AI has been built. This phase is verification
+and design only, awaiting explicit go-ahead before any implementation begins.
+

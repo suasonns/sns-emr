@@ -188,3 +188,70 @@ problem**, the same category as several other findings in this review
 item is therefore: **expose `rollover_benefit_period` (and ideally a
 read-only "preview next period" variant) to a real screen**, not
 rebuild the underlying logic.
+
+**Superseded by Phase 9/10 findings**: the certification-gating review
+(`certification_gated_eligibility_review.md`, `eligibility_integrity_review.md`)
+found a more fundamental gap upstream of the UI-exposure problem above:
+the function itself performs zero certification/recertification
+validation, so even a correctly-built UI would still let a user create a
+period with no valid certification behind it. UI exposure remains
+necessary but is no longer Priority #1 in isolation — see
+`eligibility_integrity_review.md` for the current top priority.
+
+## Phase 12/13 addendum (2026-09-08) — protections, failure handling, audit trail
+
+Status: verification only, no code changed. Directly answers the directive's Phase 12 (Benefit
+Period Protections) and Phase 13 (Audit Trail Review) questions.
+
+### Missing protections (confirmed by re-reading `rollover_benefit_period`, `benefit_period_service.py:38-172`)
+- **Certification gating**: missing (see `eligibility_integrity_review.md` Q1/Q2).
+- **Recert gating**: missing (same).
+- **Audit logging**: missing — no `append_audit_event`/`build_audit_event` call in this file;
+  `BenefitPeriod.created_by` is never populated by the `BenefitPeriod(...)` constructor call (no
+  `created_by=` kwarg passed).
+- **Administrative overrides**: none exist because there is nothing to override — since there is no
+  gate, there is no override path, and no `PUT`/`PATCH`/`DELETE` endpoint exists for benefit periods
+  at all (`app/api/benefits.py` defines only `GET /patients/{id}` and `POST /`). "Period Updated,"
+  "Period Corrected," and "Period Deleted" are not currently possible operations in this codebase —
+  they do not merely lack an audit trail, they do not exist as code paths.
+- **Rollback behavior**: present and correct — the entire function body is wrapped in a single
+  `try`/`except Exception: db.rollback(); raise` block, with one `db.commit()` at the very end. This
+  means partial creation is not possible: either the old-BP close + new-BP create + IDG task seed all
+  commit together, or none of them do.
+- **Failure handling — direct answers**:
+  - Current period preserved on failure? **YES** — `current_bp.is_current = False` is an in-memory
+    ORM mutation not flushed/committed until the final `db.commit()`; an exception before that point
+    rolls back the whole session, leaving the prior current BP unchanged in the database.
+  - Partial creation possible? **NO** — single atomic commit, confirmed by code structure (not
+    re-executed this pass beyond the prior segment's 4/4 guardrail-test run, which already exercises
+    the happy path; failure-path behavior here is a code-structure conclusion, not a fresh test run).
+  - Duplicate periods possible? **Partially** — the idempotency check only matches on an *exact*
+    `(start_date, benefit_type, tenant_id, patient_id)` tuple. Two calls with the same `benefit_type`
+    but different `start_date` values are **not** deduplicated and will each increment
+    `period_number`, creating two rows that are both plausible "next" periods for the same patient.
+    This is a real, distinct gap from the certification-gating gap — it is a data-integrity gap, not
+    an eligibility gap, and was not previously documented.
+  - Audit trail written on failure? **N/A** — none is written on success either (see above), so there
+    is nothing to compare for the failure path.
+
+### Audit trail review — per lifecycle action (Phase 13)
+
+| Action | Exists as a code path? | Audit event exists? | User attribution? | Timestamp? |
+|---|---|---|---|---|
+| Period Created | Yes (`rollover_benefit_period`, `benefit_type` implies INITIAL) | No | No (`created_by` unpopulated) | Only via `BaseModel`'s generic `created_at` column (not action-specific) |
+| Period Rolled | Yes (`rollover_benefit_period`, `benefit_type=RECERT`) | No | No | Same as above |
+| Period Updated | **No such endpoint exists** | N/A | N/A | N/A |
+| Period Corrected | **No such endpoint exists** | N/A | N/A | N/A |
+| Period Closed | Implicit only, as a side effect of the *next* rollover setting `is_current=False`/`end_date` on the prior row — not a standalone, directly-callable action | No | No | Only the row's generic `updated_at`, if `BaseModel` provides one (not itself an audit record) |
+| Period Deleted | **No such endpoint exists** | N/A | N/A | N/A |
+
+**Can an auditor reconstruct every benefit-period transition for a patient? NO.** Only the current
+state of each row is queryable (via `GET /patients/{id}`); there is no event stream, so an auditor
+cannot see *when* a period was closed relative to when the next was created, *who* triggered either
+action, or reconstruct a chronological narrative beyond what the rows' own `start_date`/`end_date`/
+`period_number` values imply. This stands in direct contrast to `Certification`, whose
+`CertificationStatusEvent` table (`app/models/certification.py:77-104`) already gives auditors exactly
+this reconstruction capability for certification status changes. The benefit-period audit-trail gap is
+real but narrower in scope than "no audit trail exists anywhere in the system" — it is specific to
+`BenefitPeriod`, and the pattern for fixing it (an append-only status-event table plus population of
+`created_by`) already exists elsewhere in the codebase as a working template.

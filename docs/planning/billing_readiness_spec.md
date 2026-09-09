@@ -152,3 +152,23 @@ certification specifically. It does **not yet** account for benefit
 period *sequencing* validity itself (e.g., an out-of-order or
 duplicate-purpose period) as its own distinct check — flagged as a gap
 to close before implementation, not assumed already covered.
+
+## Phase 15 addendum (2026-09-08) — required inputs re-confirmed, "WHY" requirement
+
+Directive requires the readiness engine to explain WHY, not just score. Re-checked against the real
+implementation (`app/billing/services/billing_readiness_service.py`, `check_patient_billing_readiness`,
+line 216+): it already returns a `blockers` list of short, human-readable reason strings rather than a
+bare pass/fail score — this already matches the "explain WHY" requirement as built, for the checks it
+performs (certification, F2F attestation, POC approval, NOE timeliness/exception, payer sequence).
+
+Confirmed required-inputs list against the directive's list: Election (via `BenefitPeriod.election_date`
+— no separate Election model exists), Certification (checked), Benefit Period (checked, as the scoping
+key for every other check), Recertification (checked, same `certifications` table/query as
+Certification since RECERT and INITIAL share one table), NOE (checked), Claim State (not part of this
+function today — `check_patient_billing_readiness` answers "can a claim be created/submitted," it does
+not itself track an existing claim's state; that is `claim_state_machine.md`'s domain). Remittance
+Status is not an input to this function and was not in the original directive's required-inputs list
+for this spec either — no gap relative to what was asked.
+
+Example BLOCKED reasons in the directive's format are already achievable with the current
+implementation's return shape; no new data model is required to produce them.
