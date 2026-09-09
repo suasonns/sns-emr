@@ -644,6 +644,10 @@ def _allowed_origins() -> list[str]:
         "http://127.0.0.1:4173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        # Alternate dev-server ports used when the default Vite port
+        # (5173) is already occupied by another local session.
+        "http://localhost:5183",
+        "http://127.0.0.1:5183",
     ]
 
 fastapi_app.add_middleware(
