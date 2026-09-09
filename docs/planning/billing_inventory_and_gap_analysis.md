@@ -1886,3 +1886,105 @@ No production code has changed. No billing feature or AI has been built. This ph
 reorganization and epic definition, not new findings that reverse any prior conclusion — every score and
 gap traces to evidence already established in Phases 1-42.
 
+## PHASE 51-58 — Hospice Reimbursement Chronology (epic renamed; final index)
+
+Full detail: `reimbursement_chronology_model.md` (Phase 51), `certification_to_payment_chain.md`
+(Phase 54), `cms_audit_package.md` (Phase 55), `cdph_survey_package.md` (Phase 56). Per directive, the
+epic previously named "Eligibility Integrity & Traceability" (Phase 49) is **renamed to "Hospice
+Reimbursement Chronology"** — the scope is unchanged, the name now accurately reflects the actual
+finding: not that eligibility/certification/claims/payments are individually wrong, but that the
+chronology connecting them cannot always be reconstructed.
+
+### Chronology Model (Phase 51) — the one structural break point
+Every event from Clinical Findings through Recertification is fully reconstructable (WHO/WHEN/WHY/
+EVIDENCE all answerable). Every event at and after Benefit Period has at least one dimension missing.
+This is one structural break point, not eight independent gaps — because Benefit Period itself has no
+actor/reason/linkage record, nothing built on top of it (Billing Readiness, Claim, Payment) can cite it
+as a justified, attributed cause either, even where those later stages have their own partial records.
+
+### Phase 52 — Billing Readiness Persistence
+**Confirmed, unchanged**: `check_patient_billing_readiness()` is a pure live computation; nothing is
+persisted. **Can SNS answer "why was patient billable on DATE X"? NO.** Only "why is patient billable
+right now" is answerable. This is the single largest gap in the entire engagement, reconfirmed at every
+phase since Phase 29 and not weakened by any subsequent review.
+
+### Phase 53 — Benefit Period Audit Epic (design, extends Phase 38)
+Adds one field not previously specified: `related_certification_id` on the proposed
+`BenefitPeriodStatusEvent` table — capturing which certification (if any) was checked and satisfied the
+gate at the moment of creation/rollover, turning today's reverse-only FK (`certifications.benefit_period_id`)
+into a forward, causal record. This directly closes the Phase 54 "missing link" finding below.
+
+### Phase 54 — Certification-to-Payment Chain
+**Cannot be traced without inference.** The one confirmed missing link: no record exists that a
+certification check occurred *at the moment* a benefit period was created — `Certification.benefit_period_id`
+enables a reverse lookup (which certifications reference this period) but not a forward causal record
+(this period was created *because of* certification X). Claim→Payment carries the same pre-existing,
+already-documented gaps (2 of 3 status writers unaudited; fabricated remittance widget).
+
+### Phase 55 — CMS Audit Package
+6 of 13 requested items **Automatically Available**, 4 **Partially Available**, 3 **Unavailable**
+(Benefit Period authorization trail, historical billing-readiness verdict, remittance/payment). The
+clinical/regulatory core is strong; the audit-trail/historical-reconstruction layer is where the
+package would be incomplete today.
+
+### Phase 56 — CDPH Survey Package
+Every section this engagement directly investigated (Admission, Certification, Clinical Notes,
+Addenda, Medical Record core) is demonstrable, including the newest CDPH requirement (structured
+addenda) which is a confirmed strength. Assessment, Transfer, and Discharge remain honestly labeled
+unknown — never investigated, not assumed either way.
+
+### Phase 57 — Reimbursement Defensibility Score (replaces simple component scoring)
+
+| Category | Score | Basis |
+|---|---|---|
+| Eligibility (composite: election+certification+benefit period) | 3 (Adequate) | Strong individually for election/certification; the composite is pulled down by Benefit Period's break point |
+| Certification | 5 (Fully Defensible) | Unchanged strongest area in the system |
+| Recertification | 4 (Strong) | Same model as Certification; lacks only a dedicated overdue signal |
+| Benefit Period | 1 (High Risk) | No attribution, no audit trail, no forward causal link to its authorizing certification |
+| Chronology (the reframed core finding) | 2 (Weak) | Individual facts well-recorded; the causal thread connecting them across the whole chain is not, confirmed across Phases 45-51 |
+| Claim | 2 (Weak) | Pre-existing, unchanged |
+| Payment | 1 (High Risk) | Fabricated dashboard widget confirmed; no independently-confirmed real ledger |
+| Medical Record | 4 (Strong) | Referral/Admission/Certification/clinical-note amendments all real and structured |
+| Audit Trail (cross-cutting) | 3 (Adequate, uneven) | Excellent in 3 areas, absent in the one most consequential area (Benefit Period) |
+
+### Phase 58 — First Engineering Epic: Hospice Reimbursement Chronology
+Explicitly **not** Billing Readiness Engine, Revenue Leakage, Claim Risk AI, or Biller Command Center.
+Scope (unchanged from Phase 49's epic, renamed and refined with the Phase 53 addition):
+1. Certification gating inside `rollover_benefit_period`.
+2. `BenefitPeriod.created_by` attribution.
+3. `BenefitPeriodStatusEvent` audit table, including `related_certification_id` (Phase 53 addition) —
+   this single field is what converts the Phase 54 "missing link" into a closed one.
+4. Billing-readiness persistence (historical verdict storage) — closes Phase 52's confirmed largest gap.
+5. Chronology reporting — a single reconstructed-narrative view spanning Referral→Payment for one
+   patient, consuming data made available by items 1-4 above.
+6. Audit reconstruction — an affirmative "why is this patient billable" statement, reusable for CMS/
+   CDPH/payer/legal-discovery requests, per the Phase 58 success criteria below.
+
+### Success criteria (verbatim from directive, restated as the epic's definition of done)
+An auditor can ask "why was this patient billable on DATE X," "who made the patient billable," "what
+evidence justified reimbursement," and "show chronology" — and SNS answers automatically, from
+persisted records, not live re-computation or staff recollection. Only once these four questions are
+answerable should Certification Monitor, Billing Readiness Engine, Revenue Leakage Detection, and Claim
+Risk AI proceed.
+
+### Findings re-categorized (per directive: stop describing as technical issues)
+
+| Category | Finding |
+|---|---|
+| **Chronology Gap** | Cannot answer "why was this patient billable on a past date" — only today's live state is computable. |
+| **Chronology Gap** | Cannot answer "why was this benefit period created" as a causal record — only "does a certification happen to also exist" as a reverse lookup. |
+| **Attribution Gap** | Benefit Period creation/rollover has no recorded actor (`created_by` unpopulated). |
+| **Attribution Gap** | Election signing event has a timestamp but no confirmed user-attribution field. |
+| **Audit Gap** | No event stream exists for any Benefit Period lifecycle action (created, rolled, closed). |
+| **Audit Gap** | 2 of 3 `Claim.status` writers are unenforced and unaudited (pre-existing, unchanged). |
+| **Audit Gap** | Remittance dashboard data is fabricated, not sourced from real payer adjudication (pre-existing, unchanged). |
+| **Traceability Gap** | No forward causal link from a satisfied certification to the benefit period it should have authorized. |
+| **Traceability Gap** | NOE tracks submission but not confirmed to track MAC acceptance, the point the legal timeliness clock actually runs to. |
+| **Traceability Gap** | Recertification has no dedicated "overdue" signal distinct from "expiring soon." |
+
+No production code has changed. No billing feature or AI has been built. This phase's contribution is a
+rename and refinement of the epic already defined in Phase 49, one new design field (`related_certification_id`),
+and a re-categorization of every finding into business-facing gap language — no prior technical
+conclusion was reversed or newly discovered; every item above traces to evidence already established in
+Phases 1-50.
+
