@@ -181,6 +181,8 @@ def sync_blocker_records(
     # Anything still left in open_by_message stopped appearing in this
     # verdict -- auto-resolve it.
     for stale_record in open_by_message.values():
+        previous_value = {"status": stale_record.status, "resolved_by": stale_record.resolved_by}
+
         stale_record.status = "RESOLVED"
         stale_record.resolved_at = verdict.evaluated_at
         stale_record.resolved_by = SYSTEM_AUTO_RESOLVED_BY
@@ -188,6 +190,21 @@ def sync_blocker_records(
             "Blocker no longer present on the most recent readiness evaluation."
         )
         touched.append(stale_record)
+
+        db.flush()
+
+        _record_workflow_event(
+            db,
+            tenant_id=stale_record.tenant_id,
+            entity_type="BLOCKER",
+            entity_id=stale_record.id,
+            event_type="AUTO_RESOLVED",
+            actor_user_id=None,
+            reason=stale_record.resolution_reason,
+            previous_value=previous_value,
+            new_value={"status": stale_record.status, "resolved_by": stale_record.resolved_by},
+            related_verdict_id=verdict.id,
+        )
 
     db.commit()
     return touched

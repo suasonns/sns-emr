@@ -226,6 +226,19 @@ class TestBlockerRecordLifecycle:
         assert records[0].status == "RESOLVED"
         assert records[0].resolved_by == SYSTEM_AUTO_RESOLVED_BY
 
+        events = (
+            db_session.query(ReadinessWorkflowEvent)
+            .filter(
+                ReadinessWorkflowEvent.entity_type == "BLOCKER",
+                ReadinessWorkflowEvent.entity_id == records[0].id,
+            )
+            .all()
+        )
+        assert len(events) == 1
+        assert events[0].event_type == "AUTO_RESOLVED"
+        assert events[0].actor_user_id is None
+        assert events[0].new_value["resolved_by"] == SYSTEM_AUTO_RESOLVED_BY
+
     def test_manual_resolution_records_workflow_event(self, db_session, tenant):
         patient = _make_patient(db_session, tenant.id, mrn="MRN-BLOCKER-MANUAL")
         check_patient_billing_readiness(
