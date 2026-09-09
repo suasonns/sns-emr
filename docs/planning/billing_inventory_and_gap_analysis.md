@@ -1606,3 +1606,84 @@ review — none are assumed. This phase deliberately re-validated (not assumed) 
 against real-world regulation; all of them held, and one new time-critical gap was found that no prior
 phase had surfaced.
 
+## PHASE 27-34 — Reimbursement Defensibility Review (index)
+
+Full detail: `reimbursement_defensibility_review.md` (Phases 27, 29, 31, 32),
+`election_addendum_2026_gap_review.md` (Phase 28), `payer_reimbursement_matrix.md` (Phase 30). This
+phase reframed the objective from "can SNS bill" to "can SNS defend hospice reimbursement during
+audit" and deliberately re-validated every prior conclusion rather than assuming it still held.
+
+### A. CMS Gap Assessment
+Two confirmed gaps, correctly distinguished by urgency vs. structural significance:
+- **Structural**: Benefit Period creation is not gated by Certification and has no audit trail of its
+  own (unchanged conclusion, now reframed precisely — see Phase 27's per-checkpoint table: the
+  *records* are strong, the *linkage and audit between* Certification and Benefit Period is the gap).
+- **Time-critical**: Election Statement Addendum mandatory-furnish rule (10/1/2026) is not implemented;
+  SNS's real, non-fabricated tracking system only models the on-request version.
+
+### B. CDPH Gap Assessment
+**Revised from the prior phase.** Clinical-note addendum/correction workflow — previously flagged
+"unscoped/unknown" — is now confirmed **compliant**: `app/models/amendment.py` (`Amendment`) and
+`rnica_amendment.py` implement exactly the structured, signed, timestamped, reason-required addendum
+pattern CDPH's new Title 22 hospice sections require. Physician-notification-tracking and the ~48-hour
+correction window remain genuinely unconfirmed (not assumed either way). Admission documentation has a
+real model with its own status-history audit table, following the same pattern as `CertificationStatusEvent`
+— likely strong, not deeply verified this pass.
+
+### C. Medicare / HMO / PPO Comparison
+Medicare Advantage hospice billing is operationally identical to Medicare FFS today (VBID carve-in
+ended 12/31/2024) — no MA-specific engineering work should be scoped. The most real, actionable
+difference across payer types is **Authorization**, which Medicare doesn't require at all but
+commercial PPO/managed-care commonly do — SNS has the payer-agnostic infrastructure to build this on,
+but no payer-specific rule configuration exists yet. NOE is confirmed Medicare-only; no commercial-payer
+NOE-equivalent should be modeled.
+
+### D. Election Addendum Review
+Confirmed **PARTIAL** non-compliance risk on 10/1/2026: the existing on-request compliance-clock math
+is CMS-correct and remains valid; the gap is that no record is created at all when no request occurs,
+which after 10/1/2026 is the normal case (furnishing becomes automatic/mandatory, not request-triggered).
+Full transition strategy in `election_addendum_2026_gap_review.md`.
+
+### E. Eligibility Defensibility Scorecard
+Election 4, Certification 5, Benefit Period 2, Recertification 3, NOE 3, Claim 2, Payment 2
+(provisional), Audit Trail (overall) 3, Documentation (overall) 4. The scorecard confirms the same
+narrow conclusion every phase of this engagement has converged on: individual clinical/regulatory
+records are strong; Benefit Period's creation-gating and audit trail remain the one consistently weak
+link, with Claim-status and remittance-fabrication as unchanged, pre-existing secondary risks.
+
+### F. Revised Top 10 Risks
+1. Election Statement Addendum mandatory-furnish gap (10/1/2026 deadline — time-critical, inserted
+   ahead of #2 solely due to its fixed external date).
+2. Benefit Period lacks certification gating at creation (structural, unchanged core finding).
+3. Benefit Period has no audit trail (`created_by` unpopulated, no status-event table).
+4. Certification-to-Benefit-Period-to-Billing-Readiness traceability chain is not reconstructable as a
+   single auditable narrative, even though each individual record is strong (new, precise framing from
+   Phase 29).
+5. Recertification lacks a distinct "Recert Overdue" derived signal.
+6. Claim status regression — 2 of 3 writers unenforced/unaudited (unchanged, pre-existing).
+7. Remittance/835 dashboard widget renders fabricated data (unchanged, pre-existing).
+8. NOE acceptance-vs-submission tracking unconfirmed (flagged, not yet proven a gap).
+9. No payer-specific authorization-rule configuration for commercial/managed-care payers.
+10. CDPH physician-notification-tracking and ~48-hour correction-window enforcement unconfirmed.
+
+### G. Revised Development Priorities
+1. Election Addendum automatic-furnish path (deadline-driven).
+2. Certification-gate `rollover_benefit_period` (structural root cause).
+3. Benefit Period audit trail (`created_by` + status-event table, mirroring `Certification`'s existing,
+   proven pattern).
+4. Persist billing-readiness check results historically (closes the Phase 29 traceability gap — today
+   the function is pure compute/return with no persistence, confirmed by code read).
+5. Recert Overdue derived signal.
+6. Certification Monitor → Recertification Monitor → Benefit Period Monitor (AI roadmap order affirmed
+   unchanged from Phase 9/18-26 — monitors remain sequenced after gating/audit fixes, not before).
+7. Billing Readiness Engine enhancement (affirmative "why Medicare would pay," not just absence-of-blocker).
+8. Claim Status Governance fix / Revenue Leakage Detection (pre-existing, unchanged).
+9. Payer-specific authorization-rule configuration (commercial/managed-care).
+10. Biller Command Center / Claim Risk AI (last, per repeated explicit instruction).
+
+No production code has changed. No billing feature or AI has been built. Every finding above is either
+a direct code-read confirmation or an explicitly-labeled open question — this phase corrected one prior
+"unknown" (CDPH clinical-note addendum workflow) to "confirmed compliant" transparently, and reframed
+(without weakening) the core certification-gating finding as a traceability/audit problem rather than a
+raw eligibility-bypass problem, per the directive's own reasoning.
+
