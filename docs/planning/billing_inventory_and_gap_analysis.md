@@ -1533,3 +1533,76 @@ tension: the front door (benefit-period creation) is open; the back door (claim 
 No production code has changed. No billing feature or AI has been built. This phase is verification
 and design only, awaiting explicit go-ahead before any implementation begins.
 
+## PHASE 18-26 — Hospice Reimbursement Reference Model & Regulatory Gap Matrix (index)
+
+Full detail: `hospice_reimbursement_reference_model.md` (Phases 18-22, sections A-D of the final
+deliverable), `regulatory_gap_matrix.md` (Phase 23). This phase deliberately re-validated prior
+conclusions against real-world regulation and code together, per the explicit instruction not to
+assume current findings are final.
+
+### F. Revised Billing Development Order
+
+The working hypothesis in the directive is largely confirmed, with one insertion:
+
+1. **(New, time-boxed) Election Statement Addendum — mandatory-furnish version.** SNS's
+   `election_addendum_service.py` implements only the pre-10/1/2026 on-request rule. CMS's
+   mandatory-for-every-election version takes effect 10/1/2026 — approximately three weeks from this
+   review. This is inserted ahead of item 2 purely because of its hard external deadline, not because
+   it is architecturally more important than certification gating.
+2. Eligibility Integrity / Certification-Gating (unchanged from Phase 9 — confirmed, not weakened, by
+   regulatory research: 42 CFR 418.22 independently requires exactly the gate SNS is missing).
+3. Certification / Recertification workflow enhancements (Recert Overdue derived signal).
+4. Benefit Period audit trail (elevated in urgency by new CDPH Title 22 auditability requirements,
+   which apply to the same category of gap).
+5. Benefit Period Monitoring.
+6. Billing Readiness Engine enhancements (add an affirmative "why Medicare would pay" statement, not
+   just absence-of-blocker; see reference model section A).
+7. NOE acceptance-date tracking (new follow-up flagged — verify SNS tracks MAC acceptance, not just
+   submission, since the 5-day clock legally runs to acceptance).
+8. Revenue Leakage Detection / Claim Status Governance (pre-existing, unchanged findings).
+9. Remittance Operations / NOE Dashboard / Biller Command Center.
+10. Claim Risk AI (last, per repeated explicit instruction).
+
+Explicitly removed from the backlog: any Medicare-Advantage-hospice-specific engineering work — the
+VBID hospice carve-in ended 12/31/2024, and MA hospice fully reverted to traditional Medicare rules;
+building special-case MA logic today would be solving a problem that no longer exists.
+
+Explicitly flagged as unscoped, not ranked (need a dedicated follow-up review before they can be
+placed in this order at all): Revocation, Discharge, Transfer, Plan-of-Care audit trail, IDG task
+completion tracking, California Title 22 clinical-note addendum/correction workflow, medical-record
+retention/export.
+
+### G. Revised AI Roadmap
+
+Unchanged in ordering logic from Phase 9 (Eligibility Integrity before any monitor/AI), reinforced by
+regulatory research: every requirement CMS attaches to certification/benefit-period validity is a
+prerequisite condition, not a scoring input — an AI feature that scores billing readiness without a
+gated eligibility chain underneath it would be scoring on top of potentially-invalid data, which
+regulatory review confirms is a compliance risk, not just an architecture preference. First AI feature
+remains: "why can't I bill this patient," now explicitly extended to also answer "why *would* Medicare
+pay" (affirmative case), since the regulatory model shows CMS/CDPH auditors expect an affirmative,
+itemized satisfaction statement, not merely an absence of objections.
+
+### H. Top 10 Reimbursement Risks (supersedes the Phase 9 list)
+
+1. Certification can be bypassed at benefit-period creation (unchanged, regulation-confirmed).
+2. Election Statement Addendum mandatory-furnish rule not implemented ahead of its 10/1/2026 effective
+   date (new).
+3. Benefit period lifecycle lacks business-rule gating generally (unchanged).
+4. Benefit-period audit trail incomplete, now with added CDPH Title 22 weight (unchanged scope, higher
+   urgency).
+5. NOE acceptance-vs-submission tracking not verified (new follow-up, not yet confirmed as a gap).
+6. Claim status regression bug — 2 of 3 writers unenforced/unaudited (unchanged, pre-existing).
+7. Remittance/835 dashboard widget renders fabricated data (unchanged, pre-existing).
+8. Recert Overdue has no derived signal distinct from generic "expiring" (unchanged from Phase 14).
+9. Payer-specific (PPO/commercial) rule variability has no configuration surface (unchanged from Phase
+   Ph. reference model section C).
+10. California Title 22 clinical-note addendum/correction workflow entirely unscoped by this engagement
+    — could contain its own findings once reviewed, currently an unknown rather than a confirmed risk.
+
+No production code has changed. No billing feature or AI has been built. Every finding above is either
+a direct code-read confirmation or an explicitly-labeled open question awaiting a dedicated follow-up
+review — none are assumed. This phase deliberately re-validated (not assumed) all Phase 9 conclusions
+against real-world regulation; all of them held, and one new time-critical gap was found that no prior
+phase had surfaced.
+
