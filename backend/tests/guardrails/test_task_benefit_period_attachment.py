@@ -59,6 +59,7 @@ def test_task_attaches_to_active_benefit_period(db_session, tenant_id, patient):
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=patient.created_by,
     )
 
     task = Task(
@@ -92,6 +93,7 @@ def test_task_attachment_does_not_override_existing_campaign(db_session, tenant_
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=patient.created_by,
     )
 
     bp2 = rollover_benefit_period(
@@ -101,6 +103,7 @@ def test_task_attachment_does_not_override_existing_campaign(db_session, tenant_
         election_date=date(2026, 4, 1),
         start_date=date(2026, 4, 1),
         benefit_type="RECERT",
+        actor_user_id=patient.created_by,
     )
 
     task = Task(
@@ -159,6 +162,7 @@ def test_tasks_after_rollover_attach_to_new_bp(db_session, tenant_id, patient):
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=patient.created_by,
     )
 
     bp2 = rollover_benefit_period(
@@ -168,6 +172,7 @@ def test_tasks_after_rollover_attach_to_new_bp(db_session, tenant_id, patient):
         election_date=date(2026, 4, 1),
         start_date=date(2026, 4, 1),
         benefit_type="RECERT",
+        actor_user_id=patient.created_by,
     )
 
     task = Task(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, text
+from sqlalchemy import Boolean, Column, Date, ForeignKey, Integer, String, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID, ENUM
 from sqlalchemy.orm import relationship
 
@@ -19,6 +19,15 @@ BenefitTypeEnum = ENUM(
 
 class BenefitPeriod(BaseModel):
     __tablename__ = "benefit_periods"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "patient_id",
+            "benefit_type",
+            "start_date",
+            name="uq_benefit_periods_tenant_patient_type_start",
+        ),
+    )
 
     tenant_id = Column(
         UUID(as_uuid=True),

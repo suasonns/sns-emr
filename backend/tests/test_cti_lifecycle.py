@@ -42,6 +42,7 @@ def _make_bp(db_session, tenant_id, patient_id, *, election_date, start_date, be
     return rollover_benefit_period(
         db_session, tenant_id=tenant_id, patient_id=patient_id,
         election_date=election_date, start_date=start_date, benefit_type=benefit_type,
+        actor_user_id=TEST_USER_ID,
     )
 
 
