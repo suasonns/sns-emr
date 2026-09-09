@@ -612,3 +612,84 @@ verdict lookup/append-only behavior (`TestHistoricalAppendOnlyBehavior`).
   pre-existing failures, formal classification table in §13.6
 - **SINGLE_ALEMBIC_HEAD** — ✅ `v3w4x5y6z7a8`
 - **READY_FOR_COMMIT** — ✅ pending final pre-commit checklist and commit
+
+## 14. Post-isolation CI remediation (PR #75, `suasonns-billing-audit-readiness-foundation`)
+
+Status: SPRINT_1_CI_REMEDIATION_IN_PROGRESS while this section was drafted;
+promoted to **SPRINT_1_READY_FOR_REVIEW** once verification below completed
+with zero PR-specific regressions remaining (still requires human review /
+approval before merge -- this checkpoint cannot self-approve).
+
+Date: 2026-09-08/09.
+
+### 14.1 Discovery
+
+After this commit was isolated onto a clean branch off current `origin/main`
+and opened as PR #75, CI's "Backend schema and import" job (which runs
+`alembic revision --autogenerate` and fails on any detected drift) reported
+two NEW drift lines not present on `main`'s own CI run at the same base
+commit:
+
+- `Detected removed unique constraint 'uq_benefit_periods_tenant_patient_type_start' on 'benefit_periods'`
+- `Detected removed index 'ix_brv_patient_evaluated_at' on 'billing_readiness_verdicts'`
+
+Root cause: migrations `v3w4x5y6z7a8` (constraint) and `u2v3w4x5y6z7`
+(index) create these DB objects directly via `op.create_unique_constraint` /
+`op.create_index`, but the corresponding SQLAlchemy models
+(`app/models/benefit_period.py`, `app/billing/models/billing_readiness_verdict.py`)
+did not declare matching `UniqueConstraint`/`Index` entries in
+`__table_args__`. This is invisible at runtime (the DB objects already
+exist) but is exactly what `alembic --autogenerate` diffs against, so it
+is flagged as schema drift.
+
+### 14.2 Impact
+
+CI-only; no runtime behavior is affected (the constraint and index were
+already active in the database from the original migrations). Confirmed
+by rerunning the full targeted regression suite after the fix with zero
+behavior change.
+
+### 14.3 Decision
+
+Purely additive/declarative fix, no migration content changes:
+
+- Added `UniqueConstraint("tenant_id", "patient_id", "benefit_type", "start_date", name="uq_benefit_periods_tenant_patient_type_start")`
+  to `BenefitPeriod.__table_args__` (column order/name verified against
+  migration `v3w4x5y6z7a8`).
+- Added `Index("ix_brv_patient_evaluated_at", "patient_id", "evaluated_at")`
+  to `BillingReadinessVerdict.__table_args__` (name/columns verified against
+  migration `u2v3w4x5y6z7`).
+- Added `backend/tests/test_model_migration_parity.py`: two new tests that
+  assert directly against SQLAlchemy table metadata
+  (`__table__.constraints` / `__table__.indexes`) that these declarations
+  exist with the exact name and column order -- so a future removal of
+  either model declaration (while leaving the migration untouched) fails a
+  test immediately instead of only being caught later by CI's drift check.
+
+### 14.4 Verification
+
+- Ran `alembic revision --autogenerate` against a fresh isolated migrated
+  DB both before and after the fix: both target drift lines disappeared
+  after the fix; only pre-existing/unrelated drift remained (identical set
+  on this branch and on `origin/main`'s own base commit). Probe migration
+  files were generated, inspected, then deleted -- never committed.
+  See PR #75's "CI Review Findings" section for the full comparison table.
+- Confirmed the two new parity tests fail (with clear, descriptive
+  assertion messages) when the fix is temporarily reverted, and pass when
+  restored -- proving they are meaningful regression guards, not tautologies.
+- Ran the full migration upgrade -> downgrade (v3w4x5y6z7a8 -> u2v3w4x5y6z7
+  -> t1u2v3w4x5y6 -> c8e6e7eef2d6) -> re-upgrade (-> head) cycle against an
+  isolated DB: each downgrade step removed only its own table/constraint/
+  index, never an unrelated one; re-upgrade restored a single Alembic head
+  (`v3w4x5y6z7a8`) with the constraint and index each present exactly once
+  (no duplicates from the up/down/up cycle).
+- Reran dedicated tests (24/24), targeted regression (107/107 + 2 new
+  parity tests = 109/109), concurrency stress test (5/5 runs, no
+  flakiness), and the full backend suite (2823 tests: 2798 passed, 2
+  failed -- both the same pre-existing `test_treatment_identity_migration.py`
+  failures documented in §13.6, confirmed unrelated and present on
+  `origin/main` itself; 23 skipped, 0 errors).
+- `Frontend build` (TS1003/TS1382 in `CapCalculationPage.tsx:179`) and
+  `preflight` CI check failures were independently confirmed pre-existing
+  on `origin/main` itself (identical error signatures on `main`'s own CI
+  runs at the same base commit) -- out of scope for this PR, untouched.

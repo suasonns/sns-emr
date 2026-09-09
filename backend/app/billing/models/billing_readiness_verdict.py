@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.sql import func
 
@@ -29,6 +29,9 @@ from app.db.base import Base
 
 class BillingReadinessVerdict(Base):
     __tablename__ = "billing_readiness_verdicts"
+    __table_args__ = (
+        Index("ix_brv_patient_evaluated_at", "patient_id", "evaluated_at"),
+    )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
