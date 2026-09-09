@@ -1371,6 +1371,18 @@ export type EligibilityRosterRow = {
   eligibility_status: string | null;
   verified_at: string | null;
   next_verification_due: string | null;
+  // Eligibility/Admission/Benefit-Period Workflow Correction, Phase 5:
+  // structured PAYER ELIGIBILITY (2.A) / ADMISSION BENEFIT-PERIOD REVIEW
+  // (2.B) facts, additive alongside the legacy eligibility_status field
+  // above -- each is null (not a false negative) until a real
+  // EligibilityVerification / BenefitPeriodDetermination row exists.
+  payer_eligibility_verification_status: string | null;
+  payer_eligibility_verification_date: string | null;
+  benefit_period_determination_status: string | null;
+  anticipated_benefit_period_number: number | null;
+  prior_hospice_episode_count: number | null;
+  admission_gate_status: "CLEAR" | "ADMISSION_REVIEW_REQUIRED" | string;
+  action_required: string | null;
 };
 
 export type EligibilityRosterResponse = {

@@ -121,7 +121,7 @@ export default function EligibilityVerificationPage() {
                 <Table size="small">
                   <TableHead>
                     <TableRow>
-                      {["Patient", "Primary Payer", "Subscriber ID", "Status", "Last Verified", "Next Due"].map((h) => (
+                      {["Patient", "Primary Payer", "Subscriber ID", "Status", "Last Verified", "Next Due", "Action Required"].map((h) => (
                         <TableCell
                           key={h}
                           sx={{ color: "#7f97b3", fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, borderColor: "#1f3a5c" }}
@@ -134,7 +134,7 @@ export default function EligibilityVerificationPage() {
                   <TableBody>
                     {rows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} sx={{ textAlign: "center", color: "#7f97b3", py: 4, borderColor: "#1f3a5c" }}>
+                        <TableCell colSpan={7} sx={{ textAlign: "center", color: "#7f97b3", py: 4, borderColor: "#1f3a5c" }}>
                           No active insurance records found for this agency.
                         </TableCell>
                       </TableRow>
@@ -154,6 +154,17 @@ export default function EligibilityVerificationPage() {
                           </TableCell>
                           <TableCell sx={{ color: "#e2e8f0", fontSize: 13, borderColor: "#1f3a5c" }}>
                             {r.next_verification_due || "—"}
+                          </TableCell>
+                          <TableCell sx={{ color: "#e2e8f0", fontSize: 13, borderColor: "#1f3a5c" }}>
+                            {r.admission_gate_status === "ADMISSION_REVIEW_REQUIRED" ? (
+                              <Chip
+                                label={r.action_required || "Review required"}
+                                size="small"
+                                sx={{ fontSize: 11, height: 22, bgcolor: "#78350f", color: "#fcd34d", fontWeight: 700, maxWidth: 260 }}
+                              />
+                            ) : (
+                              "—"
+                            )}
                           </TableCell>
                         </TableRow>
                       ))
