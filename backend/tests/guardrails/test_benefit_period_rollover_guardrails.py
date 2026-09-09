@@ -27,6 +27,19 @@ def tenant_id(db_session):
 
 
 @pytest.fixture
+def actor_user_id(db_session):
+    """
+    A real user id to satisfy rollover_benefit_period's required
+    actor_user_id parameter (Eligibility Traceability Epic, Workstream 1).
+    """
+    user_id = db_session.execute(
+        text("SELECT id FROM users LIMIT 1")
+    ).scalar()
+    assert user_id is not None
+    return user_id
+
+
+@pytest.fixture
 def patient_id(db_session, tenant_id):
     """
     Create a minimal patient row using the currently shared Patient model.
@@ -106,7 +119,7 @@ def _count_idg_tasks_for_bp(
     )
 
 
-def test_first_benefit_period_creation(db_session, tenant_id, patient_id):
+def test_first_benefit_period_creation(db_session, tenant_id, patient_id, actor_user_id):
     """
     Guardrail:
     - creates BP1 when none exists
@@ -124,6 +137,7 @@ def test_first_benefit_period_creation(db_session, tenant_id, patient_id):
         election_date=election_date,
         start_date=start_date,
         benefit_type="INITIAL",
+        actor_user_id=actor_user_id,
     )
 
     db_session.refresh(bp)
@@ -158,7 +172,7 @@ def test_first_benefit_period_creation(db_session, tenant_id, patient_id):
     ) == 1
 
 
-def test_rollover_to_next_benefit_period(db_session, tenant_id, patient_id):
+def test_rollover_to_next_benefit_period(db_session, tenant_id, patient_id, actor_user_id):
     """
     Guardrail:
     - BP1 becomes not current
@@ -172,6 +186,7 @@ def test_rollover_to_next_benefit_period(db_session, tenant_id, patient_id):
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=actor_user_id,
     )
 
     bp2 = rollover_benefit_period(
@@ -181,6 +196,7 @@ def test_rollover_to_next_benefit_period(db_session, tenant_id, patient_id):
         election_date=date(2026, 4, 1),
         start_date=date(2026, 4, 1),
         benefit_type="RECERT",
+        actor_user_id=actor_user_id,
     )
 
     db_session.refresh(bp1)
@@ -210,7 +226,7 @@ def test_rollover_to_next_benefit_period(db_session, tenant_id, patient_id):
     ) == 1
 
 
-def test_repeat_call_does_not_create_extra_benefit_period(db_session, tenant_id, patient_id):
+def test_repeat_call_does_not_create_extra_benefit_period(db_session, tenant_id, patient_id, actor_user_id):
     """
     Guardrail:
     - repeat call with identical business identity returns existing row
@@ -223,6 +239,7 @@ def test_repeat_call_does_not_create_extra_benefit_period(db_session, tenant_id,
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=actor_user_id,
     )
 
     second = rollover_benefit_period(
@@ -232,6 +249,7 @@ def test_repeat_call_does_not_create_extra_benefit_period(db_session, tenant_id,
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=actor_user_id,
     )
 
     assert first.id == second.id
@@ -253,6 +271,7 @@ def test_only_one_current_benefit_period_remains_after_rollover(
     db_session,
     tenant_id,
     patient_id,
+    actor_user_id,
 ):
     """
     Guardrail:
@@ -265,6 +284,7 @@ def test_only_one_current_benefit_period_remains_after_rollover(
         election_date=date(2026, 1, 1),
         start_date=date(2026, 1, 1),
         benefit_type="INITIAL",
+        actor_user_id=actor_user_id,
     )
 
     rollover_benefit_period(
@@ -274,6 +294,7 @@ def test_only_one_current_benefit_period_remains_after_rollover(
         election_date=date(2026, 4, 1),
         start_date=date(2026, 4, 1),
         benefit_type="RECERT",
+        actor_user_id=actor_user_id,
     )
 
     rollover_benefit_period(
@@ -283,6 +304,7 @@ def test_only_one_current_benefit_period_remains_after_rollover(
         election_date=date(2026, 6, 30),
         start_date=date(2026, 6, 30),
         benefit_type="RECERT",
+        actor_user_id=actor_user_id,
     )
 
     current_rows = (

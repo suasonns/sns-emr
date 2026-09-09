@@ -25,10 +25,16 @@ already-persisted table -- nothing here is fabricated or speculative):
     surfaced here *before* generation is attempted, not just at export
     time.
 
-This module is intentionally read-only: it never blocks/writes anything
-itself. `billing_engine.generate_patient_billing` and the batch billing
-API call it and decide what to do with the result (refuse generation,
-surface an alert, etc.).
+This module is intentionally read-only with respect to clinical/chart
+content: it never blocks/writes anything itself, and the eligibility-rule
+logic that computes ready/not-ready is unchanged. As of the Eligibility
+Traceability Epic (Workstream 3), check_patient_billing_readiness() gains
+one additional step: every evaluation is persisted as an immutable
+BillingReadinessVerdict row, closing the previously confirmed Chronology
+Gap ("why was this patient billable on DATE X" had no answer beyond
+re-deriving today's live state). `billing_engine.generate_patient_billing`
+and the batch billing API call it and decide what to do with the result
+(refuse generation, surface an alert, etc.) exactly as before.
 """
 
 from __future__ import annotations
@@ -39,6 +45,7 @@ from datetime import date
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
 from app.billing.services.msp_validation_service import resolve_payer_sequence
 from app.core.tenant_scope import list_billable_agency_tenants
 
@@ -126,19 +133,20 @@ def _fetch_patient_core(db: Session, tenant_id: str, patient_id: str) -> dict | 
     return dict(row) if row else None
 
 
-def _has_finalized_certification(
+def _find_finalized_certification_id(
     db: Session, tenant_id: str, patient_id: str, benefit_period_id: str
-) -> bool:
+) -> str | None:
     row = db.execute(
         text(
             """
-            SELECT 1
+            SELECT id::text AS id
             FROM certifications
             WHERE tenant_id = :tenant_id
               AND patient_id = :patient_id
               AND benefit_period_id = :benefit_period_id
               AND status = 'FINALIZED'
               AND signed_at IS NOT NULL
+            ORDER BY signed_at DESC
             LIMIT 1
             """
         ),
@@ -148,7 +156,7 @@ def _has_finalized_certification(
             "benefit_period_id": benefit_period_id,
         },
     ).first()
-    return row is not None
+    return row[0] if row else None
 
 
 def _has_attested_f2f(
@@ -213,23 +221,63 @@ def _fetch_active_payers(db: Session, patient_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _persist_billing_readiness_verdict(
+    db: Session,
+    *,
+    tenant_id: str,
+    patient_id: str,
+    result: BillingReadinessResult,
+    certification_id: str | None,
+    triggered_by: str,
+) -> None:
+    """
+    Writes one immutable BillingReadinessVerdict row (Eligibility
+    Traceability Epic, Workstream 3). Never updated -- a new evaluation
+    always produces a new row, so "why was this patient billable on
+    DATE X" can be answered by querying the most recent verdict as of
+    that date instead of recomputing live state.
+    """
+    verdict = BillingReadinessVerdict(
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        is_ready=result.ready,
+        blockers=result.blockers,
+        warnings=result.warnings,
+        benefit_period_id=result.benefit_period_id,
+        certification_id=certification_id,
+        triggered_by=triggered_by,
+    )
+    db.add(verdict)
+    db.commit()
+
+
 def check_patient_billing_readiness(
     db: Session,
     *,
     tenant_id: str,
     patient_id: str,
     service_date: date,
+    triggered_by: str = "MANUAL_CHECK",
 ) -> BillingReadinessResult:
     """
     Evaluates whether `patient_id` is ready to be billed for `service_date`
     (typically the billing cycle's start date). Returns a verdict plus
     short, billing-relevant reason labels only -- never raw chart content.
+
+    Every evaluation that resolves to a real patient is persisted as an
+    immutable BillingReadinessVerdict row (Workstream 3) before returning,
+    with `triggered_by` recording why the check ran (a scheduled job, a
+    manual biller check, or a claim-submission attempt) -- this is
+    strictly additive: the eligibility-rule logic below is unchanged from
+    before this persistence step was added.
     """
     blockers: list[str] = []
     warnings: list[str] = []
 
     patient = _fetch_patient_core(db, tenant_id, patient_id)
     if patient is None:
+        # No patient row to attach a verdict to (patient_id doesn't
+        # resolve for this tenant) -- nothing to persist.
         return BillingReadinessResult(
             patient_id=patient_id,
             period_number=None,
@@ -246,7 +294,7 @@ def check_patient_billing_readiness(
         blockers.append(
             f"No benefit period covers the service date {service_date.isoformat()}."
         )
-        return BillingReadinessResult(
+        result = BillingReadinessResult(
             patient_id=patient_id,
             period_number=None,
             benefit_period_id=None,
@@ -254,9 +302,19 @@ def check_patient_billing_readiness(
             blockers=blockers,
             warnings=warnings,
         )
+        _persist_billing_readiness_verdict(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            result=result,
+            certification_id=None,
+            triggered_by=triggered_by,
+        )
+        return result
 
     benefit_period_id = benefit_period["id"]
     period_number = benefit_period["period_number"]
+
 
     # --- Election statement + NOE (INITIAL benefit period only) ---
     if period_number == 1:
@@ -281,7 +339,8 @@ def check_patient_billing_readiness(
                 )
 
     # --- Certification / Recertification ---
-    if not _has_finalized_certification(db, tenant_id, patient_id, benefit_period_id):
+    certification_id = _find_finalized_certification_id(db, tenant_id, patient_id, benefit_period_id)
+    if certification_id is None:
         blockers.append(
             "Certification of Terminal Illness (CTI/Recert) is not signed "
             "and finalized for this benefit period."
@@ -305,7 +364,7 @@ def check_patient_billing_readiness(
     if sequence.has_conflict:
         blockers.append(f"Payer sequence is ambiguous: {sequence.conflict_reason}")
 
-    return BillingReadinessResult(
+    result = BillingReadinessResult(
         patient_id=patient_id,
         period_number=period_number,
         benefit_period_id=benefit_period_id,
@@ -313,6 +372,15 @@ def check_patient_billing_readiness(
         blockers=blockers,
         warnings=warnings,
     )
+    _persist_billing_readiness_verdict(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        result=result,
+        certification_id=certification_id,
+        triggered_by=triggered_by,
+    )
+    return result
 
 
 def build_tenant_billing_readiness_report(
