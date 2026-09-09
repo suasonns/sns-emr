@@ -180,6 +180,7 @@ class ReadinessAttentionPatientRow(BaseModel):
 
 class ReadinessStatusChangeRow(BaseModel):
     patient_id: str
+    mrn: str
     previous_status: str
     new_status: str
     changed_at: str
@@ -187,6 +188,7 @@ class ReadinessStatusChangeRow(BaseModel):
 
 class RecentReadinessEvaluationRow(BaseModel):
     patient_id: str
+    mrn: str
     evaluated_at: str
     readiness_status: str
     triggered_by: str

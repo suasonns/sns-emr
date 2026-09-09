@@ -53,6 +53,7 @@ export type ReadinessAttentionPatientRow = {
 
 export type ReadinessStatusChangeRow = {
   patient_id: string;
+  mrn: string;
   previous_status: ReadinessStatus;
   new_status: ReadinessStatus;
   changed_at: string;
@@ -60,6 +61,7 @@ export type ReadinessStatusChangeRow = {
 
 export type RecentReadinessEvaluationRow = {
   patient_id: string;
+  mrn: string;
   evaluated_at: string;
   readiness_status: ReadinessStatus;
   triggered_by: string;
