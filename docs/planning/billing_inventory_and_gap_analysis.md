@@ -1205,3 +1205,58 @@ same-day demo-prep task.
 No billing feature development and no billing AI development has begun.
 All of the above are recommendations awaiting explicit go-ahead.
 
+---
+
+# PHASE 7 — ELIGIBILITY-FIRST REFRAMING
+
+Date: 2026-09-08. Triggered by a directive stating hospice billing must
+be evaluated eligibility-first (Referral → Admission → Election →
+Certification → Benefit Period → Plan of Care → Recertification → Level
+of Care → Claim → NOE → Submission → Remittance → Payment), not
+claims-first, because early-stage failures should mean claims never
+exist at all. Full detail lives in two new standalone documents:
+
+- `docs/planning/hospice_billing_architecture_review.md` — the
+  eligibility-first Lifecycle Map plus dedicated Eligibility,
+  Certification, Benefit Period, NOE, Claim (in-context), and Level of
+  Care architecture reviews, plus a reframed Top 10 Billing Risks list.
+- `docs/planning/biller_question_matrix.md` — the specific eligibility-
+  first biller question set (why billable/not billable, recert due,
+  active benefit period, NOE submitted, transmitted, paid, unpaid,
+  partially paid, no remittance).
+
+**Headline correction this pass**: there is no separate `Election`
+model — `election_date` is a single column on `BenefitPeriod`. This
+resolves the previously-open "Election SSOT" question (the SSOT is
+`BenefitPeriod`, by construction) but also demotes "Election" from a
+peer inventory line-item to a fact about Benefit Period, and surfaces a
+new gap: election has no dedicated screen or audit trail independent of
+the benefit-period row.
+
+**New highest-ranked risk surfaced this pass**: no confirmed
+benefit-period rollover/advancement logic was found — only *resolving
+the current* period (`get_active_benefit_period`), not *advancing to the
+next* one. This now ranks above the previously-#1 claim-transmission gap
+in the reframed Top 10, because it sits further upstream: if the next
+benefit period isn't reliably created, every downstream step for that
+period (recert, claim, NOE) has nothing to attach to.
+
+**AI roadmap addition** (still design-only, nothing built): insert
+**Benefit Period Monitor** as Priority 3 (before Revenue Leakage
+Monitor/Claim Risk Monitor), answering "who is entering the next benefit
+period," "who is overdue," "who has inconsistent dates" — directly
+targeting the new #1 risk above.
+
+**Direct answer to the two eligibility questions the directive asked
+for**: "Can SNS answer why this patient is eligible for hospice today?"
+— **partially** (billing-readiness eligibility: yes; underlying clinical
+six-month-prognosis support: out of scope this pass, RNICA is frozen).
+"Can SNS answer why this patient is eligible for billing today?" —
+**YES**, unambiguously, via `check_patient_billing_readiness` — this
+remains the single strongest, most production-ready capability found
+across the entire billing review.
+
+No billing feature development and no billing AI development has begun
+as a result of this reframing either — it is a re-prioritization of
+findings, not new implementation.
+
