@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
   Dialog,
@@ -9,6 +10,7 @@ import {
   DialogTitle,
   Divider,
   IconButton,
+  MenuItem,
   Paper,
   Table,
   TableBody,
@@ -16,6 +18,9 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Tabs,
+  Tab,
+  TextField,
   Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
@@ -26,10 +31,46 @@ import {
   type EligibilityDetailResponse,
   type EligibilityRosterResponse,
 } from "../../api/dashboard";
+import {
+  addEligibilityBillingNote,
+  createEligibilityVerification,
+  escalateEligibilityIssue,
+  submitRnReviewAction,
+  uploadEligibilityDocument,
+  type EscalationIssueType,
+  type RnReviewAction,
+} from "../../api/eligibilityActions";
+import { fetchReadinessHistory, type ReadinessAuditEventRow } from "../../api/readinessWorkflow";
 import { useAgency } from "../../components/billing/AgencyContext";
 import PageHeader from "../../components/billing/PageHeader";
 import HipaaBanner from "../../components/billing/HipaaBanner";
 import { MetricCardRow } from "../../components/billing/MetricCardRow";
+
+const ELIGIBILITY_DOCUMENT_TYPES = [
+  "MEDICARE_BENEFICIARY_ELIGIBILITY_REPORT",
+  "PAYER_ELIGIBILITY_RESPONSE",
+  "AUTHORIZATION_DOCUMENT",
+  "ELIGIBILITY_SUPPORTING_DOCUMENT",
+  "OTHER",
+];
+
+const PAYER_ELIGIBILITY_STATUSES = [
+  "VERIFIED_ACTIVE",
+  "VERIFIED_INACTIVE",
+  "COVERAGE_CONFLICT",
+  "REVIEW_REQUIRED",
+  "PENDING",
+];
+
+const RN_ACTIONS: { value: RnReviewAction; label: string }[] = [
+  { value: "APPROVE_DETERMINATION", label: "Approve Determination" },
+  { value: "REJECT_DETERMINATION", label: "Reject Determination" },
+  { value: "REQUEST_CLARIFICATION", label: "Request Clarification" },
+  { value: "MARK_F2F_REQUIRED", label: "Mark F2F Required" },
+  { value: "MARK_F2F_NOT_REQUIRED", label: "Mark F2F Not Required" },
+  { value: "PLACE_ADMISSION_HOLD", label: "Place Admission Hold" },
+  { value: "RELEASE_ADMISSION_HOLD", label: "Release Admission Hold" },
+];
 
 const STATUS_CHIP: Record<string, { label: string; bg: string; fg: string }> = {
   ACTIVE: { label: "Active", bg: "#14532d", fg: "#86efac" },
@@ -73,6 +114,34 @@ function EligibilityDetailDialog({
   const [detail, setDetail] = useState<EligibilityDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const [auditEvents, setAuditEvents] = useState<ReadinessAuditEventRow[] | null>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
+
+  // Action-form local state -- deliberately simple controlled inputs, not a
+  // form library, to keep this dialog's footprint small.
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDocType, setUploadDocType] = useState(ELIGIBILITY_DOCUMENT_TYPES[1]);
+  const [uploadNotes, setUploadNotes] = useState("");
+
+  const [verifyStatus, setVerifyStatus] = useState(PAYER_ELIGIBILITY_STATUSES[0]);
+  const [verifyNotes, setVerifyNotes] = useState("");
+  const [verifyPayerChange, setVerifyPayerChange] = useState(false);
+  const [verifyCoverageChange, setVerifyCoverageChange] = useState(false);
+
+  const [rnAction, setRnAction] = useState<RnReviewAction>("APPROVE_DETERMINATION");
+  const [rnReason, setRnReason] = useState("");
+
+  const [escalateType, setEscalateType] = useState<EscalationIssueType>("COVERAGE");
+  const [escalateNotes, setEscalateNotes] = useState("");
+
+  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -91,7 +160,45 @@ function EligibilityDetailDialog({
     return () => {
       isMounted = false;
     };
-  }, [patientId, tenantId]);
+  }, [patientId, tenantId, refreshKey]);
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchReadinessHistory(patientId, tenantId)
+      .then((res) => {
+        if (isMounted) setAuditEvents(res.audit_trail);
+      })
+      .catch((err) => {
+        if (isMounted) setAuditError(err?.message || "Unable to load audit history.");
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [patientId, tenantId, refreshKey]);
+
+  // Every action funnels through here: run it, surface a plain-language
+  // result (including the Phase C billing-readiness impact when present),
+  // then refetch both the detail view and the audit trail so the dialog
+  // never shows stale state after a mutation.
+  async function runAction(label: string, action: () => Promise<{ impact?: { billing_readiness_reevaluated: boolean; readiness_status: string | null } }>) {
+    setActionBusy(true);
+    setActionError(null);
+    setActionMessage(null);
+    try {
+      const result = await action();
+      const impactNote = result.impact
+        ? result.impact.billing_readiness_reevaluated
+          ? ` Billing readiness re-evaluated: ${humanizeEnum(result.impact.readiness_status)}.`
+          : " Patient is not admitted -- billing readiness was not re-evaluated."
+        : "";
+      setActionMessage(`${label} succeeded.${impactNote}`);
+      setRefreshKey((k) => k + 1);
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || err?.message || `${label} failed.`);
+    } finally {
+      setActionBusy(false);
+    }
+  }
 
   return (
     <Dialog open onClose={onClose} maxWidth="md" fullWidth>
@@ -104,6 +211,15 @@ function EligibilityDetailDialog({
           <CloseIcon fontSize="small" />
         </IconButton>
       </DialogTitle>
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ bgcolor: "#0f1b2d", borderBottom: "1px solid #1f3a5c", minHeight: 36, "& .MuiTab-root": { color: "#7f97b3", minHeight: 36, fontSize: 12, fontWeight: 700 }, "& .Mui-selected": { color: "#fff !important" } }}
+      >
+        <Tab label="Overview" />
+        <Tab label="Actions" />
+        <Tab label="Audit History" />
+      </Tabs>
       <DialogContent sx={{ bgcolor: "#0f1b2d", pt: 2 }}>
         {error ? (
           <Alert severity="error">{error}</Alert>
@@ -111,7 +227,7 @@ function EligibilityDetailDialog({
           <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
             <CircularProgress size={24} />
           </Box>
-        ) : (
+        ) : tab === 0 ? (
           <Box sx={{ display: "grid", gap: 2 }}>
             <Box>
               <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.5 }}>ADMISSION REVIEW STATUS</Typography>
@@ -185,11 +301,276 @@ function EligibilityDetailDialog({
               )}
             </Box>
           </Box>
+        ) : tab === 1 ? (
+          <Box sx={{ display: "grid", gap: 2.5 }}>
+            {actionMessage ? <Alert severity="success" onClose={() => setActionMessage(null)}>{actionMessage}</Alert> : null}
+            {actionError ? <Alert severity="error" onClose={() => setActionError(null)}>{actionError}</Alert> : null}
+
+            {/* Phase A -- document upload */}
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.75 }}>UPLOAD ELIGIBILITY DOCUMENT</Typography>
+              <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr 1fr", alignItems: "center" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Document Type"
+                  value={uploadDocType}
+                  onChange={(e) => setUploadDocType(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+                >
+                  {ELIGIBILITY_DOCUMENT_TYPES.map((t) => (
+                    <MenuItem key={t} value={t}>
+                      {humanizeEnum(t)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <Button component="label" variant="outlined" size="small" sx={{ borderColor: "#1f3a5c", color: "#e2e8f0" }}>
+                  {uploadFile ? uploadFile.name : "Choose File"}
+                  <input
+                    hidden
+                    type="file"
+                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
+                  />
+                </Button>
+              </Box>
+              <TextField
+                size="small"
+                fullWidth
+                placeholder="Notes"
+                value={uploadNotes}
+                onChange={(e) => setUploadNotes(e.target.value)}
+                sx={{ mt: 1, input: { color: "#e2e8f0" } }}
+              />
+              <Button
+                variant="contained"
+                size="small"
+                disabled={actionBusy || !uploadFile}
+                sx={{ mt: 1 }}
+                onClick={() =>
+                  uploadFile &&
+                  runAction("Document upload", () =>
+                    uploadEligibilityDocument(
+                      patientId,
+                      { file: uploadFile, document_type: uploadDocType, notes: uploadNotes || null },
+                      tenantId
+                    ).then(() => ({}))
+                  )
+                }
+              >
+                Upload
+              </Button>
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            {/* Phase B -- reverification */}
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.75 }}>RECORD ELIGIBILITY VERIFICATION / REVERIFICATION</Typography>
+              <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr 1fr" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Status"
+                  value={verifyStatus}
+                  onChange={(e) => setVerifyStatus(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+                >
+                  {PAYER_ELIGIBILITY_STATUSES.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {humanizeEnum(s)}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  placeholder="Notes"
+                  value={verifyNotes}
+                  onChange={(e) => setVerifyNotes(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" } }}
+                />
+              </Box>
+              <Box sx={{ display: "flex", gap: 2, mt: 0.75 }}>
+                <label style={{ color: "#7f97b3", fontSize: 12 }}>
+                  <input type="checkbox" checked={verifyPayerChange} onChange={(e) => setVerifyPayerChange(e.target.checked)} /> Payer changed
+                </label>
+                <label style={{ color: "#7f97b3", fontSize: 12 }}>
+                  <input type="checkbox" checked={verifyCoverageChange} onChange={(e) => setVerifyCoverageChange(e.target.checked)} /> Coverage changed
+                </label>
+              </Box>
+              <Button
+                variant="contained"
+                size="small"
+                disabled={actionBusy || detail.source_documents.length === 0}
+                sx={{ mt: 1 }}
+                onClick={() =>
+                  runAction("Eligibility verification", () =>
+                    createEligibilityVerification(
+                      patientId,
+                      {
+                        source_document_id: detail.source_documents[0].id,
+                        status: verifyStatus,
+                        notes: verifyNotes || null,
+                        payer_change_flag: verifyPayerChange,
+                        coverage_change_flag: verifyCoverageChange,
+                      },
+                      tenantId
+                    )
+                  )
+                }
+              >
+                Submit Verification
+              </Button>
+              {detail.source_documents.length === 0 ? (
+                <Typography sx={{ fontSize: 11.5, color: "#7f97b3", mt: 0.5 }}>
+                  Upload a source document above first -- a verification must reference one.
+                </Typography>
+              ) : null}
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            {/* Phase D -- RN review actions */}
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.75 }}>RN REVIEW ACTION</Typography>
+              <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr 1fr" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Action"
+                  value={rnAction}
+                  onChange={(e) => setRnAction(e.target.value as RnReviewAction)}
+                  sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+                >
+                  {RN_ACTIONS.map((a) => (
+                    <MenuItem key={a.value} value={a.value}>
+                      {a.label}
+                    </MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  size="small"
+                  placeholder="Reason (required)"
+                  value={rnReason}
+                  onChange={(e) => setRnReason(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" } }}
+                />
+              </Box>
+              <Button
+                variant="contained"
+                size="small"
+                disabled={actionBusy || !rnReason.trim()}
+                sx={{ mt: 1 }}
+                onClick={() =>
+                  runAction("RN review action", () =>
+                    submitRnReviewAction(patientId, { action: rnAction, reason: rnReason }, tenantId)
+                  )
+                }
+              >
+                Submit RN Action
+              </Button>
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            {/* Phase E -- biller workspace actions */}
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.75 }}>BILLER ACTIONS</Typography>
+              <Box sx={{ display: "grid", gap: 1, gridTemplateColumns: "1fr 1fr" }}>
+                <TextField
+                  select
+                  size="small"
+                  label="Escalate Issue"
+                  value={escalateType}
+                  onChange={(e) => setEscalateType(e.target.value as EscalationIssueType)}
+                  sx={{ input: { color: "#e2e8f0" }, label: { color: "#7f97b3" } }}
+                >
+                  <MenuItem value="COVERAGE">Coverage</MenuItem>
+                  <MenuItem value="MSP">MSP</MenuItem>
+                  <MenuItem value="MA">Medicare Advantage</MenuItem>
+                </TextField>
+                <TextField
+                  size="small"
+                  placeholder="Escalation notes"
+                  value={escalateNotes}
+                  onChange={(e) => setEscalateNotes(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" } }}
+                />
+              </Box>
+              <Button
+                variant="outlined"
+                size="small"
+                disabled={actionBusy || !escalateNotes.trim()}
+                sx={{ mt: 1, mr: 1, borderColor: "#78350f", color: "#fcd34d" }}
+                onClick={() =>
+                  runAction("Escalation", () =>
+                    escalateEligibilityIssue(patientId, { issue_type: escalateType, notes: escalateNotes }, tenantId).then(() => ({}))
+                  )
+                }
+              >
+                Escalate
+              </Button>
+
+              <Box sx={{ display: "flex", gap: 1, mt: 1.5 }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Add a billing note"
+                  value={noteText}
+                  onChange={(e) => setNoteText(e.target.value)}
+                  sx={{ input: { color: "#e2e8f0" } }}
+                />
+                <Button
+                  variant="outlined"
+                  size="small"
+                  disabled={actionBusy || !noteText.trim()}
+                  sx={{ borderColor: "#1f3a5c", color: "#e2e8f0", whiteSpace: "nowrap" }}
+                  onClick={() =>
+                    runAction("Note", () =>
+                      addEligibilityBillingNote(patientId, noteText, tenantId).then(() => {
+                        setNoteText("");
+                        return {};
+                      })
+                    )
+                  }
+                >
+                  Add Note
+                </Button>
+              </Box>
+            </Box>
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gap: 1 }}>
+            <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3" }}>AUDIT TRAIL</Typography>
+            {auditError ? (
+              <Alert severity="error">{auditError}</Alert>
+            ) : auditEvents === null ? (
+              <Box sx={{ display: "flex", justifyContent: "center", py: 3 }}>
+                <CircularProgress size={20} />
+              </Box>
+            ) : auditEvents.length === 0 ? (
+              <Typography sx={{ fontSize: 12.5, color: "#7f97b3" }}>No workflow events recorded yet.</Typography>
+            ) : (
+              auditEvents.map((e) => (
+                <Box key={e.id} sx={{ display: "flex", justifyContent: "space-between", py: 0.75, borderBottom: "1px solid #1f3a5c" }}>
+                  <Box>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0", fontWeight: 600 }}>
+                      {humanizeEnum(e.entity_type)} -- {humanizeEnum(e.event_type)}
+                    </Typography>
+                    {e.reason ? (
+                      <Typography sx={{ fontSize: 11.5, color: "#7f97b3" }}>{e.reason}</Typography>
+                    ) : null}
+                  </Box>
+                  <Typography sx={{ fontSize: 11.5, color: "#7f97b3", whiteSpace: "nowrap" }}>{readableDate(e.occurred_at)}</Typography>
+                </Box>
+              ))
+            )}
+          </Box>
         )}
       </DialogContent>
     </Dialog>
   );
 }
+
 
 export default function EligibilityVerificationPage() {
   const { selectedAgencyId } = useAgency();
