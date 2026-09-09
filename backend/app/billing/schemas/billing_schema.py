@@ -156,3 +156,176 @@ class BuildPatientClaimEDIResponse(BaseModel):
 
     # ✅ AUDIT VISIBILITY
     override_used: bool = False
+
+
+# =========================================================
+# SPRINT 2 -- BILLING READINESS OPERATIONAL WORKFLOW
+# =========================================================
+
+class ReadinessDashboardCounts(BaseModel):
+    READY: int
+    AT_RISK: int
+    NOT_READY: int
+    BLOCKED: int
+
+
+class ReadinessAttentionPatientRow(BaseModel):
+    patient_id: str
+    mrn: str
+    readiness_status: str
+    operational_bucket: str
+    blocker_count: int
+    warning_count: int
+
+
+class ReadinessStatusChangeRow(BaseModel):
+    patient_id: str
+    previous_status: str
+    new_status: str
+    changed_at: str
+
+
+class RecentReadinessEvaluationRow(BaseModel):
+    patient_id: str
+    evaluated_at: str
+    readiness_status: str
+    triggered_by: str
+
+
+class ReadinessTrendRow(BaseModel):
+    service_date: str
+    ready_count: int
+    at_risk_count: int
+    not_ready_count: int
+
+
+class TenantReadinessDashboardResponse(BaseModel):
+    tenant_id: str
+    service_date: str
+    counts: ReadinessDashboardCounts
+    patients_requiring_attention: List[ReadinessAttentionPatientRow]
+    recently_changed_status: List[ReadinessStatusChangeRow]
+    recent_evaluations: List[RecentReadinessEvaluationRow]
+    readiness_trend: List[ReadinessTrendRow]
+
+
+class ReadinessQueueRow(BaseModel):
+    patient_id: str
+    mrn: str
+    readiness_status: str
+    operational_bucket: str
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    assignment_status: str
+    assigned_user_id: Optional[str] = None
+    assigned_role: Optional[str] = None
+    open_follow_up_count: int
+    earliest_due_date: Optional[str] = None
+
+
+class ReadinessQueueResponse(BaseModel):
+    tenant_id: str
+    patients: List[ReadinessQueueRow]
+
+
+class ReadinessVerdictHistoryRow(BaseModel):
+    id: str
+    evaluated_at: str
+    is_ready: bool
+    readiness_status: str
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    triggered_by: str
+
+
+class ReadinessBlockerHistoryRow(BaseModel):
+    id: str
+    blocker_code: str
+    message: str
+    status: str
+    first_seen_at: str
+    last_seen_at: str
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolution_reason: Optional[str] = None
+
+
+class ReadinessAuditEventRow(BaseModel):
+    id: str
+    entity_type: str
+    entity_id: str
+    event_type: str
+    actor_user_id: Optional[str] = None
+    occurred_at: str
+    reason: Optional[str] = None
+    previous_value: Optional[Dict[str, Any]] = None
+    new_value: Dict[str, Any]
+    related_verdict_id: Optional[str] = None
+
+
+class ReadinessHistoryResponse(BaseModel):
+    patient_id: str
+    verdicts: List[ReadinessVerdictHistoryRow]
+    blocker_history: List[ReadinessBlockerHistoryRow]
+    audit_trail: List[ReadinessAuditEventRow]
+
+
+class UpsertReadinessAssignmentRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    patient_id: str
+    assigned_user_id: Optional[str] = None
+    assigned_role: Optional[str] = None
+    assignment_status: str = "ASSIGNED"
+    related_verdict_id: Optional[str] = None
+
+
+class ReadinessAssignmentResponse(BaseModel):
+    id: str
+    tenant_id: str
+    patient_id: str
+    assigned_user_id: Optional[str] = None
+    assigned_role: Optional[str] = None
+    assigned_date: Optional[str] = None
+    assigned_by: Optional[str] = None
+    assignment_status: str
+
+
+class UpsertReadinessFollowUpRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    patient_id: str
+    follow_up_id: Optional[str] = None
+    assignment_id: Optional[str] = None
+    follow_up_required: bool = True
+    status: str = "OPEN"
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+    reason: Optional[str] = None
+    related_verdict_id: Optional[str] = None
+
+
+class ReadinessFollowUpResponse(BaseModel):
+    id: str
+    tenant_id: str
+    patient_id: str
+    assignment_id: Optional[str] = None
+    follow_up_required: bool
+    status: str
+    due_date: Optional[str] = None
+    resolved_date: Optional[str] = None
+    created_date: str
+    notes: Optional[str] = None
+
+
+class ResolveReadinessBlockerRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class ReadinessBlockerResponse(BaseModel):
+    id: str
+    patient_id: str
+    blocker_code: str
+    message: str
+    status: str
+    resolved_at: Optional[str] = None
+    resolved_by: Optional[str] = None
+    resolution_reason: Optional[str] = None
