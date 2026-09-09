@@ -72,3 +72,35 @@ already proven by execution in Phase 4
 
 ## Not built. This is the specification the "Claim Status Governance"
 ## priority would implement; nothing here has been changed in code.
+
+---
+
+## Phase 4 governance-review addendum (2026-09-08)
+
+Direct, unhedged answers requested by directive:
+
+**Is PAID terminal? YES.** `ALLOWED_TRANSITIONS["PAID"] = set()` in the
+primary enforced writer — an explicit empty set. No documented,
+intentional correction/reversal workflow exists anywhere in the
+codebase.
+
+**Can status regress? YES — in practice, though not by design.**
+`export_patient_claim_edi` writes `claim.status = "SENT"` unconditionally
+from any current status, confirmed by execution
+(`test_export_patient_claim_edi_bypasses_allowed_transitions_for_real`).
+This is regression that occurs today, not a hypothetical.
+
+**Which workflows allow regression?** Exactly one:
+`export_patient_claim_edi` (`POST /billing/export-patient-claim-edi`),
+reachable in the shipped UI via the "Export to Excel" button
+(`billing_action_map.md`). `update_claim_status` (the enforced primary
+writer) does not allow regression — it is the one writer that correctly
+blocks it. `post_payments_from_835` does not allow regression either —
+confirmed by execution that it leaves an already-`PAID`/`DENIED` claim
+untouched on a repeat posting.
+
+**Document all exceptions**: there is exactly one exception, and it is
+a defect, not a designed exception: `export_patient_claim_edi`'s
+unconditional write. No other code path, comment, docstring, or test
+anywhere in the codebase documents an intentional case where PAID (or
+DENIED) is allowed to regress.

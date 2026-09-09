@@ -66,3 +66,21 @@ replace — the existing 14-day view:
   holds signature/physician fields (not yet located this pass).
 
 ## Not built. Awaiting go-ahead per explicit instruction.
+
+---
+
+## Phase 2 spec-review addendum (2026-09-08)
+
+Re-evaluated against `certification_gated_eligibility_review.md`. This
+spec's own "What data exists today" table already correctly identified
+missing-signature/physician/medical-director as **UNKNOWN**, not
+assumed present — that holds up. **New gap this review surfaces**: this
+spec's proposed inputs (certification finalized-flag, `BenefitPeriod`
+dates) are read-only signals about *current* state; it does not yet
+address that the state it would be monitoring can itself have been
+created without proper gating (per the eligibility review). A
+Certification Monitor built on top of ungated data would faithfully
+report an ungated reality — it should not be built as a substitute for
+fixing the gating itself, only as a complement to it once gating exists.
+Calculation logic, expiration detection, and recert detection are
+otherwise unchanged from the original spec and remain accurate.

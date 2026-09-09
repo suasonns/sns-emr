@@ -109,3 +109,46 @@ as an open question the engine's design would need to resolve before
 build.
 
 ## Not built. Awaiting go-ahead per explicit instruction.
+
+---
+
+## Phase 3 spec-review addendum (2026-09-08)
+
+Directive requirement: "the readiness engine must answer why can/can't
+I bill this patient... inputs should include Election, Certification,
+Benefit Period, Recertification, NOE, Claim State... do not allow
+readiness scoring to ignore upstream eligibility failures."
+
+**Re-checked against the original spec's own inputs list**: Certification
+(YES, already an input), F2F (YES), Plan of Care (YES), NOE filing
+timeliness (YES), payer sequence (YES). **Missing from the original
+spec's input list, now added per this review**: an explicit **Benefit
+Period validity** input (does an active, correctly-sequenced benefit
+period exist at all for this patient — as opposed to just checking
+certification/F2F/POC in isolation) and an explicit **Claim State**
+input (is there already a claim in a state that makes "is this patient
+billable" a different question, e.g. a claim already `PAID` for the
+current period).
+
+**Critical finding from this review**: because
+`certification_gated_eligibility_review.md` confirms benefit periods can
+be created without certification, the readiness engine's Benefit-Period
+input, if added naively, would only be able to say "a benefit period
+exists" — not "a *validly-gated* benefit period exists." **The readiness
+engine must not treat "a BenefitPeriod row exists" as equivalent to "this
+patient's eligibility chain is valid."** Until eligibility-chain gating
+is fixed (or until the readiness engine independently re-verifies
+certification/recert validity itself, which `check_patient_billing_
+readiness` already does today for certification specifically), the
+engine's BLOCKED/READY answer already correctly does **not** rely on the
+unverified benefit-period creation step — it re-derives certification
+validity itself rather than trusting that a benefit period's mere
+existence implies a valid certification. **This is confirmed to already
+be true of the existing code** (`_has_finalized_certification` is
+checked independently in `billing_readiness_service.py`, not inferred
+from `BenefitPeriod` existing) — so the spec's core safety property
+(does not ignore upstream eligibility failures) already holds for
+certification specifically. It does **not yet** account for benefit
+period *sequencing* validity itself (e.g., an out-of-order or
+duplicate-purpose period) as its own distinct check — flagged as a gap
+to close before implementation, not assumed already covered.

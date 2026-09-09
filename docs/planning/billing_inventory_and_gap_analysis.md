@@ -1348,3 +1348,111 @@ The benefit-period rollover engine itself was found already built and
 tested from a prior, unrelated development effort — it was not built as
 part of this review, only discovered and verified.
 
+---
+
+# PHASE 9 — CERTIFICATION-GATED ELIGIBILITY REVIEW
+
+Date: 2026-09-08. Triggered by a directive course-correction: the
+benefit-period *engine* is confirmed real and tested, but the primary
+risk is now framed as "can SNS create the next benefit period without a
+valid certification state," not "can SNS create the next benefit period
+at all." Full detail: `docs/planning/certification_gated_eligibility_review.md`.
+
+## A. Eligibility Integrity Assessment
+
+The eligibility chain (Election → Certification → Benefit Period →
+Recertification → Benefit Period) is **not integrity-protected at the
+point of advancement**. Every transition upstream of the final billing-
+readiness check is unenforced: `rollover_benefit_period` performs zero
+certification/recertification validation of any kind. The only
+protections present (row locking, idempotency, chronology validation)
+are technical/structural, not business-rule protections. **A patient's
+eligibility can currently advance (i.e., a new benefit period can be
+created) with no certification, an expired certification, or a
+`benefit_type="RECERT"` with no actual recertification having occurred.**
+
+## B. Certification-Gating Assessment
+
+**Direct answer: SNS can currently create a billable benefit period for
+a patient who lacks a finalized certification. YES.** Confirmed by
+direct read of `rollover_benefit_period` and its endpoint
+(`POST /benefits/`) — neither contains a certification check of any
+kind. This applies equally to UI-driven calls (RN/Administrator roles)
+and direct API calls (same code path, same lack of gating).
+
+## C. Benefit Period Protection Review
+
+Real protections confirmed: row-level locking against concurrent
+double-rollover, idempotency against duplicate calls, chronology
+validation against backward-dated periods. **Not present**: any
+certification-state check, any recertification-occurred check, any
+consistency check between `benefit_type` and an actual clinical
+recertification event. The engine is safe against *technical* misuse
+(races, duplicates, bad dates) and completely open to *business-rule*
+misuse (creating a period for an ineligible patient).
+
+## D. Audit Trail Review
+
+**Zero audit events exist for any benefit-period lifecycle action**
+(create, roll, close). `BenefitPeriod.created_by` is a real column on
+the model that is **never populated** by the one writer that exists.
+This is the same architectural pattern already documented for two of
+the three `Claim.status` writers — an organization-wide gap, not a
+billing-specific one.
+
+## E. Final Recommended Development Order
+
+Per the directive's strict rule (no new billing features until
+eligibility chain, certification gating, benefit period protections, and
+audit trail are verified — now done — the order below reflects that the
+answer to "can certification be bypassed" is **YES**, which promotes
+eligibility-integrity work above every monitor/AI item):
+
+1. **Eligibility Integrity / Certification Gating** (new #1, supersedes
+   Benefit Period Monitor) — add a certification-validity check to
+   `rollover_benefit_period` (and its endpoint) before allowing
+   `BenefitPeriod` creation/advancement; add the missing audit event
+   (`append_audit_event` with actor/previous-state/new-state, matching
+   the pattern `update_claim_status` already uses correctly) to every
+   benefit-period lifecycle action; populate `created_by`.
+2. **Benefit Period Monitor** — now safe to build once #1 lands, since
+   monitoring ungated data would otherwise just faithfully report an
+   ungated reality.
+3. **Certification Monitor**
+4. **Billing Readiness Engine** (first AI feature; already largely real,
+   per `billing_readiness_spec.md`'s Phase 3 addendum, its core
+   safety property — not inferring certification validity from benefit
+   period existence — already holds; benefit-period *sequencing*
+   validity is a smaller remaining gap to close before build)
+5. **Claim Status Governance** (single enforcement point + universal
+   audit trail + designed correction workflow, per
+   `claim_state_machine.md`)
+6. **Revenue Leakage Detection**
+7. **Claim Risk Monitor**
+8. **Biller Command Center**
+
+## F. Updated Top 10 Billing Risks (supersedes the Phase 7 list)
+
+1. **CRITICAL (new #1)** — Benefit periods can be created/advanced with
+   no certification check at all — an eligibility-integrity gap, not
+   merely an exposure gap.
+2. **CRITICAL** — Zero audit trail for any benefit-period lifecycle
+   action; `created_by` exists but is never populated.
+3. **CRITICAL** — Claim status can regress (PAID→SENT) via "Export to
+   Excel," with no audit trail on that specific writer either.
+4. **CRITICAL** — No transmission-confirmation data model exists.
+5. **HIGH** — Benefit-period rollover, while correct, has no UI/job
+   trigger — even once gated, nothing calls it.
+6. **HIGH** — 835 remittances cannot be uploaded through any UI.
+7. **MEDIUM** — No benefit-type/recertification-occurred consistency
+   check (a `"RECERT"` string can be passed with no real recert event).
+8. **MEDIUM** — Unmatched payments retained but not surfaced to billers.
+9. **MEDIUM** — 835 Remittance dashboard widget shows fabricated data.
+10. **LOW** — Certification/recert alerts are passive (visual only), not
+    push-based.
+
+No billing feature development and no billing AI development has begun.
+This phase re-prioritizes findings only; the eligibility-gating fix
+recommended in E.1 has not been implemented and awaits explicit
+go-ahead.
+
