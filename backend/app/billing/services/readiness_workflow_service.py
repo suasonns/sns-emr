@@ -112,8 +112,18 @@ BLOCKER_CODE_PREFIXES: list[tuple[str, str, str]] = [
         "BILLER",
     ),
     (
+        "Benefit-period information for this admitted record requires review",
+        "BENEFIT_PERIOD_REVIEW_REQUIRED",
+        "BILLER",
+    ),
+    (
         "No benefit period covers",
         "BENEFIT_PERIOD_REVIEW_REQUIRED",
+        "BILLER",
+    ),
+    (
+        "Payer eligibility for this admitted record requires re-verification",
+        "ELIGIBILITY_REVERIFICATION_REQUIRED",
         "BILLER",
     ),
     ("Hospice election statement is not signed", "SERVICE_DOCUMENTATION_INCOMPLETE", "RN"),

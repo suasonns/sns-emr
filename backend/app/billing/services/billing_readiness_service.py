@@ -73,6 +73,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
+from app.billing.services.eligibility_workflow_service import evaluate_admission_gate
 from app.billing.services.msp_validation_service import resolve_payer_sequence
 from app.billing.services.readiness_workflow_service import sync_blocker_records
 from app.core.tenant_scope import list_billable_agency_tenants
@@ -474,6 +475,17 @@ def check_patient_billing_readiness(
     sequence = resolve_payer_sequence(payers, service_date=service_date)
     if sequence.has_conflict:
         blockers.append(f"Payer sequence is ambiguous: {sequence.conflict_reason}")
+
+    # --- Admission gate (Directive item 10, exceptional post-admission
+    # path only) --- Only fires when an EligibilityVerification or
+    # BenefitPeriodDetermination row actually exists for this patient and
+    # is in an unresolved state -- see eligibility_workflow_service module
+    # docstring for why an admitted patient with NEITHER row is never
+    # penalized (legacy/pre-workflow data, not a negative finding).
+    gate = evaluate_admission_gate(db, tenant_id=tenant_id, patient_id=patient_id)
+    for gate_blocker in gate.blockers:
+        if gate_blocker not in blockers:
+            blockers.append(gate_blocker)
 
     result = BillingReadinessResult(
         patient_id=patient_id,
