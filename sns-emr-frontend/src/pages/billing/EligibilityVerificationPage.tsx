@@ -4,6 +4,11 @@ import {
   Box,
   Chip,
   CircularProgress,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  Divider,
+  IconButton,
   Paper,
   Table,
   TableBody,
@@ -13,8 +18,14 @@ import {
   TableRow,
   Typography,
 } from "@mui/material";
+import CloseIcon from "@mui/icons-material/Close";
 
-import { fetchEligibilityRoster, type EligibilityRosterResponse } from "../../api/dashboard";
+import {
+  fetchEligibilityDetail,
+  fetchEligibilityRoster,
+  type EligibilityDetailResponse,
+  type EligibilityRosterResponse,
+} from "../../api/dashboard";
 import { useAgency } from "../../components/billing/AgencyContext";
 import PageHeader from "../../components/billing/PageHeader";
 import HipaaBanner from "../../components/billing/HipaaBanner";
@@ -32,11 +43,160 @@ function StatusChip({ status }: { status: string | null }) {
   return <Chip label={s.label} size="small" sx={{ fontWeight: 700, fontSize: 11, height: 22, bgcolor: s.bg, color: s.fg }} />;
 }
 
+// Human-readable labels -- this page must never show a raw backend enum
+// value (e.g. "BENEFIT_PERIOD_CONFIRMED", "VERIFIED_ACTIVE") to a biller.
+function humanizeEnum(value: string | null | undefined): string {
+  if (!value) return "—";
+  return value
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function readableDate(value: string | null | undefined): string {
+  if (!value) return "—";
+  // Dates/timestamps from the backend are ISO -- show only the
+  // human-readable calendar date, never a raw ISO/UTC timestamp string.
+  return value.slice(0, 10);
+}
+
+function EligibilityDetailDialog({
+  patientId,
+  tenantId,
+  onClose,
+}: {
+  patientId: string;
+  tenantId: string | null;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<EligibilityDetailResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+    setError(null);
+    fetchEligibilityDetail(patientId, tenantId)
+      .then((res) => {
+        if (isMounted) setDetail(res);
+      })
+      .catch((err) => {
+        if (isMounted) setError(err?.message || "Unable to load eligibility detail.");
+      })
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [patientId, tenantId]);
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", bgcolor: "#0f1b2d", color: "#fff" }}>
+        <Box>
+          <Typography sx={{ fontWeight: 800, fontSize: 16 }}>{detail?.patient_name || detail?.mrn || "Eligibility Detail"}</Typography>
+          <Typography sx={{ fontSize: 12, color: "#7f97b3" }}>MRN {detail?.mrn || "—"}</Typography>
+        </Box>
+        <IconButton onClick={onClose} size="small" sx={{ color: "#7f97b3" }}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent sx={{ bgcolor: "#0f1b2d", pt: 2 }}>
+        {error ? (
+          <Alert severity="error">{error}</Alert>
+        ) : loading || !detail ? (
+          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : (
+          <Box sx={{ display: "grid", gap: 2 }}>
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.5 }}>ADMISSION REVIEW STATUS</Typography>
+              {detail.admission_gate_status === "ADMISSION_REVIEW_REQUIRED" ? (
+                <Box sx={{ display: "grid", gap: 0.5 }}>
+                  {detail.admission_gate_blockers.map((b, i) => (
+                    <Chip key={i} label={b} size="small" sx={{ bgcolor: "#78350f", color: "#fcd34d", fontWeight: 700, height: "auto", py: 0.5, "& .MuiChip-label": { whiteSpace: "normal" } }} />
+                  ))}
+                </Box>
+              ) : (
+                <Chip label="Clear -- no open eligibility or benefit-period review" size="small" sx={{ bgcolor: "#14532d", color: "#86efac", fontWeight: 700 }} />
+              )}
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.5 }}>
+                BENEFIT-PERIOD DETERMINATION HISTORY
+              </Typography>
+              {detail.benefit_period_determination_history.length === 0 ? (
+                <Typography sx={{ fontSize: 12.5, color: "#7f97b3" }}>No benefit-period determination recorded yet.</Typography>
+              ) : (
+                detail.benefit_period_determination_history.map((d) => (
+                  <Box key={d.id} sx={{ display: "flex", justifyContent: "space-between", py: 0.75, borderBottom: "1px solid #1f3a5c" }}>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>
+                      {humanizeEnum(d.determination_status)}
+                      {d.anticipated_benefit_period_number ? ` -- Period ${d.anticipated_benefit_period_number}` : ""}
+                      {d.superseded ? " (superseded)" : ""}
+                    </Typography>
+                    <Typography sx={{ fontSize: 11.5, color: "#7f97b3" }}>{readableDate(d.created_at)}</Typography>
+                  </Box>
+                ))
+              )}
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.5 }}>VERIFICATION HISTORY</Typography>
+              {detail.verification_history.length === 0 ? (
+                <Typography sx={{ fontSize: 12.5, color: "#7f97b3" }}>No eligibility verification recorded yet.</Typography>
+              ) : (
+                detail.verification_history.map((v) => (
+                  <Box key={v.id} sx={{ display: "flex", justifyContent: "space-between", py: 0.75, borderBottom: "1px solid #1f3a5c" }}>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>
+                      {humanizeEnum(v.status)} ({humanizeEnum(v.verification_method)})
+                      {v.superseded ? " (superseded)" : ""}
+                    </Typography>
+                    <Typography sx={{ fontSize: 11.5, color: "#7f97b3" }}>{readableDate(v.verification_date || v.created_at)}</Typography>
+                  </Box>
+                ))
+              )}
+            </Box>
+
+            <Divider sx={{ borderColor: "#1f3a5c" }} />
+
+            <Box>
+              <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#7f97b3", mb: 0.5 }}>SOURCE DOCUMENTS</Typography>
+              {detail.source_documents.length === 0 ? (
+                <Typography sx={{ fontSize: 12.5, color: "#7f97b3" }}>No eligibility source document uploaded yet.</Typography>
+              ) : (
+                detail.source_documents.map((doc) => (
+                  <Box key={doc.id} sx={{ display: "flex", justifyContent: "space-between", py: 0.75, borderBottom: "1px solid #1f3a5c" }}>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>
+                      {humanizeEnum(doc.document_type)} -- {humanizeEnum(doc.status)}
+                    </Typography>
+                    <Typography sx={{ fontSize: 11.5, color: "#7f97b3" }}>{readableDate(doc.uploaded_at)}</Typography>
+                  </Box>
+                ))
+              )}
+            </Box>
+          </Box>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function EligibilityVerificationPage() {
   const { selectedAgencyId } = useAgency();
   const [data, setData] = useState<EligibilityRosterResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!selectedAgencyId) {
@@ -140,7 +300,12 @@ export default function EligibilityVerificationPage() {
                       </TableRow>
                     ) : (
                       rows.map((r) => (
-                        <TableRow key={r.insurance_id} hover>
+                        <TableRow
+                          key={r.insurance_id}
+                          hover
+                          onClick={() => setSelectedPatientId(r.patient_id)}
+                          sx={{ cursor: "pointer" }}
+                        >
                           <TableCell sx={{ color: "#e2e8f0", fontSize: 13, borderColor: "#1f3a5c" }}>
                             {r.patient_name || r.mrn || r.patient_id}
                           </TableCell>
@@ -214,6 +379,14 @@ export default function EligibilityVerificationPage() {
           </Box>
         </>
       )}
+
+      {selectedPatientId ? (
+        <EligibilityDetailDialog
+          patientId={selectedPatientId}
+          tenantId={selectedAgencyId}
+          onClose={() => setSelectedPatientId(null)}
+        />
+      ) : null}
     </Box>
   );
 }

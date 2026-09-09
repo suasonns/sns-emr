@@ -1415,6 +1415,67 @@ export function fetchEligibilityRoster(
   return fetchJson<EligibilityRosterResponse>(withTenantId(base, tenantId));
 }
 
+// Phase 7 -- read-only eligibility detail view (verification history,
+// benefit-period determination history, source documents, admission
+// gate). Backend contract: GET /billing/eligibility-detail/{patient_id}
+// in app/billing/api/eligibility_check_router.py.
+export type EligibilityVerificationHistoryEntry = {
+  id: string;
+  status: string;
+  verification_date: string | null;
+  verification_method: string;
+  verified_by_user_id: string;
+  source_document_id: string;
+  superseded: boolean;
+  created_at: string | null;
+  entitlement_data: Record<string, unknown>;
+  payment_routing_data: Record<string, unknown>;
+  hospice_utilization_data: Record<string, unknown>;
+};
+
+export type BenefitPeriodDeterminationHistoryEntry = {
+  id: string;
+  determination_status: string;
+  anticipated_benefit_period_number: number | null;
+  prior_hospice_episode_count: number | null;
+  benefit_periods_used: number | null;
+  face_to_face_applicability: boolean | null;
+  review_notes: string | null;
+  conflict_reason: string | null;
+  superseded: boolean;
+  created_at: string | null;
+};
+
+export type EligibilitySourceDocumentEntry = {
+  id: string;
+  document_type: string;
+  status: string;
+  verification_date: string | null;
+  uploaded_at: string | null;
+  document_record_id: string;
+};
+
+export type EligibilityDetailResponse = {
+  patient_id: string;
+  patient_name: string | null;
+  mrn: string | null;
+  admission_gate_status: "CLEAR" | "ADMISSION_REVIEW_REQUIRED" | string;
+  admission_gate_blockers: string[];
+  verification_history: EligibilityVerificationHistoryEntry[];
+  benefit_period_determination_history: BenefitPeriodDeterminationHistoryEntry[];
+  source_documents: EligibilitySourceDocumentEntry[];
+};
+
+export function fetchEligibilityDetail(
+  patientId: string,
+  tenantId?: string | null
+): Promise<EligibilityDetailResponse> {
+  return fetchJson<EligibilityDetailResponse>(
+    withTenantId(`/billing/eligibility-detail/${patientId}`, tenantId)
+  );
+}
+
+
 // =========================================================
 // PAYMENT POSTING
 // =========================================================
