@@ -278,6 +278,124 @@ discharge determination.
 
 ---
 
+# SECTION 14 — PHASE 4: ARCHITECTURE VALIDATION (BEHAVIORAL PROOF)
+
+**Methodology change from prior sections**: everything above was derived
+by reading code. This section instead **executed the real, unmodified
+production functions against the real isolated-Postgres test database**
+and asserts on what was actually committed — proof of behavior, not
+inference from source. New test file:
+`backend/tests/test_phase4_billing_architecture_validation.py` (4 tests,
+all passing, run via `python scripts/run_isolated_tests.py --
+tests/test_phase4_billing_architecture_validation.py`). This test file
+exercises the real `update_claim_status`, `export_patient_claim_edi`, and
+`post_payments_from_835` functions directly (only the heavyweight,
+already-independently-tested collaborators inside
+`export_patient_claim_edi` — claim-export payload build, 837I text
+generation, file save — were stubbed; the status-write logic itself runs
+for real).
+
+## Finding A — CONFIRMED BUG: Claim.status enforcement bypass is real
+
+Executed proof, not inference:
+1. `update_claim_status` (the enforced endpoint) was called against a
+   claim already in terminal state `PAID`, attempting `PAID → SENT`.
+   **Result: real `HTTPException(409)`, claim correctly remained `PAID`.**
+   The enforcement mechanism itself works correctly when used.
+2. `export_patient_claim_edi` was then called against the **same kind of
+   already-`PAID` claim**. **Result: the claim's status was silently
+   overwritten to `SENT`**, with no exception, no check of
+   `ALLOWED_TRANSITIONS`, no check of the claim's current status at all.
+
+This upgrades Gap #7 (Section 8) from "confirmed by code read" to
+**confirmed by execution** — an already-paid claim can be silently
+reverted to SENT simply by re-running EDI export against it (e.g. a biller
+re-exporting for their own records, or a retry after a transient error).
+
+## Finding B — CORRECTION: payment ingestion path exists and is real (backend), but has zero frontend integration
+
+The original audit (Sections 1–9) concluded the `payments`/
+`remittance_advices` writer was **unidentified/UNKNOWN** because the
+search was scoped to `app/billing/`. Executing a repo-wide search found
+the real writer at `app/services/payment_service.py:post_payments_from_835`,
+reachable via a real, registered endpoint: `POST /billing/835/upload`
+(`app/api/billing_835.py`, registered in `app/api/registry.py:register_routers`,
+confirmed via `app.include_router(router)` loop over `tenant_routes`).
+
+Executed proof of its behavior:
+1. Posting a synthetic parsed-835 payment against a real `SENT` claim
+   **correctly created a `RemittanceAdvice` row, a matched `Payment` row,
+   and advanced the claim to `PAID`.**
+2. Posting a synthetic parsed-835 payment with a denial CARC (96)
+   **correctly created a real `Denial` row and moved the claim to
+   `DENIED`.**
+3. Posting a **second**, later remittance against the now-`DENIED` claim
+   **correctly left it `DENIED`** — unlike `export_patient_claim_edi`,
+   `post_payments_from_835` DOES guard its status write
+   (`if matched_claim.status in ("SENT", "ACCEPTED")`), so repeat postings
+   cannot silently corrupt an already-terminal claim.
+
+**However**: a repo-wide frontend search for any 835-upload UI
+(`835/upload`, `billing/835`) found **zero references** — there is no
+upload button, file picker, or any UI path to this endpoint anywhere in
+`sns-emr-frontend/`. The capability is real and correctly guarded on the
+backend, but is **completely inaccessible to billing staff today** except
+via a direct API call (e.g. Postman/curl), which is not a realistic
+billing-staff workflow.
+
+## Corrections this forces to earlier sections
+
+- **Gap List (Section 8), Rank #2** ("no confirmed payments/remittance
+  ingestion path") is **corrected, not removed**: the ingestion path
+  exists and is proven correct on the backend, but is blocked by a
+  missing frontend integration. Re-ranked below.
+- **Maturity Score (Section 11)**: "Payment Posting (write/matching)"
+  corrected from `0–1` to **backend 4 / frontend 0** — the backend logic
+  is solid (proven by execution, including the correct status guard and
+  denial handling), but there is no UI, so the *end-to-end, staff-usable*
+  score remains low.
+- **Demo Readiness Matrix (Section 12)**: Payment Posting should remain
+  🟡 YELLOW, but the correct caveat is now: *"the system can correctly
+  post and match electronic remittances and detect denials — proven by
+  automated test — but only via direct API call; there is no in-app
+  upload button for billing staff to use it."* Do not say posting isn't
+  possible; do not say it's usable by staff today either.
+- **Claim.status / Claim EDI export**: downgrade from 🟡 YELLOW to
+  reflect a **confirmed** (not theoretical) status-corruption risk — safe
+  to demo generating an 837I file and marking a claim SENT, but flag
+  internally that re-running export on an already-paid/denied claim is a
+  real, proven bug that should be fixed before this pathway is used in
+  production for anything beyond a first-time export per claim.
+
+## Re-ranked Top Gaps after Phase 4 validation
+
+| Rank | Gap | Status after Phase 4 | Priority |
+|---|---|---|---|
+| 1 | Claim.status enforcement bypass in `export_patient_claim_edi` | **CONFIRMED BY EXECUTED TEST** (Finding A) | **CRITICAL** (upgraded — this is now a proven bug, not a risk) |
+| 2 | No claim-transmission channel to a clearinghouse/payer (837I file generated, never sent) | Unchanged from Section 8 — not re-tested this pass since no clearinghouse integration exists to test against | **CRITICAL** |
+| 3 | Payment/remittance ingestion has no frontend UI | **CORRECTED**: backend is proven real and correct (Finding B); the gap is now specifically "missing UI," not "missing capability" | **HIGH** (re-scoped from CRITICAL to HIGH — the hard part, correct ingestion logic, already exists and works) |
+| 4 | No configurable rate schedule / revenue pricing (placeholder) | Unchanged | **HIGH** |
+| 5 | Revenue code mapping hardcoded | Unchanged | **HIGH** |
+| 6 | Revocation → re-election/gap handling TODO | Unchanged | **HIGH** |
+| 7 | No dedicated Transfer model/workflow | Unchanged | **HIGH** |
+| 8 | Discharge → billing-closure trigger unconfirmed | Unchanged (not tested this pass) | **MEDIUM** |
+| 9 | Discharge has no dedicated audit-event trail | Unchanged | **MEDIUM** |
+| 10 | No scheduled/downloadable report export | Unchanged | **LOW** |
+
+## What Phase 4 did NOT validate (still code-read-only, not executed)
+
+To be explicit about scope, honoring "proof of behavior, not code
+existence" — the following were **not** behaviorally re-verified this
+pass and remain at their Section 1–9 confidence level: rate-schedule
+placeholder end-to-end pricing effect on a real generated claim; the
+Referral→Admission→Election automatic-linkage question; Discharge→billing
+closure trigger; Transfer/cap cross-agency attribution; CMS-838 export
+correctness beyond its self-reported schema gaps; credit-balance case
+action state machine edge cases. These remain open items for a future
+Phase 4 continuation if prioritized.
+
+---
+
 # SECTION 5 — DEMO READINESS (Thursday)
 
 ## Can demonstrate
