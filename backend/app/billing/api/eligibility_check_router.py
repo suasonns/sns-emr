@@ -16,6 +16,9 @@ from app.models.patient import Patient
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.patient_insurance import PatientInsurance
 from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
+from app.billing.models.benefit_period_determination import BenefitPeriodDetermination
+from app.billing.models.eligibility_verification import EligibilityVerification
+from app.billing.services.eligibility_workflow_service import evaluate_admission_gate
 
 router = APIRouter(prefix="/billing", tags=["Billing Eligibility"])
 
@@ -211,8 +214,44 @@ def list_eligibility_roster(
         .all()
     )
 
+    # Directive item 12 correction: enrich each roster row with the
+    # structured PAYER ELIGIBILITY / ADMISSION BENEFIT-PERIOD REVIEW facts
+    # (Phases 2-4) alongside the legacy PatientInsurance.eligibility_status
+    # field above -- additive only, the legacy ACTIVE/INACTIVE/UNKNOWN/
+    # ERROR field is preserved for backward compatibility, never removed,
+    # since existing callers still read it.
+    patient_ids = [str(r.patient_id) for r in rows]
+    latest_verification_by_patient: dict[str, EligibilityVerification] = {}
+    latest_determination_by_patient: dict[str, BenefitPeriodDetermination] = {}
+    if patient_ids:
+        for v in (
+            db.query(EligibilityVerification)
+            .filter(
+                EligibilityVerification.tenant_id == scoped_tenant_id,
+                EligibilityVerification.patient_id.in_(patient_ids),
+            )
+            .order_by(EligibilityVerification.created_at.desc())
+            .all()
+        ):
+            latest_verification_by_patient.setdefault(str(v.patient_id), v)
+        for d in (
+            db.query(BenefitPeriodDetermination)
+            .filter(
+                BenefitPeriodDetermination.tenant_id == scoped_tenant_id,
+                BenefitPeriodDetermination.patient_id.in_(patient_ids),
+            )
+            .order_by(BenefitPeriodDetermination.created_at.desc())
+            .all()
+        ):
+            latest_determination_by_patient.setdefault(str(d.patient_id), d)
+
     results = []
     for r in rows:
+        patient_id_str = str(r.patient_id)
+        verification = latest_verification_by_patient.get(patient_id_str)
+        determination = latest_determination_by_patient.get(patient_id_str)
+        gate = evaluate_admission_gate(db, tenant_id=scoped_tenant_id, patient_id=patient_id_str)
+
         results.append(
             {
                 "insurance_id": str(r.insurance_id),
@@ -228,6 +267,31 @@ def list_eligibility_roster(
                 "next_verification_due": (
                     r.next_verification_due.isoformat() if r.next_verification_due else None
                 ),
+                # Structured PAYER ELIGIBILITY STATUS (Directive item 2.A) --
+                # None when no EligibilityVerification row exists yet for
+                # this patient (never collapsed into a false "not returned").
+                "payer_eligibility_verification_status": (
+                    verification.status if verification else None
+                ),
+                "payer_eligibility_verification_date": (
+                    verification.verification_date.isoformat()
+                    if verification and verification.verification_date
+                    else None
+                ),
+                # ADMISSION BENEFIT-PERIOD REVIEW STATUS (Directive item 2.B).
+                "benefit_period_determination_status": (
+                    determination.determination_status if determination else None
+                ),
+                "anticipated_benefit_period_number": (
+                    determination.anticipated_benefit_period_number if determination else None
+                ),
+                "prior_hospice_episode_count": (
+                    determination.prior_hospice_episode_count if determination else None
+                ),
+                # Phase 4 admission gate -- CLEAR or ADMISSION_REVIEW_REQUIRED,
+                # with human-readable action-required text, never a raw code.
+                "admission_gate_status": gate.gate_status,
+                "action_required": gate.blockers[0] if gate.blockers else None,
             }
         )
 
