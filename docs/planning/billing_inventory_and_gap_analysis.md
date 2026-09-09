@@ -1687,3 +1687,105 @@ a direct code-read confirmation or an explicitly-labeled open question — this 
 (without weakening) the core certification-gating finding as a traceability/audit problem rather than a
 raw eligibility-bypass problem, per the directive's own reasoning.
 
+## PHASE 35-42 — Reimbursement Compliance Hardening (index)
+
+Full detail: `reimbursement_compliance_hardening.md` (Phases 35, 39, 40),
+`election_addendum_transition_plan.md` (Phase 36), `eligibility_traceability_chain.md` (Phase 37),
+`benefit_period_audit_design.md` (Phase 38), `compliance_defensibility_scorecard.md` (Phase 41).
+
+### A. Election Addendum Assessment
+**PARTIALLY COMPLIANT on 10/1/2026.** Existing on-request compliance-clock math is CMS-correct and
+unaffected; the gap is structural — no record is created absent a manual request, and the new rule
+makes automatic furnishing the default case, so compliance would depend entirely on staff diligence
+with zero system enforcement. Full transition plan (affected APIs/fields/forms/reports) in
+`election_addendum_transition_plan.md`. Priority #1, purely due to its fixed external deadline.
+
+### B. Reimbursement Defensibility Assessment
+SNS can defend an individual claim's *current* eligibility live (billing-readiness re-derives
+certification/F2F/POC/NOE/payer-sequence in real time, confirmed real and non-fabricated). SNS **cannot**
+defend a *historical* claim retrospectively, because no readiness verdict is ever persisted — this is
+the single most consequential finding of this compliance-focused phase, more precise than any prior
+phase's framing: the gap is not that eligibility can be faked, it's that eligibility-at-a-past-moment
+cannot be reconstructed after the fact.
+
+### C. Eligibility Traceability Assessment
+Referral and Admission both have real creator/reviewer attribution (Admission additionally has a full
+`AdmissionStatusHistory` audit trail, confirmed this phase). Certification has the strongest trail in
+the system. Benefit Period has none. Billing Readiness has none (by design — it is a pure live
+computation, confirmed via code read that no persistence call exists in it). Full per-transition table
+in `eligibility_traceability_chain.md`.
+
+### D. BenefitPeriod Audit Assessment
+Design-only `BenefitPeriodStatusEvent` table specified, directly modeled on the already-proven
+`CertificationStatusEvent`/`AdmissionStatusHistory` pattern. Of the six requested event types, three
+(`Updated`, `Corrected`, `Reopened`) have no corresponding code path today — no update/correct/delete
+endpoint exists for benefit periods at all — so their audit design is groundwork only, not a closable
+gap until those actions themselves are built. The minimum viable, immediately actionable fix needs no
+new table at all: populate `BenefitPeriod.created_by` using `current_user`, already available at the
+`POST /benefits/` call site.
+
+### E. Recertification Monitoring Assessment
+All requested signals are queryable from existing columns; no schema change required except for the
+"Recert Overdue" derived query, which does not exist yet but needs no new storage. "Missing Benefit
+Period Association" is confirmed **not a real risk** — `Certification.benefit_period_id` is a
+non-nullable FK, so this specific failure mode is prevented by the database schema itself and should be
+removed from future gap lists, the same way the Medicare Advantage carve-in concern was retired in the
+prior phase.
+
+### F. Compliance Scorecard
+Election 4, Certification 5, Recertification 3, Benefit Period 2, NOE 3, Claim 2, Remittance 2, Payment
+2 (provisional), Audit Trail (overall) 3, Medical Record (overall) 4, Plan of Care 3 (provisional), IDG
+3 (provisional). Full evidence in `compliance_defensibility_scorecard.md`.
+
+### G. Updated Priority Order
+1. Election Addendum automatic-furnish transition (deadline-driven).
+2. Benefit Period audit trail — minimum viable version: `created_by` population (no new table) +
+   `BenefitPeriodStatusEvent` for `CREATED`/`ROLLED`/`CLOSED` only (the three real, existing actions).
+3. Certification-gate `rollover_benefit_period` (structural root cause, unchanged from every prior phase).
+4. Persist Billing Readiness verdicts historically (closes the single most consequential Phase 35/37
+   finding: retrospective defensibility).
+5. Recertification Monitor (Recert Overdue query + Missing Medical Director/Physician alerts — all
+   buildable from existing columns).
+6. Certification Monitor.
+7. Billing Readiness Engine enhancement (affirmative "why Medicare would pay," not just absence-of-blocker).
+8. Claim State Governance fix / Revenue Leakage Detection (pre-existing, unchanged).
+9. Payer-specific authorization-rule configuration (commercial/managed-care, from Phase 30).
+10. Biller Command Center / Claim Risk AI (last, per repeated explicit instruction).
+
+### H. Recommended First Engineering Task
+Two independent, minimal, evidence-grounded changes, either of which could be done first without
+waiting on the other: (1) add `created_by=<current_user.id>` to the existing `BenefitPeriod(...)`
+constructor call in `rollover_benefit_period`, using `current_user` already available in
+`app/api/benefits.py` — zero new plumbing; (2) add one precondition query inside
+`rollover_benefit_period` checking for a `FINALIZED`, signed `Certification` matching the requested
+`benefit_type`, reusing the exact query shape already proven correct in
+`_has_finalized_certification()`. Neither requires new tables, new endpoints, or new AI — both are
+surgical insertions into an already-well-understood, already-tested function.
+
+---
+
+## Most Important Question — Direct Answer
+
+**Can SNS currently defend a Medicare hospice payment during an audit using SNS records alone?**
+
+**PARTIAL.**
+
+Evidence: for the clinical/regulatory substance of eligibility — was the patient certified, by whom, in
+what role, with what narrative evidence — SNS's records are strong and reconstructable
+(`CertificationStatusEvent` audit trail, structured narrative fields). For the *procedural* chain
+connecting that certification to an actual billing event — was the benefit period properly gated by
+it, who created/rolled it and when, and what did the readiness check show at the time billing
+occurred — SNS cannot reconstruct this today, because Benefit Period has no audit trail and Billing
+Readiness verdicts are never persisted. An auditor would find the clinical justification well-
+documented and the procedural/audit chain connecting it to payment incomplete. This is not a hedge — it
+is the precise, evidence-based answer: some parts fully defensible (Certification), one part not yet
+defensible at all (Benefit Period/traceability), and no part actively fraudulent or fabricated (aside
+from the already-documented, unrelated remittance-widget issue from Phase 5/6).
+
+No production code has changed. No billing feature or AI has been built. This phase corrected and
+sharpened prior framing without discarding any earlier finding: every conclusion in Phases 1-34 was
+re-checked against the compliance-hardening lens and none were reversed — three were made more precise
+(Benefit Period risk reframed as a traceability/audit gap, not a raw bypass risk; Missing Benefit Period
+Association retired as a non-issue; retrospective defensibility identified as the single most
+consequential open gap, more foundational than any individual missing check).
+
