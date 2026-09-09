@@ -1260,3 +1260,91 @@ No billing feature development and no billing AI development has begun
 as a result of this reframing either — it is a re-prioritization of
 findings, not new implementation.
 
+---
+
+# PHASE 8 — BENEFIT PERIOD ENGINE VERIFICATION + PRIORITY SPECS
+
+Date: 2026-09-08. Five new design/verification documents produced per
+directive, spanning Priorities 0–5 of the new development order.
+
+## Correction (stated plainly)
+
+The Phase 7 document (`hospice_billing_architecture_review.md`)
+concluded "no benefit-period rollover/advancement logic found" and
+ranked this as the #1 risk. **That conclusion was a false negative**,
+caused by grepping only `benefit_period_resolver.py` and missing the
+separate `benefit_period_service.py`. A real, tested, production-grade
+`rollover_benefit_period` function exists — confirmed by re-running its
+existing guardrail test suite (4/4 passing against the real isolated
+test DB). Full correction and re-analysis:
+`docs/planning/benefit_period_engine_review.md`.
+
+**Revised understanding**: the benefit-period *engine* is not the gap —
+it is one of the most defensively-written pieces of code found in this
+entire review (row locking, idempotency, chronology validation, correct
+CMS 90/90/60-day period lengths, atomic close-old/create-new). **The gap
+is that nothing calls it** — no frontend control, no scheduled job.
+This moves the risk from "missing logic" to "missing exposure," the same
+category as several other findings already documented (835 upload, the
+enforced claim-status endpoint).
+
+**Also confirmed**: nothing today prevents a benefit period from being
+created without a finalized certification — the rollover engine and its
+endpoint have no such precondition. This is a real, newly-confirmed gap,
+distinct from the exposure gap above.
+
+## Direct answers to the three required questions
+
+1. **"What benefit period is this patient currently in?" — YES.**
+   Source: `get_active_benefit_period` (`benefit_period_resolver.py`).
+2. **"When is recertification due?" — YES.** Source:
+   `BenefitPeriod.end_date`, surfaced in `PocCertificationPage.tsx`.
+3. **"What benefit period comes next?" — the engine can compute and
+   create it correctly (confirmed by test), but no user or process can
+   currently ask for or trigger it.** Practically: still effectively NO
+   for a hospice administrator using the running system today, though
+   for a different reason than previously stated (exposure, not logic).
+
+## The four remaining specs (design only, nothing implemented)
+
+- `docs/planning/certification_monitor_spec.md` — Priority 2. What
+  exists (14-day window, finalized-cert gate) vs. what's missing
+  (configurable windows, missing-signature/physician/medical-director
+  states, an explained risk composite, push alerts).
+- `docs/planning/billing_readiness_spec.md` — Priority 3, the intended
+  first AI feature ("why can/can't I bill this patient," never "generate
+  a claim"). Confirms the underlying engine (`check_patient_billing_
+  readiness`) is already largely real and already explains its reasons;
+  specifies the missing AT RISK tier and the still-unconfirmed
+  auditability of past readiness computations.
+- `docs/planning/claim_state_machine.md` — Priority 4. Formalizes the
+  already-documented state/writer/audit table, reaffirms PAID is
+  intended terminal with evidence, and specifies (without building) the
+  three governance additions needed: single enforcement point, universal
+  audit trail, and a real administrative-correction workflow.
+- `docs/planning/revenue_leakage_detector_spec.md` — Priority 5. Restates
+  `revenue_leakage_review.md` in the requested stall/money-loss/
+  silent-failure/AI-alertability format, and re-ranks the benefit-period
+  rollover-exposure gap as the new #1 risk given this pass's correction.
+
+## AI Roadmap (updated per directive, design-only, nothing built)
+
+1. Benefit Period Monitor (new #1 — targets the rollover-exposure gap)
+2. Certification Monitor
+3. Billing Readiness Engine (intended first AI feature; "why can/can't I
+   bill this patient," not "generate a claim")
+4. Revenue Leakage Monitor
+5. Claim Risk Monitor
+6. Biller Command Center
+
+**Still explicitly not to be built**: AI Claim Creation, AI Claim
+Submission, AI Coding, AI Denial Appeals, AI Payment Prediction, AI
+Billing Decisions. Every AI recommendation, when eventually built, must
+show Reason, Evidence, Source Data, Dependency, and Missing Requirement —
+no black-box decisions, per explicit design principle.
+
+No billing feature development and no billing AI development has begun.
+The benefit-period rollover engine itself was found already built and
+tested from a prior, unrelated development effort — it was not built as
+part of this review, only discovered and verified.
+
