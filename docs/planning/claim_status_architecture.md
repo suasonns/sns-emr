@@ -155,3 +155,69 @@ By contrast, the enforced endpoint (`update_claim_status`,
 `POST /billing/claim-status`) has **no frontend wiring found anywhere**
 in `sns-emr-frontend/src` — the safe, designed path is unused by the UI,
 while the unsafe path is live and mislabeled.
+
+---
+
+## 7. Readers of `Claim.status` (Phase 6 addition)
+
+Repo-wide search for every place `Claim.status`/`claim.status` is read
+(not written) found exactly one reader location:
+
+| Reader | File | Endpoint | Purpose |
+|---|---|---|---|
+| `list_claims` | `app/billing/api/claims_router.py` | `GET /billing/claims` | Returns claim rows including `status`; supports a `status` query filter (`Claim.status == status.upper()`). This is the query that powers `BillingDashboard.tsx`'s claim table and its status filter dropdown (`ALL, READY, SENT, ACCEPTED, PAID, DENIED`). |
+
+No other backend module reads `Claim.status` directly (the one other
+hit found by a broad grep, `owner_billing_service.py`, reads
+`PlatformSubscription`/`PlatformInvoice.status` — the SNS-the-platform's
+own billing-of-its-tenants status, an unrelated model that happens to
+share the field name — confirmed a false positive, not a Claim reader).
+
+## 8. All statuses (authoritative enum, from the model + router)
+
+`READY`, `SENT`, `ACCEPTED`, `PAID`, `DENIED` — five values, defined by
+usage in `ALLOWED_TRANSITIONS` and `Claim.status`'s column comment
+(`app/billing/models/claim.py`). No `GENERATED` status exists in the
+real code, despite one appearing in the Phase 6 directive's illustrative
+example diagram (`READY → GENERATED → SENT → ACCEPTED → PAID`) — that
+five-state illustrative diagram does not match the actual system, which
+has no `GENERATED` state. This is called out explicitly so the
+illustrative example in the directive is not mistaken for a real gap.
+
+## 9. Audit trail — per writer (Phase 6 addition)
+
+This is the most important corrective finding in this section: **audit
+coverage is not uniform across the three writers.**
+
+| Writer | Calls `append_audit_event`? | Audit event type | Consequence |
+|---|---|---|---|
+| `update_claim_status` (PRIMARY) | **YES** | `CLAIM_STATUS_CHANGED`, records `previous_status`, `new_status`, `actor`, `reason` | Every transition through the enforced path is fully auditable. |
+| `export_patient_claim_edi` (SECONDARY/DEFECT) | **NO** — repo-wide search for `append_audit_event`/`build_audit_event` in `billing_router.py` found zero matches | — | The one writer that can silently move a claim backward is also the one writer that leaves **no audit trail** of having done so. There is a `ClaimExportLog` row created (`status="SUCCESS"`), but it records the export action, not a status-transition event, and does not capture `previous_status`. |
+| `post_payments_from_835` (IMPORT PATH) | **NO** — repo-wide search for `append_audit_event`/`build_audit_event` in `payment_service.py` found zero matches | — | Payment-driven status changes (`SENT/ACCEPTED → PAID/DENIED`) are not recorded in the same audit log as manual transitions. Remittance data itself is persisted (so the *payment* is traceable), but the *status change event* specifically is not logged the way the primary path logs it. |
+
+**Net finding**: if a hospice administrator asks "show me every way a
+claim's status changed, and who/what changed it," the honest answer
+today is **"only for changes made through the one enforced endpoint."**
+Changes made via EDI export or via 835 payment posting are reconstructable
+only indirectly (via `exported_at`/`ClaimExportLog` timestamps, or via
+`Remittance`/`Payment` row timestamps), not via a first-class audit
+event. This is a real gap, not a false alarm.
+
+## 10. Direct answer to the Phase 6 "Most Important Question"
+
+**"If a hospice administrator asks: show me every way a claim status can
+change — can SNS answer that question completely?"**
+
+**Answer: NO.**
+
+SNS can answer *which code paths exist* (this document, complete) and
+*what happened to a specific claim's `status` column* (by querying the
+row). SNS **cannot** currently produce a complete, first-class audit log
+of every status-changing event for a claim, because two of the three
+writers do not emit an audit event at all, and one of those two writers
+does not even enforce which transitions are legal. A complete answer
+requires: (1) fixing `export_patient_claim_edi` to enforce
+`ALLOWED_TRANSITIONS` (or an equivalent guard) before writing, and (2)
+adding `append_audit_event` calls to both `export_patient_claim_edi` and
+`post_payments_from_835` so all three writers log through the same audit
+mechanism the primary path already uses.

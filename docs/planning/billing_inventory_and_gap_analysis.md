@@ -1060,3 +1060,148 @@ placeholder) or "this will actually reach the payer" (no confirmed
 transmission channel) — those are the two claims to avoid making in the
 demo without an explicit caveat.
 
+---
+
+# PHASE 6 — BILLING STABILIZATION AND DEMO HARDENING
+
+Date: 2026-09-08. Triggered by a directive stating the audit had reached
+the point where new information was correcting prior conclusions, and
+requiring dedicated standalone documents rather than further growth of
+this one file. This section is a short index + the required final
+summary; the substantive content lives in the five new/updated
+documents below, each independently reviewable:
+
+- `docs/planning/billing_action_map.md` — every frontend control that
+  changes billing state, traced button → handler → endpoint → DB write.
+  Finding: only one such control exists ("Export to Excel"), and its
+  label has nothing to do with its actual behavior.
+- `docs/planning/claim_status_architecture.md` (updated) — now includes
+  readers of `Claim.status`, the authoritative 5-value status enum, and
+  a per-writer audit-trail table showing only 1 of 3 writers emits an
+  audit event.
+- `docs/planning/payment_posting_architecture.md` — full 835 pipeline
+  trace (upload → parse → remittance → payment → matching → claim
+  status → credit balance → reporting). Finding: backend is correct
+  end-to-end; there is no upload UI, no credit-balance auto-linkage, and
+  the one UI surface claiming to show this data is fabricated.
+- `docs/planning/billing_user_capability_matrix.md` — every billing
+  capability classified against the new 8-value taxonomy (PRODUCTION
+  READY / BACKEND ONLY / FRONTEND ONLY / PARTIALLY INTEGRATED / DEMO
+  ONLY / PLACEHOLDER / BROKEN / UNKNOWN), replacing the old 3-value scale.
+- `docs/planning/biller_persona_matrix.md` — 7 real biller questions,
+  answered by tracing to an actual screen/API, not assumed. 4 of 7 have
+  a real live answer, 1 of 7 has an answer that can be silently wrong,
+  2 of 7 have no answer at all.
+- `docs/planning/revenue_leakage_review.md` — full pipeline trace with
+  severity-ranked leakage points. No evidence of money silently
+  disappearing was found; the real risk profile is operational/
+  visibility-based (can't upload 835s, one widget is fake, one button
+  can corrupt status with no audit trail).
+
+## Updated Demo Readiness Matrix (replaces Section 12's scale)
+
+| Item | Classification |
+|---|---|
+| Benefit Period tracking/display | **CAN DEMONSTRATE** |
+| Certification/Recertification lifecycle + F2F enforcement | **CAN DEMONSTRATE** |
+| NOE tracking screen | **CAN DEMONSTRATE** |
+| POC/Certification expiration tracking | **CAN DEMONSTRATE** |
+| Credit Balance case lifecycle | **CAN DEMONSTRATE** |
+| Facility Payment expectation lifecycle | **CAN DEMONSTRATE** |
+| Facility Collection Alert "resolve" | **CAN DEMONSTRATE** |
+| Billing readiness pre-check (cert/F2F/POC/NOE/payer sequence) | **CAN DEMONSTRATE**, with the caveat that "ready" ≠ "priced correctly" ≠ "will transmit" |
+| Claim status list/filter view | **EXISTS BUT DO NOT DEMO WITH "Export to Excel"** — the list itself is fine to show; do not click that button against PAID/DENIED rows |
+| Enforced claim-status endpoint | **EXISTS BUT DO NOT DEMO** — real and correct, but has no UI, so there is nothing to click |
+| 835 upload/posting/matching | **EXISTS BUT DO NOT DEMO** — real and correct backend, but no UI exists to demonstrate it live |
+| 835 Remittance dashboard widget | **DEMO WILL MISLEAD** — remove or replace with an explicit empty state before Thursday |
+| Claim Transmission (to payer/clearinghouse) | **DO NOT CLAIM** — no model, no channel, no evidence exists anywhere |
+| Claim correction/reopen workflow | **DO NOT CLAIM** — confirmed not to exist; PAID is intended terminal and the only path that reverses it is a bug |
+| Failed-transmission reporting | **DO NOT CLAIM** — no such concept exists in the data model |
+| Unmatched-remittance reporting | **DO NOT CLAIM** — data exists (`match_status="UNMATCHED"`), no screen surfaces it |
+
+## AI Billing Roadmap (design only — nothing here is built)
+
+1. **Billing Readiness AI** — outputs Ready / Blocked / At Risk with
+   evidence, built as an explanation layer over the already-real
+   `check_patient_billing_readiness` blockers, not a new decision engine.
+2. **Certification Monitor** — proactive surfacing of the already-real
+   14-day expiration window data (`PocCertificationPage`) before a biller
+   has to go looking for it.
+3. **Revenue Leakage Detector** — flags the operational gaps found in
+   `revenue_leakage_review.md` (unmatched payments, claims stuck in
+   READY, missing transmission confirmation) for human review.
+4. **Claim Risk Monitor** — flags claims exported without a subsequent
+   payment/denial after a configurable window, using existing
+   `exported_at`/`Payment` data.
+5. **Biller Daily Work Queue** — aggregates the answers already proven
+   real in `biller_persona_matrix.md` into one prioritized list.
+
+**Explicitly out of scope, per the directive — AI must explain, not
+decide**: AI coding, AI claims creation, AI claim submission, AI denial
+appeals, AI reimbursement prediction, AI billing decisions of any kind.
+
+## Most Important Question — direct answer
+
+**"If a hospice administrator asks: show me every way a claim status can
+change — can SNS answer that question completely?"**
+
+**NO.** Full reasoning in `claim_status_architecture.md` §9–10: two of
+the three writers do not emit an audit event, and one of those two does
+not even enforce which transitions are legal. The writer inventory
+itself is complete (this document set answers "which code paths exist"
+fully); what is missing is a uniform audit trail across all three.
+
+## Final Summary (A–G)
+
+**A. What is genuinely production-ready** (backend + frontend + proven
+behavior): Benefit Period tracking, Certification/Recertification
+lifecycle with F2F enforcement, NOE tracking screen, POC/Certification
+expiration tracking, Credit Balance case lifecycle, Facility Payment
+expectation lifecycle, Facility Collection Alert "resolve," the
+billing-readiness pre-check, and the rate-gap EDI safeguard.
+
+**B. What exists only in backend**: the enforced claim-status endpoint,
+835 upload/parse/posting/matching, CMS-838 export, most Facility
+Collection Alert actions (acknowledge/snooze/dismiss/reassign/
+start-progress), alert-thresholds management, NOE 837I/PDF generation,
+NOE ack-status update.
+
+**C. What exists only in frontend (looks real, isn't backed)**: the 835
+Remittance dashboard widget — the only capability found this session
+where the frontend is more "complete-looking" than the backend actually
+supports.
+
+**D. What is misleading**: the "Export to Excel" button (label unrelated
+to its real, dangerous behavior); the 835 Remittance widget (fabricated
+numbers shown as if live); a claim's displayed status can be wrong if
+the Export-to-Excel bug has already fired against it.
+
+**E. What should be removed before Thursday**: the fabricated content in
+`render835Remittance()` — replace with an explicit "not yet available"
+empty state.
+
+**F. What should be fixed before Thursday**: nothing is required to be
+*fixed* (as opposed to *hidden/labeled honestly*) to safely demo — the
+minimum bar is (1) removing the fake widget content and (2) not clicking
+"Export to Excel" against PAID/DENIED claims during the demo. Fixing the
+underlying bug itself is recommended but is engineering work, not a
+same-day demo-prep task.
+
+**G. What becomes Phase 1 billing development after Thursday** (ranked):
+1. Fix `export_patient_claim_edi` to enforce `ALLOWED_TRANSITIONS` (or
+   an equivalent guard) before writing `claim.status`.
+2. Add `append_audit_event` calls to `export_patient_claim_edi` and
+   `post_payments_from_835` so all three writers share one audit trail.
+3. Build a real 835 upload screen + a real remittance list screen against
+   the already-correct backend (no backend changes needed beyond #2).
+4. Surface unmatched-remittance and stuck-in-READY claims to billers
+   (`biller_persona_matrix.md`, `revenue_leakage_review.md`).
+5. Wire the enforced claim-status endpoint to a real UI so the *safe*
+   path becomes the *used* path.
+6. Design (not build) a real `ClaimTransmission` model/channel and a
+   documented claim-correction workflow, since both are currently
+   entirely absent rather than merely unwired.
+
+No billing feature development and no billing AI development has begun.
+All of the above are recommendations awaiting explicit go-ahead.
+
