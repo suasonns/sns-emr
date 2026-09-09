@@ -396,6 +396,345 @@ Phase 4 continuation if prioritized.
 
 ---
 
+# PHASE 5 — BILLING PLATFORM STABILIZATION REVIEW
+
+Everything below was produced by directly reading the actual frontend
+source (`sns-emr-frontend/src/`) against the actual backend endpoint list,
+one capability at a time — not inference. Where a claim is "wired," an
+exact file and import were located. Where a claim is "not wired," a
+repo-wide search for the literal endpoint path found zero references in
+`sns-emr-frontend/src`.
+
+**Standalone companion deliverable**: `docs/planning/claim_status_architecture.md`
+contains the full required Claim.status / ClaimTransmission / EDI
+lifecycle writer inventory, classification, state-transition diagram, and
+the direct answer to "is PAID terminal?" (Answer: **yes, by design and by
+every writer except one confirmed-defective one — see that document for
+full evidence**). Summarized here, not repeated in full.
+
+## 1. Claim Status Architecture — summary (full detail in companion doc)
+
+Three writers total, no more, no fewer (repo-wide search, not
+`app/billing/`-scoped): `update_claim_status` (**PRIMARY**, enforces
+`ALLOWED_TRANSITIONS`, but has **zero frontend wiring found anywhere**),
+`export_patient_claim_edi` (**SECONDARY / CONFIRMED DEFECT**, bypasses
+the transition check, writes `SENT` unconditionally), `post_payments_from_835`
+(**IMPORT PATH**, has its own correct, independently-implemented guard,
+confirmed correct by execution). No `ClaimTransmission` model exists
+anywhere in the codebase (**MISSING**, not a writer gap — a data-model
+gap). No **SYSTEM JOB**, **LEGACY**, or **CORRECTION PATH** writer was
+found.
+
+**New finding this pass — reachability confirmed**: `BillingDashboard.tsx`'s
+"Unbilled Revenue Report" panel has a button literally labeled **"Export
+to Excel"** whose `onClick` handler
+(`handleExport(filteredRows[0])`) actually calls
+`POST /billing/export-patient-claim-edi` on the first row of the
+*currently filtered* claim list. The status filter on that same panel
+includes `PAID` and `DENIED` as selectable options. **Filtering to "Paid"
+and clicking "Export to Excel" re-triggers the confirmed status-bypass
+bug against a real claim, through a button whose label has nothing to do
+with claim submission.** This is not a theoretical API-level bypass — it
+is one misleadingly-labeled click away in the shipped UI.
+
+## 2. Payment Architecture Map
+
+| Step | Screen | Endpoint | Service | Writer | Table | Audit Trail | Current Status |
+|---|---|---|---|---|---|---|---|
+| 835 Upload | **None** — no upload UI found anywhere in `sns-emr-frontend/src` | `POST /billing/835/upload` (real, registered) | `app.api.billing_835` | — (routes to parser) | — | — | Backend Complete / Frontend Missing |
+| Parser | n/a | n/a | `app.services.edi_835_parser.parse_835_file` | — | — | — | Not behaviorally re-verified this pass (only `post_payments_from_835`, its caller, was executed) |
+| Remittance Record | `PaymentPostingPage.tsx` (read-only) | `GET /billing/remittances` | `payment_posting_router.py` | `post_payments_from_835` | `remittance_advices` | Implicit via row itself (`status`, `received_at`); no dedicated event table | **Confirmed real by execution** (Phase 4) |
+| Payment Record | `PaymentPostingPage.tsx` (read-only) | same | same | `post_payments_from_835` | `payments` | `match_status` field only; no event table | **Confirmed real by execution** |
+| Claim Matching | n/a (no UI) | n/a | `post_payments_from_835` (matches by `claim_control_number`) | `post_payments_from_835` | `payments.claim_id` FK | none dedicated | **Confirmed real by execution** — unmatched payments correctly flagged `UNMATCHED` rather than dropped |
+| Claim Status Change | n/a (no UI) | n/a | `post_payments_from_835` | `post_payments_from_835` | `claims.status` | none dedicated (contrast: `claim_status_router`'s path has `append_audit_event`; this path does not) | **Confirmed real by execution**, but **no audit event recorded for this specific writer** — a gap not previously flagged |
+| Credit Balance | `CreditBalanceReportPage.tsx` | `GET /billing/credit-balance/report`, `POST /cases`, `POST /cases/{id}/actions` | `credit_balance_service.py`, `credit_balance_case_service.py` | `credit_balance_case_service.perform_action` | `credit_balance_cases`, `credit_balance_case_events` | **YES** — dedicated event table, confirmed wired end-to-end incl. frontend (corrects an earlier UNKNOWN in Section 1.3) | **Backend Complete + Frontend Complete** |
+| Reporting | `PaymentPostingPage.tsx`, `AgingReportPage.tsx` | `GET /billing/remittances`, `GET /billing/aging-report` | respective services | read-only | reads above tables | n/a | **Backend Complete + Frontend Complete (read-only)** |
+
+**New audit-trail gap identified this pass**: `post_payments_from_835`'s
+claim-status transitions are not recorded in any audit event table, unlike
+the `claim_status_router` path (which calls `append_audit_event`). A
+claim that flips SENT→PAID via an 835 posting leaves no explicit event
+record of *why* — only the row's own `last_status_reason` string field.
+This is a real, if modest, auditability gap worth closing alongside the
+Section 14 fixes.
+
+## 3. User-Visible Billing Capability Matrix
+
+Built by locating each backend capability's actual frontend import (not
+assumed). "Frontend Exists" here means a confirmed UI element that calls
+the real endpoint — not merely that the page renders.
+
+| Capability | Backend Exists | Frontend Exists | Permission Exists | Operational | Demo Ready |
+|---|---|---|---|---|---|
+| 835 Remittance Upload | YES | **NO** (no upload UI found anywhere) | Endpoint requires `require_automated_billing`, but nothing to gate at the UI since no UI exists | NO | **NO** |
+| Payment Posting (monitoring) | YES | YES (`PaymentPostingPage.tsx`) | Tenant-scoped, `require_automated_billing` | YES (read-only) | YES, with the "monitoring only" caveat |
+| Claim Status Update (enforced path) | YES | **NO** (no frontend wiring found for `POST /billing/claim-status`) | n/a — unreachable from UI | NO | **NO** |
+| Claim EDI Export (unenforced path) | YES | YES — but mislabeled ("Export to Excel" button in `BillingDashboard.tsx`) | `require_automated_billing` | **YES, but with a confirmed live bug** (see Claim Status Architecture) | **NO — do not demo this button** |
+| Certification Draft/Sign/Finalize | YES | YES (`PocCertificationPage.tsx` + certifications API, physician-only signer enforced) | Physician-role enforced at sign step | YES | YES |
+| NOE/NOTR Submission Tracking | YES | YES (`NoeTrackingPage.tsx`, read-only) | Tenant-scoped | YES (read-only) | YES, monitoring only |
+| NOE/NOTR 837I Generation | YES | **NO** (no frontend wiring found for `generate-837i`) | n/a — unreachable from UI | NO | **NO** |
+| NOE PDF Generation | YES (endpoint exists) | **NO** | n/a | UNKNOWN (endpoint itself not behaviorally tested this pass) | **NO** |
+| Denials & Appeals registry | YES | YES (`DenialsAppealsPage.tsx`) | Tenant-scoped | YES (read-only registry) | YES |
+| Eligibility Verification/Roster | YES | YES (`EligibilityVerificationPage.tsx`) | Tenant-scoped | YES | YES |
+| Hospice Cap Calculation | YES | YES (`CapCalculationPage.tsx`) | Tenant-scoped | YES | YES, with the cross-agency-transfer caveat |
+| Aging Report | YES | YES (`AgingReportPage.tsx`) | Tenant-scoped | YES | YES |
+| Credit Balance Report + Case Actions | YES | YES (`CreditBalanceReportPage.tsx` — confirmed real dialog/action wiring via `openCreditBalanceCase`/`performCreditBalanceCaseAction`) | Tenant-scoped | YES | YES |
+| CMS-838 Export | YES | **NO** (no frontend wiring found) | n/a | NO | **NO** |
+| Facility Payment Expectation lifecycle (create/activate/correct/cancel) | YES | YES (`FacilityCollectionsReportPage.tsx` — confirmed real dialog wiring for create/activate/correction/cancel) | Tenant-scoped | YES | YES |
+| Facility Payment Allocation confirm/reverse | YES (backend) | **UNCONFIRMED this pass** — not specifically searched; the expectation lifecycle around it is confirmed wired, allocation-specific buttons not individually verified | Tenant-scoped | Backend Complete / Frontend UNKNOWN | Verify before claiming |
+| Facility Collection Alert lifecycle | YES (6 actions: resolve/ack/start-progress/snooze/dismiss/reassign) | **PARTIAL** — only `resolve` confirmed wired (`/billing/facility-payments/alerts/{id}/resolve` found in `api/dashboard.ts`); acknowledge/snooze/dismiss/reassign/start-progress **not found wired anywhere** | Tenant-scoped | Partially Operational | Only demo "resolve"; do not claim the other 5 actions are usable |
+| Alert Thresholds management | YES | **NO** (no frontend wiring found) | n/a | NO | **NO** |
+| Billing Readiness (patient + tenant) | YES | YES (`BillingDashboard.tsx`) | Tenant-scoped | YES | YES |
+| Reports (scheduled/export) | NO (backend doesn't exist) | NO | n/a | NO | **NO** |
+| 835 Remittance widget on Billing Dashboard | n/a (not backed by any real endpoint) | Present, but **entirely hardcoded mock data** ("27 files processed," static rows like "2026-01-15 Medicare Part A...") — confirmed by reading `render835Remittance()` in `BillingDashboard.tsx`: no `fetch`/`api.` call anywhere in that function | n/a | **NOT OPERATIONAL — fabricated display data** | **DO NOT DEMO — this panel will show fake numbers that look real** |
+
+## 4. Billing SSOT Audit (Phase 7 — extends Section 6/10)
+
+Applying the RNICA lesson (duplicate writers create instability) to the
+areas explicitly requested:
+
+| Domain | Authoritative Table | Authoritative Writer | Authoritative Service | Authoritative API | Authoritative UI | Audit Trail | Multiple writers? |
+|---|---|---|---|---|---|---|---|
+| Claim | `claims` | *(see Claim Status below — the row itself has 3 separate writers, this is the one domain with a confirmed problem)* | `claim_export_service.py` (creation), various (status) | multiple, see below | `BillingDashboard.tsx` (partial), `ClaimsManagementPage.tsx` (read-only) | Partial (`ClaimExportLog`, no dedicated claim-status event table) | — |
+| Claim Status | `claims.status` | **update_claim_status is the intended one; export_patient_claim_edi and post_payments_from_835 also write it** | n/a | `claim_status_router.py` (intended), `billing_router.py` (defective), `payment_service.py` (import path) | **NONE for the intended writer; the defective one has UI** | Only the intended writer calls `append_audit_event` | **YES — 3 writers, documented in full in `claim_status_architecture.md`** |
+| Payment | `payments` | `post_payments_from_835` (only writer found) | `payment_service.py` | `app/api/billing_835.py` | None (no upload UI) | Field-only (`match_status`), no event table | No — single writer, but no UI |
+| Remittance | `remittance_advices` | `post_payments_from_835` (only writer found) | `payment_service.py` | `app/api/billing_835.py` | `PaymentPostingPage.tsx` (read-only) | Field-only (`status`) | No — single writer |
+| Benefit Period | `benefit_periods` | `benefit_period_service.py` | same | (embedded in several routers) | `BillingDashboard.tsx`/readiness views | Not separately audited this pass | Not found — clean per Section 6 |
+| Certification | `certifications`, `certification_status_events` | `certification_service.py` | same | `app/api/certifications.py` | `PocCertificationPage.tsx` + certification UI | **YES** — dedicated event table | No — clean, confirmed in Section 6 |
+| NOE | `noe_edi_submissions`, patient NOTR columns | `app/api/noe.py` handlers | same | `app/api/noe.py` | `NoeTrackingPage.tsx` (read-only monitoring) | Partial — `ack_status` field, updatable via a real PATCH endpoint, but that endpoint has no frontend wiring | No — single writer, but write-side UI missing |
+| Election | (fields on `Patient`/election tracking) | `election_day_service.py` | same | not fully re-enumerated this pass | not confirmed this pass | Not re-audited this pass | UNKNOWN — not re-verified this pass, carry forward as open item |
+| Credit Balance | `credit_balance_cases`, `credit_balance_case_events` | `credit_balance_case_service.perform_action` | same | `credit_balance_router.py` | `CreditBalanceReportPage.tsx` — **confirmed wired** | **YES** — dedicated event table | No — clean, and now confirmed end-to-end incl. UI |
+| Revenue Reporting | n/a — no dedicated revenue-reporting table; computed on read | `claim_financials.py` (computed, not stored) | same | embedded in report endpoints | `ReportsPage.tsx`, `AgingReportPage.tsx` | n/a (nothing stored to audit) | No — correct "compute on read" pattern, no duplication risk |
+
+**The one confirmed multi-writer instability in the entire billing
+system is `Claim.status`.** Every other audited domain either has a
+single writer or, where NOE/Payment lack a writer/UI mismatch, that is a
+missing-feature gap rather than a duplicate-writer instability risk.
+
+## 5. Revenue Leakage Analysis (Phase 11)
+
+Tracing Patient → Election → Benefit Period → Certification → Claim →
+Transmission → Payment → Remittance → Revenue, identifying every point
+revenue can become blocked:
+
+| Blockage point | Cause | Evidence | Detection method today | Potential AI alert (detection-only) |
+|---|---|---|---|---|
+| Election never captured/mis-dated | No confirmed automatic Referral→Admission→Election trigger (Section 7, still UNKNOWN) | `election_day_service.py` computes from an election date but its upstream trigger wasn't traced | None found | Flag patients admitted N days ago with no election date captured |
+| Benefit period rollover missed/late | Rollover is calculated, not scheduled — no cron/job found this pass to proactively roll periods | Not re-verified this pass whether rollover is triggered on read vs. a background job | Unknown | Flag patients approaching a benefit-period boundary with no successor period yet created |
+| Certification/recert missing or unsigned | Real, tracked in `certification_status_events` | Confirmed real (Section 6) | `billing_readiness_service.py` already checks this as a blocker | *(already exists — Priority 2 in Section 13)* |
+| Rate/pricing gap ($0.00 fallback) | Confirmed placeholder rate schedule | `revenue_service.py` explicit "DEFAULT RATE SCHEDULE PLACEHOLDER"; `edi_builder.py` has a real, tested guard (`test_edi_builder_rate_gap.py`) that **blocks** an 837I submission carrying an unresolved `rate_gap_reason` | **Already enforced at the EDI-build layer** — a $0 rate-gap claim line cannot reach a real submission; this is a stronger existing safeguard than earlier sections credited | Flag claims/periods with a live `rate_gap_reason` before they even reach export, so billers fix it proactively instead of hitting the EDI-build error |
+| Claim generated but never exported | No confirmed scheduled job to catch claims stuck in READY | `billing_readiness_service.py`/batch-generate skip unready patients but don't re-check later | None found | Flag claims stuck in READY beyond N days |
+| Claim exported, status corrupted back to SENT | **Confirmed real bug**, see Claim Status Architecture | Executed test proof | None — this is invisible today, no monitoring exists | Flag any claim whose status regresses (e.g., PAID→SENT) as a data-integrity alert, not a billing decision |
+| Claim "sent" but never actually transmitted | No transmission channel confirmed to exist (Section 8/14) | File generated, marked SENT, no clearinghouse call found | None | Flag claims SENT for >N days with no matching remittance as a "possible non-transmission" signal |
+| Payment received but unmatched | Confirmed handled correctly — `post_payments_from_835` marks unmatched payments `UNMATCHED` rather than dropping them | Confirmed by execution | `payment_posting_router.py` surfaces an `unmatched_payments` worklist already | *(monitoring layer exists already; an AI narrative summarizing the worklist would be low-risk, Priority-adjacent to existing Section 13 #2)* |
+| Denial not appealed within window | `Denial.appeal_deadline` is computed and stored | Confirmed in `payment_service.py` | No confirmed proactive alert on approaching deadline | Flag denials approaching `appeal_deadline` with no appeal action recorded |
+| Credit balance case stalls | Full lifecycle exists with audit trail | Confirmed real + wired | Case list is read-only-browsable via UI | Flag cases open >N days past `repayment_due_at` |
+
+**Most valuable new finding here**: the rate-gap safeguard
+(`test_edi_builder_rate_gap.py`) is **stronger than Section 3/8
+originally credited** — it isn't just "a known placeholder," it is an
+enforced gate that provably blocks a bad claim line from reaching an
+837I. The actual leakage risk is therefore narrower than previously
+stated: it's about claims *silently sitting* with an unresolved rate gap
+(no proactive alert), not about bad pricing slipping through undetected
+at export time.
+
+## 6. NOE Validation (Phase 12) — dedicated, verified, not inferred
+
+| Item | Finding | Verified how |
+|---|---|---|
+| NOE Table | `noe_edi_submissions` + NOTR-tracking columns on `Patient` | Model read directly |
+| NOE Writer | `app/api/noe.py` handlers (submission PATCH, 837I generation, edi-submission status PATCH) | Grep + direct read of `noe.py` |
+| NOE UI | `NoeTrackingPage.tsx` — **read-only monitoring only** | Confirmed only `fetchNoeTracking` import; no write-action import found |
+| NOE Endpoint | 12+ routes confirmed in Section 1.3 (submission GET/PATCH, generate-837i, edi-submissions list/status) | Direct read of `noe.py` |
+| NOE Statuses | Submission status (open text field, not a formal enum re-verified this pass) + `ack_status` (updatable via real PATCH, but that PATCH has no UI) | Direct read |
+| NOE Reports | None dedicated — NOE data surfaces only via `NoeTrackingPage.tsx`'s monitoring table | Confirmed by absence |
+| NOE Readiness Rules | `billing_readiness_service.py` checks "NOE on file" as a readiness blocker (per Section 1.4/2) | Not re-executed this pass — carried from prior code-read confidence, **not upgraded to behaviorally-verified this pass** |
+| NOE Source of Truth | `noe_edi_submissions` table, single writer path (`app/api/noe.py`) — no duplicate writer found | Grep confirmed no other writer |
+| NOE Demo Readiness | 🟡 YELLOW — tracking/monitoring is real and safe to demo; **837I generation and PDF generation have no frontend wiring and should not be demoed as staff-usable**, only as "the backend can do this" | Direct grep of frontend for `generate-837i`/`generate-pdf` — zero matches |
+
+## 7. Biller Persona Review (Phase 13)
+
+| Question | Current answer available? | Screen | API | Report | Gap |
+|---|---|---|---|---|---|
+| Has NOE been submitted? | YES | `NoeTrackingPage.tsx` | `GET /billing/noe-tracking` | Table view, no export | None significant |
+| When is recert due? | YES | `PocCertificationPage.tsx` | `GET /billing/poc-certification-status` | Table view | None significant |
+| Why is this patient not billable? | YES | `BillingDashboard.tsx` (readiness) | `GET /billing/readiness/{patient_id}`, `/readiness-report` | Blocker labels shown | Blocker reasons are structured but not narrated (Priority-2 AI opportunity, Section 13) |
+| Which certifications expire this week? | **PARTIAL** | `PocCertificationPage.tsx` shows current-period status; a specific "expiring this week" filter/sort was not confirmed to exist | same endpoint | none dedicated | Needs a due-date filter/sort, or an AI monitor (Section 13 Priority 3) |
+| Which claims remain unpaid? | YES | `ClaimsManagementPage.tsx`, `AgingReportPage.tsx` | `GET /billing/claims`, `/billing/aging-report` | Aging Report | None significant |
+| Which claims failed transmission? | **NO** | none | none — no `ClaimTransmission`/ack-status UI exists for claims (unlike NOE's ack_status field, which itself has no UI either) | none | **Real gap** — there is no concept of "failed transmission" tracked anywhere for claims, because there is no transmission channel to fail from (Section 14 Finding) |
+| Which claims have matching remittances? | **PARTIAL** | `PaymentPostingPage.tsx` shows an `unmatched_payments` worklist (the inverse view) | `GET /billing/remittances` | none dedicated "claim ↔ remittance match" report | The data to answer this exists (`payments.claim_id`, `match_status`) but there's no claims-side view of "which of my claims have a posted payment" — only the payments-side "which payments are unmatched" |
+
+## 8. Top Critical Billing Risks (Phase 8 — replaces the generic Top 10)
+
+| Rank | Risk | Evidence | Severity |
+|---|---|---|---|
+| 1 | **Claim status rollback after payment, reachable via a live, mislabeled UI button** | Executed test proof (Finding A) + confirmed frontend reachability via `BillingDashboard.tsx`'s "Export to Excel" button + `PAID`/`DENIED` filter options | **CRITICAL** |
+| 2 | **Backend billing capability lacking UI** (835 upload, enforced claim-status endpoint, NOE 837I/PDF generation, CMS-838 export, 5 of 6 alert actions, alert thresholds) | Confirmed by repo-wide frontend search per capability (Section 3 above) | **CRITICAL** |
+| 3 | **Fabricated/mock data rendered inside a real billing screen** (835 Remittance widget on `BillingDashboard.tsx` shows hardcoded numbers with no backing `fetch` call) | Direct code read of `render835Remittance()` | **CRITICAL** (new this pass — highest-risk-to-credibility item for Thursday specifically) |
+| 4 | Payment writer architecture (backend) is real and correct, but has no audit-event trail for claim-status changes it causes | Confirmed by execution + absence check | **HIGH** |
+| 5 | Claim transmission workflow not proven to exist at all (no clearinghouse channel, no `ClaimTransmission` model) | Repo-wide search, zero results | **HIGH** |
+| 6 | NOE workflow's write-side (837I/PDF generation, ack-status update) not reachable from any UI | Confirmed by repo-wide frontend search | **HIGH** |
+| 7 | No configurable rate schedule / hardcoded revenue codes | Unchanged from Section 3/8 | **HIGH** |
+| 8 | Revenue reporting lineage is "compute on read," correctly avoiding duplication, but means no historical/point-in-time revenue snapshot exists for audit | New observation this pass | **MEDIUM** |
+| 9 | Hospice cap tracking visibility is real, but cross-agency transfer attribution is a self-acknowledged accuracy risk | Unchanged from Section 3/8 | **MEDIUM** |
+| 10 | Facility Collection Alert lifecycle is 1/6 actions usable from the UI (only "resolve") | New finding this pass | **MEDIUM** |
+
+## 9. Thursday Demo Rules (Phase 9)
+
+| Capability | CAN DEMONSTRATE | EXISTS BUT NOT USABLE | DO NOT CLAIM |
+|---|---|---|---|
+| Billing Readiness | ✅ | | |
+| Benefit Period tracking | ✅ | | |
+| Certification/Recert lifecycle | ✅ | | |
+| NOE/NOTR tracking (monitoring) | ✅ | | |
+| NOE 837I/PDF generation | | ✅ (backend only) | Don't demo as staff-usable |
+| Claims Management (viewing) | ✅ | | |
+| Claim status enforced endpoint | | ✅ (backend only, no UI) | |
+| Claim EDI export ("Export to Excel" button) | | | ❌ **DO NOT CLICK THIS BUTTON LIVE** — real risk of triggering the confirmed status-rollback bug on a real claim, and its label is misleading regardless |
+| Claim transmission to a payer | | | ❌ **DO NOT CLAIM** — no channel exists |
+| 835 Remittance widget (dashboard) | | | ❌ **DO NOT DEMO — data is fabricated**, not a real feed |
+| Payment Posting (monitoring) | ✅ (as monitoring only) | | Don't claim staff can post payments in-app |
+| 835 Upload (real capability) | | ✅ (backend only) | Don't demo — no UI |
+| Denials & Appeals | ✅ | | |
+| Eligibility Verification | ✅ | | |
+| Hospice Cap Calculation | ✅ | | Caveat cross-agency transfer risk if asked |
+| Aging Report | ✅ | | |
+| Credit Balance Report + Case Actions | ✅ (now confirmed frontend-wired) | | |
+| CMS-838 Export | | ✅ (backend only) | Don't demo — no UI |
+| Facility Payment expectation lifecycle | ✅ (now confirmed frontend-wired) | | |
+| Facility Collection Alerts | ✅ (resolve action only) | ✅ (5 other actions, backend only) | Don't demo acknowledge/snooze/dismiss/reassign/start-progress |
+| Alert Thresholds management | | ✅ (backend only) | Don't demo — no UI |
+| Scheduled/exportable reports | | | ❌ **DO NOT CLAIM** — doesn't exist at all |
+| Rate schedule / revenue code configuration | | | ❌ **DO NOT CLAIM** — hardcoded placeholder |
+
+## 10. AI Billing Prioritization — refined roadmap only (Phase 10, no development)
+
+The five priorities specified are accepted as-is, cross-checked against
+this pass's new evidence, with one addition and one re-ordering
+rationale:
+
+1. **Billing Readiness AI** (READY/BLOCKED/AT RISK with evidence) —
+   inputs (Election, Benefit Period, Certification, NOE, Claim) are all
+   confirmed real, tracked data as of this pass. No new gap found that
+   would block this being priority 1.
+2. **Certification Monitor** — unchanged, data confirmed real
+   (`certification_status_events`).
+3. **Revenue Leakage Monitor** — this pass's Revenue Leakage Analysis
+   (item 5 above) sharpens the detection targets: rate-gap claims stuck
+   pre-export, claims SENT >N days with no remittance, denials
+   approaching `appeal_deadline`, unmatched payments aging.
+4. **Claim Risk Monitor** — **new evidence to fold in**: this monitor
+   should explicitly include "claim status regressed unexpectedly"
+   (PAID→SENT) as a detection target — this is no longer hypothetical,
+   it's a proven, currently-invisible failure mode with zero existing
+   monitoring.
+5. **Daily Billing Work Queue** — unchanged, data sources for all four
+   listed categories are confirmed to exist.
+
+Confirmed still explicitly out of scope, per instruction: AI Claim
+Creation, AI Coding, AI Payment Prediction, AI Denial Appeals, AI Billing
+Decisions. Every priority above remains detect-and-explain only.
+
+## 11. Updated Maturity Scores (Phase 14) — behavioral evidence only
+
+Re-scored only where this pass produced new behavioral evidence (execution
+or confirmed frontend reachability); domains not re-tested keep their
+Section 11 score with a note.
+
+| Domain | Prior score (code-read) | Updated score (behavior/reachability) | Basis |
+|---|---|---|---|
+| Claim Status Tracking | 3 | **2** (Functional, not Operational) | Confirmed by execution that the primary writer is correct but unreachable from UI, and the reachable UI path is defective |
+| Claim Export / EDI Generation | 4 | **2** | Real generation confirmed, but the only UI path to it is mislabeled and can trigger the confirmed status bug |
+| Payment Posting (write/matching) | 0–1 | **2** (backend), **0** (staff-usable) | Backend confirmed correct and operational by execution; zero UI, so end-to-end score for a biller remains 0 |
+| Credit Balance Case Management | 5 | **5** (confirmed, unchanged) | Frontend wiring now positively confirmed, not just inferred |
+| Facility Payment (expectations/allocations/alerts) | 4 | **3** (Operational for expectations, Functional-only for 5/6 alert actions) | Frontend confirmed for expectation lifecycle and alert "resolve"; other 5 alert actions have no UI |
+| NOE / NOTR | 4 | **2** for the write side (837I/PDF generation, ack-status), **4** unchanged for tracking/monitoring | Tracking is real and demoable; generation/ack-update has no UI |
+| CMS-838 Export | 3 | **1** | Backend logic is real and honest about its own gaps, but zero reachability |
+| Reports (Aging/Credit Balance/Facility Collections/Cap) | 4 | **4** (unchanged) | Already confirmed frontend-wired |
+| Revenue code / rate schedule | 1 | **1** (unchanged), but note the rate-gap **guard** at EDI-build time scores separately as **4** (a real, tested, enforced safeguard) | `test_edi_builder_rate_gap.py` proves the guard works |
+| Election / Referral / Admission / Discharge / Transfer / Revocation | unchanged from Section 11 | unchanged | Not behaviorally re-verified this pass |
+
+**Overall weighted maturity, revised**: prior estimate (Section 11) was
+~3.1/5 based on code-existence confidence. Applying "behavior, not
+existence" drops several previously-4-scored items to 2, driven almost
+entirely by the frontend-reachability gap, not new backend defects (with
+the one exception of the confirmed Claim.status bug). Revised overall
+estimate: **~2.6/5** for *staff-usable, demoable, behaviorally-proven*
+maturity — versus ~3.1/5 for *code-exists* maturity. The gap between
+those two numbers (0.5) is, numerically, the size of the
+"Implemented-Backend ≠ Usable-Feature" problem across the whole billing
+platform.
+
+---
+
+# FINAL SUMMARY
+
+## A. What is VERIFIED (executed, not inferred)
+
+- `update_claim_status` correctly refuses an invalid transition (409),
+  proven by execution.
+- `export_patient_claim_edi` genuinely and unconditionally overwrites
+  `claim.status = "SENT"` regardless of current status — proven by
+  execution against a `PAID` claim.
+- `post_payments_from_835` correctly posts a real `RemittanceAdvice` +
+  matched `Payment`, advances a `SENT` claim to `PAID`, creates a real
+  `Denial` row on a denial CARC code, and correctly refuses to move an
+  already-`DENIED` claim on a later posting — all proven by execution.
+- The rate-gap EDI-build guard (`test_edi_builder_rate_gap.py`) correctly
+  blocks an unpriced claim line from reaching 837I text — proven by
+  existing, passing tests.
+- Credit Balance case actions and Facility Payment expectation lifecycle
+  are genuinely wired end-to-end to real frontend UI (confirmed by
+  locating their exact imports/handlers), correcting this pass's initial
+  assumption that they might not be.
+- The "Export to Excel" button on `BillingDashboard.tsx` genuinely calls
+  the claim-EDI-export endpoint against an arbitrary filtered row,
+  confirmed by reading its `onClick` handler and the endpoint it calls.
+- The 835 Remittance widget on `BillingDashboard.tsx` genuinely renders
+  hardcoded, non-live data with no backing API call, confirmed by reading
+  its render function in full.
+
+## B. What is IMPLEMENTED but NOT USABLE (backend real, no frontend path)
+
+835 Upload; the enforced claim-status endpoint; NOE 837I generation; NOE
+PDF generation; NOE ack-status update; CMS-838 export; Facility
+Collection Alert actions other than "resolve" (acknowledge, snooze,
+dismiss, reassign, start-progress); Alert Thresholds management.
+
+## C. What remains UNKNOWN (neither executed nor frontend-checked this pass)
+
+Referral→Admission→Election automatic linkage; Discharge→billing closure
+trigger; Transfer/cross-agency cap attribution beyond the code's own
+caveats; Election tracking's own writer/SSOT (not re-audited this pass);
+whether Facility Payment Allocation confirm/reverse specifically has its
+own frontend wiring (the surrounding expectation lifecycle is confirmed,
+this specific action pair was not individually checked); whether a
+background job exists anywhere to proactively roll benefit periods or
+re-check stuck READY claims.
+
+## D. What should be built next (sequencing recommendation, not a decision)
+
+Given everything above, the two highest-leverage, lowest-risk fixes —
+**before any new feature work** — are:
+1. **Fix the confirmed Claim.status bug**: make `export_patient_claim_edi`
+   consult the same transition rule `update_claim_status` already
+   enforces (or the equivalent guard `post_payments_from_835` already
+   implements correctly) before writing a new status. This is a small,
+   surgical, well-evidenced fix, not a redesign.
+2. **Remove or clearly label the fabricated 835 widget** on
+   `BillingDashboard.tsx` before Thursday — this is a demo-credibility
+   risk independent of any engineering roadmap decision.
+
+Beyond those two, prioritization (which missing UI to build first: 835
+upload, alert actions, NOE generation, CMS-838, etc.) is a genuine
+product decision this document does not make — it only supplies the
+evidence. Recommend making that call after Thursday's biller feedback, so
+the missing-UI backlog is prioritized by what billers actually ask for
+first, rather than by engineering guesswork.
+
+---
+
 # SECTION 5 — DEMO READINESS (Thursday)
 
 ## Can demonstrate
