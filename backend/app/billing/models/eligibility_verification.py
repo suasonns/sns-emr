@@ -64,8 +64,9 @@ into each other or into a false negative.
 
 from __future__ import annotations
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.sql import false as sa_false
 from sqlalchemy.sql import func
 
 from app.models.base import BaseModel
@@ -141,6 +142,19 @@ class EligibilityVerification(BaseModel):
     # overwritten (Directive item 8: "allow the biller to append a later
     # reverification without overwriting the original intake verification").
     superseded_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Phase B (reverification workflow) / Phase C (eligibility change
+    # impact engine): a reverification records *what kind* of change it
+    # found relative to the prior verification, so the impact engine can
+    # decide what downstream evaluation to trigger without re-diffing raw
+    # JSON payloads. All default False -- a first-time (non-reverification)
+    # verification simply never sets any of these.
+    notes = Column(Text, nullable=True)
+    coverage_change_flag = Column(Boolean, nullable=False, server_default=sa_false())
+    payer_change_flag = Column(Boolean, nullable=False, server_default=sa_false())
+    msp_change_flag = Column(Boolean, nullable=False, server_default=sa_false())
+    ma_change_flag = Column(Boolean, nullable=False, server_default=sa_false())
+    overlap_concern_flag = Column(Boolean, nullable=False, server_default=sa_false())
 
     __table_args__ = (
         Index("ix_ev_tenant_patient", "tenant_id", "patient_id"),

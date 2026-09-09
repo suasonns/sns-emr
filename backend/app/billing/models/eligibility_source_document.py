@@ -25,7 +25,7 @@ added later (Directive item 5).
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -118,6 +118,13 @@ class EligibilitySourceDocument(BaseModel):
     )
 
     status = Column(String(16), nullable=False, server_default="ACTIVE", index=True)
+
+    # Phase A -- operational upload workflow. version is 1 for a brand
+    # new document, prior.version + 1 when supersedes_document_id is set
+    # -- an explicit column so callers never have to walk the
+    # supersession chain just to label "which version is this".
+    notes = Column(Text, nullable=True)
+    version = Column(Integer, nullable=False, server_default="1")
 
     parser_status = Column(
         String(16), nullable=False, server_default="UNPARSED", index=True

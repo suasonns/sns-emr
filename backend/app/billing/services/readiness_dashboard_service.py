@@ -29,6 +29,9 @@ from sqlalchemy.orm import Session
 
 from app.billing.models.billing_blocker_record import BillingBlockerRecord
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
+from app.billing.models.benefit_period_determination import BenefitPeriodDetermination
+from app.billing.models.eligibility_source_document import EligibilitySourceDocument
+from app.billing.models.eligibility_verification import EligibilityVerification
 from app.billing.models.readiness_assignment import ReadinessAssignment
 from app.billing.models.readiness_follow_up import ReadinessFollowUp
 from app.billing.models.readiness_workflow_event import ReadinessWorkflowEvent
@@ -404,6 +407,49 @@ def build_readiness_history(db: Session, *, tenant_id: str, patient_id: str) -> 
     ]
 
     entity_ids = blocker_ids + assignment_ids + follow_up_ids
+
+    # Phases A-E: eligibility documents, verifications, and benefit-period
+    # determinations also write ReadinessWorkflowEvent rows (see
+    # eligibility_workflow_service.record_eligibility_workflow_event) --
+    # folded additively into the same audit_trail here so the Eligibility
+    # Workspace's Audit History tab and the Readiness History view share
+    # one query, never a parallel audit read-path.
+    eligibility_document_ids = [
+        d.id
+        for d in db.query(EligibilitySourceDocument)
+        .filter(
+            EligibilitySourceDocument.tenant_id == tenant_id,
+            EligibilitySourceDocument.patient_id == patient_id,
+        )
+        .all()
+    ]
+    eligibility_verification_ids = [
+        v.id
+        for v in db.query(EligibilityVerification)
+        .filter(
+            EligibilityVerification.tenant_id == tenant_id,
+            EligibilityVerification.patient_id == patient_id,
+        )
+        .all()
+    ]
+    benefit_period_determination_ids = [
+        b.id
+        for b in db.query(BenefitPeriodDetermination)
+        .filter(
+            BenefitPeriodDetermination.tenant_id == tenant_id,
+            BenefitPeriodDetermination.patient_id == patient_id,
+        )
+        .all()
+    ]
+    entity_ids = (
+        entity_ids
+        + eligibility_document_ids
+        + eligibility_verification_ids
+        + benefit_period_determination_ids
+        # BILLER_NOTE / BILLER_ESCALATION events have no dedicated table --
+        # they use patient_id itself as entity_id.
+        + [patient_id]
+    )
     events = (
         db.query(ReadinessWorkflowEvent)
         .filter(ReadinessWorkflowEvent.entity_id.in_(entity_ids))

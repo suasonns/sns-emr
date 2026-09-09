@@ -56,6 +56,7 @@ from app.billing.models.eligibility_verification import (
     VERIFICATION_METHODS,
     EligibilityVerification,
 )
+from app.billing.models.readiness_workflow_event import ReadinessWorkflowEvent
 
 # Payer-eligibility statuses that DO NOT satisfy the admission gate --
 # i.e. still require human review before a normal admission finalizes.
@@ -112,18 +113,35 @@ def record_eligibility_source_document(
     service_date_from: date | None = None,
     service_date_to: date | None = None,
     supersedes_document_id: str | None = None,
+    notes: str | None = None,
 ) -> EligibilitySourceDocument:
     """
-    Phase 1. Reuses the existing document-storage pipeline via
-    `document_record_id` (see module docstring on
-    EligibilitySourceDocument) -- this call only records the
+    Phase 1 / Phase A (operational upload). Reuses the existing
+    document-storage pipeline via `document_record_id` (see module
+    docstring on EligibilitySourceDocument) -- this call only records the
     eligibility-specific facts layered on top of an already-uploaded
     DocumentRecord. Supersedes append-only: passing
     `supersedes_document_id` marks the prior row SUPERSEDED rather than
-    deleting or overwriting it.
+    deleting or overwriting it, and the new row's `version` is the prior
+    row's version + 1 (1 for a brand-new, non-superseding upload).
     """
     if document_type not in ELIGIBILITY_DOCUMENT_TYPES:
         raise ValueError(f"Unknown eligibility document_type: {document_type!r}")
+
+    prior: EligibilitySourceDocument | None = None
+    if supersedes_document_id:
+        prior = (
+            db.query(EligibilitySourceDocument)
+            .filter(
+                EligibilitySourceDocument.id == supersedes_document_id,
+                EligibilitySourceDocument.tenant_id == tenant_id,
+            )
+            .first()
+        )
+        if prior is None:
+            raise ValueError(
+                f"supersedes_document_id {supersedes_document_id!r} not found for this tenant"
+            )
 
     doc = EligibilitySourceDocument(
         tenant_id=tenant_id,
@@ -137,20 +155,13 @@ def record_eligibility_source_document(
         uploaded_by_user_id=uploaded_by_user_id,
         supersedes_document_id=supersedes_document_id,
         status="ACTIVE",
+        notes=notes,
+        version=(prior.version + 1) if prior is not None else 1,
     )
     db.add(doc)
 
-    if supersedes_document_id:
-        prior = (
-            db.query(EligibilitySourceDocument)
-            .filter(
-                EligibilitySourceDocument.id == supersedes_document_id,
-                EligibilitySourceDocument.tenant_id == tenant_id,
-            )
-            .first()
-        )
-        if prior is not None:
-            prior.status = "SUPERSEDED"
+    if prior is not None:
+        prior.status = "SUPERSEDED"
 
     db.commit()
     db.refresh(doc)
@@ -175,15 +186,28 @@ def record_eligibility_verification(
     payment_routing_data: dict | None = None,
     hospice_utilization_data: dict | None = None,
     supersede_prior: bool = True,
+    notes: str | None = None,
+    coverage_change_flag: bool = False,
+    payer_change_flag: bool = False,
+    msp_change_flag: bool = False,
+    ma_change_flag: bool = False,
+    overlap_concern_flag: bool = False,
 ) -> EligibilityVerification:
     """
-    Phase 2. Records a new PAYER ELIGIBILITY STATUS verification. Never
-    overwrites a prior verification for the same patient -- Directive
-    item 8 requires a biller's later reverification to append, not
-    replace, the intake verification. When `supersede_prior` is True
-    (the default), the previous latest verification for this patient is
-    marked superseded_at, purely for "what is current" queries; the row
-    itself is retained forever.
+    Phase 2 / Phase B (reverification workflow). Records a new PAYER
+    ELIGIBILITY STATUS verification. Never overwrites a prior
+    verification for the same patient -- Directive item 8 requires a
+    biller's later reverification to append, not replace, the intake
+    verification. When `supersede_prior` is True (the default), the
+    previous latest verification for this patient is marked
+    superseded_at, purely for "what is current" queries; the row itself
+    is retained forever.
+
+    The five `*_change_flag` booleans are Phase C's impact-engine input:
+    a reverification call records what kind of change it found relative
+    to the prior verification so the caller (the API layer) can decide
+    what downstream evaluation to trigger without re-diffing raw JSON
+    payloads.
     """
     if status not in PAYER_ELIGIBILITY_STATUSES:
         raise ValueError(f"Unknown payer eligibility status: {status!r}")
@@ -210,6 +234,12 @@ def record_eligibility_verification(
         entitlement_data=entitlement_data or {},
         payment_routing_data=payment_routing_data or {},
         hospice_utilization_data=hospice_utilization_data or {},
+        notes=notes,
+        coverage_change_flag=coverage_change_flag,
+        payer_change_flag=payer_change_flag,
+        msp_change_flag=msp_change_flag,
+        ma_change_flag=ma_change_flag,
+        overlap_concern_flag=overlap_concern_flag,
     )
     db.add(verification)
     db.commit()
@@ -353,3 +383,204 @@ def evaluate_admission_gate(
         eligibility_verification_id=str(verification.id) if verification else None,
         benefit_period_determination_id=str(determination.id) if determination else None,
     )
+
+
+# =========================================================
+# SHARED AUDIT TRAIL -- reuses ReadinessWorkflowEvent (Sprint 2
+# Deliverable 9 / Directive item 18), never a parallel/competing
+# mechanism. entity_type values below are new additions to the same
+# table readiness_workflow_service.py already writes ASSIGNMENT/
+# FOLLOW_UP/BLOCKER events to.
+# =========================================================
+
+# ELIGIBILITY_DOCUMENT | ELIGIBILITY_VERIFICATION |
+# BENEFIT_PERIOD_DETERMINATION | BILLER_NOTE | BILLER_ESCALATION
+ELIGIBILITY_WORKFLOW_ENTITY_TYPES = {
+    "ELIGIBILITY_DOCUMENT",
+    "ELIGIBILITY_VERIFICATION",
+    "BENEFIT_PERIOD_DETERMINATION",
+    "BILLER_NOTE",
+    "BILLER_ESCALATION",
+}
+
+
+def record_eligibility_workflow_event(
+    db: Session,
+    *,
+    tenant_id: str,
+    entity_type: str,
+    entity_id: str,
+    event_type: str,
+    actor_user_id: str,
+    reason: Optional[str] = None,
+    previous_value: Optional[dict] = None,
+    new_value: Optional[dict] = None,
+) -> ReadinessWorkflowEvent:
+    """
+    Every eligibility/benefit-period/biller-action state change writes
+    exactly one of these -- timestamp, actor, previous value, new value,
+    and reason are all captured by the shared ReadinessWorkflowEvent
+    schema (Deliverable 9), same as blocker/assignment/follow-up events.
+    """
+    if entity_type not in ELIGIBILITY_WORKFLOW_ENTITY_TYPES:
+        raise ValueError(f"Unknown eligibility workflow entity_type: {entity_type!r}")
+
+    event = ReadinessWorkflowEvent(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        event_type=event_type,
+        actor_user_id=actor_user_id,
+        reason=reason,
+        previous_value=previous_value,
+        new_value=new_value or {},
+    )
+    db.add(event)
+    db.flush()
+    return event
+
+
+# =========================================================
+# PHASE D -- RN REVIEW ACTIONS
+# =========================================================
+
+# Every action creates a NEW BenefitPeriodDetermination row that
+# supersedes the current one (append-only, matching
+# record_benefit_period_determination's existing invariant) -- an RN
+# action never mutates a prior determination in place.
+RN_REVIEW_ACTIONS = {
+    "APPROVE_DETERMINATION",
+    "REJECT_DETERMINATION",
+    "REQUEST_CLARIFICATION",
+    "UPDATE_BENEFIT_PERIOD",
+    "MARK_F2F_REQUIRED",
+    "MARK_F2F_NOT_REQUIRED",
+    "PLACE_ADMISSION_HOLD",
+    "RELEASE_ADMISSION_HOLD",
+}
+
+# The resulting determination_status for actions that change it. Actions
+# not listed here (the two F2F actions) keep the current determination's
+# status and only change face_to_face_applicability.
+_RN_ACTION_STATUS = {
+    "APPROVE_DETERMINATION": "BENEFIT_PERIOD_CONFIRMED",
+    "REJECT_DETERMINATION": "CONFLICT_REQUIRES_REVIEW",
+    "REQUEST_CLARIFICATION": "INFORMATION_INCOMPLETE",
+    "UPDATE_BENEFIT_PERIOD": "BENEFIT_PERIOD_CONFIRMED",
+    "PLACE_ADMISSION_HOLD": "CONFLICT_REQUIRES_REVIEW",
+    "RELEASE_ADMISSION_HOLD": "BENEFIT_PERIOD_CONFIRMED",
+}
+
+
+def apply_rn_review_action(
+    db: Session,
+    *,
+    tenant_id: str,
+    patient_id: str,
+    action: str,
+    actor_user_id: str,
+    reason: str,
+    anticipated_benefit_period_number: int | None = None,
+    anticipated_period_start_date: date | None = None,
+    anticipated_period_end_date: date | None = None,
+) -> BenefitPeriodDetermination:
+    """
+    Phase D. Every allowed RN action (approve/reject/request
+    clarification/update benefit period/mark F2F required-or-not/place
+    or release an admission hold) is implemented as a new, superseding
+    BenefitPeriodDetermination row -- "place admission hold" and "reject
+    determination" both resolve to CONFLICT_REQUIRES_REVIEW (an
+    unresolved status the admission gate already treats as blocking,
+    Phase 4), and "release admission hold"/"approve determination" both
+    resolve to BENEFIT_PERIOD_CONFIRMED (gate-clearing) -- there is
+    deliberately no separate "hold" state machine bolted on top of the
+    existing determination_status domain (Directive item 2: never
+    invent a competing status domain).
+
+    `reason` is required for every action (Directive: "Every action
+    requires: user, timestamp, reason, audit event.").
+    """
+    if action not in RN_REVIEW_ACTIONS:
+        raise ValueError(f"Unknown RN review action: {action!r}")
+    if not reason or not reason.strip():
+        raise ValueError("reason is required for every RN review action")
+
+    prior = get_latest_benefit_period_determination(
+        db, tenant_id=tenant_id, patient_id=patient_id
+    )
+
+    new_status = _RN_ACTION_STATUS.get(
+        action, prior.determination_status if prior else "REVIEW_IN_PROGRESS"
+    )
+
+    face_to_face_applicability = prior.face_to_face_applicability if prior else None
+    if action == "MARK_F2F_REQUIRED":
+        face_to_face_applicability = True
+    elif action == "MARK_F2F_NOT_REQUIRED":
+        face_to_face_applicability = False
+
+    resolved_period_number = (
+        anticipated_benefit_period_number
+        if anticipated_benefit_period_number is not None
+        else (prior.anticipated_benefit_period_number if prior else None)
+    )
+    resolved_period_start = (
+        anticipated_period_start_date
+        if anticipated_period_start_date is not None
+        else (prior.anticipated_period_start_date if prior else None)
+    )
+    resolved_period_end = (
+        anticipated_period_end_date
+        if anticipated_period_end_date is not None
+        else (prior.anticipated_period_end_date if prior else None)
+    )
+
+    previous_value = (
+        {
+            "determination_status": prior.determination_status,
+            "face_to_face_applicability": prior.face_to_face_applicability,
+            "anticipated_benefit_period_number": prior.anticipated_benefit_period_number,
+        }
+        if prior is not None
+        else None
+    )
+
+    determination = record_benefit_period_determination(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        determination_status=new_status,
+        admission_id=prior.admission_id if prior else None,
+        eligibility_verification_id=prior.eligibility_verification_id if prior else None,
+        source_document_id=prior.source_document_id if prior else None,
+        prior_hospice_episode_count=prior.prior_hospice_episode_count if prior else None,
+        benefit_periods_used=prior.benefit_periods_used if prior else None,
+        anticipated_benefit_period_number=resolved_period_number,
+        anticipated_period_start_date=resolved_period_start,
+        anticipated_period_end_date=resolved_period_end,
+        face_to_face_applicability=face_to_face_applicability,
+        determined_by_user_id=actor_user_id,
+        review_notes=reason,
+        conflict_reason=reason if new_status == "CONFLICT_REQUIRES_REVIEW" else None,
+        supersedes_determination_id=str(prior.id) if prior else None,
+    )
+
+    record_eligibility_workflow_event(
+        db,
+        tenant_id=tenant_id,
+        entity_type="BENEFIT_PERIOD_DETERMINATION",
+        entity_id=str(determination.id),
+        event_type=action,
+        actor_user_id=actor_user_id,
+        reason=reason,
+        previous_value=previous_value,
+        new_value={
+            "determination_status": determination.determination_status,
+            "face_to_face_applicability": determination.face_to_face_applicability,
+            "anticipated_benefit_period_number": determination.anticipated_benefit_period_number,
+        },
+    )
+    db.commit()
+
+    return determination
