@@ -728,3 +728,17 @@ governed by this approval process, not a technical GitHub restriction.
 owner on 2026-09-09.
 
 Status: **SPRINT_1_APPROVED_FOR_MERGE**.
+
+### 14.7 Merge
+
+PR #75 merged into `main` via merge commit
+`3ffb69a86594f45c26fedd096e72f02da14202eb` on 2026-09-09. Migration head
+after merge: `v3w4x5y6z7a8` (single head, unchanged from pre-merge
+verification).
+
+Status: **SPRINT_1_MERGED**. Staging verification: not started (no
+staging environment is configured in this repository -- checked directly:
+no deploy workflows, no staging env files, no infra directory --
+classified `STAGING_NOT_CONFIGURED`). Sprint 2 remains blocked pending
+staging/production-equivalent verification and rollback rehearsal per
+governance.
