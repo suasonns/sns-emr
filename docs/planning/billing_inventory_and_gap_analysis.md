@@ -1789,3 +1789,100 @@ re-checked against the compliance-hardening lens and none were reversed — thre
 Association retired as a non-issue; retrospective defensibility identified as the single most
 consequential open gap, more foundational than any individual missing check).
 
+## PHASE 43-50 — Audit-Scenario Reorganization & Eligibility Integrity Epic (index)
+
+Full detail: `cms_audit_simulation.md` (Phase 43), `cdph_survey_simulation.md` (Phase 44),
+`reimbursement_defensibility_chain.md` (Phase 45), `traceability_scorecard.md` (Phase 46). This phase
+reorganized every prior finding around audit scenarios (what a CMS reviewer, CDPH surveyor, payer, or
+attorney would actually ask for) instead of by module/file/service, per explicit instruction. No new
+code investigation was required to reorganize; all underlying evidence traces back to prior phases'
+direct code reads.
+
+### A. CMS Audit Simulation
+Walking a realistic paid claim through Election→Payment: Certification/Recertification fully pass
+(strong, evidenced, physician-attributed, timestamped). Benefit Period requires inference (no
+certification-gate confirmation, no creator attribution). NOE/Claim/Payment carry pre-existing,
+narrower gaps. **Direct answer: PARTIAL** survivability for a documentation review of a paid claim.
+
+### B. CDPH Survey Simulation
+Section-by-section: Admission **PASS**, Certification **PASS**, Clinical Documentation/Addenda **PASS**
+(confirmed this pass — the `Amendment` model satisfies CDPH's newest structured-addendum requirement),
+Medical Record (overall) **PASS** with retention/export unevaluated, Benefit Period **FAIL** (unchanged
+core finding), Plan of Care and IDG **PARTIAL** (real trigger/check exists, completion/version history
+unconfirmed), Assessment/Discharge/Transfer **UNKNOWN** (outside this engagement's investigated scope,
+honestly labeled rather than assumed).
+
+### C. Reimbursement Defensibility Chain
+Clinical Findings → Recertification is fully system-evidenced, no human memory required. The chain
+breaks at exactly two links: Benefit Period (no gate, no attribution) and Billing Readiness→Claim→Payment
+(no persisted verdict, known pre-existing claim/payment gaps). **Direct answer to the most important
+question ("can SNS explain why payment occurred, without relying on human memory?"): PARTIAL** — precise,
+not a hedge: the strong half is fully evidenced, the weak half is exactly identified.
+
+### D. Traceability Scorecard
+Certification 5, Recertification 4, Medical Record 4, NOE/Election 3, Audit Trail 3, Claim/Plan of Care
+2, **Benefit Period 1, Payment 1 (provisional), Chronology 2** (new dimension this phase — measures
+whether facts are causally linked into one narrative, not just individually documented). Chronology's
+weak score is the most diagnostic number in this engagement: individual facts are well-recorded: the
+causal thread connecting them is not.
+
+### E. Updated Top Risks — translated to business/audit language
+
+| Technical finding | Business/audit risk |
+|---|---|
+| Election addendum on-request-only tracking | Potential CMS compliance exposure beginning 10/1/2026 — every election without a logged request would have no system record that the (now-mandatory) addendum obligation was met. |
+| `rollover_benefit_period` has no certification check | Unable to demonstrate, using system records alone, that every active benefit period was authorized by a valid certification at the moment it was created. |
+| `BenefitPeriod.created_by` unpopulated, no status-event table | Unable to fully reconstruct benefit-period progression (who, when, why) during a CMS or CDPH review — an examiner would have to accept staff testimony in place of system evidence. |
+| Billing-readiness verdict not persisted | Unable to prove, after the fact, why a specific past claim was considered billable at the time it was submitted — only today's live state is queryable, not history. |
+| No "Recert Overdue" derived signal | Reduced visibility into recertification compliance risk before it becomes a claim-level problem — a monitoring gap, not a documentation gap. |
+| No update/correct endpoint for Benefit Period | If a benefit-period entry error is ever discovered, there is currently no system-supported, auditable way to correct it — any correction today would have to happen outside the system of record. |
+| 2 of 3 `Claim.status` writers unenforced/unaudited (pre-existing) | Claim-status history cannot be fully trusted or reconstructed for 2 of 3 possible change paths. |
+| 835 remittance dashboard widget fabricated (pre-existing) | Staff-facing remittance figures do not reflect real payer adjudication data, creating a risk of decisions being made on non-real numbers. |
+
+### F. First Engineering Epic — Eligibility Integrity & Traceability
+
+Explicitly **not** Billing Readiness Engine, Claim Risk AI, or Revenue Leakage AI, per instruction.
+Scope, in priority order within the epic:
+1. Certification gating inside `rollover_benefit_period` (one precondition query, reusing the proven
+   `_has_finalized_certification` shape).
+2. `BenefitPeriod.created_by` population (uses `current_user` already available at the call site — no
+   new plumbing).
+3. `BenefitPeriodStatusEvent` audit table for the three real, existing actions (`CREATED`, `ROLLED`,
+   `CLOSED`) — design already complete in `benefit_period_audit_design.md`.
+4. Eligibility chronology — a query/view layer that presents the full Referral→Payment chain for a
+   single patient as one ordered narrative, using data that already exists, closing the "Chronology"
+   gap identified in Phase 46 without needing new source data.
+5. Billing-readiness persistence — store each computed verdict (blockers, pass/fail, timestamp) rather
+   than discarding it after return, closing the single most consequential gap identified across Phases
+   35-45.
+6. User attribution audit — extend the same `created_by`/event-table pattern to any other unattributed
+   write path discovered during this epic's implementation (not newly discovered this phase; a
+   consequence of items 2-3 above, not a separate investigation).
+7. Audit reconstruction — a read-side report/screen that answers "why is this patient billable" as an
+   affirmative, itemized statement (not just absence-of-blocker), directly reusable for CMS/CDPH/payer/
+   legal-discovery requests.
+
+This epic is deliberately scoped to close the exact gaps this entire engagement identified, using
+patterns already proven elsewhere in the codebase (`CertificationStatusEvent`, `AdmissionStatusHistory`,
+`Amendment`) — no new architecture is invented, and no AI is required to deliver it.
+
+### G. Updated AI Roadmap
+1. Eligibility Traceability (a genuine capability — presenting the reconstructed chain automatically —
+   only meaningful once the epic above closes the underlying data gaps it would need to summarize).
+2. Recertification Monitor.
+3. Certification Monitor.
+4. Billing Readiness Engine (affirmative "why is this patient billable," building directly on epic item
+   7 above).
+5. Revenue Leakage Detection.
+6. Claim Risk Detection.
+7. Biller Command Center.
+
+Ordering rationale unchanged and reinforced by this phase's findings: "why was this patient billable"
+(audit defense) is sequenced ahead of "why can't I bill this patient" (workflow optimization), because
+every audit-scenario simulation in this phase confirmed that reconstructing the past is the weaker,
+higher-consequence capability gap — not scoring the present, which SNS can already do live.
+
+No production code has changed. No billing feature or AI has been built. This phase's contribution was
+reorganization and epic definition, not new findings that reverse any prior conclusion — every score and
+gap traces to evidence already established in Phases 1-42.
+
