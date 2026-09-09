@@ -125,25 +125,25 @@ class TestClassifyBlockerCode:
         "message,expected_code",
         [
             ("Patient status is 'DISCHARGED', not ACTIVE.", "OTHER"),
-            ("No benefit period covers the service date 2026-03-15.", "BENEFIT_PERIOD_ISSUE"),
-            ("Hospice election statement is not signed.", "MISSING_DOCUMENTATION"),
+            ("No benefit period covers the service date 2026-03-15.", "BENEFIT_PERIOD_REVIEW_REQUIRED"),
+            ("Hospice election statement is not signed.", "SERVICE_DOCUMENTATION_INCOMPLETE"),
             (
                 "Notice of Election (NOE) has not been filed and no CMS exception is documented -- Medicare will return the claim.",
-                "BENEFIT_PERIOD_ISSUE",
+                "NOE_NOT_ACCEPTED",
             ),
             (
                 "Certification of Terminal Illness (CTI/Recert) is not signed and finalized for this benefit period.",
-                "MISSING_CERTIFICATION",
+                "CERTIFICATION_NOT_COMPLETE",
             ),
             (
                 "Required face-to-face encounter is not attested for this benefit period.",
-                "MISSING_FACE_TO_FACE",
+                "FACE_TO_FACE_DOCUMENTATION_REQUIRED",
             ),
             (
                 "Plan of Care is not active with a physician signature on file.",
-                "MISSING_PHYSICIAN_SIGNATURE",
+                "REQUIRED_SIGNATURE_MISSING",
             ),
-            ("Payer sequence is ambiguous: conflicting priority.", "OTHER"),
+            ("Payer sequence is ambiguous: conflicting priority.", "MSP_REVIEW_REQUIRED"),
             ("Patient not found for this tenant.", "OTHER"),
         ],
     )
@@ -182,7 +182,7 @@ class TestBlockerRecordLifecycle:
         records = _blocker_records_for(db_session, patient.id)
         assert len(records) == 1
         assert records[0].status == "OPEN"
-        assert records[0].blocker_code == "BENEFIT_PERIOD_ISSUE"
+        assert records[0].blocker_code == "BENEFIT_PERIOD_REVIEW_REQUIRED"
         assert records[0].message == result.blockers[0]
 
     def test_repeated_evaluation_does_not_duplicate_open_blocker(self, db_session, tenant):
@@ -195,13 +195,19 @@ class TestBlockerRecordLifecycle:
         assert len(first_pass) == 1
         first_last_seen_verdict_id = first_pass[0].last_seen_verdict_id
 
+        # Second call re-evaluates identical evidence -- the corrective
+        # directive's duplicate-verdict fix (item 13) means this does NOT
+        # persist a new BillingReadinessVerdict row, so the blocker record's
+        # last_seen_verdict_id (set only when a verdict is actually
+        # persisted/synced) stays pinned to the original verdict, not a new
+        # one, while the blocker itself remains open and not duplicated.
         check_patient_billing_readiness(
             db_session, tenant_id=tenant.id, patient_id=str(patient.id), service_date=SERVICE_DATE,
         )
         second_pass = _blocker_records_for(db_session, patient.id)
         assert len(second_pass) == 1
         assert second_pass[0].status == "OPEN"
-        assert second_pass[0].last_seen_verdict_id != first_last_seen_verdict_id
+        assert second_pass[0].last_seen_verdict_id == first_last_seen_verdict_id
 
     def test_blocker_auto_resolves_once_patient_becomes_ready(self, db_session, tenant):
         patient = _make_patient(db_session, tenant.id, mrn="MRN-BLOCKER-AUTORESOLVE")

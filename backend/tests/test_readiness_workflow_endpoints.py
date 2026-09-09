@@ -27,6 +27,7 @@ from tests.test_aging_report_service import _enable_billing_for_tenant, _headers
 from tests.test_billing_readiness_service import (
     SERVICE_DATE,
     _fully_ready_patient,
+    _make_admitted,
     _make_benefit_period,
     _make_patient,
 )
@@ -67,9 +68,11 @@ class TestReadinessDashboardEndpoint:
         billing_tenant = _billing_tenant(db_session)
         tenant_id = billing_tenant.id
 
-        _fully_ready_patient(db_session, str(tenant_id), mrn="MRN-DASH-READY")
+        ready_patient = _fully_ready_patient(db_session, str(tenant_id), mrn="MRN-DASH-READY")
+        _make_admitted(db_session, str(tenant_id), ready_patient)
         not_ready_patient = _make_patient(db_session, str(tenant_id), mrn="MRN-DASH-NOTREADY")
         _make_benefit_period(db_session, str(tenant_id), not_ready_patient)
+        _make_admitted(db_session, str(tenant_id), not_ready_patient)
 
         response = client.get(
             "/billing/readiness-dashboard",
@@ -94,8 +97,10 @@ class TestReadinessQueueEndpoint:
         tenant_id = billing_tenant.id
 
         ready_patient = _fully_ready_patient(db_session, str(tenant_id), mrn="MRN-QUEUE-READY")
+        _make_admitted(db_session, str(tenant_id), ready_patient)
         not_ready_patient = _make_patient(db_session, str(tenant_id), mrn="MRN-QUEUE-NOTREADY")
         _make_benefit_period(db_session, str(tenant_id), not_ready_patient)
+        _make_admitted(db_session, str(tenant_id), not_ready_patient)
 
         # Seed verdicts for both patients via the dashboard (same side
         # effect the readiness-report endpoint already has).
@@ -127,6 +132,7 @@ class TestReadinessHistoryEndpoint:
 
         patient = _make_patient(db_session, str(tenant_id), mrn="MRN-HISTORY")
         _make_benefit_period(db_session, str(tenant_id), patient)
+        _make_admitted(db_session, str(tenant_id), patient)
 
         client.get(
             "/billing/readiness-dashboard",
@@ -308,6 +314,7 @@ class TestReadinessBlockerResolveEndpoint:
         tenant_id = billing_tenant.id
         patient = _make_patient(db_session, str(tenant_id), mrn="MRN-BLOCKER-RESOLVE")
         _make_benefit_period(db_session, str(tenant_id), patient)
+        _make_admitted(db_session, str(tenant_id), patient)
 
         client.get(
             "/billing/readiness-dashboard",
@@ -339,6 +346,7 @@ class TestReadinessBlockerResolveEndpoint:
         tenant_b = _billing_tenant(db_session)
         patient = _make_patient(db_session, str(tenant_a.id), mrn="MRN-BLOCKER-XTENANT")
         _make_benefit_period(db_session, str(tenant_a.id), patient)
+        _make_admitted(db_session, str(tenant_a.id), patient)
 
         client.get(
             "/billing/readiness-dashboard",

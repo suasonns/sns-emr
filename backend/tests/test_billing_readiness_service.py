@@ -193,6 +193,24 @@ def _make_approved_poc(db_session, tenant_id: str, patient: Patient) -> None:
     db_session.commit()
 
 
+def _make_admitted(db_session, tenant_id: str, patient: Patient) -> Admission:
+    """
+    Directive item 10 population correction: build_tenant_billing_readiness_report
+    now only evaluates patients with an ADMITTED admission record, so any
+    test exercising that function must give its patients one.
+    """
+    admission = Admission(
+        id=uuid.uuid4(),
+        tenant_id=uuid.UUID(tenant_id),
+        patient_id=patient.id,
+        admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        status="ADMITTED",
+    )
+    db_session.add(admission)
+    db_session.commit()
+    return admission
+
+
 def _make_payer(db_session, patient: Patient, *, is_primary: bool = True) -> None:
     payer = PatientPayer(
         id=uuid.uuid4(),
@@ -260,7 +278,10 @@ def test_no_benefit_period_covering_service_date_is_not_ready(db_session, tenant
     )
 
     assert result.ready is False
-    assert any("no benefit period" in b.lower() for b in result.blockers)
+    assert any(
+        "benefit-period information required for this admitted record" in b.lower()
+        for b in result.blockers
+    )
 
 
 def test_missing_election_signature_blocks_initial_period(db_session, tenant):
@@ -513,9 +534,11 @@ def test_inactive_patient_status_blocks(db_session, tenant):
 
 def test_tenant_report_aggregates_ready_and_not_ready_patients(db_session, tenant):
     ready_patient = _fully_ready_patient(db_session, tenant.id, mrn="MRN-REPORT-READY")
+    _make_admitted(db_session, tenant.id, ready_patient)
 
     not_ready_patient = _make_patient(db_session, tenant.id, mrn="MRN-REPORT-NOT-READY")
     _make_benefit_period(db_session, tenant.id, not_ready_patient)
+    _make_admitted(db_session, tenant.id, not_ready_patient)
     # No certification / POC / payer -- deliberately incomplete.
 
     report = build_tenant_billing_readiness_report(
@@ -592,9 +615,11 @@ def test_categorize_blocker(blocker, expected_category):
 
 def test_cross_agency_report_includes_agency_and_blocker_breakdown(db_session, tenant):
     ready_patient = _fully_ready_patient(db_session, tenant.id, mrn="MRN-CROSS-READY")
+    _make_admitted(db_session, tenant.id, ready_patient)
 
     not_ready_patient = _make_patient(db_session, tenant.id, mrn="MRN-CROSS-NOT-READY")
     _make_benefit_period(db_session, tenant.id, not_ready_patient)
+    _make_admitted(db_session, tenant.id, not_ready_patient)
     # Deliberately incomplete: no certification / POC / payer, so this
     # patient contributes at least a "Missing Certification" and
     # "Missing POC Physician Signature" blocker.

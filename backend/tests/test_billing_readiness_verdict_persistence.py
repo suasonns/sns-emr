@@ -150,9 +150,13 @@ class TestCrossTenantNoVerdict:
 
 
 class TestHistoricalAppendOnlyBehavior:
-    def test_repeated_evaluations_append_new_verdicts_not_overwrite(
+    def test_repeated_identical_evaluations_do_not_duplicate_a_verdict(
         self, db_session, tenant
     ):
+        """Corrective-directive item 13: a GET/page-load/poll-triggered
+        re-evaluation with byte-identical evidence (same ready/blockers/
+        warnings/benefit_period/certification) must not create a new
+        historical row -- only evidence that actually changed does."""
         patient = _fully_ready_patient(db_session, tenant.id, mrn="MRN-VERDICT-HISTORY")
 
         check_patient_billing_readiness(
@@ -167,6 +171,36 @@ class TestHistoricalAppendOnlyBehavior:
             patient_id=str(patient.id),
             service_date=SERVICE_DATE,
         )
+
+        verdicts = _verdicts_for(db_session, patient.id)
+        assert len(verdicts) == 1
+
+    def test_evaluation_with_changed_evidence_appends_a_new_verdict(
+        self, db_session, tenant
+    ):
+        """Once the underlying evidence actually changes (e.g. the missing
+        benefit period is corrected), the next evaluation must append a
+        new, distinct verdict row rather than overwrite the first one --
+        the append-only history the dedup fix must not break."""
+        patient = _make_patient(db_session, tenant.id, mrn="MRN-VERDICT-HISTORY-CHANGED")
+
+        first_result = check_patient_billing_readiness(
+            db_session,
+            tenant_id=tenant.id,
+            patient_id=str(patient.id),
+            service_date=SERVICE_DATE,
+        )
+        assert first_result.ready is False
+
+        _make_benefit_period(db_session, tenant.id, patient)
+
+        second_result = check_patient_billing_readiness(
+            db_session,
+            tenant_id=tenant.id,
+            patient_id=str(patient.id),
+            service_date=SERVICE_DATE,
+        )
+        assert second_result.blockers != first_result.blockers
 
         verdicts = _verdicts_for(db_session, patient.id)
         assert len(verdicts) == 2

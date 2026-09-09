@@ -60,3 +60,16 @@ class BillingReadinessVerdict(Base):
     triggered_by = Column(String(32), nullable=False, server_default="MANUAL_CHECK")
 
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Eligibility/Billing Workflow Correction (post-Sprint-2 directive):
+    # a stable sha256 signature of (is_ready, blockers, warnings,
+    # benefit_period_id, certification_id) -- the exact evidence this
+    # verdict is a function of. Used by
+    # billing_readiness_service._persist_billing_readiness_verdict to
+    # skip writing a new row when a re-evaluation (GET request, dashboard
+    # poll, page render) produces byte-identical evidence to the most
+    # recent verdict for this patient, closing the "repeated evaluations
+    # within seconds" defect. Nullable/additive so historical rows never
+    # need backfilling; a null value simply never matches, so old rows
+    # are never mistaken for a duplicate.
+    evidence_hash = Column(String(64), nullable=True, index=True)

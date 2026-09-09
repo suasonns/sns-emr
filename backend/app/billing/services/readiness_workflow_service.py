@@ -93,17 +93,67 @@ def readiness_status_for_verdict(verdict: BillingReadinessVerdict) -> ReadinessS
 # additively with the typed BlockerCode enum. Same prefix-match approach,
 # same OTHER fallback so no blocker is ever dropped or crashes the
 # mapper when a future blocker string doesn't match a known prefix yet.
-BLOCKER_CODE_PREFIXES: list[tuple[str, str]] = [
-    ("Patient status is", "OTHER"),
-    ("No benefit period covers", "BENEFIT_PERIOD_ISSUE"),
-    ("Hospice election statement is not signed", "MISSING_DOCUMENTATION"),
-    ("Notice of Election (NOE) has not been filed", "BENEFIT_PERIOD_ISSUE"),
-    ("Certification of Terminal Illness", "MISSING_CERTIFICATION"),
-    ("Required face-to-face encounter", "MISSING_FACE_TO_FACE"),
-    ("Plan of Care is not active", "MISSING_PHYSICIAN_SIGNATURE"),
-    ("Payer sequence is ambiguous", "OTHER"),
-    ("Patient not found", "OTHER"),
+# Extends app.billing.services.billing_readiness_service.BLOCKER_CATEGORY_PREFIXES
+# additively with the typed BlockerCode enum. Same prefix-match approach,
+# same OTHER fallback so no blocker is ever dropped or crashes the
+# mapper when a future blocker string doesn't match a known prefix yet.
+#
+# Corrected taxonomy (Eligibility/Admission/Benefit-Period/Billing-
+# Readiness Workflow Correction directive, item 10): billing blockers now
+# primarily represent post-admission claim-preparation issues. Each entry
+# also carries the "workflow owner category" (INTAKE / RN / BILLER /
+# SYSTEM) responsible for resolving that category of blocker.
+BLOCKER_CODE_PREFIXES: list[tuple[str, str, str]] = [
+    # (prefix, blocker_code, workflow_owner_category)
+    ("Patient status is", "OTHER", "BILLER"),
+    (
+        "Benefit-period information required for this admitted record",
+        "BENEFIT_PERIOD_REVIEW_REQUIRED",
+        "BILLER",
+    ),
+    (
+        "No benefit period covers",
+        "BENEFIT_PERIOD_REVIEW_REQUIRED",
+        "BILLER",
+    ),
+    ("Hospice election statement is not signed", "SERVICE_DOCUMENTATION_INCOMPLETE", "RN"),
+    ("Notice of Election (NOE) has not been filed", "NOE_NOT_ACCEPTED", "BILLER"),
+    ("Certification of Terminal Illness", "CERTIFICATION_NOT_COMPLETE", "RN"),
+    ("Required face-to-face encounter", "FACE_TO_FACE_DOCUMENTATION_REQUIRED", "RN"),
+    ("Plan of Care is not active", "REQUIRED_SIGNATURE_MISSING", "RN"),
+    ("Payer sequence is ambiguous", "MSP_REVIEW_REQUIRED", "BILLER"),
+    ("Patient not found", "OTHER", "BILLER"),
 ]
+
+# Human-readable label for each blocker code -- the frontend/API layer
+# must never display a raw enum name to users (Directive item 10, last
+# line). Falls back to a titleized version of the code itself for any
+# code not explicitly listed (e.g. a historical Sprint-2-era code).
+BLOCKER_CODE_DISPLAY_LABELS: dict[str, str] = {
+    "ELIGIBILITY_REVERIFICATION_REQUIRED": "Eligibility reverification required",
+    "PAYER_ROUTING_CONFLICT": "Payer routing conflict",
+    "MEDICARE_ADVANTAGE_REVIEW_REQUIRED": "Medicare Advantage review required",
+    "MSP_REVIEW_REQUIRED": "MSP / payer sequencing review required",
+    "ACTIVE_HOSPICE_OVERLAP": "Active hospice overlap",
+    "ACTIVE_HOME_HEALTH_OVERLAP_REVIEW": "Home health overlap review required",
+    "NOE_NOT_ACCEPTED": "Notice of Election not accepted",
+    "CERTIFICATION_NOT_COMPLETE": "Certification not complete",
+    "RECERTIFICATION_NOT_COMPLETE": "Recertification not complete",
+    "FACE_TO_FACE_DOCUMENTATION_REQUIRED": "Face-to-face documentation required",
+    "REQUIRED_SIGNATURE_MISSING": "Required signature missing",
+    "SERVICE_DOCUMENTATION_INCOMPLETE": "Service documentation incomplete",
+    "LEVEL_OF_CARE_DATA_INCOMPLETE": "Level of care data incomplete",
+    "CLAIM_VALIDATION_ERROR": "Claim validation error",
+    "BENEFIT_PERIOD_REVIEW_REQUIRED": "Benefit period review required",
+    "OTHER": "Other",
+    # Historical Sprint-2 codes, still readable if they appear on an
+    # older persisted row.
+    "MISSING_CERTIFICATION": "Certification missing",
+    "MISSING_FACE_TO_FACE": "Face-to-face documentation missing",
+    "MISSING_PHYSICIAN_SIGNATURE": "Physician signature missing",
+    "MISSING_DOCUMENTATION": "Documentation missing",
+    "BENEFIT_PERIOD_ISSUE": "Benefit period issue",
+}
 
 
 def classify_blocker_code(blocker: str) -> str:
@@ -112,10 +162,31 @@ def classify_blocker_code(blocker: str) -> str:
     "OTHER" for any blocker text that doesn't match a known prefix,
     matching the existing categorize_blocker() fallback behavior.
     """
-    for prefix, code in BLOCKER_CODE_PREFIXES:
+    for prefix, code, _owner in BLOCKER_CODE_PREFIXES:
         if blocker.startswith(prefix):
             return code
     return "OTHER"
+
+
+def classify_blocker_owner_category(blocker: str) -> str:
+    """
+    Companion to classify_blocker_code(): which operational role is
+    expected to resolve this category of blocker (Directive item 10,
+    "workflow owner category"). Defaults to BILLER, matching the
+    directive's framing that billing-readiness blockers primarily
+    represent post-admission claim-preparation issues.
+    """
+    for prefix, _code, owner in BLOCKER_CODE_PREFIXES:
+        if blocker.startswith(prefix):
+            return owner
+    return "BILLER"
+
+
+def blocker_display_label(blocker_code: str) -> str:
+    """Human-readable label for a blocker_code -- never show the raw enum."""
+    return BLOCKER_CODE_DISPLAY_LABELS.get(
+        blocker_code, blocker_code.replace("_", " ").title()
+    )
 
 
 # =========================================================
@@ -168,6 +239,7 @@ def sync_blocker_records(
             tenant_id=tenant_id,
             patient_id=patient_id,
             blocker_code=classify_blocker_code(message),
+            workflow_owner_category=classify_blocker_owner_category(message),
             message=message,
             first_seen_verdict_id=verdict.id,
             last_seen_verdict_id=verdict.id,

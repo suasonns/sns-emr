@@ -432,9 +432,28 @@ def test_billing_readiness_endpoint_returns_cross_agency_rollup(client, db_sessi
     _make_certification(db_session, tenant_id, ready_patient, ready_period)
     _make_approved_poc(db_session, tenant_id, ready_patient)
     _make_payer(db_session, ready_patient)
+    db_session.add(
+        Admission(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=ready_patient.id,
+            admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            status="ADMITTED",
+        )
+    )
 
     blocked_patient = _make_patient(db_session, tenant_id, mrn_prefix="BLOCK", diagnosis="R63.4")
     _make_benefit_period(db_session, tenant_id, blocked_patient)
+    db_session.add(
+        Admission(
+            id=uuid.uuid4(),
+            tenant_id=tenant_id,
+            patient_id=blocked_patient.id,
+            admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            status="ADMITTED",
+        )
+    )
+    db_session.commit()
 
     response = client.get(
         "/api/dashboard/billing-readiness",

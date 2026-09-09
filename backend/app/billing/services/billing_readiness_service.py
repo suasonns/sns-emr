@@ -35,10 +35,37 @@ Gap ("why was this patient billable on DATE X" had no answer beyond
 re-deriving today's live state). `billing_engine.generate_patient_billing`
 and the batch billing API call it and decide what to do with the result
 (refuse generation, surface an alert, etc.) exactly as before.
+
+CORRECTIVE DIRECTIVE (Eligibility, Admission, Benefit-Period, and
+Billing-Readiness Workflow Correction, post-Sprint-2) applied here:
+
+  - Directive item 10 ("correct billing population queries"):
+    `build_tenant_billing_readiness_report` now only evaluates patients
+    with an ADMITTED admission record -- a referral/intake-hold record
+    (Admission.status in DRAFT/PENDING/NON_ADMIT, or no Admission row at
+    all) is never evaluated for billing readiness and never produces a
+    BillingReadinessVerdict, matching the admission gate's requirement
+    that intake-hold records must not contaminate billing readiness.
+  - Directive item 9 ("correct the billing-readiness engine"): because
+    the population is now ADMITTED-only, an admitted patient who still
+    has no benefit period covering the service date is, by construction,
+    an upstream admission-data exception (legacy import, migration
+    defect, authorized admission exception, or a later-discovered
+    discrepancy) -- never the normal path. The blocker message below was
+    corrected to say so explicitly instead of a generic "Missing Benefit
+    Period" label.
+  - Directive item 13 ("remove duplicate readiness evaluations"):
+    _persist_billing_readiness_verdict now computes a stable evidence
+    hash and skips writing a new BillingReadinessVerdict row when it is
+    byte-identical to the patient's most recent verdict -- a GET/page
+    load/dashboard poll that recomputes the same live state no longer
+    creates a new historical row every time.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -62,6 +89,10 @@ F2F_REQUIRED_FROM_PERIOD_NUMBER = 3
 # blocker text (which stays intact for the per-patient detail view).
 BLOCKER_CATEGORY_PREFIXES: list[tuple[str, str]] = [
     ("Patient status is", "Patient Not Active"),
+    (
+        "Benefit-period information required for this admitted record",
+        "Benefit Period Review Required",
+    ),
     ("No benefit period covers", "Missing Benefit Period"),
     ("Hospice election statement is not signed", "Missing Election Statement"),
     ("Notice of Election (NOE) has not been filed", "Missing NOE Filing"),
@@ -222,6 +253,44 @@ def _fetch_active_payers(db: Session, patient_id: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _compute_evidence_hash(
+    *, result: "BillingReadinessResult", certification_id: str | None
+) -> str:
+    """
+    Stable signature of the exact evidence a verdict is a function of
+    (Directive item 13). Two evaluations of the same patient with
+    identical evidence produce the identical hash regardless of *when*
+    they ran -- the basis for skipping a duplicate write.
+    """
+    payload = {
+        "ready": result.ready,
+        "blockers": list(result.blockers),
+        "warnings": list(result.warnings),
+        "benefit_period_id": result.benefit_period_id,
+        "certification_id": certification_id,
+    }
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _fetch_latest_verdict_evidence_hash(
+    db: Session, *, tenant_id: str, patient_id: str
+) -> str | None:
+    row = db.execute(
+        text(
+            """
+            SELECT evidence_hash
+            FROM billing_readiness_verdicts
+            WHERE tenant_id = :tenant_id AND patient_id = :patient_id
+            ORDER BY evaluated_at DESC
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": tenant_id, "patient_id": patient_id},
+    ).first()
+    return row[0] if row else None
+
+
 def _persist_billing_readiness_verdict(
     db: Session,
     *,
@@ -237,7 +306,22 @@ def _persist_billing_readiness_verdict(
     always produces a new row, so "why was this patient billable on
     DATE X" can be answered by querying the most recent verdict as of
     that date instead of recomputing live state.
+
+    Directive item 13 correction: if this evaluation's evidence is
+    byte-identical to the patient's most recently persisted verdict (same
+    ready/blockers/warnings/benefit_period/certification), no new row is
+    written and no blocker-record sync runs -- a GET request, dashboard
+    poll, page render, or route navigation that recomputes unchanged live
+    state must never create a new historical row. Only evidence that
+    actually changed creates a new verdict.
     """
+    evidence_hash = _compute_evidence_hash(result=result, certification_id=certification_id)
+    latest_hash = _fetch_latest_verdict_evidence_hash(
+        db, tenant_id=tenant_id, patient_id=patient_id
+    )
+    if latest_hash is not None and latest_hash == evidence_hash:
+        return
+
     verdict = BillingReadinessVerdict(
         tenant_id=tenant_id,
         patient_id=patient_id,
@@ -247,6 +331,7 @@ def _persist_billing_readiness_verdict(
         benefit_period_id=result.benefit_period_id,
         certification_id=certification_id,
         triggered_by=triggered_by,
+        evidence_hash=evidence_hash,
     )
     db.add(verdict)
     db.commit()
@@ -305,8 +390,20 @@ def check_patient_billing_readiness(
 
     benefit_period = _fetch_billable_benefit_period(db, tenant_id, patient_id, service_date)
     if benefit_period is None:
+        # Directive item 9 correction: by construction, only ADMITTED
+        # patients reach this evaluation via
+        # build_tenant_billing_readiness_report's corrected population
+        # query (see module docstring) -- an admitted patient with no
+        # benefit period covering the service date is always an upstream
+        # admission-data exception (legacy import, migration defect,
+        # authorized admission exception, or later-discovered
+        # discrepancy), never the normal path. Message text is the exact
+        # wording required by the directive so it is never displayed as
+        # a generic/context-free "Missing Benefit Period" label.
         blockers.append(
-            f"No benefit period covers the service date {service_date.isoformat()}."
+            "Benefit-period information required for this admitted record "
+            "is unresolved. Review the eligibility source document and "
+            "admission determination before claim preparation."
         )
         result = BillingReadinessResult(
             patient_id=patient_id,
@@ -404,20 +501,33 @@ def build_tenant_billing_readiness_report(
     service_date: date,
 ) -> dict:
     """
-    Evaluates every ACTIVE patient in the tenant for `service_date` and
+    Evaluates every ADMITTED patient in the tenant for `service_date` and
     returns a summary report: counts plus a per-patient ready/not-ready
     verdict and blocker labels only (no chart content, no clinical
     narrative -- safe to surface to a biller or agency owner as an
     alert/checklist).
+
+    Directive item 10 population correction: population is patients with
+    at least one ADMITTED admission record, not merely `patients.status =
+    'ACTIVE'`. A referral-only or intake-hold record (no ADMITTED
+    admission row yet) is excluded regardless of its `patients.status`
+    value -- it must never appear in billing readiness, be counted, or
+    receive a BillingReadinessVerdict (see the admission gate in
+    eligibility_workflow_service.evaluate_admission_gate, which is the
+    intended place such a record gets stopped before reaching this
+    query at all).
     """
     patient_rows = db.execute(
         text(
             """
-            SELECT id::text AS id, mrn
-            FROM patients
-            WHERE tenant_id = :tenant_id
-              AND status = 'ACTIVE'
-            ORDER BY mrn
+            SELECT DISTINCT p.id::text AS id, p.mrn
+            FROM patients p
+            JOIN admissions a
+              ON a.tenant_id = p.tenant_id AND a.patient_id = p.id
+            WHERE p.tenant_id = :tenant_id
+              AND p.status = 'ACTIVE'
+              AND a.status = 'ADMITTED'
+            ORDER BY p.mrn
             """
         ),
         {"tenant_id": tenant_id},
