@@ -26,6 +26,7 @@ import BillerShell from "./components/billing/BillerShell";
 import VisitsNotesPage from "./pages/billing/VisitsNotesPage";
 import PocCertificationPage from "./pages/billing/PocCertificationPage";
 import NoeTrackingPage from "./pages/billing/NoeTrackingPage";
+import ReadinessWorkflowPage from "./pages/billing/ReadinessWorkflowPage";
 import ComingSoonPage from "./pages/billing/ComingSoonPage";
 import ClaimsManagementPage from "./pages/billing/ClaimsManagementPage";
 import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
@@ -78,7 +79,7 @@ export default function App() {
         >
           <Route index element={<Navigate to="dashboard" replace />} />
           <Route path="dashboard" element={<BillingOverviewPage />} />
-          <Route path="readiness" element={<Navigate to="/billing/dashboard" replace />} />
+          <Route path="readiness" element={<ReadinessWorkflowPage />} />
           <Route path="settings" element={<ComingSoonPage title="Settings" />} />
           <Route path="visits-notes" element={<VisitsNotesPage />} />
           <Route path="poc-certification" element={<PocCertificationPage />} />

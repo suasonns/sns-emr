@@ -742,3 +742,148 @@ no deploy workflows, no staging env files, no infra directory --
 classified `STAGING_NOT_CONFIGURED`). Sprint 2 remains blocked pending
 staging/production-equivalent verification and rollback rehearsal per
 governance.
+
+---
+
+## 15. Sprint 2 — Billing Readiness Operational Workflow (Eligibility Traceability Epic)
+
+Status: **SPRINT_2_CODE_COMPLETE** (development-phase only, per explicit
+product-owner override of the §14 staging gate for this sprint -- see
+Governance Note below). Branch: `suasonns-billing-readiness-workflow`, off
+`main` at `3ffb69a86594f45c26fedd096e72f02da14202eb` (PR #75 merge commit).
+Not committed as of this note; working tree only.
+
+### 15.1 Governance Note
+
+The product owner directed Sprint 2 to begin notwithstanding the
+`STAGING_NOT_CONFIGURED` gate recorded in §14, explicitly as a one-time
+override scoped to development-phase, non-production work (no real
+tenants/patients/billers exist yet). This is not a reversal of the general
+staging-verification policy -- it applies only to this sprint's dev-data-only
+scope. Sprint 1's own functionality was **not modified** except as noted in
+§15.6.
+
+### 15.2 What Was Built (mapped to the 10 requested deliverables)
+
+1. **Dashboard** (`sns-emr-frontend/src/pages/billing/ReadinessWorkflowPage.tsx`,
+   mounted at `/billing/readiness`): total Ready/At Risk/Not Ready/Blocked
+   counts, patients requiring attention, recently-changed status, recent
+   evaluations, 14-day historical trend.
+2. **Readiness status derivation** (`readiness_workflow_service.py::derive_readiness_status`):
+   `NOT_READY` if the persisted verdict has ≥1 blocker; else `AT_RISK` if
+   ≥1 warning; else `READY`. Purely a read-time projection over Sprint 1's
+   existing `ready`/`blockers`/`warnings` fields -- no new compliance
+   decision is made, and Sprint 1's own boolean `ready` field and endpoint
+   response shape are unchanged.
+3. **Typed blocker framework** (`BillingBlockerRecord` model +
+   `classify_blocker_code`): `MISSING_CERTIFICATION`, `MISSING_FACE_TO_FACE`,
+   `MISSING_PHYSICIAN_SIGNATURE`, `MISSING_DOCUMENTATION`,
+   `BENEFIT_PERIOD_ISSUE`, `OTHER`. Existing free-text blocker messages are
+   pattern-matched to a code and persisted alongside the original message
+   (`blocker_code` + `message`), with `status` (OPEN/RESOLVED),
+   `resolved_at`, `resolved_by`, `resolution_note` for resolution tracking.
+   Multiple concurrent blockers per patient are supported; history is
+   append-only (new verdict evaluation re-syncs open records, never deletes).
+4. **Generic assignment framework** (`ReadinessAssignment` model):
+   `assigned_user_id`, `assigned_role` (free text, not a fixed enum of
+   business roles), `assigned_date`, `assigned_by`, `status`
+   (ASSIGNED/UNASSIGNED/REASSIGNED). No "biller"/"agency" concept baked in.
+5. **Follow-up tracking** (`ReadinessFollowUp` model): `follow_up_required`,
+   `status` (OPEN/IN_PROGRESS/RESOLVED/BLOCKED), `due_date`, `resolved_date`,
+   `created_date`, `notes`. Generic, not agency-specific.
+6. **Readiness history UI** (history dialog in `ReadinessWorkflowPage.tsx`,
+   backed by `GET /billing/readiness-history/{patient_id}`): read-only view
+   of persisted `BillingReadinessVerdict` rows, blocker history (with a
+   manual-resolve action), and the shared `ReadinessWorkflowEvent` audit
+   trail. Sourced directly from Sprint 1 persistence; adds no parallel
+   verdict/audit store.
+7. **Operational queue** (queue table in the same page, backed by
+   `GET /billing/readiness-queue`): filterable by status
+   (READY/AT_RISK/NOT_READY/BLOCKED), assignment
+   (ASSIGNED/UNASSIGNED/UNSET), and due-date bucket (DUE_SOON/OVERDUE).
+8. **Contracts defined before implementation**: all 6 new/changed endpoints'
+   request/response Pydantic schemas (`billing_schema.py`) were written and
+   reviewed before `readiness_workflow_router.py`; the frontend TypeScript
+   mirror (`sns-emr-frontend/src/api/readinessWorkflow.ts`) was written as a
+   field-for-field match and verified against the live endpoints in §15.4.
+9. **Audit trail** (`ReadinessWorkflowEvent` model, `entity_type` +
+   `event_type` + `actor_user_id` + `previous_value`/`new_value` (JSONB) +
+   `reason` + `readiness_verdict_id` FK): every assignment change, follow-up
+   change, and manual blocker resolution writes one event, following the
+   existing `BenefitPeriodStatusEvent` pattern rather than a new mechanism.
+10. **Out of scope, confirmed not built**: no real biller/agency onboarding,
+    no production user provisioning -- `assigned_role`/`assigned_user_id`
+    are generic free-form fields with no seeded real-world role list; all
+    demo data lives under one fixed synthetic dev tenant
+    (`00000000-0000-0000-0000-00000000d0d0`), never a real tenant ID.
+
+### 15.3 New Migration
+
+`w1x2y3z4a5b6_billing_readiness_workflow_tables.py` — revises
+`v3w4x5y6z7a8` (prior head, from Sprint 1). Creates
+`billing_blocker_records`, `readiness_assignments`, `readiness_follow_ups`,
+`readiness_workflow_events`. New single head: `w1x2y3z4a5b6`. Applied
+cleanly via `alembic upgrade head` against both the isolated test-DB
+rebuild path and the local dev DB (`sns_emr_dev_clean`, which was one
+migration behind and brought current as part of this work).
+
+### 15.4 Verification
+
+- **Backend unit/integration tests**: `test_readiness_workflow_service.py`
+  (29 tests -- derivation rule, blocker classification, assignment/follow-up
+  upsert, resolution tracking) + `test_readiness_workflow_endpoints.py`
+  (9 tests -- all 6 endpoints, including the cross-tenant IDOR fix below).
+  All new tests pass.
+- **Full backend regression**: `python scripts/run_isolated_tests.py -- -q`
+  run multiple times across this sprint. Two pre-existing, unrelated
+  failures observed and root-caused as **not** introduced by this work:
+  - `tests/test_treatment_identity_migration.py` (both tests) — hardcoded
+    `HEAD_REVISION = "d9e8f7a6b5c4"` constant predates both Sprint 1 and
+    Sprint 2 (introduced in commit `b65e0c6`, before Sprint 1's own
+    migration commit `224f107`); it was already stale before this sprint
+    began and is unrelated to the new `w1x2y3z4a5b6` head. Left unmodified
+    (out of scope; not a Sprint 2 regression).
+  - `tests/test_rnica_poc_adapter.py::test_lock_rnica_assessment_creates_no_poc_version_or_problem` —
+    confirmed order-dependent/flaky: failed once inside the full suite,
+    passed when re-run in isolation and when the full suite was re-run
+    excluding only the new Sprint 2 test files. Not related to this sprint.
+- **Live end-to-end sanity check**: seeded the demo tenant via
+  `backend/scripts/seed_readiness_workflow_demo.py` (4 synthetic patients,
+  one per bucket, plus one assignment and two follow-ups), then exercised
+  all 3 read endpoints through a real `TestClient` HTTP request (not a
+  direct service call) against the local dev DB: `/billing/readiness-dashboard`,
+  `/billing/readiness-queue` (unfiltered + `status=NOT_READY` +
+  `due=OVERDUE`), and `/billing/readiness-history/{patient_id}`. All
+  returned `200` with the expected bucket counts (`{'READY': 1, 'AT_RISK': 1,
+  'NOT_READY': 1, 'BLOCKED': 1}`) and field shapes matching the frontend
+  contract. Seed script re-run twice back-to-back to confirm idempotency
+  (no duplicate-key errors, identical output both times).
+- **Frontend**: `ReadinessWorkflowPage.tsx` + `App.tsx` type-check clean
+  (0 errors, via TS compiler API against `tsconfig.app.json` -- `tsc -b`
+  itself is blocked repo-wide by a pre-existing, unrelated syntax error in
+  `CapCalculationPage.tsx`); eslint clean except one pre-existing
+  repo-wide `react-hooks/set-state-in-effect` pattern shared with
+  `BillingOverviewPage.tsx`/`NoeTrackingPage.tsx`.
+
+### 15.5 Security Fix Found During This Sprint
+
+`upsert_follow_up` and `resolve_blocker_manually` did not verify the target
+patient belonged to the calling tenant before writing (a cross-tenant IDOR,
+same class of bug as the one fixed in Sprint 1 §13.1). Fixed by resolving
+and validating tenant ownership before any write, with a dedicated
+regression test added in `test_readiness_workflow_endpoints.py`.
+
+### 15.6 Sprint 1 Touch (additive only, not a functional change)
+
+`billing_readiness_service.py` gained +14 lines: an optional
+`noe_submitted_date`-driven late-NOE warning code path used by the
+derivation logic in §15.2 item 2. No existing Sprint 1 test, response
+shape, or behavior was changed; the existing 74 Sprint 1 + Phase 1/2 tests
+all continue to pass unmodified.
+
+### 15.7 Remaining Before This Can Be Committed/Opened as a PR
+
+- Human review of this checkpoint note and the diff.
+- Same staging-equivalent verification deferred by the governance override
+  in §15.1 will still be required before any future sprint that touches
+  production-shaped data paths.

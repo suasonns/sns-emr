@@ -111,6 +111,7 @@ from app.billing.api.tenant_router import router as tenant_router
 from app.billing.api.claim_status_router import router as claim_status_router
 from app.billing.api.audit_router import router as audit_router
 from app.billing.api.billing_router import router as billing_router  # legacy last
+from app.billing.api.readiness_workflow_router import router as readiness_workflow_router
 from app.api.billing_835 import router as billing_835_router
 from app.billing.api.eligibility_check_router import router as eligibility_check_router
 from app.billing.api.visits_notes_router import router as visits_notes_router
@@ -243,6 +244,7 @@ def register_routers(app: FastAPI) -> None:
         claim_status_router,
         audit_router,
         billing_router,
+        readiness_workflow_router,
         billing_835_router,
         eligibility_check_router,
         visits_notes_router,

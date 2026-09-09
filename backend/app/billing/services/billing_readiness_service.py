@@ -47,6 +47,7 @@ from sqlalchemy.orm import Session
 
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
 from app.billing.services.msp_validation_service import resolve_payer_sequence
+from app.billing.services.readiness_workflow_service import sync_blocker_records
 from app.core.tenant_scope import list_billable_agency_tenants
 
 # A recert benefit period is period_number >= this value the very first
@@ -249,6 +250,19 @@ def _persist_billing_readiness_verdict(
     )
     db.add(verdict)
     db.commit()
+
+    # Sprint 2 (Billing Readiness Operational Workflow, Deliverable 3):
+    # maintain the typed, per-blocker lifecycle overlay right after the
+    # immutable verdict itself is committed. Additive only -- never
+    # changes the verdict row above, never affects the ready/not-ready
+    # result already returned to the caller.
+    db.refresh(verdict)
+    sync_blocker_records(
+        db,
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        verdict=verdict,
+    )
 
 
 def check_patient_billing_readiness(
