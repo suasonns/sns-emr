@@ -693,3 +693,38 @@ Purely additive/declarative fix, no migration content changes:
   `preflight` CI check failures were independently confirmed pre-existing
   on `origin/main` itself (identical error signatures on `main`'s own CI
   runs at the same base commit) -- out of scope for this PR, untouched.
+
+### 14.5 Baseline-failure tracking
+
+Four issues were opened to track pre-existing failures unrelated to PR #75,
+each with exact-base reproduction and an explicit statement that this PR
+does not fix them:
+
+- #76 -- Frontend build: `CapCalculationPage.tsx:179` TS1003/TS1382
+- #77 -- preflight workflow failure (independent pytest run inside
+  preflight, same root cause as #79)
+- #78 -- baseline schema drift across ~10 unrelated tables
+- #79 -- `test_treatment_identity_migration.py` pre-existing failures
+
+### 14.6 Formal review and approval
+
+Per SNS Hospice EMR's scope-based governance model, PR #75 is classified
+as a **SYSTEM-WIDE CHANGE** (database schema, migrations, audit framework,
+billing-readiness engine, tenant-shared infrastructure) requiring approval
+from **SNS Hospice Solutions** (system-owner authority), distinct from the
+tenant-level Assigned Biller sign-off that will apply post-deployment to
+the operational Monthly Billing Readiness Tracker.
+
+A review packet (purpose, schema changes, migration chain, exact test
+results, CI remediation summary, excluded scope, and 30 required reviewer
+questions covering database design, transaction safety, concurrency,
+security, audit history, and API compatibility) was posted to PR #75.
+
+Repository `main` branch protection was checked directly and confirmed
+**not configured** (no GitHub-enforced required checks) -- merge gating is
+governed by this approval process, not a technical GitHub restriction.
+
+**Disposition: APPROVE**, recorded by the SNS Hospice Solutions system
+owner on 2026-09-09.
+
+Status: **SPRINT_1_APPROVED_FOR_MERGE**.
