@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import api from '../api/client';
 import { fetchDocumentBlobUrl, listPatientDocuments, uploadDocument } from '../api/documents';
+import { uploadEligibilityDocument } from '../api/eligibilityActions';
 import { createPosHistory, fetchFacesheet, fetchPerformanceHistory, fetchPosHistory, saveFacesheet, updatePosHistory } from '../api/facesheet';
 import { addPatientAllergy as addAllergy, listPatientAllergies as fetchAllergies, removePatientAllergy as removeAllergy } from '../api/medications';
 import { listPhysicians } from '../api/physicians';
@@ -112,6 +113,9 @@ const EMPTY_DRAFT = {
   authorization_status: '',
   authorization_start_date: '',
   authorization_end_date: '',
+  contracted_status: '',
+  authorization_required_status: '',
+  payer_verification_notes: '',
   primary_diagnosis: '',
   secondary_diagnoses: '',
   diagnosis_entries: [],
@@ -249,6 +253,26 @@ const BOOLEAN_OPTIONS = [
   { value: '', label: 'Select' },
   { value: 'true', label: 'Yes' },
   { value: 'false', label: 'No' },
+];
+
+// Priority 5 -- Contracted Status Workflow / Authorization Workflow.
+// PatientFaceSheet stores YES/NO/UNKNOWN (no enum rename -- see
+// docs/workflows/ReadinessDecisionMatrix.md); these display labels are a
+// presentation-only translation, matching
+// contracted_authorization_workflow_service.py's
+// CONTRACTED_STATUS_LABELS / AUTHORIZATION_REQUIRED_STATUS_LABELS.
+const CONTRACTED_STATUS_OPTIONS = [
+  { value: '', label: 'Unknown (not yet reviewed)' },
+  { value: 'YES', label: 'Contracted' },
+  { value: 'NO', label: 'Not Contracted' },
+  { value: 'UNKNOWN', label: 'Unknown' },
+];
+
+const AUTHORIZATION_REQUIRED_STATUS_OPTIONS = [
+  { value: '', label: 'Unknown (not yet reviewed)' },
+  { value: 'YES', label: 'Authorization Required' },
+  { value: 'NO', label: 'Authorization Not Required' },
+  { value: 'UNKNOWN', label: 'Unknown' },
 ];
 
 const normalizeDateValue = (value) => {
@@ -404,6 +428,9 @@ const buildPayload = (draft) => {
   authorization_status: toNullableString(draft.authorization_status),
   authorization_start_date: toNullableString(draft.authorization_start_date),
   authorization_end_date: toNullableString(draft.authorization_end_date),
+  contracted_status: toNullableString(draft.contracted_status),
+  authorization_required_status: toNullableString(draft.authorization_required_status),
+  payer_verification_notes: toNullableString(draft.payer_verification_notes),
   ...(primaryDiagnosis ? { primary_diagnosis: primaryDiagnosis } : {}),
   secondary_diagnoses: toNullableString(draft.secondary_diagnoses),
   diagnosis_entries: draft.diagnosis_entries,
@@ -526,6 +553,9 @@ const mapResponseToDraft = (response) => ({
   authorization_status: response?.authorization?.authorization_status || '',
   authorization_start_date: normalizeDateValue(response?.authorization?.authorization_start_date),
   authorization_end_date: normalizeDateValue(response?.authorization?.authorization_end_date),
+  contracted_status: response?.payer_review?.contracted_status || '',
+  authorization_required_status: response?.payer_review?.authorization_required_status || '',
+  payer_verification_notes: response?.payer_review?.payer_verification_notes || '',
   primary_diagnosis: response?.clinical?.primary_diagnosis || '',
   secondary_diagnoses: response?.clinical?.secondary_diagnoses || '',
   diagnosis_entries: Array.isArray(response?.clinical?.diagnosis_entries) ? response.clinical.diagnosis_entries : [],
@@ -1460,6 +1490,58 @@ const DocumentUploadWidget = ({ colors, title, buttonLabel, patientId, documentT
   );
 };
 
+const PayerReviewEvidenceUpload = ({ colors, patientId, documentType, label }) => {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [pickerKey, setPickerKey] = useState(0);
+
+  const handleUpload = async () => {
+    if (!patientId || !selectedFile || uploading) return;
+    setUploading(true);
+    setError('');
+    setMessage('');
+    try {
+      const response = await uploadEligibilityDocument(patientId, {
+        file: selectedFile,
+        document_type: documentType,
+      });
+      setSelectedFile(null);
+      setPickerKey((value) => value + 1);
+      setMessage(`Uploaded ${response.document_type} evidence.`);
+    } catch (err) {
+      setError(err?.response?.data?.detail || 'Unable to upload this document.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div style={{ border: `1px dashed ${colors.border}`, borderRadius: 6, padding: 8 }}>
+      <div style={{ color: colors.label, fontSize: 10.5, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        <input
+          key={pickerKey}
+          type="file"
+          onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+          style={{ fontSize: 10.5, color: colors.white, maxWidth: 220 }}
+        />
+        <button
+          type="button"
+          onClick={handleUpload}
+          disabled={!selectedFile || uploading}
+          style={{ padding: '5px 10px', borderRadius: 6, border: `1px solid ${colors.border}`, color: colors.white, backgroundColor: colors.card, fontSize: 10.5, fontWeight: 700, cursor: (!selectedFile || uploading) ? 'not-allowed' : 'pointer' }}
+        >
+          {uploading ? 'Uploading...' : 'Attach Evidence'}
+        </button>
+      </div>
+      {message ? <div style={{ color: colors.green, fontSize: 10, marginTop: 4 }}>{message}</div> : null}
+      {error ? <div style={{ color: colors.red, fontSize: 10, marginTop: 4 }}>{error}</div> : null}
+    </div>
+  );
+};
+
 const AuthEligibility = ({ colors, draft, update, patientId }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -1509,6 +1591,58 @@ const AuthEligibility = ({ colors, draft, update, patientId }) => {
           <div style={{ display: 'grid', gap: 12 }}>
             <DocumentUploadWidget colors={colors} title="Authorization Documents" buttonLabel="Choose File" patientId={patientId} documentType="AUTHORIZATION" />
             <DocumentUploadWidget colors={colors} title="Eligibility / Submission Documents" buttonLabel="Choose File" patientId={patientId} documentType="ELIGIBILITY_SUBMISSION" />
+          </div>
+          <div style={{ gridColumn: '1 / -1', borderTop: `1px solid ${colors.border}`, paddingTop: 10, marginTop: 2 }}>
+            <div style={{ color: colors.white, fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Payer Review</div>
+            <SectionNote colors={colors}>
+              Insurance verification is performed outside SNS EMR (e.g. NGS Connex, payer portals, phone verification). Record the reviewed result here; do not leave Unknown once staff has completed the review.
+            </SectionNote>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 8 }}>
+              <Field
+                label="Contracted Status"
+                value={draft.contracted_status}
+                type="select"
+                options={CONTRACTED_STATUS_OPTIONS}
+                colors={colors}
+                editable
+                onChange={(value) => update('contracted_status', value)}
+                hint="Has the agency confirmed whether it is contracted with this payer?"
+              />
+              <Field
+                label="Authorization Required"
+                value={draft.authorization_required_status}
+                type="select"
+                options={AUTHORIZATION_REQUIRED_STATUS_OPTIONS}
+                colors={colors}
+                editable
+                onChange={(value) => update('authorization_required_status', value)}
+                hint="Based on payer verification, is authorization required prior to billing?"
+              />
+            </div>
+            <Field
+              label="Verification Notes"
+              value={draft.payer_verification_notes}
+              type="textarea"
+              rows={2}
+              colors={colors}
+              editable
+              placeholder="Optional -- e.g. verified via NGS Connex on 3/1, ref #..."
+              onChange={(value) => update('payer_verification_notes', value)}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 8 }}>
+              <PayerReviewEvidenceUpload
+                colors={colors}
+                patientId={patientId}
+                documentType="AUTHORIZATION_DOCUMENT"
+                label="Authorization evidence (optional -- required only if Authorization Required = Yes before this patient is billing-ready)"
+              />
+              <PayerReviewEvidenceUpload
+                colors={colors}
+                patientId={patientId}
+                documentType="NON_AUTH_VERIFICATION"
+                label="Non-authorization verification (optional)"
+              />
+            </div>
           </div>
         </div>
       ) : (

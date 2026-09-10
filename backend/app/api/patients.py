@@ -2566,13 +2566,20 @@ def save_facesheet(
 
     if "verification_document_reference" in data:
         raw_ref = data.pop("verification_document_reference")
-        facesheet.verification_document_reference = uuid.UUID(str(raw_ref)) if raw_ref else None
-        payer_verification_touched = True
+        new_ref = uuid.UUID(str(raw_ref)) if raw_ref else None
+        ref_changed = new_ref != facesheet.verification_document_reference
+        facesheet.verification_document_reference = new_ref
     else:
-        payer_verification_touched = False
+        ref_changed = False
 
-    payer_verification_touched = payer_verification_touched or any(
-        field in data
+    # Compare against the prior stored value rather than mere key
+    # presence -- the facesheet UI always resubmits the full form on
+    # every save (not a partial patch), so "field present in the
+    # request" would otherwise fire this audit/stamp on every unrelated
+    # save (e.g. editing a phone number). Only an actual value change
+    # counts as a payer-verification review event.
+    payer_verification_touched = ref_changed or any(
+        field in data and data[field] != getattr(facesheet, field)
         for field in ("payer_verified_date", "payer_verification_notes")
     )
 
@@ -2813,6 +2820,27 @@ def get_facesheet(
             "secondary_payer": facesheet.secondary_payer,
             "secondary_payer_type": facesheet.secondary_payer_type,
             "secondary_policy_number": facesheet.secondary_policy_number,
+            "subscriber_name": facesheet.subscriber_name,
+            "subscriber_relationship": facesheet.subscriber_relationship,
+            "subscriber_id": facesheet.subscriber_id,
+        },
+
+        # Priority 5 -- Contracted Status Workflow / Authorization Workflow.
+        # PatientFaceSheet remains the sole owner of these fields (see
+        # docs/workflows/ReadinessDecisionMatrix.md /
+        # docs/workflows/SourceOfTruthMatrix.md); Billing Readiness only
+        # consumes them read-only. payer_verified_by is intentionally
+        # read-only here -- it is always server-stamped on save, never
+        # client-settable.
+        "payer_review": {
+            "contracted_status": facesheet.contracted_status,
+            "authorization_required_status": facesheet.authorization_required_status,
+            "payer_verified_date": facesheet.payer_verified_date,
+            "payer_verified_by": str(facesheet.payer_verified_by) if facesheet.payer_verified_by else None,
+            "payer_verification_notes": facesheet.payer_verification_notes,
+            "verification_document_reference":
+                str(facesheet.verification_document_reference)
+                if facesheet.verification_document_reference else None,
         },
 
         "authorization": {
