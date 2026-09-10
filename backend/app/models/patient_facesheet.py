@@ -143,6 +143,23 @@ class PatientFaceSheet(Base):
         ForeignKey("eligibility_source_documents.id"),
         nullable=True,
     )
+
+    # Payer verification tracking (Priority 4 -- Payer Review Workflow).
+    # SNS EMR does NOT perform eligibility verification itself (no NGS
+    # Connex / CMS / Medicare / payer-database lookup integration --
+    # explicitly out of scope). Staff verify coverage externally (NGS
+    # Connex, Availity, payer portal, phone) and these fields record
+    # WHO/WHEN/WHAT-evidence backs that external verification -- they
+    # support audit only, they never perform verification themselves.
+    # See docs/workflows/PayerDeterminationWorkflow.md.
+    payer_verified_date = Column(Date)
+    payer_verified_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    payer_verification_notes = Column(String)
+    verification_document_reference = Column(
+        UUID(as_uuid=True),
+        ForeignKey("eligibility_source_documents.id"),
+        nullable=True,
+    )
     
     # --------------------------------------------------
     # ✅ CLINICAL

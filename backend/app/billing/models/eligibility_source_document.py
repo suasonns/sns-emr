@@ -49,6 +49,19 @@ ELIGIBILITY_DOCUMENT_TYPES = {
     # (docs/workflows/AdmissionTypesWorkflow.md). Required by the SOC
     # gate only for that admit type.
     "TRANSFER_EVIDENCE",
+    # Payer verification evidence classifications (Priority 4 -- Payer
+    # Review Workflow). SNS EMR does NOT perform eligibility verification
+    # itself (no NGS Connex / CMS / payer-database integration); staff
+    # verify coverage externally (NGS Connex, Availity, payer portal,
+    # phone) and upload the resulting evidence here for review and audit.
+    # See docs/workflows/PayerDeterminationWorkflow.md.
+    "ELIGIBILITY_VERIFICATION",
+    "MEDICARE_VERIFICATION",
+    "MEDICAID_VERIFICATION",
+    "COMMERCIAL_PAYER_VERIFICATION",
+    "INSURANCE_CARD",
+    "PAYER_SCREENSHOT",
+    "OTHER_INSURANCE_EVIDENCE",
     "OTHER",
 }
 

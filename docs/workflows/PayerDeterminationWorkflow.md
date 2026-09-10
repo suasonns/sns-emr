@@ -23,7 +23,9 @@ Document Upload (insurance card, HNP, transfer packet, referral documents)
 OCR Harvest (suggests candidate payer name/type — a FACT, not a determination)
    |
    v
-Eligibility Verification (270/271 check or manual verification, uploaded as evidence)
+Eligibility Verification (270/271 check or manual verification — performed
+outside SNS EMR via a payer portal, clearinghouse, or phone; the result is
+uploaded as evidence)
    |
    v
 Payer Confirmed (staff reviews harvested candidate + eligibility evidence, confirms)
@@ -82,3 +84,18 @@ recognized. This is why:
 Readiness and downstream workflows must consume the **staff-confirmed payer**,
 never the raw OCR-harvested payer name and never an unreviewed eligibility
 response. See `ReadinessConsumptionMap.md` for the full consumption rules.
+
+## Insurance verification boundary
+
+SNS EMR is not an eligibility-verification system. It has no NGS Connex, CMS,
+Medicare, or payer-database lookup integration, and no automated
+name+DOB+SSN insurance-discovery capability — that is explicitly out of
+scope. Insurance verification is performed outside SNS EMR (NGS Connex,
+Availity, other payer portals, phone). SNS stores and audits reviewed results
+and supporting evidence — recorded on `PatientFaceSheet` as
+`payer_verified_date`, `payer_verified_by` (always server-stamped from the
+acting user, never client-supplied), `payer_verification_notes`, and
+`verification_document_reference` (pointing to an uploaded verification
+document classified under `ELIGIBILITY_VERIFICATION`, `MEDICARE_VERIFICATION`,
+`MEDICAID_VERIFICATION`, `COMMERCIAL_PAYER_VERIFICATION`, `INSURANCE_CARD`,
+`PAYER_SCREENSHOT`, or `OTHER_INSURANCE_EVIDENCE`).

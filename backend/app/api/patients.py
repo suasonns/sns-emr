@@ -2145,6 +2145,26 @@ class FaceSheetCreate(BaseModel):
 
     authorization_end_date: date | None = None
 
+    # docs/workflows/AuthorizationWorkflow.md -- staff-reviewed tri-state
+    # answers (YES/NO/UNKNOWN). Never inferred from OCR or a payer name.
+    contracted_status: str | None = None
+    authorization_required_status: str | None = None
+
+    # ==================================================
+    # ✅ PAYER VERIFICATION (Priority 4 -- Payer Review Workflow)
+    # SNS EMR does NOT perform eligibility verification itself (no NGS
+    # Connex / CMS / Medicare lookup integration). Staff verify coverage
+    # externally and record the result here; these fields support audit
+    # only -- see docs/workflows/PayerDeterminationWorkflow.md.
+    # ==================================================
+
+    payer_verified_date: date | None = None
+    payer_verification_notes: str | None = None
+    verification_document_reference: str | None = None
+    subscriber_name: str | None = None
+    subscriber_relationship: str | None = None
+    subscriber_id: str | None = None
+
     # ==================================================
     # ✅ DIAGNOSIS / CLINICAL
     # ==================================================
@@ -2534,9 +2554,52 @@ def save_facesheet(
 
         data["primary_diagnosis"] = sync_result["primary_diagnosis"]
 
+    if "contracted_status" in data and data["contracted_status"] not in (None, "YES", "NO", "UNKNOWN"):
+        raise HTTPException(400, "contracted_status must be one of YES, NO, UNKNOWN")
+    if "authorization_required_status" in data and data["authorization_required_status"] not in (
+        None,
+        "YES",
+        "NO",
+        "UNKNOWN",
+    ):
+        raise HTTPException(400, "authorization_required_status must be one of YES, NO, UNKNOWN")
+
+    if "verification_document_reference" in data:
+        raw_ref = data.pop("verification_document_reference")
+        facesheet.verification_document_reference = uuid.UUID(str(raw_ref)) if raw_ref else None
+        payer_verification_touched = True
+    else:
+        payer_verification_touched = False
+
+    payer_verification_touched = payer_verification_touched or any(
+        field in data
+        for field in ("payer_verified_date", "payer_verification_notes")
+    )
+
     for field, value in data.items():
         if hasattr(facesheet, field):
             setattr(facesheet, field, value)
+
+    if payer_verification_touched:
+        # payer_verified_by is an audit field -- always server-stamped
+        # to the acting user, never client-supplied. SNS EMR does not
+        # perform eligibility verification itself; this only records
+        # who entered the staff-reviewed result and when.
+        facesheet.payer_verified_by = user_id
+        audit_event(
+            db=db,
+            action="facesheet_payer_verification_recorded",
+            entity_type="patient_facesheet",
+            entity_id=str(patient.id),
+            user_id=str(user_id),
+            tenant_id=str(tenant_id),
+            meta={
+                "payer_verified_date": str(facesheet.payer_verified_date) if facesheet.payer_verified_date else None,
+                "verification_document_reference": str(facesheet.verification_document_reference)
+                if facesheet.verification_document_reference
+                else None,
+            },
+        )
 
     facesheet.updated_by = user_id
     facesheet.updated_at = datetime.now(timezone.utc)

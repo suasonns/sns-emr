@@ -33,6 +33,17 @@
 | OCR Extraction Text / AI Key Findings | System-Generated | Yes | Raw harvested output. Feeds the Review Queue and Structured Mapping layer as *candidates* only -- never consumed directly by readiness or the SOC gate. |
 | `PatientFaceSheet` (demographic + insurance fields: MBI, Primary/Secondary Payer, Policy Numbers, Subscriber Information) | **Source Of Truth** | No | Owner = Patient Record. Consumers = Admissions / Billing / Readiness / Claims. All insurance identifiers live here and nowhere else -- see `docs/architecture/InsuranceMappingReconciliation.md`. |
 | `FacesheetFieldSuggestion` | **NOT SSOT -- Candidate Queue Only** | Yes -- populated by OCR/extraction | Owner = **None** (explicitly ownerless by design). Role = staging/reconciliation queue for both demographic and insurance fields. Consumer = Staff Review (`app/api/field_suggestions.py`: accept/reject/dismiss). A row here is never read by any downstream consumer (billing, claims, readiness) as authoritative -- only an *accepted* suggestion, once applied to `PatientFaceSheet`, becomes real. See `docs/architecture/InsuranceMappingReconciliation.md`. |
+| Payer Verification Audit Fields (`payer_verified_date`/`payer_verified_by`/`payer_verification_notes`/`verification_document_reference`) | Staff (audit only) | No | `payer_verified_by` is always server-stamped from the acting user, never client-supplied. These fields never perform verification -- they record who/when/what-evidence backs a verification staff performed outside SNS EMR. |
+
+## Insurance verification boundary
+
+Insurance verification is performed outside SNS EMR. SNS stores and audits
+reviewed results and supporting evidence. SNS EMR has no NGS Connex, CMS,
+Medicare, or payer-database lookup integration, and no automated
+name+DOB+SSN insurance-discovery capability -- that is explicitly out of
+scope unless a future approved integration project changes it. See
+`docs/workflows/PayerDeterminationWorkflow.md` and
+`docs/workflows/AuthorizationWorkflow.md`.
 
 ## Reading this table
 
