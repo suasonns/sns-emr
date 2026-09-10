@@ -73,6 +73,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
+from app.billing.services.contracted_authorization_workflow_service import (
+    evaluate_authorization_readiness,
+    evaluate_contracted_status_readiness,
+)
 from app.billing.services.eligibility_workflow_service import evaluate_admission_gate
 from app.billing.services.msp_validation_service import resolve_payer_sequence
 from app.billing.services.readiness_workflow_service import sync_blocker_records
@@ -159,6 +163,26 @@ def _fetch_patient_core(db: Session, tenant_id: str, patient_id: str) -> dict | 
             SELECT id::text AS id, status, election_signed_at
             FROM patients
             WHERE tenant_id = :tenant_id AND id = :patient_id
+            """
+        ),
+        {"tenant_id": tenant_id, "patient_id": patient_id},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
+def _fetch_facesheet_payer_review(db: Session, tenant_id: str, patient_id: str) -> dict | None:
+    """
+    Priority 5 -- Contracted Status Workflow / Authorization Workflow are
+    the sole owners of these two fields (see
+    contracted_authorization_workflow_service.py docstring). This is a
+    read-only lookup; readiness never writes to PatientFaceSheet.
+    """
+    row = db.execute(
+        text(
+            """
+            SELECT contracted_status, authorization_required_status
+            FROM patient_facesheet
+            WHERE tenant_id = :tenant_id AND patient_id = :patient_id
             """
         ),
         {"tenant_id": tenant_id, "patient_id": patient_id},
@@ -486,6 +510,29 @@ def check_patient_billing_readiness(
     for gate_blocker in gate.blockers:
         if gate_blocker not in blockers:
             blockers.append(gate_blocker)
+
+    # --- Contracted Status / Authorization Required (Priority 5) ---
+    # Read-only consumption of the Contracted Status Workflow / Authorization
+    # Workflow's own evaluation logic -- see
+    # contracted_authorization_workflow_service.py and
+    # docs/workflows/ReadinessDecisionMatrix.md. Readiness never owns or
+    # re-derives contracted_status/authorization_required_status itself.
+    payer_review = _fetch_facesheet_payer_review(db, tenant_id, patient_id)
+    if payer_review is not None:
+        contracted_finding = evaluate_contracted_status_readiness(
+            contracted_status=payer_review.get("contracted_status")
+        )
+        blockers.extend(contracted_finding.blockers)
+        warnings.extend(contracted_finding.warnings)
+
+        authorization_finding = evaluate_authorization_readiness(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            authorization_required_status=payer_review.get("authorization_required_status"),
+        )
+        blockers.extend(authorization_finding.blockers)
+        warnings.extend(authorization_finding.warnings)
 
     result = BillingReadinessResult(
         patient_id=patient_id,
