@@ -36,6 +36,7 @@ from app.api import (
     staff,
     vendors,
     visit_recordings,
+    field_suggestions,
 )
 from app.api.agency_profile import router as agency_profile_router
 from app.api.hospice_cap import router as hospice_cap_router
@@ -114,6 +115,7 @@ from app.billing.api.billing_router import router as billing_router  # legacy la
 from app.billing.api.readiness_workflow_router import router as readiness_workflow_router
 from app.api.billing_835 import router as billing_835_router
 from app.billing.api.eligibility_check_router import router as eligibility_check_router
+from app.billing.api.eligibility_action_router import router as eligibility_action_router
 from app.billing.api.visits_notes_router import router as visits_notes_router
 from app.billing.api.poc_certification_router import router as poc_certification_router
 from app.billing.api.noe_tracking_router import router as noe_tracking_router
@@ -174,6 +176,7 @@ def register_routers(app: FastAPI) -> None:
         patients.router,
         visits.router,
         visit_recordings.router,
+        field_suggestions.router,
         forms.router,
         notes.router,
         communications_log_router,
@@ -247,6 +250,7 @@ def register_routers(app: FastAPI) -> None:
         readiness_workflow_router,
         billing_835_router,
         eligibility_check_router,
+        eligibility_action_router,
         visits_notes_router,
         poc_certification_router,
         noe_tracking_router,

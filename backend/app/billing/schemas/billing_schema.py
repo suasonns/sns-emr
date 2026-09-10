@@ -180,6 +180,7 @@ class ReadinessAttentionPatientRow(BaseModel):
 
 class ReadinessStatusChangeRow(BaseModel):
     patient_id: str
+    mrn: str
     previous_status: str
     new_status: str
     changed_at: str
@@ -187,6 +188,7 @@ class ReadinessStatusChangeRow(BaseModel):
 
 class RecentReadinessEvaluationRow(BaseModel):
     patient_id: str
+    mrn: str
     evaluated_at: str
     readiness_status: str
     triggered_by: str
@@ -329,3 +331,139 @@ class ReadinessBlockerResponse(BaseModel):
     resolved_at: Optional[str] = None
     resolved_by: Optional[str] = None
     resolution_reason: Optional[str] = None
+
+
+# =========================================================
+# ELIGIBILITY ACTION WORKFLOW -- Phases A/B/C/D/E
+# (document upload/versioning, reverification, RN review actions,
+# biller escalation/notes/document-review-requests). All additive to
+# the Phases 1-4 read-only contracts already defined for
+# /billing/eligibility-roster and /billing/eligibility-detail/{id}.
+# =========================================================
+
+class EligibilityDocumentActionResponse(BaseModel):
+    id: str
+    patient_id: str
+    document_type: str
+    status: str
+    version: int
+    notes: Optional[str] = None
+    document_record_id: str
+    supersedes_document_id: Optional[str] = None
+    uploaded_at: str
+
+
+class CreateEligibilityVerificationRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    source_document_id: str
+    status: str
+    verification_date: Optional[str] = None
+    verification_method: str = "MANUAL_ENTRY"
+    response_reference: Optional[str] = None
+    effective_date: Optional[str] = None
+    termination_date: Optional[str] = None
+    payer_coverage_id: Optional[str] = None
+    entitlement_data: Optional[Dict[str, Any]] = None
+    payment_routing_data: Optional[Dict[str, Any]] = None
+    hospice_utilization_data: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+    coverage_change_flag: bool = False
+    payer_change_flag: bool = False
+    msp_change_flag: bool = False
+    ma_change_flag: bool = False
+    overlap_concern_flag: bool = False
+
+
+class BillingImpactSummary(BaseModel):
+    """
+    Phase C -- the eligibility change impact engine's result: whether a
+    fresh billing-readiness evaluation was actually triggered (only ever
+    True for an ADMITTED patient -- Phase 6 scope), the admission gate
+    status after the change, and the resulting readiness verdict when a
+    re-evaluation ran.
+    """
+    admission_gate_status: str
+    billing_readiness_reevaluated: bool
+    readiness_status: Optional[str] = None
+    blockers: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class EligibilityVerificationActionResponse(BaseModel):
+    id: str
+    patient_id: str
+    status: str
+    verification_date: Optional[str] = None
+    source_document_id: str
+    notes: Optional[str] = None
+    impact: BillingImpactSummary
+
+
+class CreateBenefitPeriodDeterminationRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    determination_status: str
+    admission_id: Optional[str] = None
+    eligibility_verification_id: Optional[str] = None
+    source_document_id: Optional[str] = None
+    prior_hospice_episode_count: Optional[int] = None
+    benefit_periods_used: Optional[int] = None
+    anticipated_benefit_period_number: Optional[int] = None
+    anticipated_period_start_date: Optional[str] = None
+    anticipated_period_end_date: Optional[str] = None
+    face_to_face_applicability: Optional[bool] = None
+    review_notes: Optional[str] = None
+    conflict_reason: Optional[str] = None
+    supersedes_determination_id: Optional[str] = None
+    # docs/workflows/AdmissionTypesWorkflow.md -- always staff-entered,
+    # never derived/defaulted server-side.
+    admit_type: Optional[str] = None
+    starting_cert: Optional[int] = None
+    transfer_source: Optional[str] = None
+    transfer_evidence_document_id: Optional[str] = None
+
+
+class BenefitPeriodDeterminationActionResponse(BaseModel):
+    id: str
+    patient_id: str
+    determination_status: str
+    face_to_face_applicability: Optional[bool] = None
+    anticipated_benefit_period_number: Optional[int] = None
+    admit_type: Optional[str] = None
+    starting_cert: Optional[int] = None
+    transfer_source: Optional[str] = None
+    transfer_evidence_document_id: Optional[str] = None
+    impact: BillingImpactSummary
+
+
+class RnReviewActionRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    action: str
+    reason: str
+    anticipated_benefit_period_number: Optional[int] = None
+    anticipated_period_start_date: Optional[str] = None
+    anticipated_period_end_date: Optional[str] = None
+
+
+class EscalateEligibilityIssueRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    issue_type: str  # COVERAGE | MSP | MA
+    notes: str
+    due_date: Optional[str] = None
+
+
+class RequestDocumentReviewRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    source_document_id: str
+    notes: Optional[str] = None
+
+
+class AddBillingNoteRequest(BaseModel):
+    tenant_id: Optional[str] = None
+    note: str
+
+
+class EligibilityActionAckResponse(BaseModel):
+    ok: bool = True
+    event_id: str
+    patient_id: str
+    event_type: str

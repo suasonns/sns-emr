@@ -101,6 +101,16 @@ class PatientFaceSheet(Base):
 
     secondary_payer = Column(String)
     secondary_policy_number = Column(String)
+
+    # Subscriber Information -- who the policy is actually held under
+    # (may differ from the patient, e.g. a spouse's employer plan).
+    # Owned here (PatientFaceSheet), same as every other insurance field --
+    # see docs/architecture/InsuranceMappingReconciliation.md. Populated by
+    # direct staff entry or via FacesheetFieldSuggestion review/apply, never
+    # written automatically.
+    subscriber_name = Column(String)
+    subscriber_relationship = Column(String)
+    subscriber_id = Column(String)
     
     # --------------------------------------------------
     # ✅ AUTHORIZATION
@@ -117,6 +127,39 @@ class PatientFaceSheet(Base):
     authorization_start_date = Column(Date)
 
     authorization_end_date = Column(Date)
+
+    # docs/workflows/AuthorizationWorkflow.md + SourceOfTruthMatrix.md --
+    # staff-reviewed tri-state answers. Never inferred/defaulted from OCR,
+    # eligibility responses, or the legacy boolean fields above. Kept
+    # alongside (not replacing) requires_prior_authorization for backward
+    # compatibility with existing consumers of that field.
+    contracted_status = Column(String(16))  # YES | NO | UNKNOWN
+    authorization_required_status = Column(String(16))  # YES | NO | UNKNOWN
+
+    # Evidence a staff member verified authorization is NOT required,
+    # required whenever authorization_required_status == "NO".
+    non_auth_verification_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("eligibility_source_documents.id"),
+        nullable=True,
+    )
+
+    # Payer verification tracking (Priority 4 -- Payer Review Workflow).
+    # SNS EMR does NOT perform eligibility verification itself (no NGS
+    # Connex / CMS / Medicare / payer-database lookup integration --
+    # explicitly out of scope). Staff verify coverage externally (NGS
+    # Connex, Availity, payer portal, phone) and these fields record
+    # WHO/WHEN/WHAT-evidence backs that external verification -- they
+    # support audit only, they never perform verification themselves.
+    # See docs/workflows/PayerDeterminationWorkflow.md.
+    payer_verified_date = Column(Date)
+    payer_verified_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    payer_verification_notes = Column(String)
+    verification_document_reference = Column(
+        UUID(as_uuid=True),
+        ForeignKey("eligibility_source_documents.id"),
+        nullable=True,
+    )
     
     # --------------------------------------------------
     # ✅ CLINICAL

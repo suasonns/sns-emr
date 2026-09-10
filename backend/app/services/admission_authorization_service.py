@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.patient import Patient
 from app.models.task import Task
 from app.models.admission import Admission
+from app.services.soc_validation_service import SOCValidationService
 from app.models.enums import (
     TaskDiscipline,
     TaskOrigin,
@@ -443,7 +444,15 @@ def authorize_admission(
         
     if not tenant_id:
         raise ValueError("Patient is missing tenant_id")
-    
+
+    # SSOT enforcement: SOC may only be established once staff have
+    # documented Benefit Period / Starting Cert (and Transfer fields when
+    # applicable). Same rule as Path A (set_soc_datetime), same shared
+    # service -- see docs/workflows/SourceOfTruthMatrix.md.
+    SOCValidationService.ensure_ready(
+        db, tenant_id=str(tenant_id), patient_id=str(patient_id)
+    )
+
     now = _now_utc()
     
     # ✅ LOAD LATEST ADMISSION (authoritative)

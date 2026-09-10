@@ -1,0 +1,64 @@
+# Source of Truth Matrix
+
+> Permanent reference. For every field involved in the Benefit Period /
+> Admission / Eligibility workflow, this table states who or what owns the
+> value, so no future developer has to rediscover it. See
+> `docs/workflows/BenefitPeriodWorkflow.md`, `AdmissionTypesWorkflow.md`,
+> `DocumentHarvestMapping.md`, `PayerDeterminationWorkflow.md`, and
+> `AuthorizationWorkflow.md` for the full narratives this table summarizes.
+
+| Field | Source of Truth | Automated? | Notes |
+|---|---|---|---|
+| Admit Type | Staff | No -- staff selects | Drives all downstream conditional requirements. Never inferred from OCR, Medicare, or prior data. |
+| Starting Cert | Staff | No -- staff enters | Required for every admit type. Never defaulted to `1`. |
+| Benefit Period (determination) | Staff | No -- staff enters | Staff review of eligibility/history produces the value; system only stores it. |
+| Transfer Source | Staff (Transfer only) | No | Only collected/required when Admit Type = TRANSFER_FROM_ANOTHER_HOSPICE. Hidden otherwise. |
+| Transfer Evidence | Staff (Transfer only) | No | Uploaded document; only required for Transfer admit type. |
+| Certification Sequence | Staff | No | Derived forward-looking certification *schedule* may be system-calculated once Starting Cert/Benefit Period are staff-established -- but the initial sequence anchor is never system-derived. |
+| SOC Date | Staff | No -- staff enters, system enforces gate | The system validates completeness before allowing SOC entry; it does not choose the date. |
+| Medicare Number | OCR Candidate + Staff Review | Partial -- harvested with confidence score | A fact; may be auto-populated as a candidate value pending staff confirmation. |
+| MBI | OCR Candidate + Staff Review | Partial | Same as Medicare Number. |
+| Policy Number | OCR Candidate + Staff Review | Partial | Same. |
+| Subscriber Information | OCR Candidate + Staff Review | Partial | Same. |
+| Payer Name | Staff Reviewed | Partial (candidate) then staff-confirmed | Eligibility verification / EOB is the real source of truth, not OCR alone. |
+| Payer Determination (Medicare vs HMO/PPO/Commercial) | Staff Reviewed | No | Confirmed via eligibility verification, not OCR guess. |
+| Contracted Status | Staff Reviewed | No | Staff answers Yes/No/Unknown; stored, never inferred. |
+| Authorization Required? | Staff Reviewed | No | Staff answers Yes/No/Unknown; stored, never inferred. |
+| Authorization Evidence | Staff Uploaded | No | Required when Authorization Required = YES. |
+| Non-Authorization Verification (`NON_AUTH_VERIFICATION`) | Staff Uploaded | No | Required when Authorization Required = NO, to prove the "no auth needed" determination was verified, not assumed. |
+| Eligibility Verification Status | Staff Reviewed | No | Manual entry method is the default (`verification_method = MANUAL_ENTRY`); electronic responses are stored as evidence, not auto-applied. |
+| Readiness Status (READY / AT RISK / NOT READY / BLOCKED) | System-Computed | Yes -- computed from reviewed data only | Consumes reviewed Payer, reviewed Eligibility, reviewed Authorization, reviewed Benefit Period, reviewed Starting Cert, reviewed Admit Type. Never consumes raw OCR/extraction output directly. |
+| Future recertification schedule / reminders / tasks | System-Computed | Yes -- but only after the anchor exists | Requires staff to have already established Admit Type, Starting Cert, Benefit Period, SOC (and Transfer fields if applicable) first. |
+| Document Lifecycle Status (ACTIVE/ARCHIVED/DELETED) | Staff Action | No -- staff deletes/archives/restores | System records the transition and timestamp/actor; never changes lifecycle state on its own. |
+| OCR Extraction Text / AI Key Findings | System-Generated | Yes | Raw harvested output. Feeds the Review Queue and Structured Mapping layer as *candidates* only -- never consumed directly by readiness or the SOC gate. |
+| `PatientFaceSheet` (demographic + insurance fields: MBI, Primary/Secondary Payer, Policy Numbers, Subscriber Information) | **Source Of Truth** | No | Owner = Patient Record. Consumers = Admissions / Billing / Readiness / Claims. All insurance identifiers live here and nowhere else -- see `docs/architecture/InsuranceMappingReconciliation.md`. |
+| `FacesheetFieldSuggestion` | **NOT SSOT -- Candidate Queue Only** | Yes -- populated by OCR/extraction | Owner = **None** (explicitly ownerless by design). Role = staging/reconciliation queue for both demographic and insurance fields. Consumer = Staff Review (`app/api/field_suggestions.py`: accept/reject/dismiss). A row here is never read by any downstream consumer (billing, claims, readiness) as authoritative -- only an *accepted* suggestion, once applied to `PatientFaceSheet`, becomes real. See `docs/architecture/InsuranceMappingReconciliation.md`. |
+| Payer Verification Audit Fields (`payer_verified_date`/`payer_verified_by`/`payer_verification_notes`/`verification_document_reference`) | Staff (audit only) | No | `payer_verified_by` is always server-stamped from the acting user, never client-supplied. These fields never perform verification -- they record who/when/what-evidence backs a verification staff performed outside SNS EMR. |
+| Admission Gate (`evaluate_soc_gate`, `SOCValidationService`) | **Consumer** | No | Owner = **None** (it is an enforcement/consumer layer, not a data owner). Reads/hard-enforces Benefit Period, Starting Cert, and Transfer Evidence (Transfer admit type only) before SOC/admission may proceed. Distinct from Billing Readiness -- see `docs/workflows/ReadinessDecisionMatrix.md` governing distinction. |
+| Billing Readiness (`billing_readiness_service.check_patient_billing_readiness`) | **Consumer** | Yes -- computed, read-only | Owner = **None**. Reads reviewed Payer, Contracted Status, Authorization Required + evidence, Benefit Period existence, election statement, NOE, CTI/Recert, F2F, POC, payer/MSP sequence, and Election/Consent document presence. Never writes to, infers, or duplicates ownership of any of these -- see `docs/workflows/ReadinessDecisionMatrix.md`. |
+| Election / Consent Documents (`ELECTION_STATEMENT`, `CONSENT_FORM`, `PATIENT_RIGHTS`, `HIPAA_ACKNOWLEDGEMENT`, `NOTICE_OF_PRIVACY_PRACTICES`, `ADVANCE_DIRECTIVE`, `FINANCIAL_RESPONSIBILITY`, `OTHER_ADMISSION_DOCUMENT`) | **Source Of Truth** | No -- staff uploads | Owner = **Document Registry** (`DocumentRecord`, `lifecycle_status = ACTIVE`). Consumer = Billing Readiness (AT_RISK-only warning if none present; never a blocker, never enforced pre-SOC/pre-admission). No separate "Consent Status"/"Election Status"/"Admission Authorized" field exists anywhere -- presence of an ACTIVE document of any of these types *is* the answer. See `docs/workflows/ElectionConsentWorkflow.md`. |
+
+Neither Admission Gate nor Billing Readiness owns Benefit Period, Starting
+Cert, Transfer Data, Authorization Status, Contracted Status, Verified
+Payer, or Consent Documents -- each of those fields has exactly one owner
+elsewhere in this table (Consent Documents are owned by the Document
+Registry, per `docs/workflows/ElectionConsentWorkflow.md`), and both
+readiness layers only ever read the already-reviewed value.
+
+## Insurance verification boundary
+
+Insurance verification is performed outside SNS EMR. SNS stores and audits
+reviewed results and supporting evidence. SNS EMR has no NGS Connex, CMS,
+Medicare, or payer-database lookup integration, and no automated
+name+DOB+SSN insurance-discovery capability -- that is explicitly out of
+scope unless a future approved integration project changes it. See
+`docs/workflows/PayerDeterminationWorkflow.md` and
+`docs/workflows/AuthorizationWorkflow.md`.
+
+## Reading this table
+
+- **"Staff"** = a human-entered value with no system computation involved at all.
+- **"Staff Reviewed"** = the system may harvest/suggest a candidate, but the value is not considered a source of truth until a staff member reviews/confirms it.
+- **"OCR Candidate + Staff Review"** = same as above, explicitly naming the harvesting mechanism (OCR/document intelligence).
+- **"System-Computed"** = the system is authorized to calculate this value, but only from already-reviewed/staff-established inputs -- never from raw extraction or from data staff have not yet confirmed.
+- **"NOT SSOT -- Candidate Queue Only"** = a staging table that stores proposed values pending human review; it is explicitly never a source of truth and is never read as authoritative by any consumer.

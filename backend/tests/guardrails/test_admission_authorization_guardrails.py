@@ -16,6 +16,7 @@ from app.services.admission_authorization_service import (
 )
 from app.models.admission import Admission
 from tests.conftest import TEST_USER_ID
+from tests.helpers.benefit_period_test_helpers import ensure_benefit_period_documented
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
 
@@ -124,6 +125,10 @@ def test_authorize_sets_soc_and_creates_tasks(db_session):
     patient_id = stable_uuid("patient:authorize")
     p = _ensure_min_patient(db_session, patient_id)
 
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=patient_id
+    )
+
     authorize_admission(
         db_session,
         patient_id=patient_id,
@@ -186,6 +191,10 @@ def test_authorize_is_idempotent(db_session):
     patient_id = stable_uuid("patient:idempotent")
     _ensure_min_patient(db_session, patient_id)
 
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=patient_id
+    )
+
     authorize_admission(
         db_session,
         patient_id=patient_id,
@@ -223,6 +232,10 @@ def test_soc_is_immutable(db_session):
 
     patient_id = stable_uuid("patient:soc_immutable")
     p = _ensure_min_patient(db_session, patient_id)
+
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=patient_id
+    )
 
     authorize_admission(
         db_session,

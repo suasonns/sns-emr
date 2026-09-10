@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.models.patient import Patient
 from app.models.admission import Admission
+from app.services.soc_validation_service import (
+    SOCValidationError,
+    SOCValidationService,
+)
 
 import logging
 
@@ -390,6 +394,13 @@ class AdmissionGuardrailService:
 
         if soc_datetime is None:
             raise AdmissionPrerequisiteError("soc_datetime is required")
+
+        try:
+            SOCValidationService.ensure_ready(
+                db, tenant_id=str(patient.tenant_id), patient_id=str(patient.id)
+            )
+        except SOCValidationError as exc:
+            raise AdmissionPrerequisiteError(str(exc)) from exc
 
         admission = cls.get_latest_admission(
             db=db,

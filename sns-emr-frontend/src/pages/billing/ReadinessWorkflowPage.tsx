@@ -286,7 +286,7 @@ export default function ReadinessWorkflowPage() {
               ) : (
                 (dashboard?.recent_evaluations ?? []).map((e) => (
                   <Box key={`${e.patient_id}-${e.evaluated_at}`} sx={{ display: "flex", justifyContent: "space-between", py: 0.6, borderBottom: "1px solid #1f3a5c" }}>
-                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>{e.patient_id}</Typography>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>{e.mrn || e.patient_id}</Typography>
                     <Typography sx={{ fontSize: 12, color: "#7f97b3" }}>{e.evaluated_at} ({e.triggered_by})</Typography>
                     <Typography sx={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0" }}>{e.readiness_status}</Typography>
                   </Box>
@@ -305,7 +305,7 @@ export default function ReadinessWorkflowPage() {
               ) : (
                 (dashboard?.recently_changed_status ?? []).map((c) => (
                   <Box key={`${c.patient_id}-${c.changed_at}`} sx={{ display: "flex", justifyContent: "space-between", py: 0.6, borderBottom: "1px solid #1f3a5c" }}>
-                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>{c.patient_id}</Typography>
+                    <Typography sx={{ fontSize: 12.5, color: "#e2e8f0" }}>{c.mrn || c.patient_id}</Typography>
                     <Typography sx={{ fontSize: 12, color: "#7f97b3" }}>
                       {c.previous_status} → <Box component="span" sx={{ color: "#e2e8f0", fontWeight: 700 }}>{c.new_status}</Box>
                     </Typography>

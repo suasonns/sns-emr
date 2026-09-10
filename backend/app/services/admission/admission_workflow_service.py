@@ -261,63 +261,12 @@ class AdmissionWorkflowService:
             commit=commit,
         )
 
-    @classmethod
-    def start_soc(
-        cls,
-        *,
-        db: Session,
-        patient: Patient,
-        changed_by: UUID,
-        role: str,
-        reason: Optional[str] = "SOC visit started",
-        notes: Optional[str] = None,
-        soc_datetime: Optional[datetime] = None,
-        commit: bool = True,
-    ) -> Dict[str, Any]:
-
-        # ✅ VALIDATION
-        if not soc_datetime:
-            raise ValueError("soc_datetime is required to start SOC")
-
-        # ✅ STATE TRANSITION
-        result = cls.change_status(
-            db=db,
-            patient=patient,
-            new_status="SOC_IN_PROGRESS",
-            changed_by=changed_by,
-            role=role,
-            reason=reason,
-            notes=notes,
-            commit=False,   # ✅ important
-        )
-
-        if not result["success"]:
-            return result
-
-        # ✅ PERSIST SOC TO ADMISSION (CRITICAL)
-        admission = AdmissionService.get_latest_admission(
-            db=db,
-            patient_id=patient.id,
-        )
-
-        if not admission:
-            raise ValueError("Admission record missing")
-
-        # normalize datetime
-        soc_value = (
-            soc_datetime.replace(tzinfo=None)
-            if soc_datetime.tzinfo
-            else soc_datetime
-        )
-
-        admission.soc_date = soc_value
-        admission.updated_by = changed_by
-
-        if commit:
-            db.commit()
-            db.refresh(admission)
-
-        return result
+    # NOTE: start_soc() was removed here on 2026-09-09 as proven dead code
+    # (no API, frontend, workflow, scheduled, or integration caller). See
+    # docs/architecture/DeadCodeRemovals.md for the removal record. SOC is
+    # established exclusively via AdmissionGuardrailService.set_soc_datetime()
+    # (Path A) and authorize_admission() (Path B), both of which now go
+    # through the shared SOCValidationService.
 
     @classmethod
     def complete_admission(

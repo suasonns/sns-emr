@@ -72,6 +72,7 @@ from app.services.contact_sync_service import (
     get_patient_contacts,
 )
 from app.services.hnp_parser_service import build_hnp_summary
+from app.services.insurance_field_extraction import extract_insurance_candidates
 from app.services.assessment_history_service import (
     AssessmentHistoryFilters,
     list_patient_assessment_history,
@@ -1085,6 +1086,33 @@ def _compute_benefit_period_schedule(
     }
 
 
+def _fetch_ssot_benefit_period(db: Session, tenant_id, patient_id) -> dict | None:
+    """
+    Read-only lookup of the most recently established benefit period
+    from `benefit_periods` -- the Eligibility / Admission Review
+    workflow's own table (see
+    app.billing.services.eligibility_workflow_service.
+    record_benefit_period_determination and
+    billing_readiness_service._fetch_billable_benefit_period, which
+    reads the same table). This is the single owner of "what benefit
+    period is this patient in" -- the facesheet never stores its own
+    answer to that question.
+    """
+    row = db.execute(
+        text(
+            """
+            SELECT period_number, start_date, end_date
+            FROM benefit_periods
+            WHERE tenant_id = :tenant_id AND patient_id = :patient_id
+            ORDER BY period_number DESC
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": str(tenant_id), "patient_id": str(patient_id)},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
 def _generate_mrn_for_tenant(
     db: Session,
     *,
@@ -1593,6 +1621,67 @@ def _reconcile_demographic_field(
         )
 
 
+def _queue_insurance_candidate_suggestions(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    facesheet: "PatientFaceSheet",
+    raw_text: str,
+    source_document_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+) -> None:
+    """Extract insurance-field candidates from `raw_text` (MBI, primary
+    payer, primary policy number -- see
+    app/services/insurance_field_extraction.py) and queue each as a
+    FacesheetFieldSuggestion for staff review.
+
+    Unlike demographic fields, insurance candidates are ALWAYS queued for
+    review -- even when the target field is currently empty -- never
+    auto-applied regardless of the tenant's facesheet_protection_mode.
+    Per docs/architecture/InsuranceMappingReconciliation.md /
+    SourceOfTruthMatrix.md: OCR may suggest insurance values, but staff
+    review is mandatory before PatientFaceSheet (the SSOT) is ever
+    updated with an OCR-derived insurance value.
+    """
+    candidates = extract_insurance_candidates(raw_text)
+    if not candidates:
+        return
+
+    for field_name, suggested_value in candidates.items():
+        current_value = getattr(facesheet, field_name, None)
+        if current_value is not None and str(current_value) == str(suggested_value):
+            continue  # already matches -- nothing to suggest
+
+        existing = (
+            db.query(FacesheetFieldSuggestion)
+            .filter(
+                FacesheetFieldSuggestion.tenant_id == tenant_id,
+                FacesheetFieldSuggestion.patient_id == patient_id,
+                FacesheetFieldSuggestion.field_name == field_name,
+                FacesheetFieldSuggestion.suggested_value == str(suggested_value),
+                FacesheetFieldSuggestion.status.in_(["pending", "auto_applied"]),
+            )
+            .first()
+        )
+        if existing is not None:
+            continue
+
+        db.add(
+            FacesheetFieldSuggestion(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                field_name=field_name,
+                current_value=str(current_value) if current_value is not None else None,
+                suggested_value=str(suggested_value),
+                source_document_id=source_document_id,
+                status="pending",
+                created_by=user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+
+
 def persist_patient_from_hnp_extraction(
     db: Session,
     *,
@@ -1746,6 +1835,15 @@ def persist_patient_from_hnp_extraction(
         apply_tenant_default_medical_director(
             db, tenant_id=tenant_id, patient_id=patient_id, updated_by=user_id
         )
+        _queue_insurance_candidate_suggestions(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            facesheet=facesheet,
+            raw_text=raw_text,
+            source_document_id=source_document_id,
+            user_id=user_id,
+        )
 
     else:
         protection_mode = (
@@ -1813,6 +1911,15 @@ def persist_patient_from_hnp_extraction(
             apply_tenant_default_medical_director(
                 db, tenant_id=tenant_id, patient_id=patient.id, updated_by=user_id
             )
+            _queue_insurance_candidate_suggestions(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                facesheet=facesheet,
+                raw_text=raw_text,
+                source_document_id=source_document_id,
+                user_id=user_id,
+            )
         else:
             # Demographic fields (identity: name/dob/gender;
             # administrative: address/phone) are never silently
@@ -1853,6 +1960,15 @@ def persist_patient_from_hnp_extraction(
                 facesheet.source_document_id = source_document_id
             facesheet.updated_by = user_id
             facesheet.updated_at = datetime.now(timezone.utc)
+            _queue_insurance_candidate_suggestions(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                facesheet=facesheet,
+                raw_text=raw_text,
+                source_document_id=source_document_id,
+                user_id=user_id,
+            )
 
     # Flush so the new patient row (and its FK-dependent rows added above)
     # are visible to Postgres before diagnosis_sources/secondary diagnoses
@@ -2055,6 +2171,26 @@ class FaceSheetCreate(BaseModel):
     authorization_start_date: date | None = None
 
     authorization_end_date: date | None = None
+
+    # docs/workflows/AuthorizationWorkflow.md -- staff-reviewed tri-state
+    # answers (YES/NO/UNKNOWN). Never inferred from OCR or a payer name.
+    contracted_status: str | None = None
+    authorization_required_status: str | None = None
+
+    # ==================================================
+    # ✅ PAYER VERIFICATION (Priority 4 -- Payer Review Workflow)
+    # SNS EMR does NOT perform eligibility verification itself (no NGS
+    # Connex / CMS / Medicare lookup integration). Staff verify coverage
+    # externally and record the result here; these fields support audit
+    # only -- see docs/workflows/PayerDeterminationWorkflow.md.
+    # ==================================================
+
+    payer_verified_date: date | None = None
+    payer_verification_notes: str | None = None
+    verification_document_reference: str | None = None
+    subscriber_name: str | None = None
+    subscriber_relationship: str | None = None
+    subscriber_id: str | None = None
 
     # ==================================================
     # ✅ DIAGNOSIS / CLINICAL
@@ -2445,9 +2581,73 @@ def save_facesheet(
 
         data["primary_diagnosis"] = sync_result["primary_diagnosis"]
 
+    if "contracted_status" in data and data["contracted_status"] not in (None, "YES", "NO", "UNKNOWN"):
+        raise HTTPException(400, "contracted_status must be one of YES, NO, UNKNOWN")
+    if "authorization_required_status" in data and data["authorization_required_status"] not in (
+        None,
+        "YES",
+        "NO",
+        "UNKNOWN",
+    ):
+        raise HTTPException(400, "authorization_required_status must be one of YES, NO, UNKNOWN")
+
+    if "verification_document_reference" in data:
+        raw_ref = data.pop("verification_document_reference")
+        new_ref = uuid.UUID(str(raw_ref)) if raw_ref else None
+        ref_changed = new_ref != facesheet.verification_document_reference
+        facesheet.verification_document_reference = new_ref
+    else:
+        ref_changed = False
+
+    # SSOT: "what benefit period is this patient in?" has exactly one
+    # owner -- the Eligibility / Admission Review workflow
+    # (record_benefit_period_determination / the benefit_periods table,
+    # consumed by billing_readiness_service and the admission gate).
+    # These facesheet columns used to be an independently staff-editable
+    # "manual override" -- a second write path answering the same
+    # question. They are intentionally dropped here (silently ignored,
+    # not rejected, since the facesheet UI always resubmits the full
+    # form) so PatientFaceSheet can never again diverge from the SSOT.
+    # The GET response now sources these fields read-only from
+    # benefit_periods -- see the "benefit_period" block below.
+    for _legacy_field in ("benefit_period_number", "benefit_period_start", "benefit_period_end"):
+        data.pop(_legacy_field, None)
+
+    # Compare against the prior stored value rather than mere key
+    # presence -- the facesheet UI always resubmits the full form on
+    # every save (not a partial patch), so "field present in the
+    # request" would otherwise fire this audit/stamp on every unrelated
+    # save (e.g. editing a phone number). Only an actual value change
+    # counts as a payer-verification review event.
+    payer_verification_touched = ref_changed or any(
+        field in data and data[field] != getattr(facesheet, field)
+        for field in ("payer_verified_date", "payer_verification_notes")
+    )
+
     for field, value in data.items():
         if hasattr(facesheet, field):
             setattr(facesheet, field, value)
+
+    if payer_verification_touched:
+        # payer_verified_by is an audit field -- always server-stamped
+        # to the acting user, never client-supplied. SNS EMR does not
+        # perform eligibility verification itself; this only records
+        # who entered the staff-reviewed result and when.
+        facesheet.payer_verified_by = user_id
+        audit_event(
+            db=db,
+            action="facesheet_payer_verification_recorded",
+            entity_type="patient_facesheet",
+            entity_id=str(patient.id),
+            user_id=str(user_id),
+            tenant_id=str(tenant_id),
+            meta={
+                "payer_verified_date": str(facesheet.payer_verified_date) if facesheet.payer_verified_date else None,
+                "verification_document_reference": str(facesheet.verification_document_reference)
+                if facesheet.verification_document_reference
+                else None,
+            },
+        )
 
     facesheet.updated_by = user_id
     facesheet.updated_at = datetime.now(timezone.utc)
@@ -2609,6 +2809,7 @@ def get_facesheet(
     benefit_period_schedule = _compute_benefit_period_schedule(
         facesheet.election_date
     )
+    ssot_benefit_period = _fetch_ssot_benefit_period(db, tenant_id, patient.id)
 
     # --------------------------------------------------
     # ✅ CANONICAL PATIENT NAME (REQUIRED)
@@ -2661,6 +2862,27 @@ def get_facesheet(
             "secondary_payer": facesheet.secondary_payer,
             "secondary_payer_type": facesheet.secondary_payer_type,
             "secondary_policy_number": facesheet.secondary_policy_number,
+            "subscriber_name": facesheet.subscriber_name,
+            "subscriber_relationship": facesheet.subscriber_relationship,
+            "subscriber_id": facesheet.subscriber_id,
+        },
+
+        # Priority 5 -- Contracted Status Workflow / Authorization Workflow.
+        # PatientFaceSheet remains the sole owner of these fields (see
+        # docs/workflows/ReadinessDecisionMatrix.md /
+        # docs/workflows/SourceOfTruthMatrix.md); Billing Readiness only
+        # consumes them read-only. payer_verified_by is intentionally
+        # read-only here -- it is always server-stamped on save, never
+        # client-settable.
+        "payer_review": {
+            "contracted_status": facesheet.contracted_status,
+            "authorization_required_status": facesheet.authorization_required_status,
+            "payer_verified_date": facesheet.payer_verified_date,
+            "payer_verified_by": str(facesheet.payer_verified_by) if facesheet.payer_verified_by else None,
+            "payer_verification_notes": facesheet.payer_verification_notes,
+            "verification_document_reference":
+                str(facesheet.verification_document_reference)
+                if facesheet.verification_document_reference else None,
         },
 
         "authorization": {
@@ -2802,9 +3024,12 @@ def get_facesheet(
         },
 
         "benefit_period": {
-            "benefit_period_number": facesheet.benefit_period_number,
-            "benefit_period_start": facesheet.benefit_period_start,
-            "benefit_period_end": facesheet.benefit_period_end,
+            # SSOT: read-only from benefit_periods (the Eligibility /
+            # Admission Review workflow's own table) -- never from a
+            # facesheet-owned column. See _fetch_ssot_benefit_period.
+            "benefit_period_number": ssot_benefit_period["period_number"] if ssot_benefit_period else None,
+            "benefit_period_start": ssot_benefit_period["start_date"] if ssot_benefit_period else None,
+            "benefit_period_end": ssot_benefit_period["end_date"] if ssot_benefit_period else None,
             "auto_calculated": benefit_period_schedule,
         },
 

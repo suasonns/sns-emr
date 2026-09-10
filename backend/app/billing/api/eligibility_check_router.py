@@ -16,6 +16,10 @@ from app.models.patient import Patient
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.patient_insurance import PatientInsurance
 from app.billing.models.payer_eligibility_check import PayerEligibilityCheck
+from app.billing.models.benefit_period_determination import BenefitPeriodDetermination
+from app.billing.models.eligibility_source_document import EligibilitySourceDocument
+from app.billing.models.eligibility_verification import EligibilityVerification
+from app.billing.services.eligibility_workflow_service import evaluate_admission_gate
 
 router = APIRouter(prefix="/billing", tags=["Billing Eligibility"])
 
@@ -211,8 +215,44 @@ def list_eligibility_roster(
         .all()
     )
 
+    # Directive item 12 correction: enrich each roster row with the
+    # structured PAYER ELIGIBILITY / ADMISSION BENEFIT-PERIOD REVIEW facts
+    # (Phases 2-4) alongside the legacy PatientInsurance.eligibility_status
+    # field above -- additive only, the legacy ACTIVE/INACTIVE/UNKNOWN/
+    # ERROR field is preserved for backward compatibility, never removed,
+    # since existing callers still read it.
+    patient_ids = [str(r.patient_id) for r in rows]
+    latest_verification_by_patient: dict[str, EligibilityVerification] = {}
+    latest_determination_by_patient: dict[str, BenefitPeriodDetermination] = {}
+    if patient_ids:
+        for v in (
+            db.query(EligibilityVerification)
+            .filter(
+                EligibilityVerification.tenant_id == scoped_tenant_id,
+                EligibilityVerification.patient_id.in_(patient_ids),
+            )
+            .order_by(EligibilityVerification.created_at.desc())
+            .all()
+        ):
+            latest_verification_by_patient.setdefault(str(v.patient_id), v)
+        for d in (
+            db.query(BenefitPeriodDetermination)
+            .filter(
+                BenefitPeriodDetermination.tenant_id == scoped_tenant_id,
+                BenefitPeriodDetermination.patient_id.in_(patient_ids),
+            )
+            .order_by(BenefitPeriodDetermination.created_at.desc())
+            .all()
+        ):
+            latest_determination_by_patient.setdefault(str(d.patient_id), d)
+
     results = []
     for r in rows:
+        patient_id_str = str(r.patient_id)
+        verification = latest_verification_by_patient.get(patient_id_str)
+        determination = latest_determination_by_patient.get(patient_id_str)
+        gate = evaluate_admission_gate(db, tenant_id=scoped_tenant_id, patient_id=patient_id_str)
+
         results.append(
             {
                 "insurance_id": str(r.insurance_id),
@@ -228,6 +268,31 @@ def list_eligibility_roster(
                 "next_verification_due": (
                     r.next_verification_due.isoformat() if r.next_verification_due else None
                 ),
+                # Structured PAYER ELIGIBILITY STATUS (Directive item 2.A) --
+                # None when no EligibilityVerification row exists yet for
+                # this patient (never collapsed into a false "not returned").
+                "payer_eligibility_verification_status": (
+                    verification.status if verification else None
+                ),
+                "payer_eligibility_verification_date": (
+                    verification.verification_date.isoformat()
+                    if verification and verification.verification_date
+                    else None
+                ),
+                # ADMISSION BENEFIT-PERIOD REVIEW STATUS (Directive item 2.B).
+                "benefit_period_determination_status": (
+                    determination.determination_status if determination else None
+                ),
+                "anticipated_benefit_period_number": (
+                    determination.anticipated_benefit_period_number if determination else None
+                ),
+                "prior_hospice_episode_count": (
+                    determination.prior_hospice_episode_count if determination else None
+                ),
+                # Phase 4 admission gate -- CLEAR or ADMISSION_REVIEW_REQUIRED,
+                # with human-readable action-required text, never a raw code.
+                "admission_gate_status": gate.gate_status,
+                "action_required": gate.blockers[0] if gate.blockers else None,
             }
         )
 
@@ -258,3 +323,122 @@ def list_eligibility_roster(
         "roster": results,
         "upcoming_reverifications": upcoming,
     }
+
+
+@router.get("/eligibility-detail/{patient_id}")
+def get_eligibility_detail(
+    patient_id: str,
+    tenant_id: UUID | None = Query(
+        None, description="Agency tenant to view. Required for billing-department accounts, which must explicitly pick an agency."
+    ),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """
+    Phase 7 -- read-only eligibility detail view for a single patient:
+    verification history, benefit-period determination history, source
+    documents, and admission-gate status. Sourced directly from the
+    Phases 1-4 tables -- never a parallel/competing source of truth.
+    Every history list is returned newest-first and nothing here is ever
+    mutated by a GET (matching Directive item 13's "GET does not write"
+    rule, inherited from the billing-readiness verdict work).
+    """
+    scoped_tenant_id = str(resolve_billing_scope_tenant_id(db, user, tenant_id))
+    require_automated_billing(db, scoped_tenant_id)
+
+    patient = (
+        db.query(Patient)
+        .filter(Patient.id == patient_id, Patient.tenant_id == scoped_tenant_id)
+        .one_or_none()
+    )
+    if patient is None:
+        raise HTTPException(status_code=404, detail="Patient not found for this tenant")
+
+    facesheet = (
+        db.query(PatientFaceSheet).filter(PatientFaceSheet.patient_id == patient.id).one_or_none()
+    )
+
+    verifications = (
+        db.query(EligibilityVerification)
+        .filter(
+            EligibilityVerification.tenant_id == scoped_tenant_id,
+            EligibilityVerification.patient_id == patient_id,
+        )
+        .order_by(EligibilityVerification.created_at.desc())
+        .all()
+    )
+    determinations = (
+        db.query(BenefitPeriodDetermination)
+        .filter(
+            BenefitPeriodDetermination.tenant_id == scoped_tenant_id,
+            BenefitPeriodDetermination.patient_id == patient_id,
+        )
+        .order_by(BenefitPeriodDetermination.created_at.desc())
+        .all()
+    )
+    documents = (
+        db.query(EligibilitySourceDocument)
+        .filter(
+            EligibilitySourceDocument.tenant_id == scoped_tenant_id,
+            EligibilitySourceDocument.patient_id == patient_id,
+        )
+        .order_by(EligibilitySourceDocument.uploaded_at.desc())
+        .all()
+    )
+
+    gate = evaluate_admission_gate(db, tenant_id=scoped_tenant_id, patient_id=patient_id)
+
+    return {
+        "patient_id": str(patient.id),
+        "patient_name": _patient_name(
+            getattr(facesheet, "first_name", None),
+            getattr(facesheet, "middle_name", None),
+            getattr(facesheet, "last_name", None),
+        ),
+        "mrn": patient.mrn,
+        "admission_gate_status": gate.gate_status,
+        "admission_gate_blockers": gate.blockers,
+        "verification_history": [
+            {
+                "id": str(v.id),
+                "status": v.status,
+                "verification_date": v.verification_date.isoformat() if v.verification_date else None,
+                "verification_method": v.verification_method,
+                "verified_by_user_id": str(v.verified_by_user_id),
+                "source_document_id": str(v.source_document_id),
+                "superseded": v.superseded_at is not None,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+                "entitlement_data": v.entitlement_data,
+                "payment_routing_data": v.payment_routing_data,
+                "hospice_utilization_data": v.hospice_utilization_data,
+            }
+            for v in verifications
+        ],
+        "benefit_period_determination_history": [
+            {
+                "id": str(d.id),
+                "determination_status": d.determination_status,
+                "anticipated_benefit_period_number": d.anticipated_benefit_period_number,
+                "prior_hospice_episode_count": d.prior_hospice_episode_count,
+                "benefit_periods_used": d.benefit_periods_used,
+                "face_to_face_applicability": d.face_to_face_applicability,
+                "review_notes": d.review_notes,
+                "conflict_reason": d.conflict_reason,
+                "superseded": d.superseded_at is not None,
+                "created_at": d.created_at.isoformat() if d.created_at else None,
+            }
+            for d in determinations
+        ],
+        "source_documents": [
+            {
+                "id": str(doc.id),
+                "document_type": doc.document_type,
+                "status": doc.status,
+                "verification_date": doc.verification_date.isoformat() if doc.verification_date else None,
+                "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None,
+                "document_record_id": str(doc.document_record_id),
+            }
+            for doc in documents
+        ],
+    }
+

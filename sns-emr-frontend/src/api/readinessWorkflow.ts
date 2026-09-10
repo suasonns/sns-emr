@@ -53,6 +53,7 @@ export type ReadinessAttentionPatientRow = {
 
 export type ReadinessStatusChangeRow = {
   patient_id: string;
+  mrn: string;
   previous_status: ReadinessStatus;
   new_status: ReadinessStatus;
   changed_at: string;
@@ -60,6 +61,7 @@ export type ReadinessStatusChangeRow = {
 
 export type RecentReadinessEvaluationRow = {
   patient_id: string;
+  mrn: string;
   evaluated_at: string;
   readiness_status: ReadinessStatus;
   triggered_by: string;
@@ -166,7 +168,20 @@ export type ReadinessBlockerHistoryRow = {
 
 export type ReadinessAuditEventRow = {
   id: string;
-  entity_type: "BLOCKER" | "ASSIGNMENT" | "FOLLOW_UP";
+  // BLOCKER/ASSIGNMENT/FOLLOW_UP are the original Sprint 2 audit entity
+  // types; the ELIGIBILITY_*/BENEFIT_PERIOD_DETERMINATION/BILLER_* values
+  // were added by the Phase A-E eligibility action workflow, which reuses
+  // this exact same shared ReadinessWorkflowEvent table/read-path rather
+  // than a parallel audit mechanism.
+  entity_type:
+    | "BLOCKER"
+    | "ASSIGNMENT"
+    | "FOLLOW_UP"
+    | "ELIGIBILITY_DOCUMENT"
+    | "ELIGIBILITY_VERIFICATION"
+    | "BENEFIT_PERIOD_DETERMINATION"
+    | "BILLER_NOTE"
+    | "BILLER_ESCALATION";
   entity_id: string;
   event_type: string;
   actor_user_id: string | null;

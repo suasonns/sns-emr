@@ -77,7 +77,35 @@ class DocumentRecord(Base):
     processing_started_at = Column(DateTime(timezone=True), nullable=True)
     processing_completed_at = Column(DateTime(timezone=True), nullable=True)
 
+    # -----------------------------------------------------------
+    # DOCUMENT LIFECYCLE (soft delete / archive / restore)
+    #
+    # Priority 1 of the documented workflow (see
+    # docs/workflows/BenefitPeriodWorkflow.md and companions): documents
+    # are never permanently deleted. `lifecycle_status` is the
+    # authoritative state; the paired *_at/*_by columns are the audit
+    # trail for each transition. Every transition is additionally
+    # recorded via app.services.audit_events.audit_event() at the API
+    # layer, so this is belt-and-suspenders, not the sole record.
+    # -----------------------------------------------------------
+    lifecycle_status = Column(
+        String(16), nullable=False, default="ACTIVE", server_default=text("'ACTIVE'")
+    )
+
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
+
+    archived_at = Column(DateTime(timezone=True), nullable=True)
+    archived_by = Column(UUID(as_uuid=True), nullable=True)
+
+    restored_at = Column(DateTime(timezone=True), nullable=True)
+    restored_by = Column(UUID(as_uuid=True), nullable=True)
+
     __table_args__ = (
         Index("ix_document_records_patient_content_hash", "patient_id", "content_hash"),
         Index("ix_document_records_processing_status", "processing_status"),
+        Index("ix_document_records_lifecycle_status", "lifecycle_status"),
     )
+
+
+DOCUMENT_LIFECYCLE_STATUSES = ("ACTIVE", "ARCHIVED", "DELETED")

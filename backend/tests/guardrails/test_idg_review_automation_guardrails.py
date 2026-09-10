@@ -12,6 +12,7 @@ from app.models.enums import TaskType, TaskStatus, CompletionReferenceType
 from app.services.admission_authorization_service import authorize_admission
 from app.services.task_completion_evidence import complete_task_with_evidence
 from tests.conftest import TEST_USER_ID
+from tests.helpers.benefit_period_test_helpers import ensure_benefit_period_documented
 
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -75,6 +76,10 @@ def test_idg_task_created_on_admission_due_soc_plus_15(db_session):
     pid = stable_uuid("patient:idg_on_admission")
     _ensure_patient(db_session, pid)
 
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=pid
+    )
+
     authorize_admission(
         db_session,
         patient_id=pid,
@@ -92,6 +97,10 @@ def test_idg_task_created_on_admission_due_soc_plus_15(db_session):
 def test_idg_completion_schedules_next_due_plus_15(db_session):
     pid = stable_uuid("patient:idg_next")
     _ensure_patient(db_session, pid)
+
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=pid
+    )
 
     authorize_admission(
         db_session,
