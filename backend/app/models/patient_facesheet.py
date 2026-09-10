@@ -101,6 +101,16 @@ class PatientFaceSheet(Base):
 
     secondary_payer = Column(String)
     secondary_policy_number = Column(String)
+
+    # Subscriber Information -- who the policy is actually held under
+    # (may differ from the patient, e.g. a spouse's employer plan).
+    # Owned here (PatientFaceSheet), same as every other insurance field --
+    # see docs/architecture/InsuranceMappingReconciliation.md. Populated by
+    # direct staff entry or via FacesheetFieldSuggestion review/apply, never
+    # written automatically.
+    subscriber_name = Column(String)
+    subscriber_relationship = Column(String)
+    subscriber_id = Column(String)
     
     # --------------------------------------------------
     # ✅ AUTHORIZATION

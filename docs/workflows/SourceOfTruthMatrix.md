@@ -31,6 +31,8 @@
 | Future recertification schedule / reminders / tasks | System-Computed | Yes -- but only after the anchor exists | Requires staff to have already established Admit Type, Starting Cert, Benefit Period, SOC (and Transfer fields if applicable) first. |
 | Document Lifecycle Status (ACTIVE/ARCHIVED/DELETED) | Staff Action | No -- staff deletes/archives/restores | System records the transition and timestamp/actor; never changes lifecycle state on its own. |
 | OCR Extraction Text / AI Key Findings | System-Generated | Yes | Raw harvested output. Feeds the Review Queue and Structured Mapping layer as *candidates* only -- never consumed directly by readiness or the SOC gate. |
+| `PatientFaceSheet` (demographic + insurance fields: MBI, Primary/Secondary Payer, Policy Numbers, Subscriber Information) | **Source Of Truth** | No | Owner = Patient Record. Consumers = Admissions / Billing / Readiness / Claims. All insurance identifiers live here and nowhere else -- see `docs/architecture/InsuranceMappingReconciliation.md`. |
+| `FacesheetFieldSuggestion` | **NOT SSOT -- Candidate Queue Only** | Yes -- populated by OCR/extraction | Owner = **None** (explicitly ownerless by design). Role = staging/reconciliation queue for both demographic and insurance fields. Consumer = Staff Review (`app/api/field_suggestions.py`: accept/reject/dismiss). A row here is never read by any downstream consumer (billing, claims, readiness) as authoritative -- only an *accepted* suggestion, once applied to `PatientFaceSheet`, becomes real. See `docs/architecture/InsuranceMappingReconciliation.md`. |
 
 ## Reading this table
 
@@ -38,3 +40,4 @@
 - **"Staff Reviewed"** = the system may harvest/suggest a candidate, but the value is not considered a source of truth until a staff member reviews/confirms it.
 - **"OCR Candidate + Staff Review"** = same as above, explicitly naming the harvesting mechanism (OCR/document intelligence).
 - **"System-Computed"** = the system is authorized to calculate this value, but only from already-reviewed/staff-established inputs -- never from raw extraction or from data staff have not yet confirmed.
+- **"NOT SSOT -- Candidate Queue Only"** = a staging table that stores proposed values pending human review; it is explicitly never a source of truth and is never read as authoritative by any consumer.

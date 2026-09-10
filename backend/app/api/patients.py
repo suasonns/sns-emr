@@ -72,6 +72,7 @@ from app.services.contact_sync_service import (
     get_patient_contacts,
 )
 from app.services.hnp_parser_service import build_hnp_summary
+from app.services.insurance_field_extraction import extract_insurance_candidates
 from app.services.assessment_history_service import (
     AssessmentHistoryFilters,
     list_patient_assessment_history,
@@ -1593,6 +1594,67 @@ def _reconcile_demographic_field(
         )
 
 
+def _queue_insurance_candidate_suggestions(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID,
+    patient_id: uuid.UUID,
+    facesheet: "PatientFaceSheet",
+    raw_text: str,
+    source_document_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+) -> None:
+    """Extract insurance-field candidates from `raw_text` (MBI, primary
+    payer, primary policy number -- see
+    app/services/insurance_field_extraction.py) and queue each as a
+    FacesheetFieldSuggestion for staff review.
+
+    Unlike demographic fields, insurance candidates are ALWAYS queued for
+    review -- even when the target field is currently empty -- never
+    auto-applied regardless of the tenant's facesheet_protection_mode.
+    Per docs/architecture/InsuranceMappingReconciliation.md /
+    SourceOfTruthMatrix.md: OCR may suggest insurance values, but staff
+    review is mandatory before PatientFaceSheet (the SSOT) is ever
+    updated with an OCR-derived insurance value.
+    """
+    candidates = extract_insurance_candidates(raw_text)
+    if not candidates:
+        return
+
+    for field_name, suggested_value in candidates.items():
+        current_value = getattr(facesheet, field_name, None)
+        if current_value is not None and str(current_value) == str(suggested_value):
+            continue  # already matches -- nothing to suggest
+
+        existing = (
+            db.query(FacesheetFieldSuggestion)
+            .filter(
+                FacesheetFieldSuggestion.tenant_id == tenant_id,
+                FacesheetFieldSuggestion.patient_id == patient_id,
+                FacesheetFieldSuggestion.field_name == field_name,
+                FacesheetFieldSuggestion.suggested_value == str(suggested_value),
+                FacesheetFieldSuggestion.status.in_(["pending", "auto_applied"]),
+            )
+            .first()
+        )
+        if existing is not None:
+            continue
+
+        db.add(
+            FacesheetFieldSuggestion(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                field_name=field_name,
+                current_value=str(current_value) if current_value is not None else None,
+                suggested_value=str(suggested_value),
+                source_document_id=source_document_id,
+                status="pending",
+                created_by=user_id,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+
+
 def persist_patient_from_hnp_extraction(
     db: Session,
     *,
@@ -1746,6 +1808,15 @@ def persist_patient_from_hnp_extraction(
         apply_tenant_default_medical_director(
             db, tenant_id=tenant_id, patient_id=patient_id, updated_by=user_id
         )
+        _queue_insurance_candidate_suggestions(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            facesheet=facesheet,
+            raw_text=raw_text,
+            source_document_id=source_document_id,
+            user_id=user_id,
+        )
 
     else:
         protection_mode = (
@@ -1813,6 +1884,15 @@ def persist_patient_from_hnp_extraction(
             apply_tenant_default_medical_director(
                 db, tenant_id=tenant_id, patient_id=patient.id, updated_by=user_id
             )
+            _queue_insurance_candidate_suggestions(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                facesheet=facesheet,
+                raw_text=raw_text,
+                source_document_id=source_document_id,
+                user_id=user_id,
+            )
         else:
             # Demographic fields (identity: name/dob/gender;
             # administrative: address/phone) are never silently
@@ -1853,6 +1933,15 @@ def persist_patient_from_hnp_extraction(
                 facesheet.source_document_id = source_document_id
             facesheet.updated_by = user_id
             facesheet.updated_at = datetime.now(timezone.utc)
+            _queue_insurance_candidate_suggestions(
+                db,
+                tenant_id=tenant_id,
+                patient_id=patient.id,
+                facesheet=facesheet,
+                raw_text=raw_text,
+                source_document_id=source_document_id,
+                user_id=user_id,
+            )
 
     # Flush so the new patient row (and its FK-dependent rows added above)
     # are visible to Postgres before diagnosis_sources/secondary diagnoses

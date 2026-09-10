@@ -36,6 +36,7 @@ from app.api import (
     staff,
     vendors,
     visit_recordings,
+    field_suggestions,
 )
 from app.api.agency_profile import router as agency_profile_router
 from app.api.hospice_cap import router as hospice_cap_router
@@ -175,6 +176,7 @@ def register_routers(app: FastAPI) -> None:
         patients.router,
         visits.router,
         visit_recordings.router,
+        field_suggestions.router,
         forms.router,
         notes.router,
         communications_log_router,
