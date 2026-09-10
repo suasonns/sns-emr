@@ -2520,18 +2520,46 @@ function categorizeIcd10(icd10) {
   return HOPE_COMORBIDITY_CATEGORIES.find((cat) => matchesCategory(icd10, cat.regex)) || null;
 }
 
+// Free-text fallback keywords for the three categories that gate a
+// disease-specific performance scale (NYHA/FAST/ECOG) below. Many charts
+// (e.g. H&P-derived diagnoses) never get a coded ICD-10 on the Primary
+// Diagnosis, only a free-text description -- without this fallback the
+// relevant scale silently never appears for those patients even though
+// the diagnosis clearly documents the condition. This is deliberately
+// scoped to scale-gating only; the HOPE comorbidity checkboxes above
+// (categorizeIcd10 / HopeComorbiditiesCard) remain ICD-10-coded only,
+// per CMS HOPE guidance, and are untouched by this fallback.
+const SCALE_GATING_KEYWORDS = {
+  cancer: ["cancer", "carcinoma", "malignan", "neoplasm", "metasta", "sarcoma", "lymphoma", "leukemia"],
+  heartFailure: ["heart failure", "chf", "cardiomyopathy", "pulmonary edema"],
+  dementia: ["dementia", "alzheimer", "senile degeneration", "senile psychosis"],
+};
+
+function matchesCategoryText(description, categoryKey) {
+  const keywords = SCALE_GATING_KEYWORDS[categoryKey];
+  if (!keywords) return false;
+  const text = (description || "").trim().toLowerCase();
+  if (!text) return false;
+  return keywords.some((kw) => text.includes(kw));
+}
+
 // Used to gate disease-specific performance scales (NYHA/FAST/ECOG) in the
 // Performance Status section so the RN only sees the scale relevant to this
 // patient's actual diagnoses, checking both the primary diagnosis and every
 // secondary diagnosis (not just the principal one) against the same
-// ICD-10 category regexes used for HOPE comorbidity categorization above.
+// ICD-10 category regexes used for HOPE comorbidity categorization above,
+// falling back to a free-text keyword match when no ICD-10 code is on
+// file yet (see SCALE_GATING_KEYWORDS).
 function diagnosesIncludeCategory(diagnosesData, categoryKey) {
   const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
   if (!category) return false;
-  const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
-  if (matchesCategory(primaryIcd10, category.regex)) return true;
+  const primary = diagnosesData?.primaryDiagnosis;
+  if (matchesCategory(primary?.icd10, category.regex)) return true;
+  if (matchesCategoryText(primary?.description, categoryKey)) return true;
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
-  return secondaryDx.some((dx) => matchesCategory(dx?.icd10, category.regex));
+  return secondaryDx.some(
+    (dx) => matchesCategory(dx?.icd10, category.regex) || matchesCategoryText(dx?.description, categoryKey),
+  );
 }
 
 function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
