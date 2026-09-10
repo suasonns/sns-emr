@@ -12,6 +12,7 @@ from app.models.enums import TaskType
 
 from app.services.admission_authorization_service import authorize_admission
 from app.services.poc_update_automation import on_visit_finalized_apply_poc_policy
+from tests.helpers.benefit_period_test_helpers import ensure_benefit_period_documented
 
 
 _UUID_NS = uuid.UUID("11111111-1111-1111-1111-111111111111")
@@ -136,6 +137,10 @@ def test_idg_task_has_benefit_period_id_when_period_exists(db_session):
 
     if not bp_id:
         pytest.skip("No benefit period exists for patient; cannot assert alignment")
+
+    ensure_benefit_period_documented(
+        db_session, tenant_id=db_session.info.get("tenant_id"), patient_id=patient.id
+    )
 
     authorize_admission(
         db_session,

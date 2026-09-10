@@ -178,42 +178,12 @@ def test_mark_non_admit(
 
 
 # =========================================================
-# START SOC
+# START SOC — REMOVED (see docs/architecture/DeadCodeRemovals.md).
+# AdmissionWorkflowService.start_soc() was proven dead code and removed;
+# its only caller was this test. SOC-write coverage now lives in
+# tests/guardrails/test_soc_gate_guardrail.py and
+# tests/guardrails/test_admission_authorization_guardrails.py.
 # =========================================================
-
-@patch(
-    "app.services.admission.admission_workflow_service."
-    "AdmissionWorkflowService.change_status"
-)
-def test_start_soc(
-    mock_change_status,
-):
-    patient = build_patient(
-        admission_status="ADMISSION_SCHEDULED",
-    )
-
-    db = Mock()
-
-    mock_change_status.return_value = {
-        "success": True,
-    }
-
-    result = AdmissionWorkflowService.start_soc(
-        db=db,
-        patient=patient,
-        changed_by=uuid4(),
-        role="RN",
-        soc_datetime=datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
-    )
-
-    assert result["success"] is True
-
-    _, kwargs = mock_change_status.call_args
-
-    assert (
-        kwargs["new_status"]
-        == "SOC_IN_PROGRESS"
-    )
 
 
 # =========================================================

@@ -139,6 +139,8 @@ def finalize_rn_admission_order(
             election_signed_at=election_signed_at,
             authorized_by_user_id=getattr(user, "id", None),
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500,
