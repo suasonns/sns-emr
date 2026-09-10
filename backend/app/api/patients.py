@@ -1086,6 +1086,33 @@ def _compute_benefit_period_schedule(
     }
 
 
+def _fetch_ssot_benefit_period(db: Session, tenant_id, patient_id) -> dict | None:
+    """
+    Read-only lookup of the most recently established benefit period
+    from `benefit_periods` -- the Eligibility / Admission Review
+    workflow's own table (see
+    app.billing.services.eligibility_workflow_service.
+    record_benefit_period_determination and
+    billing_readiness_service._fetch_billable_benefit_period, which
+    reads the same table). This is the single owner of "what benefit
+    period is this patient in" -- the facesheet never stores its own
+    answer to that question.
+    """
+    row = db.execute(
+        text(
+            """
+            SELECT period_number, start_date, end_date
+            FROM benefit_periods
+            WHERE tenant_id = :tenant_id AND patient_id = :patient_id
+            ORDER BY period_number DESC
+            LIMIT 1
+            """
+        ),
+        {"tenant_id": str(tenant_id), "patient_id": str(patient_id)},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
 def _generate_mrn_for_tenant(
     db: Session,
     *,
@@ -2572,6 +2599,20 @@ def save_facesheet(
     else:
         ref_changed = False
 
+    # SSOT: "what benefit period is this patient in?" has exactly one
+    # owner -- the Eligibility / Admission Review workflow
+    # (record_benefit_period_determination / the benefit_periods table,
+    # consumed by billing_readiness_service and the admission gate).
+    # These facesheet columns used to be an independently staff-editable
+    # "manual override" -- a second write path answering the same
+    # question. They are intentionally dropped here (silently ignored,
+    # not rejected, since the facesheet UI always resubmits the full
+    # form) so PatientFaceSheet can never again diverge from the SSOT.
+    # The GET response now sources these fields read-only from
+    # benefit_periods -- see the "benefit_period" block below.
+    for _legacy_field in ("benefit_period_number", "benefit_period_start", "benefit_period_end"):
+        data.pop(_legacy_field, None)
+
     # Compare against the prior stored value rather than mere key
     # presence -- the facesheet UI always resubmits the full form on
     # every save (not a partial patch), so "field present in the
@@ -2768,6 +2809,7 @@ def get_facesheet(
     benefit_period_schedule = _compute_benefit_period_schedule(
         facesheet.election_date
     )
+    ssot_benefit_period = _fetch_ssot_benefit_period(db, tenant_id, patient.id)
 
     # --------------------------------------------------
     # ✅ CANONICAL PATIENT NAME (REQUIRED)
@@ -2982,9 +3024,12 @@ def get_facesheet(
         },
 
         "benefit_period": {
-            "benefit_period_number": facesheet.benefit_period_number,
-            "benefit_period_start": facesheet.benefit_period_start,
-            "benefit_period_end": facesheet.benefit_period_end,
+            # SSOT: read-only from benefit_periods (the Eligibility /
+            # Admission Review workflow's own table) -- never from a
+            # facesheet-owned column. See _fetch_ssot_benefit_period.
+            "benefit_period_number": ssot_benefit_period["period_number"] if ssot_benefit_period else None,
+            "benefit_period_start": ssot_benefit_period["start_date"] if ssot_benefit_period else None,
+            "benefit_period_end": ssot_benefit_period["end_date"] if ssot_benefit_period else None,
             "auto_calculated": benefit_period_schedule,
         },
 

@@ -22,6 +22,7 @@ import pytest
 from app.billing.models.billing_blocker_record import BillingBlockerRecord
 from app.billing.models.readiness_assignment import ReadinessAssignment
 from app.billing.models.readiness_follow_up import ReadinessFollowUp
+from app.models.document_record import DocumentRecord
 from tests.conftest import TEST_USER_ID
 from tests.test_aging_report_service import _enable_billing_for_tenant, _headers
 from tests.test_billing_readiness_service import (
@@ -70,6 +71,21 @@ class TestReadinessDashboardEndpoint:
 
         ready_patient = _fully_ready_patient(db_session, str(tenant_id), mrn="MRN-DASH-READY")
         _make_admitted(db_session, str(tenant_id), ready_patient)
+        # Priority 6: an ACTIVE election/consent document is required to
+        # avoid the AT_RISK election/consent warning -- without it this
+        # patient would count as AT_RISK, not READY, for this dashboard
+        # assertion.
+        db_session.add(
+            DocumentRecord(
+                id=uuid.uuid4(),
+                tenant_id=uuid.UUID(str(tenant_id)),
+                patient_id=ready_patient.id,
+                document_type="CONSENT_FORM",
+                source="EXTERNAL",
+                uploaded_by=uuid.UUID(str(TEST_USER_ID)),
+            )
+        )
+        db_session.commit()
         not_ready_patient = _make_patient(db_session, str(tenant_id), mrn="MRN-DASH-NOTREADY")
         _make_benefit_period(db_session, str(tenant_id), not_ready_patient)
         _make_admitted(db_session, str(tenant_id), not_ready_patient)

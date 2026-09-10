@@ -440,9 +440,13 @@ const buildPayload = (draft) => {
   recert_date: toNullableString(draft.recert_date),
   election_date: toNullableString(draft.election_date),
   face_to_face_due_date: toNullableString(draft.face_to_face_due_date),
-  benefit_period_number: toNullableString(draft.benefit_period_number),
-  benefit_period_start: toNullableString(draft.benefit_period_start),
-  benefit_period_end: toNullableString(draft.benefit_period_end),
+  // benefit_period_number/start/end intentionally NOT submitted here.
+  // SSOT: Benefit Period is owned by the Eligibility / Admission Review
+  // workflow (record_benefit_period_determination), never by the
+  // facesheet. These are read-only display values sourced from that
+  // workflow -- see mapResponseToDraft below. Submitting them would be
+  // a no-op (the backend ignores them), but they are omitted here to
+  // avoid implying the facesheet can set them.
   pps_score: toNullableString(draft.pps_score),
   kps_score: toNullableString(draft.kps_score),
   fast_stage: toNullableString(draft.fast_stage),
@@ -955,15 +959,18 @@ const HospiceSnapshotCard = ({ colors, draft, update, facesheet, performanceHist
   const isDementiaRelated = /dementia|alzheimer/i.test(draft.primary_diagnosis || '') || Boolean(fastValue);
 
   // System-calculated benefit period schedule (CMS 90/90/60-day rule from
-  // election date). This is the authoritative source when an election date
-  // is on file; manually entered benefit_period_* fields below remain as an
-  // override/fallback for patients still in referral (no election date yet).
+  // election date), shown only as an advisory reminder projection.
+  // The authoritative Current BP / Days Remaining values below always
+  // come from the Eligibility / Admission Review workflow's own
+  // benefit_periods table (facesheet.benefit_period.benefit_period_*),
+  // which is SSOT -- the facesheet has no independent write path for
+  // these fields (see docs/workflows/SourceOfTruthMatrix.md).
   const autoBP = facesheet?.benefit_period?.auto_calculated;
   const hasAutoBP = Boolean(autoBP?.available);
 
-  const bpNumber = hasAutoBP ? autoBP.benefit_period_number : draft.benefit_period_number;
-  const bpStart = hasAutoBP ? autoBP.benefit_period_start : draft.benefit_period_start;
-  const bpEnd = hasAutoBP ? autoBP.benefit_period_end : draft.benefit_period_end;
+  const bpNumber = draft.benefit_period_number;
+  const bpStart = draft.benefit_period_start;
+  const bpEnd = draft.benefit_period_end;
   const recertDue = hasAutoBP ? autoBP.recert_due_date : draft.recert_date;
   const f2fDue = hasAutoBP ? autoBP.face_to_face_due_date : draft.face_to_face_due_date;
 
@@ -986,7 +993,7 @@ const HospiceSnapshotCard = ({ colors, draft, update, facesheet, performanceHist
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, marginBottom: 4 }}>
         <span style={{ color: colors.label, fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Benefit Period</span>
-        <Badge variant={hasAutoBP ? 'teal' : 'muted'} colors={colors}>{hasAutoBP ? 'SYSTEM-CALCULATED' : 'MANUAL (no election date)'}</Badge>
+        <Badge variant="teal" colors={colors}>ELIGIBILITY / ADMISSION REVIEW (SSOT)</Badge>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '10px 14px', marginBottom: 10, borderTop: `1px solid ${colors.border}`, paddingTop: 10 }}>
         <SnapshotItem colors={colors} label="Current BP" value={bpNumber ? `BP ${bpNumber} (${benefitPeriodText})` : benefitPeriodText} />
@@ -998,9 +1005,6 @@ const HospiceSnapshotCard = ({ colors, draft, update, facesheet, performanceHist
         <Field label="Election Date" value={draft.election_date} type="date" colors={colors} editable onChange={(value) => update('election_date', value)} />
         {!hasAutoBP ? (
           <>
-            <Field label="Benefit Period # (manual)" value={draft.benefit_period_number} colors={colors} editable onChange={(value) => update('benefit_period_number', value)} />
-            <Field label="Benefit Period Start (manual)" value={draft.benefit_period_start} type="date" colors={colors} editable onChange={(value) => update('benefit_period_start', value)} />
-            <Field label="Benefit Period End (manual)" value={draft.benefit_period_end} type="date" colors={colors} editable onChange={(value) => update('benefit_period_end', value)} />
             <Field label="Recert Due (manual)" value={draft.recert_date} type="date" colors={colors} editable onChange={(value) => update('recert_date', value)} />
             <Field label="Face-to-Face Due (manual)" value={draft.face_to_face_due_date} type="date" colors={colors} editable onChange={(value) => update('face_to_face_due_date', value)} />
           </>

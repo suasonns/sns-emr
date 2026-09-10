@@ -321,6 +321,39 @@ def _make_source_document(db, patient: Patient, staff_user: User) -> Eligibility
     )
 
 
+def _make_consent_document(db, patient: Patient, staff_user: User) -> None:
+    """
+    Priority 6 -- Election/Consent Documentation. An ACTIVE DocumentRecord
+    of any recognized election/consent type satisfies this (see
+    app.billing.services.election_consent_workflow_service). Only used
+    for the "fully documented" READY scenario -- missing it is AT_RISK,
+    not a regression, but this scenario is meant to demonstrate a
+    patient with nothing outstanding.
+    """
+    existing = (
+        db.query(DocumentRecord)
+        .filter(
+            DocumentRecord.tenant_id == DEMO_TENANT_ID,
+            DocumentRecord.patient_id == patient.id,
+            DocumentRecord.document_type == "CONSENT_FORM",
+        )
+        .one_or_none()
+    )
+    if existing is not None:
+        return
+    db.add(
+        DocumentRecord(
+            id=uuid.uuid4(),
+            tenant_id=DEMO_TENANT_ID,
+            patient_id=patient.id,
+            document_type="CONSENT_FORM",
+            source="EXTERNAL",
+            uploaded_by=staff_user.id,
+        )
+    )
+    db.commit()
+
+
 def _make_payer(db, patient: Patient) -> None:
     existing = db.query(PatientPayer).filter(PatientPayer.patient_id == patient.id).one_or_none()
     if existing is not None:
@@ -403,6 +436,7 @@ def run(db) -> dict:
     _make_certification(db, ready_patient, bp_ready)
     _make_approved_poc(db, ready_patient, ready_admission)
     _make_payer(db, ready_patient)
+    _make_consent_document(db, ready_patient, staff_user)
 
     # ----- D. AT RISK -- same baseline as (C), but NOE filed late (warning only). -----
     at_risk_patient = _make_patient(
