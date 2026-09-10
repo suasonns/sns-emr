@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { COLORS, S } from "../tenant/design";
 import {
   listPatientDocuments,
-  getDocumentDownloadUrl,
+  fetchDocumentBlobUrl,
 } from "../api/documents";
 import { uploadDocumentOffline } from "../api/offlineDocumentApi";
 
@@ -66,6 +66,7 @@ function fmtDateTime(value) {
 
 function DocumentRow({ doc }) {
   const [expanded, setExpanded] = useState(false);
+  const [viewError, setViewError] = useState(null);
   const flagColor = FLAG_TIER_COLOR[doc.flag_tier] || COLORS.dim;
   const hasAiInsights = Boolean(
     doc.ai_summary || (doc.ai_key_findings && doc.ai_key_findings.length)
@@ -73,6 +74,16 @@ function DocumentRow({ doc }) {
   const typeMismatch =
     doc.ai_document_type_guess &&
     doc.ai_document_type_guess.toUpperCase() !== (doc.document_type || "").toUpperCase();
+
+  const handleViewDownload = useCallback(async () => {
+    setViewError(null);
+    try {
+      const blobUrl = await fetchDocumentBlobUrl(doc.id);
+      window.open(blobUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      setViewError("Could not open this document. Please try again.");
+    }
+  }, [doc.id]);
 
   return (
     <div
@@ -119,20 +130,19 @@ function DocumentRow({ doc }) {
       )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <a
-          href={getDocumentDownloadUrl(doc.id)}
-          target="_blank"
-          rel="noreferrer"
-          style={{ ...S.btnOutline, textDecoration: "none", display: "inline-block" }}
-        >
+        <button type="button" style={S.btnOutline} onClick={handleViewDownload}>
           View / Download
-        </a>
+        </button>
         {hasAiInsights && (
           <button type="button" style={S.btnOutline} onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Hide AI Summary" : "Show AI Summary"}
           </button>
         )}
       </div>
+
+      {viewError && (
+        <div style={{ color: COLORS.red, fontSize: 11, marginTop: 8 }}>{viewError}</div>
+      )}
 
       {expanded && hasAiInsights && (
         <div
