@@ -32,12 +32,23 @@ from sqlalchemy.sql import func
 from app.models.base import BaseModel
 
 # MEDICARE_BENEFICIARY_ELIGIBILITY_REPORT | PAYER_ELIGIBILITY_RESPONSE |
-# AUTHORIZATION_DOCUMENT | ELIGIBILITY_SUPPORTING_DOCUMENT | OTHER
+# AUTHORIZATION_DOCUMENT | ELIGIBILITY_SUPPORTING_DOCUMENT |
+# NON_AUTH_VERIFICATION | TRANSFER_EVIDENCE | OTHER
 ELIGIBILITY_DOCUMENT_TYPES = {
     "MEDICARE_BENEFICIARY_ELIGIBILITY_REPORT",
     "PAYER_ELIGIBILITY_RESPONSE",
     "AUTHORIZATION_DOCUMENT",
     "ELIGIBILITY_SUPPORTING_DOCUMENT",
+    # Evidence that a staff member verified/confirmed authorization is NOT
+    # required for this payer/coverage -- required whenever
+    # PatientFaceSheet.authorization_required_status == "NO"
+    # (docs/workflows/AuthorizationWorkflow.md). Never assumed absent this.
+    "NON_AUTH_VERIFICATION",
+    # Transfer packet / prior certification history supporting a
+    # TRANSFER_FROM_ANOTHER_HOSPICE admit type
+    # (docs/workflows/AdmissionTypesWorkflow.md). Required by the SOC
+    # gate only for that admit type.
+    "TRANSFER_EVIDENCE",
     "OTHER",
 }
 

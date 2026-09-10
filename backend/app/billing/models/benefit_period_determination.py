@@ -48,6 +48,14 @@ BENEFIT_PERIOD_REVIEW_RESOLVED_STATUSES = {
     "BENEFIT_PERIOD_NOT_APPLICABLE",
 }
 
+# docs/workflows/AdmissionTypesWorkflow.md -- Admit Type driver. Mutually
+# exclusive workflow paths, always staff-selected, never inferred.
+ADMIT_TYPES = {
+    "NEW_ADMISSION",
+    "READMISSION",
+    "TRANSFER_FROM_ANOTHER_HOSPICE",
+}
+
 
 class BenefitPeriodDetermination(BaseModel):
     __tablename__ = "benefit_period_determinations"
@@ -113,6 +121,26 @@ class BenefitPeriodDetermination(BaseModel):
     superseded_at = Column(DateTime(timezone=True), nullable=True)
     superseded_by_id = Column(
         UUID(as_uuid=True), ForeignKey("benefit_period_determinations.id"), nullable=True
+    )
+
+    # ---------------------------------------------------------------
+    # Admit Type driver (docs/workflows/AdmissionTypesWorkflow.md).
+    # Mutually exclusive workflow path, always staff-selected -- never
+    # inferred. Drives which fields below are required by the SOC gate.
+    # ---------------------------------------------------------------
+    admit_type = Column(String(32), nullable=True, index=True)
+
+    # Staff-entered, every admit type. Never defaulted (not even to 1
+    # for a "no prior hospice" new admission).
+    starting_cert = Column(Integer, nullable=True)
+
+    # Transfer-only fields (Admit Type = TRANSFER_FROM_ANOTHER_HOSPICE).
+    # Remain NULL and UI-hidden for NEW_ADMISSION / READMISSION.
+    transfer_source = Column(String(255), nullable=True)
+    transfer_evidence_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("eligibility_source_documents.id"),
+        nullable=True,
     )
 
     __table_args__ = (

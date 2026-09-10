@@ -117,6 +117,22 @@ class PatientFaceSheet(Base):
     authorization_start_date = Column(Date)
 
     authorization_end_date = Column(Date)
+
+    # docs/workflows/AuthorizationWorkflow.md + SourceOfTruthMatrix.md --
+    # staff-reviewed tri-state answers. Never inferred/defaulted from OCR,
+    # eligibility responses, or the legacy boolean fields above. Kept
+    # alongside (not replacing) requires_prior_authorization for backward
+    # compatibility with existing consumers of that field.
+    contracted_status = Column(String(16))  # YES | NO | UNKNOWN
+    authorization_required_status = Column(String(16))  # YES | NO | UNKNOWN
+
+    # Evidence a staff member verified authorization is NOT required,
+    # required whenever authorization_required_status == "NO".
+    non_auth_verification_document_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("eligibility_source_documents.id"),
+        nullable=True,
+    )
     
     # --------------------------------------------------
     # ✅ CLINICAL

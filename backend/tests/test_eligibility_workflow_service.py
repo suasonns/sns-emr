@@ -17,7 +17,9 @@ from app.billing.services.billing_readiness_service import check_patient_billing
 from app.billing.services.eligibility_workflow_service import (
     BENEFIT_PERIOD_REVIEW_BLOCKER_MESSAGE,
     ELIGIBILITY_REVIEW_BLOCKER_MESSAGE,
+    SOC_GATE_BLOCKER_MESSAGE,
     evaluate_admission_gate,
+    evaluate_soc_gate,
     get_latest_benefit_period_determination,
     get_latest_eligibility_verification,
     record_benefit_period_determination,
@@ -311,9 +313,151 @@ def test_gate_is_clear_when_both_are_confirmed(db_session, tenant):
 
 
 # ---------------------------------------------------------------------
-# Integration: the gate surfaces as an exceptional billing blocker only
-# when it fires (Directive item 10 -- never a silent exclusion).
+# SOC hard gate (docs/workflows/BenefitPeriodWorkflow.md,
+# AdmissionTypesWorkflow.md). Opposite default from evaluate_admission_gate:
+# an absent determination row MUST block, because it means staff have
+# not yet documented anything.
 # ---------------------------------------------------------------------
+
+
+def test_soc_gate_blocks_when_no_determination_exists(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-1")
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is False
+    assert gate.blockers == [SOC_GATE_BLOCKER_MESSAGE]
+
+
+def test_soc_gate_blocks_when_determination_unresolved(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-2")
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="INFORMATION_INCOMPLETE",
+        admit_type="NEW_ADMISSION",
+        starting_cert=1,
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is False
+
+
+def test_soc_gate_blocks_when_starting_cert_missing(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-3")
+    user_id = _make_user(db_session, tenant.id)
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="BENEFIT_PERIOD_CONFIRMED",
+        anticipated_benefit_period_number=1,
+        determined_by_user_id=str(user_id),
+        admit_type="NEW_ADMISSION",
+        # starting_cert intentionally omitted
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is False
+
+
+def test_soc_gate_clear_for_new_admission_with_benefit_period_and_starting_cert(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-4")
+    user_id = _make_user(db_session, tenant.id)
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="BENEFIT_PERIOD_CONFIRMED",
+        anticipated_benefit_period_number=1,
+        determined_by_user_id=str(user_id),
+        admit_type="NEW_ADMISSION",
+        starting_cert=1,
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is True
+    assert gate.blockers == []
+
+
+def test_soc_gate_clear_for_readmission_without_transfer_fields(db_session, tenant):
+    """Readmission is NOT a transfer -- must be clear without any
+    transfer_source/transfer_evidence_document_id, per
+    AdmissionTypesWorkflow.md's most important rule."""
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-5")
+    user_id = _make_user(db_session, tenant.id)
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="BENEFIT_PERIOD_CONFIRMED",
+        anticipated_benefit_period_number=2,
+        determined_by_user_id=str(user_id),
+        admit_type="READMISSION",
+        starting_cert=5,
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is True
+    assert gate.blockers == []
+
+
+def test_soc_gate_blocks_transfer_without_transfer_source_and_evidence(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-6")
+    user_id = _make_user(db_session, tenant.id)
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="BENEFIT_PERIOD_CONFIRMED",
+        anticipated_benefit_period_number=16,
+        determined_by_user_id=str(user_id),
+        admit_type="TRANSFER_FROM_ANOTHER_HOSPICE",
+        starting_cert=16,
+        # transfer_source / transfer_evidence_document_id intentionally omitted
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is False
+    assert SOC_GATE_BLOCKER_MESSAGE in gate.blockers
+
+
+def test_soc_gate_clear_for_transfer_with_all_transfer_fields_documented(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-7")
+    user_id = _make_user(db_session, tenant.id)
+    doc_record = _make_document_record(db_session, tenant.id, patient, user_id)
+    esd = record_eligibility_source_document(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        document_record_id=str(doc_record.id),
+        document_type="TRANSFER_EVIDENCE",
+        uploaded_by_user_id=str(user_id),
+    )
+    record_benefit_period_determination(
+        db_session,
+        tenant_id=tenant.id,
+        patient_id=str(patient.id),
+        determination_status="BENEFIT_PERIOD_CONFIRMED",
+        anticipated_benefit_period_number=16,
+        determined_by_user_id=str(user_id),
+        admit_type="TRANSFER_FROM_ANOTHER_HOSPICE",
+        starting_cert=16,
+        transfer_source="Prior Hospice Agency Name",
+        transfer_evidence_document_id=str(esd.id),
+    )
+    gate = evaluate_soc_gate(db_session, tenant_id=tenant.id, patient_id=str(patient.id))
+    assert gate.ready is True
+    assert gate.blockers == []
+
+
+def test_record_benefit_period_determination_rejects_unknown_admit_type(db_session, tenant):
+    patient = _make_patient(db_session, tenant.id, mrn="MRN-SOCGATE-8")
+    with pytest.raises(ValueError):
+        record_benefit_period_determination(
+            db_session,
+            tenant_id=tenant.id,
+            patient_id=str(patient.id),
+            determination_status="NOT_REVIEWED",
+            admit_type="SOMETHING_ELSE",
+        )
+
+
+
 
 
 def test_billing_readiness_unaffected_when_no_eligibility_rows_exist(db_session, tenant):

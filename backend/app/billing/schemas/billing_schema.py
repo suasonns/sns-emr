@@ -414,6 +414,12 @@ class CreateBenefitPeriodDeterminationRequest(BaseModel):
     review_notes: Optional[str] = None
     conflict_reason: Optional[str] = None
     supersedes_determination_id: Optional[str] = None
+    # docs/workflows/AdmissionTypesWorkflow.md -- always staff-entered,
+    # never derived/defaulted server-side.
+    admit_type: Optional[str] = None
+    starting_cert: Optional[int] = None
+    transfer_source: Optional[str] = None
+    transfer_evidence_document_id: Optional[str] = None
 
 
 class BenefitPeriodDeterminationActionResponse(BaseModel):
@@ -422,6 +428,10 @@ class BenefitPeriodDeterminationActionResponse(BaseModel):
     determination_status: str
     face_to_face_applicability: Optional[bool] = None
     anticipated_benefit_period_number: Optional[int] = None
+    admit_type: Optional[str] = None
+    starting_cert: Optional[int] = None
+    transfer_source: Optional[str] = None
+    transfer_evidence_document_id: Optional[str] = None
     impact: BillingImpactSummary
 
 

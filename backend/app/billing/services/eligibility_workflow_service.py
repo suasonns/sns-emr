@@ -42,6 +42,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.billing.models.benefit_period_determination import (
+    ADMIT_TYPES,
     BENEFIT_PERIOD_REVIEW_RESOLVED_STATUSES,
     BENEFIT_PERIOD_REVIEW_STATUSES,
     BenefitPeriodDetermination,
@@ -266,6 +267,10 @@ def record_benefit_period_determination(
     review_notes: str | None = None,
     conflict_reason: str | None = None,
     supersedes_determination_id: str | None = None,
+    admit_type: str | None = None,
+    starting_cert: int | None = None,
+    transfer_source: str | None = None,
+    transfer_evidence_document_id: str | None = None,
 ) -> BenefitPeriodDetermination:
     """
     Phase 3. Records the RN/authorized-reviewer conclusion about which
@@ -276,9 +281,20 @@ def record_benefit_period_determination(
     "CONFLICT_REQUIRES_REVIEW" instead. Corrections are append-only: a
     new determination row references the one it supersedes rather than
     mutating it.
+
+    `admit_type`, `starting_cert`, `transfer_source`, and
+    `transfer_evidence_document_id` (docs/workflows/AdmissionTypesWorkflow.md)
+    are likewise always caller-supplied (staff-entered) -- this function
+    never derives, defaults, or infers any of them. `admit_type` is
+    validated against ADMIT_TYPES when provided; transfer_source/
+    transfer_evidence_document_id are accepted for any admit_type (the
+    SOC gate, not this function, is what enforces they are only
+    *required* for TRANSFER_FROM_ANOTHER_HOSPICE).
     """
     if determination_status not in BENEFIT_PERIOD_REVIEW_STATUSES:
         raise ValueError(f"Unknown determination_status: {determination_status!r}")
+    if admit_type is not None and admit_type not in ADMIT_TYPES:
+        raise ValueError(f"Unknown admit_type: {admit_type!r}")
 
     determination = BenefitPeriodDetermination(
         tenant_id=tenant_id,
@@ -297,6 +313,10 @@ def record_benefit_period_determination(
         determined_at=datetime.now(timezone.utc) if determined_by_user_id else None,
         review_notes=review_notes,
         conflict_reason=conflict_reason,
+        admit_type=admit_type,
+        starting_cert=starting_cert,
+        transfer_source=transfer_source,
+        transfer_evidence_document_id=transfer_evidence_document_id,
     )
     db.add(determination)
 
@@ -382,6 +402,82 @@ def evaluate_admission_gate(
         blockers=blockers,
         eligibility_verification_id=str(verification.id) if verification else None,
         benefit_period_determination_id=str(determination.id) if determination else None,
+    )
+
+
+# ---------------------------------------------------------------------
+# SOC hard gate (docs/workflows/BenefitPeriodWorkflow.md,
+# AdmissionTypesWorkflow.md). Distinct from evaluate_admission_gate()
+# above on purpose:
+#
+#   - evaluate_admission_gate() is CLEAR-by-default (an absent row is not
+#     a negative finding) -- correct for the existing
+#     already-admitted-record / legacy-import non-regression path.
+#   - evaluate_soc_gate() is the opposite: it is the actual point where
+#     "referral / intake / documents / insurance ID / eligibility queue
+#     / transfer intake must never block, but SOC entry / admission
+#     activation / certification setup / episode activation must" is
+#     enforced (BenefitPeriodWorkflow.md "hard gate" section). A patient
+#     with NO determination row at all is exactly the case that must be
+#     blocked here, because it means staff have not yet documented
+#     anything -- the opposite of the other gate's semantics.
+#
+# This function is read-only and side-effect free; callers decide what
+# to do with a non-CLEAR result (e.g. AdmissionGuardrailService.
+# set_soc_datetime raises AdmissionPrerequisiteError with the exact
+# required message text).
+# ---------------------------------------------------------------------
+
+SOC_GATE_BLOCKER_MESSAGE = "Benefit Period Documentation Required Before SOC Activation"
+
+
+@dataclass(frozen=True)
+class SocGateResult:
+    ready: bool
+    blockers: list[str] = field(default_factory=list)
+    benefit_period_determination_id: Optional[str] = None
+
+
+def evaluate_soc_gate(
+    db: Session, *, tenant_id: str, patient_id: str
+) -> SocGateResult:
+    """
+    The actual SOC/admission-activation hard gate. Requires a resolved
+    BenefitPeriodDetermination row to exist with Starting Cert and
+    Benefit Period documented, and -- only when
+    admit_type == "TRANSFER_FROM_ANOTHER_HOSPICE" -- Transfer Source and
+    Transfer Evidence documented too (AdmissionTypesWorkflow.md SOC gate
+    summary table). Never computes any of these values itself.
+    """
+    determination = get_latest_benefit_period_determination(
+        db, tenant_id=tenant_id, patient_id=patient_id
+    )
+
+    if determination is None:
+        return SocGateResult(ready=False, blockers=[SOC_GATE_BLOCKER_MESSAGE])
+
+    blockers: list[str] = []
+
+    if determination.determination_status not in BENEFIT_PERIOD_REVIEW_RESOLVED_STATUSES:
+        blockers.append(SOC_GATE_BLOCKER_MESSAGE)
+
+    if determination.starting_cert is None:
+        blockers.append(SOC_GATE_BLOCKER_MESSAGE)
+
+    if determination.admit_type == "TRANSFER_FROM_ANOTHER_HOSPICE":
+        if not determination.transfer_source:
+            blockers.append(SOC_GATE_BLOCKER_MESSAGE)
+        if not determination.transfer_evidence_document_id:
+            blockers.append(SOC_GATE_BLOCKER_MESSAGE)
+
+    # De-duplicate while preserving order -- several checks above can add
+    # the same shared message text.
+    deduped_blockers = list(dict.fromkeys(blockers))
+
+    return SocGateResult(
+        ready=not deduped_blockers,
+        blockers=deduped_blockers,
+        benefit_period_determination_id=str(determination.id),
     )
 
 

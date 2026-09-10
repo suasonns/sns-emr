@@ -1,4 +1,4 @@
-# backend/app/billing/api/eligibility_action_router.py
+﻿# backend/app/billing/api/eligibility_action_router.py
 """
 Eligibility, Admission, Benefit-Period, and Billing-Readiness Workflow
 Correction -- Phases A-E operational actions on top of Phases 1-7's
@@ -468,6 +468,10 @@ def create_benefit_period_determination(
             review_notes=payload.review_notes,
             conflict_reason=payload.conflict_reason,
             supersedes_determination_id=payload.supersedes_determination_id,
+            admit_type=payload.admit_type,
+            starting_cert=payload.starting_cert,
+            transfer_source=payload.transfer_source,
+            transfer_evidence_document_id=payload.transfer_evidence_document_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -500,6 +504,14 @@ def create_benefit_period_determination(
         determination_status=determination.determination_status,
         face_to_face_applicability=determination.face_to_face_applicability,
         anticipated_benefit_period_number=determination.anticipated_benefit_period_number,
+        admit_type=determination.admit_type,
+        starting_cert=determination.starting_cert,
+        transfer_source=determination.transfer_source,
+        transfer_evidence_document_id=(
+            str(determination.transfer_evidence_document_id)
+            if determination.transfer_evidence_document_id
+            else None
+        ),
         impact=impact,
     )
 
@@ -565,6 +577,14 @@ def submit_rn_review_action(
         determination_status=determination.determination_status,
         face_to_face_applicability=determination.face_to_face_applicability,
         anticipated_benefit_period_number=determination.anticipated_benefit_period_number,
+        admit_type=determination.admit_type,
+        starting_cert=determination.starting_cert,
+        transfer_source=determination.transfer_source,
+        transfer_evidence_document_id=(
+            str(determination.transfer_evidence_document_id)
+            if determination.transfer_evidence_document_id
+            else None
+        ),
         impact=impact,
     )
 

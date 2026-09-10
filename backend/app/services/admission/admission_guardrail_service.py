@@ -11,6 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.models.patient import Patient
 from app.models.admission import Admission
+from app.billing.services.eligibility_workflow_service import (
+    SOC_GATE_BLOCKER_MESSAGE,
+    evaluate_soc_gate,
+)
 
 import logging
 
@@ -390,6 +394,12 @@ class AdmissionGuardrailService:
 
         if soc_datetime is None:
             raise AdmissionPrerequisiteError("soc_datetime is required")
+
+        soc_gate = evaluate_soc_gate(
+            db=db, tenant_id=str(patient.tenant_id), patient_id=str(patient.id)
+        )
+        if not soc_gate.ready:
+            raise AdmissionPrerequisiteError(SOC_GATE_BLOCKER_MESSAGE)
 
         admission = cls.get_latest_admission(
             db=db,
