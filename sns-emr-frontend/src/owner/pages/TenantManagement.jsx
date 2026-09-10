@@ -28,9 +28,22 @@ const EMPTY_FORM = {
   admin_role: 'DPCS_ADMINISTRATOR',
 };
 
+// `datetime-local` inputs display/parse their value as local wall-clock
+// time with no timezone info. Building the default from
+// `new Date().toISOString()` (UTC) silently shifts it by the browser's
+// UTC offset once re-parsed on submit -- e.g. in a UTC-7 timezone, "now"
+// in UTC gets displayed as if it were 7 hours from now in local time,
+// which then round-trips to a timestamp 7 hours in the future and fails
+// the backend's "effective_start_at cannot be in the future" check.
+// Build the value from local date/time components instead.
+function toLocalDatetimeInputValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 const defaultFinancialsForm = () => ({
   billing_provider_organization_id: '',
-  effective_start_at: new Date().toISOString().slice(0, 16),
+  effective_start_at: toLocalDatetimeInputValue(new Date()),
   effective_end_at: '',
   service_scopes: [{ scope: 'FACILITY_COLLECTIONS', permission_level: 'VIEW' }],
   change_reason: '',
