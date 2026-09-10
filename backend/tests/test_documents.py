@@ -350,3 +350,118 @@ def test_document_upload_encrypted_pdf_uses_configured_password_strategy(
         files={"file": ("protected.pdf", payload, "application/pdf")},
     )
     assert response.status_code == 201, response.text
+
+
+def _upload_document(client, tenant_id, patient_id, *, filename="lifecycle.pdf") -> str:
+    response = client.post(
+        "/documents/",
+        headers=_headers(TEST_USER_ID, "RN", tenant_id),
+        data={"patient_id": str(patient_id), "document_type": "AUTHORIZATION"},
+        files={"file": (filename, _minimal_valid_pdf_bytes(), "application/pdf")},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["document_id"]
+
+
+@pytest.mark.integration
+def test_document_delete_is_soft_and_hides_from_default_list(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    document_id = _upload_document(client, tenant_id, patient.id)
+    headers = _headers(TEST_USER_ID, "RN", tenant_id)
+
+    delete_response = client.delete(f"/documents/{document_id}", headers=headers)
+    assert delete_response.status_code == 200, delete_response.text
+    assert delete_response.json()["lifecycle_status"] == "DELETED"
+
+    stored = db_session.get(DocumentRecord, uuid.UUID(document_id))
+    db_session.refresh(stored)
+    assert stored.lifecycle_status == "DELETED"
+    assert stored.deleted_at is not None
+    assert stored.deleted_by == TEST_USER_ID
+    # Row and stored file are both untouched -- soft delete only.
+    assert stored.file_path
+
+    default_list = client.get(f"/documents/patient/{patient.id}", headers=headers)
+    assert default_list.status_code == 200
+    assert document_id not in {d["id"] for d in default_list.json()["documents"]}
+
+    deleted_list = client.get(
+        f"/documents/patient/{patient.id}",
+        headers=headers,
+        params={"lifecycle_status": "DELETED"},
+    )
+    assert document_id in {d["id"] for d in deleted_list.json()["documents"]}
+
+    download_response = client.get(f"/documents/{document_id}/download", headers=headers)
+    assert download_response.status_code == 404
+
+
+@pytest.mark.integration
+def test_document_archive_keeps_document_visible_and_downloadable(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    document_id = _upload_document(client, tenant_id, patient.id)
+    headers = _headers(TEST_USER_ID, "RN", tenant_id)
+
+    archive_response = client.post(f"/documents/{document_id}/archive", headers=headers)
+    assert archive_response.status_code == 200, archive_response.text
+    assert archive_response.json()["lifecycle_status"] == "ARCHIVED"
+
+    stored = db_session.get(DocumentRecord, uuid.UUID(document_id))
+    db_session.refresh(stored)
+    assert stored.archived_at is not None
+    assert stored.archived_by == TEST_USER_ID
+
+    default_list = client.get(f"/documents/patient/{patient.id}", headers=headers)
+    assert document_id in {d["id"] for d in default_list.json()["documents"]}
+
+    download_response = client.get(f"/documents/{document_id}/download", headers=headers)
+    assert download_response.status_code == 200
+
+
+@pytest.mark.integration
+def test_document_restore_returns_deleted_document_to_active(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    document_id = _upload_document(client, tenant_id, patient.id)
+    headers = _headers(TEST_USER_ID, "RN", tenant_id)
+
+    client.delete(f"/documents/{document_id}", headers=headers)
+
+    restore_response = client.post(f"/documents/{document_id}/restore", headers=headers)
+    assert restore_response.status_code == 200, restore_response.text
+    assert restore_response.json()["lifecycle_status"] == "ACTIVE"
+
+    stored = db_session.get(DocumentRecord, uuid.UUID(document_id))
+    db_session.refresh(stored)
+    assert stored.lifecycle_status == "ACTIVE"
+    assert stored.restored_at is not None
+    assert stored.restored_by == TEST_USER_ID
+
+    default_list = client.get(f"/documents/patient/{patient.id}", headers=headers)
+    assert document_id in {d["id"] for d in default_list.json()["documents"]}
+
+    download_response = client.get(f"/documents/{document_id}/download", headers=headers)
+    assert download_response.status_code == 200
+
+
+@pytest.mark.integration
+def test_document_archive_of_deleted_document_is_rejected(
+    client, db_session, document_storage_env
+):
+    tenant_id = uuid.UUID(db_session.info["tenant_id"])
+    patient = _make_patient(db_session, tenant_id)
+    document_id = _upload_document(client, tenant_id, patient.id)
+    headers = _headers(TEST_USER_ID, "RN", tenant_id)
+
+    client.delete(f"/documents/{document_id}", headers=headers)
+
+    archive_response = client.post(f"/documents/{document_id}/archive", headers=headers)
+    assert archive_response.status_code == 409

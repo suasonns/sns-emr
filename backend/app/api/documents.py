@@ -9,7 +9,7 @@ from io import BytesIO
 from typing import Any, Dict, Iterator, Optional
 from uuid import UUID, UUID as UUIDType
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -19,7 +19,7 @@ from urllib.parse import quote
 from app.core.patient_access import get_authorized_patient
 from app.core.database import get_db
 from app.dependencies.auth import get_current_user
-from app.models.document_record import DocumentRecord
+from app.models.document_record import DOCUMENT_LIFECYCLE_STATUSES, DocumentRecord
 from app.models.document_idg_resolution import DocumentIDGResolution
 from app.services.document_flagger import evaluate_document_flags
 from app.services.document_password_strategies import get_configured_password_candidates
@@ -82,6 +82,9 @@ class DocumentOut(BaseModel):
     ai_needs_manual_review: Optional[bool] = None
     has_extracted_text: bool = False
     processing_status: str = "PENDING"
+    lifecycle_status: str = "ACTIVE"
+    deleted_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -116,6 +119,9 @@ def _serialize(doc: DocumentRecord) -> dict[str, Any]:
         "ai_needs_manual_review": extracted_values.get("ai_needs_manual_review"),
         "has_extracted_text": bool(doc.document_text),
         "processing_status": doc.processing_status or "PENDING",
+        "lifecycle_status": doc.lifecycle_status or "ACTIVE",
+        "deleted_at": doc.deleted_at,
+        "archived_at": doc.archived_at,
     }
 
 
@@ -136,6 +142,8 @@ def _get_owned_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     get_authorized_patient(db, doc.patient_id, current_user)
+    if doc.lifecycle_status == "DELETED":
+        raise HTTPException(status_code=404, detail="Document not found")
     if not doc.file_path:
         raise HTTPException(status_code=404, detail="Document file is not available")
     return doc
@@ -462,6 +470,11 @@ def recover_pending_documents(
 def list_patient_documents(
     patient_id: UUID,
     document_type: Optional[str] = None,
+    lifecycle_status: Optional[str] = Query(
+        default=None,
+        description="Filter by lifecycle_status (ACTIVE, ARCHIVED, DELETED). "
+        "Omit to get ACTIVE + ARCHIVED (everything not soft-deleted).",
+    ),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -476,6 +489,16 @@ def list_patient_documents(
     )
     if document_type:
         query = query.filter(DocumentRecord.document_type == document_type)
+    if lifecycle_status:
+        status_norm = lifecycle_status.strip().upper()
+        if status_norm not in DOCUMENT_LIFECYCLE_STATUSES:
+            raise HTTPException(status_code=422, detail="Invalid lifecycle_status")
+        query = query.filter(DocumentRecord.lifecycle_status == status_norm)
+    else:
+        # Default view: hide soft-deleted documents, but keep archived ones
+        # visible (archived != deleted -- see docs/workflows/BenefitPeriodWorkflow.md
+        # companions for the lifecycle rationale).
+        query = query.filter(DocumentRecord.lifecycle_status != "DELETED")
     return {"documents": [_serialize(doc) for doc in query.all()]}
 
 
@@ -619,3 +642,152 @@ def resolve_document_for_idg(
         "document_id": str(document_id),
         "resolution_status": status_norm,
     }
+
+
+# ---------------------------------------------------------------------
+# Document Lifecycle: Delete (soft) / Archive / Restore
+#
+# Priority 1 of docs/workflows/BenefitPeriodWorkflow.md and companions.
+# Documents are never permanently deleted -- every transition here only
+# ever moves `lifecycle_status` between ACTIVE / ARCHIVED / DELETED,
+# stamps the paired *_at/*_by audit columns on the row itself, and is
+# additionally recorded via audit_event() so there are two independent
+# trails of every transition.
+# ---------------------------------------------------------------------
+
+class DocumentLifecycleResponse(BaseModel):
+    document_id: str
+    lifecycle_status: str
+
+
+def _get_lifecycle_document(db: Session, document_id: UUID, current_user) -> DocumentRecord:
+    tenant_uuid = UUIDType(str(current_user.tenant_id))
+    doc = (
+        db.query(DocumentRecord)
+        .filter(
+            DocumentRecord.id == document_id,
+            DocumentRecord.tenant_id == tenant_uuid,
+        )
+        .one_or_none()
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    get_authorized_patient(db, doc.patient_id, current_user)
+    return doc
+
+
+@router.delete("/{document_id}", response_model=DocumentLifecycleResponse)
+def delete_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Soft-delete a document. Never removes the row or the stored file --
+    only marks lifecycle_status=DELETED so it drops out of the default
+    patient document list and can no longer be downloaded, while remaining
+    fully recoverable via `restore_document` and fully visible to anyone
+    who explicitly queries lifecycle_status=DELETED."""
+    doc = _get_lifecycle_document(db, document_id, current_user)
+    if doc.lifecycle_status == "DELETED":
+        return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
+
+    tenant_uuid = UUIDType(str(current_user.tenant_id))
+    user_uuid = UUIDType(str(current_user.id))
+    role = (current_user.role or "").strip().upper()
+    now = datetime.now(timezone.utc)
+
+    previous_status = doc.lifecycle_status
+    doc.lifecycle_status = "DELETED"
+    doc.deleted_at = now
+    doc.deleted_by = user_uuid
+
+    audit_event(
+        db=db,
+        tenant_id=str(tenant_uuid),
+        user_id=str(user_uuid),
+        role=role,
+        action="DOC_DELETED",
+        entity_type="DOCUMENT",
+        entity_id=str(document_id),
+        meta={"previous_lifecycle_status": previous_status},
+    )
+    db.commit()
+    return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
+
+
+@router.post("/{document_id}/archive", response_model=DocumentLifecycleResponse)
+def archive_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Archive a document (e.g. superseded eligibility evidence). Archived
+    documents remain visible/downloadable in the default list -- archive is
+    an organizational state, not a removal -- unlike delete."""
+    doc = _get_lifecycle_document(db, document_id, current_user)
+    if doc.lifecycle_status == "DELETED":
+        raise HTTPException(
+            status_code=409, detail="Cannot archive a deleted document; restore it first"
+        )
+    if doc.lifecycle_status == "ARCHIVED":
+        return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
+
+    tenant_uuid = UUIDType(str(current_user.tenant_id))
+    user_uuid = UUIDType(str(current_user.id))
+    role = (current_user.role or "").strip().upper()
+    now = datetime.now(timezone.utc)
+
+    doc.lifecycle_status = "ARCHIVED"
+    doc.archived_at = now
+    doc.archived_by = user_uuid
+
+    audit_event(
+        db=db,
+        tenant_id=str(tenant_uuid),
+        user_id=str(user_uuid),
+        role=role,
+        action="DOC_ARCHIVED",
+        entity_type="DOCUMENT",
+        entity_id=str(document_id),
+        meta=None,
+    )
+    db.commit()
+    return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
+
+
+@router.post("/{document_id}/restore", response_model=DocumentLifecycleResponse)
+def restore_document(
+    document_id: UUID,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Restore a deleted or archived document back to ACTIVE. This is the
+    counterpart to delete_document/archive_document required by the
+    documented lifecycle -- soft delete only works as a real safety net if
+    restore always exists."""
+    doc = _get_lifecycle_document(db, document_id, current_user)
+    if doc.lifecycle_status == "ACTIVE":
+        return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
+
+    tenant_uuid = UUIDType(str(current_user.tenant_id))
+    user_uuid = UUIDType(str(current_user.id))
+    role = (current_user.role or "").strip().upper()
+    now = datetime.now(timezone.utc)
+
+    previous_status = doc.lifecycle_status
+    doc.lifecycle_status = "ACTIVE"
+    doc.restored_at = now
+    doc.restored_by = user_uuid
+
+    audit_event(
+        db=db,
+        tenant_id=str(tenant_uuid),
+        user_id=str(user_uuid),
+        role=role,
+        action="DOC_RESTORED",
+        entity_type="DOCUMENT",
+        entity_id=str(document_id),
+        meta={"previous_lifecycle_status": previous_status},
+    )
+    db.commit()
+    return {"document_id": str(doc.id), "lifecycle_status": doc.lifecycle_status}
