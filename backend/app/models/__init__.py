@@ -243,6 +243,24 @@ from app.models.benefit_period_status_event import BenefitPeriodStatusEvent
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
 
 # ---------------------------------------------------------
+# ✅ ELIGIBILITY / ADMISSION REVIEW + READINESS WORKFLOW (Priorities 1-8)
+# ---------------------------------------------------------
+# These were previously only picked up transitively when a test module
+# imported them directly, never through this aggregator -- so alembic's
+# model auto-loader (which walks only app.models, see alembic/env.py)
+# never registered them, and patient_facesheet.verification_document_reference's
+# FK to eligibility_source_documents.id had no target table in metadata
+# during autogenerate. Explicit imports here fix that CI-time drift-probe
+# failure without changing any runtime behavior.
+
+from app.billing.models.eligibility_source_document import EligibilitySourceDocument
+from app.billing.models.eligibility_verification import EligibilityVerification
+from app.billing.models.benefit_period_determination import BenefitPeriodDetermination
+from app.billing.models.readiness_assignment import ReadinessAssignment
+from app.billing.models.readiness_follow_up import ReadinessFollowUp
+from app.billing.models.readiness_workflow_event import ReadinessWorkflowEvent
+
+# ---------------------------------------------------------
 # ✅ OWNER / PLATFORM BILLING (SNS ↔ tenant subscription billing --
 #    distinct from app.billing.* which is tenant ↔ payer claim billing)
 # ---------------------------------------------------------
