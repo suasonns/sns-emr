@@ -77,6 +77,9 @@ from app.billing.services.contracted_authorization_workflow_service import (
     evaluate_authorization_readiness,
     evaluate_contracted_status_readiness,
 )
+from app.billing.services.election_consent_workflow_service import (
+    evaluate_election_consent_readiness,
+)
 from app.billing.services.eligibility_workflow_service import evaluate_admission_gate
 from app.billing.services.msp_validation_service import resolve_payer_sequence
 from app.billing.services.readiness_workflow_service import sync_blocker_records
@@ -533,6 +536,18 @@ def check_patient_billing_readiness(
         )
         blockers.extend(authorization_finding.blockers)
         warnings.extend(authorization_finding.warnings)
+
+    # --- Election / Consent Documentation (Priority 6) ---
+    # Read-only consumption of the Document Registry -- see
+    # election_consent_workflow_service.py. AT_RISK only, never a
+    # blocker; never enforced pre-SOC/pre-admission. Evaluated here
+    # (post-benefit-period-resolution) because this is a post-admission
+    # compliance check, not an admission gate.
+    election_consent_finding = evaluate_election_consent_readiness(
+        db, tenant_id=tenant_id, patient_id=patient_id
+    )
+    blockers.extend(election_consent_finding.blockers)
+    warnings.extend(election_consent_finding.warnings)
 
     result = BillingReadinessResult(
         patient_id=patient_id,

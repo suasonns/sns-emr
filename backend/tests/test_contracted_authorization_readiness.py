@@ -215,7 +215,9 @@ class TestBillingReadinessConsumesPayerReview:
         # NO Contracted + NO Authorization-Required-without-verification are
         # both warnings, never blockers -- patient remains "ready" (no hard
         # blockers) though a caller deriving AT_RISK from warnings would
-        # surface both.
+        # surface both. A third warning (Priority 6: missing election/
+        # consent documentation, since _fully_ready_patient has none) is
+        # also expected here -- also never a blocker.
         assert result.ready is True
         assert result.blockers == []
-        assert len(result.warnings) == 2
+        assert len(result.warnings) == 3
