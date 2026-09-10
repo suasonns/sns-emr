@@ -34,6 +34,15 @@
 | `PatientFaceSheet` (demographic + insurance fields: MBI, Primary/Secondary Payer, Policy Numbers, Subscriber Information) | **Source Of Truth** | No | Owner = Patient Record. Consumers = Admissions / Billing / Readiness / Claims. All insurance identifiers live here and nowhere else -- see `docs/architecture/InsuranceMappingReconciliation.md`. |
 | `FacesheetFieldSuggestion` | **NOT SSOT -- Candidate Queue Only** | Yes -- populated by OCR/extraction | Owner = **None** (explicitly ownerless by design). Role = staging/reconciliation queue for both demographic and insurance fields. Consumer = Staff Review (`app/api/field_suggestions.py`: accept/reject/dismiss). A row here is never read by any downstream consumer (billing, claims, readiness) as authoritative -- only an *accepted* suggestion, once applied to `PatientFaceSheet`, becomes real. See `docs/architecture/InsuranceMappingReconciliation.md`. |
 | Payer Verification Audit Fields (`payer_verified_date`/`payer_verified_by`/`payer_verification_notes`/`verification_document_reference`) | Staff (audit only) | No | `payer_verified_by` is always server-stamped from the acting user, never client-supplied. These fields never perform verification -- they record who/when/what-evidence backs a verification staff performed outside SNS EMR. |
+| Admission Gate (`evaluate_soc_gate`, `SOCValidationService`) | **Consumer** | No | Owner = **None** (it is an enforcement/consumer layer, not a data owner). Reads/hard-enforces Benefit Period, Starting Cert, and Transfer Evidence (Transfer admit type only) before SOC/admission may proceed. Distinct from Billing Readiness -- see `docs/workflows/ReadinessDecisionMatrix.md` governing distinction. |
+| Billing Readiness (`billing_readiness_service.check_patient_billing_readiness`) | **Consumer** | Yes -- computed, read-only | Owner = **None**. Reads reviewed Payer, Contracted Status, Authorization Required + evidence, Benefit Period existence, election statement, NOE, CTI/Recert, F2F, POC, payer/MSP sequence. Never writes to, infers, or duplicates ownership of any of these -- see `docs/workflows/ReadinessDecisionMatrix.md`. |
+
+Neither Admission Gate nor Billing Readiness owns Benefit Period, Starting
+Cert, Transfer Data, Authorization Status, Contracted Status, Verified
+Payer, or Consent Documents -- each of those fields has exactly one owner
+elsewhere in this table (or, for Consent Documents, will have one owner in
+the Document Registry once Priority 6 is built), and both readiness layers
+only ever read the already-reviewed value.
 
 ## Insurance verification boundary
 

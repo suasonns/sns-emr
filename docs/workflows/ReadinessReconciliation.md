@@ -77,6 +77,13 @@ F2F, Plan of Care, Payer/MSP sequence resolution.
 
 Per directive, severity is decided here, not invented while coding.
 
+> **Superseded by `docs/workflows/ReadinessDecisionMatrix.md`.** That
+> document is now the authoritative, finalized severity table (approved
+> after this document's first draft) and also documents the governing
+> Admission Gate vs. Billing Readiness distinction. The table below is
+> kept for historical trace of how the decision was reached; if the two
+> ever disagree, `ReadinessDecisionMatrix.md` wins.
+
 | Condition | Severity | Rationale |
 |---|---|---|
 | Unknown/unconfirmed Payer | **AT_RISK** (warning) | A billing-relevant gap, but claims can often still be prepared pending confirmation; matches the existing pattern of NOE-late-with-no-exception being a warning, not a blocker. |
