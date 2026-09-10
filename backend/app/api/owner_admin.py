@@ -387,8 +387,6 @@ class SetTenantFinancialsPayload(BaseModel):
                 raise ValueError("effective_start_at is required when turning Financials on")
             if not self.service_scopes:
                 raise ValueError("service_scopes must contain at least one value when turning Financials on")
-            if self.effective_start_at is not None and self.effective_start_at > datetime.now(timezone.utc):
-                raise ValueError("effective_start_at cannot be in the future when turning Financials on")
             if (
                 self.effective_end_at is not None
                 and self.effective_start_at is not None
