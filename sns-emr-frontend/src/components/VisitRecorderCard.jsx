@@ -29,10 +29,12 @@ function isNetworkError(err) {
 // separately fill out HOPE/SFV-style checklists — those get harvested from
 // the RNICA itself, which in turn is populated from a natural conversation
 // with the patient/family/facility staff. This card is the capture step for
-// that conversation: record it, store it securely, and let staff review the
-// recording afterward. Speech-to-text (Azure Speech, per current plan) is a
-// separate follow-up wiring — transcript_text/status stay blank until that's
-// connected; this panel works standalone before that exists.
+// that conversation: record it, store it securely, and transcribe it
+// (Azure Speech) server-side. Once transcription completes and an AI note
+// draft narrative is generated, it is auto-inserted into the Clinical
+// Narrative field (never overwriting existing RN text) so the RN's review
+// happens by editing/signing the note itself rather than a separate insert
+// step.
 function formatDuration(seconds) {
   if (seconds == null) return "";
   const m = Math.floor(seconds / 60);
@@ -165,20 +167,24 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
     };
   }, [processQueue, pendingQueue.length]);
 
+  // Load history on mount (not gated on `expanded`) so transcription
+  // completion / auto-insert of the narrative can happen even while the RN
+  // hasn't opened this card yet.
   useEffect(() => {
-    if (expanded) loadHistory();
-  }, [expanded, loadHistory]);
+    loadHistory();
+  }, [loadHistory]);
 
   // Automatic transcription runs server-side after upload; poll while any
   // recording is still in flight (QUEUED/PROCESSING/RETRYING) so staff see
   // it complete without needing to manually refresh or re-record anything.
+  // Not gated on `expanded` — auto-insert (below) needs this to keep
+  // running even if the RN collapses the card right after recording.
   useEffect(() => {
-    if (!expanded) return undefined;
     const hasInFlight = history.some((r) => ["QUEUED", "PROCESSING", "RETRYING"].includes(r.transcript_status));
     if (!hasInFlight) return undefined;
     const interval = window.setInterval(loadHistory, 4000);
     return () => window.clearInterval(interval);
-  }, [expanded, history, loadHistory]);
+  }, [history, loadHistory]);
 
   useEffect(() => {
     return () => {
@@ -374,25 +380,58 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
     }
   };
 
-  const handleInsertNarrative = async (rec) => {
+  // `silent` is used by the automatic-insert effect below: if the RN has
+  // already typed their own narrative, onInsertNarrative's own guard
+  // refuses to overwrite it and returns false -- that's an expected,
+  // routine outcome when running automatically (not an error), so we skip
+  // the error banner in that case. A manual retry click still surfaces it.
+  const handleInsertNarrative = async (rec, { silent = false } = {}) => {
     if (!onInsertNarrative || !rec?.ai_note_draft?.narrative) return;
     setNarrativeInserting(rec.id);
     try {
       const inserted = await onInsertNarrative(rec.ai_note_draft.narrative, rec.id);
       if (inserted) {
         setInsertedNarrativeIds((prev) => ({ ...prev, [rec.id]: true }));
-      } else {
+      } else if (!silent) {
         setError(
           "Clinical Narrative already has content — the AI draft was not inserted so your existing text is preserved. Copy from the draft above if you want to incorporate it."
         );
       }
     } catch (err) {
       console.error("Failed to insert AI narrative draft:", err);
-      setError("Failed to insert the AI-generated note draft into the Clinical Narrative.");
+      if (!silent) {
+        setError("Failed to insert the AI-generated note draft into the Clinical Narrative.");
+      }
     } finally {
       setNarrativeInserting(null);
     }
   };
+
+  // Auto-populate the Clinical Narrative the instant a transcript's AI note
+  // draft narrative is ready -- calls the exact same onInsertNarrative used
+  // by the old manual "Insert" button, so the same guard (never overwrite
+  // existing RN text), provenance/attribution entry, and
+  // clinicalNarrativeReviewed=false review-required flag all still apply
+  // unchanged. RN review now happens by reading/editing/signing the note
+  // itself rather than a separate insert click. Uses a ref (not just
+  // insertedNarrativeIds state) to guarantee each recording is only
+  // attempted once even across rapid polling re-renders.
+  const autoInsertAttemptedRef = useRef({});
+  useEffect(() => {
+    if (!onInsertNarrative) return;
+    history.forEach((rec) => {
+      if (
+        rec.transcript_status === "COMPLETED" &&
+        rec.ai_note_draft?.narrative &&
+        !insertedNarrativeIds[rec.id] &&
+        !autoInsertAttemptedRef.current[rec.id]
+      ) {
+        autoInsertAttemptedRef.current[rec.id] = true;
+        handleInsertNarrative(rec, { silent: true });
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [history, insertedNarrativeIds, onInsertNarrative]);
 
   const box = styles?.infoBox || { fontSize: 12, padding: 8, borderRadius: 6, background: COLORS?.bg };
 
@@ -580,18 +619,25 @@ export default function VisitRecorderCard({ patientId, assessmentId, assessmentT
                   )}
                   {rec.ai_note_draft.narrative && onInsertNarrative && (
                     <div style={{ marginBottom: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => handleInsertNarrative(rec)}
-                        disabled={narrativeInserting === rec.id}
-                        style={{ fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: narrativeInserting === rec.id ? "default" : "pointer", opacity: narrativeInserting === rec.id ? 0.6 : 1 }}
-                      >
-                        {narrativeInserting === rec.id
-                          ? "Inserting…"
-                          : insertedNarrativeIds[rec.id]
-                            ? "✓ Inserted into Clinical Narrative"
-                            : "Insert into Clinical Narrative (blank only)"}
-                      </button>
+                      {insertedNarrativeIds[rec.id] ? (
+                        <span style={{ fontSize: 12, fontWeight: 700, color: COLORS?.teal || "#0d9488" }}>
+                          ✓ Automatically inserted into Clinical Narrative — review required before signing
+                        </span>
+                      ) : narrativeInserting === rec.id ? (
+                        <span style={{ fontSize: 12, color: COLORS?.gray }}>Inserting into Clinical Narrative…</span>
+                      ) : (
+                        // Fallback for when auto-insert didn't apply (e.g. the
+                        // Clinical Narrative already had text at the time the
+                        // draft became ready) — manual insert is still
+                        // available, blank-only, same as before.
+                        <button
+                          type="button"
+                          onClick={() => handleInsertNarrative(rec)}
+                          style={{ fontSize: 12, padding: "4px 12px", borderRadius: 5, border: `1px solid ${COLORS?.teal || "#0d9488"}`, background: "transparent", color: COLORS?.teal || "#0d9488", cursor: "pointer" }}
+                        >
+                          Insert into Clinical Narrative (blank only)
+                        </button>
+                      )}
                     </div>
                   )}
                   {rec.ai_note_draft.symptom_severity && Object.keys(rec.ai_note_draft.symptom_severity).length > 0 && (
