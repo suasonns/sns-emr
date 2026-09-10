@@ -231,57 +231,48 @@ export type PatientComplianceDetailResponse = {
 //     access is currently suspended") is surfaced to the caller as-is.
 async function authorizedFetch(url: string, init: RequestInit = {}): Promise<Response> {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const candidates = [
-    `${base}${url}`,
-    ...(base ? [`http://localhost:8000${url}`] : []),
-  ];
+  // NOTE: intentionally no localhost:8000 fallback here. A silent fallback
+  // to a hardcoded local dev backend previously masked real production
+  // errors -- a real failure from the actual API would still fail over to
+  // a CORS-blocked localhost request, and that generic CORS/network
+  // rejection ("Failed to fetch") replaced the real, actionable error.
+  // Always call the configured API base and let real failures surface
+  // with their real detail.
+  const target = `${base}${url}`;
 
   const buildHeaders = (token: string | null): HeadersInit => ({
     ...((init.headers as Record<string, string>) ?? {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   });
 
-  let lastError: Error | null = null;
+  let response = await fetch(target, {
+    credentials: "include",
+    ...init,
+    headers: buildHeaders(getAccessToken()),
+  });
 
-  for (const candidate of candidates) {
-    try {
-      let response = await fetch(candidate, {
-        credentials: "include",
-        ...init,
-        headers: buildHeaders(getAccessToken()),
-      });
-
-      if (response.status === 401) {
-        // Single-flight, shared with every other API call in the app --
-        // never a second concurrent /auth/refresh call.
-        const newAccessToken = await ensureFreshAccessToken();
-        if (!newAccessToken) {
-          redirectToLogin();
-          throw new DashboardApiError(401, "Session expired. Please sign in again.");
-        }
-        response = await fetch(candidate, {
-          credentials: "include",
-          ...init,
-          headers: buildHeaders(newAccessToken),
-        });
-        if (response.status === 401) {
-          // Retried once with a fresh token and still unauthorized --
-          // a confirmed, non-recoverable expiration.
-          redirectToLogin();
-          throw new DashboardApiError(401, "Session expired. Please sign in again.");
-        }
-      }
-
-      return response;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
-      if (candidate === candidates[candidates.length - 1]) {
-        break;
-      }
+  if (response.status === 401) {
+    // Single-flight, shared with every other API call in the app --
+    // never a second concurrent /auth/refresh call.
+    const newAccessToken = await ensureFreshAccessToken();
+    if (!newAccessToken) {
+      redirectToLogin();
+      throw new DashboardApiError(401, "Session expired. Please sign in again.");
+    }
+    response = await fetch(target, {
+      credentials: "include",
+      ...init,
+      headers: buildHeaders(newAccessToken),
+    });
+    if (response.status === 401) {
+      // Retried once with a fresh token and still unauthorized --
+      // a confirmed, non-recoverable expiration.
+      redirectToLogin();
+      throw new DashboardApiError(401, "Session expired. Please sign in again.");
     }
   }
 
-  throw lastError ?? new Error(`Request failed: ${url}`);
+  return response;
 }
 
 async function extractErrorDetail(response: Response, url: string): Promise<string> {
