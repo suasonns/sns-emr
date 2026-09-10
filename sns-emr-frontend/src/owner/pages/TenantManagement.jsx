@@ -421,22 +421,54 @@ export default function TenantManagement() {
                           <option key={org.id} value={org.id}>{org.name}</option>
                         ))}
                     </select>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <input
-                        style={S.searchBar}
-                        type="datetime-local"
-                        value={financialsForm.effective_start_at}
-                        onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_start_at: e.target.value }))}
-                      />
-                      <input
-                        style={S.searchBar}
-                        type="datetime-local"
-                        value={financialsForm.effective_end_at}
-                        onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_end_at: e.target.value }))}
-                      />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+                      <label style={{ display: 'grid', gap: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted }}>EFFECTIVE START</span>
+                        <input
+                          style={{ ...S.searchBar, width: '100%' }}
+                          type="datetime-local"
+                          value={financialsForm.effective_start_at}
+                          onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_start_at: e.target.value }))}
+                        />
+                      </label>
+                      <label style={{ display: 'grid', gap: 4 }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted }}>EFFECTIVE END (OPTIONAL)</span>
+                        <input
+                          style={{ ...S.searchBar, width: '100%' }}
+                          type="datetime-local"
+                          value={financialsForm.effective_end_at}
+                          onChange={(e) => setFinancialsForm((prev) => ({ ...prev, effective_end_at: e.target.value }))}
+                        />
+                      </label>
                     </div>
                     <div>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted, margin: '0 0 8px' }}>ALLOWED MANAGED-BILLING SCOPES</p>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 8px' }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: COLORS.muted, margin: 0 }}>ALLOWED MANAGED-BILLING SCOPES</p>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFinancialsForm((prev) => ({
+                                ...prev,
+                                service_scopes: BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => ({
+                                  scope,
+                                  permission_level: getScopePermission(prev.service_scopes, scope),
+                                })),
+                              }))
+                            }
+                            style={{ background: 'none', border: 'none', color: COLORS.teal, fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                          >
+                            Select all
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFinancialsForm((prev) => ({ ...prev, service_scopes: [] }))}
+                            style={{ background: 'none', border: 'none', color: COLORS.muted, fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                          >
+                            Clear all
+                          </button>
+                        </div>
+                      </div>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
                         {BILLING_PROVIDER_SERVICE_SCOPES.map((scope) => (
                           <div key={scope} style={{ display: 'grid', gap: 6, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 8 }}>

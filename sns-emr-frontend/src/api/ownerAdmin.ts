@@ -83,7 +83,14 @@ async function request<T>(
   options: { method?: "GET" | "POST" | "PATCH"; body?: unknown } = {}
 ): Promise<T> {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
-  const candidates = [`${base}${url}`, ...(base ? [`http://localhost:8000${url}`] : [])];
+  // NOTE: intentionally no localhost:8000 fallback here. A silent fallback
+  // to a hardcoded local dev backend previously masked real production
+  // errors -- e.g. a real 422 from the actual API would still fail over to
+  // a CORS-blocked localhost request, and that generic CORS/network
+  // rejection ("Failed to fetch") replaced the real, actionable error
+  // message in the UI. Always call the configured API base and let real
+  // failures surface with their real detail.
+  const target = `${base}${url}`;
 
   const buildInit = (token: string | null) => ({
     method: options.method ?? "GET",
@@ -95,50 +102,37 @@ async function request<T>(
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  let lastError: Error | null = null;
+  let res = await fetch(target, buildInit(getAccessToken()));
 
-  for (const candidate of candidates) {
-    try {
-      let res = await fetch(candidate, buildInit(getAccessToken()));
-
-      // Session-stability correction: attempt exactly one shared,
-      // single-flight token refresh before treating a 401 as a
-      // confirmed session expiration (see api/dashboard.ts's
-      // authorizedFetch for the fuller rationale).
-      if (res.status === 401) {
-        const newAccessToken = await ensureFreshAccessToken();
-        if (!newAccessToken) {
-          redirectToLogin();
-          throw new Error("Session expired. Please sign in again.");
-        }
-        res = await fetch(candidate, buildInit(newAccessToken));
-        if (res.status === 401) {
-          redirectToLogin();
-          throw new Error("Session expired. Please sign in again.");
-        }
-      }
-
-      if (!res.ok) {
-        let detail = `Request failed: ${url}`;
-        try {
-          const errBody = await res.json();
-          detail = errBody?.detail ?? detail;
-        } catch {
-          // ignore body-parse failures
-        }
-        throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-      }
-
-      return (await res.json()) as T;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(`Request failed: ${url}`);
-      if (candidate === candidates[candidates.length - 1]) {
-        break;
-      }
+  // Session-stability correction: attempt exactly one shared,
+  // single-flight token refresh before treating a 401 as a
+  // confirmed session expiration (see api/dashboard.ts's
+  // authorizedFetch for the fuller rationale).
+  if (res.status === 401) {
+    const newAccessToken = await ensureFreshAccessToken();
+    if (!newAccessToken) {
+      redirectToLogin();
+      throw new Error("Session expired. Please sign in again.");
+    }
+    res = await fetch(target, buildInit(newAccessToken));
+    if (res.status === 401) {
+      redirectToLogin();
+      throw new Error("Session expired. Please sign in again.");
     }
   }
 
-  throw lastError ?? new Error(`Request failed: ${url}`);
+  if (!res.ok) {
+    let detail = `Request failed: ${url}`;
+    try {
+      const errBody = await res.json();
+      detail = errBody?.detail ?? detail;
+    } catch {
+      // ignore body-parse failures
+    }
+    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
+
+  return (await res.json()) as T;
 }
 
 export function fetchOwnerTenants(): Promise<{ tenants: OwnerTenantSummary[] }> {
