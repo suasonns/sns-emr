@@ -1,4 +1,4 @@
-# Document Harvest Mapping
+﻿# Document Harvest Mapping
 
 **Status:** Reference mapping, confirmed against the actual codebase (file/line
 references included). This is the permanent source of truth for "what gets
@@ -17,16 +17,17 @@ drift out of sync with the code again.
   (system must never write or suggest a value; the field is entered from
   scratch by staff).
 - **OWNER** — which role/system is the source of truth once the value exists.
+- **CONSUMERS** — what downstream feature reads this value today.
 
 ## Fact fields (safe to harvest, suggest, and auto-populate)
 
-| SOURCE | TARGET | RULE | EXAMPLE | OWNER |
-|---|---|---|---|---|
-| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.mbi_number` | STAFF REVIEWED (candidate value + confidence score; staff confirms) | `4CC3-QM7-QJ87` | Staff (Facesheet) |
-| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.primary_payer` / `primary_payer_type` | STAFF REVIEWED | "Medicare" | Staff (Facesheet) |
-| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.primary_policy_number` | STAFF REVIEWED | policy/subscriber ID string | Staff (Facesheet) |
-| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.secondary_*` (mirrors primary_* for secondary payer) | STAFF REVIEWED | — | Staff (Facesheet) |
-| Referral raw-text paste → `/patients/from-hnp` → `hnp_parser_service.py` → `build_hnp_summary()` | `Patient` (demographics), `PatientFaceSheet` (demographics + diagnosis fields only), `PatientDiagnosis`, `Admission` | AUTOMATED for demographics/diagnosis only | name, DOB, diagnosis codes | System (import), reviewable after |
+| SOURCE | TARGET | AUTOMATED? | MANUAL? | OWNER | CONSUMERS |
+|---|---|---|---|---|---|
+| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.mbi_number` | Auto-populate candidate value | Review required (staff confirms) | Staff (Facesheet) | Facesheet chart, HOPE-A1400 reporting |
+| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.primary_payer` / `primary_payer_type` | Auto-populate candidate value | Review required | Staff (Facesheet) | Facesheet chart only |
+| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.primary_policy_number` | Auto-populate candidate value | Review required | Staff (Facesheet) | Facesheet chart only |
+| Uploaded HNP/insurance PDF → OCR → AI extraction | `patient_facesheet.secondary_*` (mirrors primary_* for secondary payer) | Auto-populate candidate value | Review required | Staff (Facesheet) | Facesheet chart only |
+| Referral raw-text paste → `/patients/from-hnp` → `hnp_parser_service.py` → `build_hnp_summary()` | `Patient` (demographics), `PatientFaceSheet` (demographics + diagnosis fields only), `PatientDiagnosis`, `Admission` | Automated for demographics/diagnosis only | Reviewable after import | System (import) | Patient chart, diagnosis list, admission record |
 
 ## Fields the AI document harvester (`document_harvest_job.py`) actually extracts today
 
@@ -52,10 +53,10 @@ it is never structured, never typed as insurance data, and is never mapped
 anywhere outside the clinical Evidence Registry. It does **not** reach
 `PatientFaceSheet`, `PatientInsurance`, or the Eligibility Workspace.
 
-| SOURCE | TARGET | RULE | EXAMPLE | OWNER |
-|---|---|---|---|---|
-| `document_records.extracted_values.ai_key_findings[]` (category=`diagnosis`, `functional_status`, `decline_indicator`, `imaging_finding`, `medication`, `vital_sign`) | `evidence_record` (clinical Evidence Registry) | STAFF REVIEWED (`review_harvested_signal()` / `review_harvested_signals_batch()` in `harvest_service.py`) | e.g. "Systolic heart failure" (diagnosis) | RN (clinical review) |
-| `document_records.extracted_values.ai_key_findings[]` (category=`administrative`, e.g. label "Coverage", "Record type") | **NOWHERE STRUCTURED** — stays inside the JSON blob only | NOT AUTOMATED — no structured target exists | a generic administrative note | Nobody — architectural gap, not a bug |
+| SOURCE | TARGET | AUTOMATED? | MANUAL? | OWNER | CONSUMERS |
+|---|---|---|---|---|---|
+| `document_records.extracted_values.ai_key_findings[]` (category=`diagnosis`, `functional_status`, `decline_indicator`, `imaging_finding`, `medication`, `vital_sign`) | `evidence_record` (clinical Evidence Registry) | Auto-populated finding | Review required (`review_harvested_signal()` / `review_harvested_signals_batch()` in `harvest_service.py`) | RN (clinical review) | RNICA / clinical evidence UI, decline/root-cause narrative |
+| `document_records.extracted_values.ai_key_findings[]` (category=`administrative`, e.g. label "Coverage", "Record type") | **NO MAPPING** — stays inside the JSON blob only | Not automated (no structured target exists) | N/A — nothing to review, nothing to consume | Nobody — architectural gap, not a bug | None today |
 
 ## Benefit-period-family fields — never automated, regardless of source
 
@@ -64,15 +65,15 @@ part of the system — not by OCR, not by the HNP import, not by an eligibility
 verification/coverage response, not by a prior-certification lookup. Full
 justification lives in `BenefitPeriodWorkflow.md`.
 
-| SOURCE | TARGET | RULE | EXAMPLE | OWNER |
-|---|---|---|---|---|
-| — (must be staff-entered from scratch) | Benefit Period (First 90 / Second 90 / Third / Subsequent / Unknown / Transfer Patient) | **NOT AUTOMATED — STAFF ENTERED ONLY** | "Existing Subsequent Benefit Period" | Staff |
-| — (must be staff-entered from scratch) | Starting Cert # | **NOT AUTOMATED — STAFF ENTERED ONLY** — must never default to `1` | `16` (transfer) vs. `1` "no prior hospice" (new admission) | Staff |
-| — (must be staff-entered from scratch) | Certification Sequence | **NOT AUTOMATED — STAFF ENTERED ONLY** | — | Staff |
-| — (must be staff-entered from scratch) | Transfer Status (Yes/No + Transfer Source) | **NOT AUTOMATED — STAFF ENTERED ONLY** | "Transfer From Another Hospice" / "Green Valley Hospice & Palliative" | Staff |
-| — (must be staff-entered from scratch) | Admission Approval / Readiness Status (as a *determination*) | **NOT AUTOMATED as a determination** — system may only report/enforce afterward | — | Staff, then system enforces |
-| — (must be staff-entered from scratch) | Authorization Status (Contracted? / Authorization Required?) | **NOT AUTOMATED — STAFF ENTERED ONLY** | YES/NO/UNKNOWN answers, each saved | Staff |
-| Staff-entered Benefit Period + Starting Cert + Transfer Status + SOC (the "anchor") | Future recertification schedule, reminders, tasks | **AUTOMATED — but only after the anchor exists** | next re-cert date computed from SOC + cert length | System (scheduling only) |
+| SOURCE | TARGET | AUTOMATED? | MANUAL? | OWNER | CONSUMERS |
+|---|---|---|---|---|---|
+| — (must be staff-entered from scratch) | Benefit Period (First 90 / Second 90 / Third / Subsequent / Unknown / Transfer Patient) | **NO MAPPING** | Staff Entered Only | Staff | Readiness engine (once reviewed), recert scheduling |
+| — (must be staff-entered from scratch) | Starting Cert # | **NO MAPPING** — must never default to `1` | Staff Entered Only | Staff | Cert-period display, recert scheduling |
+| — (must be staff-entered from scratch) | Certification Sequence | **NO MAPPING** | Staff Entered Only | Staff | Recert scheduling |
+| — (must be staff-entered from scratch) | Transfer Status (Yes/No + Transfer Source) | **NO MAPPING** | Staff Entered Only | Staff | Benefit Period Review, readiness engine |
+| — (must be staff-entered from scratch) | Admission Approval / Readiness Status (as a *determination*) | Not automated as a determination | Staff Entered Only; system reports/enforces afterward | Staff, then system enforces | Billing Readiness Workspace |
+| — (must be staff-entered from scratch) | Authorization Status (Contracted? / Authorization Required?) | **NO MAPPING** | Staff Entered Only | Staff | Readiness engine, claims submission gate |
+| Staff-entered Benefit Period + Starting Cert + Transfer Status + SOC (the "anchor") | Future recertification schedule, reminders, tasks | Automated — but only after the anchor exists | N/A once anchor exists | System (scheduling only) | Recert reminders/tasks, IDG scheduling |
 
 ## Other structured models involved (confirmed distinct, do not conflate)
 

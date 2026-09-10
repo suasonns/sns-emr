@@ -1,4 +1,4 @@
-# Benefit Period Workflow
+﻿# Benefit Period Workflow
 
 **Status:** Business-rule specification. This document describes the *intended*
 workflow as clarified directly by the agency (Love & Faith Hospice) using real
@@ -12,6 +12,14 @@ This is the permanent source of truth for how benefit period, starting cert,
 and transfer status are determined in the hospice admission workflow, and — just
 as importantly — how they are **not** determined. It exists so this business
 rule is never re-litigated or re-derived from scratch in a future session.
+
+> **Most important statement in this document:**
+> **The system NEVER determines the initial benefit period.** Not from OCR, not
+> from Medicare eligibility lookups, not from prior certifications, not from
+> transfer packets. The initial Benefit Period, Starting Cert, Certification
+> Sequence, and Transfer Status are always staff-entered. The system may only
+> calculate forward-looking dates (recertification schedule, reminders, tasks)
+> **after** staff have established that source record.
 
 ## The workflow map
 
