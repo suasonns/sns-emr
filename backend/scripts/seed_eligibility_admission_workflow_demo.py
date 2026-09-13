@@ -414,7 +414,7 @@ def run(db) -> dict:
     ready_patient = _make_patient(
         db, mrn_suffix="READY-C", created_by=staff_user.id, admission_status="ADMITTED"
     )
-    ready_admission = _make_admission(db, ready_patient, status="ADMITTED", created_by=staff_user.id)
+    ready_admission = _make_admission(db, ready_patient, status="ACTIVE", created_by=staff_user.id)
     ready_source_doc = _make_source_document(db, ready_patient, staff_user)
     record_eligibility_verification(
         db,
@@ -442,7 +442,7 @@ def run(db) -> dict:
     at_risk_patient = _make_patient(
         db, mrn_suffix="ATRISK-D", created_by=staff_user.id, admission_status="ADMITTED"
     )
-    at_risk_admission = _make_admission(db, at_risk_patient, status="ADMITTED", created_by=staff_user.id)
+    at_risk_admission = _make_admission(db, at_risk_patient, status="ACTIVE", created_by=staff_user.id)
     at_risk_source_doc = _make_source_document(db, at_risk_patient, staff_user)
     record_eligibility_verification(
         db,
@@ -469,7 +469,7 @@ def run(db) -> dict:
     not_ready_patient = _make_patient(
         db, mrn_suffix="NOTREADY-E", created_by=staff_user.id, admission_status="ADMITTED"
     )
-    not_ready_admission = _make_admission(db, not_ready_patient, status="ADMITTED", created_by=staff_user.id)
+    not_ready_admission = _make_admission(db, not_ready_patient, status="ACTIVE", created_by=staff_user.id)
     not_ready_source_doc = _make_source_document(db, not_ready_patient, staff_user)
     record_eligibility_verification(
         db,
