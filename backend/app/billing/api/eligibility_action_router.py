@@ -105,6 +105,17 @@ def _get_patient(db: Session, tenant_id: str, patient_id: str) -> Patient:
 
 
 def _patient_is_admitted(db: Session, tenant_id: str, patient_id: str) -> bool:
+    """
+    Real admission vocabulary (see billing_population_service module
+    docstring): the admission workflow (app/api/admissions.py) only ever
+    writes 'DRAFT' (pending referral, not admitted), 'ACTIVE', or
+    'DISCHARGED' -- never 'ADMITTED'. A patient is "admitted" for
+    eligibility-change billing-impact purposes if they have ever had an
+    ACTIVE or DISCHARGED admission record, matching the same real-episode
+    concept select_billing_candidate_patients uses -- a discharged
+    patient's still-billable pre-discharge episode must still trigger a
+    real reevaluation on a late eligibility correction.
+    """
     from app.models.admission import Admission as _Admission
 
     return (
@@ -112,7 +123,7 @@ def _patient_is_admitted(db: Session, tenant_id: str, patient_id: str) -> bool:
         .filter(
             _Admission.tenant_id == tenant_id,
             _Admission.patient_id == patient_id,
-            _Admission.status == "ADMITTED",
+            _Admission.status.in_(("ACTIVE", "DISCHARGED")),
         )
         .first()
         is not None

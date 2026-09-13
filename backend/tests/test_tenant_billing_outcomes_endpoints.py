@@ -224,7 +224,7 @@ def _make_approved_poc(db_session, tenant_id: uuid.UUID, patient: Patient) -> No
         tenant_id=tenant_id,
         patient_id=patient.id,
         admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        status="ADMITTED",
+        status="ACTIVE",
         created_by=TEST_USER_ID,
     )
     db_session.add(admission)
@@ -438,7 +438,7 @@ def test_billing_readiness_endpoint_returns_cross_agency_rollup(client, db_sessi
             tenant_id=tenant_id,
             patient_id=ready_patient.id,
             admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            status="ADMITTED",
+            status="ACTIVE",
         )
     )
 
@@ -450,7 +450,7 @@ def test_billing_readiness_endpoint_returns_cross_agency_rollup(client, db_sessi
             tenant_id=tenant_id,
             patient_id=blocked_patient.id,
             admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            status="ADMITTED",
+            status="ACTIVE",
         )
     )
     db_session.commit()

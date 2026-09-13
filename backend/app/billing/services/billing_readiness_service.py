@@ -73,6 +73,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.billing.models.billing_readiness_verdict import BillingReadinessVerdict
+from app.billing.services.billing_population_service import select_billing_candidate_patients
 from app.billing.services.contracted_authorization_workflow_service import (
     evaluate_authorization_readiness,
     evaluate_contracted_status_readiness,
@@ -108,6 +109,7 @@ BLOCKER_CATEGORY_PREFIXES: list[tuple[str, str]] = [
     ("Required face-to-face encounter", "Missing F2F Documentation"),
     ("Plan of Care is not active", "Missing POC Physician Signature"),
     ("Payer sequence is ambiguous", "Payer/MSP Sequencing Issue"),
+    ("Authorization Required = YES", "Missing Authorization Evidence"),
     ("Patient not found", "Patient Not Found"),
 ]
 
@@ -179,6 +181,14 @@ def _fetch_facesheet_payer_review(db: Session, tenant_id: str, patient_id: str) 
     the sole owners of these two fields (see
     contracted_authorization_workflow_service.py docstring). This is a
     read-only lookup; readiness never writes to PatientFaceSheet.
+
+    ORDER BY created_at DESC LIMIT 1: patient_facesheet has no unique
+    constraint on (tenant_id, patient_id) and multiple admission code
+    paths in app/api/patients.py unconditionally insert a new row rather
+    than updating in place, so more than one row per patient is possible
+    in practice. Without an explicit order, Postgres' plain .first() on
+    a multi-row match is non-deterministic across executions/plans --
+    this always resolves to the most recently created row.
     """
     row = db.execute(
         text(
@@ -186,6 +196,8 @@ def _fetch_facesheet_payer_review(db: Session, tenant_id: str, patient_id: str) 
             SELECT contracted_status, authorization_required_status
             FROM patient_facesheet
             WHERE tenant_id = :tenant_id AND patient_id = :patient_id
+            ORDER BY created_at DESC
+            LIMIT 1
             """
         ),
         {"tenant_id": tenant_id, "patient_id": patient_id},
@@ -575,45 +587,38 @@ def build_tenant_billing_readiness_report(
     service_date: date,
 ) -> dict:
     """
-    Evaluates every ADMITTED patient in the tenant for `service_date` and
+    Evaluates every billing candidate in the tenant for `service_date` and
     returns a summary report: counts plus a per-patient ready/not-ready
     verdict and blocker labels only (no chart content, no clinical
     narrative -- safe to surface to a biller or agency owner as an
     alert/checklist).
 
-    Directive item 10 population correction: population is patients with
-    at least one ADMITTED admission record, not merely `patients.status =
-    'ACTIVE'`. A referral-only or intake-hold record (no ADMITTED
-    admission row yet) is excluded regardless of its `patients.status`
-    value -- it must never appear in billing readiness, be counted, or
-    receive a BillingReadinessVerdict (see the admission gate in
-    eligibility_workflow_service.evaluate_admission_gate, which is the
-    intended place such a record gets stopped before reaching this
-    query at all).
+    Billing Population Correction: population is every patient with an
+    admitted episode (status ACTIVE/DISCHARGED) whose window covers
+    `service_date` (`select_billing_candidate_patients`), not
+    `patients.status = 'ACTIVE' AND admissions.status = 'ADMITTED'` --
+    the admission workflow (app/api/admissions.py) never writes an
+    'ADMITTED' status value (only 'DRAFT', 'ACTIVE', 'DISCHARGED'), so
+    the previous query matched zero rows in production. A patient
+    discharged/deceased/revoked/transferred after `service_date` is
+    still evaluated here -- their current status must never suppress a
+    legitimately billable pre-termination service date. Pending-admission
+    and referral-only records are still excluded (no admitted episode
+    exists to attribute a claim to). This must remain identical to the
+    population `batch_generate_patient_billing` uses -- see
+    billing_population_service module docstring.
     """
-    patient_rows = db.execute(
-        text(
-            """
-            SELECT DISTINCT p.id::text AS id, p.mrn
-            FROM patients p
-            JOIN admissions a
-              ON a.tenant_id = p.tenant_id AND a.patient_id = p.id
-            WHERE p.tenant_id = :tenant_id
-              AND p.status = 'ACTIVE'
-              AND a.status = 'ADMITTED'
-            ORDER BY p.mrn
-            """
-        ),
-        {"tenant_id": tenant_id},
-    ).mappings().all()
+    candidates = select_billing_candidate_patients(
+        db, tenant_id=tenant_id, service_date=service_date
+    )
 
     results: list[dict] = []
     ready_count = 0
-    for row in patient_rows:
+    for candidate in candidates:
         verdict = check_patient_billing_readiness(
             db,
             tenant_id=tenant_id,
-            patient_id=row["id"],
+            patient_id=candidate.patient_id,
             service_date=service_date,
         )
         if verdict.ready:
@@ -622,7 +627,7 @@ def build_tenant_billing_readiness_report(
         results.append(
             {
                 "patient_id": verdict.patient_id,
-                "mrn": row["mrn"],
+                "mrn": candidate.mrn,
                 "period_number": verdict.period_number,
                 "ready": verdict.ready,
                 "blockers": verdict.blockers,

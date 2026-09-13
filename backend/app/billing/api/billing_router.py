@@ -34,6 +34,7 @@ from app.billing.services.billing_readiness_service import (
     check_patient_billing_readiness,
     build_tenant_billing_readiness_report,
 )
+from app.billing.services.billing_population_service import select_billing_candidate_patients
 from app.billing.schemas.billing_schema import (
     GetOrCreateBillingCycleRequest,
     BillingCycleResponse,
@@ -407,14 +408,23 @@ def batch_generate_patient_billing(
     user=Depends(get_current_user),
 ):
     """
-    Generates billing for every ACTIVE patient in the tenant for the given
-    billing cycle, one patient at a time. Each patient is first checked
-    for billing readiness (signed CTI, F2F when required, active/approved
-    Plan of Care, NOE on file, resolvable payer sequence) -- patients that
-    are not ready are SKIPPED (never silently billed against an
-    incomplete chart) and reported back with their blocker reasons so the
-    agency can fix the chart and re-run. One patient's failure never
-    aborts the batch for the rest of the agency's patients.
+    Generates billing for every billing candidate in the tenant for the
+    given billing cycle, one patient at a time. Each patient is first
+    checked for billing readiness (signed CTI, F2F when required,
+    active/approved Plan of Care, NOE on file, resolvable payer sequence)
+    -- patients that are not ready are SKIPPED (never silently billed
+    against an incomplete chart) and reported back with their blocker
+    reasons so the agency can fix the chart and re-run. One patient's
+    failure never aborts the batch for the rest of the agency's patients.
+
+    Billing Population Correction: population is every patient with an
+    admitted episode (status ACTIVE/DISCHARGED) covering the cycle's start_date
+    (`select_billing_candidate_patients`), not `patients.status =
+    'ACTIVE'`. This must stay identical to the population
+    `build_tenant_billing_readiness_report` uses -- see
+    billing_population_service module docstring for why current census
+    status must never suppress a legitimately billable pre-termination
+    service date.
     """
     tenant_id = str(resolve_billing_scope_tenant_id(db, user, payload.tenant_id))
     require_automated_billing(db, tenant_id)
@@ -433,17 +443,10 @@ def batch_generate_patient_billing(
     if not cycle:
         raise HTTPException(status_code=404, detail="Billing cycle not found for this tenant")
 
-    patient_rows = db.execute(
-        text(
-            """
-            SELECT id::text AS id, mrn
-            FROM patients
-            WHERE tenant_id = :tenant_id AND status = 'ACTIVE'
-            ORDER BY mrn
-            """
-        ),
-        {"tenant_id": tenant_id},
-    ).mappings().all()
+    candidates = select_billing_candidate_patients(
+        db, tenant_id=tenant_id, service_date=cycle["start_date"]
+    )
+    patient_rows = [{"id": c.patient_id, "mrn": c.mrn} for c in candidates]
 
     results: list[dict] = []
     generated_count = 0

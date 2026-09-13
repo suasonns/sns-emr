@@ -195,16 +195,19 @@ def _make_approved_poc(db_session, tenant_id: str, patient: Patient) -> None:
 
 def _make_admitted(db_session, tenant_id: str, patient: Patient) -> Admission:
     """
-    Directive item 10 population correction: build_tenant_billing_readiness_report
-    now only evaluates patients with an ADMITTED admission record, so any
-    test exercising that function must give its patients one.
+    Billing Population Correction: build_tenant_billing_readiness_report
+    now evaluates every patient with an admitted episode (real admission
+    vocabulary: ACTIVE while admitted, DISCHARGED afterward -- 'ADMITTED'
+    is never written by the real admission workflow, see
+    billing_population_service module docstring), so any test exercising
+    that function must give its patients a real ACTIVE admission record.
     """
     admission = Admission(
         id=uuid.uuid4(),
         tenant_id=uuid.UUID(tenant_id),
         patient_id=patient.id,
         admission_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        status="ADMITTED",
+        status="ACTIVE",
     )
     db_session.add(admission)
     db_session.commit()
@@ -601,6 +604,11 @@ def test_tenant_report_aggregates_ready_and_not_ready_patients(db_session, tenan
             "Payer/MSP Sequencing Issue",
         ),
         ("Patient not found for this tenant.", "Patient Not Found"),
+        (
+            "Authorization Required = YES but no authorization evidence "
+            "is on file -- claim cannot be safely submitted.",
+            "Missing Authorization Evidence",
+        ),
         ("Some future blocker text nobody mapped yet.", "Other"),
     ],
 )
