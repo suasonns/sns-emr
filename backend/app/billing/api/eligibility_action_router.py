@@ -106,15 +106,24 @@ def _get_patient(db: Session, tenant_id: str, patient_id: str) -> Patient:
 
 def _patient_is_admitted(db: Session, tenant_id: str, patient_id: str) -> bool:
     """
-    Real admission vocabulary (see billing_population_service module
-    docstring): the admission workflow (app/api/admissions.py) only ever
-    writes 'DRAFT' (pending referral, not admitted), 'ACTIVE', or
-    'DISCHARGED' -- never 'ADMITTED'. A patient is "admitted" for
-    eligibility-change billing-impact purposes if they have ever had an
-    ACTIVE or DISCHARGED admission record, matching the same real-episode
-    concept select_billing_candidate_patients uses -- a discharged
-    patient's still-billable pre-discharge episode must still trigger a
-    real reevaluation on a late eligibility correction.
+    This is a BILLING-scoped gate, not a general clinical "is this
+    patient admitted" check -- it decides whether an eligibility-change
+    event should trigger the real, persisted billing-readiness
+    reevaluation (check_patient_billing_readiness), so it intentionally
+    uses the same financially-active-episode vocabulary as
+    billing_population_service.select_billing_candidate_patients()
+    ('ACTIVE' or 'DISCHARGED'), not the full admission-status vocabulary.
+
+    Note 'ADMITTED' IS a real, currently-written status
+    (AdmissionGuardrailService.trigger_admission_from_manual_soc), but it
+    marks a clinical, pre-financial-activation state -- a patient sitting
+    there is not yet a billing candidate (see billing_population_service
+    module docstring for the full ADMITTED -> ACTIVE -> DISCHARGED
+    lifecycle), so a bare eligibility-verification event for such a
+    patient correctly produces no billing-readiness reevaluation here.
+    A discharged patient's still-billable pre-discharge episode must
+    still trigger a real reevaluation on a late eligibility correction,
+    which is why 'DISCHARGED' (not just 'ACTIVE') qualifies.
     """
     from app.models.admission import Admission as _Admission
 

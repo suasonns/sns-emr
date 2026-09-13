@@ -23,20 +23,40 @@ An episode's window is [episode_start, episode_end]:
     - episode_start = COALESCE(effective_date, soc_date, admission_date)
     - episode_end   = discharged_at (NULL means the episode is still open)
 
-IMPORTANT: `admissions.status` only ever takes the values 'DRAFT'
-(server default, referral/pending-admission, never admitted),
-'ACTIVE' (currently admitted), and 'DISCHARGED' (set by
-app.api.admissions on every discharge, regardless of the discharge
-reason -- death, revocation, transfer, and ordinary discharge all set
-status='DISCHARGED' with a `discharge_reason` describing which).
-Confirmed identical on this branch and origin/main (zero diff in
-app/api/admissions.py / app/models/admission.py). There is no
-'ADMITTED' status value anywhere in the real admission workflow --
-origin/main's PR #84 readiness-report query filtered on
-`a.status = 'ADMITTED'`, a value that is never written by the real
-admission workflow, so that query would match zero rows in
-production. This module intentionally uses the real vocabulary
-('ACTIVE', 'DISCHARGED') instead.
+IMPORTANT -- corrected 2026-09-13 with runtime evidence: `admissions.status`
+is NOT a two-state ACTIVE/DISCHARGED vocabulary. There is a real,
+currently-written 'ADMITTED' value: AdmissionGuardrailService
+(app/services/admission/admission_guardrail_service.py,
+trigger_admission_from_manual_soc(), invoked from the real
+app/api/admission.py and app/api/admission_authorization.py routes)
+auto-promotes an admission to status='ADMITTED' once clinical
+prerequisites are satisfied (not training, election/consent signed,
+records release signed, SOC datetime manually entered). This is a
+distinct, *earlier*, clinical-readiness marker -- it does NOT yet
+represent a financially/billing-active episode.
+
+A separate, later, manual action -- the "activate admission" endpoint
+in app/api/admissions.py -- is what transitions status to 'ACTIVE'
+(financially recognized episode; the audit log even records this step
+as action="PATIENT_ADMITTED", underscoring that 'ACTIVE' is the real
+production term for a billing-relevant admitted episode). Discharge
+(death, revocation, transfer, or ordinary discharge) always sets
+status='DISCHARGED' with a `discharge_reason` describing which,
+regardless of whether the episode was ever manually activated.
+
+Full observed vocabulary: 'DRAFT' (server default; referral/pending,
+never admitted) -> 'PENDING' / 'ADMITTED' (clinical guardrail states,
+pre-financial-activation; see admission_guardrail_service.py) ->
+'ACTIVE' (financially active, billable episode) -> 'DISCHARGED'
+(closed episode, still billable for dates of service rendered before
+discharge). This module intentionally gates the *billing* population on
+'ACTIVE'/'DISCHARGED' only: a clinically-admitted-but-not-yet-activated
+('ADMITTED'/'PENDING') episode has no recognized financial start date
+and is not yet a billing candidate. origin/main's PR #84
+readiness-report query filtered on `a.status = 'ADMITTED'`, which (per
+the lifecycle above) matches only patients still awaiting financial
+activation -- excluding every genuinely billable ACTIVE or DISCHARGED
+episode, which is the real defect this module corrects.
 
 Deliberately NOT part of this predicate (by design, see module docstring
 of billing_readiness_service.py for why they stay separate concerns):

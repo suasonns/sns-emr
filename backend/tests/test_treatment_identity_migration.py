@@ -12,7 +12,13 @@ from scripts.test_db_identity import scoped_env_vars
 from tests.conftest import TEST_DATABASE_URL
 
 PRE_MIGRATION_REVISION = "c3f7a1e9b0d2"
-HEAD_REVISION = "d9e8f7a6b5c4"
+# Rebuilt-branch true Alembic head, verified via `python -m alembic heads`
+# against the origin/main-authoritative 111-migration chain this branch
+# is built directly from (single head, no forks). Was "d9e8f7a6b5c4"
+# (a stale head from the pre-rebuild local branch's own longer,
+# duplicated migration chain); must track whatever origin/main's real
+# head is, not a manually-carried-forward constant.
+HEAD_REVISION = "pay3v4e5r6i7f"
 
 
 def _alembic_cfg() -> Config:

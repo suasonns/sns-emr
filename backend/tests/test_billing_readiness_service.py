@@ -196,11 +196,14 @@ def _make_approved_poc(db_session, tenant_id: str, patient: Patient) -> None:
 def _make_admitted(db_session, tenant_id: str, patient: Patient) -> Admission:
     """
     Billing Population Correction: build_tenant_billing_readiness_report
-    now evaluates every patient with an admitted episode (real admission
-    vocabulary: ACTIVE while admitted, DISCHARGED afterward -- 'ADMITTED'
-    is never written by the real admission workflow, see
-    billing_population_service module docstring), so any test exercising
-    that function must give its patients a real ACTIVE admission record.
+    now evaluates every patient with a financially-active admitted
+    episode (real admission vocabulary: 'ACTIVE' while the episode is
+    open, 'DISCHARGED' afterward). Note 'ADMITTED' IS a real, currently
+    written status (see AdmissionGuardrailService), but it marks a
+    clinical pre-activation state, not yet a billing-relevant episode --
+    see billing_population_service module docstring for the full
+    lifecycle -- so tests exercising the billing population must give
+    their patients a real ACTIVE admission record, not 'ADMITTED'.
     """
     admission = Admission(
         id=uuid.uuid4(),

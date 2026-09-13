@@ -290,6 +290,153 @@ class TestPhaseBReverification:
         assert verdict_count_after == verdict_count_before + 1
 
 
+class TestPatientIsAdmittedBillingGate:
+    """
+    Direct, unit-level coverage of _patient_is_admitted()'s status-vocabulary
+    boundaries -- the gate that decides whether an eligibility-change event
+    triggers a real billing-readiness reevaluation. See its docstring: this
+    is a billing-scoped ACTIVE/DISCHARGED check, not a general "ever
+    admitted" clinical check.
+    """
+
+    def test_active_admission_qualifies(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-ACTIVE")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                status="ACTIVE",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is True
+
+    def test_discharged_admission_qualifies(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-DISCHARGED")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                discharged_at=_dt.datetime(2026, 2, 1, tzinfo=_dt.timezone.utc),
+                status="DISCHARGED",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is True
+
+    def test_clinically_admitted_but_not_financially_active_does_not_qualify(self, db_session):
+        """
+        'ADMITTED' is a real, currently-written status (see
+        AdmissionGuardrailService), but it is a pre-financial-activation
+        clinical marker -- it must NOT trigger a billing-readiness
+        reevaluation until the separate "activate admission" action sets
+        status='ACTIVE'.
+        """
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-CLINICAL-ADMITTED")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                status="ADMITTED",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is False
+
+    def test_draft_admission_does_not_qualify(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-DRAFT")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                status="DRAFT",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is False
+
+    def test_pending_admission_does_not_qualify(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-PENDING")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                status="PENDING",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is False
+
+    def test_no_admission_row_does_not_qualify(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+
+        tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-NONE")
+
+        assert _patient_is_admitted(db_session, tenant_id=str(tenant.id), patient_id=str(patient.id)) is False
+
+    def test_wrong_tenant_does_not_qualify(self, db_session):
+        from app.billing.api.eligibility_action_router import _patient_is_admitted
+        from app.models.admission import Admission
+        import datetime as _dt
+
+        tenant = _billing_tenant(db_session)
+        other_tenant = _billing_tenant(db_session)
+        patient = _make_patient(db_session, str(tenant.id), mrn="MRN-GATE-TENANT")
+        db_session.add(
+            Admission(
+                id=uuid.uuid4(),
+                tenant_id=tenant.id,
+                patient_id=patient.id,
+                admission_date=_dt.datetime(2026, 1, 1, tzinfo=_dt.timezone.utc),
+                status="ACTIVE",
+            )
+        )
+        db_session.commit()
+
+        assert _patient_is_admitted(db_session, tenant_id=str(other_tenant.id), patient_id=str(patient.id)) is False
+
+
 class TestPhaseDRnReviewActions:
     def test_reason_is_required(self, db_session, client):
         tenant = _billing_tenant(db_session)
