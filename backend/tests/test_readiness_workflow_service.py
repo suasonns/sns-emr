@@ -29,6 +29,7 @@ from app.billing.services.billing_readiness_service import (
 )
 from app.billing.services.readiness_workflow_service import (
     classify_blocker_code,
+    classify_blocker_owner_category,
     compute_operational_bucket,
     derive_readiness_status,
     resolve_blocker_manually,
@@ -152,6 +153,40 @@ class TestClassifyBlockerCode:
 
     def test_unknown_blocker_falls_back_to_other(self):
         assert classify_blocker_code("Some brand new blocker nobody mapped yet.") == "OTHER"
+
+    def test_authorization_required_evidence_missing_maps_to_typed_code(self):
+        """Exact message produced by
+        contracted_authorization_workflow_service.evaluate_authorization_readiness()
+        when Authorization Required = YES and no evidence is on file."""
+        message = (
+            "Authorization Required = YES but no authorization evidence "
+            "is on file -- claim cannot be safely submitted."
+        )
+        assert classify_blocker_code(message) == "MISSING_AUTHORIZATION_EVIDENCE"
+
+    def test_authorization_required_prefix_is_case_sensitive_exact_match(self):
+        """classify_blocker_code() does no case/whitespace normalization
+        anywhere in this module -- a differently-cased or reworded message
+        safely falls back to OTHER rather than mis-classifying."""
+        assert classify_blocker_code("authorization required = yes, no evidence.") == "OTHER"
+
+    def test_other_existing_classifications_unchanged_by_new_mapping(self):
+        """Adding the authorization-evidence prefix must not shadow or
+        reorder any previously-mapped blocker prefix."""
+        assert classify_blocker_code("Payer sequence is ambiguous: X vs Y.") == "MSP_REVIEW_REQUIRED"
+        assert classify_blocker_code("Patient not found for this tenant.") == "OTHER"
+
+
+class TestClassifyBlockerOwnerCategory:
+    def test_authorization_required_evidence_missing_is_biller_owned(self):
+        message = (
+            "Authorization Required = YES but no authorization evidence "
+            "is on file -- claim cannot be safely submitted."
+        )
+        assert classify_blocker_owner_category(message) == "BILLER"
+
+    def test_unmapped_message_still_defaults_to_biller(self):
+        assert classify_blocker_owner_category("Some brand new blocker.") == "BILLER"
 
 
 # ---------------------------------------------------------------------

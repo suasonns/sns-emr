@@ -75,6 +75,7 @@ BLOCKER_CODES = {
     "LEVEL_OF_CARE_DATA_INCOMPLETE",
     "CLAIM_VALIDATION_ERROR",
     "BENEFIT_PERIOD_REVIEW_REQUIRED",
+    "MISSING_AUTHORIZATION_EVIDENCE",
     "OTHER",
     # --- original Sprint 2 codes, retained for historical rows only ---
     "MISSING_CERTIFICATION",

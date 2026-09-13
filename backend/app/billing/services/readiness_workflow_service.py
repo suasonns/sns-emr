@@ -132,6 +132,11 @@ BLOCKER_CODE_PREFIXES: list[tuple[str, str, str]] = [
     ("Required face-to-face encounter", "FACE_TO_FACE_DOCUMENTATION_REQUIRED", "RN"),
     ("Plan of Care is not active", "REQUIRED_SIGNATURE_MISSING", "RN"),
     ("Payer sequence is ambiguous", "MSP_REVIEW_REQUIRED", "BILLER"),
+    (
+        "Authorization Required = YES",
+        "MISSING_AUTHORIZATION_EVIDENCE",
+        "BILLER",
+    ),
     ("Patient not found", "OTHER", "BILLER"),
 ]
 
@@ -155,6 +160,7 @@ BLOCKER_CODE_DISPLAY_LABELS: dict[str, str] = {
     "LEVEL_OF_CARE_DATA_INCOMPLETE": "Level of care data incomplete",
     "CLAIM_VALIDATION_ERROR": "Claim validation error",
     "BENEFIT_PERIOD_REVIEW_REQUIRED": "Benefit period review required",
+    "MISSING_AUTHORIZATION_EVIDENCE": "Authorization evidence missing",
     "OTHER": "Other",
     # Historical Sprint-2 codes, still readable if they appear on an
     # older persisted row.
