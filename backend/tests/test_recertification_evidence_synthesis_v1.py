@@ -46,7 +46,25 @@ _ISOLATED_TEST_DB_NAME = "sns_emr_test_pr59_isolated"
 
 
 def _isolated_test_database_url() -> str:
-    override = os.getenv("PR59_ISOLATED_TEST_DATABASE_URL")
+    """Resolve the database this file runs against.
+
+    ZERO_FAILURE_REGISTER FR-01: this previously always pointed at a
+    permanently-existing, hand-built database name
+    (sns_emr_test_pr59_isolated) that was migrated once, out-of-band, and
+    then never re-migrated as later revisions landed (e.g.
+    tenants.facesheet_protection_mode). That schema drift -- not the
+    production code under test -- caused every scenario to fail with
+    "column tenants.facesheet_protection_mode does not exist".
+
+    The fix: prefer TEST_DATABASE_URL, the same freshly-created-and-fully-
+    migrated-every-run database that every other test file in this suite
+    already uses (see conftest.py / scripts/run_isolated_tests.py). This
+    makes the file self-healing against future migrations instead of
+    silently drifting out of sync again. PR59_ISOLATED_TEST_DATABASE_URL
+    and the legacy static name remain supported as explicit overrides for
+    anyone intentionally running this file outside the isolated harness.
+    """
+    override = os.getenv("PR59_ISOLATED_TEST_DATABASE_URL") or os.getenv("TEST_DATABASE_URL")
     if override:
         return override
     parts = urlsplit(APP_DATABASE_URL)
@@ -65,8 +83,17 @@ def _isolated_db_available() -> bool:
             has_patients_table = conn.execute(text(
                 "SELECT to_regclass('public.patients') IS NOT NULL"
             )).scalar()
+            # Schema-currency check (not merely table-existence): confirms
+            # this database has actually been migrated to the current head,
+            # not just built once and left behind. Prevents this file from
+            # silently re-drifting the way it did before FR-01.
+            has_current_columns = conn.execute(text(
+                "SELECT to_regclass('public.patients') IS NOT NULL "
+                "AND EXISTS (SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = 'tenants' AND column_name = 'facesheet_protection_mode')"
+            )).scalar()
         engine.dispose()
-        return actual == dbname and bool(has_patients_table)
+        return actual == dbname and bool(has_patients_table) and bool(has_current_columns)
     except Exception:
         return False
 
@@ -74,9 +101,11 @@ def _isolated_db_available() -> bool:
 pytestmark = pytest.mark.skipif(
     not _isolated_db_available(),
     reason=(
-        "Dedicated isolated database 'sns_emr_test_pr59_isolated' is not available/migrated. "
-        "Build it once with: "
-        "$env:TEST_DATABASE_URL=<url pointing at sns_emr_test_pr59_isolated>; python _create_test_db.py"
+        "No fully-migrated isolated database available. Run via "
+        "scripts/run_isolated_tests.py (sets TEST_DATABASE_URL to a fresh, "
+        "fully-migrated per-run database), or set "
+        "PR59_ISOLATED_TEST_DATABASE_URL to a database already migrated to "
+        "the current Alembic head."
     ),
 )
 
