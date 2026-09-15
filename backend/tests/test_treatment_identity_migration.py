@@ -12,7 +12,7 @@ from scripts.test_db_identity import scoped_env_vars
 from tests.conftest import TEST_DATABASE_URL
 
 PRE_MIGRATION_REVISION = "c3f7a1e9b0d2"
-HEAD_REVISION = "d9e8f7a6b5c4"
+HEAD_REVISION = "um2d1c2c3o5u9"
 
 
 def _alembic_cfg() -> Config:

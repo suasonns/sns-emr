@@ -18,9 +18,16 @@ housekeeping jobs, admin tooling) MUST exclude PROTECTED_TENANT_IDS.
 """
 import uuid
 
+# SNS Hospice Solutions' own platform tenant -- the `users.tenant_id` every
+# SNS Staff & Access account (OWNER and every other PLATFORM_ROLES member)
+# is stored under. Named here (rather than re-hardcoding the literal) so
+# app/api/owner_admin.py's SNS-staff-creation endpoint has one authoritative
+# source for it, same as PROTECTED_TENANT_IDS below.
+PLATFORM_TENANT_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+
 PROTECTED_TENANT_IDS: frozenset[uuid.UUID] = frozenset(
     {
-        uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc"),  # SNS Hospice Solutions (platform)
+        PLATFORM_TENANT_ID,  # SNS Hospice Solutions (platform)
         uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd"),  # North East Billing
         uuid.UUID("01271980-0000-0000-0000-000005101977"),  # Love & Faith Hospice Services, Inc.
         uuid.UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),  # Angela Hospice (Training)

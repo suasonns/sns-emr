@@ -272,6 +272,12 @@ from app.models.platform_payment import PlatformPayment
 from app.models.license_allocation import LicenseAllocation
 
 # ---------------------------------------------------------
+# ✅ SNS STAFF & ACCESS -- DELEGATED PERMISSION GRANTS (Phase UM-3)
+# ---------------------------------------------------------
+
+from app.models.staff_permission_grant import StaffPermissionGrant
+
+# ---------------------------------------------------------
 # ✅ EXPORT (REQUIRED)
 # ---------------------------------------------------------
 

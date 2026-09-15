@@ -69,6 +69,20 @@ VALID_ROLES = {
     "PLATFORM_OPERATIONS",
     "PLATFORM_AI_MANAGEMENT",
     "PLATFORM_COMPLIANCE",
+    # SNS Staff & Access RBAC foundation (Phase UM-1) platform roles. Kept
+    # in sync with app.core.roles.PLATFORM_ROLES -- without these here,
+    # any account assigned one of these roles can log in successfully but
+    # then fails every subsequent authenticated request (including
+    # /auth/me) with 403 "Invalid role", since this is the set token
+    # decoding is checked against.
+    "PLATFORM_ADMIN",
+    "PLATFORM_SECURITY",
+    "PLATFORM_DEVELOPER",
+    "PLATFORM_DEVOPS",
+    "PLATFORM_IMPLEMENTATION",
+    "PLATFORM_CUSTOMER_SERVICE",
+    "PLATFORM_QA",
+    "PLATFORM_AUDITOR",
 }
 
 

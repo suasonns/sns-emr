@@ -40,7 +40,7 @@ DEVELOPMENT_IDENTITIES = (
         email_env="DEV_PLATFORM_OWNER_EMAIL",
         password_env="DEV_PLATFORM_OWNER_PASSWORD",
         tenant_env=DEV_PLATFORM_TENANT_ID_ENV,
-        full_name="Development Platform Owner",
+        full_name="SNS Tech Solutions",
         role="OWNER",
     ),
     DevelopmentIdentity(
