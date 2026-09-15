@@ -118,6 +118,55 @@ class User(BaseModel):
     # C=Clinical, A=Administrative, X=Contracted Staff, Y=Referral Source
     staff_type = Column(String(1), nullable=True)
 
+    # =========================================================
+    # SNS STAFF & ACCESS (Phase UM-2, platform-owner staff only)
+    # Department is presentational/organizational only -- see
+    # app/core/departments.py; it never grants permissions. `notes` is a
+    # free-text admin note. `updated_by` complements the existing
+    # `created_by` (BaseModel) for the same "who touched this record" audit
+    # trail, since BaseModel only tracks creation, not edits.
+    # =========================================================
+    department = Column(String(64), nullable=True)
+    notes = Column(Text, nullable=True)
+    updated_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # Distinguishes human platform staff from non-human platform identities
+    # (service/automation accounts, API clients) -- see
+    # app/core/account_types.py. Defaults to HUMAN_STAFF for every account
+    # created through the existing staff workflow.
+    account_type = Column(String(32), nullable=False, server_default="HUMAN_STAFF")
+
+    # Platform-identity accountability (Service Account / Automation
+    # Account / API Client only -- never presented as ordinary employee
+    # fields). `responsible_owner_id` is the SNS human staff member
+    # accountable for this identity; `identity_purpose` is why it exists;
+    # `identity_scope` is what it is authorized to touch (API Clients).
+    responsible_owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    identity_purpose = Column(Text, nullable=True)
+    identity_scope = Column(String(255), nullable=True)
+
+    # SNS Platform assignment (highest organizational assignment level,
+    # above Department/Job Title/Platform Role/Access Level -- see the
+    # approved SNS Staff & Access organizational hierarchy). Only SNS
+    # Hospice Solutions exists today; this column exists so future SNS
+    # platforms (e.g. SNS Home Health Solutions, SNS Scribe) can be added
+    # later without a User Management redesign. See
+    # app/core/platforms.py for the canonical allowed-values list.
+    platform = Column(String(120), nullable=False, server_default="SNS Hospice Solutions")
+
+    # Distinct SNS platform-staff lifecycle status (ACTIVE / SUSPENDED /
+    # DISABLED / REMOVED -- see app.core.roles.PLATFORM_STAFF_STATUSES).
+    # Deliberately separate from `active` above: `active` remains the one
+    # global auth gate every login/refresh check relies on for every user
+    # type; this column exists only to distinguish *why* an SNS platform
+    # staff account is (or isn't) active without overloading that boolean
+    # with app-wide semantics. Kept in sync by the API layer (ACTIVE syncs
+    # active=true; SUSPENDED/DISABLED/REMOVED sync active=false).
+    platform_staff_status = Column(
+        String(32),
+        nullable=False,
+        server_default=text("'ACTIVE'"),
+    )
+
     # Forces the frontend to block access with a mandatory password-change
     # screen until the user sets their own password. Set true whenever an
     # admin issues/resets a temporary password (see app/api/staff.py);

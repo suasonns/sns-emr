@@ -16,7 +16,14 @@ export function hasRouteAccess(
   access: RouteAccess,
 ): boolean {
   if (!user) return false;
-  if (access === "owner") return user.access_scope === "platform" && user.role === "OWNER";
+  // Any platform-scoped role (OWNER, PLATFORM_ADMIN, PLATFORM_SECURITY, ...)
+  // may reach the owner workspace shell -- the backend already enforces
+  // per-action RBAC via require_platform_permission()/allowed_actions, and
+  // individual owner pages gate their own buttons off that same data. Do
+  // not narrow this back down to role === "OWNER" -- that blocks all
+  // delegated platform staff (e.g. Platform Administrator) from ever
+  // reaching /owner, defeating delegation entirely.
+  if (access === "owner") return user.access_scope === "platform";
   if (access === "analytics") return user.access_scope !== "platform";
   return user.access_scope === "tenant";
 }

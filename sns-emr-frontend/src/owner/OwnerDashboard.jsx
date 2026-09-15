@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  DashboardOverview,
   TenantManagement,
   SystemHealth,
   UserManagement,
@@ -18,7 +17,8 @@ import { getCurrentUser } from '../api/session';
 import { hasRouteAccess } from '../utils/authorization';
 import { useThemeMode } from '../theme/theme';
 import { COLORS, S } from './design';
-import BrandLogo from '../components/BrandLogo';
+import OwnerShell from './shell/OwnerShell';
+import DashboardOverviewV2 from './pages/DashboardOverviewV2';
 
 export { COLORS, S };
 
@@ -109,7 +109,20 @@ export default function OwnerDashboard() {
     };
   }, [selectedTenantId]);
 
+  // The shared summary KPI row (Total Tenants / Active Tasks / System
+  // Incidents / Clinical Notes) only belongs on pages where that
+  // platform-wide oversight is the point. It must stay on Tenant
+  // Management, and on the future Release Management / Validation &
+  // Training pages once those routes exist (add their nav keys here when
+  // built). Every other page starts directly with its own page-specific
+  // KPIs instead of duplicating this global row.
+  const PAGES_WITH_SUMMARY_KPI = new Set(['tenants']);
+
   const summaryCards = useMemo(() => {
+    if (!PAGES_WITH_SUMMARY_KPI.has(activeTab)) {
+      return [];
+    }
+
     const metrics = Array.isArray(dashboardData?.metrics) ? dashboardData.metrics.slice(0, 4) : [];
 
     return metrics.map((metric, index) => ({
@@ -118,7 +131,7 @@ export default function OwnerDashboard() {
       value: formatMetricValue(metric.value),
       strongLabel: metric.description || 'Owner dashboard metric',
     }));
-  }, [dashboardData]);
+  }, [dashboardData, activeTab]);
 
   const retryLoad = () => {
     setError('');
@@ -144,7 +157,7 @@ export default function OwnerDashboard() {
 
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardOverview {...pageProps} />;
+        return <DashboardOverviewV2 tenants={tenantOptions} tenantsLoading={loading} />;
       case 'tenants':
         return <TenantManagement {...pageProps} />;
       case 'health':
@@ -162,9 +175,19 @@ export default function OwnerDashboard() {
       case 'ai':
         return <AICommandCenter {...pageProps} />;
       default:
-        return <DashboardOverview {...pageProps} />;
+        return <DashboardOverviewV2 tenants={tenantOptions} tenantsLoading={loading} />;
     }
   };
+
+  // SNS Staff & Access (Users) and Audit Logs are independently RBAC-gated
+  // via require_platform_permission()/allowed_actions on their own API
+  // calls (see owner_admin.py) -- that is exactly what lets delegated,
+  // non-OWNER platform staff (e.g. Platform Administrator) use them. They
+  // must never be blocked by a failed/loading fetch of the OWNER-only
+  // cross-tenant dashboard summary below, which they may not have
+  // permission to view but do not need in order to do their own job.
+  const TABS_INDEPENDENT_OF_DASHBOARD_SUMMARY = new Set(['users', 'audit']);
+  const tabNeedsDashboardSummary = !TABS_INDEPENDENT_OF_DASHBOARD_SUMMARY.has(activeTab);
 
   if (!isAuthorized) {
     return (
@@ -179,7 +202,7 @@ export default function OwnerDashboard() {
     );
   }
 
-  if (loading) {
+  if (loading && tabNeedsDashboardSummary) {
     return (
       <div style={{ ...S.container, alignItems: 'center', justifyContent: 'center', padding: 24 }} role="status" aria-live="polite">
         <div style={{ ...S.card, maxWidth: 460, padding: 28, textAlign: 'center' }}>
@@ -192,7 +215,7 @@ export default function OwnerDashboard() {
     );
   }
 
-  if (error) {
+  if (error && tabNeedsDashboardSummary) {
     return (
       <div style={{ ...S.container, alignItems: 'center', justifyContent: 'center', padding: 24 }} role="alert">
         <div style={{ ...S.card, maxWidth: 520, padding: 28 }}>
@@ -207,135 +230,80 @@ export default function OwnerDashboard() {
   }
 
   return (
-    <div style={S.container}>
-      <div style={S.sidebar}>
-        <div style={S.logo}>
-          <BrandLogo
-            variant="light"
-            style={{ width: 150, height: 'auto', display: 'block', margin: '0 auto' }}
-          />
-        </div>
-
-        <div style={{ padding: '0 12px 10px' }}>
-          <button
-            type="button"
-            onClick={toggleMode}
+    <OwnerShell
+      navItems={NAV_ITEMS}
+      activeTab={activeTab}
+      onNavigate={handleTabChange}
+      userDisplayName={userDisplayName}
+      userRole={userRole.toUpperCase()}
+      onSignOut={() => {
+        logout();
+        navigate('/login', { replace: true });
+      }}
+      mode={mode}
+      onToggleMode={toggleMode}
+      systemHealthy={!error}
+    >
+      {activeTab !== 'dashboard' && (
+        <div style={{ padding: '16px 20px 0' }}>
+          <div
             style={{
-              width: '100%',
-              borderRadius: 8,
-              border: `1px solid ${COLORS.border}`,
-              background: COLORS.cardSoft,
-              color: COLORS.white,
-              cursor: 'pointer',
-              fontSize: 12,
-              fontWeight: 700,
-              padding: '10px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 16,
             }}
           >
-            {mode === 'dark' ? 'Light mode' : 'Dark mode'}
-          </button>
-        </div>
+            <div>
+              <label
+                htmlFor="owner-tenant-selector"
+                style={{ display: 'block', fontSize: 11, fontWeight: 700, color: COLORS.muted, marginBottom: 4 }}
+              >
+                Viewing
+              </label>
+              <select
+                id="owner-tenant-selector"
+                value={selectedTenantId}
+                onChange={(event) => setSelectedTenantId(event.target.value)}
+                style={{
+                  minWidth: 260,
+                  borderRadius: 8,
+                  border: `1px solid ${COLORS.border}`,
+                  background: COLORS.cardSoft,
+                  color: COLORS.white,
+                  padding: '8px 12px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <option value="">All tenants (platform-wide)</option>
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant.tenant_id} value={tenant.tenant_id}>
+                    {tenant.display_name || tenant.legal_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
 
-        <div style={S.nav} aria-label="Owner navigation">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              aria-pressed={activeTab === item.key}
-              aria-current={activeTab === item.key ? 'page' : undefined}
-              style={S.navItem(activeTab === item.key)}
-              onClick={() => handleTabChange(item.key)}
-            >
-              <span style={S.navIcon}>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        <div style={S.userBadge}>
-          <p style={S.userName}>{userDisplayName}</p>
-          <p style={S.userRole}>{userRole.toUpperCase()}</p>
-          <button
-            type="button"
-            onClick={() => {
-              logout();
-              navigate('/login', { replace: true });
-            }}
-            style={{
-              marginTop: 10,
-              width: '100%',
-              background: 'transparent',
-              color: COLORS.muted,
-              border: `1px solid ${COLORS.border}`,
-              borderRadius: 8,
-              padding: '8px 10px',
-              cursor: 'pointer',
-              fontSize: 11,
-              fontWeight: 700,
-            }}
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-
-      <div style={S.main}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
-          <div>
-            <label
-              htmlFor="owner-tenant-selector"
-              style={{ display: 'block', fontSize: 11, fontWeight: 700, color: COLORS.muted, marginBottom: 4 }}
-            >
-              Viewing
-            </label>
-            <select
-              id="owner-tenant-selector"
-              value={selectedTenantId}
-              onChange={(event) => setSelectedTenantId(event.target.value)}
-              style={{
-                minWidth: 260,
-                borderRadius: 8,
-                border: `1px solid ${COLORS.border}`,
-                background: COLORS.cardSoft,
-                color: COLORS.white,
-                padding: '8px 12px',
-                fontSize: 13,
-                fontWeight: 600,
-              }}
-            >
-              <option value="">All tenants (platform-wide)</option>
-              {tenantOptions.map((tenant) => (
-                <option key={tenant.tenant_id} value={tenant.tenant_id}>
-                  {tenant.display_name || tenant.legal_name}
-                </option>
+          {summaryCards.length > 0 && (
+            <div className={`grid gap-3 ${{ 1: 'grid-cols-1', 2: 'grid-cols-2', 3: 'grid-cols-3', 4: 'grid-cols-4' }[summaryCards.length] || 'grid-cols-4'}`} aria-live="polite">
+              {summaryCards.map((stat, index) => (
+                <div key={stat.key || index} style={S.statCard}>
+                  <span style={S.statDot(index % 2 === 0 ? COLORS.teal : COLORS.purple)} />
+                  <p style={S.statLabel}>{stat.label}</p>
+                  <div style={S.statValue}>{stat.value}</div>
+                  <div style={S.statSub(COLORS.teal)}>{stat.strongLabel}</div>
+                </div>
               ))}
-            </select>
-          </div>
+            </div>
+          )}
         </div>
+      )}
 
-        {summaryCards.length > 0 && (
-          <div style={S.statsRow} aria-live="polite">
-            {summaryCards.map((stat, index) => (
-              <div key={stat.key || index} style={S.statCard}>
-                <span style={S.statDot(index % 2 === 0 ? COLORS.teal : COLORS.purple)} />
-                <p style={S.statLabel}>{stat.label}</p>
-                <div style={S.statValue}>{stat.value}</div>
-                <div style={S.statSub(COLORS.teal)}>{stat.strongLabel}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {renderPage()}
-      </div>
-    </div>
+      {renderPage()}
+    </OwnerShell>
   );
 }
+

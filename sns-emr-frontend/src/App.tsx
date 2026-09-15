@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import SNSAnalytics from "./pages/SNSAnalytics";
 import LoginPage from "./pages/LoginPage";
+import SetPasswordPage from "./pages/SetPasswordPage";
 import CareOverviewPage from "./pages/CareOverviewPage";
 import PlanOfCarePage from "./pages/PlanOfCarePage";
 import RNICAPage from "./pages/RNICAPage";
@@ -67,6 +68,7 @@ export default function App() {
         {/* Default route */}
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/set-password" element={<SetPasswordPage />} />
 
         {/* Pages */}
         <Route
