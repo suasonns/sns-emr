@@ -1458,6 +1458,42 @@ Migration is considered successful only when:
 
 Only after Love & Faith validation may additional agencies be onboarded.
 
+==================================================
+
+TRAINING AND DEMONSTRATION DATA POLICY
+
+==================================================
+
+SNS prefers de-identified real-world data over synthetic data for:
+
+- Workflow validation
+
+- AI validation
+
+- Evidence Harvester validation
+
+- Clinical Intelligence validation
+
+- RNICA validation
+
+- Staff training
+
+- Demonstration environments
+
+Reason:
+
+De-identified real-world data preserves:
+
+- Clinical complexity
+
+- Documentation noise
+
+- Workflow irregularities
+
+- Real-world edge cases
+
+while protecting patient privacy.
+
 ---
 
 ## Status
@@ -1516,4 +1552,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), and consolidated Production Database Strategy. |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, and Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data). |
