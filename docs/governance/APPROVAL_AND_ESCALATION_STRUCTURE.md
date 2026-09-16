@@ -273,6 +273,400 @@ The Platform Owner governs the organization.
 
 The Platform Owner does not operate the organization alone.
 
+==================================================
+
+APPROVAL WORKFLOWS
+
+==================================================
+
+PURPOSE
+
+Approval workflows ensure decisions are made at the appropriate authority level.
+
+The goal is not control.
+
+The goal is accountability, auditability, delegation, and scalability.
+
+==================================================
+
+STAFF ONBOARDING APPROVAL
+
+==================================================
+
+REQUESTOR
+
+Authorized Department Lead
+
+REQUIRED DOCUMENTATION
+
+□ Full Name
+
+□ Email
+
+□ Department
+
+□ Job Title
+
+□ Requested Role
+
+□ Business Justification
+
+APPROVER
+
+Platform Administrator
+
+OWNER APPROVAL REQUIRED
+
+Only for:
+
+□ Administrator Access
+
+□ Elevated Access
+
+□ Cross-Department Access
+
+□ Exception Requests
+
+==================================================
+
+ROLE CHANGE APPROVAL
+
+==================================================
+
+REQUIRED DOCUMENTATION
+
+□ Current Role
+
+□ Requested Role
+
+□ Business Justification
+
+□ Requestor
+
+APPROVER
+
+Platform Administrator
+
+OWNER APPROVAL REQUIRED
+
+□ Administrative Roles
+
+□ Executive Roles
+
+□ Security-Sensitive Roles
+
+==================================================
+
+SECURITY EVENT APPROVAL
+
+==================================================
+
+REQUIRED DOCUMENTATION
+
+□ Event Description
+
+□ Impact Assessment
+
+□ Investigation Notes
+
+□ Recommendation
+
+APPROVER
+
+Platform Administrator
+
+OWNER APPROVAL REQUIRED
+
+□ High Severity
+
+□ Critical Severity
+
+□ Policy Exception
+
+==================================================
+
+POLICY CHANGE APPROVAL
+
+==================================================
+
+REQUIRED DOCUMENTATION
+
+□ Existing Policy
+
+□ Proposed Change
+
+□ Business Reason
+
+□ Risk Assessment
+
+APPROVER
+
+Platform Owner
+
+==================================================
+
+PLATFORM CHANGE APPROVAL
+
+==================================================
+
+REQUIRED DOCUMENTATION
+
+□ Feature Description
+
+□ Business Purpose
+
+□ Platform Impact
+
+□ Rollback Plan
+
+APPROVER
+
+Platform Owner
+
+==================================================
+
+ROADMAP CHANGE APPROVAL
+
+==================================================
+
+REQUIRED DOCUMENTATION
+
+□ Problem Being Solved
+
+□ Expected Benefit
+
+□ Platform Impact
+
+□ Future Maintenance Impact
+
+APPROVER
+
+Platform Owner
+
+==================================================
+
+ESCALATION SEVERITY LEVELS
+
+==================================================
+
+SEVERITY 1
+
+LOW
+
+Examples:
+
+□ User Question
+
+□ Training Issue
+
+□ Minor Configuration Issue
+
+Target Resolution
+
+5 Business Days
+
+Escalation
+
+Department Lead
+
+--------------------------------------------------
+
+SEVERITY 2
+
+MEDIUM
+
+Examples:
+
+□ Workflow Issue
+
+□ Non-Critical Alert
+
+□ Documentation Friction
+
+□ User Access Issue
+
+Target Resolution
+
+3 Business Days
+
+Escalation
+
+Platform Administrator
+
+--------------------------------------------------
+
+SEVERITY 3
+
+HIGH
+
+Examples:
+
+□ Service Disruption
+
+□ Security Concern
+
+□ Workflow Failure
+
+□ Failed Production Process
+
+Target Resolution
+
+1 Business Day
+
+Escalation
+
+Platform Administrator
+
+Owner Notified
+
+--------------------------------------------------
+
+SEVERITY 4
+
+CRITICAL
+
+Examples:
+
+□ Data Integrity Risk
+
+□ Data Loss Risk
+
+□ Backup Failure
+
+□ Restore Failure
+
+□ Tenant Isolation Failure
+
+□ Security Breach
+
+□ Production Outage
+
+Target Resolution
+
+Immediate Response
+
+Escalation
+
+Platform Owner
+
+Required
+
+==================================================
+
+ESCALATION TIMELINES
+
+==================================================
+
+LOW
+
+Initial Review
+
+Within 5 Business Days
+
+--------------------------------------------------
+
+MEDIUM
+
+Initial Review
+
+Within 3 Business Days
+
+--------------------------------------------------
+
+HIGH
+
+Initial Review
+
+Within 1 Business Day
+
+--------------------------------------------------
+
+CRITICAL
+
+Immediate Review
+
+Immediate Escalation
+
+Immediate Notification
+
+==================================================
+
+REQUIRED ESCALATION DOCUMENTATION
+
+==================================================
+
+Every escalation must contain:
+
+□ Date
+
+□ Requestor
+
+□ Severity
+
+□ Description
+
+□ Business Impact
+
+□ Evidence
+
+□ Resolution Recommendation
+
+==================================================
+
+OWNER INTERVENTION RULE
+
+==================================================
+
+Platform Owner becomes involved when:
+
+□ Escalation authority exceeded
+
+□ Financial risk exists
+
+□ Strategic decision required
+
+□ Security risk exists
+
+□ Data integrity risk exists
+
+□ Production stability risk exists
+
+Platform Owner does NOT participate in:
+
+□ Routine support
+
+□ Routine onboarding
+
+□ Routine password resets
+
+□ Routine staff management
+
+==================================================
+
+FINAL GOVERNANCE RULE
+
+==================================================
+
+Problems are solved at the lowest competent level.
+
+Issues escalate upward only when:
+
+□ Authority is exceeded
+
+□ Risk increases
+
+□ Impact increases
+
+□ Governance requires it
+
+The purpose of escalation is resolution.
+
+The purpose of authority is governance.
+
+Higher authority reviews, approves, governs, and intervenes.
+
+Higher authority does not perform every operational task.
+
 ---
 
 ## Status
@@ -311,3 +705,4 @@ code changes on its own.
 | Date | Change |
 |---|---|
 | 2026-09-16 | Document created — SNS Governance Model core principle, four-level Approval and Escalation Structure (Staff, Team/Department Leads, Platform Administrators, Platform Owner), Approval Matrix, Future Organizational Structure (SNS Hospice Solutions / SNS Home Health / SNS Scribe as separate per-product staffing pools), User Management Design Rule, and Final Governance Principle. |
+| 2026-09-16 | Added Approval Workflows section — per-workflow required documentation and approvers for Staff Onboarding, Role Change, Security Event, Policy Change, Platform Change, and Roadmap Change approvals; four-level Escalation Severity Levels (Low/Medium/High/Critical) with examples, target resolution times, and escalation paths; Escalation Timelines; Required Escalation Documentation; Owner Intervention Rule; and Final Governance Rule. |
