@@ -1236,6 +1236,43 @@ AND NOTHING ELSE
 
 ==================================================
 
+PERMANENT TESTING AND TRAINING AGENCIES
+
+==================================================
+
+Angela Hospice
+
+Silva Hospice
+
+PURPOSE
+
+Angela Hospice and Silva Hospice are permanent synthetic testing
+agencies.
+
+They are onboarded before Love & Faith Hospice.
+
+They are used for:
+
+- Staff training
+
+- Marketing demonstrations
+
+- Ongoing workflow validation
+
+- Ongoing AI validation
+
+They are NOT production validation agencies.
+
+They contain synthetic data only, never real patient data.
+
+They remain in the environment permanently and are never subject to
+the pre-production data sweep removal rules that apply to disposable
+test/dev data (Sections 1-15 above), because they are an intentional,
+permanent part of the production environment's training and
+marketing capability.
+
+==================================================
+
 PRODUCTION DATA MIGRATION STRATEGY
 
 ==================================================
@@ -1246,9 +1283,19 @@ Love & Faith Hospice
 
 PURPOSE
 
-Love & Faith Hospice becomes the initial production tenant.
+Love & Faith Hospice becomes the initial production tenant containing
+real patient data.
 
-No other agency data may enter production until:
+Onboarding order:
+
+1. Angela Hospice (permanent synthetic testing/training agency)
+
+2. Silva Hospice (permanent synthetic testing/training agency)
+
+3. Love & Faith Hospice (first real-patient production validation
+   agency)
+
+No other agency's real patient data may enter production until:
 
 □ Production environment validated
 
@@ -1552,4 +1599,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, and Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data). |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data), and Permanent Testing and Training Agencies (Angela Hospice and Silva Hospice as permanent synthetic agencies onboarded before Love & Faith Hospice for training/marketing use). |
