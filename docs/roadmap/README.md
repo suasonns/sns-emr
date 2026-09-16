@@ -25,6 +25,7 @@ roadmap document is not authorization to build it.
 | [`Analytics-And-Agency-Health-Roadmap.md`](./Analytics-And-Agency-Health-Roadmap.md) | Operational-friction analytics driving roadmap prioritization |
 | [`Audit-Shield-And-Compliance-Roadmap.md`](./Audit-Shield-And-Compliance-Roadmap.md) | Evidence provenance, audit trails, compliance coaching |
 | [`Future-Ideas-And-Research.md`](./Future-Ideas-And-Research.md) | Intake log for every new idea before it goes anywhere else |
+| [`Production-Readiness-Requirements.md`](./Production-Readiness-Requirements.md) | Required platform sweep + verification checklist prior to production deployment |
 
 ## Development Rule
 
