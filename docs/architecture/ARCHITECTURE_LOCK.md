@@ -15,12 +15,23 @@ context.
 
 ## Protected Components
 
-1. `structured_findings.py`
-2. Evidence Registry
-3. Evidence Traceability
-4. Provenance
-5. Clinical Evidence Model
-6. RN ICA Concept Registry
+The following components are considered strategic assets:
+
+- `structured_findings.py`
+- Concept registry
+- Evidence provenance
+- Evidence traceability
+- Document intelligence pipeline
+- RN ICA evidence mappings
+
+These components may be extended.
+
+These components may not be replaced without:
+
+1. Architectural review
+2. ADR approval
+3. Migration plan
+4. Backward compatibility analysis
 
 ## Change Policy
 
