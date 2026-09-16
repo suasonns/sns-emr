@@ -72,6 +72,18 @@ VERIFY
 
 □ No duplicate reference records remain
 
+□ No orphaned attachments exist
+
+□ No orphaned evidence records exist
+
+□ No orphaned AI artifacts exist
+
+□ No orphaned audit references exist
+
+□ No test alerts linked to production records
+
+□ No production records referencing test entities
+
 ==================================================
 
 SECTION 2
@@ -112,6 +124,18 @@ VERIFY
 
 □ Platform assignments
 
+□ Tenant ownership accurate
+
+□ Tenant environment correctly classified
+
+□ Tenant billing assignments correct
+
+□ Tenant feature flags correct
+
+□ Tenant branding correct
+
+□ Tenant isolation validated
+
 ==================================================
 
 SECTION 3
@@ -139,6 +163,16 @@ VERIFY
 □ Production workflows intact
 
 □ Production document libraries intact
+
+□ No duplicate templates
+
+□ No obsolete form versions
+
+□ No development-only templates
+
+□ No placeholder documents
+
+□ No broken document links
 
 ==================================================
 
@@ -196,6 +230,22 @@ VERIFY
 
 □ Production evidence mappings
 
+□ Production prompts loaded
+
+□ Experimental prompts removed
+
+□ Test AI workflows removed
+
+□ Evidence mappings validated
+
+□ Provenance tracking validated
+
+□ AI outputs linked to sources
+
+□ Confidence scoring functioning
+
+□ AI navigation guidance functioning
+
 ==================================================
 
 SECTION 6
@@ -217,6 +267,22 @@ VERIFY
 □ Correction tracking operational
 
 □ Immutable records operational
+
+□ Source document opens correctly
+
+□ Source page references function
+
+□ Source attribution function
+
+□ Historical corrections preserved
+
+□ Reversal history preserved
+
+□ Chain-of-custody preserved
+
+□ User attribution preserved
+
+□ Timestamp integrity preserved
 
 VERIFY RANDOM SAMPLES
 
@@ -256,6 +322,18 @@ VERIFY
 
 □ No abandoned schemas
 
+□ No abandoned migrations
+
+□ No parallel schema versions
+
+□ No deprecated tables
+
+□ No unused indexes
+
+□ No test schemas
+
+□ No experimental databases
+
 ==================================================
 
 SECTION 8
@@ -275,6 +353,20 @@ REQUIRED
 □ Point-in-time recovery verified
 
 □ Backup retention verified
+
+VERIFY
+
+□ Restore test performed on clean environment
+
+□ Restore matches original data
+
+□ Restore includes documents
+
+□ Restore includes audit history
+
+□ Restore includes AI evidence
+
+□ Restore includes alerts
 
 SNS MUST NEVER ENTER PRODUCTION WITHOUT A SUCCESSFUL RESTORE TEST.
 
@@ -318,6 +410,22 @@ IDENTIFY
 
 □ Cost growth risks
 
+□ Largest document consumers
+
+□ Largest AI consumers
+
+□ Largest audit consumers
+
+□ Largest attachment consumers
+
+VERIFY
+
+□ Storage growth monitoring enabled
+
+□ Cleanup candidates identified
+
+□ Storage alert thresholds configured
+
 ==================================================
 
 SECTION 10
@@ -331,8 +439,6 @@ VERIFY
 □ RBAC functioning
 
 □ Owner permissions functioning
-
-□ Tenant isolation
 
 □ Tenant isolation functioning
 
@@ -350,9 +456,47 @@ VERIFY
 
 □ Security event tracking functioning
 
+□ Session timeout functioning
+
+□ Permission inheritance functioning
+
+□ Cross-platform access restrictions functioning
+
 ==================================================
 
 SECTION 11
+
+WORKFLOW VALIDATION
+
+==================================================
+
+Verify:
+
+□ Admissions workflow
+
+□ RNICA workflow
+
+□ Finalization workflow
+
+□ Alert workflow
+
+□ Audit workflow
+
+□ AI guidance workflow
+
+□ Evidence harvester workflow
+
+□ Navigation workflow
+
+□ Tenant onboarding workflow
+
+A production system can be technically healthy but operationally
+broken — this section verifies actual end-to-end workflows function,
+not just individual subsystems.
+
+==================================================
+
+SECTION 12
 
 PRODUCTION APPROVAL
 
@@ -402,7 +546,7 @@ NO PRODUCTION RELEASE UNTIL:
 
 ==================================================
 
-SECTION 12
+SECTION 13
 
 PRODUCTION BASELINE SNAPSHOTS
 
@@ -430,7 +574,7 @@ These values become the production baseline for future growth tracking.
 
 ==================================================
 
-SECTION 13
+SECTION 14
 
 POST-GO-LIVE MONITORING
 
@@ -516,7 +660,7 @@ Production data is never destroyed without verification and documented approval.
 
 ==================================================
 
-SECTION 14
+SECTION 15
 
 DEVELOPMENT ARTIFACT DISCOVERY
 
@@ -550,6 +694,546 @@ REVIEW
 
 No development artifact enters production without classification.
 
+==================================================
+
+SECTION 16
+
+PRODUCTION BLOCKERS
+
+==================================================
+
+SNS MAY NOT ENTER FIELD TESTING OR PRODUCTION IF ANY OF THE FOLLOWING ARE TRUE.
+
+DATA BLOCKERS
+
+□ Test Patients Exist
+
+□ Test Documentation Exists
+
+□ Test Agencies Exist
+
+□ Debug Data Exists
+
+□ Experimental Records Exist
+
+□ Orphaned Records Exist
+
+□ Unclassified Development Data Exists
+
+AUDIT SHIELD BLOCKERS
+
+□ Evidence Provenance Not Working
+
+□ Source Attribution Not Working
+
+□ Source Navigation Not Working
+
+□ Audit History Not Working
+
+□ Version History Not Working
+
+□ Correction Tracking Not Working
+
+BACKUP BLOCKERS
+
+□ Full Backup Missing
+
+□ Backup Validation Failed
+
+□ Restore Test Failed
+
+□ Point-In-Time Recovery Failed
+
+SECURITY BLOCKERS
+
+□ Tenant Isolation Failed
+
+□ RBAC Verification Failed
+
+□ Authentication Failure
+
+□ Audit Logging Failure
+
+□ Security Event Tracking Failure
+
+AI BLOCKERS
+
+□ Production Prompts Not Verified
+
+□ Evidence Mapping Failure
+
+□ Provenance Failure
+
+□ AI Workflow Failure
+
+□ Clinical Intelligence Validation Not Completed
+
+WORKFLOW BLOCKERS
+
+□ RNICA Workflow Not Validated
+
+□ Finalization Workflow Not Validated
+
+□ Alert Workflow Not Validated
+
+□ Navigation Workflow Not Validated
+
+□ Evidence Harvester Workflow Not Validated
+
+NO PRODUCTION RELEASE WHEN ANY BLOCKER IS PRESENT.
+
+==================================================
+
+SECTION 17
+
+PRODUCTION SIGN-OFF CRITERIA
+
+==================================================
+
+REQUIRED APPROVAL AREAS
+
+DATA
+
+□ Data Hygiene Sweep Complete
+
+□ Test Data Removed
+
+□ Duplicate Data Removed
+
+□ Orphaned Data Resolved
+
+TENANTS
+
+□ Tenant Review Complete
+
+□ Tenant Isolation Verified
+
+□ Managed Billing Assignments Verified
+
+DOCUMENTS
+
+□ Production Templates Verified
+
+□ Production Libraries Verified
+
+□ Document References Verified
+
+AI
+
+□ Clinical Intelligence Engine Verified
+
+□ Evidence Harvester Verified
+
+□ Source Attribution Verified
+
+□ Guidance Workflows Verified
+
+AUDIT SHIELD
+
+□ Evidence Provenance Verified
+
+□ Audit History Verified
+
+□ Version History Verified
+
+□ Correction Tracking Verified
+
+SYSTEM HEALTH
+
+□ Storage Baseline Captured
+
+□ Growth Monitoring Enabled
+
+□ Backup Health Verified
+
+□ Restore Health Verified
+
+SECURITY
+
+□ RBAC Verified
+
+□ Authentication Verified
+
+□ Event Tracking Verified
+
+FINAL AUTHORIZATION
+
+□ Platform Owner Approval
+
+□ Production Readiness Review Completed
+
+==================================================
+
+SECTION 18
+
+FINAL PRE-PRODUCTION SWEEP SEQUENCE
+
+==================================================
+
+STEP 1
+
+Freeze Development
+
+- No new feature work
+
+- No schema changes
+
+- No migration changes
+
+--------------------------------------------------
+
+STEP 2
+
+Data Hygiene Sweep
+
+Remove:
+
+- Test Patients
+
+- Test Agencies
+
+- Test Narratives
+
+- Test Assessments
+
+- Test Alerts
+
+- Debug Records
+
+- Experimental Records
+
+Verify:
+
+- No orphaned records
+
+- No duplicate records
+
+--------------------------------------------------
+
+STEP 3
+
+Tenant Review
+
+Review:
+
+- Production Tenants
+
+- Development Tenants
+
+- Training Tenants
+
+- Internal Tenants
+
+Validate:
+
+- Status
+
+- Ownership
+
+- Assignments
+
+--------------------------------------------------
+
+STEP 4
+
+Document Sweep
+
+Remove:
+
+- Development documents
+
+- Mock content
+
+- Temporary files
+
+Verify:
+
+- Templates
+
+- Workflows
+
+- References
+
+--------------------------------------------------
+
+STEP 5
+
+AI Sweep
+
+Remove:
+
+- Experimental prompts
+
+- Test AI outputs
+
+- Debug evidence
+
+Verify:
+
+- Evidence Harvester
+
+- Clinical Intelligence Engine
+
+- Source Attribution
+
+- Guidance Systems
+
+--------------------------------------------------
+
+STEP 6
+
+Audit Shield Verification
+
+Verify:
+
+- Provenance
+
+- Source Navigation
+
+- Audit History
+
+- Version History
+
+- Correction History
+
+--------------------------------------------------
+
+STEP 7
+
+Database Verification
+
+Review:
+
+- Largest tables
+
+- Growth areas
+
+- Storage consumers
+
+Verify:
+
+- Referential integrity
+
+- Schema integrity
+
+--------------------------------------------------
+
+STEP 8
+
+Backup Verification
+
+Create:
+
+- Full Backup
+
+Perform:
+
+- Full Restore Test
+
+Verify:
+
+- Patient Data
+
+- Documents
+
+- Audit History
+
+- AI Evidence
+
+- Alerts
+
+SNS MUST NEVER GO LIVE WITHOUT A SUCCESSFUL RESTORE TEST.
+
+--------------------------------------------------
+
+STEP 9
+
+Storage Baseline
+
+Record:
+
+- Database Size
+
+- Document Storage
+
+- Audit Storage
+
+- AI Storage
+
+- Backup Storage
+
+Record largest storage consumers.
+
+--------------------------------------------------
+
+STEP 10
+
+Security Verification
+
+Verify:
+
+- RBAC
+
+- Tenant Isolation
+
+- Authentication
+
+- Audit Logging
+
+- Security Events
+
+--------------------------------------------------
+
+STEP 11
+
+Workflow Verification
+
+Verify:
+
+- RNICA
+
+- Evidence Harvester
+
+- Finalization
+
+- Alerts
+
+- Navigation
+
+- Tenant Onboarding
+
+--------------------------------------------------
+
+STEP 12
+
+Production Approval
+
+Verify:
+
+- No blockers remain
+
+- All sign-offs completed
+
+- Production package approved
+
+Production deployment may proceed.
+
+==================================================
+
+FINAL PRINCIPLE
+
+==================================================
+
+PRODUCTION MUST CONTAIN ONLY:
+
+- Production configuration
+
+- Production templates
+
+- Production workflows
+
+- Production tenants
+
+- Production reference data
+
+- Production audit history
+
+PRODUCTION MUST NOT CONTAIN:
+
+- Test patients
+
+- Test agencies
+
+- Debug records
+
+- Experimental records
+
+- Temporary development artifacts
+
+WHEN IN DOUBT:
+
+VERIFY FIRST.
+
+DOCUMENT DECISION.
+
+THEN REMOVE.
+
+==================================================
+
+PRODUCTION ZERO-DATA REQUIREMENT
+
+==================================================
+
+Before first production release:
+
+VERIFY
+
+□ No patient records exist
+
+□ No admissions exist
+
+□ No visits exist
+
+□ No RNICA records exist
+
+□ No narratives exist
+
+□ No billing records exist
+
+□ No claims exist
+
+□ No alerts generated from test data
+
+□ No test agencies exist
+
+□ No training agencies exist
+
+□ No demo agencies exist
+
+□ No experimental records exist
+
+□ No development documents exist
+
+□ No uploaded test files exist
+
+Production must launch with:
+
+Configuration = YES
+
+Business Data = NO
+
+Patient Data = NO
+
+Clinical Data = NO
+
+Billing Data = NO
+
+Test Data = NO
+
+==================================================
+
+PRODUCTION SWEEP PASS / FAIL
+
+==================================================
+
+PASS ONLY IF:
+
+Production Database contains:
+
+- System Configuration
+
+- Templates
+
+- Workflows
+
+- Roles
+
+- Permissions
+
+- Platform Settings
+
+AND NOTHING ELSE
+
 ---
 
 ## Status
@@ -579,18 +1263,26 @@ run the sweep now.
 - Section 8 (Backup Health) applies the same rigor already used during
   this session's `sns_emr_dev` → `sns_emr_dev_clean` recovery: a
   successful **restore** test, not merely a backup file, is the bar.
-- Section 11 (Production Approval) is the final go/no-go gate: no
-  production release until every prior section's items are complete.
-  Section 12/13 (baseline snapshots, 90-day post-go-live monitoring)
-  extend past go-live itself and should be tracked against
+- Section 12 (Production Approval) is the final go/no-go gate for the
+  base sweep: no production release until every prior section's items
+  are complete. Section 13/14 (baseline snapshots, 90-day post-go-live
+  monitoring) extend past go-live itself and should be tracked against
   `docs/roadmap/Analytics-And-Agency-Health-Roadmap.md`'s
   storage/growth tracking concepts.
 - The Final Rule's "when uncertain, do not delete" principle governs
   every section above — no removal in Sections 1–7 should ever proceed
   without verified ownership/dependencies and documented approval.
+- Section 16 (Production Blockers) is the authoritative hard-stop list
+  — if any blocker is present, release does not proceed regardless of
+  how much of Sections 1–15 has been completed. Section 17 (Production
+  Sign-Off Criteria) is the approval checklist a Platform Owner signs
+  against. Section 18 (Final Pre-Production Sweep Sequence) is the
+  literal step-by-step order of operations to execute all of the above
+  — start to finish — when a production/field-testing release is
+  actually being prepared.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 14-section production readiness cleanup checklist plus Final Rule. |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, and Production Sweep Pass/Fail gate. |
