@@ -5,6 +5,16 @@ This file does not certify anything by itself; it is the running
 checklist for ONC Health IT Certification (ONC-ACB, e.g. Drummond
 Group / ICSA Labs) so progress is visible at a glance.
 
+See also: `docs/architecture/CERTIFICATION_READINESS_ARCHITECTURE.md`
+for the detailed technical-requirements/architecture doc behind
+Phase 3, and the current directive governing this work: certification
+readiness is required (architecture must not preclude future
+certification, and requirements must be documented), but active
+certification pursuit is optional/deferred until business conditions
+justify the investment — clinical workflow, usability, evidence
+attribution, auditability, and clinical accuracy take priority over
+chasing certification checkboxes.
+
 **How to use this file:** when a phase is finished, change its status
 line from `NOT STARTED` to `IN PROGRESS` to `COMPLETE`, add the date,
 and check off the deliverables under it. Do not delete completed
@@ -82,15 +92,15 @@ Deliverable: A finalized list of ONC criteria SNS will certify under.
 
 ## Phase 3 — Development & Remediation
 
-**Status:** NOT STARTED
+**Status:** IN PROGRESS (security sub-items already complete pre-existing; FHIR/C-CDA/EHI export deferred — see `CERTIFICATION_READINESS_ARCHITECTURE.md`)
 **Target window:** Pre-production
 **Completed on:** _(date)_
 
 **Security**
-- [ ] Role-based access control
+- [x] Role-based access control — `backend/app/core/roles.py`, `role_guards.py`, `permissions.py` (pre-existing, tested)
 - [ ] Multi-factor authentication
-- [ ] Audit log generation + export
-- [ ] Data integrity checks (hashing)
+- [x] Audit log generation — `backend/app/models/audit_log.py`, `audit_log_service.py` (pre-existing, tested); server-side certified-format export still NOT built (current export is client-side CSV of the UI table only)
+- [x] Data integrity checks (hashing) — `backend/app/core/crypto.py`, `security.py` (pre-existing)
 
 **FHIR API**
 - [ ] Patient
