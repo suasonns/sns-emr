@@ -334,6 +334,186 @@ VERIFY
 
 □ Tenant isolation
 
+□ Tenant isolation functioning
+
+□ Managed billing isolation functioning
+
+□ Authentication functioning
+
+□ Password reset workflows functioning
+
+□ MFA workflows functioning (if enabled)
+
+□ Session management functioning
+
+□ Audit logging functioning
+
+□ Security event tracking functioning
+
+==================================================
+
+SECTION 11
+
+PRODUCTION APPROVAL
+
+==================================================
+
+NO PRODUCTION RELEASE UNTIL:
+
+□ Data sweep completed
+
+□ Tenant cleanup completed
+
+□ Document cleanup completed
+
+□ Alert cleanup completed
+
+□ AI cleanup completed
+
+□ Database cleanup completed
+
+□ Full backup completed
+
+□ Backup validated
+
+□ Restore test validated
+
+□ Point-in-time recovery validated
+
+□ Audit Shield verified
+
+□ Evidence provenance verified
+
+□ Source attribution verified
+
+□ Version history verified
+
+□ Security verification completed
+
+□ RBAC verified
+
+□ Tenant isolation verified
+
+□ Storage baseline captured
+
+□ Growth tracking enabled
+
+□ Production sign-off completed
+
+==================================================
+
+SECTION 12
+
+PRODUCTION BASELINE SNAPSHOTS
+
+==================================================
+
+Capture and archive:
+
+□ Database Size
+
+□ Storage Usage
+
+□ Audit Storage Usage
+
+□ AI Storage Usage
+
+□ Alert Count
+
+□ Tenant Count
+
+□ User Count
+
+□ Active Agencies
+
+These values become the production baseline for future growth tracking.
+
+==================================================
+
+SECTION 13
+
+POST-GO-LIVE MONITORING
+
+==================================================
+
+Monitor:
+
+□ Storage Growth
+
+□ Alert Trends
+
+□ System Incidents
+
+□ Security Events
+
+□ Failed Logins
+
+□ Password Resets
+
+□ Backup Success
+
+□ Restore Readiness
+
+Monitor for first 90 days after launch.
+
+==================================================
+
+FINAL RULE
+
+==================================================
+
+Production environments contain ONLY:
+
+- Production configuration
+
+- Production business rules
+
+- Production templates
+
+- Production workflows
+
+- Production reference data
+
+- Production agencies
+
+- Production documentation
+
+- Production audit history
+
+Production environments DO NOT contain:
+
+- Test patients
+
+- Test agencies
+
+- Test charts
+
+- Test alerts
+
+- Debug records
+
+- Temporary development data
+
+- Experimental AI artifacts
+
+- Obsolete workflows
+
+- Unused development assets
+
+WHEN UNCERTAIN:
+
+DO NOT DELETE.
+
+Investigate first.
+
+Verify ownership.
+
+Verify dependencies.
+
+Then remove only when confirmed unnecessary.
+
+Production data is never destroyed without verification and documented approval.
+
 ---
 
 ## Status
@@ -363,9 +543,18 @@ run the sweep now.
 - Section 8 (Backup Health) applies the same rigor already used during
   this session's `sns_emr_dev` → `sns_emr_dev_clean` recovery: a
   successful **restore** test, not merely a backup file, is the bar.
+- Section 11 (Production Approval) is the final go/no-go gate: no
+  production release until every prior section's items are complete.
+  Section 12/13 (baseline snapshots, 90-day post-go-live monitoring)
+  extend past go-live itself and should be tracked against
+  `docs/roadmap/Analytics-And-Agency-Health-Roadmap.md`'s
+  storage/growth tracking concepts.
+- The Final Rule's "when uncertain, do not delete" principle governs
+  every section above — no removal in Sections 1–7 should ever proceed
+  without verified ownership/dependencies and documented approval.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 10-section production readiness cleanup checklist. |
+| 2026-09-16 | Document created — full 13-section production readiness cleanup checklist plus Final Rule. |
