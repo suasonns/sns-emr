@@ -1271,6 +1271,17 @@ test/dev data (Sections 1-15 above), because they are an intentional,
 permanent part of the production environment's training and
 marketing capability.
 
+DATA MODIFICATION RULE
+
+Angela Hospice and Silva Hospice are the only two agencies where data
+may be added, edited, or removed at any time, without prior
+investigation or approval.
+
+This is the explicit exception to the Final Rule's "when uncertain, do
+not delete" principle, which continues to govern every other agency's
+data, including Love & Faith Hospice and any agency onboarded after
+it.
+
 ==================================================
 
 PRODUCTION DATA MIGRATION STRATEGY
@@ -1599,4 +1610,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data), and Permanent Testing and Training Agencies (Angela Hospice and Silva Hospice as permanent synthetic agencies onboarded before Love & Faith Hospice for training/marketing use). |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data), Permanent Testing and Training Agencies (Angela Hospice and Silva Hospice as permanent synthetic agencies onboarded before Love & Faith Hospice for training/marketing use), and a Data Modification Rule making Angela/Silva Hospice the sole agencies exempt from the "when uncertain, do not delete" principle. |
