@@ -539,6 +539,12 @@ document defines the intended replacement for the current "Audit Logs"
 page on the Owner Platform. No code, UI, or data model changes are
 authorized by this document alone.
 
+**Naming decision confirmed:** the existing "Audit Logs" page/nav
+label will be changed to "Governance & Audit Center" when this
+specification is implemented. This is a confirmed rename decision, not
+yet an implementation instruction — the "do not implement until
+approved" gate above still applies to the underlying feature build.
+
 ## Relationship to Other Documents
 
 - Consolidates and operationalizes
@@ -575,3 +581,4 @@ authorized by this document alone.
 | Date | Change |
 |---|---|
 | 2026-09-16 | Document created — full Governance & Audit Center specification: Mission, 10-section Primary Dashboard (Governance Overview, Approval Center, Escalation Center, Platform Change History, Audit Shield Status, Critical Events Center, Authentication Events, Security Governance, Approval History, Escalation History), Filters, Detail Panel, Owner Intervention Rules, Automatic Escalation Rules, and Design Principle. Status: Future Design Specification — do not implement until approved. |
+| 2026-09-16 | Confirmed naming decision: "Audit Logs" will be renamed to "Governance & Audit Center" when implemented. Implementation itself remains gated on approval. |
