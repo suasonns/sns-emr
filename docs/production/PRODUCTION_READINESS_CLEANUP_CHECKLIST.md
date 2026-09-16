@@ -1234,6 +1234,114 @@ Production Database contains:
 
 AND NOTHING ELSE
 
+==================================================
+
+PRODUCTION DATA MIGRATION STRATEGY
+
+==================================================
+
+FIRST PRODUCTION AGENCY
+
+Love & Faith Hospice
+
+PURPOSE
+
+Love & Faith Hospice becomes the initial production tenant.
+
+No other agency data may enter production until:
+
+□ Production environment validated
+
+□ Workflow validation completed
+
+□ Backup validation completed
+
+□ Restore validation completed
+
+□ Audit Shield validation completed
+
+==================================================
+
+PRE-MIGRATION REQUIREMENTS
+
+==================================================
+
+VERIFY
+
+□ Production sweep completed
+
+□ Development artifacts removed
+
+□ Test patients removed
+
+□ Test documentation removed
+
+□ Test agencies removed
+
+□ Test alerts removed
+
+□ Test AI artifacts removed
+
+Production environment must be clean prior to migration.
+
+==================================================
+
+LOVE & FAITH MIGRATION VALIDATION
+
+==================================================
+
+AFTER MIGRATION VERIFY
+
+□ Patient count matches source system
+
+□ Admissions match source system
+
+□ Visits match source system
+
+□ Orders match source system
+
+□ Certifications match source system
+
+□ Attachments migrated
+
+□ Narratives migrated
+
+□ Audit records migrated
+
+□ Evidence references valid
+
+==================================================
+
+POST-MIGRATION VALIDATION
+
+==================================================
+
+VERIFY
+
+□ RNICA functions
+
+□ Documentation functions
+
+□ Finalization functions
+
+□ Alerts function
+
+□ Reporting functions
+
+□ Audit history functions
+
+□ Evidence provenance functions
+
+==================================================
+
+GO-LIVE REQUIREMENT
+
+==================================================
+
+Love & Faith Hospice becomes the first production validation agency.
+
+Other agencies remain outside production until production stability is confirmed.
+
 ---
 
 ## Status
@@ -1285,4 +1393,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, and Production Sweep Pass/Fail gate. |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, and Production Data Migration Strategy (Love & Faith Hospice as first production validation agency). |
