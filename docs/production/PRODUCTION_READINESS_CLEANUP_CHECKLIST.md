@@ -1282,6 +1282,31 @@ not delete" principle, which continues to govern every other agency's
 data, including Love & Faith Hospice and any agency onboarded after
 it.
 
+PRODUCTION AGENCY DATA IMMUTABILITY RULE
+
+Once an agency is live in production (Love & Faith Hospice and every
+agency onboarded after it), that agency's data is immutable at the
+platform-administration level.
+
+□ No ad hoc data deletion
+
+□ No ad hoc data editing
+
+□ No manual database correction
+
+□ No "cleanup" of production agency records
+
+Corrections to production agency data may only occur through:
+
+- Documented clinical workflows (e.g. amendments, corrections,
+  reversals) that preserve audit history and evidence provenance
+
+- Approved, logged, reviewable administrative processes
+
+Angela Hospice and Silva Hospice remain the sole exception to this
+rule, permanently, because they contain synthetic data only and exist
+specifically for unrestricted training, marketing, and validation use.
+
 ==================================================
 
 PRODUCTION DATA MIGRATION STRATEGY
@@ -1610,4 +1635,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data), Permanent Testing and Training Agencies (Angela Hospice and Silva Hospice as permanent synthetic agencies onboarded before Love & Faith Hospice for training/marketing use), and a Data Modification Rule making Angela/Silva Hospice the sole agencies exempt from the "when uncertain, do not delete" principle. |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`), consolidated Production Database Strategy, Training and Demonstration Data Policy (de-identified real-world data preferred over synthetic data), Permanent Testing and Training Agencies (Angela Hospice and Silva Hospice as permanent synthetic agencies onboarded before Love & Faith Hospice for training/marketing use), a Data Modification Rule making Angela/Silva Hospice the sole agencies exempt from the "when uncertain, do not delete" principle, and a Production Agency Data Immutability Rule (all live production agency data is immutable outside documented clinical/administrative processes, with Angela/Silva Hospice as the permanent exception). |
