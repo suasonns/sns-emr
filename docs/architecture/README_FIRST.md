@@ -19,6 +19,7 @@ before any modifications to:
 - Structured Findings
 - RN ICA Intelligence
 - Clinical Intelligence
+- Eligibility Intelligence
 - Compliance Intelligence
 - Narrative Intelligence
 - Tenant Platform
@@ -30,7 +31,9 @@ before any modifications to:
 3. [`TENANT_PLATFORM_IMPLEMENTATION_GUARDRAILS.md`](./TENANT_PLATFORM_IMPLEMENTATION_GUARDRAILS.md)
 
 (See also [`INTELLIGENCE_HARVESTER_EVOLUTION.md`](./INTELLIGENCE_HARVESTER_EVOLUTION.md)
-for the phased evolution plan referenced by the roadmap above.)
+for the phased evolution plan referenced by the roadmap above, and
+[`ARCHITECTURE_INDEX.md`](./ARCHITECTURE_INDEX.md) for a single
+navigation page across all of the above.)
 
 ## Architecture Protection Rules
 
