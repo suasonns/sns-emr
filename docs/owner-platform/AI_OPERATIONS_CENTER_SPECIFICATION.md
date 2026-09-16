@@ -1,79 +1,71 @@
 ==================================================
 AI OPERATIONS CENTER
 OWNER PLATFORM
+SNS TECH SOLUTIONS
 ==================================================
 
 STATUS
 
-Architecture Approved
+Approved Design Baseline
 
-Implementation Not Yet Started
-
-Purpose:
-
-The AI Operations Center belongs to SNS Tech Solutions.
-
-It monitors the AI ecosystem powering all current and future SNS products.
-
-This page is NOT specific to SNS Hospice Solutions.
-
-==================================================
-ARCHITECTURE PRINCIPLE
-==================================================
-
-Owner Platform belongs to:
-
-SNS Tech Solutions
-
-Products may include:
-
-- SNS Hospice Solutions
-- SNS Home Health
-- SNS Scribe
-- Future Biller Platform
-- Future SNS Products
-
-The AI Operations Center must support all products.
-
-This is an AI Infrastructure and AI Operations page.
-
-This is NOT a business analytics page.
+Owner Platform Architecture Approved
 
 ==================================================
 MISSION
 ==================================================
 
-The AI Operations Center answers:
+The AI Operations Center belongs to SNS Tech Solutions.
 
-- Are SNS AI systems healthy?
-- Which AI services are being used?
-- Which AI services cost the most?
-- Which AI services provide value?
-- Which AI services require improvement?
-- Which products consume AI resources?
-- Which AI systems are failing?
+It is NOT a SNS Hospice Solutions page.
 
-The page does NOT answer:
+It is NOT a Billing page.
 
-- Claims questions
-- Denial questions
-- Billing readiness
-- Churn analysis
-- Compliance analysis
-- Revenue forecasting
-- Tenant health
+It is NOT a Compliance page.
 
-Those belong elsewhere.
+It is NOT an Analytics page.
+
+The AI Operations Center manages:
+
+- AI Infrastructure
+- AI Services
+- AI Health
+- AI Utilization
+- AI Consumption
+- AI Costs
+- AI Quality
+- AI Effectiveness
+- AI Improvement Opportunities
+
+Across all current and future SNS products.
 
 ==================================================
-TOP DASHBOARD
+SUPPORTED PRODUCTS
 ==================================================
 
-Executive Overview Cards
+Current:
+
+- SNS Hospice Solutions
+
+Future:
+
+- SNS Home Health
+- SNS Scribe
+- Biller Platform
+- Future SNS Products
+
+Adding products must require configuration only.
+
+No architectural redesign.
+
+==================================================
+TOP EXECUTIVE OVERVIEW
+==================================================
+
+Display:
 
 AI Services Online
 
-AI Alerts
+Active AI Alerts
 
 Monthly AI Requests
 
@@ -81,18 +73,18 @@ Monthly AI Consumption
 
 Estimated AI Cost Trend
 
-Overall AI Health Score
+Overall AI Health
 
 Purpose:
 
-Immediate visibility into the SNS AI ecosystem.
+Provide immediate visibility into the health of the SNS AI ecosystem.
 
 ==================================================
 SECTION 1
 AI SERVICE HEALTH
 ==================================================
 
-Track:
+Display:
 
 Azure OpenAI
 
@@ -104,38 +96,42 @@ Azure Document Intelligence
 
 Evidence Harvester
 
-Clinical Intelligence Engine
+Clinical Intelligence
 
 AI Documentation Engine
 
 Future AI Engines
 
-Display:
+For each service:
 
-Service Name
+- Status
+- Availability
+- Utilization
+- Capacity
+- Last Incident
+- Last Outage
+- Health Trend
 
-Health Status
+Statuses:
 
-Availability
+Healthy
 
-Last Incident
+Warning
 
-Last Outage
-
-Current Utilization
-
-Current Capacity
+Critical
 
 Purpose:
 
-Monitor AI infrastructure health.
+Monitor platform AI infrastructure.
 
 ==================================================
 SECTION 2
 AI USAGE BY PRODUCT
 ==================================================
 
-Display:
+Display usage by product.
+
+Products:
 
 SNS Hospice Solutions
 
@@ -147,7 +143,7 @@ Future Biller Platform
 
 Future Products
 
-For each product display:
+Metrics:
 
 OpenAI Usage
 
@@ -163,7 +159,7 @@ Clinical Intelligence Usage
 
 Purpose:
 
-Understand consumption across the SNS ecosystem.
+Track AI adoption and resource consumption by product.
 
 ==================================================
 SECTION 3
@@ -188,15 +184,15 @@ AI Documentation Requests
 
 Display:
 
-30 Day Trend
+30-Day Trend
 
-90 Day Trend
+90-Day Trend
 
-Annual Projection
+12-Month Projection
 
 Purpose:
 
-Support scaling decisions.
+Capacity planning and growth forecasting.
 
 ==================================================
 SECTION 4
@@ -207,9 +203,9 @@ Track:
 
 OpenAI Cost
 
-Speech Cost
-
 OCR Cost
+
+Speech Cost
 
 Document Intelligence Cost
 
@@ -223,27 +219,29 @@ Projected Annual AI Cost
 
 Display:
 
-Cost Trend
-
-Cost Growth
-
 Cost By Product
 
 Cost By Service
 
+Cost Trend
+
+Growth Trend
+
 Purpose:
 
-Understand operational costs.
+Track actual platform AI expenses.
 
-Important:
+IMPORTANT:
 
-Track costs only.
+Track internal cost only.
 
-Do not display customer pricing.
+Do NOT display customer pricing.
+
+Pricing belongs to Revenue & Subscription Management.
 
 ==================================================
 SECTION 5
-AI EFFECTIVENESS
+AI EFFECTIVENESS & QUALITY
 ==================================================
 
 Track:
@@ -264,7 +262,17 @@ Reopen Rate
 
 Purpose:
 
-Measure value generated by AI.
+Measure whether AI is helping users.
+
+Examples:
+
+High Acceptance Rate
+
+Low Override Rate
+
+Low Correction Rate
+
+High Adoption Rate
 
 ==================================================
 SECTION 6
@@ -281,6 +289,8 @@ Most Requested AI Assistance
 
 Most Reopened AI Generated Content
 
+Most Ignored AI Features
+
 Least Used AI Features
 
 Most Used AI Features
@@ -289,37 +299,103 @@ Highest Adoption AI Features
 
 Purpose:
 
-Generate future AI development priorities.
+Generate future AI roadmap priorities automatically.
 
 ==================================================
 SECTION 7
-AI ANOMALIES
+AI VALUE INTELLIGENCE
 ==================================================
+
+Future Enhancement
+Approved For Roadmap
 
 Track:
 
-OpenAI Latency Spikes
+Estimated Time Saved
 
-OpenAI Quota Warnings
+Manual Reviews Eliminated
 
-OCR Failure Spikes
+Documentation Burden Reduced
 
-Speech Recognition Failures
+Average AI Assistance Usage
 
-Document Intelligence Delays
+Example:
 
-Evidence Harvester Failures
+Evidence Harvester
 
-Clinical Intelligence Failures
+Estimated Reviews Eliminated
 
-Infrastructure Cost Anomalies
+OCR
+
+Estimated Manual Data Entry Saved
 
 Purpose:
 
-Monitor AI-specific operational issues.
+Compare Cost vs Value.
 
 ==================================================
 SECTION 8
+AI CAPACITY PLANNING
+==================================================
+
+Future Enhancement
+Approved For Roadmap
+
+Track:
+
+Current Utilization
+
+Projected Utilization
+
+Remaining Capacity
+
+90-Day Forecast
+
+12-Month Forecast
+
+Examples:
+
+OpenAI Capacity
+
+OCR Capacity
+
+Speech Capacity
+
+Document Intelligence Capacity
+
+Purpose:
+
+Prevent service bottlenecks before they occur.
+
+==================================================
+SECTION 9
+AI ANOMALIES
+==================================================
+
+Examples:
+
+OpenAI Latency Spike
+
+OpenAI Quota Warning
+
+OCR Failure Spike
+
+Speech Processing Failure
+
+Document Intelligence Timeout
+
+Evidence Harvester Failure
+
+Clinical Intelligence Failure
+
+Infrastructure Cost Anomaly
+
+Purpose:
+
+Monitor AI-specific operational risks.
+
+==================================================
+SECTION 10
 AI ASSISTANT
 ==================================================
 
@@ -329,7 +405,7 @@ Example Questions:
 
 Which AI service costs the most?
 
-Which AI service is used the most?
+Which AI service is used most?
 
 Which AI service has the highest failure rate?
 
@@ -341,10 +417,10 @@ Which AI capability should SNS improve next?
 
 Purpose:
 
-Executive AI intelligence.
+Executive AI Intelligence.
 
 ==================================================
-SECTION 9
+SECTION 11
 AI ACTIVITY LOG
 ==================================================
 
@@ -356,13 +432,13 @@ AI Predictions
 
 AI Alerts
 
+AI Health Events
+
 AI Service Changes
 
-AI Health Changes
+Quota Events
 
 Cost Events
-
-Quota Events
 
 Infrastructure Events
 
@@ -371,56 +447,36 @@ Purpose:
 Historical AI operations record.
 
 ==================================================
-FUTURE PRODUCT AWARENESS
-==================================================
-
-The AI Operations Center must support future products without redesign.
-
-Examples:
-
-SNS Hospice Solutions
-
-SNS Home Health
-
-SNS Scribe
-
-Future Biller Platform
-
-Future Products
-
-Adding products should require configuration only.
-
-No architectural redesign.
-
-==================================================
 REMOVE COMPLETELY
 ==================================================
 
-Do NOT include:
-
-Denial Spikes
+These items DO NOT belong in AI Operations Center:
 
 Claims Volume
 
-Billing Bottlenecks
+Billing Readiness
 
-NOE Compliance
+Denial Rates
 
 Revenue Forecasting
 
-Collections Analytics
+Collections
 
-Aging Reports
+Eligibility
+
+NOE Compliance
 
 Authorization Tracking
 
-Eligibility Tracking
+Billing Bottlenecks
 
-Tenant Churn Forecasting
+Tenant Churn
 
-Billing Readiness
+Revenue Cycle Operations
 
-Revenue Cycle Analytics
+Aging Reports
+
+Claim Lifecycle Metrics
 
 These belong to:
 
@@ -433,7 +489,7 @@ Governance & Audit
 Future Biller Platform
 
 ==================================================
-DESIGN RULE
+ARCHITECTURE RULE
 ==================================================
 
 AI Operations Center monitors:
@@ -442,37 +498,37 @@ AI Infrastructure
 
 AI Services
 
-AI Health
-
 AI Utilization
 
 AI Costs
 
-AI Adoption
+AI Health
 
-AI Effectiveness
+AI Quality
+
+AI Adoption
 
 AI Improvement Opportunities
 
-The page does NOT monitor:
+The AI Operations Center does NOT monitor:
 
-Business Operations
+Agency Performance
+
+Clinical Reporting
 
 Claims Operations
 
 Billing Operations
 
-Agency Operations
+Compliance Operations
 
-Clinical Reporting
-
-Compliance Reporting
+Tenant Operations
 
 ==================================================
-PLATFORM OWNER VIEW
+OWNER PLATFORM VIEW
 ==================================================
 
-When the Platform Owner opens this page they should immediately understand:
+When the Platform Owner opens AI Operations Center they should immediately understand:
 
 Which AI systems are healthy?
 
@@ -486,27 +542,25 @@ Which AI systems fail?
 
 Which products consume AI resources?
 
-Which AI systems should SNS improve next?
+Which AI systems require improvement?
+
+Which AI systems deserve future investment?
 
 ==================================================
-FINAL ARCHITECTURE RULE
+FINAL APPROVAL
 ==================================================
 
-This page belongs to SNS Tech Solutions.
+Approved Architecture
 
-Not SNS Hospice Solutions.
+Approved Direction
 
-It governs AI infrastructure shared across all current and future SNS products.
+Approved Future Enhancements
 
-Maintain strict separation from:
+This page officially belongs to:
 
-Analytics
+SNS Tech Solutions
 
-Revenue & Subscription Management
-
-Governance & Audit
-
-Future Biller Platform
+and governs the shared AI ecosystem supporting all current and future SNS products.
 
 No architecture drift allowed.
 
@@ -514,12 +568,13 @@ No architecture drift allowed.
 
 ## Status
 
-Architecture Approved. Implementation Not Yet Started. This document
-defines the target structure of the "AI Operations Center" page,
-owned by SNS Tech Solutions rather than SNS Hospice Solutions
-specifically. Architecture approval does not by itself authorize the
-code/UI/data model changes — implement each section only when
-explicitly instructed to build it.
+Approved Design Baseline. Owner Platform Architecture Approved. This
+document supersedes the initial "Architecture Approved / Implementation
+Not Yet Started" draft with a refined, more detailed baseline (11
+sections instead of 9, plus AI Value Intelligence and AI Capacity
+Planning as roadmap-approved future enhancements). Approval of the
+design does not by itself authorize the code/UI/data model changes —
+implement each section only when explicitly instructed to build it.
 
 ## Relationship to Other Documents
 
@@ -534,31 +589,37 @@ explicitly instructed to build it.
     (agency/workflow friction and business analytics — this page
     covers AI infrastructure/operations instead).
   - `docs/owner-platform/REVENUE_AND_SUBSCRIPTION_MANAGEMENT_SPECIFICATION.md`
-    (subscriptions/revenue/customer-facing feature entitlement — this
-    page tracks AI operational cost only and must never display
-    customer pricing).
+    (subscriptions/revenue/customer-facing feature entitlement and
+    pricing — Section 4 here tracks internal AI cost only and must
+    never display customer pricing, which belongs to Revenue &
+    Subscription Management).
   - `docs/owner-platform/GOVERNANCE_AND_AUDIT_CENTER_SPECIFICATION.md`
     (approvals/escalations/governance — this page is operational AI
     monitoring, not governance).
   - The future Biller Platform per
     `docs/roadmap/Biller-Platform-Roadmap.md` (claims, eligibility,
-    collections, EDI, aging reports are explicitly out of scope here).
+    collections, EDI, aging reports, denial rates, NOE compliance are
+    explicitly out of scope here).
 - Section 1 (AI Service Health) and Section 4 (AI Cost Intelligence)
   track the same Azure OpenAI/Speech/OCR/Document Intelligence/
   Evidence Harvester dependencies listed in
   `docs/owner-platform/PLATFORM_SETTINGS_SPECIFICATION.md` Section 6
   (Integration Management) — Platform Settings configures/enables
   those integrations, this page monitors their live health/cost/usage.
-- Section 5 (AI Effectiveness) and Section 6 (AI Improvement Signals)
-  are the AI-infrastructure counterpart to
+- Section 5 (AI Effectiveness & Quality) and Section 6 (AI Improvement
+  Signals) are the AI-infrastructure counterpart to
   `docs/roadmap/AI-Clinical-Intelligence-Roadmap.md`'s principle that
   Evidence Harvester is a Clinical Intelligence Engine, not a Data
   Extraction Engine — override/correction/reopen rates here should
   feed candidate entries into
   `docs/roadmap/Future-Ideas-And-Research.md`.
+- Section 7 (AI Value Intelligence) and Section 8 (AI Capacity
+  Planning) are explicitly marked as Future Enhancements Approved For
+  Roadmap — approved in direction, not yet scheduled for build.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — AI Operations Center architecture: Mission, Architecture Principle (SNS Tech Solutions owns this page across all current/future SNS products), Top Dashboard, 9 sections (AI Service Health, AI Usage By Product, AI Consumption Intelligence, AI Cost Intelligence, AI Effectiveness, AI Improvement Signals, AI Anomalies, AI Assistant natural-language query interface, AI Activity Log), Future Product Awareness (configuration-only extensibility), an explicit Remove Completely list reserved for Analytics/Revenue & Subscription Management/Governance & Audit/future Biller Platform, Design Rule, Platform Owner View, and Final Architecture Rule. Status: Architecture Approved, implementation not yet started. |
+| 2026-09-16 | Document created — initial AI Operations Center architecture (9 sections, Status: Architecture Approved / Implementation Not Yet Started). |
+| 2026-09-16 | Document superseded with refined Approved Design Baseline: SNS Tech Solutions ownership header, Supported Products (current/future), Top Executive Overview, 11 sections (AI Service Health, AI Usage By Product, AI Consumption Intelligence, AI Cost Intelligence, AI Effectiveness & Quality, AI Improvement Signals, AI Value Intelligence [future enhancement, roadmap-approved], AI Capacity Planning [future enhancement, roadmap-approved], AI Anomalies, AI Assistant, AI Activity Log), an expanded Remove Completely list, Architecture Rule, Owner Platform View, and Final Approval statement. |
