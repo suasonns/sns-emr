@@ -1342,6 +1342,42 @@ Love & Faith Hospice becomes the first production validation agency.
 
 Other agencies remain outside production until production stability is confirmed.
 
+==================================================
+
+ENVIRONMENT SEPARATION RULE
+
+==================================================
+
+sns_emr_dev_clean
+
+Permanent Development Environment
+
+This environment is never promoted to production.
+
+This environment may contain:
+
+- Test data
+
+- Development data
+
+- Experimental data
+
+- Validation data
+
+--------------------------------------------------
+
+sns_emr_prod
+
+Production Environment
+
+Created fresh.
+
+Never cloned from development.
+
+Only production configuration is deployed.
+
+Patient data enters production only through approved migration processes.
+
 ---
 
 ## Status
@@ -1388,9 +1424,16 @@ run the sweep now.
   literal step-by-step order of operations to execute all of the above
   — start to finish — when a production/field-testing release is
   actually being prepared.
+- The Environment Separation Rule formalizes what `sns_emr_dev_clean`
+  is: the permanent development database (currently active — see
+  today's `dev.env`), which is never promoted to production. A future
+  `sns_emr_prod` database must be created fresh, never cloned from
+  development, with patient data entering only through the approved
+  Production Data Migration Strategy above (Love & Faith Hospice as
+  the first migrated agency).
 
 ## Change Log
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, and Production Data Migration Strategy (Love & Faith Hospice as first production validation agency). |
+| 2026-09-16 | Document created — full 18-section production readiness cleanup checklist, Production Blockers hard-stop list, Sign-Off Criteria, Final Pre-Production Sweep Sequence, Final Principle, Production Zero-Data Requirement, Production Sweep Pass/Fail gate, Production Data Migration Strategy (Love & Faith Hospice as first production validation agency), and Environment Separation Rule (`sns_emr_dev_clean` permanent dev vs. fresh `sns_emr_prod`). |
