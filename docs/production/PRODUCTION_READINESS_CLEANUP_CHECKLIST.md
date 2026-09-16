@@ -514,6 +514,42 @@ Then remove only when confirmed unnecessary.
 
 Production data is never destroyed without verification and documented approval.
 
+==================================================
+
+SECTION 14
+
+DEVELOPMENT ARTIFACT DISCOVERY
+
+==================================================
+
+Identify:
+
+□ Test tables
+
+□ Debug tables
+
+□ Temporary migrations
+
+□ Development scripts
+
+□ Deprecated feature flags
+
+□ Experimental AI modules
+
+□ Orphaned storage buckets
+
+□ Temporary file uploads
+
+For each item:
+
+KEEP
+
+REMOVE
+
+REVIEW
+
+No development artifact enters production without classification.
+
 ---
 
 ## Status
@@ -557,4 +593,4 @@ run the sweep now.
 
 | Date | Change |
 |---|---|
-| 2026-09-16 | Document created — full 13-section production readiness cleanup checklist plus Final Rule. |
+| 2026-09-16 | Document created — full 14-section production readiness cleanup checklist plus Final Rule. |
