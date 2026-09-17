@@ -105,6 +105,32 @@ Users may only view:
 Assignment enforcement must be server-side.
 
 ==================================================
+FINANCIAL WORKSPACE VISIBILITY RULE
+==================================================
+
+Authorization states must replace the entire
+
+financial workspace.
+
+Unauthorized users must never see:
+
+Revenue
+
+Payments
+
+Claims
+
+Variance
+
+ERA values
+
+Secondary Billing
+
+Unapplied Cash
+
+or Financial KPIs
+
+==================================================
 LOCKED DDE MODEL
 ==================================================
 
@@ -743,3 +769,4 @@ to start under this document either.
 |---|---|
 | 2026-09-17 | Document created (partial) — Final Implementation Authorization for five Biller Platform pages: Implementation Authority, Core Implementation Rules (Verify First), Locked Platform Architecture, Locked Branding, Locked Access Model, Locked DDE Model, Page 1 (Billing Dashboard), Page 2 (Billing Readiness), Page 3 (Claims Management) with Claim Validation Requirements, Locked Claim Lifecycle, and Locked Batch Management, Page 4 (Denials & Appeals) with AI Appeal Assistant boundary, Page 5 (Eligibility Monitoring & Change Detection) with Locked Eligibility Strategy, Verification Source Hierarchy, AI Coverage Impact Analysis, and Cross-Page Integration, Clinical Boundary, and the start of Audit Requirements (cut off at "Audit: - Eligibility"). Remainder of Audit Requirements and any further sections pending. |
 | 2026-09-17 | Completed the specification — added the remainder of Audit Requirements (eligibility sweeps, coverage changes, claim validation, readiness evaluations, DDE operations, appeals, batch creation/revisions/removal/return, override actions, revenue events, exports, with actor/timestamp/reason/previous-state/new-state/correlation-ID preservation), Mandatory Deliverables (four named documents), Implementation Phases (Phase 0 Discovery through Phase 15 Full Validation & Verification), Do Not Declare Complete gate, and Final Lock register covering all five pages plus Assignment Visibility, DDE Architecture, Claim Validation, Batch Management, Appeal Draft Assistant, Monthly Eligibility Monitoring, and SNS Tech Solutions Branding. Document now complete end to end. |
+| 2026-09-17 | Added a Financial Workspace Visibility Rule to the Locked Access Model: unauthorized users must never see Revenue, Payments, Claims, Variance, ERA values, Secondary Billing, Unapplied Cash, or Financial KPIs — an authorization-state check must replace the entire financial workspace (not merely mask individual fields) for any user who is not authorized. |
