@@ -26,6 +26,7 @@ APPROVED PAGES
 7. NOE Compliance & Revenue Protection Center
 8. CAP Compliance & Financial Exposure Center
 9. AR & Collections Intelligence Center
+10. Credit Balance Resolution & Compliance Center
 
 No architectural redesign is authorized during implementation.
 
@@ -461,6 +462,10 @@ LOGICAL ENTITIES
 - AR Aging Snapshot
 - AR Recovery Work Item
 - AR Collections Activity
+- Credit Balance Case
+- Credit Cause Record
+- CMS-838 Filing Case
+- Credit Resolution Work Item
 - Regulatory Reference
 - Audit Event
 
@@ -2174,6 +2179,311 @@ IMPLEMENTATION AUTHORIZED
 No further redesign required.
 
 ==================================================
+PAGE 10
+CREDIT BALANCE RESOLUTION & COMPLIANCE CENTER
+==================================================
+
+STATUS
+
+LOCKED
+IMPLEMENTATION AUTHORIZED
+
+MISSION
+
+Identify, investigate, monitor, resolve, and document patient and payer credit balances while supporting CMS-838 compliance and refund management workflows.
+
+This page is not a reporting screen.
+
+This page is a Credit Balance Resolution & Compliance Center.
+
+==================================================
+REQUIRED SECTIONS
+==================================================
+
+- Executive Credit Exposure
+- Credit Resolution Queue
+- Credit Cause Analysis
+- AI Credit Resolution Assistant
+- CMS-838 Compliance Center
+- Credit Aging Analysis
+- Multi-Agency Credit Exposure
+- Auto-Created Work Items & Tasks
+
+==================================================
+EXECUTIVE CREDIT EXPOSURE
+==================================================
+
+Display:
+
+- Total Credits
+- Claims With Credits
+- Patients Affected
+- CMS-838 Cases
+- Refunds Pending
+- Average Credit Age
+- Compliance Risk
+
+==================================================
+CREDIT RESOLUTION QUEUE
+==================================================
+
+Display:
+
+- Patient
+- Payer
+- Credit Amount
+- Age
+- Primary Cause
+- Refund Required
+- Assigned Biller
+- Status
+
+Examples:
+
+- Duplicate Payment
+- Payer Overpayment
+- COB Issue
+- Billing Adjustment
+- Rate Change
+
+==================================================
+CREDIT CAUSE ANALYSIS
+==================================================
+
+Display:
+
+- Duplicate Payments
+- Payer Overpayments
+- COB Errors
+- Billing Adjustments
+- Rate Changes
+
+Purpose:
+
+Identify root causes of unresolved credits.
+
+==================================================
+AI CREDIT RESOLUTION ASSISTANT
+==================================================
+
+AI MAY:
+
+- Identify credit risk
+- Identify probable causes
+- Recommend review actions
+- Draft resolution recommendations
+- Create investigation work-item recommendations
+- Generate CMS-838 preparation recommendations
+
+AI MAY NOT:
+
+- Determine official compliance outcomes
+- Issue refunds
+- Adjust balances
+- Close credit cases
+- Submit CMS-838 filings
+- Perform financial transactions
+
+Required language:
+
+- Potential Resolution Candidate
+- Likely Resolution Path
+- Recommended Review
+- Estimated Compliance Concern
+
+Human approval remains mandatory.
+
+==================================================
+CMS-838 COMPLIANCE CENTER
+==================================================
+
+Display:
+
+- Case ID
+- Patient
+- Credit Amount
+- Age
+- Filing Deadline
+- Filing Status
+
+Track:
+
+- Candidate Cases
+- Draft Cases
+- Submitted Cases
+- Accepted Cases
+- Follow-Up Cases
+
+==================================================
+CREDIT AGING ANALYSIS
+==================================================
+
+Display:
+
+- 0-30 Days
+- 31-60 Days
+- 61-90 Days
+- 91+ Days
+
+Metrics:
+
+- Count
+- Amount
+- Percent Of Total
+
+==================================================
+MULTI-AGENCY CREDIT EXPOSURE
+==================================================
+
+Display:
+
+- Agency
+- Credit Exposure
+- Credit Cases
+- Compliance Status
+
+Purpose:
+
+Identify operational risk by agency.
+
+==================================================
+AUTO-CREATED WORK ITEMS
+==================================================
+
+Create work items for:
+
+- Refund Processing
+- COB Investigation
+- CMS-838 Filing Review
+- Payer Recoupment Review
+- Adjustment Review
+
+Work items must be:
+
+- Auditable
+- Tenant Scoped
+- Traceable
+- Idempotent
+
+==================================================
+CREDIT BALANCE LIFECYCLE
+==================================================
+
+Display:
+
+- Credit Identified
+- Investigation
+- Validation
+- Refund Review
+- CMS-838 Review
+- Resolved
+- Closed
+
+Rules:
+
+- Resolved does not automatically mean Closed
+- Refund issued does not automatically close the investigation
+- CMS-838 review may be required before closure
+
+Full lifecycle history must be auditable.
+
+==================================================
+REFUND GOVERNANCE
+==================================================
+
+Refunds require:
+
+- Credit Validation
+- Human Review
+- Approval Authority
+
+The platform may:
+
+- Recommend refunds
+- Flag refunds
+- Generate refund work items
+
+The platform may NOT:
+
+- Automatically issue refunds
+- Automatically approve refunds
+- Automatically close refund cases
+
+All refund decisions remain human-authorized.
+
+==================================================
+CMS-838 WORKFLOW
+==================================================
+
+Stages:
+
+- Candidate
+- Under Review
+- Draft Prepared
+- Ready For Filing
+- Submitted
+- Accepted
+- Follow-Up Required
+- Closed
+
+All stages must be auditable.
+
+Historical filings must remain viewable.
+
+==================================================
+AUTHORIZATION FAILURE BEHAVIOR
+==================================================
+
+If the user lacks authorization:
+
+Do not display:
+
+- Credit amounts
+- Refund values
+- CMS-838 data
+- Patient-specific credit details
+- Compliance status
+
+Replace entire workspace with:
+
+- Access Denied
+- Authorized Agency Selection
+- Safe Navigation Options
+
+No financial or patient information may be displayed.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+□ Credit Resolution Queue operational.
+□ Credit Cause Analysis operational.
+□ CMS-838 Compliance Center operational.
+□ Credit Aging Analysis operational.
+□ Multi-Agency Exposure operational.
+□ Auto-created work items operational.
+□ AI recommendations require human approval.
+□ No automated compliance conclusions.
+□ No automated refunds.
+□ No automated balance adjustments.
+□ Audit history operational.
+□ Credit Balance Lifecycle enforced (Resolved ≠ Closed; refund issuance does not auto-close; CMS-838 review may gate closure).
+□ Refund Governance enforced (no automatic issuance, approval, or closure).
+□ CMS-838 Workflow stages operational and auditable; historical filings remain viewable.
+□ Authorization Failure Behavior enforced (entire workspace replaced; no financial or patient data exposed to unauthorized users).
+□ Figma parity verified.
+
+==================================================
+FINAL STATUS
+==================================================
+
+Credit Balance Resolution & Compliance Center
+
+APPROVED
+LOCKED
+IMPLEMENTATION AUTHORIZED
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -2567,6 +2877,7 @@ This applies to:
 - NOE Compliance
 - CAP Compliance
 - AR & Collections
+- Credit Balance Resolution
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -2805,6 +3116,12 @@ LOCKED
 AI Collections Governance:
 LOCKED
 
+Credit Balance Resolution & Compliance Center:
+LOCKED
+
+AI Credit Resolution Governance:
+LOCKED
+
 Visits & Notes Removal:
 LOCKED
 
@@ -2858,23 +3175,26 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **nine locked pages** (Billing Dashboard, Billing
+Scope now spans **ten locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
 Monitoring & Change Detection, Payment Posting & Reconciliation
 Center, NOE Compliance & Revenue Protection Center, CAP Compliance &
-Financial Exposure Center, and new **Page 9: AR & Collections
-Intelligence Center**), a 55-entity Discovery Deliverable list (up
-from 52, adding AR Aging Snapshot, AR Recovery Work Item, and AR
-Collections Activity), the existing 24-phase Implementation Plan
-(Phase 0-23), and a fifth AI-governance boundary (AI Collections
+Financial Exposure Center, AR & Collections Intelligence Center, and
+new **Page 10: Credit Balance Resolution & Compliance Center**), a
+59-entity Discovery Deliverable list (up from 55, adding Credit
+Balance Case, Credit Cause Record, CMS-838 Filing Case, and Credit
+Resolution Work Item), the existing 24-phase Implementation Plan
+(Phase 0-23), and a sixth AI-governance boundary (AI Credit Resolution
 Assistant) alongside the AI Appeal Draft Assistant (Denials &
 Appeals), AI Reconciliation Assistant (Payment Posting), AI NOE Risk
-Analyzer (NOE Compliance), and AI CAP Analysis (CAP Compliance) — in
-all five cases AI may analyze/estimate/forecast/recommend but a human
-must approve every compliance, financial, collections, or
-appeal-submission action; AI Collections Assistant is additionally and
-explicitly barred from writing off balances, adjusting receivables, or
-modifying patient balances.
+Analyzer (NOE Compliance), AI CAP Analysis (CAP Compliance), and AI
+Collections Assistant (AR & Collections) — in all six cases AI may
+analyze/estimate/forecast/recommend but a human must approve every
+compliance, financial, refund, collections, or appeal-submission
+action; AI Credit Resolution Assistant is additionally and explicitly
+barred from determining official compliance outcomes, issuing
+refunds, adjusting balances, closing credit cases, or submitting
+CMS-838 filings.
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -2885,21 +3205,23 @@ of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
   created, but scoped to the original 25-entity list (three pages).
-  Must be extended to cover the 30 additional entities introduced by
+  Must be extended to cover the 34 additional entities introduced by
   this document for Denials & Appeals, Payment Posting &
   Reconciliation, NOE Compliance & Revenue Protection, CAP Compliance
-  & Financial Exposure, and AR & Collections Intelligence (Denial,
-  Appeal, Appeal Version, Appeal Evidence Package, Appeal Lifecycle
-  Event, Eligibility Verification, Eligibility Sweep, Eligibility
-  Sweep Result, Coverage Change, Eligibility Work Item, Verification
-  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
-  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
-  Item, Payment Work Item, NOE Compliance Record, NOE Risk Assessment,
-  NOE Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
+  & Financial Exposure, AR & Collections Intelligence, and Credit
+  Balance Resolution & Compliance (Denial, Appeal, Appeal Version,
+  Appeal Evidence Package, Appeal Lifecycle Event, Eligibility
+  Verification, Eligibility Sweep, Eligibility Sweep Result, Coverage
+  Change, Eligibility Work Item, Verification Source, ERA or
+  Remittance, Payment Posting, Payment Match, Payment Variance,
+  Contractual Adjustment, Unapplied Cash, Secondary Billing Item,
+  Payment Work Item, NOE Compliance Record, NOE Risk Assessment, NOE
+  Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
   Scenario, CAP Agency Utilization Snapshot, CAP Work Item, AR Aging
-  Snapshot, AR Recovery Work Item, AR Collections Activity) before
-  Phase 0 can be considered complete for this document's full
-  nine-page scope.
+  Snapshot, AR Recovery Work Item, AR Collections Activity, Credit
+  Balance Case, Credit Cause Record, CMS-838 Filing Case, Credit
+  Resolution Work Item) before Phase 0 can be considered complete for
+  this document's full ten-page scope.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
   need a corresponding addendum once the expanded discovery matrix is
@@ -3004,6 +3326,29 @@ of this document's creation:**
   collection actions). Adds three entities to the Required Discovery
   Deliverable list: AR Aging Snapshot, AR Recovery Work Item, AR
   Collections Activity.
+- **Adds Page 10: Credit Balance Resolution & Compliance Center** — a
+  credit-balance investigation/resolution/CMS-838-compliance center
+  (explicitly not a reporting screen), with a full Credit Balance
+  Lifecycle (Credit Identified → Investigation → Validation → Refund
+  Review → CMS-838 Review → Resolved → Closed, where Resolved does not
+  automatically mean Closed and refund issuance does not automatically
+  close the investigation), a Refund Governance rule (recommend/flag/
+  generate-work-item only; no automatic issuance, approval, or case
+  closure), a CMS-838 Workflow (Candidate → Under Review → Draft
+  Prepared → Ready For Filing → Submitted → Accepted → Follow-Up
+  Required → Closed, fully auditable with historical filings remaining
+  viewable), and an Authorization Failure Behavior rule matching the
+  Payment Posting pattern (replace the entire workspace; no financial
+  or patient data exposed to unauthorized users). Its AI Credit
+  Resolution Assistant follows the same recommend-only pattern as the
+  other five AI assistants, with required non-conclusive language
+  ("Potential Resolution Candidate", "Likely Resolution Path",
+  "Recommended Review", "Estimated Compliance Concern") and an
+  explicit prohibition on determining official compliance outcomes,
+  issuing refunds, adjusting balances, closing credit cases, or
+  submitting CMS-838 filings. Adds four entities to the Required
+  Discovery Deliverable list: Credit Balance Case, Credit Cause
+  Record, CMS-838 Filing Case, Credit Resolution Work Item.
 
 ## Change Log
 
@@ -3013,3 +3358,4 @@ of this document's creation:**
 | 2026-09-17 | Added Page 7: NOE Compliance & Revenue Protection Center (Executive NOE Compliance Overview, Active NOE Risk Screening Queue, AI NOE Risk Analyzer, Compliance Timeline / 5-Day Rule, NOE Action Item Work Queue, Agency Compliance Tracking, Filing Delay Root Cause Analysis, Auto-Generated Work Tasks, and NOE Compliance Acceptance Criteria). Updated Approved Pages to seven; added NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE Work Item to the Required Discovery Deliverable list (now 48 entities); added NOE Compliance to the Section 20 Unauthorized State Rule page list; added NOE Compliance & Revenue Protection Center and AI NOE Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-7 before Phase 0 can be considered complete for the full seven-page scope. |
 | 2026-09-17 | Added Page 8: CAP Compliance & Financial Exposure Center (Executive CAP Exposure Overview, CAP Accumulation & Limit Proximity Forecast, Multi-Agency CAP Exposure Matrix, AI Compliance Risk Projections, CAP Driver Analysis, Operational Scenario Modeling, CAP Work Queue, Historical CAP Reconciliation Logs, and CAP Acceptance Criteria). This page is explicitly an operational monitoring/forecasting tool only — it is not an official CAP calculator, and official CAP determinations remain dependent on NGS PS&R Reports, official Medicare Cap Reports, and other approved reimbursement sources; the AI CAP Analysis boundary explicitly forbids AI from determining official Medicare cap liability, certifying compliance, or producing official refund calculations. Updated Approved Pages to eight; added CAP Exposure Record, CAP Forecast Scenario, CAP Agency Utilization Snapshot, and CAP Work Item to the Required Discovery Deliverable list (now 52 entities); added CAP Compliance to the Section 20 Unauthorized State Rule page list; added CAP Compliance & Financial Exposure Center and AI CAP Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-8 before Phase 0 can be considered complete for the full eight-page scope. |
 | 2026-09-17 | Added Page 9: AR & Collections Intelligence Center (Executive AR Summary, Recovery Prioritization Queue, Top Collection Risks, AI Collections Assistant, Payer Aging Analysis Matrix, Agency Performance & Aging Summary, Aging Work Queue, Historical Collections & Write-Off Ledger, Auto Work Item Creation, Assignment Model, Audit Requirements, Acceptance Criteria, Implementation Notes, and Final Status). Explicitly framed as an operational collections and revenue recovery center, not a passive/traditional aging report — Implementation Notes direct that Recovery Prioritization Queue, Timely Filing Risk Detection, Aging Work Queue, Payer/Agency Risk Analysis, and Automated Recovery Work Item Creation take priority over static reporting. AI Collections Assistant follows the same recommend-only governance pattern as the other four AI assistants (may identify risks/patterns and draft recovery strategies and work-item plans; may not write off balances, modify receivables/accounts, change financial values, or perform collection actions) and the specification directs replacing automated-sounding action labels (e.g. "Auto Collection Execution", "Automated Write-Offs") with recommendation language (e.g. "Generate Collection Strategy", "Generate Recovery Recommendations"). Updated Approved Pages to nine; added AR Aging Snapshot, AR Recovery Work Item, and AR Collections Activity to the Required Discovery Deliverable list (now 55 entities); added AR & Collections to the Section 20 Unauthorized State Rule page list; added AR & Collections Intelligence Center and AI Collections Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-9 before Phase 0 can be considered complete for the full nine-page scope. |
+| 2026-09-17 | Added Page 10: Credit Balance Resolution & Compliance Center (Executive Credit Exposure, Credit Resolution Queue, Credit Cause Analysis, AI Credit Resolution Assistant, CMS-838 Compliance Center, Credit Aging Analysis, Multi-Agency Credit Exposure, Auto-Created Work Items, Credit Balance Lifecycle, Refund Governance, CMS-838 Workflow, Authorization Failure Behavior, Acceptance Criteria, and Final Status — APPROVED / LOCKED / IMPLEMENTATION AUTHORIZED). Explicitly framed as a resolution/compliance center, not a reporting screen. Credit Balance Lifecycle (Credit Identified → Investigation → Validation → Refund Review → CMS-838 Review → Resolved → Closed) establishes that Resolved does not automatically mean Closed and refund issuance does not automatically close the investigation. Refund Governance and CMS-838 Workflow require human authorization and full auditability with historical filings remaining viewable. Authorization Failure Behavior mirrors the Payment Posting pattern (replace the entire workspace on authorization failure; no financial or patient credit data exposed). AI Credit Resolution Assistant follows the same recommend-only governance pattern as the other five AI assistants, using required non-conclusive language and an explicit prohibition on determining compliance outcomes, issuing refunds, adjusting balances, closing credit cases, or submitting CMS-838 filings. Updated Approved Pages to ten; added Credit Balance Case, Credit Cause Record, CMS-838 Filing Case, and Credit Resolution Work Item to the Required Discovery Deliverable list (now 59 entities); added Credit Balance Resolution to the Section 20 Unauthorized State Rule page list; added Credit Balance Resolution & Compliance Center and AI Credit Resolution Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-10 before Phase 0 can be considered complete for the full ten-page scope. |
