@@ -24,6 +24,7 @@ APPROVED PAGES
 5. Eligibility Monitoring & Change Detection
 6. Payment Posting & Reconciliation Center
 7. NOE Compliance & Revenue Protection Center
+8. CAP Compliance & Financial Exposure Center
 
 No architectural redesign is authorized during implementation.
 
@@ -452,6 +453,10 @@ LOGICAL ENTITIES
 - NOE Risk Assessment
 - NOE Filing Event
 - NOE Work Item
+- CAP Exposure Record
+- CAP Forecast Scenario
+- CAP Agency Utilization Snapshot
+- CAP Work Item
 - Regulatory Reference
 - Audit Event
 
@@ -1678,6 +1683,120 @@ NOE COMPLIANCE ACCEPTANCE CRITERIA
 □ Figma parity verified.
 
 ==================================================
+PAGE 8
+CAP COMPLIANCE & FINANCIAL EXPOSURE CENTER
+==================================================
+
+STATUS
+
+LOCKED
+
+MISSION
+
+Monitor aggregate hospice cap exposure, identify operational risk factors, support leadership review, and forecast potential Medicare cap liability using approved operational estimates.
+
+IMPORTANT
+
+This page is not an official CAP calculator.
+
+Official CAP determinations remain dependent on:
+
+- NGS PS&R Reports
+- Official Medicare Cap Reports
+- Approved reimbursement sources
+
+SNS provides monitoring, forecasting, exposure analysis, and operational review support only.
+
+REQUIRED SECTIONS
+
+- Executive CAP Exposure Overview
+- CAP Accumulation & Limit Proximity Forecast
+- Multi-Agency CAP Exposure Matrix
+- AI Compliance Risk Projections
+- CAP Driver Analysis
+- Operational Scenario Modeling
+- CAP Work Queue
+- Historical CAP Reconciliation Logs
+
+EXECUTIVE METRICS
+
+Display:
+
+- CAP Year
+- Beneficiaries
+- Allowed CAP
+- Collected Amount
+- Available Space
+- Utilization
+- Overall Risk
+
+MULTI-AGENCY ANALYSIS
+
+Display:
+
+- Agency
+- Beneficiary Count
+- Collected Revenue
+- Projected Allowed Amount
+- Utilization
+- Risk Status
+
+AI CAP ANALYSIS
+
+AI may:
+
+- Identify potential exposure indicators
+- Analyze utilization trends
+- Estimate forecasted risk
+- Prioritize review activities
+- Generate monitoring reports
+
+AI may NOT:
+
+- Determine official Medicare cap liability
+- Certify compliance
+- Produce official refund calculations
+- Replace official PS&R reports
+
+Human review remains required.
+
+OPERATIONAL SCENARIO MODELING
+
+Purpose:
+
+Forecast operational impact only.
+
+All scenario outputs must display:
+
+Forecasting Tool Only
+Not Clinical Guidance
+Not Admission Guidance
+Not Eligibility Guidance
+Not Official CAP Determination
+
+CAP WORK QUEUE
+
+Support:
+
+- Recertification Audits
+- High LOS Reviews
+- Live Discharge Reviews
+- Intake Screening Follow-Up
+- Aggregate Overage Investigation
+
+CAP ACCEPTANCE CRITERIA
+
+□ Exposure forecasting operational.
+□ Multi-agency analysis operational.
+□ Historical CAP review operational.
+□ AI compliance projections operational.
+□ CAP work queue operational.
+□ Official source disclaimer visible.
+□ Forecasting outputs clearly identified as estimates.
+□ No official CAP determination produced by AI.
+□ Figma parity verified.
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -2069,6 +2188,7 @@ This applies to:
 - Eligibility
 - Payment Posting
 - NOE Compliance
+- CAP Compliance
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -2295,6 +2415,12 @@ LOCKED
 AI NOE Risk Governance:
 LOCKED
 
+CAP Compliance & Financial Exposure Center:
+LOCKED
+
+AI CAP Risk Governance:
+LOCKED
+
 Visits & Notes Removal:
 LOCKED
 
@@ -2348,18 +2474,22 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **seven locked pages** (Billing Dashboard, Billing
+Scope now spans **eight locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
 Monitoring & Change Detection, Payment Posting & Reconciliation
-Center, and new **Page 7: NOE Compliance & Revenue Protection
-Center**), a 48-entity Discovery Deliverable list (up from 44, adding
-NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE
-Work Item), the existing 24-phase Implementation Plan (Phase 0-23),
-and a third AI-governance boundary (AI NOE Risk Analyzer) alongside
-the existing AI Appeal Draft Assistant (Denials & Appeals) and AI
-Reconciliation Assistant (Payment Posting) — in all three cases AI may
-analyze/estimate/draft/recommend but a human must approve every
-compliance, financial, or appeal-submission action.
+Center, NOE Compliance & Revenue Protection Center, and new **Page 8:
+CAP Compliance & Financial Exposure Center**), a 52-entity Discovery
+Deliverable list (up from 48, adding CAP Exposure Record, CAP Forecast
+Scenario, CAP Agency Utilization Snapshot, and CAP Work Item), the
+existing 24-phase Implementation Plan (Phase 0-23), and a fourth
+AI-governance boundary (AI CAP Analysis) alongside the AI Appeal Draft
+Assistant (Denials & Appeals), AI Reconciliation Assistant (Payment
+Posting), and AI NOE Risk Analyzer (NOE Compliance) — in all four
+cases AI may analyze/estimate/forecast/recommend but a human must
+approve every compliance, financial, or appeal-submission action, and
+CAP Compliance further requires that AI never produce an official
+Medicare cap determination (only NGS PS&R Reports and official
+Medicare Cap Reports are authoritative for that purpose).
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -2370,17 +2500,20 @@ of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
   created, but scoped to the original 25-entity list (three pages).
-  Must be extended to cover the 23 additional entities introduced by
+  Must be extended to cover the 27 additional entities introduced by
   this document for Denials & Appeals, Payment Posting &
-  Reconciliation, and NOE Compliance & Revenue Protection (Denial,
-  Appeal, Appeal Version, Appeal Evidence Package, Appeal Lifecycle
-  Event, Eligibility Verification, Eligibility Sweep, Eligibility
-  Sweep Result, Coverage Change, Eligibility Work Item, Verification
-  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
-  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
-  Item, Payment Work Item, NOE Compliance Record, NOE Risk Assessment,
-  NOE Filing Event, NOE Work Item) before Phase 0 can be considered
-  complete for this document's full seven-page scope.
+  Reconciliation, NOE Compliance & Revenue Protection, and CAP
+  Compliance & Financial Exposure (Denial, Appeal, Appeal Version,
+  Appeal Evidence Package, Appeal Lifecycle Event, Eligibility
+  Verification, Eligibility Sweep, Eligibility Sweep Result, Coverage
+  Change, Eligibility Work Item, Verification Source, ERA or
+  Remittance, Payment Posting, Payment Match, Payment Variance,
+  Contractual Adjustment, Unapplied Cash, Secondary Billing Item,
+  Payment Work Item, NOE Compliance Record, NOE Risk Assessment, NOE
+  Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
+  Scenario, CAP Agency Utilization Snapshot, CAP Work Item) before
+  Phase 0 can be considered complete for this document's full
+  eight-page scope.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
   need a corresponding addendum once the expanded discovery matrix is
@@ -2463,6 +2596,17 @@ of this document's creation:**
   rules). Adds four entities to the Required Discovery Deliverable
   list: NOE Compliance Record, NOE Risk Assessment, NOE Filing Event,
   NOE Work Item.
+- **Adds Page 8: CAP Compliance & Financial Exposure Center** — an
+  operational monitoring/forecasting page for aggregate hospice cap
+  exposure, explicitly not an official CAP calculator (official
+  determinations remain dependent on NGS PS&R Reports and official
+  Medicare Cap Reports). Its AI CAP Analysis boundary follows the same
+  recommend-only pattern as the other three AI assistants, with an
+  additional explicit prohibition on AI producing official Medicare
+  cap liability determinations, compliance certifications, or refund
+  calculations. Adds four entities to the Required Discovery
+  Deliverable list: CAP Exposure Record, CAP Forecast Scenario, CAP
+  Agency Utilization Snapshot, CAP Work Item.
 
 ## Change Log
 
@@ -2470,3 +2614,4 @@ of this document's creation:**
 |---|---|
 | 2026-09-17 | Document created — Final Consolidated Implementation Handoff superseding all prior Biller Platform handoff documents. Full 24-section authority covering six locked pages (Billing Dashboard, Billing Readiness, Claims Management, Denials & Appeals, Eligibility Monitoring & Change Detection, and new Payment Posting & Reconciliation Center), Implementation Authority, Global Platform Architecture, Locked Branding, Billing Organization Naming, Core Mission, Clinical Boundary, Final Approved Navigation, Assignment-Based Access, DDE Architecture, Verify-First Requirement, a 44-entity Required Discovery Deliverable list, per-page missions/sections/acceptance-criteria for all six pages (including the new AI Appeal Draft Assistant and AI Reconciliation Assistant governance boundaries and the Authorization Failure Behavior / Unauthorized State Rule), Shared Data and Calculation Rules, Immutability and Correction, Audit Requirements, Required Technical Deliverables, a 24-phase Phased Implementation Plan (Phase 0-23), Test Requirements, Test Data Cleanup, Migration Rules, Unauthorized State Rule, Cross-Page Consistency, Completion Blockers, Implementation Verification Report specification, Final Locked Decisions, and Final Implementation Rule. Documentation only; no schema, migrations, tables, or models created. |
 | 2026-09-17 | Added Page 7: NOE Compliance & Revenue Protection Center (Executive NOE Compliance Overview, Active NOE Risk Screening Queue, AI NOE Risk Analyzer, Compliance Timeline / 5-Day Rule, NOE Action Item Work Queue, Agency Compliance Tracking, Filing Delay Root Cause Analysis, Auto-Generated Work Tasks, and NOE Compliance Acceptance Criteria). Updated Approved Pages to seven; added NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE Work Item to the Required Discovery Deliverable list (now 48 entities); added NOE Compliance to the Section 20 Unauthorized State Rule page list; added NOE Compliance & Revenue Protection Center and AI NOE Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-7 before Phase 0 can be considered complete for the full seven-page scope. |
+| 2026-09-17 | Added Page 8: CAP Compliance & Financial Exposure Center (Executive CAP Exposure Overview, CAP Accumulation & Limit Proximity Forecast, Multi-Agency CAP Exposure Matrix, AI Compliance Risk Projections, CAP Driver Analysis, Operational Scenario Modeling, CAP Work Queue, Historical CAP Reconciliation Logs, and CAP Acceptance Criteria). This page is explicitly an operational monitoring/forecasting tool only — it is not an official CAP calculator, and official CAP determinations remain dependent on NGS PS&R Reports, official Medicare Cap Reports, and other approved reimbursement sources; the AI CAP Analysis boundary explicitly forbids AI from determining official Medicare cap liability, certifying compliance, or producing official refund calculations. Updated Approved Pages to eight; added CAP Exposure Record, CAP Forecast Scenario, CAP Agency Utilization Snapshot, and CAP Work Item to the Required Discovery Deliverable list (now 52 entities); added CAP Compliance to the Section 20 Unauthorized State Rule page list; added CAP Compliance & Financial Exposure Center and AI CAP Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-8 before Phase 0 can be considered complete for the full eight-page scope. |
