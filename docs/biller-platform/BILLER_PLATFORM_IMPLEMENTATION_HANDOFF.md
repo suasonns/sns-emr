@@ -531,6 +531,11 @@ Proceed to GitHub implementation.
 
 ## Status
 
+**SUPERSEDED.** As of
+`docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`,
+this document is no longer the current Biller Platform implementation
+authority. It is retained as historical record only.
+
 APPROVED. Figma design phase complete for Billing Dashboard, Billing
 Readiness, and (newly added in this handoff) Claims Management —
 GitHub implementation is authorized for all three pages. This document

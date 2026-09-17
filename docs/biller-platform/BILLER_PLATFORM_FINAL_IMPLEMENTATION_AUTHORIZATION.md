@@ -682,6 +682,11 @@ No further redesign authorized.
 
 ## Status
 
+**SUPERSEDED.** As of
+`docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`,
+this document is no longer the current Biller Platform implementation
+authority. It is retained as historical record only.
+
 APPROVED. LOCKED. Figma Design Phase Complete. GitHub implementation
 authorized for five Biller Platform pages: Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals (new), and Eligibility

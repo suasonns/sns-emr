@@ -1788,6 +1788,11 @@ Future changes must be separately approved enhancements supported by verified op
 
 ## Status
 
+**SUPERSEDED.** As of
+`docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`,
+this document is no longer the current Biller Platform implementation
+authority. It is retained as historical record only.
+
 APPROVED. LOCKED. Figma Design Complete. Implementation Authorized.
 This is the final, consolidated authority for the Biller Platform's
 first three implementation pages (Billing Dashboard, Billing
