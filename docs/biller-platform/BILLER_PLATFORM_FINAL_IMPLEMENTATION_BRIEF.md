@@ -524,6 +524,11 @@ No additional architecture redesign authorized.
 
 ## Status
 
+**SUPERSEDED.** As of
+`docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`,
+this document is no longer the current Biller Platform implementation
+authority. It is retained as historical record only.
+
 APPROVED. LOCKED. Final Implementation Brief — this document is the
 single consolidated authority for Biller Platform branding, navigation,
 DDE architecture, assignment rules, and the required sections of the
