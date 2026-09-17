@@ -25,6 +25,7 @@ APPROVED PAGES
 6. Payment Posting & Reconciliation Center
 7. NOE Compliance & Revenue Protection Center
 8. CAP Compliance & Financial Exposure Center
+9. AR & Collections Intelligence Center
 
 No architectural redesign is authorized during implementation.
 
@@ -457,6 +458,9 @@ LOGICAL ENTITIES
 - CAP Forecast Scenario
 - CAP Agency Utilization Snapshot
 - CAP Work Item
+- AR Aging Snapshot
+- AR Recovery Work Item
+- AR Collections Activity
 - Regulatory Reference
 - Audit Event
 
@@ -1797,6 +1801,379 @@ CAP ACCEPTANCE CRITERIA
 □ Figma parity verified.
 
 ==================================================
+PAGE 9
+AR & COLLECTIONS INTELLIGENCE CENTER
+==================================================
+
+STATUS
+
+LOCKED
+FIGMA APPROVED
+IMPLEMENTATION AUTHORIZED
+
+==================================================
+MISSION
+==================================================
+
+Monitor outstanding accounts receivable, identify collection risk, prioritize recovery activities, reduce write-offs, protect timely filing opportunities, and improve collection performance.
+
+This page is not a traditional aging report.
+
+This page is an operational collections and revenue recovery center.
+
+It must answer:
+
+- What money is still outstanding?
+- What money is becoming dangerous?
+- Which accounts require action?
+- Which payer is causing delays?
+- Which agency is underperforming?
+- What should be worked first?
+- What is approaching write-off risk?
+- What is approaching timely filing risk?
+
+==================================================
+REQUIRED SECTIONS
+==================================================
+
+- Executive AR Summary
+- Recovery Prioritization Queue
+- Top Collection Risks
+- AI Collections Assistant
+- Payer Aging Analysis Matrix
+- Agency Performance & Aging Summary
+- Aging Work Queue
+- Historical Collections & Write-Off Ledger
+
+==================================================
+EXECUTIVE AR SUMMARY
+==================================================
+
+Display:
+
+- Total Outstanding
+- Claims Outstanding
+- Average Days Outstanding
+- 120+ Day Balance
+- Collection Rate
+- Write-Off Risk
+- MTD Recovered
+
+Requirements:
+
+- Values must be tenant scoped
+- Values must be agency scoped
+- Values must use authoritative AR data
+- Values must include an as-of timestamp
+
+==================================================
+RECOVERY PRIORITIZATION QUEUE
+==================================================
+
+Display:
+
+- Patient
+- Payer
+- Balance
+- Days Outstanding
+- Aging Bucket
+- Risk Level
+- Assigned Owner
+- Next Action
+
+Aging Buckets:
+
+- 0-30
+- 31-60
+- 61-90
+- 91-120
+- 120+
+
+Risk Levels:
+
+- Low
+- Medium
+- High
+- Critical
+
+Examples of Next Action:
+
+- Timely Filing Appeal
+- Payer Follow-Up
+- Verify Secondary Liability
+- Resubmit Corrected Claim
+- Follow-Up On Remittance
+
+Queue must sort by recoverability and urgency.
+
+==================================================
+TOP COLLECTION RISKS
+==================================================
+
+Display:
+
+- Patient
+- Balance
+- Days Outstanding
+- Deadline
+- Risk
+- Revenue Impact
+
+Examples:
+
+- Approaching Timely Filing Limit
+- Claim Aging Beyond 120 Days
+- Secondary Billing Delay
+- Outstanding Appeal
+- Missing Remittance
+
+==================================================
+AI COLLECTIONS ASSISTANT
+==================================================
+
+MISSION
+
+Analyze outstanding AR and identify collection opportunities.
+
+AI MAY:
+
+- Identify collection risks
+- Identify payer patterns
+- Detect timely filing risks
+- Recommend recovery actions
+- Recommend follow-up workflows
+- Draft collection work-item plans
+- Draft recovery strategies
+
+AI MAY NOT:
+
+- Write off balances
+- Modify receivables
+- Adjust accounts
+- Change financial values
+- Close AR accounts
+- Authorize write-offs
+- Perform collection actions
+
+Human approval remains mandatory.
+
+Replace automated language with recommendation language.
+
+Preferred actions:
+
+- Generate Collection Strategy
+- Generate Recovery Recommendations
+- Generate Collection Work Plan
+
+Avoid:
+
+- Auto Collection Execution
+- Automated Write-Offs
+
+==================================================
+PAYER AGING ANALYSIS MATRIX
+==================================================
+
+Display:
+
+- Payer
+- 0-30
+- 31-60
+- 61-90
+- 91-120
+- 120+
+- Total Outstanding
+- Average Days Outstanding
+
+Examples:
+
+- Medicare
+- Medicaid
+- BCBS
+- UnitedHealthcare
+- Humana
+
+Purpose:
+
+Identify payer-specific collection risk.
+
+==================================================
+AGENCY PERFORMANCE & AGING SUMMARY
+==================================================
+
+Display:
+
+- Agency
+- Outstanding AR
+- Outstanding Claims
+- Average Days Outstanding
+- 120+ Day Balance
+- Collection Percentage
+- Risk Trend
+
+Purpose:
+
+Identify collection performance issues by agency.
+
+==================================================
+AGING WORK QUEUE
+==================================================
+
+Required Categories:
+
+- Timely Filing Risk
+- Payer Follow-Up
+- Appeal Required
+- Write-Off Review
+- Secondary Billing
+- Collection Escalation
+
+Display:
+
+- Task
+- Owner
+- Balance
+- Aging
+- Priority
+- Impact
+
+==================================================
+HISTORICAL COLLECTIONS & WRITE-OFF LEDGER
+==================================================
+
+Display:
+
+- Month
+- Collected Amount
+- Outstanding Balance
+- Write-Off Amount
+- Collection Rate
+
+Purpose:
+
+Enable trend analysis.
+
+Preserve historical values.
+
+==================================================
+AUTO WORK ITEM CREATION
+==================================================
+
+Automatically generate work items for:
+
+- Timely Filing Risk
+- High-Risk AR
+- Appeal Required
+- Secondary Billing Follow-Up
+- Payer Follow-Up
+- Collection Escalation
+- Exceptional Aging Event
+- 120+ Day Recovery Review
+
+Generated items must appear in:
+
+- Aging Work Queue
+- Revenue Recovery Queues
+- Operational Billing Queues
+
+Generated work items must be:
+
+- Auditable
+- Tenant Scoped
+- Idempotent
+
+==================================================
+ASSIGNMENT MODEL
+==================================================
+
+Visibility follows assignment.
+
+Users may only see:
+
+- Assigned agencies
+- Assigned AR records
+- Authorized payer activity
+
+All collections data must remain tenant scoped.
+
+==================================================
+AUDIT REQUIREMENTS
+==================================================
+
+Audit:
+
+- Collection work-item creation
+- Collection assignment
+- Collection resolution
+- Timely filing escalation
+- Recovery workflow actions
+- Follow-up actions
+- Write-off reviews
+- Secondary billing follow-up
+- Export actions
+
+Preserve:
+
+- Actor
+- Timestamp
+- Reason
+- Previous State
+- New State
+- Correlation ID
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+□ AR aging analysis operational.
+□ Executive AR Summary operational.
+□ Recovery Prioritization Queue operational.
+□ Top Collection Risks operational.
+□ AI Collections Assistant operational.
+□ Payer Aging Matrix operational.
+□ Agency Aging Analysis operational.
+□ Aging Work Queue operational.
+□ Historical Collections Ledger operational.
+□ Auto-generated recovery work items operational.
+□ Tenant isolation enforced.
+□ Assignment visibility enforced.
+□ AI recommendations require human approval.
+□ No automatic write-offs.
+□ No automatic financial adjustments.
+□ Audit trail operational.
+□ Figma parity verified.
+
+==================================================
+IMPLEMENTATION NOTES
+==================================================
+
+This page is a collections intelligence center.
+
+Do not implement as a passive aging report.
+
+Prioritize:
+
+1. Recovery Prioritization Queue
+2. Timely Filing Risk Detection
+3. Aging Work Queue
+4. Payer Risk Analysis
+5. Agency Risk Analysis
+6. Automated Recovery Work Item Creation
+
+These workflows are more important than static reporting.
+
+==================================================
+FINAL STATUS
+==================================================
+
+AR & Collections Intelligence Center
+
+LOCKED
+IMPLEMENTATION AUTHORIZED
+
+No further redesign required.
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -2189,6 +2566,7 @@ This applies to:
 - Payment Posting
 - NOE Compliance
 - CAP Compliance
+- AR & Collections
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -2421,6 +2799,12 @@ LOCKED
 AI CAP Risk Governance:
 LOCKED
 
+AR & Collections Intelligence Center:
+LOCKED
+
+AI Collections Governance:
+LOCKED
+
 Visits & Notes Removal:
 LOCKED
 
@@ -2474,22 +2858,23 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **eight locked pages** (Billing Dashboard, Billing
+Scope now spans **nine locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
 Monitoring & Change Detection, Payment Posting & Reconciliation
-Center, NOE Compliance & Revenue Protection Center, and new **Page 8:
-CAP Compliance & Financial Exposure Center**), a 52-entity Discovery
-Deliverable list (up from 48, adding CAP Exposure Record, CAP Forecast
-Scenario, CAP Agency Utilization Snapshot, and CAP Work Item), the
-existing 24-phase Implementation Plan (Phase 0-23), and a fourth
-AI-governance boundary (AI CAP Analysis) alongside the AI Appeal Draft
-Assistant (Denials & Appeals), AI Reconciliation Assistant (Payment
-Posting), and AI NOE Risk Analyzer (NOE Compliance) — in all four
-cases AI may analyze/estimate/forecast/recommend but a human must
-approve every compliance, financial, or appeal-submission action, and
-CAP Compliance further requires that AI never produce an official
-Medicare cap determination (only NGS PS&R Reports and official
-Medicare Cap Reports are authoritative for that purpose).
+Center, NOE Compliance & Revenue Protection Center, CAP Compliance &
+Financial Exposure Center, and new **Page 9: AR & Collections
+Intelligence Center**), a 55-entity Discovery Deliverable list (up
+from 52, adding AR Aging Snapshot, AR Recovery Work Item, and AR
+Collections Activity), the existing 24-phase Implementation Plan
+(Phase 0-23), and a fifth AI-governance boundary (AI Collections
+Assistant) alongside the AI Appeal Draft Assistant (Denials &
+Appeals), AI Reconciliation Assistant (Payment Posting), AI NOE Risk
+Analyzer (NOE Compliance), and AI CAP Analysis (CAP Compliance) — in
+all five cases AI may analyze/estimate/forecast/recommend but a human
+must approve every compliance, financial, collections, or
+appeal-submission action; AI Collections Assistant is additionally and
+explicitly barred from writing off balances, adjusting receivables, or
+modifying patient balances.
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -2500,20 +2885,21 @@ of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
   created, but scoped to the original 25-entity list (three pages).
-  Must be extended to cover the 27 additional entities introduced by
+  Must be extended to cover the 30 additional entities introduced by
   this document for Denials & Appeals, Payment Posting &
-  Reconciliation, NOE Compliance & Revenue Protection, and CAP
-  Compliance & Financial Exposure (Denial, Appeal, Appeal Version,
-  Appeal Evidence Package, Appeal Lifecycle Event, Eligibility
-  Verification, Eligibility Sweep, Eligibility Sweep Result, Coverage
-  Change, Eligibility Work Item, Verification Source, ERA or
-  Remittance, Payment Posting, Payment Match, Payment Variance,
-  Contractual Adjustment, Unapplied Cash, Secondary Billing Item,
-  Payment Work Item, NOE Compliance Record, NOE Risk Assessment, NOE
-  Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
-  Scenario, CAP Agency Utilization Snapshot, CAP Work Item) before
+  Reconciliation, NOE Compliance & Revenue Protection, CAP Compliance
+  & Financial Exposure, and AR & Collections Intelligence (Denial,
+  Appeal, Appeal Version, Appeal Evidence Package, Appeal Lifecycle
+  Event, Eligibility Verification, Eligibility Sweep, Eligibility
+  Sweep Result, Coverage Change, Eligibility Work Item, Verification
+  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
+  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
+  Item, Payment Work Item, NOE Compliance Record, NOE Risk Assessment,
+  NOE Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
+  Scenario, CAP Agency Utilization Snapshot, CAP Work Item, AR Aging
+  Snapshot, AR Recovery Work Item, AR Collections Activity) before
   Phase 0 can be considered complete for this document's full
-  eight-page scope.
+  nine-page scope.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
   need a corresponding addendum once the expanded discovery matrix is
@@ -2607,6 +2993,17 @@ of this document's creation:**
   calculations. Adds four entities to the Required Discovery
   Deliverable list: CAP Exposure Record, CAP Forecast Scenario, CAP
   Agency Utilization Snapshot, CAP Work Item.
+- **Adds Page 9: AR & Collections Intelligence Center** — an
+  operational collections and revenue-recovery center (explicitly not
+  a passive/traditional aging report), prioritizing the Recovery
+  Prioritization Queue, timely-filing risk detection, and automated
+  recovery-work-item creation over static reporting. Its AI
+  Collections Assistant follows the same recommend-only pattern as the
+  other four AI assistants (draft-only recovery strategies and
+  work-item plans; no automatic write-offs, receivable adjustments, or
+  collection actions). Adds three entities to the Required Discovery
+  Deliverable list: AR Aging Snapshot, AR Recovery Work Item, AR
+  Collections Activity.
 
 ## Change Log
 
@@ -2615,3 +3012,4 @@ of this document's creation:**
 | 2026-09-17 | Document created — Final Consolidated Implementation Handoff superseding all prior Biller Platform handoff documents. Full 24-section authority covering six locked pages (Billing Dashboard, Billing Readiness, Claims Management, Denials & Appeals, Eligibility Monitoring & Change Detection, and new Payment Posting & Reconciliation Center), Implementation Authority, Global Platform Architecture, Locked Branding, Billing Organization Naming, Core Mission, Clinical Boundary, Final Approved Navigation, Assignment-Based Access, DDE Architecture, Verify-First Requirement, a 44-entity Required Discovery Deliverable list, per-page missions/sections/acceptance-criteria for all six pages (including the new AI Appeal Draft Assistant and AI Reconciliation Assistant governance boundaries and the Authorization Failure Behavior / Unauthorized State Rule), Shared Data and Calculation Rules, Immutability and Correction, Audit Requirements, Required Technical Deliverables, a 24-phase Phased Implementation Plan (Phase 0-23), Test Requirements, Test Data Cleanup, Migration Rules, Unauthorized State Rule, Cross-Page Consistency, Completion Blockers, Implementation Verification Report specification, Final Locked Decisions, and Final Implementation Rule. Documentation only; no schema, migrations, tables, or models created. |
 | 2026-09-17 | Added Page 7: NOE Compliance & Revenue Protection Center (Executive NOE Compliance Overview, Active NOE Risk Screening Queue, AI NOE Risk Analyzer, Compliance Timeline / 5-Day Rule, NOE Action Item Work Queue, Agency Compliance Tracking, Filing Delay Root Cause Analysis, Auto-Generated Work Tasks, and NOE Compliance Acceptance Criteria). Updated Approved Pages to seven; added NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE Work Item to the Required Discovery Deliverable list (now 48 entities); added NOE Compliance to the Section 20 Unauthorized State Rule page list; added NOE Compliance & Revenue Protection Center and AI NOE Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-7 before Phase 0 can be considered complete for the full seven-page scope. |
 | 2026-09-17 | Added Page 8: CAP Compliance & Financial Exposure Center (Executive CAP Exposure Overview, CAP Accumulation & Limit Proximity Forecast, Multi-Agency CAP Exposure Matrix, AI Compliance Risk Projections, CAP Driver Analysis, Operational Scenario Modeling, CAP Work Queue, Historical CAP Reconciliation Logs, and CAP Acceptance Criteria). This page is explicitly an operational monitoring/forecasting tool only — it is not an official CAP calculator, and official CAP determinations remain dependent on NGS PS&R Reports, official Medicare Cap Reports, and other approved reimbursement sources; the AI CAP Analysis boundary explicitly forbids AI from determining official Medicare cap liability, certifying compliance, or producing official refund calculations. Updated Approved Pages to eight; added CAP Exposure Record, CAP Forecast Scenario, CAP Agency Utilization Snapshot, and CAP Work Item to the Required Discovery Deliverable list (now 52 entities); added CAP Compliance to the Section 20 Unauthorized State Rule page list; added CAP Compliance & Financial Exposure Center and AI CAP Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-8 before Phase 0 can be considered complete for the full eight-page scope. |
+| 2026-09-17 | Added Page 9: AR & Collections Intelligence Center (Executive AR Summary, Recovery Prioritization Queue, Top Collection Risks, AI Collections Assistant, Payer Aging Analysis Matrix, Agency Performance & Aging Summary, Aging Work Queue, Historical Collections & Write-Off Ledger, Auto Work Item Creation, Assignment Model, Audit Requirements, Acceptance Criteria, Implementation Notes, and Final Status). Explicitly framed as an operational collections and revenue recovery center, not a passive/traditional aging report — Implementation Notes direct that Recovery Prioritization Queue, Timely Filing Risk Detection, Aging Work Queue, Payer/Agency Risk Analysis, and Automated Recovery Work Item Creation take priority over static reporting. AI Collections Assistant follows the same recommend-only governance pattern as the other four AI assistants (may identify risks/patterns and draft recovery strategies and work-item plans; may not write off balances, modify receivables/accounts, change financial values, or perform collection actions) and the specification directs replacing automated-sounding action labels (e.g. "Auto Collection Execution", "Automated Write-Offs") with recommendation language (e.g. "Generate Collection Strategy", "Generate Recovery Recommendations"). Updated Approved Pages to nine; added AR Aging Snapshot, AR Recovery Work Item, and AR Collections Activity to the Required Discovery Deliverable list (now 55 entities); added AR & Collections to the Section 20 Unauthorized State Rule page list; added AR & Collections Intelligence Center and AI Collections Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-9 before Phase 0 can be considered complete for the full nine-page scope. |
