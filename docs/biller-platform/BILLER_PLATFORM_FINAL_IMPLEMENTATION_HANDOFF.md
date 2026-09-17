@@ -23,6 +23,7 @@ APPROVED PAGES
 4. Denials & Appeals
 5. Eligibility Monitoring & Change Detection
 6. Payment Posting & Reconciliation Center
+7. NOE Compliance & Revenue Protection Center
 
 No architectural redesign is authorized during implementation.
 
@@ -447,6 +448,10 @@ LOGICAL ENTITIES
 - Unapplied Cash
 - Secondary Billing Item
 - Payment Work Item
+- NOE Compliance Record
+- NOE Risk Assessment
+- NOE Filing Event
+- NOE Work Item
 - Regulatory Reference
 - Audit Event
 
@@ -1571,6 +1576,108 @@ PAYMENT POSTING ACCEPTANCE CRITERIA
 □ UI matches approved Figma.
 
 ==================================================
+PAGE 7
+NOE COMPLIANCE & REVENUE PROTECTION CENTER
+==================================================
+
+STATUS
+
+LOCKED
+
+MISSION
+
+Prevent non-reimbursable hospice days by proactively monitoring NOE deadlines, filing compliance, DDE submission status, and operational risk.
+
+REQUIRED SECTIONS
+
+- Executive NOE Compliance Overview
+- Active NOE Risk Screening Queue
+- AI NOE Risk Analyzer
+- Compliance Timeline (5-Day Rule)
+- NOE Action Item Work Queue
+- Agency Compliance Tracking
+- Filing Delay Root Cause Analysis
+- Auto-Generated Work Tasks
+
+EXECUTIVE METRICS
+
+- Active NOEs
+- Filed On Time
+- At Risk (< 3 Days)
+- Average Days Remaining
+- Late / Missed
+- Revenue At Risk
+- Compliance Rate
+
+NOE RISK QUEUE
+
+Display:
+
+- Patient
+- Election Date
+- Age
+- Days Remaining
+- Risk Level
+- Revenue At Risk
+- Assigned Biller
+- Pipeline Status
+
+AI NOE RISK ANALYZER
+
+AI may:
+
+- Analyze filing risk
+- Estimate revenue exposure
+- Identify likely causes
+- Create correction plans
+- Create work items
+- Recommend escalation paths
+
+AI may NOT:
+
+- Submit NOEs
+- Bypass validation
+- Override signatures
+- Override DDE rules
+- Auto-complete compliance actions
+
+Human review remains required.
+
+AUTO WORK ITEM CREATION
+
+Generate work items for:
+
+- NOE Due Within 72 Hours
+- NOE Due Within 48 Hours
+- NOE Due Within 24 Hours
+- Missing Physician Signature
+- Missing Clinical Documentation
+- DDE Submission Failure
+- Election Statement Discrepancy
+
+WORK QUEUES
+
+Route generated items into:
+
+- NOE Work Queue
+- Billing Readiness
+- Claims Validation
+- Operational Billing Queues
+
+NOE COMPLIANCE ACCEPTANCE CRITERIA
+
+□ NOE risk monitoring operational.
+□ 5-Day Rule timeline operational.
+□ Revenue-at-risk calculation operational.
+□ Auto-generated NOE work items operational.
+□ Agency compliance tracking operational.
+□ Filing delay root cause analysis operational.
+□ DDE submission monitoring operational.
+□ AI recommendations require human approval.
+□ No automatic compliance submission by AI.
+□ Figma parity verified.
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -1961,6 +2068,7 @@ This applies to:
 - Denials & Appeals
 - Eligibility
 - Payment Posting
+- NOE Compliance
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -2148,6 +2256,9 @@ LOCKED
 Payment Posting & Reconciliation Center:
 LOCKED
 
+NOE Compliance & Revenue Protection Center:
+LOCKED
+
 Claim Validation Intelligence:
 LOCKED
 
@@ -2176,6 +2287,12 @@ AI Reconciliation Governance:
 LOCKED
 
 Payment Authorization Replacement State:
+LOCKED
+
+NOE Compliance Monitoring:
+LOCKED
+
+AI NOE Risk Governance:
 LOCKED
 
 Visits & Notes Removal:
@@ -2231,15 +2348,18 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **six locked pages** (Billing Dashboard, Billing
+Scope now spans **seven locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
-Monitoring & Change Detection, and new **Payment Posting &
-Reconciliation Center**), a 44-entity Discovery Deliverable list (up
-from 25), a 24-phase Implementation Plan (Phase 0-23, up from 16), and
-new AI-governance boundaries for both appeal drafting (Denials &
-Appeals) and payment reconciliation recommendations (Payment Posting)
-— in both cases AI may analyze/draft/recommend but a human must
-approve every financial or appeal-submission action.
+Monitoring & Change Detection, Payment Posting & Reconciliation
+Center, and new **Page 7: NOE Compliance & Revenue Protection
+Center**), a 48-entity Discovery Deliverable list (up from 44, adding
+NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE
+Work Item), the existing 24-phase Implementation Plan (Phase 0-23),
+and a third AI-governance boundary (AI NOE Risk Analyzer) alongside
+the existing AI Appeal Draft Assistant (Denials & Appeals) and AI
+Reconciliation Assistant (Payment Posting) — in all three cases AI may
+analyze/estimate/draft/recommend but a human must approve every
+compliance, financial, or appeal-submission action.
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -2249,16 +2369,18 @@ service, or UI work may begin until repository discovery is complete.
 of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
-  created, but scoped to the prior 25-entity list (three pages). Must
-  be extended to cover the 19 additional entities introduced by this
-  document for Denials & Appeals and Payment Posting & Reconciliation
-  (Denial, Appeal, Appeal Version, Appeal Evidence Package, Appeal
-  Lifecycle Event, Eligibility Verification, Eligibility Sweep,
-  Eligibility Sweep Result, Coverage Change, Eligibility Work Item,
-  Verification Source, ERA or Remittance, Payment Posting, Payment
-  Match, Payment Variance, Contractual Adjustment, Unapplied Cash,
-  Secondary Billing Item, Payment Work Item) before Phase 0 can be
-  considered complete for this document's full six-page scope.
+  created, but scoped to the original 25-entity list (three pages).
+  Must be extended to cover the 23 additional entities introduced by
+  this document for Denials & Appeals, Payment Posting &
+  Reconciliation, and NOE Compliance & Revenue Protection (Denial,
+  Appeal, Appeal Version, Appeal Evidence Package, Appeal Lifecycle
+  Event, Eligibility Verification, Eligibility Sweep, Eligibility
+  Sweep Result, Coverage Change, Eligibility Work Item, Verification
+  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
+  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
+  Item, Payment Work Item, NOE Compliance Record, NOE Risk Assessment,
+  NOE Filing Event, NOE Work Item) before Phase 0 can be considered
+  complete for this document's full seven-page scope.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
   need a corresponding addendum once the expanded discovery matrix is
@@ -2326,10 +2448,25 @@ of this document's creation:**
   and the 18-phase breakdown in
   `BILLER_PLATFORM_IMPLEMENTATION_TASK_BREAKDOWN.md`, adding dedicated
   phases for Denials and Appeals (11-12), Eligibility Monitoring
-  (13-15), and Payment Posting (16-19).
+  (13-15), and Payment Posting (16-19). NOE Compliance & Revenue
+  Protection Center work is scoped within existing phases (NOE
+  entities and UI fall under the Claims/Readiness-adjacent phases;
+  this document does not introduce dedicated NOE phase numbers, and
+  that gap should be resolved in the next Implementation Task
+  Breakdown addendum).
+- **Adds Page 7: NOE Compliance & Revenue Protection Center** — a
+  proactive NOE-deadline/filing-compliance monitoring page with an AI
+  NOE Risk Analyzer governed under the same recommend-only pattern as
+  the AI Appeal Draft Assistant and AI Reconciliation Assistant (AI
+  may analyze risk, estimate exposure, and create work items; AI may
+  not submit NOEs, bypass validation, or override signatures/DDE
+  rules). Adds four entities to the Required Discovery Deliverable
+  list: NOE Compliance Record, NOE Risk Assessment, NOE Filing Event,
+  NOE Work Item.
 
 ## Change Log
 
 | Date | Change |
 |---|---|
 | 2026-09-17 | Document created — Final Consolidated Implementation Handoff superseding all prior Biller Platform handoff documents. Full 24-section authority covering six locked pages (Billing Dashboard, Billing Readiness, Claims Management, Denials & Appeals, Eligibility Monitoring & Change Detection, and new Payment Posting & Reconciliation Center), Implementation Authority, Global Platform Architecture, Locked Branding, Billing Organization Naming, Core Mission, Clinical Boundary, Final Approved Navigation, Assignment-Based Access, DDE Architecture, Verify-First Requirement, a 44-entity Required Discovery Deliverable list, per-page missions/sections/acceptance-criteria for all six pages (including the new AI Appeal Draft Assistant and AI Reconciliation Assistant governance boundaries and the Authorization Failure Behavior / Unauthorized State Rule), Shared Data and Calculation Rules, Immutability and Correction, Audit Requirements, Required Technical Deliverables, a 24-phase Phased Implementation Plan (Phase 0-23), Test Requirements, Test Data Cleanup, Migration Rules, Unauthorized State Rule, Cross-Page Consistency, Completion Blockers, Implementation Verification Report specification, Final Locked Decisions, and Final Implementation Rule. Documentation only; no schema, migrations, tables, or models created. |
+| 2026-09-17 | Added Page 7: NOE Compliance & Revenue Protection Center (Executive NOE Compliance Overview, Active NOE Risk Screening Queue, AI NOE Risk Analyzer, Compliance Timeline / 5-Day Rule, NOE Action Item Work Queue, Agency Compliance Tracking, Filing Delay Root Cause Analysis, Auto-Generated Work Tasks, and NOE Compliance Acceptance Criteria). Updated Approved Pages to seven; added NOE Compliance Record, NOE Risk Assessment, NOE Filing Event, and NOE Work Item to the Required Discovery Deliverable list (now 48 entities); added NOE Compliance to the Section 20 Unauthorized State Rule page list; added NOE Compliance & Revenue Protection Center and AI NOE Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-7 before Phase 0 can be considered complete for the full seven-page scope. |
