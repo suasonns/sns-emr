@@ -608,6 +608,38 @@ AI Operations Center
 
 Analytics
 
+--------------------------------------------------
+
+Also REMOVE:
+
+Visits & Notes
+
+POC & Certifications
+
+Reason:
+
+These are clinical workflow monitoring pages.
+
+The Biller Platform should consume clinical status outcomes,
+
+not provide direct navigation into clinical documentation workflows.
+
+Surface certification deficiencies, missing signatures,
+
+missing documentation, and clinical blockers through:
+
+Billing Readiness
+
+Revenue Unlock Priorities
+
+Assignment Accountability
+
+Revenue At Risk
+
+Work Queue
+
+Do not create standalone clinical navigation within the Biller Platform.
+
 ==================================================
 
 SUCCESS CRITERIA
@@ -746,3 +778,4 @@ section only when explicitly instructed to build it.
 |---|---|
 | 2026-09-16 | Document created — Tenant Biller Dashboard approved design baseline (partial): Architecture Principle, Mission, Assignment-Based Visibility, Owner Platform Relationship, and Sections 1-7 (Executive Revenue Summary, Billing Priorities Center, Today's Biller Work Queue, Revenue Lifecycle Pipeline, Revenue At Risk Center, Denial Recovery Center, Collections Command Center). Section 8 onward pending. |
 | 2026-09-16 | Completed the specification — added Section 8 (Cash Forecast), Section 9 (Assigned Visibility Panel), Section 10 (System Activity Feed), Keep Existing Sidebar (operational billing functions to retain), Future AI Billing Intelligence (deferred), an explicit Remove list (Agency Health Scores, Platform Revenue, Tenant Subscription Management, etc. — reserved for Owner Platform pages), Success Criteria, Section 11 (Authorized Scope / HIPAA minimum-necessary-access panel), and Final Approval. Document now complete end to end. |
+| 2026-09-16 | Extended the Remove list with a sidebar navigation correction: Visits & Notes and POC & Certifications must also be removed from the Biller Platform, since they are clinical workflow monitoring pages — the Biller Platform must consume clinical status outcomes (via Billing Readiness, Revenue Unlock Priorities, Assignment Accountability, Revenue At Risk, and Work Queue) rather than provide standalone navigation into clinical documentation workflows. Note: the current frontend `/billing` route still exposes `visits-notes` and `poc-certification` child routes (see `BILLER_PLATFORM_DISCOVERY_REPORT.md`); this is a documentation-only correction and does not itself remove those routes — implementation requires an explicit, separate task. |
