@@ -1,9 +1,9 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: DISCOVERY APPROVED — SCHEMA DESIGN REVIEW AUTHORIZED (MODULE-
+STATUS: SCHEMA DESIGN APPROVED — MIGRATION DESIGN DOCUMENTED (MODULE-
 LEVEL + AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-
-DESIGN ADDENDA) — MIGRATION DESIGN, API DESIGN, AND UI IMPLEMENTATION
-REMAIN BLOCKED
+DESIGN + MIGRATION-DESIGN ADDENDA) — MIGRATION FILE CREATION, API
+DESIGN, AND UI IMPLEMENTATION REMAIN BLOCKED
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -2265,6 +2265,263 @@ authorize schema, migration, API, or UI work.
 
 ---
 
+## SECTION 25 — MIGRATION DESIGN DOCUMENTATION
+
+STATUS: MIGRATION DESIGN DOCUMENTED — DOCUMENTATION ONLY. NO SCHEMA,
+MIGRATION FILE, API, OR UI HAS BEEN CREATED. IMPLEMENTATION REMAINS
+BLOCKED.
+
+Per Migration Design Review authorization (following approval of
+Option B in Section 24), this section documents each proposed
+migration in forward-only, reviewable detail: column list, types,
+constraints, indexes, and sequencing/dependency order. **No Alembic
+migration file, model class, or table has been created.** This is a
+paper design for review, consistent with every prior section of this
+report.
+
+### 25.1 Migration Sequencing and Dependency Order
+
+Migrations must be applied in this order, since each depends on the
+prior step's table(s) existing:
+
+1. `billing_teams` (depends only on existing `billing_provider_organizations`)
+2. `billing_team_memberships` (depends on `billing_teams`, existing `users`)
+3. `billing_team_supervisor_assignments` (depends on `billing_teams`, existing `users`)
+4. `billing_agency_team_assignments` (depends on `billing_teams`, existing `billing_provider_agency_assignments`, existing `tenants`)
+5. `billing_agency_coverage_assignments` (depends on existing `billing_provider_agency_assignments`, existing `users`, existing `tenants`)
+6. `billing_agency_coverage_audit_events` (depends on existing `billing_provider_organizations`, existing `tenants`, existing `users` — does not depend on steps 1-5's tables via FK, only conceptually references their `entity_type`/`entity_id`)
+7. `billing_agency_coverage_export_events` (depends on existing `tenants`, existing `users`)
+8. `billing_administrative_reporting_lines` (Option B, approved in Section 24 — depends on existing `billing_provider_organization_memberships`)
+9. `claim_category` column addition on existing `claims` table (Section 20.9 — independent of steps 1-8, may be sequenced at any point; no FK dependency on any new table)
+
+Each step above is proposed as its **own** forward-only Alembic
+migration file (never combined into one large migration), consistent
+with the "Use reviewed, forward-only migrations only" requirement
+from the original Verify-First Requirement, and with "Do not use
+`alembic stamp`. Do not rewrite historical migrations."
+
+### 25.2 Migration 1 — `billing_teams`
+
+- **Columns:** `id` (UUID PK, `server_default=gen_random_uuid()`,
+  matching existing convention), `billing_provider_organization_id`
+  (UUID, NOT NULL, FK), `name` (String(255), NOT NULL), `status`
+  (String, NOT NULL, `CheckConstraint IN ('ACTIVE','INACTIVE')` — a
+  team itself is not effective-dated the way assignments are; it
+  either exists in an active or retired state), `created_at`,
+  `updated_at` (both `TIMESTAMPTZ`, server defaults), `updated_by`
+  (UUID, nullable, FK → `users.id` SET NULL).
+- **Constraints:** FK `billing_provider_organization_id` →
+  `billing_provider_organizations.id` (CASCADE).
+- **Indexes:** `(billing_provider_organization_id, status)` — per
+  Section 21.4.
+- **Downgrade:** drop table (no data-loss concern pre-launch; if
+  applied post-launch, downgrade must be blocked by a data-presence
+  check per standard team convention, not specified further here).
+
+### 25.3 Migration 2 — `billing_team_memberships`
+
+- **Columns:** `id` (UUID PK), `billing_team_id` (UUID, NOT NULL, FK),
+  `user_id` (UUID, NOT NULL, FK), `role_on_team` (String, NOT NULL,
+  `CheckConstraint IN ('LEADER','MEMBER')`), `status` (String, NOT
+  NULL, `CheckConstraint IN ('ACTIVE','INACTIVE','SUSPENDED')`),
+  `effective_start_at` (TIMESTAMPTZ, NOT NULL), `effective_end_at`
+  (TIMESTAMPTZ, nullable, `CheckConstraint effective_end_at IS NULL OR
+  effective_end_at >= effective_start_at`), `created_at`,
+  `updated_at`, `updated_by`.
+- **Constraints:** FKs per Section 21.4 (both CASCADE).
+- **Indexes:** `(billing_team_id, status)`; `(user_id, status)`;
+  partial unique `(billing_team_id) WHERE status = 'ACTIVE' AND
+  role_on_team = 'LEADER'`.
+- **Downgrade:** drop table.
+
+### 25.4 Migration 3 — `billing_team_supervisor_assignments`
+
+- **Columns:** `id` (UUID PK), `billing_team_id` (UUID, NOT NULL, FK),
+  `user_id` (UUID, NOT NULL, FK), `status` (String, NOT NULL,
+  `CheckConstraint IN ('ACTIVE','INACTIVE','SUSPENDED')`),
+  `effective_start_at`, `effective_end_at` (same pattern as 25.3),
+  `created_at`, `updated_at`, `updated_by`.
+- **Constraints:** FKs per Section 21.4 (both CASCADE).
+- **Indexes:** `(billing_team_id, status)`; `(user_id, status)`;
+  partial unique `(billing_team_id) WHERE status = 'ACTIVE'`.
+- **Downgrade:** drop table.
+
+### 25.5 Migration 4 — `billing_agency_team_assignments`
+
+- **Columns:** `id` (UUID PK), `agency_assignment_id` (UUID, NOT NULL,
+  FK), `billing_team_id` (UUID, NOT NULL, FK), `tenant_id` (UUID, NOT
+  NULL, FK, denormalized per Section 21.4), `status` (String, NOT
+  NULL, `CheckConstraint IN ('ACTIVE','INACTIVE','SUSPENDED')`),
+  `effective_start_at`, `effective_end_at`, `created_at`,
+  `updated_at`, `updated_by`.
+- **Constraints:** `agency_assignment_id` → CASCADE;
+  `billing_team_id` → RESTRICT (per Section 21.4, prevents deleting a
+  team still covering an agency); `tenant_id` → CASCADE.
+- **Indexes:** `(agency_assignment_id, status)`; `(billing_team_id,
+  status)`; partial unique `(agency_assignment_id) WHERE status =
+  'ACTIVE'`.
+- **Downgrade:** drop table.
+
+### 25.6 Migration 5 — `billing_agency_coverage_assignments`
+
+- **Columns:** `id` (UUID PK), `agency_assignment_id` (UUID, NOT NULL,
+  FK), `tenant_id` (UUID, NOT NULL, FK, denormalized), `coverage_role`
+  (String, NOT NULL, `CheckConstraint IN ('MEDICARE_BILLER',
+  'MEDICAID_MANAGED_CARE_BILLER','BACKUP','SPECIALIST')` — Section
+  21.2), `backs_up_role` (String, nullable, `CheckConstraint
+  backs_up_role IS NULL OR backs_up_role IN ('MEDICARE_BILLER',
+  'MEDICAID_MANAGED_CARE_BILLER')` — Section 22.1, populated only when
+  `coverage_role = 'BACKUP'`), `specialist_type` (String, nullable,
+  populated only when `coverage_role = 'SPECIALIST'` — exact allowed
+  values not yet locked, open per Section 21.2), `user_id` (UUID, NOT
+  NULL, FK), `status` (String, NOT NULL, `CheckConstraint IN
+  ('ACTIVE','INACTIVE','SUSPENDED')`), `effective_start_at`,
+  `effective_end_at`, `created_at`, `updated_at`, `updated_by`.
+- **Additional CHECK constraints (discriminator integrity, new detail
+  not previously spelled out at DDL level):**
+  - `CheckConstraint (coverage_role != 'BACKUP') OR (backs_up_role IS
+    NOT NULL)` — a `BACKUP` row must always declare its scope (Section
+    22.1).
+  - `CheckConstraint (coverage_role = 'BACKUP') OR (backs_up_role IS
+    NULL)` — `backs_up_role` must be NULL for any non-`BACKUP` row,
+    preventing accidental population on Medicare/Medi-Cal/Specialist
+    rows.
+  - `CheckConstraint (coverage_role = 'SPECIALIST') OR
+    (specialist_type IS NULL)` — mirrors the above for
+    `specialist_type`.
+- **Constraints:** `agency_assignment_id` → CASCADE; `user_id` →
+  RESTRICT (Section 21.4); `tenant_id` → CASCADE.
+- **Indexes:** `(agency_assignment_id, coverage_role, status)`;
+  `(user_id, status)`; partial unique `(agency_assignment_id,
+  coverage_role) WHERE status = 'ACTIVE' AND coverage_role IN
+  ('MEDICARE_BILLER','MEDICAID_MANAGED_CARE_BILLER')`; partial unique
+  `(agency_assignment_id, backs_up_role) WHERE status = 'ACTIVE' AND
+  coverage_role = 'BACKUP'` — all per Section 21.4/22.3.
+- **Downgrade:** drop table.
+
+### 25.7 Migration 6 — `billing_agency_coverage_audit_events`
+
+- **Columns (modeled on `FacilityPaymentAuditLog` per Section 21.9):**
+  `id` (UUID PK), `billing_provider_organization_id` (UUID, NOT NULL,
+  FK), `tenant_id` (UUID, nullable — some events, e.g. team-level
+  changes per Section 23.7, are not agency-scoped, FK), `entity_type`
+  (String, NOT NULL, e.g. `'AGENCY_COVERAGE_ASSIGNMENT'`,
+  `'TEAM_MEMBERSHIP'`, `'TEAM_SUPERVISOR_ASSIGNMENT'`,
+  `'AGENCY_TEAM_ASSIGNMENT'`, `'ADMINISTRATIVE_REPORTING_LINE'` —
+  extended per Section 23.7's note that this table's scope broadens
+  beyond agency-coverage-only), `entity_id` (UUID, NOT NULL), `action`
+  (String, NOT NULL, e.g. `'CREATED'`, `'ENDED'`, `'REPLACED'`),
+  `actor_user_id` (UUID, NOT NULL, FK), `actor_role` (String,
+  nullable), `previous_state` (JSONB, nullable), `new_state` (JSONB,
+  nullable), `reason` (Text, nullable), `correlation_id` (UUID,
+  nullable, matches `FacilityPaymentAuditLog` convention), `created_at`
+  (TIMESTAMPTZ, NOT NULL, server default).
+- **Constraints:** `billing_provider_organization_id` → CASCADE;
+  `tenant_id` → CASCADE; `actor_user_id` → RESTRICT (never delete a
+  user with historical audit events attributed to them).
+- **Indexes:** `(tenant_id, entity_type, entity_id)`;
+  `(billing_provider_organization_id, created_at)` — per Section 21.4.
+- **Downgrade:** drop table (append-only table; a downgrade after
+  real usage would be a genuine data-loss event and should require
+  explicit sign-off outside this design document).
+
+### 25.8 Migration 7 — `billing_agency_coverage_export_events`
+
+- **Columns (modeled on `ClaimExportLog` per Section 21.10):** `id`
+  (UUID PK), `tenant_id` (UUID, NOT NULL, FK), `billing_provider_organization_id`
+  (UUID, NOT NULL, FK), `export_type` (String, NOT NULL, e.g.
+  `'AGENCY_COVERAGE_MATRIX'`, `'EXPANDED_AGENCY_DETAIL'` — per Section
+  20.6's reuse note), `exported_by_user_id` (UUID, NOT NULL, FK),
+  `filters_applied` (JSONB, nullable), `row_count` (Integer, nullable),
+  `created_at` (TIMESTAMPTZ, NOT NULL, server default).
+- **Constraints:** `tenant_id` → CASCADE;
+  `billing_provider_organization_id` → CASCADE;
+  `exported_by_user_id` → RESTRICT.
+- **Indexes:** `(tenant_id, created_at)`; `(exported_by_user_id,
+  created_at)` — per Section 21.4.
+- **Downgrade:** drop table (same append-only caveat as 25.7).
+
+### 25.9 Migration 8 — `billing_administrative_reporting_lines` (Option B, approved)
+
+- **Columns:** `id` (UUID PK), `superior_membership_id` (UUID, NOT
+  NULL, FK → `billing_provider_organization_memberships.id`),
+  `subordinate_membership_id` (UUID, NOT NULL, FK → same table),
+  `level_label` (String, NOT NULL, `CheckConstraint IN ('PRESIDENT',
+  'BILLING_MANAGER','SUPERVISOR','TEAM_LEADER','STAFF')` — the
+  subordinate's position, per Section 24.2), `status` (String, NOT
+  NULL, `CheckConstraint IN ('ACTIVE','INACTIVE','SUSPENDED')`),
+  `effective_start_at`, `effective_end_at`, `created_at`,
+  `updated_at`, `updated_by`.
+- **Additional CHECK constraint:** `CheckConstraint
+  superior_membership_id != subordinate_membership_id` — a row can
+  never name a person as their own superior (does not, by itself,
+  prevent longer cycles — that remains a service-layer invariant, per
+  Section 24.2).
+- **Constraints:** both FKs → RESTRICT (do not allow deleting an
+  organization-membership row that is still referenced by an active
+  reporting line; require ending the reporting line first).
+- **Indexes:** `(subordinate_membership_id, status)`;
+  `(superior_membership_id, status)`; partial unique
+  `(subordinate_membership_id) WHERE status = 'ACTIVE'` (a person has
+  at most one active superior at a time); partial unique
+  `(superior_membership_id) WHERE status = 'ACTIVE' AND level_label =
+  'PRESIDENT'` scoped per organization (enforces "at most one active
+  President" — exact composite-uniqueness expression to be finalized
+  with the organization FK chain at implementation time, not fully
+  resolved here since `billing_provider_organization_memberships`
+  itself carries the org scope only indirectly).
+- **Downgrade:** drop table.
+
+### 25.10 Migration 9 — `claims.claim_category` column
+
+- **Column:** `claim_category` (String, nullable initially — see
+  backfill note below, `CheckConstraint IN ('MEDICARE_HOSPICE',
+  'MEDICAID','MEDI_CAL','MEDICARE_ADVANTAGE_HMO',
+  'MEDICARE_ADVANTAGE_PPO','COMMERCIAL_HMO','COMMERCIAL_PPO',
+  'COMMERCIAL_POS','TRICARE','VETERANS_AFFAIRS','PRIVATE_PAY','OTHER')`
+  — the locked 12-value list from Section 20.9).
+- **Backfill note:** existing `Claim` rows have no authoritative
+  source to auto-derive `claim_category` from `payer_name` (free
+  text, per Section 20.2) — a backfill strategy (manual reclassification
+  vs. a one-time best-effort mapping job defaulting unmatched rows to
+  `OTHER`) is an **open implementation-time decision**, not resolved
+  in this design. The column is proposed nullable at creation time
+  specifically to avoid forcing an unreviewed backfill as part of the
+  migration itself; whether it becomes `NOT NULL` after backfill is a
+  follow-up migration decision.
+- **Indexes:** none proposed beyond the existing
+  `ix_claim_tenant_status`; a `(tenant_id, claim_category)` index may
+  be added at implementation time if the Open Claims Summary
+  breakdown query proves it necessary — not pre-emptively added here.
+- **Downgrade:** drop column (safe, no dependent tables).
+
+### 25.11 Rollback and Backward-Compatibility Strategy
+
+- Every migration above is additive (new table or new nullable
+  column) — none modifies, renames, or drops any existing column,
+  table, or constraint. No existing model, service, or route is
+  altered by any migration in this list.
+- Downgrades are straightforward drops for the eight new tables (25.2-
+  25.9) since no production data exists in them yet; the
+  `claim_category` column (25.10) downgrades by a safe column drop.
+  Once any migration has run against real data, its downgrade path
+  must be re-evaluated for data loss before being executed — this
+  design does not assume downgrades remain safe indefinitely.
+- No migration in this list requires `alembic stamp` or a rewrite of
+  any historical migration, per the original Verify-First Requirement.
+
+### 25.12 Migration Design Status
+
+All nine migrations above are **documented, not created**. No Alembic
+revision file, SQLAlchemy model class, Pydantic schema, service
+function, API route, or UI component exists as a result of this
+section. Per the user's explicit instruction, implementation remains
+blocked — API design and UI implementation authorization have not been
+requested or granted, and schema/migration file creation itself has
+not been authorized beyond this paper design.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -2276,13 +2533,16 @@ implementation handoff (page level, Section 18-19 addendum), the
 Addendum Review / Discovery Addendum Verification Checklist requests
 (schema-design level, Section 21-22 addenda), the "Billing
 Organization → Organization & Teams" implementation handoff (page
-level, Section 23 addendum), and the Section 23 Review's Administrative
-Hierarchy architecture-decision request (Section 24 addendum). It
-satisfies the six module-level Discovery Areas, the 20-entity Agency
-Coverage & Workload mapping requirement, the Expanded Agency Detail
-Verify-First Requirement, the full Discovery Addendum Verification
-Checklist, the Organization & Teams discovery validation requirement,
-and the Administrative Hierarchy architecture-decision requirement. It
+level, Section 23 addendum), the Section 23 Review's Administrative
+Hierarchy architecture-decision request (Section 24 addendum), and the
+Section 24 Review's Migration Design Review authorization (Section 25
+addendum). It satisfies the six module-level Discovery Areas, the
+20-entity Agency Coverage & Workload mapping requirement, the Expanded
+Agency Detail Verify-First Requirement, the full Discovery Addendum
+Verification Checklist, the Organization & Teams discovery validation
+requirement, the Administrative Hierarchy architecture-decision
+requirement, and the Migration Design Review documentation
+requirement. It
 is independent of, and does not modify:
 - `docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`
   (the canonical Biller Platform spec; Billing Organization, including
@@ -2320,3 +2580,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 23: Organization & Teams page-level discovery addendum, per the approved, locked, Figma-approved "Billing Organization → Organization & Teams" implementation handoff (the first of the three Billing Organization pages). Mapped all seven approved sections (Organization Metrics, Administrative Hierarchy, Operational Reporting Chain, Team Portfolio Summaries, Team Staffing Tables, System Role Definitions, Recent Organizational Changes): confirmed Operational Reporting Chain, Team Portfolio Summaries, and Team Staffing Tables all REUSE the Section 21 team-scope tables (`billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`) directly, with no new tables required; confirmed Recent Organizational Changes REUSEs the Section 18.18/21.9 append-only audit design (scope broadened to org/team-level events). Identified Administrative Hierarchy as CREATE — a new structure distinct from the Section 21 operational team-scope tables, since the locked rule "Administrative authority and operational authority remain separate" and "Billing Administrator is not part of the operational reporting chain" cannot be satisfied by reusing those tables; exact shape (self-referencing FK vs. separate table) is an open schema-design decision, not resolved here. Identified System Role Definitions as CREATE but explicitly informational-only, not wired into the permission system, consistent with the locked rule that role definitions do not grant permissions and with Discovery Area 4's finding that `require_permission`/`has_permission` remain unimplemented placeholders. Cross-checked all locked architecture rules and the implementation boundary (no HR/payroll/performance-scoring/SecureInbox functionality introduced). Documentation/discovery-validation only; no schema, migrations, models, services, or routes created or changed. Actual schema/migration/code implementation for Organization & Teams remains a separate, not-yet-taken step pending explicit authorization to write code, consistent with this report's established discovery-first gating for every other Billing Organization page. |
 | 2026-09-18 | Reconciled the Section 20.9 claim_category enum count per the Claim Category Enum Review. Added row numbering (1-12) to the locked value table and an explicit reconciliation note: the list contains exactly 12 distinct enum values, breaking down as 11 substantive named payer categories (`MEDICARE_HOSPICE` through `PRIVATE_PAY`) plus 1 fallback value (`OTHER`); no value was added, removed, or renamed. The likely source of the "11 visible values" observation is reading only the 11 named-category rows without the `OTHER` fallback row — `OTHER` is confirmed to be a full, CheckConstraint-enforced enum value, not a null/absent state, per the existing Section 20.9 design note. Final locked list is unchanged from the original submission. Documentation only; no schema, migrations, models, services, or routes created or changed. Per the user's gate, Schema Design Review is now approved following this reconciliation; migration design, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 24: Administrative Hierarchy Schema-Design Options, resolving the Section 23.2 open decision per the Section 23 Review's request. Documented Option A (self-referencing `reports_to_id` FK on a single table) and Option B (separate `(superior, subordinate, level_label)` relationship table) in full, each with Advantages, Constraints, Query impact, Audit impact, Permission impact, and Migration impact. Both options require identical service-layer cycle-prevention logic and identical recursive-CTE cost for full-chain reads; audit treatment is identical for both (reuse the Section 18.18/21.9 audit-event design). **Recommended: Option B** (separate relationship table with explicit `level_label`), because the approved spec's Administrative Hierarchy display is level-labeled (not merely depth-based), and an explicit `level_label` column better supports level-scoped constraints (at most one President, a Supervisor's superior must be a Billing Manager) as direct row-level checks, consistent with this report's established preference for pushing invariant enforcement into constrained columns wherever the database realistically allows it. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Migration design, API design, and UI implementation remain explicitly blocked pending user selection/approval of the recommended option. |
+| 2026-09-18 | Added Section 25: Migration Design Documentation, per the Section 24 Review's Migration Design Review authorization (Option B approved for Administrative Hierarchy). Documented all nine proposed migrations in forward-only, DDL-level detail — column lists, types, CheckConstraints, foreign keys, indexes, and downgrade behavior — for `billing_teams`, `billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`, `billing_agency_coverage_assignments` (including new discriminator-integrity CHECK constraints not previously spelled out at DDL level), `billing_agency_coverage_audit_events`, `billing_agency_coverage_export_events`, `billing_administrative_reporting_lines` (Option B), and the `claims.claim_category` column addition. Documented required migration sequencing/dependency order (9 separate forward-only migration files, never combined), and a rollback/backward-compatibility strategy confirming every migration is additive with no changes to existing tables/columns. Flagged one open implementation-time decision: `claim_category` backfill strategy for existing `Claim` rows is not resolved here. Documentation only — no Alembic migration file, model class, schema, service, route, or UI component created. Migration file creation, API design, and UI implementation remain explicitly blocked pending further user authorization. |
