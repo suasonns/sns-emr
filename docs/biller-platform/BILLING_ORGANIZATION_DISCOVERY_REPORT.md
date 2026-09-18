@@ -1,10 +1,11 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: MIGRATION DESIGN REVIEW — DEPENDENCY ORDERING AND CLAIM_CATEGORY
-BACKFILL STRATEGY DOCUMENTED IN THE REQUIRED FORMAT (MODULE-LEVEL +
-AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-DESIGN +
-MIGRATION-DESIGN ADDENDA) — MIGRATION FILE CREATION, API DESIGN, AND
-UI IMPLEMENTATION REMAIN BLOCKED PENDING FINAL REVIEW SIGN-OFF
+STATUS: MIGRATION DESIGN REVIEW APPROVED — IMPLEMENTATION PLANNING
+AUTHORIZED (MODULE-LEVEL + AGENCY COVERAGE & WORKLOAD + EXPANDED
+AGENCY DETAIL + SCHEMA-DESIGN + MIGRATION-DESIGN ADDENDA, INCLUDING
+CLAIM_CATEGORY ENUM SINGLE-SOURCE-OF-TRUTH RECONCILIATION) — MIGRATION
+FILE CREATION, API DESIGN, AND UI IMPLEMENTATION REMAIN EXPLICITLY
+BLOCKED PENDING SEPARATE IMPLEMENTATION AUTHORIZATION
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -2853,6 +2854,64 @@ of Sections 25-26: schema creation, Alembic migration creation, model
 creation, API creation, UI implementation, or claim-category backfill
 execution. No implementation authorization exists as of this section.
 
+### 26.4 Claim Category Enum — Single Source of Truth Reconciliation
+
+Per the Section 26 Review's required revision, this section
+designates one authoritative location for the `claim_category` value
+list and confirms every other reference to it in this report is a
+cross-reference, not an independent redefinition.
+
+**Authoritative source: Section 20.9 ("Claim Category Enum — Locked
+Value List").** That section is the single locked definition. The
+value list has never changed since the user's original submission and
+**retains `COMMERCIAL_POS`**:
+
+1. `MEDICARE_HOSPICE`
+2. `MEDICAID`
+3. `MEDI_CAL`
+4. `MEDICARE_ADVANTAGE_HMO`
+5. `MEDICARE_ADVANTAGE_PPO`
+6. `COMMERCIAL_HMO`
+7. `COMMERCIAL_PPO`
+8. `COMMERCIAL_POS`
+9. `TRICARE`
+10. `VETERANS_AFFAIRS`
+11. `PRIVATE_PAY`
+12. `OTHER`
+
+**Reconciliation of the apparent gap.** `COMMERCIAL_POS` was never
+missing from this report's own record of the enum — it is present in
+Section 20.9's locked table, in Section 21/25's `CheckConstraint`
+definitions (Section 25.6/25.10), and in Section 26.2.A's mapping-rule
+table (Section 26.2, row 8). The only place `COMMERCIAL_POS` did not
+appear was in the payer-category list restated inline inside a user
+review message (the "SECTION 25 — MIGRATION DESIGN REVIEW" message),
+which this report does not treat as a redefinition of the enum — a
+value list restated informally in a review message does not supersede
+the locked Section 20.9 definition. Section 26.2.A already flagged
+this specific gap at the time it was written; this subsection makes
+the resolution the report's single, explicit, cross-referenced
+answer rather than a footnote local to one mapping row.
+
+**Going-forward rule for this document.** Every other section that
+needs the `claim_category` value list (Section 21's discriminator
+design, Section 25.6's column definition, Section 25.10's
+`CheckConstraint`, Section 25.14/26.2's backfill mapping) references
+Section 20.9 rather than restating or re-deriving the list
+independently. No section in this report defines a competing or
+partial version of the enum. `COMMERCIAL_POS` is retained, per the
+review's recommendation, as a valid payer classification.
+
+**Status:** claim_category enum reconciled to a single authoritative
+source (Section 20.9), consistently referenced across Discovery
+(Section 20), Schema Design (Section 21/25.6), Migration Design
+(Section 25.10), and Backfill Strategy (Section 25.14/26.2). Per the
+user's stated gate, this satisfies the one outstanding Section 26
+Review revision; Migration Design Review approval and Implementation
+Planning authorization follow from this reconciliation. Migration
+file creation, API design, and UI implementation remain explicitly
+**blocked** pending separate, explicit implementation authorization.
+
 ---
 
 ## RELATIONSHIP TO OTHER DOCUMENTS
@@ -2916,3 +2975,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 25: Migration Design Documentation, per the Section 24 Review's Migration Design Review authorization (Option B approved for Administrative Hierarchy). Documented all nine proposed migrations in forward-only, DDL-level detail — column lists, types, CheckConstraints, foreign keys, indexes, and downgrade behavior — for `billing_teams`, `billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`, `billing_agency_coverage_assignments` (including new discriminator-integrity CHECK constraints not previously spelled out at DDL level), `billing_agency_coverage_audit_events`, `billing_agency_coverage_export_events`, `billing_administrative_reporting_lines` (Option B), and the `claims.claim_category` column addition. Documented required migration sequencing/dependency order (9 separate forward-only migration files, never combined), and a rollback/backward-compatibility strategy confirming every migration is additive with no changes to existing tables/columns. Flagged one open implementation-time decision: `claim_category` backfill strategy for existing `Claim` rows is not resolved here. Documentation only — no Alembic migration file, model class, schema, service, route, or UI component created. Migration file creation, API design, and UI implementation remain explicitly blocked pending further user authorization. |
 | 2026-09-18 | Added Section 25.13 (Migration Dependency Ordering) and Section 25.14 (Claim Category Backfill Strategy), per the "SECTION 25 REVIEW — APPROVED WITH REQUIRED REVISIONS" message's two required deliverables. 25.13 documents that only `billing_team_memberships`, `billing_team_supervisor_assignments`, and `billing_agency_team_assignments` have a hard FK-ordering requirement (after `billing_teams`); all other migrations depend only on already-existing tables. 25.14 documents the full backfill strategy: exact-match-then-pattern-match mapping rules against `payer_name`, unmatched payers resolving to `OTHER` with mandatory manual-review flagging (never silently accepted, never stopping the run), pre/migration-time/post validation behavior, an idempotent NULL-only batch-execution approach with an append-only audit-event run-log, and failure handling that leaves genuine per-row mapping errors `NULL` (distinct from legitimate `OTHER` resolutions) for manual remediation. Documentation only; no schema, migrations, models, services, routes, or backfill execution created or run. Migration file creation, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 26: Migration Design Review — Required-Format Deliverables, restating Sections 25.13-25.14 in the exact Migration Name/Depends On/Reason table and lettered (A-E) format required by the follow-up "SECTION 25 — MIGRATION DESIGN REVIEW — APPROVED WITH REQUIRED REVISIONS" message. 26.1 provides the actual dependency graph and explicitly corrects two dependencies implied by the reviewer's illustrative example that this design does not have: `billing_agency_coverage_assignments` does not depend on `billing_agency_team_assignments` (coverage-role assignment is scoped directly to `agency_assignment_id`, independent of which team covers the agency — a deliberate Section 21.3 design decision), and the audit/export event tables use a polymorphic reference rather than a literal FK to the coverage table; also clarifies `billing_administrative_reporting_lines` depends only on the existing membership table, not on any other new "administrative hierarchy structure," and that "claims table validation complete" refers to the separate backfill-execution step, not a schema-level migration dependency. 26.2 restates the backfill strategy in the required A (legacy payer mapping rules, with an explicit per-category mapping-rule table) / B (unknown payer handling) / C (validation strategy) / D (failure handling) / E (backfill execution approach, including concrete verification queries and a reconciliation process) format, and flags that the reviewer's restated payer list omits `COMMERCIAL_POS` while the Section 20.9 locked 12-value enum retains it — the mapping table continues to support all 12 locked values. 26.3 reaffirms no schema, migration, model, API, UI, or backfill execution has occurred. Documentation only. Migration file creation, API design, and UI implementation remain explicitly blocked pending final Migration Design Review sign-off. |
+| 2026-09-18 | Added Section 26.4: Claim Category Enum — Single Source of Truth Reconciliation, per the Section 26 Review's required revision (repeated across two review messages) to reconcile `COMMERCIAL_POS`'s appearance in the locked enum against its omission from a later payer-category reference. Designated Section 20.9 as the single authoritative definition of the `claim_category` value list; confirmed `COMMERCIAL_POS` was never actually dropped from this report's own record (present throughout Section 20.9, the Section 25.6/25.10 CheckConstraint definitions, and the Section 26.2.A mapping-rule table) — the only omission was in a payer list restated informally inside a user review message, which this report does not treat as redefining the locked enum. Established a going-forward rule that every other section referencing `claim_category` (Sections 21, 25.6, 25.10, 25.14/26.2) cross-references Section 20.9 rather than restating or re-deriving the list independently, so no section defines a competing or partial version of the enum. Retained `COMMERCIAL_POS` as a valid payer classification per the review's recommendation. Updated the document header STATUS line to reflect that Migration Design Review is approved and Implementation Planning is authorized, per the user's stated gate — migration file creation, API design, and UI implementation remain explicitly blocked pending separate, explicit implementation authorization. Documentation only; no schema, migrations, models, services, routes, or backfill execution created, changed, or run. |
