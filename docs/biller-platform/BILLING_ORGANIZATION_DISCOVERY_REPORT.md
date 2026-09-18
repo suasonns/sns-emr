@@ -1070,20 +1070,35 @@ authorization gate as every other change in this report.
 
 **Locked `claim_category` values:**
 
-| Value | Category |
-|---|---|
-| `MEDICARE_HOSPICE` | Medicare Hospice benefit |
-| `MEDICAID` | Medicaid (non-CA / generic) |
-| `MEDI_CAL` | California Medicaid program |
-| `MEDICARE_ADVANTAGE_HMO` | Medicare Advantage — HMO plan |
-| `MEDICARE_ADVANTAGE_PPO` | Medicare Advantage — PPO plan |
-| `COMMERCIAL_HMO` | Commercial payer — HMO plan |
-| `COMMERCIAL_PPO` | Commercial payer — PPO plan |
-| `COMMERCIAL_POS` | Commercial payer — Point of Service plan |
-| `TRICARE` | TRICARE (military/veteran-dependent coverage) |
-| `VETERANS_AFFAIRS` | Veterans Affairs (VA) direct coverage |
-| `PRIVATE_PAY` | Self-pay / private pay, no third-party payer |
-| `OTHER` | Any payer not covered by the above values |
+| # | Value | Category |
+|---|---|---|
+| 1 | `MEDICARE_HOSPICE` | Medicare Hospice benefit |
+| 2 | `MEDICAID` | Medicaid (non-CA / generic) |
+| 3 | `MEDI_CAL` | California Medicaid program |
+| 4 | `MEDICARE_ADVANTAGE_HMO` | Medicare Advantage — HMO plan |
+| 5 | `MEDICARE_ADVANTAGE_PPO` | Medicare Advantage — PPO plan |
+| 6 | `COMMERCIAL_HMO` | Commercial payer — HMO plan |
+| 7 | `COMMERCIAL_PPO` | Commercial payer — PPO plan |
+| 8 | `COMMERCIAL_POS` | Commercial payer — Point of Service plan |
+| 9 | `TRICARE` | TRICARE (military/veteran-dependent coverage) |
+| 10 | `VETERANS_AFFAIRS` | Veterans Affairs (VA) direct coverage |
+| 11 | `PRIVATE_PAY` | Self-pay / private pay, no third-party payer |
+| 12 | `OTHER` | Any payer not covered by the above values |
+
+**Enum-count reconciliation (requested verification):** the numbered
+table above confirms **12 distinct enum values**, consistent with the
+"12-value enum" description elsewhere in this section. The list breaks
+down as **11 substantive, named payer categories** (rows 1-11:
+`MEDICARE_HOSPICE` through `PRIVATE_PAY`) **plus 1 fallback value**
+(row 12: `OTHER`), for 12 total. If the visible count of 11 came from
+reading only the named-payer-category rows (1-11) without including
+the `OTHER` fallback row, that is the source of the discrepancy —
+`OTHER` is a full, distinct enum value in this design (it is
+`CheckConstraint`-enforced like every other value, not a null/absent
+state), and is required per Section 20.9's design note that no payer
+should ever resolve to a missing/unclassified category. **Final locked
+enum list, confirmed at 12 values, is the numbered table above —
+unchanged from the original submission.**
 
 **Design notes:**
 - This is a **flat 12-value enum**, not a nested/hierarchical
@@ -2105,3 +2120,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 22.6: Scope Limitation vs. Future Extensibility clarification, per the Discovery Addendum Review's requested clarification before Schema Design Review authorization. Confirms backup scope is intentionally, deliberately closed to the two named roles (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER`) only — `SPECIALIST` assignments are explicitly out of backup scope because the approved spec treats them as supplementary capability, not a required-coverage role; Team Leader/Billing Supervisor are also out of scope because they are team-scope relationships, not agency-coverage rows. Documents that any future backable role would require widening the `backs_up_role` CheckConstraint plus a new migration — this is an additive future mechanism, not something pre-built, enabled, or implied by the current design. No specialist backup scope, generic "other" scope, or open string value exists in this schema design today. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Schema Design Review authorized by the user following this clarification; migration design, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 20.9: Claim Category Enum — Locked Value List. The user supplied a 12-value flat enum (`MEDICARE_HOSPICE`, `MEDICAID`, `MEDI_CAL`, `MEDICARE_ADVANTAGE_HMO`, `MEDICARE_ADVANTAGE_PPO`, `COMMERCIAL_HMO`, `COMMERCIAL_PPO`, `COMMERCIAL_POS`, `TRICARE`, `VETERANS_AFFAIRS`, `PRIVATE_PAY`, `OTHER`), resolving the Section 20.2 open question about what values a new `claim_category` column on `Claim` would use. Documented that this enum is a separate concept from the Section 18/21/22 `coverage_role` discriminator (staff-role assignment vs. per-claim payer classification) and that any category-to-responsible-role display mapping is an implementation-phase decision, not locked here. Explicitly noted the value list being locked does NOT itself authorize column creation — migration, backfill, and mapping work remain gated behind Migration Design authorization, which has not been granted. Documentation only; no schema, migrations, models, services, or routes created or changed. |
 | 2026-09-18 | Added Section 23: Organization & Teams page-level discovery addendum, per the approved, locked, Figma-approved "Billing Organization → Organization & Teams" implementation handoff (the first of the three Billing Organization pages). Mapped all seven approved sections (Organization Metrics, Administrative Hierarchy, Operational Reporting Chain, Team Portfolio Summaries, Team Staffing Tables, System Role Definitions, Recent Organizational Changes): confirmed Operational Reporting Chain, Team Portfolio Summaries, and Team Staffing Tables all REUSE the Section 21 team-scope tables (`billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`) directly, with no new tables required; confirmed Recent Organizational Changes REUSEs the Section 18.18/21.9 append-only audit design (scope broadened to org/team-level events). Identified Administrative Hierarchy as CREATE — a new structure distinct from the Section 21 operational team-scope tables, since the locked rule "Administrative authority and operational authority remain separate" and "Billing Administrator is not part of the operational reporting chain" cannot be satisfied by reusing those tables; exact shape (self-referencing FK vs. separate table) is an open schema-design decision, not resolved here. Identified System Role Definitions as CREATE but explicitly informational-only, not wired into the permission system, consistent with the locked rule that role definitions do not grant permissions and with Discovery Area 4's finding that `require_permission`/`has_permission` remain unimplemented placeholders. Cross-checked all locked architecture rules and the implementation boundary (no HR/payroll/performance-scoring/SecureInbox functionality introduced). Documentation/discovery-validation only; no schema, migrations, models, services, or routes created or changed. Actual schema/migration/code implementation for Organization & Teams remains a separate, not-yet-taken step pending explicit authorization to write code, consistent with this report's established discovery-first gating for every other Billing Organization page. |
+| 2026-09-18 | Reconciled the Section 20.9 claim_category enum count per the Claim Category Enum Review. Added row numbering (1-12) to the locked value table and an explicit reconciliation note: the list contains exactly 12 distinct enum values, breaking down as 11 substantive named payer categories (`MEDICARE_HOSPICE` through `PRIVATE_PAY`) plus 1 fallback value (`OTHER`); no value was added, removed, or renamed. The likely source of the "11 visible values" observation is reading only the 11 named-category rows without the `OTHER` fallback row — `OTHER` is confirmed to be a full, CheckConstraint-enforced enum value, not a null/absent state, per the existing Section 20.9 design note. Final locked list is unchanged from the original submission. Documentation only; no schema, migrations, models, services, or routes created or changed. Per the user's gate, Schema Design Review is now approved following this reconciliation; migration design, API design, and UI implementation remain explicitly blocked. |
