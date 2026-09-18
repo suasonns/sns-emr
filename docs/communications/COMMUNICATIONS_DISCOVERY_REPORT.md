@@ -1,6 +1,12 @@
 # COMMUNICATIONS DISCOVERY REPORT
 
-STATUS: DISCOVERY COMPLETE — NO DESIGN OR IMPLEMENTATION AUTHORIZED
+STATUS: DISCOVERY VERIFIED
+
+Discovery findings independently reviewed and confirmed. See Section 9
+(Discovery Verified — Official Status and Next Steps) for the locked
+conclusion and the authorized build sequence. No SecureInbox backend
+implementation is authorized until the Billing Organization module is
+complete (Section 9, Step 1).
 
 This report is a repository-verified inventory of everything already
 built in this codebase that relates to a "Communications Module"
@@ -406,9 +412,83 @@ changes were made while producing this report.
 
 ---
 
-## 8. CHANGE LOG
+## 9. DISCOVERY VERIFIED — OFFICIAL STATUS AND NEXT STEPS
+
+STATUS: DISCOVERY VERIFIED
+
+The findings in Sections 1-6 above have been independently reviewed
+and are confirmed as final for this discovery pass. The following
+conclusions and next steps are now locked and authoritative for any
+future Communications/SecureInbox work:
+
+### 9.1 Locked Conclusion — CommunicationsLog
+
+`CommunicationsLog` is confirmed to remain, and only ever be:
+
+- Patient Communication History
+- Communication Tracking
+- Clinical Reporting
+
+`CommunicationsLog` must **not** be classified as messaging, and must
+**not** be reused as the messaging backend for SecureInbox or any
+other messaging feature. This is a locked decision, not a preference —
+any future spec that proposes building messaging on top of
+`CommunicationsLog` contradicts this discovery and must be rejected.
+
+### 9.2 Locked Conclusion — SecureInbox
+
+SecureInbox is confirmed as the **intended** messaging feature for the
+SNS ecosystem, but today it consists only of:
+
+- Reserved routes (`/secure-inbox`, `/messaging`, `/messenger`)
+- Placeholder UI (`SecureInboxDataPage.tsx`)
+- Mock implementations (`tenant/pages/SecureInbox.jsx`, fabricated data)
+
+**No messaging backend currently exists.** This matches Section 4's
+independent evaluation exactly (no tables, no APIs, no messaging
+capability of any kind).
+
+**SecureInbox remains the single, authoritative messaging module for
+the SNS ecosystem.** No second/parallel messaging product may be
+created. Any future messaging capability — for any portal, any role,
+any workflow — must be built as SecureInbox, not as a new or
+differently-named system.
+
+### 9.3 Authorized Next Steps (in order)
+
+1. **Complete the Billing Organization module first.** SecureInbox
+   backend work is explicitly sequenced behind this and is not
+   authorized to begin until Billing Organization is complete.
+2. **Build the SecureInbox backend architecture**, covering:
+   - Conversations
+   - Participants
+   - Messages
+   - Channels
+   - Attachments
+   - Read Receipts
+   - Message Requests
+3. **Integrate SecureInbox with:**
+   - Billing Organization teams
+   - Agency assignments
+   - Notifications (the existing `Notification` model/API from
+     Section 3.1, reused as the alerting layer — not replaced)
+4. **Replace the placeholder SecureInbox routes** (Section 4A.1) and
+   retire the conflicting mock implementation (Section 4A.2) only
+   after the backend foundation above is complete — never before.
+
+### 9.4 Explicit Prohibition
+
+Do not create a second messaging product. Do not build any interim,
+parallel, or "lightweight" messaging system under any other name while
+SecureInbox's backend is pending. SecureInbox is the only authorized
+destination for messaging capability in this codebase.
+
+---
+
+## 10. CHANGE LOG
 
 | Date | Change |
 |---|---|
 | 2026-09-17 | Document created. Full repository discovery of messaging/notification/communications infrastructure completed per explicit instruction: do not design or build, discovery only. Findings: no Message/Conversation/Thread/Channel model or websocket/realtime infrastructure exists (NOT FOUND); a working Notification model/API exists but has no frontend consumer (REUSE, orphaned); a working CommunicationsLog clinical event-log model/API exists with multiple downstream consumers (REUSE, not a messaging system); a task pre-due notification engine exists but its delivery step is an unpersisted console-print stub (INCOMPLETE); the live-routed Secure Inbox/Messaging pages correctly show an honest "not built" placeholder (INCOMPLETE by policy) while a separate, still-reachable tenant-portal Secure Inbox page shows fully fabricated message data (DEPRECATED, flagged as a policy-violating inconsistency); the patient-chart Communication Log tab is UI-only and not wired to the real backend API (INCOMPLETE). Documentation only; no schema, migrations, tables, models, or routes created or changed. |
 | 2026-09-17 | Discovery correction: strengthened the CommunicationsLog framing so it cannot be read as messaging-adjacent — restated as patient-related communication history, tracking, and reporting only, explicitly not a candidate backend for SecureInbox. Added a new Section 4 ("SecureInbox — Independent Evaluation") giving direct, repository-verified answers to the six required discovery questions: (1) no backend tables support SecureInbox (confirmed via direct search — zero matches for secure_inbox/secure_messag* across the entire backend, and no Message/Conversation/Thread/Channel table exists anywhere); (2) no APIs support SecureInbox; (3) SecureInbox supports none of user-to-user messaging, group messaging, attachments, real read status, or direct messages today (the only "unread"/count values are hardcoded literals in mock frontend data); (4) the frontend is not missing — it exists in two conflicting forms; (5) the actively-routed version is placeholder-only by design, while the other reachable version (tenant portal) is not a placeholder but fabricated fake data; (6) SecureInbox was not intentionally built as the platform-wide messaging system — it is a reserved name/route slot for one, per an explicit in-code comment confirming no messaging model/API/data store exists. Prior Section 4 (frontend route/component detail) renumbered to Section 4A and retained unchanged as supporting evidence. Documentation only; no schema, migrations, tables, models, or routes created or changed. |
+| 2026-09-17 | Discovery formally verified — status updated to DISCOVERY VERIFIED. Added Section 9 (Discovery Verified — Official Status and Next Steps), locking the following as authoritative: CommunicationsLog remains Patient Communication History / Communication Tracking / Clinical Reporting only, must never be classified as messaging, and must never be reused as the messaging backend; SecureInbox is confirmed as the intended messaging feature but today consists only of reserved routes, placeholder UI, and mock implementations, with no messaging backend existing; SecureInbox is designated the single, authoritative messaging module for the SNS ecosystem, and no second/parallel messaging product may be created. Documents the authorized build sequence: (1) complete the Billing Organization module first — SecureInbox backend work is not authorized to begin before this; (2) build the SecureInbox backend architecture (Conversations, Participants, Messages, Channels, Attachments, Read Receipts, Message Requests); (3) integrate SecureInbox with Billing Organization teams, Agency assignments, and the existing Notification model/API as the alerting layer; (4) replace the placeholder SecureInbox routes and retire the conflicting mock implementation only after the backend foundation is complete. Change Log renumbered from Section 8 to Section 10 to accommodate the new Section 9. Documentation only; no schema, migrations, tables, models, or routes created or changed. |
