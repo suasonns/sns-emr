@@ -21,16 +21,21 @@ FOUND rather than guessed.
   this codebase. No `Message`, `Conversation`, `Thread`, or `Channel`
   model exists in the backend. This is confirmed both by repository
   search and by an explicit in-code comment on the currently-routed
-  frontend page (see Section 4.1).
+  frontend page (see Section 4A.1).
 - There **is** a working, tenant-scoped, patient-scoped **in-app
   notification system** (`Notification` model + CRUD API), currently
   used only as a side-effect of two features (task due-date reminders
   and Communications Log alerts), with **zero frontend consumer**.
 - There **is** a working, tenant-scoped **Communications Log**
-  (`CommunicationsLog` model + full lifecycle API) for logging clinical
-  contact events (phone calls, on-call notes, family concerns, etc.)
-  per patient. This is a clinical **event log**, not a messaging
-  system — there is no send/reply/thread concept.
+  (`CommunicationsLog` model + full lifecycle API). **Correction:**
+  this is patient-related communication history, tracking, and
+  reporting only (phone calls, on-call notes, family concerns,
+  reminders, an acknowledge → verify → resolve workflow) — it is
+  **not a messaging platform in any sense** and must never be
+  classified as one. It has no sender/recipient pair, no send/reply
+  action, no thread, no group, and no read-receipt concept between
+  users. It is unrelated to SecureInbox (see Section 4A) and should
+  not be evaluated as a candidate backend for it.
 - There is **no websocket or realtime infrastructure** in application
   code. A `websockets` package appears in `requirements.lock.txt` only
   as a transitive dependency of `uvicorn[standard]`; it is not
@@ -66,7 +71,14 @@ Classification: **REUSE** — this is a solid foundation for an in-app
 notification/alert feed. It is not itself a messaging system and
 should not be conflated with one.
 
-### 2.2 `CommunicationsLog` (REUSE candidate, not a messaging model)
+### 2.2 `CommunicationsLog` — patient communication history/tracking, NOT a messaging model
+**Correction to prior draft of this report:** `CommunicationsLog` must
+not be classified as messaging, and is not a candidate backend for
+SecureInbox. It exists to track and report **patient-related
+communication history** (calls, notes, family concerns) for clinical
+review — it has no sender/recipient relationship between two users, no
+send action, no reply, no thread, and no group concept. Any future
+messaging/SecureInbox backend is independent of this model.
 **File:** `backend/app/models/communications_log.py`
 **Table:** `communications_logs`
 
@@ -149,7 +161,7 @@ Assessment: **fully functional CRUD surface**, but thin —
 authenticated session/current user in every endpoint, and there is no
 tenant-scoping filter applied in the queries shown (queries filter by
 `user_id` only, not by `tenant_id`). No frontend caller was found for
-any of these four routes (see Section 4.2). Classification:
+any of these four routes (see Section 4A.4). Classification:
 **EXTEND** if kept as the notification backbone — needs auth-derived
 user identity, explicit tenant scoping, and a frontend consumer before
 it is production-safe as-is.
@@ -212,9 +224,75 @@ chat feature would need one built or added from scratch.
 
 ---
 
-## 4. FRONTEND — ROUTES AND COMPONENTS
+## 4. SECUREINBOX — INDEPENDENT EVALUATION (DIRECT ANSWERS)
 
-### 4.1 The currently-routed "Secure Inbox" / "Messaging" pages are honest placeholders
+SecureInbox was re-evaluated independently of `CommunicationsLog` and
+`Notification`. Direct answers to the six required discovery
+questions, each backed by the same repository evidence detailed in
+Section 4A below:
+
+**1. What backend tables support SecureInbox?**
+None. No table named for messages, conversations, threads, channels,
+or SecureInbox itself exists in the Alembic baseline migration or
+anywhere in `backend/app/models`. Confirmed by direct search for
+`secure_inbox`/`secure_messag*` across the entire `backend` tree
+(zero matches) and by the class-name search in Section 2.4 (no
+`Message`/`Conversation`/`Thread`/`Channel` model exists to be a table
+for). SecureInbox has **zero backend data persistence of any kind**.
+
+**2. What APIs support SecureInbox?**
+None. No route, controller, or service anywhere under `backend/app`
+references SecureInbox, secure messaging, or any send/receive/thread
+endpoint. The `Notification` API (Section 3.1 below) is a separate,
+unrelated system with no route SecureInbox calls into. SecureInbox has
+**zero backend API support**.
+
+**3. Is SecureInbox already capable of the following?**
+
+| Capability | Status |
+|---|---|
+| User-to-user messaging | **NO** — no send/receive action exists anywhere; no route accepts a message payload |
+| Group messaging | **NO** — no group/channel/participant-list concept exists in any model or component |
+| Attachments | **NO** — no file/attachment field, upload control, or API tied to any message concept |
+| Read status | **NO** — the only "unread" values visible (a per-message `unread: true/false` flag and a hardcoded folder count of `12`) are hardcoded literals in mock frontend data, not a computed or persisted read state |
+| Direct messages | **NO** — no one-to-one conversation concept, no recipient selection, no compose-and-send flow that goes anywhere |
+
+SecureInbox is capable of **none** of these five things today, in
+either of its two frontend variants (Section 4A.1 and 4A.2).
+
+**4. Is the frontend missing?**
+No — the frontend exists in two separate, conflicting forms (see
+4A.1 and 4A.2). What is missing is the backend entirely, and, in the
+actively-routed variant (4A.1), the frontend correctly reflects that
+absence rather than fabricating one.
+
+**5. Is the UI placeholder only?**
+Yes, for the version actually reached at `/secure-inbox`, `/messaging`,
+and `/messenger` (`SecureInboxDataPage.tsx`, Section 4A.1) — it renders
+a single static "Secure messaging not available yet" empty-state card
+with no data fetch, no list, and no compose action. The other reachable
+version (`tenant/pages/SecureInbox.jsx` via `/tenant` and `/portal`,
+Section 4A.2) is not a placeholder — it renders hardcoded fake message
+data as if it were real, which is a distinct problem (see 4A.2).
+
+**6. Was SecureInbox intentionally designed as the platform-wide messaging system?**
+The evidence says **no, not as a built system** — only as a reserved
+**name/slot** for one. The in-code comment on `SecureInboxDataPage.tsx`
+(quoted verbatim in 4A.1) explicitly states there is "no
+secure-messaging/message-center model, API, or data store anywhere in
+this codebase," and that the page was deliberately changed to stop
+showing fabricated sample threads. Three route paths
+(`/secure-inbox`, `/messaging`, `/messenger`) all point at this same
+placeholder, which indicates "SecureInbox" is the intended **name** for
+a future platform-wide messaging system, but no such system has been
+designed or built yet — intent to build is implied by the reserved
+routes and page title; actual capability is zero.
+
+---
+
+## 4A. FRONTEND — ROUTES AND COMPONENTS (SUPPORTING DETAIL)
+
+### 4A.1 The currently-routed "Secure Inbox" / "Messaging" pages are honest placeholders
 **File:** `sns-emr-frontend/src/pages/SecureInboxDataPage.tsx`
 **Routed at (in `App.tsx`):** `/secure-inbox`, `/messaging`,
 `/messenger` — all three routes render this same component.
@@ -235,7 +313,7 @@ state — no list, no compose, no fetch call. Classification:
 **INCOMPLETE (intentionally, by policy)** — this is the correct
 current behavior per the project's no-fabrication rule, not a bug.
 
-### 4.2 A conflicting, fully-mocked "Secure Inbox" also exists and is still reachable
+### 4A.2 A conflicting, fully-mocked "Secure Inbox" also exists and is still reachable
 **File:** `sns-emr-frontend/src/tenant/pages/SecureInbox.jsx`
 Hardcoded array `MESSAGES` with 4 fake entries ("MD Office", "Family
 Member", "Clinical Team", "Billing"), a fake folder list with a
@@ -255,7 +333,7 @@ fabricated message threads with a fake unread badge. Classification:
 (remove or replace this mock) independent of any future Communications
 Module build, not something to extend.
 
-### 4.3 `CommunicationLogPage.tsx` — patient-scoped clinical log UI, currently mocked
+### 4A.3 `CommunicationLogPage.tsx` — patient-scoped clinical log UI, currently mocked
 **File:** `sns-emr-frontend/src/pages/CommunicationLogPage.tsx`
 Rendered inside `PatientModuleShell` as one of a patient chart's
 section tabs ("Communication Log"). Fetches the patient's name via
@@ -265,7 +343,7 @@ section tabs ("Communication Log"). Fetches the patient's name via
 3.4. Classification: **INCOMPLETE** — the backend it should be wired
 to already exists; this page has simply not been connected to it yet.
 
-### 4.4 Notification API has no frontend consumer at all
+### 4A.4 Notification API has no frontend consumer at all
 No file under `sns-emr-frontend/src` calls `/notifications`,
 `/notifications/unread-count`, or any notification-read endpoint.
 Search of `sns-emr-frontend/src/api` for "notification" only turns up
@@ -286,8 +364,8 @@ API from Section 3.1 is entirely orphaned today.
 | `Notification` model + CRUD API | Backend | `models/notification.py`, `api/notifications.py`, `services/notification_engine.py` | REUSE (needs auth-derived user + tenant scoping fixes) |
 | Task pre-due notification engine | Backend | `services/task_notification_engine.py` | INCOMPLETE (delivery is a `print()` stub, not persisted) |
 | `DocumentNotification` model + service | Backend | `models/document_notification.py`, `services/document_notifications.py` | REUSE (narrow, document-review scope only) |
-| `CommunicationsLog` model + API | Backend | `models/communications_log.py`, `api/communications_log/router.py` | REUSE (clinical event log; not a messaging model) |
-| `Message`/`Conversation`/`Thread`/`Channel` models | Backend | — | NOT FOUND |
+| `CommunicationsLog` model + API | Backend | `models/communications_log.py`, `api/communications_log/router.py` | REUSE (patient communication history/tracking/reporting only — NOT messaging, not a candidate SecureInbox backend) |
+| `Message`/`Conversation`/`Thread`/`Channel`/SecureInbox tables | Backend | — | NOT FOUND (zero backend tables of any kind support SecureInbox) |
 | Websocket / realtime transport | Backend | — | NOT FOUND (transitive dep only, unused) |
 | Message-specific attachments | Backend | — | NOT FOUND |
 | `/secure-inbox`, `/messaging`, `/messenger` routes | Frontend | `pages/SecureInboxDataPage.tsx`, `App.tsx` | INCOMPLETE (honest placeholder, by policy) |
@@ -305,7 +383,7 @@ API from Section 3.1 is entirely orphaned today.
    (clinical event log) plus `Notification` (in-app alert feed)
    pattern, extended rather than replaced?
 2. Is `tenant/pages/SecureInbox.jsx` (the fabricated-data version,
-   Section 4.2) intended to be deleted now as a policy violation, or
+   Section 4A.2) intended to be deleted now as a policy violation, or
    is it in scope for the Communications Module discovery to resolve?
 3. Should `DocumentNotification` and `Notification` be unified, or are
    they intentionally meant to stay separate parallel systems?
@@ -333,3 +411,4 @@ changes were made while producing this report.
 | Date | Change |
 |---|---|
 | 2026-09-17 | Document created. Full repository discovery of messaging/notification/communications infrastructure completed per explicit instruction: do not design or build, discovery only. Findings: no Message/Conversation/Thread/Channel model or websocket/realtime infrastructure exists (NOT FOUND); a working Notification model/API exists but has no frontend consumer (REUSE, orphaned); a working CommunicationsLog clinical event-log model/API exists with multiple downstream consumers (REUSE, not a messaging system); a task pre-due notification engine exists but its delivery step is an unpersisted console-print stub (INCOMPLETE); the live-routed Secure Inbox/Messaging pages correctly show an honest "not built" placeholder (INCOMPLETE by policy) while a separate, still-reachable tenant-portal Secure Inbox page shows fully fabricated message data (DEPRECATED, flagged as a policy-violating inconsistency); the patient-chart Communication Log tab is UI-only and not wired to the real backend API (INCOMPLETE). Documentation only; no schema, migrations, tables, models, or routes created or changed. |
+| 2026-09-17 | Discovery correction: strengthened the CommunicationsLog framing so it cannot be read as messaging-adjacent — restated as patient-related communication history, tracking, and reporting only, explicitly not a candidate backend for SecureInbox. Added a new Section 4 ("SecureInbox — Independent Evaluation") giving direct, repository-verified answers to the six required discovery questions: (1) no backend tables support SecureInbox (confirmed via direct search — zero matches for secure_inbox/secure_messag* across the entire backend, and no Message/Conversation/Thread/Channel table exists anywhere); (2) no APIs support SecureInbox; (3) SecureInbox supports none of user-to-user messaging, group messaging, attachments, real read status, or direct messages today (the only "unread"/count values are hardcoded literals in mock frontend data); (4) the frontend is not missing — it exists in two conflicting forms; (5) the actively-routed version is placeholder-only by design, while the other reachable version (tenant portal) is not a placeholder but fabricated fake data; (6) SecureInbox was not intentionally built as the platform-wide messaging system — it is a reserved name/route slot for one, per an explicit in-code comment confirming no messaging model/API/data store exists. Prior Section 4 (frontend route/component detail) renumbered to Section 4A and retained unchanged as supporting evidence. Documentation only; no schema, migrations, tables, models, or routes created or changed. |
