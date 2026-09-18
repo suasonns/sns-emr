@@ -27,6 +27,7 @@ APPROVED PAGES
 8. CAP Compliance & Financial Exposure Center
 9. AR & Collections Intelligence Center
 10. Credit Balance Resolution & Compliance Center
+11. Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (SNS Hospice Solutions Tenant Platform) — shared data model, two platform-specific views
 
 No architectural redesign is authorized during implementation.
 
@@ -466,6 +467,16 @@ LOGICAL ENTITIES
 - Credit Cause Record
 - CMS-838 Filing Case
 - Credit Resolution Work Item
+- Room & Board Case
+- Room & Board Service Month
+- Room & Board Claim
+- Payer Remittance
+- Payment Allocation
+- SNF Payable
+- SNF Payment
+- Hospice-Funded Advance
+- Room & Board Reconciliation Record
+- Room & Board Financial Support Schedule
 - Regulatory Reference
 - Audit Event
 
@@ -2484,6 +2495,1069 @@ LOCKED
 IMPLEMENTATION AUTHORIZED
 
 ==================================================
+PAGE 11
+ROOM & BOARD BILLING & REIMBURSEMENT CENTER
++
+ROOM & BOARD FINANCIAL RECONCILIATION CENTER
+==================================================
+
+STATUS
+
+LOCKED
+FIGMA APPROVED
+IMPLEMENTATION AUTHORIZED
+
+==================================================
+CRITICAL ARCHITECTURE RULE
+==================================================
+
+THIS IS A SHARED DATA WORKFLOW.
+
+DO NOT CREATE TWO SEPARATE SYSTEMS.
+
+ONE AUTHORITATIVE DATA MODEL
+
+TWO SEPARATE USER EXPERIENCES
+
+1. SNS TECH SOLUTIONS
+   BILLER PLATFORM
+
+   PAGE:
+   Room & Board Billing & Reimbursement Center
+
+2. SNS HOSPICE SOLUTIONS
+   TENANT PLATFORM
+
+   PAGE:
+   Room & Board Financial Reconciliation Center
+
+BOTH PAGES MUST READ FROM THE SAME
+AUTHORITATIVE RECORDS.
+
+DO NOT DUPLICATE:
+
+- Patients
+- Facilities
+- Service Months
+- Claims
+- Reimbursements
+- Payment Allocations
+- SNF Payables
+- SNF Payments
+- Reconciliation Records
+
+==================================================
+BUSINESS PURPOSE
+==================================================
+
+This workflow exists for dual-eligible hospice patients
+residing in SNFs or facilities where:
+
+- Hospice bills Medi-Cal
+- Hospice bills Medi-Cal Managed Care Plans
+- Hospice bills HMO plans responsible for room and board
+
+AND
+
+- Hospice pays the SNF
+
+Often before reimbursement arrives.
+
+The system must answer:
+
+- Did Medi-Cal pay us?
+- Did the HMO pay us?
+- When did they pay?
+- What exact amount did they pay?
+- What month did the payment cover?
+- Have we paid the SNF?
+- When did we pay the SNF?
+- How much did we pay?
+- What reimbursement remains outstanding?
+- How much has hospice advanced?
+
+==================================================
+SHARED AUTHORITATIVE RECORDS
+==================================================
+
+Required:
+
+- RoomBoardCase
+- ServiceMonth
+- RoomBoardClaim
+- PayerRemittance
+- PaymentAllocation
+- SNFPayable
+- SNFPayment
+- HospiceFundedAdvance
+- ReconciliationRecord
+- FinancialSupportSchedule
+
+==================================================
+MASTER ROOM & BOARD CASE STATUS
+==================================================
+
+- Eligibility Review
+- Case Setup Required
+- Ready For Monthly Billing
+- Billing In Progress
+- Awaiting Reimbursement
+- Partially Reimbursed
+- Reimbursement Received
+- SNF Payment Pending
+- SNF Partially Paid
+- SNF Paid
+- Reconciliation Required
+- Fully Reconciled
+- Dispute Or Appeal
+- Closed
+
+==================================================
+BILLER PLATFORM PAGE
+==================================================
+
+PAGE NAME
+
+Room & Board Billing & Reimbursement Center
+
+OWNER
+
+SNS Tech Solutions
+Biller Platform
+
+MISSION
+
+Bill payers.
+
+Track reimbursement.
+
+Track exact payment dates.
+
+Track exact payment amounts.
+
+Track service-month coverage.
+
+Work delays, denials, variances, and appeals.
+
+==================================================
+BILLER EXECUTIVE KPI CARDS
+==================================================
+
+- Active R&B Cases
+- Ready To Bill
+- Submitted
+- Awaiting Medi-Cal
+- Awaiting HMO
+- Received This Month
+- No Payment Reported
+- Short / Partial Payments
+- Oldest Outstanding
+
+==================================================
+MONTHLY BILLING QUEUE
+==================================================
+
+Display:
+
+- Patient
+- Facility
+- Payer
+- Service Month
+- Expected Amount
+- Status
+
+Statuses:
+
+- Draft
+- Ready To Bill
+- Submitted
+- Returned
+- Rejected
+- Denied
+- Resubmitted
+- Hold
+- Failed Validation
+- Billing Complete
+
+==================================================
+CLAIM VALIDATION STATUS
+==================================================
+
+- Not Evaluated
+- Passed
+- Passed With Warning
+- Blocked
+- Correction Required
+- Revalidation Required
+
+==================================================
+PAYER REIMBURSEMENT QUEUE
+==================================================
+
+Display:
+
+- Patient
+- Payer
+- Claimed Amount
+- Amount Received
+- Exact Payment Date
+- Remaining Balance
+- Status
+
+Statuses:
+
+- Not Yet Billed
+- Submitted
+- Payer Processing
+- Pending Payment
+- No Payment
+- Partially Paid
+- Paid In Full
+- Short Paid
+- Denied
+- Appealed
+- Under Review
+- Reimbursement Complete
+
+==================================================
+PAYMENT ALLOCATION
+==================================================
+
+Statuses:
+
+- Unallocated
+- Partially Allocated
+- Fully Allocated
+- Allocation Review
+- Allocation Disputed
+- Allocation Corrected
+- Allocation Reversed
+
+Required Fields:
+
+- Payment Reference
+- Payer
+- Total Received
+- Amount Allocated
+- Amount Unallocated
+- Allocation Status
+
+==================================================
+PAYER FOLLOW-UP QUEUE
+==================================================
+
+Display:
+
+- Patient
+- Payer
+- Days Outstanding
+- Next Action
+
+Statuses:
+
+- Follow-Up Due
+- Scheduled
+- Contacted
+- Awaiting Response
+- Escalation Required
+- Provider Dispute
+- Appeal Required
+- Resolved
+
+==================================================
+SERVICE MONTH MATRIX
+==================================================
+
+Required.
+
+Track:
+
+- Patient
+- Facility
+- Payer
+- Month
+- Expected
+- Received
+- Exact Reimbursement Date
+- Status
+
+Every service month must be independently tracked.
+
+==================================================
+TENANT PAGE
+==================================================
+
+PAGE NAME
+
+Room & Board Financial Reconciliation Center
+
+OWNER
+
+SNS Hospice Solutions
+Agency Financial Operations
+
+MISSION
+
+Track SNF payments.
+
+Track hospice-funded advances.
+
+Track reimbursement exposure.
+
+Track reimbursement delays.
+
+Provide annual reporting support.
+
+==================================================
+TENANT EXECUTIVE KPI CARDS
+==================================================
+
+- R&B Patients
+- SNF Paid
+- SNF Payable
+- Medi-Cal Received
+- HMO Received
+- Outstanding Reimbursement
+- Hospice Advances
+- Average Delay
+- Awaiting Medi-Cal
+- Awaiting HMO
+
+==================================================
+HOSPICE-FUNDED PASS-THROUGH ADVANCES
+==================================================
+
+Display:
+
+- Patient
+- Facility
+- Payer
+- SNF Paid
+- Exact SNF Payment Date
+- Reimbursement Received
+- Exact Reimbursement Date
+- Advance Status
+
+Statuses:
+
+- Advance Open
+- Partially Reimbursed Advance
+- Fully Reimbursed Advance
+- Advance Under Review
+- Advance Disputed
+- Advance Closed
+
+==================================================
+FACILITY SNF DISBURSEMENTS
+==================================================
+
+Display:
+
+- Facility
+- Active Patients
+- Invoiced
+- Amount Paid
+- Exact Payment Date
+- Outstanding Amount
+
+The system must answer:
+
+- Have we paid the SNF?
+- When did we pay?
+- How much did we pay?
+
+==================================================
+PAYER REIMBURSEMENT AGING
+==================================================
+
+Track separately:
+
+- 0-30
+- 31-60
+- 61-90
+- 91-120
+- 121-180
+- 181+
+
+Display by:
+
+- Medicare
+- Medi-Cal
+- HMO
+- Managed Care Plans
+
+==================================================
+SERVICE MONTH RECONCILIATION LEDGER
+==================================================
+
+Required Fields:
+
+- Patient
+- Facility
+- Payer
+- Service Month
+- Expected
+- Received
+- Exact Reimbursement Date
+- SNF Paid
+- Exact SNF Payment Date
+- Current Status
+
+Statuses:
+
+- Matched
+- Partial
+- Discrepancy
+- Payer Hold
+- Awaiting Reimbursement
+- Rejected
+- Appealed
+- Reconciled
+
+==================================================
+SNF PAYABLE STATUS
+==================================================
+
+- Not Established
+- Invoice Received
+- Under Review
+- Approved For Payment
+- Scheduled
+- Partially Paid
+- Paid In Full
+- Disputed
+- Adjustment Required
+- Closed
+
+==================================================
+SNF PAYMENT STATUS
+==================================================
+
+- Not Paid
+- Scheduled
+- Processing
+- Partially Paid
+- Paid In Full
+- Failed
+- Reissued
+- Voided
+- Reconciled
+
+Every payment must preserve:
+
+- Exact Amount
+- Exact Payment Date
+- Check Number
+- EFT Reference
+- Payment Method
+
+==================================================
+RECONCILIATION STATUS
+==================================================
+
+- Not Ready
+- Pending
+- In Reconciliation
+- Matched
+- Partial Match
+- Payer Variance
+- Facility Variance
+- Missing Payer Payment
+- Missing SNF Payment
+- Adjustment Review
+- Fully Reconciled
+- Closed
+
+==================================================
+ANNUAL REPORTING SUPPORT
+==================================================
+
+Required Section
+
+Annual Cost Reporting Summary
+
+Support Schedule Fields:
+
+- Fiscal Year
+- Patient
+- Facility
+- Payer
+- Service Month
+- Expected Reimbursement
+- Amount Billed
+- Amount Received
+- Exact Reimbursement Date
+- Payer Reference
+- Amount Paid To SNF
+- Exact SNF Payment Date
+- Outstanding Reimbursement
+- Outstanding Payable
+- Hospice-Funded Advance
+- Adjustment Amount
+- Dispute Status
+- Evidence References
+
+IMPORTANT
+
+This is supporting documentation.
+
+Do not represent this as an official completed Medicare Cost Report.
+
+==================================================
+AUDIT REQUIREMENTS
+==================================================
+
+Audit:
+
+- Case Creation
+- Eligibility Verification
+- Setup Completion
+- Claim Validation
+- Claim Submission
+- Claim Correction
+- Reimbursement Receipt
+- Reimbursement Allocation
+- Allocation Correction
+- SNF Payable Creation
+- SNF Payable Approval
+- SNF Payment
+- SNF Payment Void
+- Reconciliation
+- Reconciliation Reopen
+- Dispute Creation
+- Appeal Creation
+- Export
+- Financial Report Generation
+
+Preserve:
+
+- Actor
+- Role
+- Agency
+- Patient
+- Facility
+- Payer
+- Service Month
+- Previous State
+- New State
+- Exact Amount
+- Reason
+- Timestamp
+- Correlation ID
+
+==================================================
+AUTHORIZATION RULES
+==================================================
+
+BILLER PLATFORM
+
+Users may only see:
+
+- Assigned Agencies
+- Assigned Payers
+- Assigned Reimbursement Activity
+
+TENANT PLATFORM
+
+Users may only see:
+
+- Their Agency
+- Their Financial Records
+
+If authorization fails:
+
+Do not display:
+
+- Payment Amounts
+- Reimbursement Amounts
+- SNF Payments
+- Financial Metrics
+- Patient Financial Records
+
+Replace the entire workspace with:
+
+Access Denied
+
+==================================================
+AI GOVERNANCE
+==================================================
+
+AI MAY:
+
+- Identify Missing Reimbursements
+- Recommend Follow-Up
+- Identify Allocation Patterns
+- Suggest Disputes
+- Draft Appeals
+- Draft Payer Correspondence
+- Summarize Reconciliation History
+
+AI MAY NOT:
+
+- Submit Claims
+- Record Payments
+- Allocate Payments Automatically
+- Approve Payables
+- Issue SNF Payments
+- Modify Financial Records
+- Close Cases
+
+Human approval required.
+
+==================================================
+ACCEPTANCE CRITERIA
+==================================================
+
+□ Shared data architecture implemented.
+□ Biller and Tenant views read same records.
+□ Exact reimbursement amounts tracked.
+□ Exact reimbursement dates tracked.
+□ Exact SNF payment amounts tracked.
+□ Exact SNF payment dates tracked.
+□ Service-month reconciliation operational.
+□ Hospice-funded advance tracking operational.
+□ Payment allocation operational.
+□ Payer aging operational.
+□ SNF payable lifecycle operational.
+□ Reconciliation lifecycle operational.
+□ Annual reporting support operational.
+□ Audit history operational.
+□ Cross-tenant isolation verified.
+□ Authorization enforced.
+□ Figma parity verified.
+
+==================================================
+EPIC SUMMARY
+ROOM & BOARD BILLING & REIMBURSEMENT
++
+ROOM & BOARD FINANCIAL RECONCILIATION
+==================================================
+
+STATUS
+
+LOCKED
+IMPLEMENTATION AUTHORIZED
+
+BUSINESS OWNER
+
+SNS Hospice Solutions
+
+TECHNICAL OWNER
+
+SNS Tech Solutions
+
+PRIORITY
+
+HIGH
+
+RATIONALE
+
+This workflow supports:
+
+- Medi-Cal Room & Board reimbursement
+- Managed Care / HMO Room & Board reimbursement
+- SNF pass-through payments
+- Hospice-funded advances
+- Service-month reconciliation
+- Financial visibility
+- Agency cash exposure
+- Financial reporting support
+- Annual cost-report supporting schedules
+
+THIS IS NOT FACILITY COLLECTIONS.
+
+THIS IS ROOM & BOARD REIMBURSEMENT RECONCILIATION.
+
+==================================================
+EPIC IMPLEMENTATION CHECKLIST
+==================================================
+
+ARCHITECTURE
+
+□ Shared source of truth
+□ No duplicated Room & Board data
+□ Biller/Tenant separation maintained
+
+DATABASE
+
+□ Schema implemented
+□ Migrations verified
+□ Constraints added
+□ Indexes added
+
+BILLER PLATFORM
+
+□ KPI cards operational
+□ Billing Queue operational
+□ Reimbursement Queue operational
+□ Payment Allocation operational
+□ Service Month Matrix operational
+
+TENANT PLATFORM
+
+□ Exposure Dashboard operational
+□ SNF Payment Ledger operational
+□ Advance Tracking operational
+□ Reconciliation Ledger operational
+□ Reporting Summary operational
+
+FINANCIAL
+
+□ Exact reimbursement amount tracked
+□ Exact reimbursement date tracked
+□ Exact SNF payment amount tracked
+□ Exact SNF payment date tracked
+□ Outstanding exposure calculated
+□ Hospice-funded advances calculated
+
+RECONCILIATION
+
+□ Matched status operational
+□ Partial status operational
+□ Variance status operational
+□ Reopen workflow operational
+
+AUDIT
+
+□ Full audit trail operational
+□ History immutable
+
+SECURITY
+
+□ Tenant isolation verified
+□ Biller authorization verified
+□ Agency authorization verified
+□ Unauthorized users cannot view data
+
+REPORTING
+
+□ Annual support schedule operational
+□ Export operational
+□ Cost-report support verified
+
+FIGMA
+
+□ Biller parity verified
+□ Agency parity verified
+□ Lifecycle parity verified
+□ Status parity verified
+
+==================================================
+IMPLEMENTATION MANDATE
+==================================================
+
+DO NOT BUILD THIS AS A COLLECTIONS MODULE.
+
+DO NOT BUILD THIS AS A STANDALONE TENANT FEATURE.
+
+IMPLEMENT ONE AUTHORITATIVE ROOM & BOARD DOMAIN.
+
+Expose:
+
+1. Operational Billing View
+   (Biller Platform)
+
+2. Financial Reconciliation View
+   (Tenant Platform)
+
+Both must read the exact same records.
+
+==================================================
+ROOM & BOARD IMPLEMENTATION MILESTONES
+==================================================
+
+MILESTONE 1 — REPOSITORY DISCOVERY
+
+GOAL
+
+Identify existing models.
+
+Classify:
+
+- REUSE
+- EXTEND
+- CREATE
+
+Discovery Targets:
+
+- Patient
+- Facility
+- Payer
+- Claim
+- Payment
+- Remittance
+- Payment Posting
+- Adjustments
+- Work Items
+- Audit Events
+- Financial Reports
+
+Deliverable:
+
+ROOM_BOARD_DISCOVERY_REPORT.md
+
+Exit Criteria:
+
+□ All logical entities mapped
+□ Existing schema reviewed
+□ Existing routes reviewed
+□ Existing UI reviewed
+□ Existing payment infrastructure reviewed
+
+--------------------------------------------------
+MILESTONE 2 — SHARED ROOM & BOARD DATA FOUNDATION
+--------------------------------------------------
+
+Database Objects:
+
+- RoomBoardCase
+- ServiceMonth
+- RoomBoardClaim
+- PayerRemittance
+- PaymentAllocation
+- SNFPayable
+- SNFPayment
+- HospiceFundedAdvance
+- ReconciliationRecord
+- FinancialSupportSchedule
+
+RoomBoardCase
+
+Fields: id, agency_id, patient_id, facility_id, payer_id,
+case_status, created_at, updated_at
+
+Purpose: Master Room & Board workflow.
+
+ServiceMonth
+
+Fields: id, room_board_case_id, service_month, service_year,
+expected_reimbursement, status
+
+Purpose: Month-by-month reimbursement tracking.
+
+RoomBoardClaim
+
+Fields: id, service_month_id, payer_id, claim_number,
+amount_billed, status, submitted_at, processed_at
+
+Purpose: Track every Medi-Cal/HMO submission.
+
+PayerRemittance
+
+Fields: id, payer_id, payment_reference, payment_amount,
+payment_date, check_number, eft_reference, received_date
+
+Purpose: Track exact reimbursement received.
+
+PaymentAllocation
+
+Fields: id, payer_remittance_id, service_month_id,
+allocated_amount, allocation_status, allocated_at
+
+Purpose: Support one-to-many allocations.
+
+SNFPayable
+
+Fields: id, facility_id, patient_id, service_month_id,
+invoice_amount, approved_amount, status, invoice_date, due_date
+
+Purpose: Track hospice obligation to SNF.
+
+SNFPayment
+
+Fields: id, snf_payable_id, amount_paid, payment_date,
+check_number, eft_reference, status
+
+Purpose: Answer: When did we pay? How much did we pay?
+
+HospiceFundedAdvance
+
+Fields: id, service_month_id, snf_paid_amount,
+payer_reimbursed_amount, outstanding_exposure, advance_status
+
+Statuses:
+
+- Advance Open
+- Partially Reimbursed
+- Fully Reimbursed
+- Closed
+
+ReconciliationRecord
+
+Fields: id, service_month_id, expected_amount, received_amount,
+snf_paid, variance, status, reconciled_at
+
+Statuses:
+
+- Pending
+- Matched
+- Partial
+- Variance
+- Reopened
+- Closed
+
+FinancialSupportSchedule
+
+Fields: id, fiscal_year, agency_id, generated_at, generated_by
+
+Purpose: Annual reporting support.
+
+--------------------------------------------------
+MILESTONE 3 — BILLER PLATFORM
+--------------------------------------------------
+
+Page: Room & Board Billing & Reimbursement Center
+
+Owner: SNS Tech Solutions / Biller Platform
+
+Required Components:
+
+- Executive KPI Cards
+- Monthly Billing Queue
+- Claim Validation Queue
+- Payer Reimbursement Queue
+- Payment Allocation Queue
+- Payer Follow-Up Queue
+- Service-Month Matrix
+- Audit Feed
+
+Acceptance:
+
+□ Claims can be tracked
+□ Service months tracked
+□ Payment dates recorded
+□ Payment amounts recorded
+□ Follow-up queue operational
+□ Allocation engine operational
+
+--------------------------------------------------
+MILESTONE 4 — TENANT PLATFORM
+--------------------------------------------------
+
+Page: Room & Board Financial Reconciliation Center
+
+Owner: SNS Hospice Solutions
+
+Components:
+
+- Executive Exposure Dashboard
+- Hospice-Funded Advances
+- SNF Disbursement Ledger
+- Reimbursement Aging
+- Service Month Reconciliation Ledger
+- Annual Reporting Summary
+
+Acceptance:
+
+□ SNF payments visible
+□ Exact SNF payment dates visible
+□ Outstanding reimbursement visible
+□ Hospice advances visible
+□ Service-month history visible
+
+--------------------------------------------------
+MILESTONE 5 — SHARED RECONCILIATION ENGINE
+--------------------------------------------------
+
+Rules:
+
+- Expected - Received = Outstanding
+- Received - SNF Paid = Reconciled
+- Variance = Mismatch
+
+Statuses:
+
+- Matched
+- Partial
+- Short Paid
+- Denied
+- Appealed
+- Reconciled
+- Closed
+
+Acceptance:
+
+□ Reconciliation automated
+□ Variance identification operational
+□ Reopen supported
+
+--------------------------------------------------
+MILESTONE 6 — AUDIT FRAMEWORK
+--------------------------------------------------
+
+Audit:
+
+- Claim Created
+- Claim Submitted
+- Claim Corrected
+- Payment Received
+- Allocation Created
+- Allocation Modified
+- SNF Payable Approved
+- SNF Payment Issued
+- Reconciliation Completed
+- Reconciliation Reopened
+- Report Generated
+
+Store:
+
+- Actor
+- Role
+- Agency
+- Patient
+- Facility
+- Service Month
+- Amount
+- Old Value
+- New Value
+- Reason
+- Timestamp
+
+--------------------------------------------------
+MILESTONE 7 — REPORTING SUPPORT
+--------------------------------------------------
+
+Generate: Room & Board Reconciliation Schedule
+
+Columns:
+
+- Patient
+- Facility
+- Payer
+- Month
+- Expected
+- Received
+- Payment Date
+- SNF Paid
+- SNF Payment Date
+- Outstanding
+- Advance
+- Status
+
+Important:
+
+Supporting Schedule — NOT an Official Medicare Cost Report.
+
+==================================================
+FINAL STATUS
+==================================================
+
+Room & Board Billing & Reimbursement Center
+(Biller Platform)
+
+LOCKED
+
+AND
+
+Room & Board Financial Reconciliation Center
+(Tenant Platform)
+
+LOCKED
+IMPLEMENTATION AUTHORIZED
+
+No further redesign authorized.
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -2878,6 +3952,7 @@ This applies to:
 - CAP Compliance
 - AR & Collections
 - Credit Balance Resolution
+- Room & Board Billing & Reimbursement (Biller Platform) / Room & Board Financial Reconciliation (Tenant Platform)
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -3122,6 +4197,13 @@ LOCKED
 AI Credit Resolution Governance:
 LOCKED
 
+Room & Board Billing & Reimbursement Center (Biller Platform) /
+Room & Board Financial Reconciliation Center (Tenant Platform):
+LOCKED
+
+AI Room & Board Governance:
+LOCKED
+
 Visits & Notes Removal:
 LOCKED
 
@@ -3175,26 +4257,37 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **ten locked pages** (Billing Dashboard, Billing
+Scope now spans **eleven locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
 Monitoring & Change Detection, Payment Posting & Reconciliation
 Center, NOE Compliance & Revenue Protection Center, CAP Compliance &
-Financial Exposure Center, AR & Collections Intelligence Center, and
-new **Page 10: Credit Balance Resolution & Compliance Center**), a
-59-entity Discovery Deliverable list (up from 55, adding Credit
-Balance Case, Credit Cause Record, CMS-838 Filing Case, and Credit
-Resolution Work Item), the existing 24-phase Implementation Plan
-(Phase 0-23), and a sixth AI-governance boundary (AI Credit Resolution
-Assistant) alongside the AI Appeal Draft Assistant (Denials &
+Financial Exposure Center, AR & Collections Intelligence Center,
+Credit Balance Resolution & Compliance Center, and new **Page 11:
+Room & Board Billing & Reimbursement Center (Biller Platform) /
+Room & Board Financial Reconciliation Center (SNS Hospice Solutions
+Tenant Platform)** — a single shared-data-model workflow exposed as
+two platform-specific views), a 69-entity Discovery Deliverable list
+(up from 59, adding RoomBoardCase, ServiceMonth, RoomBoardClaim,
+PayerRemittance, PaymentAllocation, SNFPayable, SNFPayment,
+HospiceFundedAdvance, ReconciliationRecord, and
+FinancialSupportSchedule), the existing 24-phase Implementation Plan
+(Phase 0-23), and a seventh AI-governance boundary (AI Room & Board
+Governance) alongside the AI Appeal Draft Assistant (Denials &
 Appeals), AI Reconciliation Assistant (Payment Posting), AI NOE Risk
-Analyzer (NOE Compliance), AI CAP Analysis (CAP Compliance), and AI
-Collections Assistant (AR & Collections) — in all six cases AI may
+Analyzer (NOE Compliance), AI CAP Analysis (CAP Compliance), AI
+Collections Assistant (AR & Collections), and AI Credit Resolution
+Assistant (Credit Balance Resolution) — in all seven cases AI may
 analyze/estimate/forecast/recommend but a human must approve every
-compliance, financial, refund, collections, or appeal-submission
-action; AI Credit Resolution Assistant is additionally and explicitly
-barred from determining official compliance outcomes, issuing
-refunds, adjusting balances, closing credit cases, or submitting
-CMS-838 filings.
+compliance, financial, refund, collections, allocation, payment, or
+appeal-submission action; AI Room & Board Governance is additionally
+and explicitly barred from submitting claims, recording payments,
+allocating payments automatically, approving payables, issuing SNF
+payments, modifying financial records, or closing cases. Page 11 is
+also the first page in this document built on an explicit
+**Critical Architecture Rule**: one authoritative shared data model
+(RoomBoardCase and related records) must never be duplicated across
+the Biller Platform and the SNS Hospice Solutions Tenant Platform —
+both platform-specific pages must read from the same records.
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -3205,23 +4298,30 @@ of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
   created, but scoped to the original 25-entity list (three pages).
-  Must be extended to cover the 34 additional entities introduced by
+  Must be extended to cover the 44 additional entities introduced by
   this document for Denials & Appeals, Payment Posting &
   Reconciliation, NOE Compliance & Revenue Protection, CAP Compliance
-  & Financial Exposure, AR & Collections Intelligence, and Credit
-  Balance Resolution & Compliance (Denial, Appeal, Appeal Version,
-  Appeal Evidence Package, Appeal Lifecycle Event, Eligibility
-  Verification, Eligibility Sweep, Eligibility Sweep Result, Coverage
-  Change, Eligibility Work Item, Verification Source, ERA or
-  Remittance, Payment Posting, Payment Match, Payment Variance,
-  Contractual Adjustment, Unapplied Cash, Secondary Billing Item,
-  Payment Work Item, NOE Compliance Record, NOE Risk Assessment, NOE
-  Filing Event, NOE Work Item, CAP Exposure Record, CAP Forecast
-  Scenario, CAP Agency Utilization Snapshot, CAP Work Item, AR Aging
-  Snapshot, AR Recovery Work Item, AR Collections Activity, Credit
-  Balance Case, Credit Cause Record, CMS-838 Filing Case, Credit
-  Resolution Work Item) before Phase 0 can be considered complete for
-  this document's full ten-page scope.
+  & Financial Exposure, AR & Collections Intelligence, Credit
+  Balance Resolution & Compliance, and Room & Board Billing &
+  Reimbursement / Financial Reconciliation (Denial, Appeal, Appeal
+  Version, Appeal Evidence Package, Appeal Lifecycle Event,
+  Eligibility Verification, Eligibility Sweep, Eligibility Sweep
+  Result, Coverage Change, Eligibility Work Item, Verification
+  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
+  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
+  Item, Payment Work Item, NOE Compliance Record, NOE Risk
+  Assessment, NOE Filing Event, NOE Work Item, CAP Exposure Record,
+  CAP Forecast Scenario, CAP Agency Utilization Snapshot, CAP Work
+  Item, AR Aging Snapshot, AR Recovery Work Item, AR Collections
+  Activity, Credit Balance Case, Credit Cause Record, CMS-838 Filing
+  Case, Credit Resolution Work Item, RoomBoardCase, ServiceMonth,
+  RoomBoardClaim, PayerRemittance, PaymentAllocation, SNFPayable,
+  SNFPayment, HospiceFundedAdvance, ReconciliationRecord, and
+  FinancialSupportSchedule) before Phase 0 can be considered complete
+  for this document's full eleven-page scope. A standalone
+  `ROOM_BOARD_DISCOVERY_REPORT.md` is separately required per Page
+  11's own Milestone 1 (Repository Discovery) before any Room &
+  Board schema work begins.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
   need a corresponding addendum once the expanded discovery matrix is
@@ -3349,6 +4449,44 @@ of this document's creation:**
   submitting CMS-838 filings. Adds four entities to the Required
   Discovery Deliverable list: Credit Balance Case, Credit Cause
   Record, CMS-838 Filing Case, Credit Resolution Work Item.
+- **Adds Page 11: Room & Board Billing & Reimbursement Center
+  (Biller Platform) / Room & Board Financial Reconciliation Center
+  (SNS Hospice Solutions Tenant Platform)** — a single shared-data-
+  model workflow for dual-eligible hospice patients in SNFs/
+  facilities, exposed as two platform-specific views (Biller
+  operational billing/reimbursement view; Tenant financial exposure/
+  reconciliation view) that must read from the same authoritative
+  records (RoomBoardCase, ServiceMonth, RoomBoardClaim,
+  PayerRemittance, PaymentAllocation, SNFPayable, SNFPayment,
+  HospiceFundedAdvance, ReconciliationRecord,
+  FinancialSupportSchedule) — an explicit Critical Architecture Rule
+  forbids building two separate systems or duplicating patients,
+  facilities, service months, claims, reimbursements, allocations,
+  payables, payments, or reconciliation records across the two
+  platforms. Includes a 7-milestone Room & Board Implementation
+  Milestones plan (Repository Discovery producing a standalone
+  `ROOM_BOARD_DISCOVERY_REPORT.md`; Shared Data Foundation; Biller
+  Platform page; Tenant Platform page; Shared Reconciliation Engine;
+  Audit Framework; Reporting Support) and an Epic Summary
+  (Business Owner: SNS Hospice Solutions; Technical Owner: SNS Tech
+  Solutions; Priority: HIGH) explicitly distinguishing this workflow
+  from Facility Collections ("THIS IS NOT FACILITY COLLECTIONS. THIS
+  IS ROOM & BOARD REIMBURSEMENT RECONCILIATION."). Its AI Room &
+  Board Governance follows the same recommend-only pattern as the
+  other six AI assistants (may identify missing reimbursements,
+  recommend follow-up, identify allocation patterns, suggest disputes,
+  draft appeals/correspondence, summarize reconciliation history; may
+  not submit claims, record payments, allocate payments automatically,
+  approve payables, issue SNF payments, modify financial records, or
+  close cases). The Annual Reporting Support (Financial Support
+  Schedule) is explicitly not an official completed Medicare Cost
+  Report. Adds ten entities to the Required Discovery Deliverable
+  list: RoomBoardCase, ServiceMonth, RoomBoardClaim, PayerRemittance,
+  PaymentAllocation, SNFPayable, SNFPayment, HospiceFundedAdvance,
+  ReconciliationRecord, FinancialSupportSchedule. 16 UI design
+  reference screenshots for this and other already-documented pages
+  were saved to session storage as implementation reference (light-
+  theme JSX/Tailwind versions to follow before implementation begins).
 
 ## Change Log
 
@@ -3359,3 +4497,4 @@ of this document's creation:**
 | 2026-09-17 | Added Page 8: CAP Compliance & Financial Exposure Center (Executive CAP Exposure Overview, CAP Accumulation & Limit Proximity Forecast, Multi-Agency CAP Exposure Matrix, AI Compliance Risk Projections, CAP Driver Analysis, Operational Scenario Modeling, CAP Work Queue, Historical CAP Reconciliation Logs, and CAP Acceptance Criteria). This page is explicitly an operational monitoring/forecasting tool only — it is not an official CAP calculator, and official CAP determinations remain dependent on NGS PS&R Reports, official Medicare Cap Reports, and other approved reimbursement sources; the AI CAP Analysis boundary explicitly forbids AI from determining official Medicare cap liability, certifying compliance, or producing official refund calculations. Updated Approved Pages to eight; added CAP Exposure Record, CAP Forecast Scenario, CAP Agency Utilization Snapshot, and CAP Work Item to the Required Discovery Deliverable list (now 52 entities); added CAP Compliance to the Section 20 Unauthorized State Rule page list; added CAP Compliance & Financial Exposure Center and AI CAP Risk Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-8 before Phase 0 can be considered complete for the full eight-page scope. |
 | 2026-09-17 | Added Page 9: AR & Collections Intelligence Center (Executive AR Summary, Recovery Prioritization Queue, Top Collection Risks, AI Collections Assistant, Payer Aging Analysis Matrix, Agency Performance & Aging Summary, Aging Work Queue, Historical Collections & Write-Off Ledger, Auto Work Item Creation, Assignment Model, Audit Requirements, Acceptance Criteria, Implementation Notes, and Final Status). Explicitly framed as an operational collections and revenue recovery center, not a passive/traditional aging report — Implementation Notes direct that Recovery Prioritization Queue, Timely Filing Risk Detection, Aging Work Queue, Payer/Agency Risk Analysis, and Automated Recovery Work Item Creation take priority over static reporting. AI Collections Assistant follows the same recommend-only governance pattern as the other four AI assistants (may identify risks/patterns and draft recovery strategies and work-item plans; may not write off balances, modify receivables/accounts, change financial values, or perform collection actions) and the specification directs replacing automated-sounding action labels (e.g. "Auto Collection Execution", "Automated Write-Offs") with recommendation language (e.g. "Generate Collection Strategy", "Generate Recovery Recommendations"). Updated Approved Pages to nine; added AR Aging Snapshot, AR Recovery Work Item, and AR Collections Activity to the Required Discovery Deliverable list (now 55 entities); added AR & Collections to the Section 20 Unauthorized State Rule page list; added AR & Collections Intelligence Center and AI Collections Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-9 before Phase 0 can be considered complete for the full nine-page scope. |
 | 2026-09-17 | Added Page 10: Credit Balance Resolution & Compliance Center (Executive Credit Exposure, Credit Resolution Queue, Credit Cause Analysis, AI Credit Resolution Assistant, CMS-838 Compliance Center, Credit Aging Analysis, Multi-Agency Credit Exposure, Auto-Created Work Items, Credit Balance Lifecycle, Refund Governance, CMS-838 Workflow, Authorization Failure Behavior, Acceptance Criteria, and Final Status — APPROVED / LOCKED / IMPLEMENTATION AUTHORIZED). Explicitly framed as a resolution/compliance center, not a reporting screen. Credit Balance Lifecycle (Credit Identified → Investigation → Validation → Refund Review → CMS-838 Review → Resolved → Closed) establishes that Resolved does not automatically mean Closed and refund issuance does not automatically close the investigation. Refund Governance and CMS-838 Workflow require human authorization and full auditability with historical filings remaining viewable. Authorization Failure Behavior mirrors the Payment Posting pattern (replace the entire workspace on authorization failure; no financial or patient credit data exposed). AI Credit Resolution Assistant follows the same recommend-only governance pattern as the other five AI assistants, using required non-conclusive language and an explicit prohibition on determining compliance outcomes, issuing refunds, adjusting balances, closing credit cases, or submitting CMS-838 filings. Updated Approved Pages to ten; added Credit Balance Case, Credit Cause Record, CMS-838 Filing Case, and Credit Resolution Work Item to the Required Discovery Deliverable list (now 59 entities); added Credit Balance Resolution to the Section 20 Unauthorized State Rule page list; added Credit Balance Resolution & Compliance Center and AI Credit Resolution Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-10 before Phase 0 can be considered complete for the full ten-page scope. |
+| 2026-09-17 | Added Page 11: Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (SNS Hospice Solutions Tenant Platform) — a single shared-data-model workflow, two platform-specific views, governed by an explicit Critical Architecture Rule against duplicated data or two separate systems. Includes Business Purpose, Shared Authoritative Records, Master Room & Board Case Status, full Biller Platform page spec (KPI cards, Monthly Billing Queue, Claim Validation Status, Payer Reimbursement Queue, Payment Allocation, Payer Follow-Up Queue, Service Month Matrix), full Tenant page spec (KPI cards, Hospice-Funded Pass-Through Advances, Facility SNF Disbursements, Payer Reimbursement Aging, Service Month Reconciliation Ledger, SNF Payable/Payment Status, Reconciliation Status, Annual Reporting Support), Audit Requirements, Authorization Rules (with Access Denied full-workspace-replacement behavior), AI Governance, Acceptance Criteria, an Epic Summary (Business Owner: SNS Hospice Solutions; Technical Owner: SNS Tech Solutions; Priority: HIGH; explicitly distinguished from Facility Collections) with its own Epic Implementation Checklist and Implementation Mandate, and a 7-milestone Room & Board Implementation Milestones plan (Repository Discovery → Shared Data Foundation → Biller Platform → Tenant Platform → Shared Reconciliation Engine → Audit Framework → Reporting Support) with field-level schemas for all ten new entities. Updated Approved Pages to eleven; added RoomBoardCase, ServiceMonth, RoomBoardClaim, PayerRemittance, PaymentAllocation, SNFPayable, SNFPayment, HospiceFundedAdvance, ReconciliationRecord, and FinancialSupportSchedule to the Required Discovery Deliverable list (now 69 entities); added Room & Board Billing & Reimbursement / Financial Reconciliation to the Section 20 Unauthorized State Rule page list; added Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (Tenant Platform) and AI Room & Board Governance to Section 24 Final Locked Decisions. 16 UI design reference screenshots (covering this and other already-documented pages) saved to session storage as implementation reference pending a future light-theme JSX/Tailwind resend. Documentation only; no schema, migrations, tables, or models created. A standalone ROOM_BOARD_DISCOVERY_REPORT.md is separately required per Page 11's own Milestone 1 before any Room & Board schema work begins. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-11 before Phase 0 can be considered complete for the full eleven-page scope. |
