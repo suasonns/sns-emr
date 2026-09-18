@@ -965,6 +965,8 @@ the **delta** items this detail screen additionally depends on.
 - **Files Affected:** `backend/app/billing/models/claim.py` (possible
   new column), new aggregation service.
 - **Verification Evidence:** `backend/app/billing/models/claim.py`.
+- **Update:** the enum value list for `claim_category` has since been
+  supplied by the user and is now locked — see Section 20.9.
 
 ### 20.3 Active Patients count — REUSE (model) + CREATE (aggregation)
 
@@ -1052,11 +1054,75 @@ recommends. This addendum adds two field-level requirements to the
 Section 18 recommended schema:
 1. A `responsibility_scope` field on the coverage-assignment table
    (Section 20.4), and
-2. A decision point on whether `Claim` needs a new `claim_category`
-   column (Section 20.2) to support the Open Claims Summary
-   breakdown — flagged as an open question, not resolved here.
+2. A `claim_category` column on `Claim` (Section 20.2) to support the
+   Open Claims Summary breakdown — the enum value list is now LOCKED
+   (Section 20.9); column creation itself remains gated behind
+   Migration Design authorization.
+
+### 20.9 Claim Category Enum — LOCKED VALUE LIST
+
+The user has supplied the authoritative, locked value list for the
+`claim_category` column proposed in Section 20.2. This resolves the
+open question of what values the classification uses, but does **not**
+by itself authorize the migration — creating the column remains
+subject to the same Schema Design Review / Migration Design
+authorization gate as every other change in this report.
+
+**Locked `claim_category` values:**
+
+| Value | Category |
+|---|---|
+| `MEDICARE_HOSPICE` | Medicare Hospice benefit |
+| `MEDICAID` | Medicaid (non-CA / generic) |
+| `MEDI_CAL` | California Medicaid program |
+| `MEDICARE_ADVANTAGE_HMO` | Medicare Advantage — HMO plan |
+| `MEDICARE_ADVANTAGE_PPO` | Medicare Advantage — PPO plan |
+| `COMMERCIAL_HMO` | Commercial payer — HMO plan |
+| `COMMERCIAL_PPO` | Commercial payer — PPO plan |
+| `COMMERCIAL_POS` | Commercial payer — Point of Service plan |
+| `TRICARE` | TRICARE (military/veteran-dependent coverage) |
+| `VETERANS_AFFAIRS` | Veterans Affairs (VA) direct coverage |
+| `PRIVATE_PAY` | Self-pay / private pay, no third-party payer |
+| `OTHER` | Any payer not covered by the above values |
+
+**Design notes:**
+- This is a **flat 12-value enum**, not a nested/hierarchical
+  classification — `MEDI_CAL` is its own distinct value from
+  `MEDICAID`, and the two Medicare Advantage plan types
+  (`MEDICARE_ADVANTAGE_HMO`/`MEDICARE_ADVANTAGE_PPO`) are distinct from
+  each other and from `MEDICARE_HOSPICE`.
+- **Relationship to Agency Coverage's Medicare/Medi-Cal split (Section
+  18/21/22):** the coverage-assignment discriminator (`coverage_role`
+  ∈ `MEDICARE_BILLER`/`MEDICAID_MANAGED_CARE_BILLER`) and this new
+  `claim_category` enum are **separate concepts and must not be
+  merged**. `coverage_role` describes which staff role bills for an
+  agency; `claim_category` describes an individual claim's payer type.
+  The Open Claims Summary breakdown groups claims by `claim_category`,
+  then the UI/reporting layer maps categories to responsible-role
+  buckets (e.g. `MEDICARE_HOSPICE` + both Medicare Advantage values →
+  "Medicare Biller" bucket; `MEDICAID`/`MEDI_CAL` → "Medi-Cal Biller"
+  bucket) — this mapping is a display/reporting concern, not a schema
+  relationship, and remains an implementation-phase decision, not
+  locked here.
+- `OTHER` is retained as a fallback bucket per the approved spec's
+  general convention (Coverage Status, Backup Missing, etc. all avoid
+  "no value" states); it is not a placeholder for an unimplemented
+  category — any payer not matching one of the eleven named values is
+  intentionally routed to `OTHER`.
+- This value list is a `CheckConstraint`/enum column, following the
+  same pattern as every other discriminator in this design
+  (`coverage_role`, `backs_up_role`, `specialist_type` — Section
+  21.2/22.1) — a closed set, not an open string, consistent with
+  Section 22.6's stated extensibility approach (widen the constraint
+  via a future migration if a 13th category is ever required).
+- **Status:** value list LOCKED. Column creation (migration),
+  backfill strategy for existing `Claim` rows, and the
+  category-to-responsible-role display mapping remain **not
+  authorized** — still gated behind Migration Design authorization,
+  which has not been granted.
 
 ---
+
 
 ## SECTION 21 — AGENCY COVERAGE SCHEMA-DESIGN ADDENDUM
 
@@ -1864,3 +1930,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 21: Agency Coverage Schema-Design Addendum, responding to the required Discovery Addendum Verification Checklist. Expanded the single-discriminated-table recommendation into a concrete, reviewable design: Team Leader and Billing Supervisor are modeled as team-scope relationships (new `billing_team_memberships`/`billing_team_supervisor_assignments` tables), not agency-coverage rows, because their authority spans a team's whole portfolio rather than one agency; the Agency Coverage Matrix's "Team Leader" column is a derived join, not a stored per-agency fact. Defined the full `billing_agency_coverage_assignments` design (coverage_role discriminator, backs_up_role, specialist_type, status, effective window), a new `billing_agency_team_assignments` table (which team covers which agency), and two new audit/export tables (`billing_agency_coverage_audit_events` modeled on `FacilityPaymentAuditLog`, `billing_agency_coverage_export_events` modeled on `ClaimExportLog`). Documented required foreign keys, indexes, partial unique constraints (active Team Leader/Supervisor/Medicare/Medi-Cal/Backup uniqueness), overlap-prevention approach (service-layer validation, not a Postgres exclusion constraint), replacement/supersession behavior (two-write transaction: end old row + insert new row + one audit event, never an in-place update or physical delete), append-only history, Medicare/Medi-Cal separation guarantees, and coverage-status derivation logic. Flagged one open question (Temporary Coverage / Reassignment Pending derivation has no schema field yet). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
 | 2026-09-18 | Added Section 22: Backup Responsibility Scope Design Note, per the Discovery Addendum Review request for one additional design note before Schema Design Review authorization. Documents allowed `backs_up_role` values (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER` only — no combined/ALL value), multi-scope behavior (one row per backed-up responsibility rather than a multi-value field, so a single backup covering two roles is two independent rows), overlapping-scope rules (partial unique index per role prevents two active backups for the same role; independent roles do not conflict with each other; a backup can never share a user with the active primary it backs up), coverage-status derivation extended per-role (Partial Coverage = all primaries filled but one or more required backups missing; Coverage Gap is reserved for missing primaries only, never for a missing backup alone), and Backup Missing derivation (a computed, per-role UI label reading absence of an active `BACKUP` row with that `backs_up_role`, never a stored flag, computed identically across the matrix, detail view, and export). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
 | 2026-09-18 | Added Section 22.6: Scope Limitation vs. Future Extensibility clarification, per the Discovery Addendum Review's requested clarification before Schema Design Review authorization. Confirms backup scope is intentionally, deliberately closed to the two named roles (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER`) only — `SPECIALIST` assignments are explicitly out of backup scope because the approved spec treats them as supplementary capability, not a required-coverage role; Team Leader/Billing Supervisor are also out of scope because they are team-scope relationships, not agency-coverage rows. Documents that any future backable role would require widening the `backs_up_role` CheckConstraint plus a new migration — this is an additive future mechanism, not something pre-built, enabled, or implied by the current design. No specialist backup scope, generic "other" scope, or open string value exists in this schema design today. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Schema Design Review authorized by the user following this clarification; migration design, API design, and UI implementation remain explicitly blocked. |
+| 2026-09-18 | Added Section 20.9: Claim Category Enum — Locked Value List. The user supplied a 12-value flat enum (`MEDICARE_HOSPICE`, `MEDICAID`, `MEDI_CAL`, `MEDICARE_ADVANTAGE_HMO`, `MEDICARE_ADVANTAGE_PPO`, `COMMERCIAL_HMO`, `COMMERCIAL_PPO`, `COMMERCIAL_POS`, `TRICARE`, `VETERANS_AFFAIRS`, `PRIVATE_PAY`, `OTHER`), resolving the Section 20.2 open question about what values a new `claim_category` column on `Claim` would use. Documented that this enum is a separate concept from the Section 18/21/22 `coverage_role` discriminator (staff-role assignment vs. per-claim payer classification) and that any category-to-responsible-role display mapping is an implementation-phase decision, not locked here. Explicitly noted the value list being locked does NOT itself authorize column creation — migration, backfill, and mapping work remain gated behind Migration Design authorization, which has not been granted. Documentation only; no schema, migrations, models, services, or routes created or changed. |
