@@ -1,9 +1,10 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: SCHEMA DESIGN APPROVED — MIGRATION DESIGN DOCUMENTED (MODULE-
-LEVEL + AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-
-DESIGN + MIGRATION-DESIGN ADDENDA) — MIGRATION FILE CREATION, API
-DESIGN, AND UI IMPLEMENTATION REMAIN BLOCKED
+STATUS: MIGRATION DESIGN REVIEW — DEPENDENCY ORDERING AND CLAIM_CATEGORY
+BACKFILL STRATEGY DOCUMENTED IN THE REQUIRED FORMAT (MODULE-LEVEL +
+AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-DESIGN +
+MIGRATION-DESIGN ADDENDA) — MIGRATION FILE CREATION, API DESIGN, AND
+UI IMPLEMENTATION REMAIN BLOCKED PENDING FINAL REVIEW SIGN-OFF
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -2520,6 +2521,338 @@ blocked — API design and UI implementation authorization have not been
 requested or granted, and schema/migration file creation itself has
 not been authorized beyond this paper design.
 
+### 25.13 Migration Dependency Ordering (Detailed)
+
+This expands Section 25.1 into an explicit dependency graph, per the
+Section 25 Review's requirement to document which migrations must
+execute before others and identify every FK dependency.
+
+**Dependency graph:**
+
+| # | Migration | Must run after | FK dependencies (table.column → target) |
+|---|---|---|---|
+| 1 | `billing_teams` | — (no new-table dependency) | `billing_provider_organization_id` → `billing_provider_organizations.id` (existing table) |
+| 2 | `billing_team_memberships` | #1 | `billing_team_id` → `billing_teams.id` (new, #1); `user_id` → `users.id` (existing); `updated_by` → `users.id` (existing) |
+| 3 | `billing_team_supervisor_assignments` | #1 | `billing_team_id` → `billing_teams.id` (new, #1); `user_id` → `users.id` (existing); `updated_by` → `users.id` (existing) |
+| 4 | `billing_agency_team_assignments` | #1 | `agency_assignment_id` → `billing_provider_agency_assignments.id` (existing); `billing_team_id` → `billing_teams.id` (new, #1); `tenant_id` → `tenants.id` (existing); `updated_by` → `users.id` (existing) |
+| 5 | `billing_agency_coverage_assignments` | — (no new-table dependency; may run any time after existing tables) | `agency_assignment_id` → `billing_provider_agency_assignments.id` (existing); `user_id` → `users.id` (existing); `tenant_id` → `tenants.id` (existing); `updated_by` → `users.id` (existing) |
+| 6 | `billing_agency_coverage_audit_events` | — (no new-table FK dependency; conceptually follows #1-5/#8 since it records their entity types, but has no enforced FK to them) | `billing_provider_organization_id` → `billing_provider_organizations.id` (existing); `tenant_id` → `tenants.id` (existing); `actor_user_id` → `users.id` (existing) |
+| 7 | `billing_agency_coverage_export_events` | — (no new-table dependency) | `tenant_id` → `tenants.id` (existing); `billing_provider_organization_id` → `billing_provider_organizations.id` (existing); `exported_by_user_id` → `users.id` (existing) |
+| 8 | `billing_administrative_reporting_lines` | — (no new-table dependency) | `superior_membership_id` → `billing_provider_organization_memberships.id` (existing); `subordinate_membership_id` → `billing_provider_organization_memberships.id` (existing); `updated_by` → `users.id` (existing) |
+| 9 | `claims.claim_category` (column, not a table) | — (no dependency) | none (column addition on existing `claims` table only) |
+
+**Hard ordering requirement:** #2, #3, and #4 **must** run after #1
+(`billing_teams`) — their FK to `billing_teams.id` cannot be created
+before that table exists. This is the only hard new-table-to-new-table
+ordering constraint in this design.
+
+**No hard ordering requirement exists between:** #1-4 as a group vs.
+#5, #6, #7, #8, or #9 — each of those five has FK dependencies only on
+already-existing tables (`billing_provider_agency_assignments`,
+`tenants`, `users`, `billing_provider_organizations`,
+`billing_provider_organization_memberships`), none of which are
+created by this design. They may be sequenced in any order relative to
+#1-4 and to each other, though for reviewability this report continues
+to recommend the numeric order 1→9 shown in Section 25.1.
+
+**Why #6 (audit events) has no enforced FK to #1-5/#8's tables:**
+`entity_type`/`entity_id` on `billing_agency_coverage_audit_events` is
+a polymorphic reference (the same pattern already used by
+`FacilityPaymentAuditLog`, per Section 21.9) — it stores which table
+and row an event describes without a literal foreign key to every
+possible target table. This is a deliberate, existing-precedent
+design choice, not an oversight: it means #6 could technically run
+before #1-5/#8 exist, but is still sequenced after them in the
+recommended order purely for reviewer clarity (an audit table with no
+events to audit yet is less confusing to review once its subjects
+already exist).
+
+**Cross-check against Section 25.1:** this table does not change the
+Section 25.1 recommended order (1→9); it only makes explicit which of
+those orderings are *hard requirements* (2, 3, 4 after 1) versus
+*recommended but not required* (everything else).
+
+### 25.14 Claim Category Backfill Strategy
+
+Resolving the Section 25 Review's second required item — the
+`claim_category` backfill for existing `Claim` rows (flagged as open
+in Section 25.10).
+
+**Legacy payer mapping rules.** Existing `Claim.payer_name` is free
+text (Section 20.2), so backfill requires a **maintained,
+reviewable mapping table** — not inline code — of known `payer_name`
+string patterns to `claim_category` values. Proposed approach:
+1. A new, small, admin-maintained lookup structure (e.g. a
+   `payer_category_mapping` reference table or a versioned config
+   file — exact storage mechanism is an implementation-time choice,
+   not locked here) associating known `payer_name` substrings/exact
+   values (e.g. "Medicare", "Medi-Cal", "Kaiser HMO") with one of the
+   12 locked `claim_category` values (Section 20.9).
+2. Matching is **exact-match-first, then pattern-match fallback**:
+   first attempt an exact, case-insensitive match against
+   `payer_name`; if none found, attempt substring/keyword matching
+   (e.g. `payer_name` containing "hospice" and "medicare" →
+   `MEDICARE_HOSPICE`). Exact-match rules take precedence over
+   pattern rules whenever both could apply, to avoid a broad keyword
+   rule mis-classifying a specific known payer.
+3. The mapping is **billing-organization-agnostic** at the value
+   level (the same `payer_name` string means the same
+   `claim_category` regardless of which billing organization holds
+   the claim) — this avoids needing a separate mapping per
+   organization, consistent with `claim_category` being a claim-level
+   fact, not an organization-level one.
+
+**Unknown payer handling.** Any `payer_name` that does not match any
+exact or pattern rule in the mapping is assigned `claim_category =
+'OTHER'` — never left `NULL` and never silently guessed into one of
+the 11 named categories. This is consistent with Section 20.9's
+design note that `OTHER` exists specifically so no claim resolves to
+a missing/unclassified category. Every row backfilled to `OTHER` via
+"no rule matched" (as opposed to a legitimate self-pay/private-pay
+claim) must be flagged for manual review, per the Backfill Execution
+Approach below.
+
+**Validation behavior.** Before the backfill runs:
+1. The mapping table/config itself must be validated to contain only
+   the 12 locked enum values (Section 20.9) — any mapping rule
+   pointing to an unrecognized category value is a configuration error
+   and blocks the backfill from starting, not a per-row failure.
+2. After backfill (but before making the column `NOT NULL`, if that
+   follow-up migration is ever pursued), a validation query confirms
+   every `claims.claim_category` value is one of the 12 locked values
+   (a straightforward `CheckConstraint` violation check) and reports
+   the count of rows resolved via exact match, pattern match, and
+   `OTHER`-fallback, for reviewer sign-off before any `NOT NULL`
+   follow-up migration is considered.
+
+**Backfill execution approach.** The backfill is a **separate,
+reviewable, idempotent data-migration script**, run manually and
+reviewed before execution — never bundled into the same automatic
+migration that adds the nullable column (Section 25.10 already
+proposes the column as nullable specifically to decouple column
+creation from backfill execution). Proposed execution shape:
+1. Run in batches (e.g. by `tenant_id`, or by primary-key range) to
+   avoid a single long-running transaction/lock on the `claims` table.
+2. Idempotent: re-running the script only updates rows where
+   `claim_category IS NULL`, so partial/interrupted runs can resume
+   safely without re-processing already-categorized rows.
+3. Every row the script updates is recorded (row id, matched rule,
+   resulting `claim_category`) to a backfill run-log for auditability
+   — reusing the append-only audit pattern already established in
+   this report (Section 21.9/25.7) rather than inventing a new,
+   uncorrelated log.
+4. Rows resolved via `OTHER`-fallback are collected into a
+   post-backfill review report (not silently accepted as final) so a
+   human can confirm whether the mapping table needs a new rule added,
+   consistent with the Unknown Payer Handling requirement above.
+
+**Failure handling.** 
+1. A per-row mapping error (e.g. a malformed `payer_name`) must not
+   abort the whole batch — the affected row is skipped, logged with
+   its error, and left `NULL` for manual follow-up, rather than
+   defaulting silently to `OTHER` (an actual mapping failure is a
+   different, more concerning case than a legitimately-unclassifiable
+   payer, and must not be visually indistinguishable from a normal
+   `OTHER` resolution in the run-log).
+2. A batch-level failure (e.g. a database error mid-batch) must not
+   leave any row partially updated — each row's update is its own
+   atomic operation, so a batch failure only means "fewer rows were
+   processed this run," never "some row is in an inconsistent
+   state." Combined with the idempotency requirement above, a failed
+   run can simply be re-run.
+3. No claim is ever left in an ambiguous state that would satisfy an
+   eventual `NOT NULL` constraint prematurely — the `NOT NULL`
+   follow-up migration (Section 25.10) is explicitly gated on the
+   Validation Behavior step confirming zero remaining `NULL` rows;
+   until then, `NULL` remains an acceptable, expected transitional
+   state for un-backfilled or manual-follow-up rows.
+
+**Status:** both required Section 25 Review items (dependency
+ordering, backfill strategy) are now documented. Migration file
+creation, API design, and UI implementation remain explicitly
+**not authorized** — this section resolves open design questions only
+and does not itself constitute the Migration Design Review approval
+gate.
+
+---
+
+## SECTION 26 — MIGRATION DESIGN REVIEW: REQUIRED-FORMAT DELIVERABLES
+
+STATUS: MIGRATION DESIGN REVIEW ITEMS DOCUMENTED — STILL DESIGN ONLY.
+NO SCHEMA, MIGRATION, API, OR UI HAS BEEN CREATED. NO BACKFILL HAS
+BEEN EXECUTED. IMPLEMENTATION REMAINS BLOCKED.
+
+This section restates Sections 25.13-25.14 in the exact
+Migration Name / Depends On / Reason table format and lettered (A-E)
+backfill structure required by the Migration Design Review. Where the
+reviewer's illustrative example structure implies a dependency that
+this design does not actually have, that difference is called out
+explicitly below, per the instruction to "provide the actual
+dependency order and FK relationships" rather than adopt the example
+verbatim.
+
+### 26.1 Migration Dependency Graph
+
+| Migration Name | Depends On | Reason |
+|---|---|---|
+| `billing_teams` | Base migration (existing `billing_provider_organizations` only) | No new-table FK; only reaches the existing organization table. |
+| `billing_team_memberships` | `billing_teams` | Has a hard FK to `billing_teams.id`; cannot be created before that table exists. |
+| `billing_team_supervisor_assignments` | `billing_teams` | Has a hard FK to `billing_teams.id`. **Does not** depend on `billing_team_memberships` — a Billing Supervisor's assignment is a distinct team-scope relationship (Section 21.3), not a row in, or reference to, the membership table. |
+| `billing_agency_team_assignments` | `billing_teams` | Has a hard FK to `billing_teams.id`; also FKs to existing `billing_provider_agency_assignments` and `tenants`, which impose no new-table ordering constraint since they already exist. |
+| `billing_agency_coverage_assignments` | Base migration (existing `billing_provider_agency_assignments`, `users`, `tenants` only) | **Does not** depend on `billing_agency_team_assignments`. This is a deliberate design decision (Section 21.3): which team covers an agency and who personally holds the Medicare/Medi-Cal/Backup/Specialist role for that agency are two independent facts with no FK between them — an agency's coverage-role assignment is scoped directly to `agency_assignment_id`, not routed through the team-assignment table. |
+| `billing_agency_coverage_audit_events` | Base migration (existing `billing_provider_organizations`, `tenants`, `users` only) | Uses a polymorphic `entity_type`/`entity_id` reference (Section 21.9, same pattern as `FacilityPaymentAuditLog`), not a literal FK to any of the tables it records events about. Recommended to run after #1-5/#8 for reviewer clarity only — not a hard requirement. |
+| `billing_agency_coverage_export_events` | Base migration (existing `tenants`, `users`, `billing_provider_organizations` only) | Same reasoning as the audit table — no FK to any new table. |
+| `billing_administrative_reporting_lines` | Base migration (existing `billing_provider_organization_memberships` only) | **Does not** depend on "administrative hierarchy structures" as a separate prerequisite — there is no other new administrative-hierarchy table in this design; this table *is* the administrative hierarchy structure (Option B, Section 24), and its only FK targets are the existing membership table. It is also explicitly **not** dependent on `billing_teams` or any team/coverage table, since Section 23.2/23.8 require administrative and operational structures to remain structurally separate — a shared dependency would blur that separation. |
+| `claims.claim_category` (column, not a table) | Base migration (existing `claims` table only) | No FK — this is a column addition. "claims table validation complete" is not a schema-level dependency; it refers to the separate backfill-execution step (Section 26.2), which runs after this column-adding migration, not before it. |
+
+**Summary of hard requirements:** only `billing_team_memberships`,
+`billing_team_supervisor_assignments`, and `billing_agency_team_assignments`
+have a hard ordering requirement (after `billing_teams`). All other
+migrations depend only on already-existing tables and may be applied
+in any order relative to each other and to `billing_teams`, though the
+numeric order in Section 25.1 remains the recommended sequence for
+reviewability.
+
+**Explicit correction of the reviewer's example structure:** the
+example in the Migration Design Review message shows
+`billing_agency_coverage_assignments → billing_agency_team_assignments`
+and `billing_agency_coverage_audit_events →
+billing_agency_coverage_assignments` / `billing_agency_coverage_export_events
+→ billing_agency_coverage_assignments`. This design does **not** create
+those FK dependencies, for the reasons stated in the table above (no
+literal FK exists between coverage assignments and team assignments,
+and the audit/export tables use a polymorphic reference rather than a
+direct FK to the coverage table). If the intent behind the example was
+to require these tables be *populated* in that logical order at the
+application/business level (a team must be assigned before coverage
+roles are meaningful; an audit event only makes sense once something
+happened to audit), that is a correct **operational** sequencing
+expectation, but it is not a **schema-level FK dependency** requiring
+a specific migration order — this distinction is called out so the
+approval decision is made on the actual constraint, not an assumed one.
+
+### 26.2 Claim Category Backfill Strategy (Required Format)
+
+**A. Legacy payer mapping rules.** Source field: `claims.payer_name`
+(free text, per Section 20.2) — the only field used for
+classification; `tenant_id`/`service_date` are used for scoping and
+batch execution only (Section 26.2.E), never for classification
+itself. Matching order is **exact-match first, then keyword/pattern
+match**, case-insensitive:
+
+| `claim_category` | Example matching rule against `payer_name` |
+|---|---|
+| `MEDICARE_HOSPICE` | Exact/contains "Medicare Hospice", "Medicare - Hospice Benefit" |
+| `MEDICAID` | Contains "Medicaid" AND does not contain "Medi-Cal"/"California" (generic, non-CA Medicaid) |
+| `MEDI_CAL` | Contains "Medi-Cal", "Medi Cal", or "California Medicaid" |
+| `MEDICARE_ADVANTAGE_HMO` | Contains "Medicare Advantage" AND "HMO" |
+| `MEDICARE_ADVANTAGE_PPO` | Contains "Medicare Advantage" AND "PPO" |
+| `COMMERCIAL_HMO` | Matches a known commercial-carrier name (maintained list, e.g. specific health-plan names) AND "HMO" |
+| `COMMERCIAL_PPO` | Matches a known commercial-carrier name AND "PPO" |
+| `COMMERCIAL_POS` | Matches a known commercial-carrier name AND "POS" / "Point of Service" — **retained in the mapping** even though the reviewer's restated payer list in this Migration Design Review message omits it; the locked 12-value enum from Section 20.9 (reconciled and approved) still includes `COMMERCIAL_POS`, so the mapping table must still be able to resolve to it. This apparent omission is flagged here rather than silently dropping the category. |
+| `TRICARE` | Contains "TRICARE" |
+| `VETERANS_AFFAIRS` | Contains "Veterans Affairs", "VA", or "CHAMPVA" |
+| `PRIVATE_PAY` | Contains "Self Pay", "Self-Pay", "Private Pay", or payer field is blank with an explicit patient-responsible indicator elsewhere on the claim |
+| `OTHER` | No exact or pattern rule matched (fallback only, never a direct mapping target) |
+
+The mapping table/config itself is billing-organization-agnostic (a
+given `payer_name` string maps to the same category regardless of
+which billing organization holds the claim), consistent with
+`claim_category` being a claim-level fact (Section 20.9).
+
+**B. Unknown payer handling.**
+- Unmapped payers (no exact or pattern rule matches) become
+  `claim_category = 'OTHER'` — never left `NULL` on account of being
+  unmapped (a `NULL` value is reserved for rows that hit a genuine
+  processing error, per Item D below, not for legitimately-unmatched
+  payers).
+- Every row resolved to `OTHER` via "no rule matched" is written to a
+  post-backfill review report so a human can decide whether the
+  mapping table needs a new rule — this is a reporting/review step,
+  not a blocking one.
+- The backfill **does not stop** on encountering an unknown payer —
+  processing continues to the next row/batch; only a genuine
+  per-row processing error (Item D) halts that specific row, never the
+  whole run.
+
+**C. Validation strategy.**
+- **Pre-migration validation:** confirm the mapping table/config
+  contains only the 12 locked `claim_category` values (Section 20.9);
+  run a coverage-estimate query against a sample of distinct
+  `payer_name` values to gauge what percentage will resolve via exact
+  match, pattern match, or fallback before committing to a full run.
+- **Migration-time validation:** the `CheckConstraint` on the new
+  `claim_category` column (Section 25.10) rejects any value outside
+  the 12 locked values at the database level — no backfill write can
+  ever persist an invalid category, regardless of a bug in the mapping
+  logic.
+- **Post-migration verification:** run the reconciliation queries in
+  Item E below; require zero unexpected `NULL` rows (rows that were
+  supposed to be processed but errored, per Item D) before considering
+  the backfill complete; the `NOT NULL` follow-up migration remains
+  gated on this step (Section 25.10).
+
+**D. Failure handling.**
+- **Roll-forward strategy:** the backfill never rolls back
+  already-correct rows; a failed or interrupted run is re-run, and
+  because the process only updates rows where `claim_category IS
+  NULL` (idempotent, per Section 25.14), re-running always moves
+  forward — no destructive undo step exists.
+- **Remediation process:** rows that hit a per-row processing error
+  (e.g. malformed `payer_name`) are left `NULL`, logged with the
+  specific error, and included in a remediation queue for manual
+  correction or a mapping-rule fix followed by a targeted re-run
+  scoped to just the remaining `NULL` rows.
+- **Audit strategy:** every row the backfill writes (successful match,
+  `OTHER`-fallback, or error) is recorded to
+  `billing_agency_coverage_audit_events` (Section 21.9/25.7) with
+  `entity_type = 'CLAIM_CATEGORY_BACKFILL'`, the matched rule (or
+  "no rule matched" / the specific error), and a `correlation_id`
+  shared across the whole backfill run — reusing the existing
+  append-only audit design rather than introducing a separate,
+  uncorrelated log table.
+
+**E. Backfill execution approach.**
+- **Exact source field(s):** `claims.payer_name` is the sole
+  classification input. `claims.tenant_id` is used only to batch the
+  run (Item below); `claims.service_date` is not used for
+  classification in this design (no requirement identified for
+  time-based payer-name reinterpretation).
+- **Mapping order:** (1) exact, case-insensitive match against the
+  mapping table's literal `payer_name` values; (2) keyword/pattern
+  match per the rules in Item A; (3) `OTHER` fallback if neither
+  matches. Exact-match rules always take precedence over pattern
+  rules when both could apply.
+- **Execution shape:** run as batches scoped by `tenant_id` (or
+  primary-key range), never as a single unbatched update across the
+  whole `claims` table, to avoid a long-running lock; idempotent by
+  only touching `claim_category IS NULL` rows, so it can be safely
+  resumed or re-run.
+- **Verification queries:** post-run reconciliation includes, at
+  minimum: (1) `SELECT claim_category, COUNT(*) FROM claims GROUP BY
+  claim_category` — confirms every returned value is one of the 12
+  locked values and gives a distribution for reviewer sign-off; (2)
+  `SELECT COUNT(*) FROM claims WHERE claim_category IS NULL` —
+  should trend to zero as remediation (Item D) proceeds; (3) a
+  before/after total-row-count check confirming the backfill never
+  inserted, deleted, or duplicated any `claims` row — it only ever
+  updates the new column on existing rows.
+- **Reconciliation process:** total `claims` row count before the
+  backfill must equal total row count after; the sum of the
+  `GROUP BY claim_category` counts (including `NULL`) must equal that
+  same total; the count of rows resolved via `OTHER`-fallback is
+  cross-checked against the pre-migration coverage estimate (Item C)
+  to confirm the mapping table performed as expected before the
+  backfill is signed off as complete.
+
+### 26.3 Implementation Gates Reaffirmed
+
+Consistent with the Migration Design Review's explicit prohibitions,
+this section confirms none of the following have occurred as a result
+of Sections 25-26: schema creation, Alembic migration creation, model
+creation, API creation, UI implementation, or claim-category backfill
+execution. No implementation authorization exists as of this section.
+
 ---
 
 ## RELATIONSHIP TO OTHER DOCUMENTS
@@ -2581,3 +2914,5 @@ while producing this report or either addendum.
 | 2026-09-18 | Reconciled the Section 20.9 claim_category enum count per the Claim Category Enum Review. Added row numbering (1-12) to the locked value table and an explicit reconciliation note: the list contains exactly 12 distinct enum values, breaking down as 11 substantive named payer categories (`MEDICARE_HOSPICE` through `PRIVATE_PAY`) plus 1 fallback value (`OTHER`); no value was added, removed, or renamed. The likely source of the "11 visible values" observation is reading only the 11 named-category rows without the `OTHER` fallback row — `OTHER` is confirmed to be a full, CheckConstraint-enforced enum value, not a null/absent state, per the existing Section 20.9 design note. Final locked list is unchanged from the original submission. Documentation only; no schema, migrations, models, services, or routes created or changed. Per the user's gate, Schema Design Review is now approved following this reconciliation; migration design, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 24: Administrative Hierarchy Schema-Design Options, resolving the Section 23.2 open decision per the Section 23 Review's request. Documented Option A (self-referencing `reports_to_id` FK on a single table) and Option B (separate `(superior, subordinate, level_label)` relationship table) in full, each with Advantages, Constraints, Query impact, Audit impact, Permission impact, and Migration impact. Both options require identical service-layer cycle-prevention logic and identical recursive-CTE cost for full-chain reads; audit treatment is identical for both (reuse the Section 18.18/21.9 audit-event design). **Recommended: Option B** (separate relationship table with explicit `level_label`), because the approved spec's Administrative Hierarchy display is level-labeled (not merely depth-based), and an explicit `level_label` column better supports level-scoped constraints (at most one President, a Supervisor's superior must be a Billing Manager) as direct row-level checks, consistent with this report's established preference for pushing invariant enforcement into constrained columns wherever the database realistically allows it. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Migration design, API design, and UI implementation remain explicitly blocked pending user selection/approval of the recommended option. |
 | 2026-09-18 | Added Section 25: Migration Design Documentation, per the Section 24 Review's Migration Design Review authorization (Option B approved for Administrative Hierarchy). Documented all nine proposed migrations in forward-only, DDL-level detail — column lists, types, CheckConstraints, foreign keys, indexes, and downgrade behavior — for `billing_teams`, `billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`, `billing_agency_coverage_assignments` (including new discriminator-integrity CHECK constraints not previously spelled out at DDL level), `billing_agency_coverage_audit_events`, `billing_agency_coverage_export_events`, `billing_administrative_reporting_lines` (Option B), and the `claims.claim_category` column addition. Documented required migration sequencing/dependency order (9 separate forward-only migration files, never combined), and a rollback/backward-compatibility strategy confirming every migration is additive with no changes to existing tables/columns. Flagged one open implementation-time decision: `claim_category` backfill strategy for existing `Claim` rows is not resolved here. Documentation only — no Alembic migration file, model class, schema, service, route, or UI component created. Migration file creation, API design, and UI implementation remain explicitly blocked pending further user authorization. |
+| 2026-09-18 | Added Section 25.13 (Migration Dependency Ordering) and Section 25.14 (Claim Category Backfill Strategy), per the "SECTION 25 REVIEW — APPROVED WITH REQUIRED REVISIONS" message's two required deliverables. 25.13 documents that only `billing_team_memberships`, `billing_team_supervisor_assignments`, and `billing_agency_team_assignments` have a hard FK-ordering requirement (after `billing_teams`); all other migrations depend only on already-existing tables. 25.14 documents the full backfill strategy: exact-match-then-pattern-match mapping rules against `payer_name`, unmatched payers resolving to `OTHER` with mandatory manual-review flagging (never silently accepted, never stopping the run), pre/migration-time/post validation behavior, an idempotent NULL-only batch-execution approach with an append-only audit-event run-log, and failure handling that leaves genuine per-row mapping errors `NULL` (distinct from legitimate `OTHER` resolutions) for manual remediation. Documentation only; no schema, migrations, models, services, routes, or backfill execution created or run. Migration file creation, API design, and UI implementation remain explicitly blocked. |
+| 2026-09-18 | Added Section 26: Migration Design Review — Required-Format Deliverables, restating Sections 25.13-25.14 in the exact Migration Name/Depends On/Reason table and lettered (A-E) format required by the follow-up "SECTION 25 — MIGRATION DESIGN REVIEW — APPROVED WITH REQUIRED REVISIONS" message. 26.1 provides the actual dependency graph and explicitly corrects two dependencies implied by the reviewer's illustrative example that this design does not have: `billing_agency_coverage_assignments` does not depend on `billing_agency_team_assignments` (coverage-role assignment is scoped directly to `agency_assignment_id`, independent of which team covers the agency — a deliberate Section 21.3 design decision), and the audit/export event tables use a polymorphic reference rather than a literal FK to the coverage table; also clarifies `billing_administrative_reporting_lines` depends only on the existing membership table, not on any other new "administrative hierarchy structure," and that "claims table validation complete" refers to the separate backfill-execution step, not a schema-level migration dependency. 26.2 restates the backfill strategy in the required A (legacy payer mapping rules, with an explicit per-category mapping-rule table) / B (unknown payer handling) / C (validation strategy) / D (failure handling) / E (backfill execution approach, including concrete verification queries and a reconciliation process) format, and flags that the reviewer's restated payer list omits `COMMERCIAL_POS` while the Section 20.9 locked 12-value enum retains it — the mapping table continues to support all 12 locked values. 26.3 reaffirms no schema, migration, model, API, UI, or backfill execution has occurred. Documentation only. Migration file creation, API design, and UI implementation remain explicitly blocked pending final Migration Design Review sign-off. |
