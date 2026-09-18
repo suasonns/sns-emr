@@ -1884,6 +1884,176 @@ This is a deliberate, intentional limitation, not an oversight:
 
 ---
 
+## SECTION 23 — ORGANIZATION & TEAMS PAGE-LEVEL DISCOVERY ADDENDUM
+
+STATUS: DISCOVERY VALIDATION COMPLETE — DESIGN MAPPING ONLY. NO
+SCHEMA, MIGRATION, API, OR UI HAS BEEN CREATED. This addendum responds
+to the approved, locked, Figma-approved "Organization & Teams"
+handoff (the first of the three Billing Organization pages, alongside
+Agency Coverage & Workload — Sections 18-22 — and the not-yet-detailed
+Access Administration page). Per this document's discovery-first
+convention, the "implementation planning" requested is captured here
+as REUSE/EXTEND/CREATE mapping; no code, schema, or migration file has
+been created. If the user intends to authorize actual schema/migration
+work now, that authorization should be given explicitly and separately
+from this discovery step, consistent with every prior gate in this
+report.
+
+### 23.1 Organization Metrics — REUSE (models) + CREATE (aggregation)
+
+- **Existing Models:** `BillingProviderOrganization`,
+  `BillingProviderOrganizationMembership`,
+  `BillingProviderAgencyAssignment` (all REUSE, per Discovery Area 1-3
+  and Section 18).
+- **Decision:** REUSE all three existing models as the source data;
+  CREATE a new read-only aggregation/reporting service to compute
+  organization-level metrics (headcount, team count, agency count,
+  coverage completeness) — no existing service already produces this
+  rollup.
+- **Migration Required:** No.
+
+### 23.2 Administrative Hierarchy — CREATE (new structure, distinct from Operational Reporting Chain)
+
+- **Existing Models:** `BillingProviderOrganizationMembership` has a
+  `role` field (org-level role) but **no** `reports_to`/manager
+  relationship or hierarchy depth field — confirmed via the same
+  model read performed for Section 18.1.
+- **Decision:** CREATE. The approved architecture rule ("Administrative
+  authority and operational authority remain separate") means the
+  Company President → Billing Manager → Supervisor → Team Leader →
+  Staff administrative chain **cannot** be derived from the Section 21
+  team-scope tables (`billing_team_memberships`,
+  `billing_team_supervisor_assignments`), because those model
+  *operational* team leadership/supervision of agency portfolios, not
+  *administrative* reporting-line authority. A new structure is
+  required — most likely a `reports_to_membership_id` self-referencing
+  foreign key on a new/extended organization-membership-scoped table,
+  or a separate `billing_administrative_hierarchy` table — the exact
+  shape is an open design decision for the schema-design phase, not
+  resolved here.
+- **Reason:** conflating the two would violate the locked rule that
+  "Billing Administrator is not part of the operational reporting
+  chain" — an administrator can exist in the administrative hierarchy
+  with no corresponding team-leadership or team-membership row at all.
+- **Migration Required:** Yes (new table or new column), not yet
+  designed in detail.
+
+### 23.3 Operational Reporting Chain — REUSE (Section 21 team-scope tables)
+
+- **Decision:** REUSE `billing_team_memberships` (role_on_team =
+  LEADER for Team Leader) and `billing_team_supervisor_assignments`
+  from Section 21 directly — Operational Reporting Chain is exactly
+  the Team Leader → Staff structure already designed there. No new
+  table required beyond Section 21.
+- **Reason:** confirms Section 21's team-scope design was correctly
+  separated from agency-coverage rows; this page is the first concrete
+  consumer of that separation.
+- **Migration Required:** No (beyond Section 21's own tables).
+
+### 23.4 Team Portfolio Summaries — REUSE (Section 21 `billing_agency_team_assignments`) + CREATE (aggregation)
+
+- **Decision:** REUSE `billing_agency_team_assignments` (Section 21) as
+  the source of "which agencies does this team cover"; CREATE a
+  read-only aggregation for per-team portfolio counts (agency count,
+  coverage status distribution). The locked reconciliation rule ("Team
+  Alpha and Team Beta totals must reconcile to organization totals")
+  is a **query-time invariant** to validate — every
+  `billing_agency_team_assignments` row must resolve to exactly one
+  team and one org-scoped agency assignment, so team-level sums over
+  active rows always equal the organization-level count with no
+  separate reconciliation table or job needed.
+- **Migration Required:** No (beyond Section 21's own tables).
+
+### 23.5 Team Staffing Tables — REUSE (Section 21 `billing_team_memberships`)
+
+- **Decision:** REUSE directly. Team Staffing Tables (per-team roster
+  with role_on_team) is a direct read view over
+  `billing_team_memberships`; no new entity needed. The locked rule
+  "Team staffing assignments support future Agency Coverage
+  relationships" is already satisfied by design — `billing_team_id` on
+  `billing_agency_team_assignments` (Section 21) is the join key
+  between staffing and coverage.
+- **Migration Required:** No (beyond Section 21's own tables).
+
+### 23.6 System Role Definitions — CREATE (informational reference only)
+
+- **Existing Models:** the dormant `Role`/`interfaces` model
+  (Discovery Area 4) remains confirmed to have zero live consumers and
+  must **not** be revived for this purpose — reviving it would risk
+  implying it grants permissions, contradicting the locked rule "Role
+  definitions are informational and do not grant permissions."
+- **Decision:** CREATE a small, informational-only reference structure
+  (e.g. a static list/config or a simple non-permission-bearing lookup
+  table) purely for display purposes on this page. It must not be
+  wired into `require_permission()`/`has_permission()` (still
+  unimplemented placeholders per Discovery Area 4) or any access-control
+  path — this stays a documentation/display construct only, per the
+  locked rule that operational access derives from "role, capability,
+  team assignment, agency assignment, account status, and
+  action-specific permission" collectively, not from this reference
+  list alone.
+- **Migration Required:** Only if implemented as a DB-backed lookup
+  table rather than static config — an open, low-stakes implementation
+  choice, not resolved here.
+
+### 23.7 Recent Organizational Changes — REUSE (Section 18.18/21.9 audit pattern)
+
+- **Decision:** REUSE the same Audit Event design already recommended
+  in Section 18.18 and detailed further in Section 21.9
+  (`billing_agency_coverage_audit_events`, modeled on
+  `FacilityPaymentAuditLog`) — extended in scope to also capture
+  organization/team/membership-level changes (not just agency-coverage
+  changes), since the locked rule requires "Recent Organizational
+  Changes remain append-only and auditable," which is exactly this
+  audit table's existing append-only design. No second, parallel audit
+  mechanism should be created.
+- **Migration Required:** No (beyond the Section 18.18/21.9 table),
+  though the audit table's scope/entity-type coverage may need
+  broadening at implementation time to include organization- and
+  team-level event types alongside agency-coverage event types.
+
+### 23.8 Architecture Rule Cross-Check
+
+- **"Administrative authority and operational authority remain
+  separate"** — satisfied by design: Section 23.2 (administrative) and
+  Section 23.3/23.5 (operational) are distinct structures with no
+  shared table.
+- **"Billing Administrator is not part of the operational reporting
+  chain"** — satisfied: an administrator exists only in the Section
+  23.2 administrative hierarchy, with no requirement to also appear in
+  `billing_team_memberships`.
+- **"Team portfolios are the authoritative operational structure"** —
+  satisfied: Section 23.4/23.5 read directly from Section 21's
+  team-scope tables; no competing operational structure is introduced.
+- **"Medicare and Medi-Cal assignments remain separate"** — already
+  satisfied by the Section 21/22 discriminated coverage design
+  (`coverage_role`, `backs_up_role` as distinct enum values, never
+  merged).
+- **"Role definitions are informational and do not grant permissions"**
+  — satisfied by Section 23.6's explicit non-wiring into the
+  permission system.
+- **"Operational access continues to derive from role, capability,
+  team assignment, agency assignment, account status, and
+  action-specific permission"** — consistent with the still-open
+  Discovery Area 4 finding that a real permission engine does not yet
+  exist; this page does not attempt to build that engine, only to
+  display the structures (team assignment, agency assignment) that
+  will feed it once built.
+- **"Recent Organizational Changes remain append-only and auditable"**
+  — satisfied by Section 23.7's reuse of the append-only audit design.
+
+### 23.9 Implementation Boundary Confirmation
+
+Per the locked implementation boundary, this discovery explicitly
+confirms none of the following are introduced by this addendum: HR
+functionality, payroll functionality, employee performance scoring,
+SecureInbox messaging functionality, or any merge of operational and
+administrative authority structures (Section 23.2 keeps them
+structurally distinct). No such functionality appears in any REUSE/
+CREATE decision above.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -1891,13 +2061,16 @@ This report is the required discovery deliverable for the approved
 level), the "Billing Organization → Agency Coverage & Workload"
 implementation handoff (page level, Section 18-19 addendum), the
 "Billing Organization → Expanded Agency Detail" implementation handoff
-(detail-view level, Section 20 addendum), and the subsequent Discovery
+(detail-view level, Section 20 addendum), the subsequent Discovery
 Addendum Review / Discovery Addendum Verification Checklist requests
-(schema-design level, Section 21-22 addenda). It satisfies the six
-module-level Discovery Areas, the 20-entity Agency Coverage & Workload
-mapping requirement, the Expanded Agency Detail Verify-First
-Requirement, and the full Discovery Addendum Verification Checklist.
-It is independent of, and does not modify:
+(schema-design level, Section 21-22 addenda), and the "Billing
+Organization → Organization & Teams" implementation handoff (page
+level, Section 23 addendum). It satisfies the six module-level
+Discovery Areas, the 20-entity Agency Coverage & Workload mapping
+requirement, the Expanded Agency Detail Verify-First Requirement, the
+full Discovery Addendum Verification Checklist, and the Organization &
+Teams discovery validation requirement. It is independent of, and does
+not modify:
 - `docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`
   (the canonical Biller Platform spec; Billing Organization, including
   Agency Coverage & Workload and Expanded Agency Detail, will be added
@@ -1931,3 +2104,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 22: Backup Responsibility Scope Design Note, per the Discovery Addendum Review request for one additional design note before Schema Design Review authorization. Documents allowed `backs_up_role` values (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER` only — no combined/ALL value), multi-scope behavior (one row per backed-up responsibility rather than a multi-value field, so a single backup covering two roles is two independent rows), overlapping-scope rules (partial unique index per role prevents two active backups for the same role; independent roles do not conflict with each other; a backup can never share a user with the active primary it backs up), coverage-status derivation extended per-role (Partial Coverage = all primaries filled but one or more required backups missing; Coverage Gap is reserved for missing primaries only, never for a missing backup alone), and Backup Missing derivation (a computed, per-role UI label reading absence of an active `BACKUP` row with that `backs_up_role`, never a stored flag, computed identically across the matrix, detail view, and export). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
 | 2026-09-18 | Added Section 22.6: Scope Limitation vs. Future Extensibility clarification, per the Discovery Addendum Review's requested clarification before Schema Design Review authorization. Confirms backup scope is intentionally, deliberately closed to the two named roles (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER`) only — `SPECIALIST` assignments are explicitly out of backup scope because the approved spec treats them as supplementary capability, not a required-coverage role; Team Leader/Billing Supervisor are also out of scope because they are team-scope relationships, not agency-coverage rows. Documents that any future backable role would require widening the `backs_up_role` CheckConstraint plus a new migration — this is an additive future mechanism, not something pre-built, enabled, or implied by the current design. No specialist backup scope, generic "other" scope, or open string value exists in this schema design today. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Schema Design Review authorized by the user following this clarification; migration design, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 20.9: Claim Category Enum — Locked Value List. The user supplied a 12-value flat enum (`MEDICARE_HOSPICE`, `MEDICAID`, `MEDI_CAL`, `MEDICARE_ADVANTAGE_HMO`, `MEDICARE_ADVANTAGE_PPO`, `COMMERCIAL_HMO`, `COMMERCIAL_PPO`, `COMMERCIAL_POS`, `TRICARE`, `VETERANS_AFFAIRS`, `PRIVATE_PAY`, `OTHER`), resolving the Section 20.2 open question about what values a new `claim_category` column on `Claim` would use. Documented that this enum is a separate concept from the Section 18/21/22 `coverage_role` discriminator (staff-role assignment vs. per-claim payer classification) and that any category-to-responsible-role display mapping is an implementation-phase decision, not locked here. Explicitly noted the value list being locked does NOT itself authorize column creation — migration, backfill, and mapping work remain gated behind Migration Design authorization, which has not been granted. Documentation only; no schema, migrations, models, services, or routes created or changed. |
+| 2026-09-18 | Added Section 23: Organization & Teams page-level discovery addendum, per the approved, locked, Figma-approved "Billing Organization → Organization & Teams" implementation handoff (the first of the three Billing Organization pages). Mapped all seven approved sections (Organization Metrics, Administrative Hierarchy, Operational Reporting Chain, Team Portfolio Summaries, Team Staffing Tables, System Role Definitions, Recent Organizational Changes): confirmed Operational Reporting Chain, Team Portfolio Summaries, and Team Staffing Tables all REUSE the Section 21 team-scope tables (`billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`) directly, with no new tables required; confirmed Recent Organizational Changes REUSEs the Section 18.18/21.9 append-only audit design (scope broadened to org/team-level events). Identified Administrative Hierarchy as CREATE — a new structure distinct from the Section 21 operational team-scope tables, since the locked rule "Administrative authority and operational authority remain separate" and "Billing Administrator is not part of the operational reporting chain" cannot be satisfied by reusing those tables; exact shape (self-referencing FK vs. separate table) is an open schema-design decision, not resolved here. Identified System Role Definitions as CREATE but explicitly informational-only, not wired into the permission system, consistent with the locked rule that role definitions do not grant permissions and with Discovery Area 4's finding that `require_permission`/`has_permission` remain unimplemented placeholders. Cross-checked all locked architecture rules and the implementation boundary (no HR/payroll/performance-scoring/SecureInbox functionality introduced). Documentation/discovery-validation only; no schema, migrations, models, services, or routes created or changed. Actual schema/migration/code implementation for Organization & Teams remains a separate, not-yet-taken step pending explicit authorization to write code, consistent with this report's established discovery-first gating for every other Billing Organization page. |
