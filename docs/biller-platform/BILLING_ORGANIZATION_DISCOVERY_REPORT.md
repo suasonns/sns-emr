@@ -2069,6 +2069,202 @@ CREATE decision above.
 
 ---
 
+## SECTION 24 — ADMINISTRATIVE HIERARCHY SCHEMA-DESIGN OPTIONS
+
+STATUS: SCHEMA DESIGN DOCUMENTED — STILL DISCOVERY/DESIGN ONLY. NO
+SCHEMA, MIGRATION, API, OR UI HAS BEEN CREATED. IMPLEMENTATION REMAINS
+BLOCKED.
+
+This section resolves the Section 23.2 open decision (Administrative
+Hierarchy structure) by comparing the two named options in full,
+selecting a recommended approach, and leaving migration/API/UI
+authorization untouched.
+
+### 24.1 Option A — Self-Referencing Hierarchy
+
+A single new table (e.g. `billing_administrative_hierarchy`), one row
+per billing-company employee holding an administrative position
+(Company President, Billing Manager, Supervisor, Team Leader, Staff),
+with a nullable `reports_to_id` foreign key referencing another row in
+the same table (`reports_to_id → billing_administrative_hierarchy.id`,
+`ON DELETE RESTRICT`). The President's row has `reports_to_id = NULL`;
+every other row points to its direct administrative superior.
+
+- **Advantages:**
+  - A single table holds the entire chain; walking "who does this
+    person report to" or "who reports to this person" is one FK join,
+    not a join across N tables for N levels.
+  - Depth is not hard-coded — a 4-level or 6-level chain fits the same
+    schema with no structural change, consistent with the approved
+    spec's five-level example (President → Manager → Supervisor →
+    Team Leader → Staff) without baking that exact depth into column
+    names.
+  - Matches the existing precedent already used elsewhere in this
+    codebase for parent/child structures (self-referencing FKs are a
+    familiar, low-novelty pattern for reviewers and future
+    maintainers).
+- **Constraints:**
+  - Requires application-level (or trigger-based) cycle prevention —
+    a plain FK cannot by itself stop `reports_to_id` from eventually
+    forming a loop (A reports to B, B reports to A). This must be
+    enforced at the service layer on every write (walk the chain
+    upward before saving; reject if the new superior is already a
+    descendant).
+  - Requires a `CHECK (reports_to_id != id)` constraint to block a
+    row reporting to itself, but cannot express "no cycles of length
+    > 1" as a database constraint.
+  - A single top-of-chain design assumes one ultimate root (President)
+    per billing organization; the design must scope `reports_to_id`
+    lookups by `billing_provider_organization_id` to prevent
+    cross-organization reporting chains, which requires either a
+    composite uniqueness/FK scope or an application-level check.
+- **Query impact:**
+  - "Full downward chain from a given manager" (e.g. President's
+    entire org) requires a recursive CTE (`WITH RECURSIVE`) — more
+    complex to write than a flat join, but a single well-tested query
+    covers every depth without per-level code changes.
+  - "Direct reports only" (one level) is a single indexed
+    `WHERE reports_to_id = ?` query — simple and fast.
+  - "Is X an administrative superior of Y" (used for scope checks) is
+    the same recursive CTE pattern, or an application-side walk if
+    chain depth is capped low (5 levels per the approved spec) —
+    either is acceptable given the small expected row count per
+    organization.
+- **Audit impact:**
+  - Reassigning a person's `reports_to_id` is a single-row `UPDATE`-
+    equivalent — per this report's established convention (Section
+    21.1: never update assignment rows in place), a hierarchy change
+    should still be modeled as end-old-row + insert-new-row +
+    audit-event, meaning this table needs the same `status` +
+    `effective_start_at`/`effective_end_at` pattern as every other
+    assignment table in this report, not a bare mutable FK. This adds
+    a small amount of design complexity beyond a "simple" self-
+    referencing table, but keeps it consistent with Sections 18-23.
+  - Because it is one table, "who changed" and "what changed" map
+    onto one audit-event schema (reuse Section 18.18/21.9's audit
+    design) with a single `entity_type = 'ADMINISTRATIVE_HIERARCHY'`
+    value — no per-level audit variation needed.
+- **Permission impact:**
+  - No permission engine exists yet (Discovery Area 4), so this option
+    does not itself grant or check permissions — it only stores the
+    reporting structure. Future permission-scope queries ("can this
+    Supervisor see all Staff under them") would use the same recursive
+    walk described above.
+- **Migration impact:**
+  - One new table, one self-referencing FK, one partial unique index
+    (for active-row-per-person, following the Section 21 pattern), one
+    `CHECK` constraint. Single migration file. No changes required to
+    any existing table.
+
+### 24.2 Option B — Separate Hierarchy Relationship Table (Non-Self-Referencing)
+
+A join-style table (e.g. `billing_administrative_reporting_lines`)
+where each row explicitly names a `(superior_membership_id,
+subordinate_membership_id, level_label)` pair — `level_label` being an
+enum (`PRESIDENT`, `BILLING_MANAGER`, `SUPERVISOR`, `TEAM_LEADER`,
+`STAFF`) recording the subordinate's position in the named hierarchy,
+rather than relying on FK self-reference to imply position.
+
+- **Advantages:**
+  - The explicit `level_label` on every row means "what administrative
+    level is this person" is a direct column read, not something
+    derived by walking the chain and counting hops — simpler and
+    faster for the common case of "show this person's title in the
+    chain" (exactly what the Administrative Hierarchy display section
+    needs).
+  - Because it is a distinct join table (not a self-reference), a
+    person can be represented with zero superior rows (e.g. President)
+    without a nullable-FK special case — the absence of a row *is* "no
+    superior," which is arguably a cleaner NULL-avoidance pattern than
+    Option A's nullable `reports_to_id`.
+  - Easier to reason about per-level constraints (e.g. "at most one
+    active President per organization," "a Supervisor's superior must
+    be a Billing Manager, never a Staff member") as row-level `CHECK`/
+    partial-unique constraints scoped by `level_label`, since the level
+    is already a stored column rather than an implied position.
+- **Constraints:**
+  - Still requires the same cycle-prevention logic at the service
+    layer as Option A (a subordinate row could still theoretically
+    reference a superior who is, transitively, their own subordinate),
+    so this does not eliminate that risk, only makes level violations
+    (e.g. Staff superior-of-President) easier to reject with a direct
+    `CHECK` on `level_label` ordering.
+  - Requires maintaining the `level_label` enum in sync with any
+    future changes to the five-level hierarchy named in the approved
+    spec — an additional column to keep consistent, versus Option A
+    where level is implicit (derivable only by walking depth).
+- **Query impact:**
+  - "Direct reports of X" and "superior of Y" are both single-row
+    lookups by `superior_membership_id` or `subordinate_membership_id`
+    — same simplicity as Option A's one-level query.
+  - "Full downward chain from a given manager" still requires the same
+    recursive CTE pattern as Option A — this option does not avoid
+    that complexity, since the underlying relationship is still a
+    tree/chain regardless of which table shape stores it.
+  - "What level is this person" is now a flat, non-recursive read
+    (`SELECT level_label WHERE subordinate_membership_id = ?`) — this
+    is the one meaningful query-simplicity advantage over Option A,
+    where level must be computed by counting hops from the root.
+- **Audit impact:**
+  - Same conclusion as Option A: reporting-line changes should be
+    modeled as end-old-row + insert-new-row + audit-event, using the
+    same `status`/`effective_start_at`/`effective_end_at` pattern and
+    the same Section 18.18/21.9 audit-event table with
+    `entity_type = 'ADMINISTRATIVE_REPORTING_LINE'`.
+  - No meaningful audit-impact difference between the two options —
+    both produce one row-level event per reporting-line change.
+- **Permission impact:**
+  - Same as Option A — no permission engine exists yet; this table
+    only stores structure. The stored `level_label` could make a
+    future capability-by-level rule (e.g. "only Billing Manager level
+    and above may view Executive Oversight") a simpler flat check than
+    Option A's depth-counting approach, but that permission logic does
+    not exist today and is out of scope for this schema decision.
+- **Migration impact:**
+  - One new table, two FKs (both referencing
+    `billing_provider_organization_membership.id`), one `level_label`
+    enum/`CheckConstraint`, partial unique indexes for "at most one
+    active superior per subordinate" and "at most one active President
+    per organization." Slightly more constraint surface than Option A,
+    but still a single migration file with no changes to existing
+    tables.
+
+### 24.3 Recommendation
+
+**Recommended: Option B — Separate Hierarchy Relationship Table, with
+an explicit `level_label` column.**
+
+**Reason:**
+1. The approved spec's Administrative Hierarchy display requirement is
+   level-centric ("Company President → Billing Manager → Supervisor →
+   Team Leader → Staff" as named, labeled positions), not merely
+   depth-centric — Option B stores that label directly, so the display
+   layer never has to infer "this row at depth 3 means Supervisor" by
+   convention. This reduces a class of display bugs where a hierarchy
+   edit (e.g. inserting a new level) silently shifts what depth-3 means
+   everywhere else in the codebase.
+2. Option B's explicit `level_label` makes level-scoped constraints
+   (at most one President, a Supervisor's superior must be a Billing
+   Manager) directly expressible as row-level checks, which better
+   satisfies this report's established preference (Sections 21-22) for
+   pushing as much invariant-enforcement into constrained columns as
+   the database realistically allows, reserving only true cross-row
+   invariants (cycle prevention) for the service layer.
+3. Both options carry identical audit-impact, identical service-layer
+   cycle-prevention requirements, and identical recursive-query cost
+   for full-chain reads — the deciding factors are display-simplicity
+   and constraint-expressiveness, both of which favor Option B.
+4. Option A remains a reasonable, previously-used pattern elsewhere in
+   the industry and is not rejected as unsound — it is simply a
+   narrower fit for this specific spec's level-labeled display
+   requirement than Option B.
+
+This recommendation is a design proposal for review, consistent with
+every other recommendation in this report — it does not itself
+authorize schema, migration, API, or UI work.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -2078,14 +2274,16 @@ implementation handoff (page level, Section 18-19 addendum), the
 "Billing Organization → Expanded Agency Detail" implementation handoff
 (detail-view level, Section 20 addendum), the subsequent Discovery
 Addendum Review / Discovery Addendum Verification Checklist requests
-(schema-design level, Section 21-22 addenda), and the "Billing
+(schema-design level, Section 21-22 addenda), the "Billing
 Organization → Organization & Teams" implementation handoff (page
-level, Section 23 addendum). It satisfies the six module-level
-Discovery Areas, the 20-entity Agency Coverage & Workload mapping
-requirement, the Expanded Agency Detail Verify-First Requirement, the
-full Discovery Addendum Verification Checklist, and the Organization &
-Teams discovery validation requirement. It is independent of, and does
-not modify:
+level, Section 23 addendum), and the Section 23 Review's Administrative
+Hierarchy architecture-decision request (Section 24 addendum). It
+satisfies the six module-level Discovery Areas, the 20-entity Agency
+Coverage & Workload mapping requirement, the Expanded Agency Detail
+Verify-First Requirement, the full Discovery Addendum Verification
+Checklist, the Organization & Teams discovery validation requirement,
+and the Administrative Hierarchy architecture-decision requirement. It
+is independent of, and does not modify:
 - `docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`
   (the canonical Biller Platform spec; Billing Organization, including
   Agency Coverage & Workload and Expanded Agency Detail, will be added
@@ -2121,3 +2319,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 20.9: Claim Category Enum — Locked Value List. The user supplied a 12-value flat enum (`MEDICARE_HOSPICE`, `MEDICAID`, `MEDI_CAL`, `MEDICARE_ADVANTAGE_HMO`, `MEDICARE_ADVANTAGE_PPO`, `COMMERCIAL_HMO`, `COMMERCIAL_PPO`, `COMMERCIAL_POS`, `TRICARE`, `VETERANS_AFFAIRS`, `PRIVATE_PAY`, `OTHER`), resolving the Section 20.2 open question about what values a new `claim_category` column on `Claim` would use. Documented that this enum is a separate concept from the Section 18/21/22 `coverage_role` discriminator (staff-role assignment vs. per-claim payer classification) and that any category-to-responsible-role display mapping is an implementation-phase decision, not locked here. Explicitly noted the value list being locked does NOT itself authorize column creation — migration, backfill, and mapping work remain gated behind Migration Design authorization, which has not been granted. Documentation only; no schema, migrations, models, services, or routes created or changed. |
 | 2026-09-18 | Added Section 23: Organization & Teams page-level discovery addendum, per the approved, locked, Figma-approved "Billing Organization → Organization & Teams" implementation handoff (the first of the three Billing Organization pages). Mapped all seven approved sections (Organization Metrics, Administrative Hierarchy, Operational Reporting Chain, Team Portfolio Summaries, Team Staffing Tables, System Role Definitions, Recent Organizational Changes): confirmed Operational Reporting Chain, Team Portfolio Summaries, and Team Staffing Tables all REUSE the Section 21 team-scope tables (`billing_team_memberships`, `billing_team_supervisor_assignments`, `billing_agency_team_assignments`) directly, with no new tables required; confirmed Recent Organizational Changes REUSEs the Section 18.18/21.9 append-only audit design (scope broadened to org/team-level events). Identified Administrative Hierarchy as CREATE — a new structure distinct from the Section 21 operational team-scope tables, since the locked rule "Administrative authority and operational authority remain separate" and "Billing Administrator is not part of the operational reporting chain" cannot be satisfied by reusing those tables; exact shape (self-referencing FK vs. separate table) is an open schema-design decision, not resolved here. Identified System Role Definitions as CREATE but explicitly informational-only, not wired into the permission system, consistent with the locked rule that role definitions do not grant permissions and with Discovery Area 4's finding that `require_permission`/`has_permission` remain unimplemented placeholders. Cross-checked all locked architecture rules and the implementation boundary (no HR/payroll/performance-scoring/SecureInbox functionality introduced). Documentation/discovery-validation only; no schema, migrations, models, services, or routes created or changed. Actual schema/migration/code implementation for Organization & Teams remains a separate, not-yet-taken step pending explicit authorization to write code, consistent with this report's established discovery-first gating for every other Billing Organization page. |
 | 2026-09-18 | Reconciled the Section 20.9 claim_category enum count per the Claim Category Enum Review. Added row numbering (1-12) to the locked value table and an explicit reconciliation note: the list contains exactly 12 distinct enum values, breaking down as 11 substantive named payer categories (`MEDICARE_HOSPICE` through `PRIVATE_PAY`) plus 1 fallback value (`OTHER`); no value was added, removed, or renamed. The likely source of the "11 visible values" observation is reading only the 11 named-category rows without the `OTHER` fallback row — `OTHER` is confirmed to be a full, CheckConstraint-enforced enum value, not a null/absent state, per the existing Section 20.9 design note. Final locked list is unchanged from the original submission. Documentation only; no schema, migrations, models, services, or routes created or changed. Per the user's gate, Schema Design Review is now approved following this reconciliation; migration design, API design, and UI implementation remain explicitly blocked. |
+| 2026-09-18 | Added Section 24: Administrative Hierarchy Schema-Design Options, resolving the Section 23.2 open decision per the Section 23 Review's request. Documented Option A (self-referencing `reports_to_id` FK on a single table) and Option B (separate `(superior, subordinate, level_label)` relationship table) in full, each with Advantages, Constraints, Query impact, Audit impact, Permission impact, and Migration impact. Both options require identical service-layer cycle-prevention logic and identical recursive-CTE cost for full-chain reads; audit treatment is identical for both (reuse the Section 18.18/21.9 audit-event design). **Recommended: Option B** (separate relationship table with explicit `level_label`), because the approved spec's Administrative Hierarchy display is level-labeled (not merely depth-based), and an explicit `level_label` column better supports level-scoped constraints (at most one President, a Supervisor's superior must be a Billing Manager) as direct row-level checks, consistent with this report's established preference for pushing invariant enforcement into constrained columns wherever the database realistically allows it. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Migration design, API design, and UI implementation remain explicitly blocked pending user selection/approval of the recommended option. |
