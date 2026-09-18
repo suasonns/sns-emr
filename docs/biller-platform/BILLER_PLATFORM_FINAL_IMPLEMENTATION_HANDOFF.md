@@ -28,6 +28,7 @@ APPROVED PAGES
 9. AR & Collections Intelligence Center
 10. Credit Balance Resolution & Compliance Center
 11. Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (SNS Hospice Solutions Tenant Platform) — shared data model, two platform-specific views
+12. Executive Billing Intelligence Center — replaces the existing Biller Platform Reports page (same "Reports" navigation item)
 
 No architectural redesign is authorized during implementation.
 
@@ -477,6 +478,20 @@ LOGICAL ENTITIES
 - Hospice-Funded Advance
 - Room & Board Reconciliation Record
 - Room & Board Financial Support Schedule
+- Report Definition
+- Report Configuration
+- Saved Report Configuration
+- Generated Report
+- Generated Report Version
+- Report Schedule
+- Report Schedule Run
+- Executive Report Package
+- Executive Package Membership
+- Report Source Snapshot
+- Report Source Health
+- Report Delivery
+- Report Audit Event
+- Report Authorization Scope
 - Regulatory Reference
 - Audit Event
 
@@ -3558,6 +3573,1006 @@ IMPLEMENTATION AUTHORIZED
 No further redesign authorized.
 
 ==================================================
+PAGE 12
+EXECUTIVE BILLING INTELLIGENCE CENTER
+==================================================
+
+STATUS
+
+APPROVED
+LOCKED
+FIGMA APPROVED
+IMPLEMENTATION AUTHORIZED
+
+==================================================
+CRITICAL REPLACEMENT DIRECTIVE
+==================================================
+
+THIS DESIGN REPLACES THE EXISTING BILLER PLATFORM REPORTS PAGE.
+
+Existing route shown in the current application:
+
+/billing/reports
+
+Use the repository's existing authoritative Reports route and routing conventions.
+
+DO NOT:
+
+- Create a second Reports page
+- Create a parallel Executive Intelligence route
+- Keep the old snapshot-card Reports page accessible
+- Leave obsolete Reports components mounted
+- Maintain duplicate reporting calculations
+- Preserve the former "dashboard of dashboards" implementation
+
+The existing Reports navigation item must open:
+
+Executive Billing Intelligence Center
+
+The replacement must preserve appropriate existing route guards, authentication, tenant assignment checks, and navigation behavior.
+
+Before deleting any existing code:
+
+1. Inspect the current Reports route.
+2. Inspect existing Reports components.
+3. Inspect existing report services and APIs.
+4. Identify reusable export, audit, authorization, and reporting infrastructure.
+5. Classify existing code as REUSE, EXTEND, REPLACE, or RETIRE.
+6. Preserve working shared functionality.
+7. Remove obsolete components only after replacement verification passes.
+
+==================================================
+PAGE OWNER AND BRANDING
+==================================================
+
+Owner: SNS Tech Solutions
+
+Platform: Biller Platform
+
+Page Name: Executive Billing Intelligence Center
+
+Navigation Label: Reports
+
+Do not display:
+
+SNS Hospice Solutions
+External Billing Services
+
+Tenant context must identify:
+
+- Current assigned agency
+- Agency classification
+- Reporting scope
+
+==================================================
+PAGE MISSION
+==================================================
+
+Replace the passive Reports page with an executive billing intelligence,
+analytics, compliance, report-generation, scheduling, export,
+source-health, and audit workspace.
+
+The page must answer:
+
+- What is the current financial position?
+- What revenue remains outstanding?
+- What revenue is at risk?
+- What revenue has been denied?
+- What revenue may be recovered?
+- Which payer is creating delays?
+- Which assigned agency requires attention?
+- What compliance exposure exists?
+- What Room & Board exposure exists?
+- Which reports are available?
+- Which reports are scheduled?
+- Which reports were generated?
+- Are the underlying data sources current?
+- Who generated, downloaded, or scheduled each report?
+
+The page must not duplicate operational work queues from source modules.
+
+==================================================
+REQUIRED PAGE SECTIONS
+==================================================
+
+1. Executive Financial Summary
+2. Revenue Trend
+3. Revenue Pipeline
+4. Financial Risk Portfolio
+5. Payer Performance
+6. Agency Comparison
+7. Compliance and Revenue Protection
+8. Room & Board Financial Exposure Summary
+9. Report Library
+10. Custom Report Builder
+11. Scheduled Reports
+12. Saved Configurations
+13. Generated Report History
+14. Executive Report Package Verification
+15. Data Source Health
+16. AI Executive Insights
+17. Platform Activity Audit Trail
+
+All sections must match the approved Figma hierarchy.
+
+==================================================
+AGENCY SCOPE
+==================================================
+
+Supported scopes:
+
+- Current Agency
+- All Assigned Agencies
+
+When Current Agency is selected:
+
+- Executive totals include only the selected agency.
+- Agency Comparison is informational only.
+- Comparison results must not alter current-agency totals.
+
+Display on Agency Comparison:
+
+Comparison View Only
+Not Included in Current Agency Totals
+
+When All Assigned Agencies is selected:
+
+- Include only agencies within the user's authorized assignment scope.
+- Display included agency classifications.
+- Do not silently combine Production, Training, and Demo data.
+- Training and Demo agencies must remain visibly labeled.
+
+Users must never access an unassigned agency through filters, URLs,
+exports, report configurations, or direct API requests.
+
+==================================================
+TOP REPORTING CONTROLS
+==================================================
+
+Required controls:
+
+- Agency Scope
+- Reporting Period
+- As-of Date
+- Comparison Period
+- Advanced Filters
+- Apply Settings
+- Generate Report
+- Schedule
+- Export Executive Package
+
+Reporting period options should follow existing application conventions
+and may include:
+
+- Current Month
+- Previous Month
+- Current Quarter
+- Previous Quarter
+- Year to Date
+- Previous Fiscal Year
+- Custom Date Range
+
+All metrics must visibly reflect the selected scope and period.
+
+==================================================
+EXECUTIVE FINANCIAL SUMMARY
+==================================================
+
+Required KPIs:
+
+- Revenue Ready
+- Revenue Submitted
+- Revenue Received
+- Outstanding AR
+- Revenue At Risk
+- Denied Revenue
+- Recoverable Revenue
+- Room & Board Advances
+
+Each KPI must display:
+
+- Authoritative amount
+- Trend when available
+- Reporting period
+- As-of timestamp
+- Drill-down destination
+
+Required drill-down mappings:
+
+- Revenue Ready → Billing Readiness
+- Revenue Submitted → Claims Management
+- Revenue Received → Payment Posting and Reconciliation
+- Outstanding AR → AR and Collections Intelligence Center
+- Revenue At Risk → Billing Readiness filtered to Revenue At Risk
+- Denied Revenue → Denials and Appeals
+- Recoverable Revenue → Denials and Appeals filtered to recovery opportunities
+- Room & Board Advances → Room & Board Billing and Reimbursement Center
+
+Drill-down must preserve:
+
+- Agency scope
+- Reporting period
+- As-of date
+- Comparison period
+- Payer filter
+- Applicable status filter
+
+Do not implement separate conflicting KPI formulas on the Reports page.
+
+Use the same authoritative calculation services as source modules.
+
+==================================================
+REVENUE TREND
+==================================================
+
+Display:
+
+- Recognized Revenue
+- Cash Collections
+
+Required chart support:
+
+- Reporting-period labels
+- Dollar units
+- Accessible legend
+- Exact-value tooltips
+- Selected agency scope
+- Selected comparison period
+- Last refreshed time
+
+Do not rely on color alone to identify chart series.
+
+Do not recreate static Figma chart values.
+
+Use authoritative reporting-period data.
+
+==================================================
+REVENUE PIPELINE
+==================================================
+
+Required stages:
+
+- Ready
+- Submitted
+- Accepted
+- Payment Pending
+- Paid
+- Denied
+- Appealed
+- Recovered
+
+Each stage must display:
+
+- Revenue amount
+- Claim count where supported
+- Average days in stage
+- Change from comparison period where supported
+
+Submitted must remain distinct from Accepted.
+
+Accepted must remain distinct from Paid.
+
+Denied, Appealed, and Recovered must remain distinct.
+
+==================================================
+FINANCIAL RISK PORTFOLIO
+==================================================
+
+Required risk categories:
+
+- Billing Blockers
+- Eligibility
+- NOE Deadline
+- Denials
+- Timely Filing
+- Payment Variance
+- Credit Balance
+- CAP Exposure
+- Room & Board Exposure
+- DDE Exceptions
+
+Each category must display:
+
+- Financial amount
+- Case count
+- Risk level
+- Trend where available
+- Source module
+- Drill-down action
+
+Do not duplicate source-module work queues here.
+
+==================================================
+PAYER PERFORMANCE
+==================================================
+
+Required fields:
+
+- Payer
+- Average Payment Delay
+- Payment or Collection Performance
+- Denial Cases
+- Denied Amount
+- Performance Status
+
+Where authoritative data supports it, also provide:
+
+- Submitted Amount
+- Billed Amount
+- Received Amount
+- Outstanding Amount
+- Short-Payment Amount
+- Recovery Amount
+- Denial Rate
+
+Support configured payer categories such as:
+
+- Medicare
+- Medi-Cal
+- Medi-Cal Managed Care
+- HMO
+- Commercial
+- Other configured payers
+
+Payer drill-down must preserve selected filters.
+
+==================================================
+AGENCY COMPARISON
+==================================================
+
+Required disclaimer when Current Agency is selected:
+
+Comparison View Only
+Not Included in Current Agency Totals
+
+Required fields:
+
+- Agency
+- Agency classification
+- Revenue Ready
+- Revenue Received
+- Outstanding AR
+- Revenue At Risk
+- Denied Revenue
+- NOE Compliance
+- Performance status or trend
+
+The comparison is agency-level operational intelligence.
+
+Do not:
+
+- Rank employees
+- Score employee performance
+- Include unassigned agencies
+- Silently combine Production, Training, and Demo totals
+
+==================================================
+COMPLIANCE AND REVENUE PROTECTION
+==================================================
+
+Required indicators:
+
+- NOE Compliance
+- NOEs at Risk
+- Eligibility Changes
+- Claims Blocked
+- DDE Exceptions
+- CAP Exposure or Not Configured
+- Credit Balance Cases
+- Appeal Deadlines
+
+Required state distinction:
+
+- Verified zero
+- Data available
+- Current
+- Stale
+- Partial
+- Unavailable
+- Not Configured
+- Access Denied
+
+Not Configured must never be treated as zero risk.
+
+==================================================
+ROOM & BOARD FINANCIAL EXPOSURE
+==================================================
+
+Required metrics:
+
+- Active Room & Board Cases
+- Medi-Cal Received
+- HMO Received
+- Outstanding Reimbursement
+- SNF Paid
+- SNF Payable
+- Hospice-Funded Advances
+- Average Delay
+
+Where supported, add:
+
+- Awaiting Medi-Cal
+- Awaiting HMO
+- Oldest Outstanding Service Month
+
+Use the shared Room & Board domain.
+
+Do not create report-only Room & Board data or alternate calculations.
+
+==================================================
+REPORT LIBRARY
+==================================================
+
+Required categories:
+
+- Revenue
+- Claims
+- Readiness
+- Denials and Appeals
+- Eligibility
+- Payment Posting
+- NOE
+- CAP
+- AR and Collections
+- Credit Balance
+- Room & Board
+- Compliance
+- Archived
+
+Each report must display:
+
+- Report name
+- Description
+- Source module
+- Available format
+- Last generated date
+- Generate action
+- Schedule action
+- View history action
+
+Do not display report formats that are not implemented.
+
+==================================================
+CUSTOM REPORT BUILDER
+==================================================
+
+Required controls:
+
+- Report Name
+- Report Type
+- Agency Scope
+- Reporting Period
+- As-of Date
+- Comparison Period
+- Payer Segment
+- Compliance Level
+- Status Filter
+- Aging Bucket
+- Data Detail Modules
+- Include Detail Rows
+- Include Executive Summary
+- Include Evidence Index
+- File Format
+- Sensitivity Level
+- Estimated Row Count
+- Minimum-Necessary Warning
+
+Required actions:
+
+- Preview Report
+- Generate Report
+- Save Configuration
+- Schedule Report
+
+Report generation and export must not be combined into one ambiguous action.
+
+Preview must display:
+
+- Agency scope
+- Reporting period
+- Filters
+- Included sections
+- Sensitivity level
+- Estimated row count
+- Source-health warnings
+
+==================================================
+SCHEDULED REPORTS
+==================================================
+
+Required fields:
+
+- Report Name
+- Schedule or Frequency
+- Reporting Period
+- Format
+- Next Run
+- Last Run
+- Last Result
+- Authorized Recipient or Destination
+- Created By
+- Status
+
+Required statuses:
+
+- Active
+- Paused
+- Failed
+- Disabled
+
+Required actions:
+
+- View
+- Edit
+- Pause
+- Resume
+- Run Now
+- Disable
+
+Scheduled delivery must not send reports to unauthorized recipients.
+
+==================================================
+SAVED CONFIGURATIONS
+==================================================
+
+Required fields:
+
+- Configuration Name
+- Reporting Scope
+- Output Mode
+- Filters
+- Created By
+- Created Date
+- Last Used
+- Shared or Private
+- Status
+
+Required actions:
+
+- Run
+- Edit
+- Duplicate
+- Archive
+
+Saved configurations store filters and layout preferences.
+
+Saved configurations do not represent frozen financial results.
+
+==================================================
+GENERATED REPORT HISTORY
+==================================================
+
+Required fields:
+
+- Report ID
+- Report Name
+- Agency Scope
+- Reporting Period
+- As-of Timestamp
+- Generated By
+- Generated Date
+- Format
+- Row Count
+- Source Status
+- Audit Status
+
+Required actions:
+
+- View
+- Download
+- Regenerate
+- Audit Record
+
+Rules:
+
+- View and Download use the original immutable generated snapshot.
+- Regenerate creates a new report from current source data.
+- Regenerate must not replace or modify the original report.
+- Every generation and download must be audited.
+
+==================================================
+EXECUTIVE REPORT PACKAGE
+==================================================
+
+Allow authorized users to assemble a package from selected reports.
+
+Display:
+
+- Included reports
+- Agency scope
+- Reporting period
+- Output scope
+- Data sensitivity
+- Included detail level
+- Package status
+- Generated By
+- Generation date
+
+Required action:
+
+Generate Executive Package
+
+Human review is required before generating a package containing
+protected financial or patient-level detail.
+
+Additional approval is required when configured by organizational policy.
+
+Do not impose universal dual-signature approval unless the organization
+explicitly configures that requirement.
+
+==================================================
+DATA SOURCE HEALTH
+==================================================
+
+Required fields:
+
+- Source Module
+- Source Status
+- Last Successful Refresh
+- Freshness
+- Error Reference
+- Source Action
+- Report Availability
+
+Required statuses:
+
+- Current
+- Stale
+- Unavailable
+- Partial
+- Not Configured
+
+Required report effects:
+
+- Report Available
+- Report Available with Warning
+- Report Blocked Due to Missing Source
+
+Do not convert Unavailable, Stale, Partial, or Not Configured into zero.
+
+Refresh or synchronization actions must be source-aware, permissioned,
+tenant scoped, safe, and audited.
+
+==================================================
+AI EXECUTIVE INSIGHTS
+==================================================
+
+AI MAY:
+
+- Summarize verified financial trends
+- Highlight potential revenue risk
+- Identify payer delays
+- Identify growing AR exposure
+- Identify denial trends
+- Identify operational risk concentrations
+- Recommend leadership review
+- Recommend relevant reports
+- Draft executive summaries
+
+AI MAY NOT:
+
+- Invent missing values
+- Treat unavailable data as zero
+- Certify financial statements
+- Produce official cost reports
+- Determine official CAP liability
+- Approve write-offs
+- Modify financial records
+- Rank employees
+
+Every AI insight must display:
+
+- Agency scope
+- As-of date
+- Source modules
+- Human Review Required
+
+Use recommendation language:
+
+- Potential Risk
+- Observed Trend
+- Recommended Review
+- Possible Revenue Impact
+
+==================================================
+PLATFORM ACTIVITY AUDIT TRAIL
+==================================================
+
+Track:
+
+- Report preview
+- Report generation
+- Report download
+- Schedule creation
+- Schedule modification
+- Scheduled execution
+- Saved-configuration change
+- Executive-package generation
+- Source-data refresh
+- Export failure
+- Recipient selection
+- Agency-scope selection
+- Audit-record access
+
+Required fields:
+
+- Actor
+- Actor role
+- Action
+- Report or resource
+- Agency scope
+- Reporting period
+- Timestamp
+- Result
+- Correlation ID
+
+Audit history must be append-only.
+
+==================================================
+AUTHORIZATION FAILURE
+==================================================
+
+Authorization failure must replace the entire protected Reports workspace.
+
+Do not display protected cards, charts, tables, reports, schedules, or
+report history beneath an access warning.
+
+Unauthorized users must not see:
+
+- Financial totals
+- Agency totals
+- Patient counts
+- Claim counts
+- Payer performance
+- Report history
+- Saved configurations
+- Scheduled reports
+- Export information
+- Unassigned tenant existence
+
+Display only:
+
+- Access Denied
+- Safe explanation
+- Authorized agency options where permitted
+- Switch Agency
+- Safe navigation
+- Correlation ID
+
+==================================================
+LOADING, EMPTY, ERROR, AND STALE STATES
+==================================================
+
+Loading:
+
+- Use skeletons preserving approved layout.
+- Do not retain prior-agency data during agency switching.
+
+Empty:
+
+Support:
+
+- No generated reports
+- No scheduled reports
+- No saved configurations
+- No data for selected period
+
+Error:
+
+Display:
+
+- Plain-language explanation
+- Retry action
+- Correlation ID
+
+Do not display raw:
+
+- Failed to fetch
+- Network Error
+- Stack trace
+- Endpoint information
+
+Stale:
+
+Display:
+
+- Last updated
+- Source-health warning
+- Refresh or Regenerate action
+
+==================================================
+REPOSITORY DISCOVERY REQUIREMENTS
+==================================================
+
+Before implementation, inspect:
+
+- Existing /billing/reports route
+- Existing Reports component tree
+- Existing report APIs and services
+- Existing export infrastructure
+- Existing scheduled-job infrastructure
+- Existing report configuration models
+- Existing generated-file storage
+- Existing audit infrastructure
+- Existing tenant and agency authorization
+- Existing shared financial calculation services
+- Existing source-health infrastructure
+
+Classify each relevant component as REUSE, EXTEND, REPLACE, or RETIRE.
+
+Do not create a duplicate reporting engine when reusable infrastructure
+already exists.
+
+Do not create migrations before model discovery and schema mapping are
+complete.
+
+==================================================
+REQUIRED LOGICAL ENTITIES
+==================================================
+
+Map to existing models before creating anything:
+
+- Report Definition
+- Report Configuration
+- Saved Report Configuration
+- Generated Report
+- Generated Report Version
+- Report Schedule
+- Report Schedule Run
+- Executive Report Package
+- Executive Package Membership
+- Report Source Snapshot
+- Report Source Health
+- Report Delivery
+- Report Audit Event
+- Report Authorization Scope
+
+For each entity document: Existing Model, Existing Table, Decision,
+Reason, Fields, Relationships, Constraints, Indexes, Migration
+Required, Repository Evidence.
+
+==================================================
+IMPLEMENTATION ACCEPTANCE CRITERIA
+==================================================
+
+REPLACEMENT
+
+□ Existing Reports page is replaced.
+□ Existing Reports navigation opens Executive Billing Intelligence Center.
+□ No parallel Reports page exists.
+□ Obsolete snapshot-card implementation is retired after verification.
+□ Existing reusable infrastructure is preserved.
+
+SCOPE AND SECURITY
+
+□ Current Agency totals include only current agency data.
+□ Comparison data does not alter current-agency totals.
+□ All Assigned Agencies includes assigned agencies only.
+□ Production, Training, and Demo are visibly separated.
+□ Authorization is enforced server-side.
+□ Unauthorized state replaces the protected workspace.
+
+FINANCIAL CONSISTENCY
+
+□ Shared authoritative source calculations are used.
+□ Reports page does not maintain alternate KPI formulas.
+□ Same agency and as-of date reconcile with source modules.
+□ Unavailable data is not represented as zero.
+□ Refresh timestamps are visible.
+
+REPORT OPERATIONS
+
+□ Report Library is operational.
+□ Report Builder is operational.
+□ Preview is operational.
+□ Report generation is operational.
+□ Scheduled Reports are operational.
+□ Saved Configurations are operational.
+□ Generated Report History is operational.
+□ Executive Package generation is operational.
+□ Data Source Health is operational.
+
+IMMUTABILITY
+
+□ Generated reports remain immutable snapshots.
+□ Regeneration creates a new report.
+□ Historical reports are not rewritten.
+□ Audit history is append-only.
+
+AI GOVERNANCE
+
+□ AI uses verified sources.
+□ AI does not invent metrics.
+□ AI does not certify financial conclusions.
+□ Human review requirement is visible.
+
+UI
+
+□ Approved 17 sections are implemented.
+□ No section-heading overlap exists.
+□ Chart units and labels are visible.
+□ Room & Board naming is correct.
+□ Report History actions are clear.
+□ Report Builder controls match approved Figma.
+□ Responsive layout remains readable.
+□ Figma parity is verified.
+
+==================================================
+IMPLEMENTATION BLOCKERS
+==================================================
+
+DO NOT DECLARE COMPLETE IF:
+
+- Old Reports page remains accessible
+- A second parallel Reports route is created
+- Snapshot cards remain the primary Reports page
+- Agency scope leaks data
+- Comparison figures alter current-agency totals
+- Training or Demo data is silently mixed with Production
+- Reports use conflicting financial formulas
+- Unavailable data appears as zero
+- Generated reports can be overwritten
+- Schedules can deliver to unauthorized recipients
+- Authorization failure leaves financial data visible
+- AI invents missing values
+- Audit history is incomplete
+- Report actions are not permission controlled
+- Figma parity is incomplete
+- Tests leave persistent artifacts
+
+==================================================
+REQUIRED VERIFICATION REPORT
+==================================================
+
+Update:
+
+/docs/biller-platform/BILLER_PLATFORM_IMPLEMENTATION_VERIFICATION.md
+
+Add: Executive Billing Intelligence Center Replacement Verification
+
+Include:
+
+- Existing Reports route identified
+- Existing components reviewed
+- REUSE / EXTEND / REPLACE / RETIRE decisions
+- Files changed
+- Models reused
+- Models added
+- Migrations added
+- APIs added or changed
+- Permissions enforced
+- Source calculations reused
+- Old page retirement evidence
+- Agency-scope tests
+- Report generation tests
+- Schedule tests
+- Export tests
+- Immutable-history tests
+- Audit tests
+- Figma comparison
+- Known limitations
+- Confirmation no duplicate Reports page exists
+- Confirmation no test artifacts remain
+
+==================================================
+FINAL STATUS
+==================================================
+
+Executive Billing Intelligence Center
+
+APPROVED
+LOCKED
+READY FOR GITHUB IMPLEMENTATION
+
+THIS PAGE REPLACES THE EXISTING BILLER PLATFORM REPORTS PAGE.
+
+Proceed with repository discovery first.
+
+Do not create schema or migrations until existing reporting models,
+services, routes, exports, schedules, and audit infrastructure are
+mapped.
+
+==================================================
 12. SHARED DATA AND CALCULATION RULES
 ==================================================
 
@@ -3953,6 +4968,7 @@ This applies to:
 - AR & Collections
 - Credit Balance Resolution
 - Room & Board Billing & Reimbursement (Biller Platform) / Room & Board Financial Reconciliation (Tenant Platform)
+- Executive Billing Intelligence Center (Reports)
 - All future Biller Platform pages
 
 The unauthorized response must not expose:
@@ -4204,6 +5220,12 @@ LOCKED
 AI Room & Board Governance:
 LOCKED
 
+Executive Billing Intelligence Center (Reports Replacement):
+LOCKED
+
+AI Executive Insights Governance:
+LOCKED
+
 Visits & Notes Removal:
 LOCKED
 
@@ -4257,37 +5279,49 @@ each of those earlier documents (see Relationship section below)
 remains on disk as a superseded historical record, marked as such, but
 is no longer authoritative.
 
-Scope now spans **eleven locked pages** (Billing Dashboard, Billing
+Scope now spans **twelve locked pages** (Billing Dashboard, Billing
 Readiness, Claims Management, Denials & Appeals, Eligibility
 Monitoring & Change Detection, Payment Posting & Reconciliation
 Center, NOE Compliance & Revenue Protection Center, CAP Compliance &
 Financial Exposure Center, AR & Collections Intelligence Center,
-Credit Balance Resolution & Compliance Center, and new **Page 11:
-Room & Board Billing & Reimbursement Center (Biller Platform) /
-Room & Board Financial Reconciliation Center (SNS Hospice Solutions
-Tenant Platform)** — a single shared-data-model workflow exposed as
-two platform-specific views), a 69-entity Discovery Deliverable list
-(up from 59, adding RoomBoardCase, ServiceMonth, RoomBoardClaim,
-PayerRemittance, PaymentAllocation, SNFPayable, SNFPayment,
-HospiceFundedAdvance, ReconciliationRecord, and
-FinancialSupportSchedule), the existing 24-phase Implementation Plan
-(Phase 0-23), and a seventh AI-governance boundary (AI Room & Board
-Governance) alongside the AI Appeal Draft Assistant (Denials &
-Appeals), AI Reconciliation Assistant (Payment Posting), AI NOE Risk
-Analyzer (NOE Compliance), AI CAP Analysis (CAP Compliance), AI
-Collections Assistant (AR & Collections), and AI Credit Resolution
-Assistant (Credit Balance Resolution) — in all seven cases AI may
-analyze/estimate/forecast/recommend but a human must approve every
-compliance, financial, refund, collections, allocation, payment, or
-appeal-submission action; AI Room & Board Governance is additionally
-and explicitly barred from submitting claims, recording payments,
-allocating payments automatically, approving payables, issuing SNF
-payments, modifying financial records, or closing cases. Page 11 is
-also the first page in this document built on an explicit
-**Critical Architecture Rule**: one authoritative shared data model
-(RoomBoardCase and related records) must never be duplicated across
-the Biller Platform and the SNS Hospice Solutions Tenant Platform —
-both platform-specific pages must read from the same records.
+Credit Balance Resolution & Compliance Center, Room & Board Billing &
+Reimbursement Center (Biller Platform) / Room & Board Financial
+Reconciliation Center (Tenant Platform), and new **Page 12: Executive
+Billing Intelligence Center**), an 83-entity Discovery Deliverable
+list (up from 69, adding Report Definition, Report Configuration,
+Saved Report Configuration, Generated Report, Generated Report
+Version, Report Schedule, Report Schedule Run, Executive Report
+Package, Executive Package Membership, Report Source Snapshot, Report
+Source Health, Report Delivery, Report Audit Event, and Report
+Authorization Scope), the existing 24-phase Implementation Plan
+(Phase 0-23), and an eighth AI-governance boundary (AI Executive
+Insights) alongside the AI Appeal Draft Assistant (Denials & Appeals),
+AI Reconciliation Assistant (Payment Posting), AI NOE Risk Analyzer
+(NOE Compliance), AI CAP Analysis (CAP Compliance), AI Collections
+Assistant (AR & Collections), AI Credit Resolution Assistant (Credit
+Balance Resolution), and AI Room & Board Governance (Room & Board) —
+in all eight cases AI may analyze/estimate/forecast/recommend/
+summarize but a human must approve every compliance, financial,
+refund, collections, allocation, payment, appeal-submission, or
+executive-package action; AI Executive Insights is additionally and
+explicitly barred from inventing missing values, treating unavailable
+data as zero, certifying financial statements, producing official
+cost reports, determining official CAP liability, approving
+write-offs, modifying financial records, or ranking employees.
+
+Page 12 is also the first page in this document framed as an explicit
+**replacement of existing, already-shipped functionality** rather than
+a new page: it replaces the existing Biller Platform Reports page at
+the existing `/billing/reports` route (same navigation label,
+"Reports"), and its Critical Replacement Directive forbids creating a
+second/parallel Reports page, forbids keeping the old snapshot-card
+Reports page accessible, and requires classifying existing Reports
+code as REUSE, EXTEND, REPLACE, or RETIRE before any deletion — old
+components may only be removed after replacement verification passes.
+Its own Required Verification Report addendum ("Executive Billing
+Intelligence Center Replacement Verification") must be added to
+`docs/biller-platform/BILLER_PLATFORM_IMPLEMENTATION_VERIFICATION.md`
+(Section 23), which has not yet been created.
 
 Approval/lock status does not itself authorize code changes. Per
 Section 10 (Verify-First Requirement), no schema, migration, API,
@@ -4298,29 +5332,34 @@ of this document's creation:**
 
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` —
   created, but scoped to the original 25-entity list (three pages).
-  Must be extended to cover the 44 additional entities introduced by
+  Must be extended to cover the 58 additional entities introduced by
   this document for Denials & Appeals, Payment Posting &
   Reconciliation, NOE Compliance & Revenue Protection, CAP Compliance
   & Financial Exposure, AR & Collections Intelligence, Credit
-  Balance Resolution & Compliance, and Room & Board Billing &
-  Reimbursement / Financial Reconciliation (Denial, Appeal, Appeal
-  Version, Appeal Evidence Package, Appeal Lifecycle Event,
-  Eligibility Verification, Eligibility Sweep, Eligibility Sweep
-  Result, Coverage Change, Eligibility Work Item, Verification
-  Source, ERA or Remittance, Payment Posting, Payment Match, Payment
-  Variance, Contractual Adjustment, Unapplied Cash, Secondary Billing
-  Item, Payment Work Item, NOE Compliance Record, NOE Risk
-  Assessment, NOE Filing Event, NOE Work Item, CAP Exposure Record,
-  CAP Forecast Scenario, CAP Agency Utilization Snapshot, CAP Work
-  Item, AR Aging Snapshot, AR Recovery Work Item, AR Collections
-  Activity, Credit Balance Case, Credit Cause Record, CMS-838 Filing
-  Case, Credit Resolution Work Item, RoomBoardCase, ServiceMonth,
-  RoomBoardClaim, PayerRemittance, PaymentAllocation, SNFPayable,
-  SNFPayment, HospiceFundedAdvance, ReconciliationRecord, and
-  FinancialSupportSchedule) before Phase 0 can be considered complete
-  for this document's full eleven-page scope. A standalone
-  `ROOM_BOARD_DISCOVERY_REPORT.md` is separately required per Page
-  11's own Milestone 1 (Repository Discovery) before any Room &
+  Balance Resolution & Compliance, Room & Board Billing &
+  Reimbursement / Financial Reconciliation, and Executive Billing
+  Intelligence Center (Denial, Appeal, Appeal Version, Appeal Evidence
+  Package, Appeal Lifecycle Event, Eligibility Verification,
+  Eligibility Sweep, Eligibility Sweep Result, Coverage Change,
+  Eligibility Work Item, Verification Source, ERA or Remittance,
+  Payment Posting, Payment Match, Payment Variance, Contractual
+  Adjustment, Unapplied Cash, Secondary Billing Item, Payment Work
+  Item, NOE Compliance Record, NOE Risk Assessment, NOE Filing Event,
+  NOE Work Item, CAP Exposure Record, CAP Forecast Scenario, CAP
+  Agency Utilization Snapshot, CAP Work Item, AR Aging Snapshot, AR
+  Recovery Work Item, AR Collections Activity, Credit Balance Case,
+  Credit Cause Record, CMS-838 Filing Case, Credit Resolution Work
+  Item, RoomBoardCase, ServiceMonth, RoomBoardClaim, PayerRemittance,
+  PaymentAllocation, SNFPayable, SNFPayment, HospiceFundedAdvance,
+  ReconciliationRecord, FinancialSupportSchedule, Report Definition,
+  Report Configuration, Saved Report Configuration, Generated Report,
+  Generated Report Version, Report Schedule, Report Schedule Run,
+  Executive Report Package, Executive Package Membership, Report
+  Source Snapshot, Report Source Health, Report Delivery, Report Audit
+  Event, and Report Authorization Scope) before Phase 0 can be
+  considered complete for this document's full twelve-page scope. A
+  standalone `ROOM_BOARD_DISCOVERY_REPORT.md` is separately required
+  per Page 11's own Milestone 1 (Repository Discovery) before any Room &
   Board schema work begins.
 - `docs/biller-platform/BILLER_PLATFORM_DATABASE_SCHEMA_AND_MIGRATION_PLAN.md`
   — created (prior session), scoped to the original entity set; will
@@ -4487,6 +5526,40 @@ of this document's creation:**
   reference screenshots for this and other already-documented pages
   were saved to session storage as implementation reference (light-
   theme JSX/Tailwind versions to follow before implementation begins).
+- **Adds Page 12: Executive Billing Intelligence Center** — a
+  **replacement** of the existing Biller Platform Reports page at the
+  existing `/billing/reports` route, not a net-new nav item ("Reports"
+  was already an approved Section 7 nav label). Governed by a
+  Critical Replacement Directive: no parallel/second Reports page, no
+  continued access to the old snapshot-card implementation once
+  replaced, and every existing Reports-related file classified as
+  REUSE, EXTEND, REPLACE, or RETIRE (distinct from the REUSE/EXTEND/
+  CREATE scheme used for net-new pages) before any deletion. Specifies
+  17 required sections (Top Reporting Controls, Executive Financial
+  Summary with drill-down mappings, Revenue Trend, Revenue Pipeline,
+  Financial Risk Portfolio, Payer Performance, Agency Comparison,
+  Compliance and Revenue Protection, Room & Board Financial Exposure,
+  Report Library, Custom Report Builder, Scheduled Reports, Saved
+  Configurations, Generated Report History, Executive Report Package,
+  Data Source Health, AI Executive Insights, and Platform Activity
+  Audit Trail), Agency Scope rules, Authorization Failure behavior
+  (full workspace replacement, consistent with prior pages), and
+  Loading/Empty/Error/Stale states. AI Executive Insights follows the
+  same recommend-only governance pattern as the other seven AI
+  assistants, with additional explicit prohibitions on inventing
+  missing values, treating unavailable data as zero, certifying
+  financial statements, producing official cost reports, determining
+  official CAP liability, approving write-offs, modifying financial
+  records, or ranking employees. Adds 14 entities to the Required
+  Discovery Deliverable list: Report Definition, Report Configuration,
+  Saved Report Configuration, Generated Report, Generated Report
+  Version, Report Schedule, Report Schedule Run, Executive Report
+  Package, Executive Package Membership, Report Source Snapshot,
+  Report Source Health, Report Delivery, Report Audit Event, and
+  Report Authorization Scope. Requires its own addendum to a not-yet-
+  created `BILLER_PLATFORM_IMPLEMENTATION_VERIFICATION.md` (Section
+  23) documenting Reports-replacement verification before any old
+  Reports code may be retired.
 
 ## Change Log
 
@@ -4498,3 +5571,4 @@ of this document's creation:**
 | 2026-09-17 | Added Page 9: AR & Collections Intelligence Center (Executive AR Summary, Recovery Prioritization Queue, Top Collection Risks, AI Collections Assistant, Payer Aging Analysis Matrix, Agency Performance & Aging Summary, Aging Work Queue, Historical Collections & Write-Off Ledger, Auto Work Item Creation, Assignment Model, Audit Requirements, Acceptance Criteria, Implementation Notes, and Final Status). Explicitly framed as an operational collections and revenue recovery center, not a passive/traditional aging report — Implementation Notes direct that Recovery Prioritization Queue, Timely Filing Risk Detection, Aging Work Queue, Payer/Agency Risk Analysis, and Automated Recovery Work Item Creation take priority over static reporting. AI Collections Assistant follows the same recommend-only governance pattern as the other four AI assistants (may identify risks/patterns and draft recovery strategies and work-item plans; may not write off balances, modify receivables/accounts, change financial values, or perform collection actions) and the specification directs replacing automated-sounding action labels (e.g. "Auto Collection Execution", "Automated Write-Offs") with recommendation language (e.g. "Generate Collection Strategy", "Generate Recovery Recommendations"). Updated Approved Pages to nine; added AR Aging Snapshot, AR Recovery Work Item, and AR Collections Activity to the Required Discovery Deliverable list (now 55 entities); added AR & Collections to the Section 20 Unauthorized State Rule page list; added AR & Collections Intelligence Center and AI Collections Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-9 before Phase 0 can be considered complete for the full nine-page scope. |
 | 2026-09-17 | Added Page 10: Credit Balance Resolution & Compliance Center (Executive Credit Exposure, Credit Resolution Queue, Credit Cause Analysis, AI Credit Resolution Assistant, CMS-838 Compliance Center, Credit Aging Analysis, Multi-Agency Credit Exposure, Auto-Created Work Items, Credit Balance Lifecycle, Refund Governance, CMS-838 Workflow, Authorization Failure Behavior, Acceptance Criteria, and Final Status — APPROVED / LOCKED / IMPLEMENTATION AUTHORIZED). Explicitly framed as a resolution/compliance center, not a reporting screen. Credit Balance Lifecycle (Credit Identified → Investigation → Validation → Refund Review → CMS-838 Review → Resolved → Closed) establishes that Resolved does not automatically mean Closed and refund issuance does not automatically close the investigation. Refund Governance and CMS-838 Workflow require human authorization and full auditability with historical filings remaining viewable. Authorization Failure Behavior mirrors the Payment Posting pattern (replace the entire workspace on authorization failure; no financial or patient credit data exposed). AI Credit Resolution Assistant follows the same recommend-only governance pattern as the other five AI assistants, using required non-conclusive language and an explicit prohibition on determining compliance outcomes, issuing refunds, adjusting balances, closing credit cases, or submitting CMS-838 filings. Updated Approved Pages to ten; added Credit Balance Case, Credit Cause Record, CMS-838 Filing Case, and Credit Resolution Work Item to the Required Discovery Deliverable list (now 59 entities); added Credit Balance Resolution to the Section 20 Unauthorized State Rule page list; added Credit Balance Resolution & Compliance Center and AI Credit Resolution Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-10 before Phase 0 can be considered complete for the full ten-page scope. |
 | 2026-09-17 | Added Page 11: Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (SNS Hospice Solutions Tenant Platform) — a single shared-data-model workflow, two platform-specific views, governed by an explicit Critical Architecture Rule against duplicated data or two separate systems. Includes Business Purpose, Shared Authoritative Records, Master Room & Board Case Status, full Biller Platform page spec (KPI cards, Monthly Billing Queue, Claim Validation Status, Payer Reimbursement Queue, Payment Allocation, Payer Follow-Up Queue, Service Month Matrix), full Tenant page spec (KPI cards, Hospice-Funded Pass-Through Advances, Facility SNF Disbursements, Payer Reimbursement Aging, Service Month Reconciliation Ledger, SNF Payable/Payment Status, Reconciliation Status, Annual Reporting Support), Audit Requirements, Authorization Rules (with Access Denied full-workspace-replacement behavior), AI Governance, Acceptance Criteria, an Epic Summary (Business Owner: SNS Hospice Solutions; Technical Owner: SNS Tech Solutions; Priority: HIGH; explicitly distinguished from Facility Collections) with its own Epic Implementation Checklist and Implementation Mandate, and a 7-milestone Room & Board Implementation Milestones plan (Repository Discovery → Shared Data Foundation → Biller Platform → Tenant Platform → Shared Reconciliation Engine → Audit Framework → Reporting Support) with field-level schemas for all ten new entities. Updated Approved Pages to eleven; added RoomBoardCase, ServiceMonth, RoomBoardClaim, PayerRemittance, PaymentAllocation, SNFPayable, SNFPayment, HospiceFundedAdvance, ReconciliationRecord, and FinancialSupportSchedule to the Required Discovery Deliverable list (now 69 entities); added Room & Board Billing & Reimbursement / Financial Reconciliation to the Section 20 Unauthorized State Rule page list; added Room & Board Billing & Reimbursement Center (Biller Platform) / Room & Board Financial Reconciliation Center (Tenant Platform) and AI Room & Board Governance to Section 24 Final Locked Decisions. 16 UI design reference screenshots (covering this and other already-documented pages) saved to session storage as implementation reference pending a future light-theme JSX/Tailwind resend. Documentation only; no schema, migrations, tables, or models created. A standalone ROOM_BOARD_DISCOVERY_REPORT.md is separately required per Page 11's own Milestone 1 before any Room & Board schema work begins. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-11 before Phase 0 can be considered complete for the full eleven-page scope. |
+| 2026-09-17 | Added Page 12: Executive Billing Intelligence Center — an explicit replacement of the existing Biller Platform Reports page at the existing `/billing/reports` route (not a net-new nav item), governed by a Critical Replacement Directive prohibiting any parallel Reports page and requiring REUSE/EXTEND/REPLACE/RETIRE classification of existing Reports code before deletion. Specifies 17 required sections (Top Reporting Controls, Executive Financial Summary with drill-down mappings, Revenue Trend, Revenue Pipeline, Financial Risk Portfolio, Payer Performance, Agency Comparison, Compliance and Revenue Protection, Room & Board Financial Exposure, Report Library, Custom Report Builder, Scheduled Reports, Saved Configurations, Generated Report History, Executive Report Package, Data Source Health, AI Executive Insights, and Platform Activity Audit Trail), Agency Scope rules, Authorization Failure behavior (full workspace replacement), Loading/Empty/Error/Stale states, Repository Discovery Requirements, Implementation Acceptance Criteria, Implementation Blockers, and Required Verification Report update instructions. AI Executive Insights follows the same recommend-only governance pattern as the other seven AI assistants, with additional prohibitions on inventing missing values, treating unavailable data as zero, certifying financial statements, producing official cost reports, determining official CAP liability, approving write-offs, modifying financial records, or ranking employees. Updated Approved Pages to twelve; added Report Definition, Report Configuration, Saved Report Configuration, Generated Report, Generated Report Version, Report Schedule, Report Schedule Run, Executive Report Package, Executive Package Membership, Report Source Snapshot, Report Source Health, Report Delivery, Report Audit Event, and Report Authorization Scope to the Required Discovery Deliverable list (now 83 entities); added Executive Billing Intelligence Center (Reports) to the Section 20 Unauthorized State Rule page list; added Executive Billing Intelligence Center (Reports Replacement) and AI Executive Insights Governance to Section 24 Final Locked Decisions. Documentation only; no schema, migrations, tables, or models created. The existing BILLER_PLATFORM_DISCOVERY_REPORT.md still needs a follow-up addendum for all newly-introduced entities across Pages 4-12 before Phase 0 can be considered complete for the full twelve-page scope. Page 12 additionally requires a new BILLER_PLATFORM_IMPLEMENTATION_VERIFICATION.md (not yet created) documenting Reports-replacement verification before old Reports code may be retired. |
