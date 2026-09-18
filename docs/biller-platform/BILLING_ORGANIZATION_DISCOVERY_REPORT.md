@@ -1,11 +1,12 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: MIGRATION DESIGN REVIEW APPROVED — IMPLEMENTATION PLANNING
-AUTHORIZED (MODULE-LEVEL + AGENCY COVERAGE & WORKLOAD + EXPANDED
-AGENCY DETAIL + SCHEMA-DESIGN + MIGRATION-DESIGN ADDENDA, INCLUDING
-CLAIM_CATEGORY ENUM SINGLE-SOURCE-OF-TRUTH RECONCILIATION) — MIGRATION
-FILE CREATION, API DESIGN, AND UI IMPLEMENTATION REMAIN EXPLICITLY
-BLOCKED PENDING SEPARATE IMPLEMENTATION AUTHORIZATION
+STATUS: IMPLEMENTATION PLANNING IN PROGRESS FOR USER ACCESS DETAIL —
+MODULE-LEVEL, AGENCY COVERAGE & WORKLOAD, EXPANDED AGENCY DETAIL,
+ORGANIZATION & TEAMS, SCHEMA-DESIGN, AND MIGRATION-DESIGN ADDENDA
+REMAIN APPROVED; USER ACCESS DETAIL DISCOVERY VALIDATION MAPPED WITH
+FOUR OPEN CLARIFICATION ITEMS (SECTION 27.11) BEFORE ITS SCHEMA DESIGN
+CAN BEGIN — MIGRATION FILE CREATION, API DESIGN, AND UI IMPLEMENTATION
+REMAIN EXPLICITLY BLOCKED PENDING SEPARATE IMPLEMENTATION AUTHORIZATION
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -2914,6 +2915,243 @@ file creation, API design, and UI implementation remain explicitly
 
 ---
 
+## SECTION 27 — USER ACCESS DETAIL: DISCOVERY VALIDATION & IMPLEMENTATION PLANNING ADDENDUM
+
+STATUS: IMPLEMENTATION PLANNING IN PROGRESS — DOCUMENTATION AND TEST-
+PLAN PREPARATION ONLY. MIGRATION CREATION, API CREATION, UI
+IMPLEMENTATION, AND PRODUCTION CODE CHANGES REMAIN BLOCKED.
+
+Per the approved, locked, Figma-approved "User Access Detail"
+implementation handoff (Billing Organization module) and the
+subsequent "Implementation Planning Checklist," this addendum walks
+every checklist section, classifies each item against work already
+established in Sections 1-26 of this report, and flags every item
+that cannot be classified without a further decision.
+
+### 27.1 Scope
+
+User Access Detail is a **detail view reached from an existing Billing
+Organization surface** (staffing tables / agency assignment rows), not
+a new top-level page — consistent with how Expanded Agency Detail
+(Section 20) was scoped relative to Agency Coverage & Workload. It
+displays a single user's billing-role profile, DDE authorization
+status, access review status, assigned capabilities and their source,
+agency assignments, recent access activity, and export access history.
+It introduces no HR, payroll, performance-scoring, credential-
+management, or credential-display functionality, per the handoff's
+explicit boundary.
+
+### 27.2 Discovery Validation
+
+| Checklist Item | Classification | Basis |
+|---|---|---|
+| Identity model mapped | REUSE | Existing `User`/identity model (Discovery Area 1). No change needed. |
+| User model mapped | REUSE | Same as above. |
+| Billing Organization membership model mapped | REUSE | `BillingProviderOrganizationMembership` (module-level discovery, Section 18.2-equivalent). Supplies org-membership status and role field already used for the Billing Role Profile. |
+| Role model mapped | REUSE (informational only) | The membership's `role` field is REUSE; the dormant `Role`/`interfaces` model remains confirmed-unused (Discovery Area 1) and is **not** revived. System Role Definitions (Section 23) remain informational-only and do not grant permissions — the Billing Role Profile section displays the membership role, it does not introduce a second role system. |
+| Capability model mapped | CREATE | `WorkforceCapability` (capability catalog), per Section 18.14 — unchanged finding; no billing-capability catalog exists anywhere in the codebase. |
+| Capability source model mapped | CREATE — **open question, see 27.11.1** | No existing `CapabilityAssignment.source` discriminator exists (nothing to reuse); the four supported values (Role Grant / Individual Grant / User-Specific Grant / Not Granted) must be defined as part of `CapabilityAssignment` (Section 18.14). The apparent overlap between "Individual Grant" and "User-Specific Grant" is flagged in 27.11.1 rather than assumed to be two distinct values. |
+| Agency assignment model mapped | REUSE | `BillingProviderAgencyAssignment` (org-to-agency), `billing_agency_team_assignments` (Section 21.4), and `billing_agency_coverage_assignments` (Section 21.2) together already model "which agencies is this user's team/coverage tied to." No new agency-assignment table is required for User Access Detail itself. |
+| DDE authorization source mapped | BLOCKED DEPENDENCY (unchanged) — **see 27.11.2** | Section 18.15/21.12 already establish that DDE authorization is an external, not-yet-built entity (`BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md` Section 9) that this module may only **display**, never manage. The six statuses in this handoff (Authorized/Not Authorized/Pending/Suspended/Expired/Not Required) are an exact match for the six already documented in Section 18.15 — no new status vocabulary is introduced. The page-level rendering rule from Section 18.15 (render "Not Available" rather than a fabricated status until the DDE entity exists) still applies. |
+| Access review source mapped | CREATE — **open question, see 27.11.3** | "Access Review Status" is new terminology not previously discovered in this report. No existing model tracks a periodic access-recertification or review event distinct from DDE review or capability assignment. Flagged for clarification before schema design rather than assumed to be a rename of an existing concept. |
+| Audit infrastructure mapped | REUSE | `billing_agency_coverage_audit_events` (Section 21.9/25.7) — the same append-only, polymorphic `entity_type`/`entity_id` audit table already designed for coverage/team/administrative-hierarchy events extends to user-detail-access and capability-change events by adding new `entity_type` values (e.g. `USER_ACCESS_DETAIL_VIEW`, `CAPABILITY_ASSIGNMENT`), not a new audit table. |
+| Export infrastructure mapped | REUSE | `billing_agency_coverage_export_events` (Section 21.10/25.8) — same reuse pattern: new `export_type` value(s) for "User Access Detail export," not a new export table. |
+| Route authorization mapped | CREATE (unchanged finding) | `require_permission()`/`has_permission()` remain confirmed unimplemented placeholders (Discovery Area 4). User Access Detail's view/export authorization cannot rely on them and requires the same real capability-check work already flagged as CREATE in Section 18.14 — this page does not introduce a second, parallel authorization mechanism. |
+
+### 27.3 Data Architecture
+
+| Checklist Item | Classification | Basis |
+|---|---|---|
+| Capability source storage verified | CREATE | A `source` discriminator column on `CapabilityAssignment` (Section 18.14), values pending 27.11.1. |
+| Grant actor storage verified | CREATE | `CapabilityAssignment` needs a `granted_by_user_id` FK (distinct from `source`, per the handoff's Architecture Rule 1 — "Capability Source remains separate from Granted By"). Follows the same `granted_by`-style pattern already used elsewhere in this report's designs (e.g. supersession actor tracking, Section 21.8). |
+| Agency assignment storage verified | REUSE | `BillingProviderAgencyAssignment` / `billing_agency_team_assignments` / `billing_agency_coverage_assignments` — no new storage. |
+| Assignment history verified | REUSE | Same append-only, effective-window + audit-event pattern already locked in Section 21.5-21.9 applies to any capability/agency-assignment change surfaced on this page — no new history mechanism. |
+| DDE status storage verified | BLOCKED DEPENDENCY (unchanged) | Storage lives in the not-yet-built external DDE entity (Section 18.15/21.12); this page has no storage responsibility of its own beyond a read-only display binding once that entity exists. |
+| DDE review history verified | BLOCKED DEPENDENCY | Same external dependency as above — DDE review actions/history are not this module's storage responsibility. |
+| Access review history verified | CREATE — pending 27.11.3 | Cannot be verified/designed until the Access Review concept itself is clarified. |
+| Export history verified | REUSE | `billing_agency_coverage_export_events` (Section 21.10/25.8). |
+| Audit ownership verified | REUSE | Same audit table as above; "ownership" (which service writes the event) follows the existing pattern of the writing service recording its own `entity_type`/`actor_user_id`/`correlation_id` — no new ownership model needed. |
+
+### 27.4 UI Implementation Plan (documentation only — no components built)
+
+All nine sections (Billing Role Profile, DDE Authorization Status,
+Access Review Status, Assigned Capabilities table with Capability
+Source column, Agency Assignments table with Coverage Assignment
+column, Recent Access Activity, Export Access History action) are
+**planned to bind to the REUSE/CREATE sources identified in 27.2-27.3
+above** — no new data source is introduced at the UI-planning stage
+beyond what discovery has already classified. Per the locked
+`THEME_SYSTEM_REQUIREMENTS.md`, every planned section must ship with
+both dark- and light-theme support using platform theme tokens, not
+page-specific colors — this applies to status badges (DDE status,
+capability source, coverage-role labels), tables, and the export
+action identically. No component code is created in this pass.
+
+### 27.5 Authorization Model (planning only)
+
+- **User Access Detail view permission:** planned as a new capability
+  string (e.g. `billing_org.user_access_detail.view`), enforced via
+  the real capability-check mechanism flagged CREATE in Section 18.14
+  / 27.2 — not the placeholder `require_permission()`/`has_permission()`
+  functions.
+- **Capability visibility rules:** a viewer sees another user's
+  assigned capabilities only if the viewer holds the view permission
+  above; the page never exposes capability data to an unauthorized
+  viewer via a partial/degraded render.
+- **Agency-scope enforcement:** consistent with Architecture Rule 2
+  ("Agency visibility remains assignment-based"), a viewer without an
+  agency assignment overlapping the detail-subject's assigned agencies
+  sees those specific agency rows withheld or the whole detail denied,
+  per the same assignment-based visibility already established for
+  Agency Coverage & Workload (Section 18).
+- **Export authorization:** a separate, more restrictive capability
+  (e.g. `billing_org.user_access_detail.export`) than the view
+  permission, per Architecture Rule 6 ("Export Access History remains
+  permission-controlled and audited").
+- **Access-denied replacement state:** the whole detail workspace is
+  replaced by an explicit "Access Denied" state (never a blank/partial
+  page), consistent with the platform-wide pattern this report has
+  used for every other page (Section 18/20/23).
+- **URL-manipulation protection:** authorization is re-checked
+  server-side on every request for this detail view (not only at
+  initial navigation), so directly requesting another user's detail
+  URL without the view permission is denied identically to navigating
+  there through the UI.
+
+### 27.6 Audit Model (planning only)
+
+All nine audited actions (user detail access, capability view,
+capability changes, agency assignment changes, DDE review actions,
+access review actions, export actions, access request actions) are
+planned to write to the existing `billing_agency_coverage_audit_events`
+table (Section 21.9/25.7) with a distinct `entity_type` per action and
+a shared `correlation_id` per user-session-scoped sequence of related
+events — reusing, not duplicating, the append-only audit design.
+**DDE review actions and Access review actions** are flagged
+consistent with 27.2/27.11 — DDE review audit entries can only be
+written once the external DDE entity work exists to review; Access
+review audit entries are pending the 27.11.3 clarification.
+
+### 27.7 Export Requirements (planning only)
+
+Export scope (organization membership + agency assignment +
+capabilities) reuses the same assignment-based visibility rules from
+27.5. Per the handoff's explicit "Do not expose" list, the export
+plan **excludes, by design, with no exception path**: passwords, MFA
+secrets, tokens, DDE credentials, and any other authentication
+material — the export is a read-only, credential-free operational
+record, matching Architecture Rule/Do-Not-Expose list verbatim.
+Export actions are planned to write an export event to
+`billing_agency_coverage_export_events` (Section 21.10/25.8) with a
+new `export_type` value.
+
+### 27.8 Security Review Plan (planning only — no tests executed)
+
+Planned test scenarios: unauthorized detail access denied;
+unauthorized export denied; agency-assignment scope enforced (a user
+scoped to Agency A cannot view/export a detail-subject's Agency B
+assignment); capability scope enforced (view permission required
+before any capability data renders); URL-tampering tested (direct
+navigation to another user's detail ID without permission); cross-
+agency access tested; access-denied state fully replaces the
+workspace rather than degrading it. These are test-plan entries only
+— no test code or fixtures are created in this documentation pass.
+
+### 27.9 Functional & UI Test Plan (planning only)
+
+Functional test plan entries mirror the "Discovery Validation" /
+"Data Architecture" mappings above: profile load, DDE status render
+(including the "Not Available" placeholder state per the blocked DDE
+dependency), access review history render (pending 27.11.3), capability
+source display for each of the three grant scenarios (Role Grant /
+Individual Grant / User-Specific Grant — pending the 27.11.1
+resolution of whether these are two or three distinct values),
+agency-assignment display, Coverage Assignment terminology/enum
+display (Section 20.9's locked 12-value `claim_category` list, per
+Architecture Rule 4 — see 27.11.4), recent-activity display, and
+export functionality. UI test plan entries (no clipped values, visible
+Capability Source/DDE status/export button, responsive layout,
+loading/empty/error states) follow the platform-wide UI conventions
+already established across Sections 18/20/23 and the locked theme
+system — no page-specific pattern is introduced.
+
+### 27.10 Definition of Done (restated, unchanged from the handoff)
+
+Figma parity, acceptance criteria, security tests, audit tests, export
+tests, authorization tests, no credential exposure, no HR/payroll
+functionality, verification documentation updated, no temporary test
+artifacts remaining — all restated from the handoff verbatim as the
+gate for this page's eventual implementation sign-off; none of these
+are satisfied or claimed satisfied by this planning-only addendum.
+
+### 27.11 Open Questions Requiring Clarification Before Schema Design
+
+**27.11.1 — Capability Source: two values or three?** The handoff
+lists four supported `Capability Source` values: Role Grant,
+Individual Grant, User-Specific Grant, Not Granted. "Individual Grant"
+and "User-Specific Grant" read as possible synonyms for the same
+concept (a capability granted directly to one user rather than derived
+from their role). Before the `CapabilityAssignment.source`
+`CheckConstraint` is locked, please confirm whether these are: (a) two
+names for the same value (in which case the enum has three real
+values: `ROLE_GRANT`, `INDIVIDUAL_GRANT` or `USER_SPECIFIC_GRANT`
+[pick one], `NOT_GRANTED`), or (b) two genuinely distinct grant
+mechanisms (e.g. "Individual Grant" = granted directly by an
+administrator outside the role system, "User-Specific Grant" =
+derived from a user-specific override table separate from direct
+admin grants) — in which case both must be independently defined with
+their own storage/derivation rules.
+
+**27.11.2 — DDE Authorization Status: still a blocked external
+dependency, or a lightweight page-local status now required?** Section
+18.15/21.12 classify DDE authorization as blocked pending the separate,
+not-yet-built DDE entity work from the main handoff document. This
+User Access Detail handoff requires a "DDE Authorization Status"
+section to render now. Please confirm whether User Access Detail: (a)
+remains blocked on the same external DDE entity and renders "Not
+Available" until that entity exists (no schema change from this
+addendum), or (b) requires a new, lightweight, credential-free status
+field (the six values already match Section 18.15 exactly) to be
+introduced now specifically to unblock this page, independent of the
+full DDE entity/credential system referenced in the main handoff.
+
+**27.11.3 — Access Review Status: new concept or a rename?** No prior
+section of this report defines an "Access Review" entity distinct from
+DDE review or capability assignment/audit history. Please confirm
+whether Access Review Status is: (a) a new, distinct periodic
+recertification concept requiring its own status field and history
+(CREATE, fully new), or (b) a display label for an existing/planned
+concept already covered elsewhere in this report (e.g. a derived view
+over capability-assignment and agency-assignment audit history, with
+no new storage).
+
+**27.11.4 — Coverage Assignment column: same `claim_category` enum, or
+a new payer-scope field on `billing_agency_coverage_assignments`?**
+Architecture Rule 4's 12-value list is identical to the Section 20.9
+locked `claim_category` enum. Please confirm whether the "Coverage
+Assignment" column on this page's Agency Assignments table displays:
+(a) the claim/payer categories a user's existing `coverage_role`
+(Medicare Biller / Medi-Cal Biller / Backup / Specialist, Section
+21.2) is scoped to — which would require a new payer-scope field on
+`billing_agency_coverage_assignments` (an EXTEND to that table, not
+previously designed) — or (b) simply restates the coverage-role
+assignment already modeled, with "future-payer capable" describing the
+underlying `claim_category` enum's extensibility rather than a new
+column on this table.
+
+**Status:** Discovery Validation, Data Architecture, and the UI/
+Authorization/Audit/Export/Security/Test planning checklists are
+mapped against Sections 1-26 of this report. Four items (27.11.1-
+27.11.4) require clarification before Schema Design work for User
+Access Detail can begin; everything else classified above is ready to
+proceed to schema design once those four items are resolved.
+Documentation only — no schema, migration, model, service, route, or
+UI component created or changed. Migration creation, API creation, UI
+implementation, and production code changes remain explicitly
+blocked, consistent with the handoff's own "Next Gate" section.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -2976,3 +3214,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 25.13 (Migration Dependency Ordering) and Section 25.14 (Claim Category Backfill Strategy), per the "SECTION 25 REVIEW — APPROVED WITH REQUIRED REVISIONS" message's two required deliverables. 25.13 documents that only `billing_team_memberships`, `billing_team_supervisor_assignments`, and `billing_agency_team_assignments` have a hard FK-ordering requirement (after `billing_teams`); all other migrations depend only on already-existing tables. 25.14 documents the full backfill strategy: exact-match-then-pattern-match mapping rules against `payer_name`, unmatched payers resolving to `OTHER` with mandatory manual-review flagging (never silently accepted, never stopping the run), pre/migration-time/post validation behavior, an idempotent NULL-only batch-execution approach with an append-only audit-event run-log, and failure handling that leaves genuine per-row mapping errors `NULL` (distinct from legitimate `OTHER` resolutions) for manual remediation. Documentation only; no schema, migrations, models, services, routes, or backfill execution created or run. Migration file creation, API design, and UI implementation remain explicitly blocked. |
 | 2026-09-18 | Added Section 26: Migration Design Review — Required-Format Deliverables, restating Sections 25.13-25.14 in the exact Migration Name/Depends On/Reason table and lettered (A-E) format required by the follow-up "SECTION 25 — MIGRATION DESIGN REVIEW — APPROVED WITH REQUIRED REVISIONS" message. 26.1 provides the actual dependency graph and explicitly corrects two dependencies implied by the reviewer's illustrative example that this design does not have: `billing_agency_coverage_assignments` does not depend on `billing_agency_team_assignments` (coverage-role assignment is scoped directly to `agency_assignment_id`, independent of which team covers the agency — a deliberate Section 21.3 design decision), and the audit/export event tables use a polymorphic reference rather than a literal FK to the coverage table; also clarifies `billing_administrative_reporting_lines` depends only on the existing membership table, not on any other new "administrative hierarchy structure," and that "claims table validation complete" refers to the separate backfill-execution step, not a schema-level migration dependency. 26.2 restates the backfill strategy in the required A (legacy payer mapping rules, with an explicit per-category mapping-rule table) / B (unknown payer handling) / C (validation strategy) / D (failure handling) / E (backfill execution approach, including concrete verification queries and a reconciliation process) format, and flags that the reviewer's restated payer list omits `COMMERCIAL_POS` while the Section 20.9 locked 12-value enum retains it — the mapping table continues to support all 12 locked values. 26.3 reaffirms no schema, migration, model, API, UI, or backfill execution has occurred. Documentation only. Migration file creation, API design, and UI implementation remain explicitly blocked pending final Migration Design Review sign-off. |
 | 2026-09-18 | Added Section 26.4: Claim Category Enum — Single Source of Truth Reconciliation, per the Section 26 Review's required revision (repeated across two review messages) to reconcile `COMMERCIAL_POS`'s appearance in the locked enum against its omission from a later payer-category reference. Designated Section 20.9 as the single authoritative definition of the `claim_category` value list; confirmed `COMMERCIAL_POS` was never actually dropped from this report's own record (present throughout Section 20.9, the Section 25.6/25.10 CheckConstraint definitions, and the Section 26.2.A mapping-rule table) — the only omission was in a payer list restated informally inside a user review message, which this report does not treat as redefining the locked enum. Established a going-forward rule that every other section referencing `claim_category` (Sections 21, 25.6, 25.10, 25.14/26.2) cross-references Section 20.9 rather than restating or re-deriving the list independently, so no section defines a competing or partial version of the enum. Retained `COMMERCIAL_POS` as a valid payer classification per the review's recommendation. Updated the document header STATUS line to reflect that Migration Design Review is approved and Implementation Planning is authorized, per the user's stated gate — migration file creation, API design, and UI implementation remain explicitly blocked pending separate, explicit implementation authorization. Documentation only; no schema, migrations, models, services, routes, or backfill execution created, changed, or run. |
+| 2026-09-18 | Added Section 27: User Access Detail — Discovery Validation & Implementation Planning Addendum, per the approved, locked, Figma-approved "User Access Detail" implementation handoff and the subsequent Implementation Planning Checklist. Walked every checklist section (Discovery Validation, Data Architecture, UI Implementation Plan, Authorization Model, Audit Model, Export Requirements, Security Review, Functional/UI Test Plan, Definition of Done) and classified each item against Sections 1-26: REUSE for Identity/User/Organization-Membership models, Agency Assignment storage (`BillingProviderAgencyAssignment`/`billing_agency_team_assignments`/`billing_agency_coverage_assignments`), audit infrastructure (`billing_agency_coverage_audit_events`), and export infrastructure (`billing_agency_coverage_export_events`); CREATE (unchanged) for the capability catalog/assignment tables and real route-authorization enforcement, consistent with Discovery Area 4's confirmed-unimplemented `require_permission`/`has_permission` placeholders. Confirmed the handoff's six DDE Authorization Status values are an exact match to Section 18.15's already-documented set, with no new vocabulary introduced. Flagged four open clarification items before Schema Design can begin for this page (Section 27.11): (1) whether "Individual Grant" and "User-Specific Grant" are two names for one `CapabilityAssignment.source` value or two genuinely distinct grant mechanisms; (2) whether DDE Authorization Status remains blocked on the same not-yet-built external DDE entity (Section 18.15/21.12) or requires a new lightweight, credential-free status field to unblock this page now; (3) whether "Access Review Status" is a wholly new recertification concept requiring new storage or a display label over existing capability/agency-assignment audit history; (4) whether the "Coverage Assignment" column requires a new payer-scope field (EXTEND) on `billing_agency_coverage_assignments` or simply restates the existing `coverage_role` assignment using the Section 20.9 `claim_category` enum's extensibility as its rationale. Updated the document header STATUS line accordingly. Documentation and test-plan preparation only; no schema, migration, model, service, route, or UI component created or changed. Migration creation, API creation, UI implementation, and production code changes remain explicitly blocked, per the handoff's own Next Gate section. |
