@@ -1,8 +1,9 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: DISCOVERY COMPLETE + SCHEMA DESIGN DOCUMENTED (MODULE-LEVEL +
-AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-DESIGN
-ADDENDA) — SCHEMA/MIGRATION/API/UI WORK NOT YET AUTHORIZED
+STATUS: DISCOVERY APPROVED — SCHEMA DESIGN REVIEW AUTHORIZED (MODULE-
+LEVEL + AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-
+DESIGN ADDENDA) — MIGRATION DESIGN, API DESIGN, AND UI IMPLEMENTATION
+REMAIN BLOCKED
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -1778,6 +1779,43 @@ derived per role, independently:
   all three read the same absence-of-row condition; none of them
   caches or duplicates a "backup missing" flag anywhere.
 
+### 22.6 Scope Limitation vs. Future Extensibility
+
+This is a deliberate, intentional limitation, not an oversight:
+
+- **Current scope is closed, not open-ended.** `backs_up_role` is
+  restricted by a `CheckConstraint` to exactly the two values in 22.1
+  (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER`) because those are
+  the only two roles the approved spec defines as "required primary
+  billing roles" needing mandatory backup coverage. `SPECIALIST`
+  assignments (Section 21.2/21.6) are explicitly excluded from backup
+  scope in this design — the approved spec treats Additional
+  Specialist as a supplementary capability, not a required-coverage
+  role, so it has no backup-coverage requirement to satisfy.
+- **No backup scope is defined for Team Leader or Billing Supervisor.**
+  Those are team-scope relationships (Section 21.1/21.3), not
+  agency-coverage rows, and are out of scope for `backs_up_role`
+  entirely — this design does not model backup coverage for team
+  leadership roles, only for the two primary billing roles.
+- **Extensibility mechanism, if ever required, is additive, not
+  structural.** Because `backs_up_role` is a `CheckConstraint` on a
+  string/enum column (not a hard-coded application-layer switch), a
+  future backable role (e.g. a specialist role later promoted to
+  "required primary" status) would be added by widening the
+  constraint's allowed value list and adding the corresponding
+  discriminator handling — the same pattern already used for
+  `coverage_role` and `specialist_type` (Section 21.2). This requires
+  a migration when it happens; it is **not pre-built, not enabled, and
+  not implied to exist today**. No specialist backup scope, generic
+  "other" scope, or open string value is included in the current
+  design.
+- **Decision:** backup scope is intentionally limited to the two named
+  roles only. No specialist backup scope is authorized, implemented,
+  or planned as part of this schema design. Any future need for
+  specialist backup coverage is a distinct, separately-authorized
+  design/migration decision, not something this design silently
+  accommodates.
+
 ---
 
 ## RELATIONSHIP TO OTHER DOCUMENTS
@@ -1825,3 +1863,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 20: Expanded Agency Detail discovery addendum, per the approved "Billing Organization → Expanded Agency Detail" implementation handoff (a detail view reached from Agency Coverage & Workload → Agency Coverage Matrix → Select Agency, not a new top-level module). Confirmed no wholly new tables are required beyond Section 18's recommended schema; documented two delta findings: (1) the existing `Claim` model (`backend/app/billing/models/claim.py`) is REUSE for raw Open Claims counts, but its `payer_name` field is free text with no Medicare Hospice/Medi-Cal/Managed Care classification — a new `claim_category` column (CREATE) is an open decision for the Open Claims Summary breakdown; (2) a `responsibility_scope` field must be added (CREATE) to the Section 18.8-18.11 coverage-assignment table so backup assignments can declare which specific role they stand in for. Confirmed "Recent Assignment Activity" and "Export Detail" on this screen reuse the same Section 18.18 (Audit Event) and Section 18.19 (Export Event) tables/patterns rather than introducing parallel history or export mechanisms — flagged and corrected an in-progress drafting error where the "Relationship to Other Documents" heading was inadvertently dropped during the previous two edits; restored. Documentation only; no schema, migrations, models, services, or routes created or changed. Page-level implementation for Expanded Agency Detail remains blocked pending user review of this addendum. |
 | 2026-09-18 | Added Section 21: Agency Coverage Schema-Design Addendum, responding to the required Discovery Addendum Verification Checklist. Expanded the single-discriminated-table recommendation into a concrete, reviewable design: Team Leader and Billing Supervisor are modeled as team-scope relationships (new `billing_team_memberships`/`billing_team_supervisor_assignments` tables), not agency-coverage rows, because their authority spans a team's whole portfolio rather than one agency; the Agency Coverage Matrix's "Team Leader" column is a derived join, not a stored per-agency fact. Defined the full `billing_agency_coverage_assignments` design (coverage_role discriminator, backs_up_role, specialist_type, status, effective window), a new `billing_agency_team_assignments` table (which team covers which agency), and two new audit/export tables (`billing_agency_coverage_audit_events` modeled on `FacilityPaymentAuditLog`, `billing_agency_coverage_export_events` modeled on `ClaimExportLog`). Documented required foreign keys, indexes, partial unique constraints (active Team Leader/Supervisor/Medicare/Medi-Cal/Backup uniqueness), overlap-prevention approach (service-layer validation, not a Postgres exclusion constraint), replacement/supersession behavior (two-write transaction: end old row + insert new row + one audit event, never an in-place update or physical delete), append-only history, Medicare/Medi-Cal separation guarantees, and coverage-status derivation logic. Flagged one open question (Temporary Coverage / Reassignment Pending derivation has no schema field yet). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
 | 2026-09-18 | Added Section 22: Backup Responsibility Scope Design Note, per the Discovery Addendum Review request for one additional design note before Schema Design Review authorization. Documents allowed `backs_up_role` values (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER` only — no combined/ALL value), multi-scope behavior (one row per backed-up responsibility rather than a multi-value field, so a single backup covering two roles is two independent rows), overlapping-scope rules (partial unique index per role prevents two active backups for the same role; independent roles do not conflict with each other; a backup can never share a user with the active primary it backs up), coverage-status derivation extended per-role (Partial Coverage = all primaries filled but one or more required backups missing; Coverage Gap is reserved for missing primaries only, never for a missing backup alone), and Backup Missing derivation (a computed, per-role UI label reading absence of an active `BACKUP` row with that `backs_up_role`, never a stored flag, computed identically across the matrix, detail view, and export). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
+| 2026-09-18 | Added Section 22.6: Scope Limitation vs. Future Extensibility clarification, per the Discovery Addendum Review's requested clarification before Schema Design Review authorization. Confirms backup scope is intentionally, deliberately closed to the two named roles (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER`) only — `SPECIALIST` assignments are explicitly out of backup scope because the approved spec treats them as supplementary capability, not a required-coverage role; Team Leader/Billing Supervisor are also out of scope because they are team-scope relationships, not agency-coverage rows. Documents that any future backable role would require widening the `backs_up_role` CheckConstraint plus a new migration — this is an additive future mechanism, not something pre-built, enabled, or implied by the current design. No specialist backup scope, generic "other" scope, or open string value exists in this schema design today. Documentation/design only; no schema, migrations, models, services, or routes created or changed. Schema Design Review authorized by the user following this clarification; migration design, API design, and UI implementation remain explicitly blocked. |
