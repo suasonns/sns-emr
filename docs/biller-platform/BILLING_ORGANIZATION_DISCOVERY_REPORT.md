@@ -1,8 +1,8 @@
 # BILLING ORGANIZATION DISCOVERY REPORT
 
-STATUS: DISCOVERY COMPLETE (MODULE-LEVEL + AGENCY COVERAGE & WORKLOAD
-PAGE-LEVEL ADDENDUM) — SCHEMA/MIGRATION/API/MODEL WORK NOT YET
-AUTHORIZED
+STATUS: DISCOVERY COMPLETE + SCHEMA DESIGN DOCUMENTED (MODULE-LEVEL +
+AGENCY COVERAGE & WORKLOAD + EXPANDED AGENCY DETAIL + SCHEMA-DESIGN
+ADDENDA) — SCHEMA/MIGRATION/API/UI WORK NOT YET AUTHORIZED
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -1057,17 +1057,743 @@ Section 18 recommended schema:
 
 ---
 
+## SECTION 21 — AGENCY COVERAGE SCHEMA-DESIGN ADDENDUM
+
+STATUS: SCHEMA DESIGN DOCUMENTED — STILL DISCOVERY/DESIGN ONLY. NO
+SCHEMA, MIGRATION, API, OR UI HAS BEEN CREATED. IMPLEMENTATION REMAINS
+BLOCKED.
+
+This section responds to the required Discovery Addendum Verification
+Checklist by expanding the single-discriminated-table recommendation
+from Section 18.8-18.11 into a concrete, reviewable schema design. It
+resolves the open questions raised in Sections 18-20 into specific
+proposed decisions. Nothing in this section has been implemented —
+it is a design proposal for review, not code.
+
+### 21.1 Assignment Architecture
+
+**Proposed table purpose.** Two new relationship layers are proposed,
+kept intentionally separate because they answer two different
+questions:
+
+1. **Team-scope relationships** — "who leads/supervises a team as a
+   whole" (portfolio-level, not tied to one agency).
+2. **Agency-coverage relationships** — "who is individually
+   responsible for a specific agency's billing work" (Medicare
+   Biller, Medi-Cal/Managed Care Biller, Backup, Specialist).
+
+Team Leader and Billing Supervisor are **not** rows in the
+agency-coverage table (this directly resolves Checklist Item 4 /
+prior-message point 4). Reason: a Team Leader's and Supervisor's
+authority is scoped to the **team's whole portfolio**, not to one
+agency at a time. Modeling them as agency-coverage rows would require
+one row per agency per team member just to express "leads this team,"
+duplicating data on every agency the team covers and making a
+leadership change require N row updates instead of one. Team
+Leader/Supervisor are therefore team-scope relationships, and the
+Agency Coverage Matrix's "Team Leader" column is a **derived/joined
+value** (agency → assigned team → team's active Team Leader), not a
+stored per-agency fact.
+
+**Assignment ownership.** Every new table below is owned by the
+Billing Organization module (`backend/app/billing/models/`), following
+the existing convention set by `billing_provider_*` models — new
+tables use the `billing_` prefix, not a generic/shared name, to avoid
+any risk of collision with unrelated "team"/"assignment" concepts
+elsewhere in the codebase (none currently exist, per Section 18.3-18.6
+discovery, but the naming convention prevents future ambiguity).
+
+**Assignment lifecycle (applies identically to every new table
+below):** `PENDING` (optional, only if an assignment requires approval
+before taking effect — not required for MVP, omit unless a future
+approval-gate use case is approved) → `ACTIVE` → `INACTIVE` (ended
+normally, e.g. superseded) → (never physically deleted). No table
+supports a hard delete; ending an assignment always means setting
+`status = 'INACTIVE'` and `effective_end_at = now()`, never `DELETE`.
+
+**Assignment status model.** Every new table reuses the exact
+constraint-enum pattern already proven on
+`BillingProviderOrganizationMembership.status` and
+`BillingProviderAgencyAssignment.relationship_status`: a `String`
+column, `CheckConstraint` restricting to a fixed set, indexed.
+Proposed status set for all new assignment tables:
+`{'ACTIVE', 'INACTIVE', 'SUSPENDED'}` (reusing
+`BillingProviderOrganizationMembership`'s exact set, since these are
+membership-shaped relationships, not the 4-value
+`BillingProviderAgencyAssignment` relationship-status set, which
+models a different concept — the org-to-agency business relationship,
+not an individual work assignment).
+
+**Effective dating strategy.** Every new table reuses the exact
+`effective_start_at` (`NOT NULL`) / `effective_end_at` (`NULLABLE`)
+pair with the same `CheckConstraint` (`effective_end_at IS NULL OR
+effective_end_at >= effective_start_at`) already proven on both
+existing assignment models. No new date-range convention is
+introduced.
+
+**History preservation strategy.** History is preserved two ways,
+deliberately redundant for different consumption needs:
+1. **Row-level history** — ended assignment rows are never deleted or
+   overwritten; a new row is inserted for the replacement, and the old
+   row's `status`/`effective_end_at` are updated to close it out. This
+   answers "what was true, and when" via a simple query
+   (`WHERE agency_assignment_id = ? AND coverage_role = ?
+   ORDER BY effective_start_at`).
+2. **Event-level audit history** — a separate append-only audit table
+   (Section 21.9) captures the actor, reason, and correlation ID for
+   *why* each row-level change happened — information the assignment
+   rows themselves do not carry. Recent Assignment Activity (Section
+   20.5) reads from the audit table; Coverage determination (Section
+   21.6) reads from the assignment rows.
+
+**Audit strategy.** See Section 21.9 (Audit Section) below —
+consistent with Section 18.18/20.5's prior recommendation to model on
+`FacilityPaymentAuditLog`, now finalized with an exact schema.
+
+### 21.2 Discriminator Definition
+
+**Proposed discriminator values** for the new
+`billing_agency_coverage_assignments` table's `coverage_role` column:
+
+| Value | Meaning |
+|---|---|
+| `MEDICARE_BILLER` | The single individual responsible for Medicare billing for this agency |
+| `MEDICAID_MANAGED_CARE_BILLER` | The single individual responsible for Medi-Cal / Managed Care / HMO billing for this agency |
+| `BACKUP` | A backup contact standing in for one specific primary responsibility (see 21.6 for the `backs_up_role` sub-field) |
+| `SPECIALIST` | An additional specialist assigned to this agency beyond the four core roles (e.g. Room & Board specialist), with a free-text/enum `specialist_type` sub-field |
+
+**Team Leader assignment** — NOT a `coverage_role` value. Modeled
+instead as `role_on_team = 'LEADER'` on the new
+`billing_team_memberships` table (Section 21.3), scoped to the team,
+not the agency.
+
+**Billing Supervisor assignment** — NOT a `coverage_role` value.
+Modeled instead as its own team-scope table,
+`billing_team_supervisor_assignments` (Section 21.3), because a
+Supervisor may oversee multiple teams (a many-to-many relationship
+distinct from plain team membership), per the approved spec's
+"Billing Supervisor: Assigned teams and agency portfolios" (plural
+teams).
+
+**Medicare Biller assignment** — `coverage_role = 'MEDICARE_BILLER'`,
+one active row per `agency_assignment_id` (enforced by partial unique
+index, Section 21.5).
+
+**Medi-Cal / Managed Care assignment** — `coverage_role =
+'MEDICAID_MANAGED_CARE_BILLER'`, one active row per
+`agency_assignment_id` (same enforcement).
+
+**Backup Contact assignment** — `coverage_role = 'BACKUP'` plus a
+required `backs_up_role` column identifying which of
+`MEDICARE_BILLER`/`MEDICAID_MANAGED_CARE_BILLER` this backup stands in
+for. One active row per (`agency_assignment_id`, `backs_up_role`)
+pair (Section 21.5).
+
+**Additional Specialist assignment** — `coverage_role = 'SPECIALIST'`,
+many concurrent active rows allowed per `agency_assignment_id`
+(distinguished by an optional `specialist_type` field), since the
+approved spec does not restrict specialists to a single person.
+
+**Unsupported assignment types.** `coverage_role` is a
+`CheckConstraint`-enforced fixed set of exactly the four values above.
+Any future coverage type (e.g. a hypothetical "Room & Board Biller")
+requires an explicit migration adding a new enum value plus a locked
+spec update — it must not be introduced as free text.
+
+### 21.3 Relationship Scope
+
+**Team-scope relationships** (new tables, both scoped to
+`billing_teams`, which is itself scoped to a
+`billing_provider_organization_id`):
+- `billing_team_memberships` — `billing_team_id`, `user_id`,
+  `role_on_team` (`{'LEADER', 'MEMBER'}`), `status`, effective window.
+  Partial unique index: at most one `ACTIVE` row with
+  `role_on_team = 'LEADER'` per `billing_team_id`.
+- `billing_team_supervisor_assignments` — `billing_team_id`,
+  `user_id`, `status`, effective window. Many-to-many (a supervisor
+  may cover multiple teams; a team could theoretically have more than
+  one active supervisor during a transition, though the approved spec
+  implies one — enforce "one active supervisor per team" via partial
+  unique index unless a future spec explicitly requires co-supervision).
+
+**Agency-scope relationships** (new tables, both scoped to
+`billing_provider_agency_assignments.id`, which itself already carries
+`tenant_id` and `billing_provider_organization_id` — see 21.4 for why
+those are also denormalized onto the new tables):
+- `billing_agency_team_assignments` — which team currently covers
+  which agency. `agency_assignment_id`, `billing_team_id`, `status`,
+  effective window. Partial unique index: at most one `ACTIVE` row per
+  `agency_assignment_id` (an agency is covered by exactly one team at
+  a time).
+- `billing_agency_coverage_assignments` — the discriminated table from
+  21.2. `agency_assignment_id`, `coverage_role`, `backs_up_role`
+  (nullable, required only when `coverage_role = 'BACKUP'`),
+  `specialist_type` (nullable, only when `coverage_role = 'SPECIALIST'`),
+  `user_id`, `status`, effective window.
+
+**Billing-organization scope.** Both team-scope tables reach their
+organization via `billing_team_id → billing_teams.billing_provider_organization_id`.
+Both agency-scope tables reach theirs via
+`agency_assignment_id → billing_provider_agency_assignments.billing_provider_organization_id`.
+No new table needs its own direct `billing_provider_organization_id`
+column for correctness (it is always derivable via FK), but see 21.4
+for the denormalization recommendation applied for query/index
+performance, consistent with existing codebase convention.
+
+**Team Leader relationship scope — verified.** A Team Leader is scoped
+to exactly the team they lead (`billing_team_memberships` row with
+`role_on_team = 'LEADER'`); the Agency Coverage Matrix's displayed
+"Team Leader" per agency is `agency → billing_agency_team_assignments
+(ACTIVE) → billing_team_id → billing_team_memberships (ACTIVE,
+role_on_team='LEADER') → user`. Nothing about the Team Leader concept
+is stored per-agency.
+
+**Billing Supervisor relationship scope — verified.** Same join
+pattern via `billing_team_supervisor_assignments` instead of
+`billing_team_memberships`.
+
+**Coverage assignment scope — verified.** Every
+`billing_agency_coverage_assignments` row is scoped to exactly one
+`agency_assignment_id`, which is itself scoped to exactly one
+`tenant_id` (agency) and one `billing_provider_organization_id`
+(billing company) via the existing, REUSE-classified
+`BillingProviderAgencyAssignment`.
+
+**Assignment hierarchy — verified.** Company President / Billing
+Manager / Billing Supervisor / Team Leader / Staff (per the
+module-level Section 2 hierarchy) is **not** re-modeled by any of
+these new tables — that broader organizational hierarchy remains the
+open question already logged in the module-level "Open Questions"
+section (whether it lives on
+`BillingProviderOrganizationMembership.membership_role` or a separate
+table). These new tables only model the **operational** relationships
+(team leadership, team supervision, agency coverage) needed for the
+Agency Coverage & Workload and Expanded Agency Detail pages; they do
+not require the broader hierarchy question to be resolved first,
+since "Team Leader" and "Supervisor" are directly identifiable roles
+in their own right, independent of where they sit in the president→
+staff chain.
+
+### 21.4 Database Design
+
+**Proposed table structure summary:**
+
+| Table | Key Columns |
+|---|---|
+| `billing_teams` | `id`, `billing_provider_organization_id` (FK), `name`, `status`, `updated_by` |
+| `billing_team_memberships` | `id`, `billing_team_id` (FK), `user_id` (FK), `role_on_team`, `status`, `effective_start_at`, `effective_end_at`, `updated_by` |
+| `billing_team_supervisor_assignments` | `id`, `billing_team_id` (FK), `user_id` (FK), `status`, `effective_start_at`, `effective_end_at`, `updated_by` |
+| `billing_agency_team_assignments` | `id`, `agency_assignment_id` (FK), `billing_team_id` (FK), `tenant_id` (denormalized), `status`, `effective_start_at`, `effective_end_at`, `updated_by` |
+| `billing_agency_coverage_assignments` | `id`, `agency_assignment_id` (FK), `tenant_id` (denormalized), `coverage_role`, `backs_up_role`, `specialist_type`, `user_id` (FK), `status`, `effective_start_at`, `effective_end_at`, `updated_by` |
+| `billing_agency_coverage_audit_events` | see 21.9 |
+| `billing_agency_coverage_export_events` | see 21.10 |
+
+**Required foreign keys:**
+- `billing_teams.billing_provider_organization_id` → `billing_provider_organizations.id` (CASCADE)
+- `billing_team_memberships.billing_team_id` → `billing_teams.id` (CASCADE)
+- `billing_team_memberships.user_id` → `users.id` (CASCADE)
+- `billing_team_supervisor_assignments.billing_team_id` → `billing_teams.id` (CASCADE)
+- `billing_team_supervisor_assignments.user_id` → `users.id` (CASCADE)
+- `billing_agency_team_assignments.agency_assignment_id` → `billing_provider_agency_assignments.id` (CASCADE)
+- `billing_agency_team_assignments.billing_team_id` → `billing_teams.id` (RESTRICT — do not allow a team to be deleted while it still covers an agency)
+- `billing_agency_team_assignments.tenant_id` → `tenants.id` (CASCADE, denormalized, kept in sync with the parent `agency_assignment_id`'s tenant at write time)
+- `billing_agency_coverage_assignments.agency_assignment_id` → `billing_provider_agency_assignments.id` (CASCADE)
+- `billing_agency_coverage_assignments.user_id` → `users.id` (RESTRICT — do not allow deleting a user who holds an active coverage assignment; require reassignment first)
+- `billing_agency_coverage_assignments.tenant_id` → `tenants.id` (CASCADE, denormalized)
+- every table's `updated_by` → `users.id` (SET NULL), matching the existing `BillingProviderOrganization`/`BillingProviderAgencyAssignment` convention
+
+**Required indexes:**
+- `billing_teams`: index on `(billing_provider_organization_id, status)`
+- `billing_team_memberships`: index on `(billing_team_id, status)`; index on `(user_id, status)`; **partial unique** index on `(billing_team_id)` `WHERE status = 'ACTIVE' AND role_on_team = 'LEADER'`
+- `billing_team_supervisor_assignments`: index on `(billing_team_id, status)`; index on `(user_id, status)`; partial unique index on `(billing_team_id)` `WHERE status = 'ACTIVE'`
+- `billing_agency_team_assignments`: index on `(agency_assignment_id, status)`; index on `(billing_team_id, status)`; partial unique index on `(agency_assignment_id)` `WHERE status = 'ACTIVE'`
+- `billing_agency_coverage_assignments`: index on `(agency_assignment_id, coverage_role, status)`; index on `(user_id, status)` (supports the Organization-Wide Staff Workload aggregation across all of a user's active assignments); partial unique index on `(agency_assignment_id, coverage_role)` `WHERE status = 'ACTIVE' AND coverage_role IN ('MEDICARE_BILLER', 'MEDICAID_MANAGED_CARE_BILLER')`; partial unique index on `(agency_assignment_id, backs_up_role)` `WHERE status = 'ACTIVE' AND coverage_role = 'BACKUP'`
+- `billing_agency_coverage_audit_events`: index on `(tenant_id, entity_type, entity_id)` (mirrors `FacilityPaymentAuditLog`'s existing index); index on `(billing_provider_organization_id, created_at)` for the Recent Assignment Activity feed
+- `billing_agency_coverage_export_events`: index on `(tenant_id, created_at)`; index on `(exported_by_user_id, created_at)`
+
+**Tenant isolation strategy.** Every table that can be scoped to a
+single agency (`billing_agency_team_assignments`,
+`billing_agency_coverage_assignments`, and both event tables)
+denormalizes a direct `tenant_id` column, following the exact
+convention already used by `FacilityPaymentAuditLog` and
+`ClaimExportLog` (both carry a direct `tenant_id` rather than requiring
+a join), rather than inventing a new isolation pattern. `billing_teams`
+and its two membership tables are NOT tenant-scoped (a billing team
+belongs to the billing organization, not to any one tenant/agency) —
+their isolation boundary is `billing_provider_organization_id`, not
+`tenant_id`.
+
+**Organization isolation strategy.** All new tables trace back to
+exactly one `billing_provider_organization_id`, either directly
+(`billing_teams`) or transitively via `billing_team_id` or
+`agency_assignment_id`. No cross-organization team or coverage
+assignment is possible by construction (every FK chain terminates at a
+single org).
+
+**Team isolation strategy.** `billing_agency_team_assignments` is the
+single source of truth for "which team covers this agency" — no other
+table is allowed to imply a team relationship (e.g. the coverage table
+does not itself carry a `billing_team_id`; a coverage assignment's
+team, if ever needed, must be derived via the agency's active team
+assignment, not duplicated).
+
+**Assignment ownership.** Every mutation is attributed via
+`updated_by` on the row itself (current state) and via `actor_user_id`
+on the audit event (historical state at time of change) — both are
+populated from the authenticated request context, never client input.
+
+**No duplicate models created.** Every table above is additive; none
+replaces or duplicates `BillingProviderOrganization`,
+`BillingProviderOrganizationMembership`, `BillingProviderAgencyAssignment`,
+`BillingProviderAgencyServiceScope`, `User`, `Claim`, or any other
+existing model identified in Sections 1-6/18/20.
+
+### 21.5 Constraint Section (Uniqueness and Overlap)
+
+**Active Team Leader uniqueness.** Partial unique index on
+`billing_team_memberships (billing_team_id) WHERE status = 'ACTIVE'
+AND role_on_team = 'LEADER'` — guarantees at most one active leader
+per team at the database level, not just in application code.
+
+**Active Billing Supervisor uniqueness.** Partial unique index on
+`billing_team_supervisor_assignments (billing_team_id) WHERE status =
+'ACTIVE'` — at most one active supervisor per team (per current spec
+reading; revisit if co-supervision is later approved).
+
+**Active Medicare assignment uniqueness.** Partial unique index on
+`billing_agency_coverage_assignments (agency_assignment_id) WHERE
+status = 'ACTIVE' AND coverage_role = 'MEDICARE_BILLER'`.
+
+**Active Medi-Cal assignment uniqueness.** Partial unique index on the
+same table `WHERE status = 'ACTIVE' AND coverage_role =
+'MEDICAID_MANAGED_CARE_BILLER'`. Combined with the Medicare index
+above via a single composite partial index on
+`(agency_assignment_id, coverage_role) WHERE status = 'ACTIVE' AND
+coverage_role IN ('MEDICARE_BILLER', 'MEDICAID_MANAGED_CARE_BILLER')`
+— one index enforces both roles' "at most one active" rule
+simultaneously while keeping them independently queryable (this
+answers Checklist Item / prior point 16, see 21.7).
+
+**Active Backup assignment uniqueness.** Partial unique index on
+`(agency_assignment_id, backs_up_role) WHERE status = 'ACTIVE' AND
+coverage_role = 'BACKUP'` — at most one active backup per backed-up
+role per agency (a Medicare backup and a Medi-Cal backup can coexist;
+two simultaneous active Medicare backups cannot).
+
+**Overlapping assignment rules.** Database-level uniqueness indexes
+above only constrain *currently active* rows; they do not prevent two
+historical (non-active) rows from having overlapping
+`effective_start_at`/`effective_end_at` windows. Full date-range
+exclusion would require a PostgreSQL `EXCLUDE USING gist` constraint
+(needs the `btree_gist` extension) — no existing model in this
+codebase uses that pattern (confirmed via review of all `__table_args__`
+blocks read in this discovery), so introducing it here would be a new
+convention. This addendum recommends **application/service-layer
+overlap validation** at write time (reject a new row whose
+`[effective_start_at, effective_end_at)` window intersects an existing
+row for the same `(agency_assignment_id, coverage_role[, backs_up_role])`
+discriminator) as the consistent-with-existing-codebase approach, and
+flags the Postgres exclusion-constraint approach as an optional
+future hardening step requiring separate approval (it is not assumed
+here).
+
+**Duplicate assignment prevention (backup ≠ primary).** Enforced at
+the service layer, not the database: before activating a `BACKUP` row
+with a given `backs_up_role`, the service must check that its `user_id`
+does not equal the `user_id` of the currently `ACTIVE` row with
+`coverage_role = backs_up_role` for the same `agency_assignment_id`.
+This cannot be expressed as a simple `CHECK` constraint (it requires
+comparing across rows), so it is documented here as a required service
+invariant, enforced identically at every write path (direct API call,
+bulk import, or admin action) — not just the primary UI form.
+
+**Assignment replacement behavior.** Replacing an assignment (e.g. a
+new Medicare Biller) is always two writes in one transaction: (1) the
+currently `ACTIVE` row for that discriminator is updated to
+`status = 'INACTIVE'`, `effective_end_at = now()`; (2) a new row is
+inserted with `status = 'ACTIVE'`, `effective_start_at = now()`. Both
+writes happen inside the same database transaction as the audit event
+insert (Section 21.9), so a failed audit write rolls back the
+assignment change — audit and assignment state can never diverge.
+
+### 21.6 Backup Coverage Section
+
+**Backup responsibility scope.** Stored as `backs_up_role` on the
+`billing_agency_coverage_assignments` row itself (Section 21.2/21.3) —
+not a separate table. A backup row is never ambiguous about what it
+backs up.
+
+**Medicare backup rules.** A `BACKUP` row with `backs_up_role =
+'MEDICARE_BILLER'` covers only Medicare responsibilities for that
+agency; it must not be treated as covering Medi-Cal/Managed Care.
+
+**Medi-Cal backup rules.** A `BACKUP` row with `backs_up_role =
+'MEDICAID_MANAGED_CARE_BILLER'` covers only that responsibility.
+
+**Managed Care backup rules.** Managed Care is included under the
+`MEDICAID_MANAGED_CARE_BILLER` discriminator per the approved spec's
+own grouping ("Medi-Cal / Managed Care Biller" is a single named role
+throughout every locked document reviewed) — there is no separate
+Managed Care discriminator value; this is a direct, intentional
+consequence of the spec's own vocabulary, not a discovery gap.
+
+**Backup Missing handling.** Computed, not stored: if no `ACTIVE` row
+exists with `coverage_role = 'BACKUP'` and a given `backs_up_role` for
+an agency, the Agency Coverage Matrix/Expanded Agency Detail must
+render "Backup Missing" for that responsibility — there is no
+`BACKUP_MISSING` row or flag; absence of a row *is* the missing state,
+consistent with "Coverage must be determined from assignment records"
+(Section 18 rule).
+
+**Partial Coverage derivation** / **Coverage Gap derivation** — see
+21.7.
+
+**Backup cannot equal primary assignment — documented.** See the
+"Duplicate assignment prevention" rule in 21.5; this is the same rule
+restated for this section's checklist item.
+
+### 21.7 Coverage Status Derivation
+
+Coverage Status remains a **computed, non-stored value** (per the
+Section 18 rule "Coverage must be determined from assignment
+records"), derived at read time from the set of `ACTIVE` rows in
+`billing_agency_coverage_assignments` for a given `agency_assignment_id`:
+
+- **Fully Covered:** an `ACTIVE` `MEDICARE_BILLER` row exists (if
+  Medicare billing applies to this agency's configuration), an
+  `ACTIVE` `MEDICAID_MANAGED_CARE_BILLER` row exists (if applicable),
+  and the required backup policy is satisfied (an `ACTIVE` `BACKUP`
+  row exists for each backed-up role the org's policy requires).
+- **Partial Coverage:** all required primary roles (`MEDICARE_BILLER`/
+  `MEDICAID_MANAGED_CARE_BILLER`, as applicable) have an `ACTIVE` row,
+  but at least one required `BACKUP` row is missing.
+- **Coverage Gap:** a required primary role has no `ACTIVE` row at all
+  (no effective responsible biller exists for applicable work).
+- **Temporary Coverage / Reassignment Pending:** derived from
+  assignment metadata not yet fully specified by the approved spec
+  (e.g. a short effective window, or a pending replacement already
+  scheduled) — flagged as an **open design question** for the
+  implementation phase, since the current schema does not yet carry an
+  explicit "temporary" or "pending reassignment" flag; adding one
+  (e.g. an `is_temporary` boolean or a `PENDING` status value) is a
+  candidate but not decided here.
+- **Suspended / Inactive:** derived from the parent
+  `billing_provider_agency_assignments.relationship_status` (the
+  org-to-agency relationship itself, not the individual coverage
+  rows) — if the org-to-agency assignment is `SUSPENDED` or
+  `TERMINATED`, Coverage Status for that agency is `Suspended` /
+  `Inactive` regardless of the underlying coverage rows, per the
+  Section 18 rule "Do not treat inactive or suspended agencies as
+  active coverage gaps."
+
+**Derivation source verified.** All of the above reads exclusively
+from `billing_provider_agency_assignments.relationship_status` and
+`billing_agency_coverage_assignments` rows — no UI label, cache, or
+denormalized "coverage_status" column is proposed; this avoids a
+second source of truth that could drift from the underlying
+assignment data, consistent with the spec's explicit prohibition ("Do
+not derive coverage solely from UI labels").
+
+### 21.8 Medicare / Medi-Cal Separation
+
+**Medicare / Medi-Cal / Managed Care assignments remain separate** —
+guaranteed structurally, not just by convention: they are different
+`coverage_role` enum values in the same table, each independently
+constrained by its own partial unique index (Section 21.5), so a
+Medicare assignment can never overwrite or be confused with a Medi-Cal
+one at the schema level.
+
+**Query strategy.** Both the Agency Coverage Matrix (Section 18) and
+Expanded Agency Detail (Section 20) query
+`billing_agency_coverage_assignments WHERE agency_assignment_id = ?
+AND status = 'ACTIVE'` and group the result set by `coverage_role` in
+the application layer — a single query returns all four roles for an
+agency, already separated by the `coverage_role` column, with no risk
+of the two billing types being merged.
+
+**Reporting strategy.** The Open Claims Summary (Section 20.2)
+similarly groups by claim category once that column exists — a
+separate concern from coverage-role separation, tracked independently
+in Section 20.2/20.8.
+
+**Coverage calculation, Export behavior, UI behavior — verified.**
+All three consume the same `coverage_role`-discriminated query result;
+none of them introduce a parallel or simplified "Primary Biller"
+concept, per the spec's explicit prohibition ("Do not replace both
+assignments with one generic Primary Biller").
+
+### 21.9 Assignment History (Audit Section)
+
+**`billing_agency_coverage_audit_events`** (new table, modeled
+structurally on `FacilityPaymentAuditLog`, per Sections 18.18/20.5):
+
+| Column | Notes |
+|---|---|
+| `id` | UUID PK |
+| `tenant_id` | FK → `tenants.id`, denormalized, indexed |
+| `billing_provider_organization_id` | FK → `billing_provider_organizations.id`, indexed |
+| `entity_type` | `CheckConstraint`-enforced: `{'TEAM', 'TEAM_MEMBERSHIP', 'TEAM_SUPERVISOR_ASSIGNMENT', 'AGENCY_TEAM_ASSIGNMENT', 'AGENCY_COVERAGE_ASSIGNMENT'}` |
+| `entity_id` | UUID of the affected row, indexed |
+| `action` | e.g. `ASSIGNMENT_CREATED`, `ASSIGNMENT_REPLACED`, `ASSIGNMENT_ENDED`, `BACKUP_ASSIGNED`, `BACKUP_SCOPE_CHANGED`, `COVERAGE_STATUS_RECALCULATED` (recalculation events are logged for traceability even though status itself is computed, not stored) |
+| `affected_user_id` | FK → `users.id`, SET NULL — the user the assignment is about |
+| `actor_user_id` | FK → `users.id`, SET NULL — who made the change |
+| `actor_role` | string snapshot of the actor's role at the time of the action |
+| `previous_state` | JSON/text snapshot of the row before the change |
+| `new_state` | JSON/text snapshot of the row after the change |
+| `reason` | nullable text |
+| `correlation_id` | UUID, nullable, ties together multi-row transactions (e.g. an end+create replacement pair share one correlation ID) |
+| `created_at` | server default `now()` |
+
+**Assignment Create / Update / Replace / Remove — all audited.** Every
+write path in Section 21.5 (create, replace, end) inserts exactly one
+audit event in the same transaction as the row-level change (never a
+separate, best-effort write).
+
+**Backup Coverage Change / Coverage Status Change — audited.** Backup
+changes use `action = 'BACKUP_ASSIGNED'` / `'BACKUP_SCOPE_CHANGED'`;
+coverage-status recalculation is logged (`action =
+'COVERAGE_STATUS_RECALCULATED'`) even though the status value itself
+is never persisted, so that "why did coverage status change" remains
+traceable via the underlying assignment-row audit trail without
+needing a separate stored status history.
+
+**Export — audited.** See Section 21.10.
+
+**Access Request — audited.** Handled by the existing/planned
+Authorization Failure "Request Access" flow (Section 18/20's Role-
+Based Scope and Authorization Failure requirements) — this addendum
+does not introduce a new table for access requests; it is scoped for
+the implementation phase alongside the broader Access Scope work
+(Section 18.17), using the same `billing_agency_coverage_audit_events`
+table with `entity_type` extended to include an `ACCESS_REQUEST` value
+if a dedicated request record is not otherwise required — this exact
+mechanism is flagged as an implementation-phase decision, not locked
+here.
+
+**Actor / Timestamp / Correlation ID — preserved** on every event, per
+the column list above.
+
+### 21.10 Export Audit
+
+**`billing_agency_coverage_export_events`** (new table, modeled
+structurally on `ClaimExportLog`, per Sections 18.19/20.6):
+
+| Column | Notes |
+|---|---|
+| `id` | UUID PK |
+| `tenant_id` | FK → `tenants.id`, nullable (null = organization-wide export spanning multiple agencies) |
+| `billing_provider_organization_id` | FK → `billing_provider_organizations.id`, required |
+| `exported_by_user_id` | FK → `users.id`, SET NULL |
+| `agency_scope` | nullable — the specific `agency_assignment_id` if a single-agency export (Expanded Agency Detail's "Export Detail"), null for the full matrix export |
+| `filters` | JSON snapshot of applied filters at export time |
+| `row_count` | integer |
+| `result` | `CheckConstraint`-enforced: `{'SUCCESS', 'FAILED'}` |
+| `correlation_id` | UUID |
+| `created_at` | server default `now()` |
+
+### 21.11 SecureInbox Boundary Section
+
+- No message, conversation, channel, thread, or attachment schema is
+  introduced by any table in this addendum.
+- The SecureInbox Routing Preview (Section 18.20) remains a read-only
+  query over `billing_agency_team_assignments` (for Team Leader/
+  Supervisor routing) and `billing_agency_coverage_assignments` (for
+  Medicare/Medi-Cal/Backup routing) — no new SecureInbox-specific
+  table is created or required.
+- Out-of-scope status is retained exactly as locked in
+  `docs/communications/COMMUNICATIONS_DISCOVERY_REPORT.md` — this
+  addendum does not reopen or modify that document's conclusions.
+
+### 21.12 DDE Dependency Section
+
+- No DDE credential storage, DDE credential display, or DDE-related
+  migration is introduced by any table in this addendum.
+- Individual DDE Authorization Status (Section 18.15) remains a
+  blocked, external dependency on the not-yet-built DDE entities
+  referenced in the main handoff document's Section 9 — nothing in
+  this schema design changes that dependency or attempts to satisfy it
+  early.
+- DDE authorization status is explicitly **not** a field on
+  `billing_agency_coverage_assignments` or any other table in this
+  addendum — coverage assignment (who does the billing work) and DDE
+  authorization (whether that person is technically authorized to use
+  DDE for a given payer/tenant) are kept as separate concerns, exactly
+  as the approved spec requires ("DDE authorization does not belong to
+  ... a team... Do not infer or display overall hospice compliance
+  from billing assignments").
+
+### 21.13 Implementation Blockers Status
+
+Per the required checklist, the following are now resolved at the
+design-documentation level (not implemented):
+- Discriminator model: defined (21.2).
+- Foreign keys: defined (21.4).
+- Active-assignment rules: defined (21.5).
+- Backup scope: defined (21.6).
+- Coverage logic: defined (21.7), with one explicitly flagged open
+  question (Temporary Coverage / Reassignment Pending derivation).
+- Medicare/Medi-Cal separation: defined (21.8).
+- Assignment history: defined (21.1/21.9).
+- Audit behavior: defined (21.9/21.10).
+- SecureInbox boundary: defined (21.11), unchanged from the locked
+  Communications Discovery Report.
+- DDE dependency: defined (21.12), remains blocked as an external
+  dependency, not resolved by this schema.
+
+**No schema, migration, API, or UI has been created.** This section is
+a reviewable design proposal only. Implementation remains blocked
+pending explicit user authorization to proceed past discovery/design.
+
+---
+
+## SECTION 22 — BACKUP RESPONSIBILITY SCOPE DESIGN NOTE
+
+STATUS: SCHEMA DESIGN DOCUMENTED — STILL DISCOVERY/DESIGN ONLY. NO
+SCHEMA, MIGRATION, API, OR UI HAS BEEN CREATED. IMPLEMENTATION REMAINS
+BLOCKED.
+
+This note expands Section 21.2/21.6's `backs_up_role` field into a
+complete design covering allowed values, multi-scope behavior,
+overlap rules, and its role in coverage-status/backup-missing
+derivation.
+
+### 22.1 Allowed Scope Values
+
+`backs_up_role` is a `CheckConstraint`-enforced column on
+`billing_agency_coverage_assignments`, populated only when
+`coverage_role = 'BACKUP'` (nullable and unused otherwise). Allowed
+values are exactly the two backable primary roles already defined in
+Section 21.2:
+
+| Value | Meaning |
+|---|---|
+| `MEDICARE_BILLER` | This backup row stands in for the agency's Medicare Biller only |
+| `MEDICAID_MANAGED_CARE_BILLER` | This backup row stands in for the agency's Medi-Cal / Managed Care Biller only |
+
+No `ALL`, `BOTH`, or combined value is permitted. `SPECIALIST` and
+`BACKUP` itself are not valid `backs_up_role` values — a backup always
+stands in for one of the two named primary billing roles, never for
+another backup and never for a specialist assignment, since the
+approved spec scopes backup coverage strictly to "required primary
+billing roles."
+
+### 22.2 Multi-Scope Behavior
+
+A single person may serve as backup for more than one responsibility,
+but this is modeled as **multiple rows, one per scope** — never a
+single row with a multi-value scope field. If Jennifer Liu backs up
+both Medicare and Medi-Cal for the same agency, that is two rows:
+
+1. `coverage_role = 'BACKUP'`, `backs_up_role = 'MEDICARE_BILLER'`,
+   `user_id = Jennifer Liu`
+2. `coverage_role = 'BACKUP'`, `backs_up_role =
+   'MEDICAID_MANAGED_CARE_BILLER'`, `user_id = Jennifer Liu`
+
+**Reason:** keeping scope single-valued per row means every downstream
+consumer (Coverage Assessment, Open Claims Summary, Export, Recent
+Assignment Activity, the future SecureInbox Routing Preview) can
+always answer "who backs up X" with one unambiguous, indexable lookup
+(`WHERE backs_up_role = ? AND status = 'ACTIVE'`), with no need to
+parse or contain-check a multi-value field. It also lets each scope's
+backup be ended, replaced, or reassigned independently — replacing the
+Medicare backup does not require touching the Medi-Cal backup row.
+This directly satisfies the approved spec's requirement that "Do not
+imply that a Medicare-only backup also covers Medi-Cal or Managed
+Care" at the schema level, not just in UI copy.
+
+### 22.3 Overlapping Scope Rules
+
+- **Within the same scope:** at most one `ACTIVE` `BACKUP` row per
+  `(agency_assignment_id, backs_up_role)` pair — enforced by the
+  partial unique index already defined in Section 21.5
+  (`billing_agency_coverage_assignments (agency_assignment_id,
+  backs_up_role) WHERE status = 'ACTIVE' AND coverage_role =
+  'BACKUP'`). Two people cannot simultaneously be the active Medicare
+  backup for the same agency.
+- **Across different scopes:** no conflict — `MEDICARE_BILLER` and
+  `MEDICAID_MANAGED_CARE_BILLER` backup rows for the same agency are
+  independent rows with independent discriminator values and do not
+  share a uniqueness constraint with each other, so both can be
+  `ACTIVE` at once (per 22.2).
+- **Backup vs. primary (cross-discriminator overlap):** a `BACKUP` row
+  with `backs_up_role = X` must not share the same `user_id` as the
+  currently `ACTIVE` row with `coverage_role = X` for the same
+  `agency_assignment_id` — this is the same service-layer invariant
+  already documented in Section 21.5 ("Duplicate assignment
+  prevention"), restated here as it directly governs backup scope: a
+  Medicare backup can never be the same individual as the active
+  Medicare Biller for that agency, checked at every write path, not
+  just the UI form.
+- **Historical (non-active) overlap:** as with all other assignment
+  rows (Section 21.5), historical date-range overlap across ended
+  `BACKUP` rows for the same scope is prevented at the service layer
+  at write time, not by a database exclusion constraint (consistent
+  with the rest of this schema's overlap-handling approach — no
+  Postgres `EXCLUDE USING gist` constraint is introduced).
+
+### 22.4 Coverage-Status Derivation (Backup-Specific)
+
+Extending Section 21.7's Coverage Status rules with the exact backup
+inputs:
+
+- For **each** backable role that applies to the agency (Medicare,
+  Medi-Cal/Managed Care — determined by the agency's configured
+  billing responsibilities, not assumed to always be both), coverage
+  derivation independently checks:
+  1. Does an `ACTIVE` primary row exist for that role
+     (`coverage_role = 'MEDICARE_BILLER'` or
+     `'MEDICAID_MANAGED_CARE_BILLER'`)?
+  2. Does an `ACTIVE` `BACKUP` row exist with `backs_up_role` equal to
+     that same role?
+- **Fully Covered** requires both (1) and (2) true for every
+  applicable role.
+- **Partial Coverage** is the specific case where (1) is true for all
+  applicable roles but (2) is false for one or more of them — e.g. the
+  canonical example already locked in the Expanded Agency Detail spec:
+  "Medicare backup contact is assigned. Medi-Cal backup is not
+  currently assigned" is exactly "(1) true for both roles, (2) true
+  for Medicare only" — Partial Coverage, not Fully Covered.
+- **Coverage Gap** is reserved for a missing *primary* ((1) false for
+  any applicable role) — a missing backup alone never produces
+  Coverage Gap, only Partial Coverage, per the spec's own distinction
+  between the two statuses.
+
+### 22.5 Backup Missing Derivation
+
+"Backup Missing" is a **computed UI label, not a stored value**,
+derived per role, independently:
+
+- For a given `agency_assignment_id` and a given applicable
+  `backs_up_role`, if no `ACTIVE` `BACKUP` row exists with that
+  `backs_up_role`, the UI renders "Backup Missing" **scoped to that
+  specific role** (e.g. "Medi-Cal backup not currently assigned"), not
+  a blanket "Backup Missing" that could be misread as applying to both
+  roles.
+- Backup Missing for any applicable role always downgrades Coverage
+  Status from Fully Covered to Partial Coverage (per 22.4) — it never
+  independently produces Coverage Gap.
+- Backup Missing is computed identically wherever coverage is
+  displayed — Agency Coverage Matrix (Section 18), Expanded Agency
+  Detail (Section 20), and Export output (Sections 18.19/20.6/21.10) —
+  all three read the same absence-of-row condition; none of them
+  caches or duplicates a "backup missing" flag anywhere.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
 "[Biller Platform] Implement Billing Organization" GitHub issue (module
 level), the "Billing Organization → Agency Coverage & Workload"
-implementation handoff (page level, Section 18-19 addendum), and the
+implementation handoff (page level, Section 18-19 addendum), the
 "Billing Organization → Expanded Agency Detail" implementation handoff
-(detail-view level, Section 20 addendum). It satisfies the six
+(detail-view level, Section 20 addendum), and the subsequent Discovery
+Addendum Review / Discovery Addendum Verification Checklist requests
+(schema-design level, Section 21-22 addenda). It satisfies the six
 module-level Discovery Areas, the 20-entity Agency Coverage & Workload
-mapping requirement, and the Expanded Agency Detail Verify-First
-Requirement. It is independent of, and does not modify:
+mapping requirement, the Expanded Agency Detail Verify-First
+Requirement, and the full Discovery Addendum Verification Checklist.
+It is independent of, and does not modify:
 - `docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`
   (the canonical Biller Platform spec; Billing Organization, including
   Agency Coverage & Workload and Expanded Agency Detail, will be added
@@ -1097,3 +1823,5 @@ while producing this report or either addendum.
 | 2026-09-17 | Document created. Full repository discovery completed for all six required Discovery Areas (Identity/Users, Teams/Structure, Agencies, Permissions, Escalations, SecureInbox Dependencies) per the approved Billing Organization GitHub issue. Headline finding: a working, production billing-organization system already exists (`BillingProviderOrganization`, `BillingProviderOrganizationMembership`, `BillingProviderAgencyAssignment`, `BillingProviderAgencyServiceScope`), exposed through the SNS Tech Solutions owner platform's Billing/Licensing admin page — classified REUSE for the org record and org-to-agency assignment layer. No Team, per-user Agency Coverage, billing-specific Capability Matrix, Escalation Chain, or Workload Metric structures exist anywhere — all classified CREATE. The `require_permission`/`has_permission` functions in `app/core/permissions.py` are confirmed unimplemented placeholders, not a usable fine-grained permission engine. The dormant `Role`/`interfaces` model is confirmed to have zero live consumers and must not be revived. A generic `audit_event()` service is confirmed reusable for the new module's audit-trail requirement. Documentation only; no schema, migrations, tables, models, or routes created or changed. |
 | 2026-09-18 | Added Section 18-19: Agency Coverage & Workload page-level discovery addendum, per the approved "Billing Organization → Agency Coverage & Workload" implementation handoff. Mapped all 20 required entities (Billing Organization, Billing Organization Membership, Billing Team, Team Membership, Team Leader Assignment, Billing Supervisor Assignment, Agency Assignment, Medicare Billing Assignment, Medi-Cal/Managed Care Assignment, Backup Coverage Assignment, Additional Specialist Assignment, Assignment Status, Assignment Effective Period, Staff Capability, Individual DDE Authorization Status, Workload Metrics, Access Scope, Audit Event, Export Event, Future SecureInbox Routing Relationship) using the required detailed template (Existing Model/Table/Relationships/Fields/Constraints/Indexes/APIs/UI/Decision/Reason/Migration Required/Files Affected/Verification Evidence). **Correction to the 2026-09-17 entry above:** `backend/app/billing/audit_store.py` was re-verified and found to be an in-memory Python list scoped to patient/billing-cycle events, not a durable, org/agency-scoped audit table — it is NOT a valid reuse target for this module's audit requirement (updated the Classification Summary table's `AssignmentAudit` row accordingly); the correct structural precedent is the database-backed `FacilityPaymentAuditLog`. Also identified `ClaimExportLog` as the correct structural precedent for the new Export Event requirement. Recommended (not locked) that the four coverage-role assignment types (Medicare/Medi-Cal/Backup/Specialist) be modeled as one discriminated `billing_agency_coverage_assignments` table referencing `billing_provider_agency_assignments.id`, following the existing `status` + `effective_start_at`/`effective_end_at` pattern already proven on `BillingProviderOrganizationMembership` and `BillingProviderAgencyAssignment`. Documentation only; no schema, migrations, models, services, or routes created or changed. Page-level implementation (schema, migrations, APIs, UI) for Agency Coverage & Workload remains blocked pending user review of this addendum. |
 | 2026-09-18 | Added Section 20: Expanded Agency Detail discovery addendum, per the approved "Billing Organization → Expanded Agency Detail" implementation handoff (a detail view reached from Agency Coverage & Workload → Agency Coverage Matrix → Select Agency, not a new top-level module). Confirmed no wholly new tables are required beyond Section 18's recommended schema; documented two delta findings: (1) the existing `Claim` model (`backend/app/billing/models/claim.py`) is REUSE for raw Open Claims counts, but its `payer_name` field is free text with no Medicare Hospice/Medi-Cal/Managed Care classification — a new `claim_category` column (CREATE) is an open decision for the Open Claims Summary breakdown; (2) a `responsibility_scope` field must be added (CREATE) to the Section 18.8-18.11 coverage-assignment table so backup assignments can declare which specific role they stand in for. Confirmed "Recent Assignment Activity" and "Export Detail" on this screen reuse the same Section 18.18 (Audit Event) and Section 18.19 (Export Event) tables/patterns rather than introducing parallel history or export mechanisms — flagged and corrected an in-progress drafting error where the "Relationship to Other Documents" heading was inadvertently dropped during the previous two edits; restored. Documentation only; no schema, migrations, models, services, or routes created or changed. Page-level implementation for Expanded Agency Detail remains blocked pending user review of this addendum. |
+| 2026-09-18 | Added Section 21: Agency Coverage Schema-Design Addendum, responding to the required Discovery Addendum Verification Checklist. Expanded the single-discriminated-table recommendation into a concrete, reviewable design: Team Leader and Billing Supervisor are modeled as team-scope relationships (new `billing_team_memberships`/`billing_team_supervisor_assignments` tables), not agency-coverage rows, because their authority spans a team's whole portfolio rather than one agency; the Agency Coverage Matrix's "Team Leader" column is a derived join, not a stored per-agency fact. Defined the full `billing_agency_coverage_assignments` design (coverage_role discriminator, backs_up_role, specialist_type, status, effective window), a new `billing_agency_team_assignments` table (which team covers which agency), and two new audit/export tables (`billing_agency_coverage_audit_events` modeled on `FacilityPaymentAuditLog`, `billing_agency_coverage_export_events` modeled on `ClaimExportLog`). Documented required foreign keys, indexes, partial unique constraints (active Team Leader/Supervisor/Medicare/Medi-Cal/Backup uniqueness), overlap-prevention approach (service-layer validation, not a Postgres exclusion constraint), replacement/supersession behavior (two-write transaction: end old row + insert new row + one audit event, never an in-place update or physical delete), append-only history, Medicare/Medi-Cal separation guarantees, and coverage-status derivation logic. Flagged one open question (Temporary Coverage / Reassignment Pending derivation has no schema field yet). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
+| 2026-09-18 | Added Section 22: Backup Responsibility Scope Design Note, per the Discovery Addendum Review request for one additional design note before Schema Design Review authorization. Documents allowed `backs_up_role` values (`MEDICARE_BILLER`, `MEDICAID_MANAGED_CARE_BILLER` only — no combined/ALL value), multi-scope behavior (one row per backed-up responsibility rather than a multi-value field, so a single backup covering two roles is two independent rows), overlapping-scope rules (partial unique index per role prevents two active backups for the same role; independent roles do not conflict with each other; a backup can never share a user with the active primary it backs up), coverage-status derivation extended per-role (Partial Coverage = all primaries filled but one or more required backups missing; Coverage Gap is reserved for missing primaries only, never for a missing backup alone), and Backup Missing derivation (a computed, per-role UI label reading absence of an active `BACKUP` row with that `backs_up_role`, never a stored flag, computed identically across the matrix, detail view, and export). Documentation/design only; no schema, migrations, models, services, or routes created or changed. Implementation remains blocked pending user authorization. |
