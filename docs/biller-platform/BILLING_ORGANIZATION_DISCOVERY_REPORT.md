@@ -899,19 +899,179 @@ addendum.
 
 ---
 
+## SECTION 20 — EXPANDED AGENCY DETAIL DISCOVERY ADDENDUM
+
+This section is the required discovery deliverable for the approved
+"Billing Organization → Expanded Agency Detail" implementation
+handoff — a detail view reached from Agency Coverage & Workload →
+Agency Coverage Matrix → Select Agency (not a new top-level nav item,
+not a separate agency-management module). Most underlying entities
+were already discovered in Section 18; this addendum documents only
+the **delta** items this detail screen additionally depends on.
+
+### 20.1 Route / navigation precedent — REUSE (pattern)
+
+- **Existing pattern:** the codebase already has an established
+  master-detail / matrix-row-to-detail navigation convention (e.g.
+  patient chart drill-downs under `charts/`). No Agency Coverage
+  Matrix route exists yet because Agency Coverage & Workload itself
+  (Section 18) has not been implemented. This detail screen must be
+  built as a child route of that not-yet-built page, using the
+  repository's existing routing conventions — not a new pattern.
+- **Decision:** REUSE (routing convention only); the concrete route
+  itself is CREATE, dependent on Section 18 landing first.
+- **Migration Required:** No (frontend routing only).
+
+### 20.2 Claim model / Open Claims Summary categorization — REUSE + CREATE
+
+- **Existing Model:** `Claim` — `backend/app/billing/models/claim.py`
+- **Existing Table:** `claims`
+- **Existing Relationships:** FK → `tenants.id`, FK → `patients.id`,
+  FK → `billing_cycles.id`, FK → `edi_batches` (`edi_batch_id`)
+- **Existing Fields:** `payer_name` (free-text `String(255)`, **not**
+  an enum/category), `service_date`, `total_charge`, `total_units`,
+  `risk_score`, `status`, `last_status_reason`,
+  `claim_control_number`, `exported_at`, `created_at`/`updated_at`/
+  `created_by`
+- **Existing Constraints/Indexes:** `ix_claim_tenant_status`
+  (tenant_id + status)
+- **Existing APIs/UI:** Claim submission/EDI infrastructure exists in
+  the billing module, but the Biller Platform's own "Claims
+  Management" page (per the main handoff document) has not been
+  built.
+- **Decision:** **REUSE** the `Claim` model and its `tenant_id`/
+  `status` index for the raw "Open Claims" count per agency (tenant).
+  **CREATE** required for the claim-category breakdown (Medicare
+  Hospice / Medi-Cal / Managed Care / Other) requested by the Open
+  Claims Summary section — `payer_name` is free text today, not a
+  constrained classification, so there is no authoritative "claim
+  type" enum to group by yet.
+- **Reason:** The approved spec explicitly warns: "Use only
+  repository-supported claim classifications... Do not create a
+  Medicare Part A or Medicare Part B classification unless the
+  authoritative claim model uses those categories for this workflow."
+  This discovery confirms the authoritative `Claim` model does **not**
+  today carry any such categorization — implementing the Open Claims
+  Summary's category breakdown therefore requires either (a) a new
+  constrained `claim_category` column on `Claim` (migration), or (b) a
+  derived mapping service from existing `payer_name` values to
+  categories (no migration, but requires a maintained mapping table/
+  config, and is fragile against free-text drift). This addendum
+  recommends option (a) but leaves the final decision to the
+  implementation phase — it is not resolved here.
+- **Migration Required:** Yes, if option (a) is chosen (new column +
+  backfill); no new table required for the count itself.
+- **Files Affected:** `backend/app/billing/models/claim.py` (possible
+  new column), new aggregation service.
+- **Verification Evidence:** `backend/app/billing/models/claim.py`.
+
+### 20.3 Active Patients count — REUSE (model) + CREATE (aggregation)
+
+- **Existing Model:** `Patient` (general EMR patient model, tenant-
+  scoped, already used platform-wide).
+- **Decision:** REUSE the `Patient` model itself; CREATE a new
+  aggregation service to compute "active patients assigned to this
+  agency" for billing-coverage purposes — no existing service was
+  found that already produces this specific billing-scoped count
+  (confirmed via search; only an unrelated IDG bulk-meeting helper
+  matched "active patient" text).
+- **Migration Required:** No.
+- **Files Affected:** new service function only.
+- **Verification Evidence:** repository-wide search for
+  `active_patient` show no existing billing-scoped aggregation.
+
+### 20.4 Backup Responsibility Scope — CREATE (new field on 18.10's table)
+
+- **Existing Model:** None. The Agency Coverage assignment table
+  recommended in Section 18.8-18.11 (`billing_agency_coverage_assignments`)
+  does not yet have a field expressing *which* responsibility a backup
+  assignment covers (e.g. "Medicare coverage only").
+- **Decision:** CREATE — add a `responsibility_scope` (or
+  `backs_up_role`) column to the same coverage-assignment table from
+  Section 18, referencing which `coverage_role` (Medicare Biller /
+  Medi-Cal Biller) the backup record stands in for. This is an
+  extension of the table already recommended in Section 18.10, not a
+  new table.
+- **Reason:** The approved spec requires backup scope to be explicit
+  and separately trackable ("Do not imply that a Medicare-only backup
+  also covers Medi-Cal or Managed Care") and to affect Coverage Status
+  independently per responsibility.
+- **Migration Required:** Yes, as part of the Section 18.8-18.11 table
+  (additive column, not a separate migration if sequenced together).
+- **Files Affected:** same new model/migration referenced in Section
+  18.
+- **Verification Evidence:** none found — confirmed CREATE via the
+  same repository-wide search performed for Section 18.8-18.11.
+
+### 20.5 Recent Assignment Activity / Assignment History — REUSE (pattern, same as 18.18)
+
+- **Existing Model:** None durable and applicable (see Section 18.18
+  correction re: `billing/audit_store.py`).
+- **Decision:** REUSE the same new Audit Event table recommended in
+  Section 18.18 (modeled on `FacilityPaymentAuditLog`) — "Recent
+  Assignment Activity" on this detail screen is a filtered read view
+  (by agency) over that same audit table, not a separate history
+  mechanism. Do not create a second, parallel history table.
+- **Reason:** The required fields for this screen's activity feed
+  (Assignment Effective Date, Assignment Action, Affected User,
+  Assignment Role, Actor, Actor Role, Agency, Reason/Context) map
+  directly onto the fields already specified for the Section 18.18
+  audit table (Actor, Actor role, Billing organization, Team, Agency,
+  Affected user, Action, Previous state, New state, Reason, Timestamp,
+  Correlation ID) plus the coverage assignment's own
+  `effective_start_at`. No new entity is needed.
+- **Migration Required:** No (beyond the Section 18.18 table itself).
+- **Verification Evidence:** Section 18.18 above.
+
+### 20.6 Export Detail — REUSE (pattern, same as 18.19)
+
+- **Decision:** REUSE the same new Export Event table/pattern
+  recommended in Section 18.19 (modeled on `ClaimExportLog`). "Export
+  Detail" on this screen is the same export mechanism as "Export
+  Coverage Report" in Section 18, scoped to a single agency rather
+  than the full matrix — same table, different query filter. No
+  separate export-audit entity is needed.
+- **Migration Required:** No (beyond the Section 18.19 table itself).
+- **Verification Evidence:** Section 18.19 above.
+
+### 20.7 Server-side agency authorization — REUSE (service) + CREATE (scope layer)
+
+- **Decision:** Same finding as Section 18.17 (Access Scope) —
+  `billing_provider_access_service.py` resolves org-level tenant
+  access; the per-agency, per-team, per-role scope check this detail
+  screen requires ("Team Leader limited to assigned portfolio," "Staff
+  limited to assigned agencies") is CREATE, layered on the existing
+  service, not a replacement.
+- **Verification Evidence:** Section 18.17 above.
+
+### 20.8 Summary of NEW entities/fields introduced by this addendum
+
+No wholly new tables are introduced beyond what Section 18 already
+recommends. This addendum adds two field-level requirements to the
+Section 18 recommended schema:
+1. A `responsibility_scope` field on the coverage-assignment table
+   (Section 20.4), and
+2. A decision point on whether `Claim` needs a new `claim_category`
+   column (Section 20.2) to support the Open Claims Summary
+   breakdown — flagged as an open question, not resolved here.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
 "[Biller Platform] Implement Billing Organization" GitHub issue (module
-level) and the "Billing Organization → Agency Coverage & Workload"
-implementation handoff (page level, Section 18-19 addendum), and
-satisfies both the six module-level Discovery Areas and the 20-entity
-Agency Coverage & Workload mapping requirement. It is independent of,
-and does not modify:
+level), the "Billing Organization → Agency Coverage & Workload"
+implementation handoff (page level, Section 18-19 addendum), and the
+"Billing Organization → Expanded Agency Detail" implementation handoff
+(detail-view level, Section 20 addendum). It satisfies the six
+module-level Discovery Areas, the 20-entity Agency Coverage & Workload
+mapping requirement, and the Expanded Agency Detail Verify-First
+Requirement. It is independent of, and does not modify:
 - `docs/biller-platform/BILLER_PLATFORM_FINAL_IMPLEMENTATION_HANDOFF.md`
   (the canonical Biller Platform spec; Billing Organization, including
-  Agency Coverage & Workload, will be added there as a new page once
-  this discovery is reviewed).
+  Agency Coverage & Workload and Expanded Agency Detail, will be added
+  there as a new page once this discovery is reviewed).
 - `docs/biller-platform/BILLER_PLATFORM_DISCOVERY_REPORT.md` (separate,
   still-outstanding addendum for Pages 4-12 entities).
 - `docs/communications/COMMUNICATIONS_DISCOVERY_REPORT.md` (APPROVED /
@@ -919,13 +1079,14 @@ and does not modify:
   above confirms the SecureInbox Routing Preview stays display-only,
   per that document's locked Section 9 sequencing).
 - `docs/biller-platform/BILLER_PLATFORM_IMPLEMENTATION_VERIFICATION.md`
-  — the Agency Coverage & Workload handoff separately requires a new
-  "Agency Coverage & Workload Verification" section in that document
-  once implementation (not discovery) is authorized and complete; not
-  created in this pass.
+  — both the Agency Coverage & Workload handoff and the Expanded
+  Agency Detail handoff separately require new verification sections
+  in that document ("Agency Coverage & Workload Verification" and
+  "Expanded Agency Detail Verification") once implementation (not
+  discovery) is authorized and complete; not created in this pass.
 
 No schema, migration, model, service, or route changes were made
-while producing this report or this addendum.
+while producing this report or either addendum.
 
 ---
 
@@ -935,3 +1096,4 @@ while producing this report or this addendum.
 |---|---|
 | 2026-09-17 | Document created. Full repository discovery completed for all six required Discovery Areas (Identity/Users, Teams/Structure, Agencies, Permissions, Escalations, SecureInbox Dependencies) per the approved Billing Organization GitHub issue. Headline finding: a working, production billing-organization system already exists (`BillingProviderOrganization`, `BillingProviderOrganizationMembership`, `BillingProviderAgencyAssignment`, `BillingProviderAgencyServiceScope`), exposed through the SNS Tech Solutions owner platform's Billing/Licensing admin page — classified REUSE for the org record and org-to-agency assignment layer. No Team, per-user Agency Coverage, billing-specific Capability Matrix, Escalation Chain, or Workload Metric structures exist anywhere — all classified CREATE. The `require_permission`/`has_permission` functions in `app/core/permissions.py` are confirmed unimplemented placeholders, not a usable fine-grained permission engine. The dormant `Role`/`interfaces` model is confirmed to have zero live consumers and must not be revived. A generic `audit_event()` service is confirmed reusable for the new module's audit-trail requirement. Documentation only; no schema, migrations, tables, models, or routes created or changed. |
 | 2026-09-18 | Added Section 18-19: Agency Coverage & Workload page-level discovery addendum, per the approved "Billing Organization → Agency Coverage & Workload" implementation handoff. Mapped all 20 required entities (Billing Organization, Billing Organization Membership, Billing Team, Team Membership, Team Leader Assignment, Billing Supervisor Assignment, Agency Assignment, Medicare Billing Assignment, Medi-Cal/Managed Care Assignment, Backup Coverage Assignment, Additional Specialist Assignment, Assignment Status, Assignment Effective Period, Staff Capability, Individual DDE Authorization Status, Workload Metrics, Access Scope, Audit Event, Export Event, Future SecureInbox Routing Relationship) using the required detailed template (Existing Model/Table/Relationships/Fields/Constraints/Indexes/APIs/UI/Decision/Reason/Migration Required/Files Affected/Verification Evidence). **Correction to the 2026-09-17 entry above:** `backend/app/billing/audit_store.py` was re-verified and found to be an in-memory Python list scoped to patient/billing-cycle events, not a durable, org/agency-scoped audit table — it is NOT a valid reuse target for this module's audit requirement (updated the Classification Summary table's `AssignmentAudit` row accordingly); the correct structural precedent is the database-backed `FacilityPaymentAuditLog`. Also identified `ClaimExportLog` as the correct structural precedent for the new Export Event requirement. Recommended (not locked) that the four coverage-role assignment types (Medicare/Medi-Cal/Backup/Specialist) be modeled as one discriminated `billing_agency_coverage_assignments` table referencing `billing_provider_agency_assignments.id`, following the existing `status` + `effective_start_at`/`effective_end_at` pattern already proven on `BillingProviderOrganizationMembership` and `BillingProviderAgencyAssignment`. Documentation only; no schema, migrations, models, services, or routes created or changed. Page-level implementation (schema, migrations, APIs, UI) for Agency Coverage & Workload remains blocked pending user review of this addendum. |
+| 2026-09-18 | Added Section 20: Expanded Agency Detail discovery addendum, per the approved "Billing Organization → Expanded Agency Detail" implementation handoff (a detail view reached from Agency Coverage & Workload → Agency Coverage Matrix → Select Agency, not a new top-level module). Confirmed no wholly new tables are required beyond Section 18's recommended schema; documented two delta findings: (1) the existing `Claim` model (`backend/app/billing/models/claim.py`) is REUSE for raw Open Claims counts, but its `payer_name` field is free text with no Medicare Hospice/Medi-Cal/Managed Care classification — a new `claim_category` column (CREATE) is an open decision for the Open Claims Summary breakdown; (2) a `responsibility_scope` field must be added (CREATE) to the Section 18.8-18.11 coverage-assignment table so backup assignments can declare which specific role they stand in for. Confirmed "Recent Assignment Activity" and "Export Detail" on this screen reuse the same Section 18.18 (Audit Event) and Section 18.19 (Export Event) tables/patterns rather than introducing parallel history or export mechanisms — flagged and corrected an in-progress drafting error where the "Relationship to Other Documents" heading was inadvertently dropped during the previous two edits; restored. Documentation only; no schema, migrations, models, services, or routes created or changed. Page-level implementation for Expanded Agency Detail remains blocked pending user review of this addendum. |
