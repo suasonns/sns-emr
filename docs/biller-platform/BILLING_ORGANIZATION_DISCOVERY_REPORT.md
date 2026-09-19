@@ -3246,6 +3246,63 @@ authoritative terminology decision to be honored whenever
 `claim_category` display work is eventually authorized and
 implemented; it does not itself authorize that implementation.
 
+### 28.5 Payer / Plan vs. Payer Category — Data-Model Clarification
+
+Per the user's clarification following this section's creation:
+**Medicare Part A Hospice remains the authoritative user-facing label**
+for `MEDICARE_HOSPICE` (unchanged, Section 28.1). Additionally, named
+carriers and organizations — e.g. Kaiser, Blue Shield, UHC, Humana,
+Molina, Health Net, VA, TRICARE — **belong in a separate `Payer` and
+`Plan` concept, not in the `claim_category` enum**.
+
+This establishes a three-tier distinction that this report has not
+previously modeled explicitly:
+
+1. **`claim_category`** (Section 20.9/28.1) — a fixed, 12-value
+   classification of the *type* of coverage (e.g.
+   `COMMERCIAL_HMO`, `MEDICARE_ADVANTAGE_PPO`). This is a closed,
+   locked enum and remains unchanged by this clarification.
+2. **`Payer`** (not yet modeled — **CREATE**, open) — the actual
+   carrier/organization name (e.g. Kaiser, Blue Shield, UHC, Humana,
+   Molina, Health Net). Multiple distinct Payers can map to the same
+   `claim_category` (e.g. Kaiser and Blue Shield could both be
+   `COMMERCIAL_HMO`).
+3. **`Plan`** (not yet modeled — **CREATE**, open) — a specific plan
+   offered by a given Payer, presumably the finest-grained level at
+   which claim adjudication rules/contact details would actually
+   differ.
+
+**Important overlap note:** `VETERANS_AFFAIRS` and `TRICARE` appear in
+*both* the locked `claim_category` enum (Section 20.9, as category
+values) *and* this message's example list of named Payers. This is not
+a contradiction: for those two categories, the category and the payer
+happen to be effectively one-to-one (a single national payer per
+category), whereas categories like `COMMERCIAL_HMO` are one-to-many
+against real-world Payers (Kaiser, Blue Shield, UHC, Humana, Molina,
+Health Net, etc. could all be `COMMERCIAL_HMO`). This does not change
+the `claim_category` enum or its CheckConstraint (Section 25.10) — it
+only clarifies that `claims.payer_name` (the existing free-text field
+used for backfill mapping, Section 25.14/26.2) is a **stand-in** for
+the not-yet-modeled `Payer`/`Plan` structure, not a place where the
+category list itself should ever grow to include named carriers.
+
+**Non-impact:** this clarification does not change the locked 12-value
+`claim_category` enum (Section 20.9/26.4), the `CheckConstraint`
+(Section 25.10), the backfill mapping rules (Section 25.14/26.2 — the
+mapping still resolves free-text `payer_name` values to one of the 12
+`claim_category` values; it does not need to resolve to a Payer/Plan
+structure to satisfy the currently-authorized backfill work), or any
+approved Figma reference. It **does** flag that a future `Payer`/
+`Plan` data model is anticipated but not yet discovered, designed, or
+scheduled — no such table exists in this report's REUSE/CREATE
+classification to date, and none is authorized to be created by this
+clarification alone.
+
+**Status:** documentation/clarification only — no schema, migration,
+model, service, route, or UI component created or changed. Flags an
+open, not-yet-scoped future data-model need (`Payer`/`Plan`) rather
+than resolving it; implementation remains blocked.
+
 ---
 
 ## RELATIONSHIP TO OTHER DOCUMENTS
@@ -3313,3 +3370,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 27: User Access Detail — Discovery Validation & Implementation Planning Addendum, per the approved, locked, Figma-approved "User Access Detail" implementation handoff and the subsequent Implementation Planning Checklist. Walked every checklist section (Discovery Validation, Data Architecture, UI Implementation Plan, Authorization Model, Audit Model, Export Requirements, Security Review, Functional/UI Test Plan, Definition of Done) and classified each item against Sections 1-26: REUSE for Identity/User/Organization-Membership models, Agency Assignment storage (`BillingProviderAgencyAssignment`/`billing_agency_team_assignments`/`billing_agency_coverage_assignments`), audit infrastructure (`billing_agency_coverage_audit_events`), and export infrastructure (`billing_agency_coverage_export_events`); CREATE (unchanged) for the capability catalog/assignment tables and real route-authorization enforcement, consistent with Discovery Area 4's confirmed-unimplemented `require_permission`/`has_permission` placeholders. Confirmed the handoff's six DDE Authorization Status values are an exact match to Section 18.15's already-documented set, with no new vocabulary introduced. Flagged four open clarification items before Schema Design can begin for this page (Section 27.11): (1) whether "Individual Grant" and "User-Specific Grant" are two names for one `CapabilityAssignment.source` value or two genuinely distinct grant mechanisms; (2) whether DDE Authorization Status remains blocked on the same not-yet-built external DDE entity (Section 18.15/21.12) or requires a new lightweight, credential-free status field to unblock this page now; (3) whether "Access Review Status" is a wholly new recertification concept requiring new storage or a display label over existing capability/agency-assignment audit history; (4) whether the "Coverage Assignment" column requires a new payer-scope field (EXTEND) on `billing_agency_coverage_assignments` or simply restates the existing `coverage_role` assignment using the Section 20.9 `claim_category` enum's extensibility as its rationale. Updated the document header STATUS line accordingly. Documentation and test-plan preparation only; no schema, migration, model, service, route, or UI component created or changed. Migration creation, API creation, UI implementation, and production code changes remain explicitly blocked, per the handoff's own Next Gate section. |
 | 2026-09-18 | Added Section 28: Claim Category / Payer Terminology Decision Record, per the approved "Billing Platform Settings — Terminology Decision Record." Locks the user-facing display-label mapping for each Section 20.9 `claim_category` internal value — most notably `MEDICARE_HOSPICE` → "Medicare Part A Hospice" (all other 11 values map to a straightforward title-case rendering of their internal value). Documents this as a presentation-layer decision only: no change to the `claim_category` column definition, `CheckConstraint` value list (Section 25.6/25.10), backfill mapping rules (Section 25.14/26.2), or Figma (`settings-payers-plans-dark.png` requires no changes). Cross-referenced against the subsequently-received `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md` (the broader, cross-platform authoritative terminology source, created the same day) as the primary home for this same decision going forward. Documentation only; no schema, migration, model, service, route, or UI component created or changed. |
 | 2026-09-18 | Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md`, per the approved "SNS Hospice Solutions — Billing Platform Authoritative Terminology Reference." Locks user-facing vs. internal terminology across the whole Billing Platform (payer category labels restating Section 28's mapping; "Coverage Assignment" not "Role"; "Access Administration" not "Credential Management"/"Password Management"/"Token Management"; "Billing Role Profile" not "Employment Info"; four distinct Capability Source values with Source explicitly separate from Granted By; DDE Authorization's six states, an exact match to Section 18.15; "Emergency Access"/"Break-Glass Event" security terminology, prohibiting "Universal Access"/"Super Admin Override"/"Security Bypass"/"Clearance Level"; "SecureInbox Routing Preview — Coming Soon," consistent with the locked Communications Discovery Report; append-only audit language; a new explicit Settings-vs-Billing-Organization module-ownership boundary; and a Clinical Terminology Restriction for Billing Platform Settings). Partially resolves Section 27.11.1 (confirms "Individual Grant" and "User-Specific Grant" are two distinct, independently approved terms, not synonyms) without resolving the underlying schema/storage mechanism distinction between them, which remains open. Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_ENFORCEMENT_RULES.md` as a companion GitHub-implementation enforcement checklist (14 numbered rules, per-area QA checklists, and PR fail-conditions) governing how this terminology must be applied, and prohibited substitutions, across UI/API/Reports/Exports/Audit/Documentation once implementation is separately authorized. Both documents are documentation only; no schema, migration, model, service, route, or UI component created or changed. |
+| 2026-09-18 | Added Section 28.5: Payer / Plan vs. Payer Category — Data-Model Clarification, per the user's follow-up confirming "Medicare Part A Hospice" remains the authoritative label while named carriers/organizations (Kaiser, Blue Shield, UHC, Humana, Molina, Health Net, VA, TRICARE) belong in a separate `Payer`/`Plan` concept, not in the `claim_category` enum. Establishes a three-tier distinction not previously modeled explicitly: `claim_category` (locked 12-value classification, unchanged), `Payer` (not yet modeled — CREATE, open — the actual carrier/organization name), and `Plan` (not yet modeled — CREATE, open — a specific plan under a Payer). Notes that `VETERANS_AFFAIRS`/`TRICARE` appearing in both the category enum and the example Payer list is not a contradiction — those two categories happen to be effectively one-to-one with a single national payer, whereas categories like `COMMERCIAL_HMO` are one-to-many against real Payers. Confirms `claims.payer_name` (used for backfill mapping, Section 25.14/26.2) is a stand-in for the not-yet-modeled Payer/Plan structure, not a place the category enum itself should grow into. No change to the locked `claim_category` enum, CheckConstraint, backfill mapping rules, or Figma; flags an open, not-yet-scoped future `Payer`/`Plan` data-model need without designing or authorizing it. Documentation/clarification only; no schema, migration, model, service, route, or UI component created or changed. |
