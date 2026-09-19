@@ -15,6 +15,29 @@ MIGRATIONS: BLOCKED
 
 None of the three RNICA documents above are reopened by this artifact.
 
+## Scope Clarification (interpretation, confirmed)
+
+This document is **current-state ownership and dependency documentation
+only**. It is not a future navigation or information-architecture
+requirement.
+
+- It defines **what must be preserved**: data authority, evidence
+  producers/consumers, compliance requirements (HOPE, IDG, POC,
+  medication, physician, visit), and audit boundaries for every
+  workspace listed below.
+- It does **not** define **how a clinician navigates to that data** in
+  the redesigned experience. The redesign goal is to preserve every
+  authority/ownership/compliance boundary recorded here while allowing
+  the clinician-facing workflow to change — e.g., POC and Physician
+  Orders may surface as workflow destinations inside the RNICA
+  experience (per `RNICA_WORKFLOW_AUTHORITY_MAP.md` Screen 10, "Orders &
+  POC") without any change to who owns, produces, or is authorized to
+  modify POC or Order data as documented here.
+- A future redesign is compliant with this document if, and only if,
+  every authority/producer/consumer/compliance relationship recorded
+  below still holds — regardless of which screen, module, or navigation
+  path the clinician uses to reach it.
+
 ## Authority Legend (same seven labels used throughout this doc family)
 
 - **[REPOSITORY-DISCOVERED]** Proven current field, behavior, model,
