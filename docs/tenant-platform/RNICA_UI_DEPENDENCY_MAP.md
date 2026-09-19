@@ -13,6 +13,14 @@ required by the discovery request:
 - **AI CRITICAL** — depends on the RNICA intelligence/heuristics output
 - **COMPLIANCE CRITICAL** — required for HOPE/LCD/finalization/regulatory
   correctness
+
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that the Diagnoses-section Clinical
+> Narrative card (`diagnoses.clinicalNarrative`) was incorrectly placed and
+> must not remain a nurse-facing narrative input in the redesigned RNICA;
+> `finalization.clinicalNarrative` is the sole authoritative future Clinical
+> Narrative. The UI classification below reflects the current repository
+> state and is unchanged.
 - **BILLING CRITICAL** — required for billing/eligibility correctness
 - **SYSTEM CRITICAL** — required for core system integrity (data integrity,
   audit trail, admission/tenant scoping)

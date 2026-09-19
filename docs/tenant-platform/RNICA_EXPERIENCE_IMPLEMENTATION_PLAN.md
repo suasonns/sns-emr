@@ -14,6 +14,14 @@ begins from this document. It depends on and cross-references
 `RNICA_REDESIGN_IMPACT_ANALYSIS.md`, and
 `RNICA_USABILITY_AND_AI_REVIEW.md` (all in this directory).
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in
+> the redesigned RNICA; `finalization.clinicalNarrative` is the sole
+> authoritative future Clinical Narrative. Any plan content below that treats
+> both narrative fields as permanent parallel inputs must be read in light of
+> that correction.
+
 ---
 
 ## Phase 2 — Simplification Without Removal

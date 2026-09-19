@@ -11,6 +11,14 @@ nothing in `RNICA_SYSTEM_DEPENDENCY_MAP.md`, `RNICA_UI_DEPENDENCY_MAP.md`,
 `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`, or `AI_VISIBILITY_MATRIX.md` — it
 is a finer-grained, field-level companion to those documents.
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> (documented under Section 10 — Diagnoses below) was incorrectly placed and
+> must not remain a nurse-facing narrative input. `finalization.clinicalNarrative`
+> (Section 27 — Finalization) is the sole authoritative future Clinical
+> Narrative. The field inventory below still reflects the current repository
+> state and is unchanged.
+
 **Common mechanisms that apply to every section below** (stated once here
 to avoid repeating 27 times):
 - **Save Dependency**: every section's fields live in the single

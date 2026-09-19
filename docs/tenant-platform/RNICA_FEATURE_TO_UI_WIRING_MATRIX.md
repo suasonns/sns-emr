@@ -11,6 +11,13 @@ in this directory); no new claims are made beyond what those documents
 already cite, plus a small number of explicitly marked new observations
 below.
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in
+> the redesigned RNICA; `finalization.clinicalNarrative` is the sole
+> authoritative future Clinical Narrative. The wiring entries below reflect
+> the current repository state and are unchanged.
+
 Classification values used (as requested), plus one explicit addition for
 capabilities that do not exist anywhere in the repository:
 **WIRED**, **PARTIALLY WIRED**, **BACKEND ONLY**, **FRONTEND ONLY**,
