@@ -127,6 +127,19 @@ Narrative input.
 
 ---
 
+## 5a. Superseded By
+
+This document's Sections 1-4, 7, and 8 have been finalized and superseded
+in detail by `RNICA_CLINICAL_NARRATIVE_FINAL_DECISION.md`, which is now the
+authoritative source for the locked decision, the Diagnosis Workspace
+per-item classification, and final status. This document remains valid as
+the original correction record; consult the final decision document for
+the current, complete state.
+
+A separately tracked current defect (not a future redesign item) was
+identified during rewiring analysis and is recorded in
+`RNICA_LOCK_DEFECT_UNREACHABLE_NARRATIVE_REVIEW.md`.
+
 ## 6. Documents Corrected by Reference
 
 The following documents contain a standardized correction notice pointing
