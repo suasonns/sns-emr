@@ -114,22 +114,38 @@ data.
 - **Boundary:** owns the visit-note record itself; does not own orders
   (Manage Treatment), POC (Plan Care), or the Final Clinical Narrative
   (RNICA Finalization, unchanged).
+- **[LOCKED PRODUCT DECISION] Record integrity:** every completed visit
+  note must retain: author identity; professional credentials where
+  applicable; service date and time; entry date and time; authentication
+  status; amendment or correction history; and a link to the applicable
+  patient and visit. Restates the existing medical-record authentication/
+  traceability requirement already locked for RNICA amendments
+  (`RNICA_LOCK_READINESS_MATRIX.md`) for the Document Visit phase.
 
 ### 5. Manage Treatment
-- **[LOCKED PRODUCT DECISION]** Manages medication/treatment/DME
-  workflows but does not own physician orders.
+- **[LOCKED PRODUCT DECISION]** Manage Treatment is a workflow layer, not
+  a record owner. Medication records remain owned by the Medication
+  domain; physician-order records remain owned by the Physician Orders
+  domain; DME records remain owned by the DME domain. This phase must not
+  be read as owning "Treatment/medication/DME workflow" in a sense that
+  implies record ownership — it owns only the workflow-state actions it
+  initiates (e.g., a draft request), never the underlying clinical
+  record.
 - **Purpose:** medication administration, DME tracking, and treatment
-  workflow management surfaced against orders that remain owned
-  elsewhere.
-- **Source workspaces:** Tx / Meds / DME (owned here for workflow
-  management), Physician Orders (surfaced/read, not owned — CTI/F2F/
-  order authority remains with Physician Orders per
-  `PATIENT_CHART_AUTHORITY_MAP.md`).
-- **Boundary:** may initiate treatment workflow actions but must not
-  create, approve, or silently modify a physician order; any such action
-  must route to Physician Orders as owner and require explicit
-  physician/authorized-user action, consistent with the RNICA "Orders
-  and POC actions require explicit user initiation" locked decision.
+  workflow management surfaced against records that remain owned
+  elsewhere (Medication domain, DME domain, Physician Orders domain).
+- **Source workspaces:** Tx / Meds / DME (workflow layer only — record
+  ownership remains with the Medication and DME domains), Physician
+  Orders (surfaced/read, not owned — CTI/F2F/order authority remains
+  with Physician Orders per `PATIENT_CHART_AUTHORITY_MAP.md`).
+- **Boundary:** may create a **draft** request and initiate treatment
+  workflow actions but must not issue, approve, or sign a physician
+  order, and must not use language implying that a nurse or this
+  workflow layer issues, approves, or signs a physician order. Any
+  action affecting an order must route to Physician Orders as owner and
+  require explicit physician/authorized-user review and authorization,
+  consistent with the RNICA "Orders and POC actions require explicit
+  user initiation" locked decision.
 
 ### 6. Plan Care
 - **[LOCKED PRODUCT DECISION]** Owns Plan of Care.
@@ -137,6 +153,15 @@ data.
   authoritative care-planning record.
 - **Source workspace:** Plan of Care (POC Summary, POC Goals &
   Interventions, Add/Update POC).
+- **[LOCKED PRODUCT DECISION] Approval authority:** the Plan of Care
+  workspace owns the POC record. The interdisciplinary team may develop
+  and propose updates. Required physician approval and signature remain
+  separate authenticated events from IDT proposal/development. A
+  proposed POC modification must not be represented as active until the
+  required written approval is recorded — consistent with the
+  California hospice framework requirement that an individualized POC
+  requires physician approval/signature and that proposed modifications
+  require written approval before implementation.
 - **Boundary:** consistent with the existing POC adapter's explicit-
   action-only behavior (no auto-generation at Lock, per
   `RNICA_LOCK_READINESS_MATRIX.md`); this phase does not change that
@@ -152,15 +177,33 @@ data.
   Not Documentation Producer"), Care Team, Communication Log.
 - **Boundary:** IDG's existing non-producer role is preserved verbatim;
   this phase does not turn IDG (or itself) into a new documentation
-  producer.
+  producer. This phase presents source-linked interdisciplinary
+  information and authorized coordination actions; it does not silently
+  rewrite POC, order, medication, visit-note, communication, or IDG
+  source records.
+- **[LOCKED PRODUCT DECISION] Review vs. signature:** review and
+  signature are separate events. A review recorded by one clinician must
+  not be attributed as another clinician's signature or approval.
 
 ### 8. Ensure Compliance
-- **[LOCKED PRODUCT DECISION]** Displays readiness and deficiencies but
-  owns no clinical records.
+- **[LOCKED PRODUCT DECISION]** Presents deficiencies, readiness checks,
+  due items, and source-linked validation results. Ensure Compliance
+  does not create, correct, authenticate, approve, or replace the
+  underlying clinical record — it owns no clinical records.
 - **Purpose:** compliance/HOPE readiness status, deficiency lists, and
   audit-facing summaries.
 - **Source workspaces:** Compliance & HOPE, Issues & Outcomes, Incident
   Logs (read/surface only).
+- **[LOCKED PRODUCT DECISION] Deficiency structure:** every deficiency
+  presented by this phase must identify: source workspace; source record
+  or field; applicable rule; severity; resolution destination; and last-
+  evaluated timestamp.
+- **[LOCKED PRODUCT DECISION] Unsupported capability naming:** "Survey
+  Readiness" must not be used unless repository discovery confirms a
+  dedicated function backing it; absent that confirmation, use
+  "Documentation Readiness." A survey-readiness engine must not be
+  represented as operational without repository evidence and separate
+  authorization.
 - **Boundary:** consistent with RNICA's Compliance & Readiness screen,
   which is already the strongest "reusable" case in the RNICA package
   (`getRnicaFinalizationReadiness`/`evaluate_finalization_readiness`
@@ -178,7 +221,14 @@ data.
   Bereavement (post-death handoff).
 - **Boundary:** does not own the underlying clinical/compliance data it
   reads; owns only the transition workflow state itself (e.g., which
-  transition steps are complete).
+  transition steps are complete). Transition presentation must not
+  overwrite source discharge, death, bereavement, order, POC, or visit
+  records.
+- **[LOCKED PRODUCT DECISION] Discharge completeness:** discharge
+  completion must include medical-record reconciliation and deficiency
+  review before the episode is represented as administratively complete
+  — consistent with the California framework's medical-record
+  reconciliation and deficiency-analysis requirement at discharge.
 
 ### 10. Track & Report
 - **[LOCKED PRODUCT DECISION]** Read-only analytics.
@@ -211,6 +261,23 @@ may display:
 **[LOCKED PRODUCT DECISION]** Finalization remains the sole Final Clinical
 Narrative authority (unchanged from the RNICA authority family; no phase
 in this document creates a second narrative record).
+
+**[LOCKED PRODUCT DECISION] Correction and amendment integrity (global):**
+signed or authenticated source records must not be silently overwritten.
+Corrections, amendments, and addenda must preserve the original entry and
+record the actor, timestamp, reason, and authentication. Denied
+correction or amendment requests must retain the required written
+justification. Applies across all 10 phases; restates, at the Patient
+Chart level, the amendment-integrity behavior already confirmed for
+RNICA (`RNICA_LOCK_READINESS_MATRIX.md` §4).
+
+**[LOCKED PRODUCT DECISION] Access control and audit (global):** Patient
+Chart access must follow role-based authorization. Every authenticated
+documentation event must retain the authorized user's unique identity,
+date, time, and action. The system must preserve audit visibility for
+entries, corrections, amendments, addenda, signatures, and status
+changes. Authorized users must be able to retrieve the complete patient
+record without changing source ownership. Applies across all 10 phases.
 
 ## Phase-to-workspace ownership summary
 
@@ -254,7 +321,7 @@ and do not perform UX/IA design.
 |---|---|
 | LCD Status: Eligible | LCD Supporting Evidence Present |
 | 5 of 5 clinical criteria met | 5 Supporting Evidence Criteria Identified |
-| Limited life expectancy of 6 months or less | Terminal diagnosis certified by physician |
+| Limited life expectancy of 6 months or less | Physician certification status: [Current Status] (see below) |
 | Downward trajectory | Documented functional decline |
 
 Consistent with the existing RNICA/AI-governance prohibition on
@@ -262,6 +329,17 @@ eligibility-verdict language (`RNICA_AI_GOVERNANCE.md` §5): Patient Story
 owns nothing and must not present eligibility determinations, prognosis
 language, or trajectory-generation language as if the phase were an
 authority for them.
+
+**[LOCKED PRODUCT DECISION] Certification wording:** do not display
+"Terminal diagnosis certified by physician" (or equivalent fact-stated
+phrasing) unless the displayed value is linked to an authenticated
+certification record. Use "Physician certification status: [Current
+Status]" with an added "Source: Physician Certification Record" label.
+If no certification record is available, use "Physician certification
+status unavailable." This avoids presenting a certification as fact
+without a traceable source; hospice certification remains a physician
+function, and medical-record entries require authentication and
+traceability.
 
 ### 2. Know the Patient
 | Replace | With |
@@ -276,12 +354,14 @@ nothing and is not a clinical authority.
 |---|---|
 | Add New Order | Create Draft Order |
 
-Add label: **Requires physician authorization.**
+Add label: **Requires physician review and authorization.**
 
 Consistent with this document's existing Manage Treatment boundary
 ("Orders and POC actions require explicit user initiation"; order
 authority remains with Physician Orders). "Create Draft Order" makes
-explicit that this phase cannot itself finalize an order.
+explicit that this phase cannot itself finalize an order. Do not use
+language implying that a nurse or the workflow layer issues, approves,
+or signs a physician order.
 
 ### 4. Plan Care
 Add under POC Completeness: **Source: Plan Of Care.**
@@ -308,6 +388,7 @@ signature remain the controlling, unexecuted action.
 | LCD Eligibility Verified | LCD Documentation Review Complete |
 | Eligible | Supporting Evidence Identified |
 | 5 of 5 criteria met | 5 Supporting Evidence Criteria Identified |
+| Survey Readiness (unless a dedicated function is repository-confirmed) | Documentation Readiness |
 
 Add label: **Source: Diagnosis & LCD.**
 
@@ -315,7 +396,10 @@ Consistent with this document's existing Ensure Compliance boundary
 ("displays readiness and deficiencies but owns no clinical records") and
 the RNICA LCD terminology rule: this phase surfaces the same
 non-verdict LCD evidence signal RNICA produces and must not restate it as
-an eligibility verdict.
+an eligibility verdict. Every deficiency this phase presents must
+identify: source workspace; source record or field; applicable rule;
+severity; resolution destination; and last-evaluated timestamp (see
+Phase 8's deficiency-structure rule above).
 
 ### 7. Global — ownership labeling
 **[LOCKED PRODUCT DECISION]** Every workflow screen should display an
