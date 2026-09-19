@@ -1,198 +1,215 @@
-# RNICA Screen Authority Matrix
+# RNICA_SCREEN_AUTHORITY_MATRIX.md
 
-Companion to `RNICA_IMPLEMENTATION_AUTHORITY.md`. Defines the exact field
-inventory per screen so engineering does not have to interpret the
-Figma Source of Truth. Does not reopen
-`RNICA_REDESIGN_SOURCE_OF_TRUTH.md`, `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md`,
-or `RNICA_WORKFLOW_AUTHORITY_MAP.md`.
+**Status:** v2 — repository-validated. Supersedes v1 (commit `7836ca1`).
+**Purpose:** Define screen ownership, editability, sources, outputs, and
+prohibited behavior for each of the 13 approved RNICA workflow destinations.
 
-STATUS: IMPLEMENTATION DOCUMENTATION. CODE/SCHEMA/MIGRATIONS BLOCKED.
+## Global rule
 
-Legend: same seven labels as `RNICA_IMPLEMENTATION_AUTHORITY.md`, plus
-**[IMPLEMENTATION DISCOVERY REQUIRED]** for fields whose exact backend
-column/endpoint was not directly re-verified while writing this matrix.
+A screen may aggregate or present data owned elsewhere. Presentation does
+not transfer ownership. **Repository status:** none of the 13 screens exist
+as discrete routes/components today. `RNICA.jsx` is a single legacy
+28-module component (`NAV_SECTIONS`/`LEGACY_ROUTES`,
+`sns-emr-frontend/src/components/RNICA.jsx:~157-190`). The mapping below
+states which legacy modules/fields the future screen must consume, not
+which screen currently exists.
 
-Columns: Field | Type | Required at Lock | Source.
+## 1. Patient Story
+- **Purpose:** Read-only patient orientation. **Owns:** Nothing.
+- **Consumes:** `fetchPatientSummary` (`src/api/patientCharts.js`),
+  `fetchFacesheet` (`src/api/facesheet.ts`), diagnoses/decline evidence from
+  legacy `demographics`/`diagnoses`/`performanceStatus` modules, caregiver
+  context from legacy `psychosocial`/`bereavement` modules, `intelligence`
+  state (from `getRnicaIntelligence`).
+- **Produces:** Navigation only. **Editable:** No, except links to
+  authoritative source screens.
+- **AI:** May show saved advisory summary and missing evidence with
+  freshness (see `RNICA_AI_GOVERNANCE.md`).
+- **Prohibited:** New data authority, certification, risk score, generated
+  Final Clinical Narrative.
+- **Repository status:** Not implemented as a screen. The panels shown in
+  the approved Figma frame (Why Hospice, Recent Hospitalization, Current
+  Clinical Concerns, RNICA Intelligence, Missing Information, Caregiver
+  Overview) do not have a corresponding aggregation component in
+  `RNICA.jsx` today.
 
----
+## 2. Evidence & Intake
+- **Purpose:** Review referral, facesheet, imported records, vitals, and
+  available evidence. **Owns:** RNICA intake-review state only where
+  already canonical (legacy `demographics`, `vitals`, `referrals` modules).
+- **Consumes:** Facesheet (`fetchFacesheet`, `fetchPerformanceHistory`),
+  structured findings signals harvested from documents
+  (`intelligence.structured_findings_signals`,
+  `applyStructuredFindings.js`), `CONCEPT_REGISTRY`
+  (`structuredFindingRegistry.generated.js`).
+- **Produces:** Reviewed/missing-evidence state via
+  `reviewHarvestedSignal`/`batchReviewHarvestedSignals`
+  (`src/api/icaAssessments.ts`).
+- **Editable:** Only fields owned by RNICA intake; external-source data
+  must retain provenance (`structuredFieldProvenance` state,
+  `RNICA.jsx`, confirmed).
+- **Prohibited:** Becoming the document repository or silently changing
+  source records.
+- **Repository status:** Structured-findings review/apply/provenance
+  mechanism is confirmed built and tested (`test_structured_findings*.py`,
+  `applyStructuredFindings.test.js`). No dedicated "Evidence & Intake"
+  screen exists; it is currently interleaved across legacy `demographics`/
+  `vitals`/`referrals` modules.
 
-## Screen 1 — Patient Story
+## 3. Functional Status
+- **Purpose:** Capture functional performance and diagnosis-relevant
+  scales. **Owns:** legacy `performanceStatus` module fields.
+- **Always visible:** PPS, KPS — enforced hard-required at Lock for
+  RN ICA/Update/Recert (`clinical_note_validation_engine.py:987-1112`).
+- **Conditional:** FAST (dementia-related, server-enforced), NYHA
+  (cardiac-related, server-enforced), ECOG (**no server enforcement branch
+  found — confirmed open defect**).
+- **Produces:** Functional evidence, HOPE data
+  (`rnica_hope_workflow_service.py`), validation state, LCD facts
+  (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
+  nyha/fast`).
+- **Prohibited:** Irrelevant scales, disabled placeholders, automatic
+  eligibility determination.
 
-Presentation-layer only (see `PATIENT_CHART_AUTHORITY_MAP.md` Patient
-Story Rule — restated, not reopened). No field here is independently
-required at Lock; every value is read from its owning screen.
+## 4. Pain & Symptom Burden
+- **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
+  `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
+  components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
+- **Consumes:** Medication/order display (`src/api/medications.js`) where
+  authorized; source ownership remains external.
+- **Produces:** HOPE pain/symptom items, findings, warnings, follow-up
+  needs (SFV status, `getSfvStatus`/`getHopeAdmissionStatus`,
+  `src/intake/hopeReportMapper.js`).
+- **AI:** Advisory follow-up suggestions only.
+- **Prohibited:** Silent medication/order changes; derived values
+  overwriting manual entries.
 
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Patient identity / diagnosis header | read-only | No (owned by Facesheet) | `[REPOSITORY-DISCOVERED]` `fetchFacesheet` |
-| "Why Hospice" narrative | read-only text | No | `[REPOSITORY-DISCOVERED]` screenshot-confirmed panel; backing field `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Recent Hospitalization summary | read-only | No | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Current Clinical Concerns (Fall Risk, Pain Control, Respiratory, Nutritional) | read-only, derived | No | `[REPOSITORY-DISCOVERED]` derived from Safety/Pain/Body Systems/Nutrition screens; exact derivation rule `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| RNICA Intelligence summary panel | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-| Missing Information panel | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| Caregiver Overview panel | read-only | No | `[REPOSITORY-DISCOVERED]` sourced from Caregiver & Support |
+## 5. Diagnosis & LCD
+- **Purpose:** Capture diagnoses, relatedness, comorbidities, LCD evidence,
+  and LCD Supporting Narrative. **Owns:** legacy `diagnoses` module,
+  including `ndsEligibility` sub-state.
+- **Produces:** Diagnosis evidence, LCD support via
+  `detectLCD`/`evaluateLCD`/`getLCDConfig`
+  (`src/api/eligibility.ts:62-87` → `/eligibility/lcd-*` backend routes),
+  HOPE diagnosis mapping, validation output.
+- **AI:** May identify supporting evidence and gaps only — confirmed the
+  client builds a facts object (`buildClientLcdFacts`,
+  `RNICA.jsx:~1478-1520`) sent to the server evaluator; output is a
+  criteria-match structure, not an eligibility verdict, and must be
+  presented per `RNICA_AI_GOVERNANCE.md` §5 language rules.
+- **Prohibited:** Final Clinical Narrative, physician certification,
+  eligibility confirmation, AI prognosis.
 
-## Screen 2 — Evidence & Intake
+## 6. Body Systems
+- **Purpose:** Capture ten body-system assessments. **Owns:**
+  `RNICA_BODY_SYSTEM_MODULES` (`src/config/bodySystems.js`) — Neurological,
+  Cardiovascular, Respiratory, Infection, Gastrointestinal, Nutrition,
+  Endocrine, Genitourinary, Musculoskeletal, Skin/Wounds, plus Imminent
+  Death and SFV modules.
+- **Produces:** Clinical findings; feeds Structured Findings and LCD facts
+  (confirmed: nutrition/musculoskeletal/genitourinary/gastrointestinal/
+  vitals/respiratory fields are read directly by `buildClientLcdFacts()`).
+- **Server validation:** RN ICA notes explicitly **skip** the generic
+  full/focused Review-of-Systems required-section validator
+  (`_validate_required_ros`, `clinical_note_validation_engine.py:791-934`,
+  `if is_rn_ica: return`) — Body Systems completeness for RN ICA Lock is
+  governed only by the Cognitive-Decline/Mobility-Decline entries in the
+  17-item hard-required list, not a full per-system requirement.
+- **Prohibited:** Assuming every system feeds Intelligence; hiding
+  clinically significant findings.
 
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Referral data / facesheet facts | read-only | Indirectly — `referrals.reviewed` is a readiness flag | `[REPOSITORY-DISCOVERED]` `RNICA_WORKFLOW_AUTHORITY_MAP.md` Screen 2 |
-| Imported documents | list | No | `[REPOSITORY-DISCOVERED]` Documents & Images workspace |
-| Evidence Summary / Missing Evidence (AI) | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-| `referrals.reviewed` | boolean | **Yes** — participates in Finalization readiness | `[REPOSITORY-DISCOVERED]` `RNICA_WORKFLOW_AUTHORITY_MAP.md` Screen 2 Lock Impact |
+## 7. Caregiver & Support
+- **Purpose:** Capture caregiver availability, willingness, capability,
+  concerns, psychosocial/spiritual/personal-care and teaching needs.
+  **Owns:** legacy `psychosocial`, `spiritual`, `bereavement`,
+  `personalCare`, `teachingNeeds` modules.
+- **Produces:** Documented findings and plan-of-care inputs.
+- **Prohibited:** Derived burden, sustainability, or caregiver-risk scores
+  unless a separately approved validated instrument exists (none found in
+  repository).
 
-## Screen 3 — Functional Status
+## 8. Safety & Clinical Risk
+- **Purpose:** Capture documented risk factors, home/oxygen safety,
+  imminent-death screening, and interventions. **Owns:** legacy `safety`,
+  `imminentDeath` modules.
+- **Produces:** Documented concerns, warnings, source-linked advisory
+  findings.
+- **Prohibited:** New aggregate risk score or derived high/medium/low
+  engine unless a validated tool is explicitly authorized. Fall
+  Risk/Morse scoring appears in the product screenshot but its Lock-blocking
+  status is **not found** in the 17-item hard-required list —
+  `[IMPLEMENTATION DISCOVERY REQUIRED]`.
 
-Confirmed directly against the provided Functional Status screenshot.
+## 9. ACP & Goals of Care
+- **Purpose:** Capture treatment preferences and advance-care-planning
+  fields. **Owns:** legacy ACP fields (spread across `demographics`/
+  `diagnoses` in the current module layout — no dedicated ACP module
+  confirmed).
+- **Produces:** HOPE ACP mappings, POC inputs, readiness status.
+- **Confirmed hard-required at Lock (3, not 6 — corrected from v1):** Code
+  Status, Life-Sustaining Treatment Preference, Hospitalization Preference
+  (`RN_ICA_REQUIRED_FIELD_GROUPS`,
+  `clinical_note_validation_engine.py:380-517`). Advance Directives, POA,
+  CPR Preference, and Decision Maker are **not found** in the hard-required
+  list — `[IMPLEMENTATION DISCOVERY REQUIRED]` (may be optional/soft fields
+  today; must be verified before presenting them as Lock-blocking).
+- **Prohibited:** Owning POC interventions, final certification, or Final
+  Clinical Narrative.
 
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| `performanceStatus.pps` (PPS %) | select/percent | **Yes**, always | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["PPS"]`, paths incl. `performanceStatus.pps` (`clinical_note_validation_engine.py:416-425`) |
-| `performanceStatus.kps` (KPS %) | select/percent | **Yes**, always | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["KPS"]`, paths incl. `performanceStatus.kps` (same lines) |
-| Mobility & Transfer Detail (ambulation state, transfer ability) | text/select | Not independently confirmed — see `Mobility Decline` below | `[REPOSITORY-DISCOVERED]` `functionalStatus.mobilityDecline` (`clinical_note_validation_engine.py:502-509`) |
-| Fall Risk / Morse score | numeric + derived risk label | Not confirmed in `RN_ICA_REQUIRED_FIELD_GROUPS` | `[IMPLEMENTATION DISCOVERY REQUIRED]` — screenshot shows "Fall Risk Assessment (Morse) — High Risk (Score 18/25)"; no matching entry found in the 17-item required list |
-| Cognitive & Mental Status (Orientation, Clinical Note, Standardized Test) | text | Partially — `Cognitive Decline` is required | `[REPOSITORY-DISCOVERED]` `neurological.cognitiveDecline` (`clinical_note_validation_engine.py:511-517`) |
-| ADLs (Bathing, Dressing, Toileting, Transferring, Eating, Continence) | select + text | Partially — `ADL Assistance Required` is required as a single group-level field, not per-ADL-item | `[REPOSITORY-DISCOVERED]` `functionalStatus.adlAssistanceRequired` (`clinical_note_validation_engine.py:494-501`); per-ADL-item requirement `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| ECOG Performance Status | numeric 0-4 + label | **[LOCKED PRODUCT DECISION]** conditionally visible (diagnosis-gated), **no confirmed backend Lock requirement** | `[OPEN DEFECT]` — restated from prior discovery: ECOG has no entry in `RN_ICA_REQUIRED_FIELD_GROUPS` and is not named in `_validate_required_functional_assessments`'s dementia/cardiac branches |
-| FAST scale | select | **[LOCKED PRODUCT DECISION]** visible only if dementia-related diagnosis; **[REPOSITORY-DISCOVERED]** compliance-blocking when `dementia_related` is true | `clinical_note_validation_engine.py:1112-1116, 1234+` |
-| NYHA class | select | **[LOCKED PRODUCT DECISION]** visible only if cardiac-related diagnosis; **[REPOSITORY-DISCOVERED]** compliance-blocking when `cardiac_related` is true | `clinical_note_validation_engine.py:1117-1121, 1255+` |
-| "FAST/NYHA not applicable based on diagnosis" advisory banner | read-only | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
+## 10. Orders & POC
+- **Purpose:** Show and explicitly initiate authorized order/POC actions.
+  **Owns:** RNICA action state only; `poc_problems` remain owned by the
+  authoritative Plan of Care domain (`rnica_poc_adapter.py`).
+- **Consumes/Produces:** `viewRnicaSectionPoc`, `addRnicaSectionPocProblem`,
+  `updateRnicaSectionPocProblem`, `resolveRnicaSectionPocProblem`,
+  `linkExistingRnicaSectionPocProblem`, `mergeRnicaPocDuplicateProblems`,
+  `deactivateRnicaSectionPocProblem`, `viewRnicaAllPoc` — all confirmed in
+  `src/api/icaAssessments.ts` calling `backend/app/api/routes/rnica_poc.py`.
+- **Confirmed:** POC is never auto-generated at Lock
+  (`docs/rnica-poc-lock-no-autogen-disposition.md`; confirmed still true at
+  `visits.py:1178-1250` — the lock handler explicitly does not call
+  `poc_generation_service`).
+- **Prohibited:** Silent order creation, silent POC mutation, automated
+  physician approval.
 
-## Screen 4 — Pain & Symptom Burden
+## 11. Compliance & Readiness
+- **Purpose:** Display all enforced blockers, warnings, HOPE state,
+  referral review, POC/CHHA readiness, and navigation to sources.
+  **Owns:** Presentation only.
+- **Produces:** `getRnicaFinalizationReadiness` (`GET /visits/rnica/{id}/
+  finalization-readiness`) — confirmed single source of truth shared with
+  the server Lock gate (`evaluate_finalization_readiness`, same function
+  called by both the readiness endpoint and the lock endpoint).
+- **Prohibited:** Hiding/truncating blockers, changing severity,
+  representing non-connected readiness engines (e.g. CTI, Survey
+  Readiness, Billing Readiness — not found anywhere in this repository) as
+  operational.
 
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Pain Screening (`pain.verbalizesPain` / `pain.pain_score`) | boolean/numeric | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Pain Screening"]` (`clinical_note_validation_engine.py:459-466`) |
-| Pain Pattern / Severity / Management / Findings | text/select | Not independently confirmed beyond `Pain Screening` | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Symptom Impact items (J2051 A-H: dyspnea, anxiety, nausea, vomiting, diarrhea, constipation, agitation) | select | Not confirmed in `RN_ICA_REQUIRED_FIELD_GROUPS`; HOPE mapping confirmed separately in prior session discovery | `[REPOSITORY-DISCOVERED]` HOPE J2051 mapping (per `SYMPTOM_IMPACT_CHECKLIST` in `RNICA.jsx`); Lock-blocking status `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Respiratory Rate | numeric | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Respiratory Rate"]` (`clinical_note_validation_engine.py:467-474`) |
-| Weight | numeric | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Weight"]` (`clinical_note_validation_engine.py:475-482`) |
-| Appetite / Intake | select/text | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Appetite / Intake"]` (`clinical_note_validation_engine.py:483-490`) |
-| Pain Findings / Recommendations (AI) | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
+## 12. AI Action Center
+- **Purpose:** Present RNICA Intelligence findings, missing evidence,
+  documentation gaps, compliance signals, and freshness. **Owns:** No
+  clinical source data. **Source:** `getRnicaIntelligence`
+  (`src/api/icaAssessments.ts`) → `intelligence` state in `RNICA.jsx`.
+- **Prohibited:** Eligibility, prognosis, certification, narrative
+  authority, risk scoring, live-typing claims, silent mutations. See
+  `RNICA_AI_GOVERNANCE.md` for the full trigger/output/language contract.
 
-## Screen 5 — Diagnosis & LCD
-
-Confirmed directly against the provided Diagnosis & LCD screenshot.
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Primary Terminal Diagnosis (ICD-10 + description) | text/code | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Primary Diagnosis"]` (`clinical_note_validation_engine.py:381-389`) |
-| Diagnosis Evidence Group / Category | select | No independent Lock rule confirmed | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Secondary Diagnoses (ICD-10, onset, Hospice Related toggle) | list + boolean | Not confirmed | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Active Comorbidities & Clinical Impact | text | Not confirmed | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Disease Trajectory | text/select | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Disease Trajectory"]` (`clinical_note_validation_engine.py:407-415`) |
-| LCD Supporting Evidence (narrative) | text | **Yes** — under the label "LCD Supporting Evidence," mapped to `diagnoses.lcdEligibilityNarrative` | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["LCD Supporting Evidence"]` (`clinical_note_validation_engine.py:390-397`) |
-| LCD Supporting Narrative (character-counted textarea) | text (2000 char) | Same field as above, screenshot-confirmed | `[REPOSITORY-DISCOVERED]` |
-| ADVISORY: LCD Eligibility Support panel | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed — rules-engine advisory, not a certification |
-| Clinical Narrative | — | **[LOCKED PRODUCT DECISION]: must NOT appear on this screen.** `finalization.clinicalNarrative` is the sole nurse-facing narrative (Screen 13 only) | Restated from `RNICA_CLINICAL_NARRATIVE_FINAL_DECISION.md`, not reopened |
-
-## Screen 6 — Body Systems
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Ten body-system sections (Neurological, Cardiovascular, Respiratory, Infection, GI, Nutrition, Endocrine, Genitourinary, Musculoskeletal, Skin/Wounds) | per-system structured fields | **Not required as a full Review-of-Systems set for RN ICA** — `_validate_required_ros` explicitly returns early (skips) for RN ICA notes | `[REPOSITORY-DISCOVERED]` `clinical_note_validation_engine.py:826-831` (`if is_rn_ica: return`) |
-| Cognitive Decline (Neurological) | boolean/text | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Cognitive Decline"]` |
-| Mobility Decline (Musculoskeletal-adjacent) | boolean/text | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Mobility Decline"]` |
-| Imminent Death, SFV | structured fields | **Yes (SFV)** — confirmed as a hard Lock blocker in the Finalization screenshot ("SFV Assessment Missing... Supportive Care Plan (SFV) documentation is a state compliance lock") | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed; exact backend path `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Clinical/Missing/Safety Findings (AI) | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-
-## Screen 7 — Caregiver & Support
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Caregiver assessed / no-caregiver state | boolean + conditional reason | **[DESIGN REQUIREMENT]** no-caregiver reason required when no caregiver documented (restated from `RNICA_WORKFLOW_AUTHORITY_MAP.md`) | `[IMPLEMENTATION DISCOVERY REQUIRED]` — not present in `RN_ICA_REQUIRED_FIELD_GROUPS`; verify at implementation time |
-| Psychosocial / Spiritual / Personal Care / Teaching Needs | structured fields | Not confirmed in the 17-item required list | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Caregiver Risk / Support Risk / Teaching Recommendations (AI) | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-
-## Screen 8 — Safety & Clinical Risk
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Fall Risk | numeric/derived | Not confirmed in the 17-item required list (Morse score itself is `[IMPLEMENTATION DISCOVERY REQUIRED]`, see Screen 3) | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Safety Issues / Behavior Risks / Cognitive Risks | structured fields | Cognitive Decline is required (shared with Screen 6) | `[REPOSITORY-DISCOVERED]` (see above) |
-| Imminent Death Indicators | structured fields | Shared with Screen 6 SFV/Imminent Death | `[REPOSITORY-DISCOVERED]` |
-| AI Risk Findings / Suggested Actions | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-
-## Screen 9 — ACP & Goals of Care
-
-**Correction to a prior document's characterization:** an earlier
-companion document referred to "six ACP hard-required fields." Direct
-re-verification against `RN_ICA_REQUIRED_FIELD_GROUPS` in this pass
-confirms only **three** ACP-labeled entries in the authoritative
-required-field list. This matrix uses the verified three; the other
-ACP fields below (Advance Directives, POA, Decision Maker) are real UI
-fields but their Lock-blocking status is not confirmed in this list and
-is flagged accordingly. `RNICA_WORKFLOW_AUTHORITY_MAP.md` is not edited
-to reflect this correction per the standing instruction not to reopen it
-— this matrix is the corrected reference going forward.
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Code Status | select | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Code Status"]` (`clinical_note_validation_engine.py:436-443`) |
-| Life-Sustaining Treatment Preference | select | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Life-Sustaining Treatment Preference"]` (`clinical_note_validation_engine.py:444-451`) |
-| Hospitalization Preference | select | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Hospitalization Preference"]` (`clinical_note_validation_engine.py:452-458`) |
-| CPR Preference | select | Not a separate entry in the required list — may be folded into Code Status | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| Advance Directives | boolean/text | Not confirmed | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-| POA Information / Decision Maker | text | Not confirmed | `[IMPLEMENTATION DISCOVERY REQUIRED]` |
-
-## Screen 10 — Orders & POC
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Plan of Care Narrative | text | **Yes** | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Plan of Care Narrative"]` (`clinical_note_validation_engine.py:509-517`) |
-| Problems / Goals / Interventions | structured, POC-model-backed | Governed by POC completeness/`poc_review_gate.py`, not this list directly | `[REPOSITORY-DISCOVERED]` `PATIENT_CHART_AUTHORITY_MAP.md` POC section |
-| Orders | structured, Physician-Order-model-backed | Governed by Physician Orders workspace | `[REPOSITORY-DISCOVERED]` |
-| Suggested Orders (AI) | read-only, AI, action-gated | No — advisory only, never auto-creates orders | `[REPOSITORY-DISCOVERED]`, governed by `RNICA_AI_GOVERNANCE.md` |
-| POC Readiness / POC Findings | read-only, derived | Feeds Screen 11 | `[REPOSITORY-DISCOVERED]` |
-
-## Screen 11 — Compliance & Readiness
-
-Aggregation screen. All fields here are read-only mirrors of rules
-already defined by other screens and by `RNICA_LOCK_READINESS_MATRIX.md`.
-No field on this screen independently blocks Lock; it displays the
-aggregate `compliance_blocking_items` list produced by
-`validate_and_trigger_incident` (`clinical_note_validation_engine.py`).
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| Blocking issue list | read-only, aggregated | n/a — mirrors other screens | `[REPOSITORY-DISCOVERED]` `ValidationResult.compliance_blocking_items` |
-| Warnings / advisory list | read-only, aggregated | n/a | `[REPOSITORY-DISCOVERED]` `ValidationResult.warnings` |
-
-## Screen 12 — AI Action Center
-
-Confirmed directly against the provided AI Action Center screenshot.
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| "AI analysis last refreshed... updates on Load, Save, and Lock" banner | read-only | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed — direct product evidence of the refresh-trigger rule in `RNICA_AI_GOVERNANCE.md` |
-| Advisory Findings (Documented Findings Requiring Review, Missing Evidence, Documentation Gaps, Compliance Signals) | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| "Advisory Findings — For Clinician Review Only" disclaimer, "AI does not generate narratives, definitive prognoses, or physician certifications" | read-only, static compliance text | No — but must never be removed or weakened | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed; governed by `RNICA_AI_GOVERNANCE.md` |
-| Suggested Follow-Up items, each labeled "SUGGESTION (NOT MANDATED)" | read-only, AI | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| LCD Supporting Evidence summary ("5 of 5 criteria met") | read-only, AI-adjacent | No — advisory, not the LCD narrative field itself (Screen 5 owns that) | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| Readiness & Compliance summary (e.g., "9 of 13 complete," "2 items pending") | read-only, aggregated | n/a — mirrors Screen 11 | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| "Refresh AI Analysis" button | action | No | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-
-## Screen 13 — Finalization
-
-Confirmed directly against the provided Finalization screenshot.
-
-| Field | Type | Required at Lock | Source |
-|---|---|---|---|
-| `finalization.clinicalNarrative` | text | **Yes** — "Final clinical narrative fully documented," shown RESOLVED in the readiness checklist | `[REPOSITORY-DISCOVERED]` `RN_ICA_REQUIRED_FIELD_GROUPS["Clinical Narrative"]`, path `finalization.clinicalNarrative` (`clinical_note_validation_engine.py:398-406`); this is the sole nurse-facing narrative per `RNICA_CLINICAL_NARRATIVE_FINAL_DECISION.md` |
-| Readiness Checklist (8 confirmed items in the screenshot: demographics/billing, clinical narrative, pain assessment, functional status HOPE/M-items, caregiver/support, safety/fall risk, SFV documentation, hospice active orders) | read-only, per-item RESOLVED/MISSING | Each item is an independent hard blocker when MISSING | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed; full backend mapping consolidated in `RNICA_LOCK_READINESS_MATRIX.md` |
-| Right-rail "N BLOCKING ISSUES DETECTED" panel | read-only, aggregated | n/a — mirrors checklist | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| Clinician Certification & Signature (certifying clinician, credential state, attestation statement, "Sign Document" button) | text (read-only identity) + action | **Yes** — signature required before Lock | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| "Lock Assessment (Blocked)" button | action, disabled while blockers exist | n/a — the gate itself | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-| Assessment Audit Logs (autosave, field updates, initialization) | read-only, append-only | n/a | `[REPOSITORY-DISCOVERED]`, screenshot-confirmed |
-
----
-
-## Cross-Screen Field Corrections Log
-
-This section exists so future engineers know which values in prior
-companion documents were superseded by direct code re-verification
-during this implementation pass, without editing those documents.
-
-| Prior claim | Document | Correction |
-|---|---|---|
-| "Six ACP fields are hard-required with HOPE mappings" | `RNICA_WORKFLOW_AUTHORITY_MAP.md`, Screen 9 row | Only 3 ACP-labeled entries confirmed in `RN_ICA_REQUIRED_FIELD_GROUPS`: Code Status, Life-Sustaining Treatment Preference, Hospitalization Preference. Additional ACP fields (Advance Directives, POA, CPR Preference, Decision Maker) exist in the UI but their Lock-blocking status is `[IMPLEMENTATION DISCOVERY REQUIRED]`. |
+## 13. Finalization
+- **Purpose:** Complete Final Clinical Narrative, readiness, manual
+  attestation, signature, lock, amendment, and audit review.
+- **Owns:** `finalization.clinicalNarrative`,
+  `finalization.signatureCertification`, `finalization.clinicianSignature`
+  — confirmed as the exact field paths read at Lock time
+  (`backend/app/api/visits.py:1178-1250`, audit metadata block).
+- **Produces:** `lockRnicaAssessment` (`POST /visits/rnica/{id}/lock`),
+  `requestRnicaCorrection`/`listRnicaAmendments`/`approveRnicaAmendment`/
+  `denyRnicaAmendment` (all confirmed wired, backed by
+  `rnica_amendment.py`/`rnica_amendment_service.py`, tested in
+  `test_rnica_amendments.py`, `test_rnica_finalization.py`).
+- **Confirmed defect:** `record.status = "DRAFT"` runs unconditionally on
+  every `PUT /visits/rnica/{id}` update (`visits.py:1118`), even trivial
+  autosave ticks — this is a pre-existing, still-present bug, not new
+  behavior to design around. Logged in
+  `RNICA_CURRENT_TO_TARGET_GAP_REPORT.md` as "Implemented but defective."
+- **Prohibited:** Duplicate narrative, automatic signature/attestation/
+  lock, bypass of server readiness.
