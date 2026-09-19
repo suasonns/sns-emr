@@ -1,593 +1,682 @@
 # RNICA Redesign Source of Truth
 
-VERSION 1.0 — FINAL FIGMA REQUIREMENTS / FINAL FIGMA INPUT PACKAGE
+**VERSION:** 1.1, authority-labeled Figma input package
+**STATUS:** AUTHORITATIVE DESIGN INPUT. NOT IMPLEMENTATION AUTHORIZATION.
+**CODE:** BLOCKED
+**SCHEMA:** BLOCKED
+**MIGRATIONS:** BLOCKED
+**CURRENT DEFECT REPAIR:** BLOCKED UNDER THIS DOCUMENT
 
-STATUS: AUTHORITATIVE DESIGN DOCUMENT
-FIGMA MUST DESIGN FROM THIS DOCUMENT
-REPOSITORY DOCUMENTS ARE SUPPORTING EVIDENCE ONLY
+Companion document: `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md` (names the
+supporting discovery document(s) for every screen's underlying content).
 
-DO NOT DESIGN FROM:
-- Current RNICA Layout
-- Current Navigation
-- Current Card Placement
-- Historical UI
-- Repository Structure
+## 1. Purpose
 
-CODE: BLOCKED
-SCHEMA: BLOCKED
-MIGRATIONS: BLOCKED
-REDESIGN: NOT YET AUTHORIZED — this document is the design input, not the
-redesign itself.
+This document defines the approved future RNICA information architecture
+and nurse workflow for Figma. It translates the approved discovery package
+and locked decisions into a workflow-first design specification without
+treating repository structure as design authority.
 
-This document does not describe code, models, tables, services, APIs,
-repositories, or React components. Where a fact traces to prior repository
-discovery, it is stated in plain product language (e.g. "already matches
-current behavior," "not currently enforced") rather than as a code
-citation. Full file/line evidence lives in the supporting documents listed
-below and is not repeated here.
+Figma must design from patient context, clinical evidence, nurse
+workflow, hospice workflow, visible compliance readiness, and honest AI
+assistance. Figma must not recreate current RNICA navigation, current
+card placement, repository structure, React component structure, database
+structure, or a HospiceMD-style chart hierarchy.
 
-Supporting evidence documents (repository-facing, not for Figma):
-- `RNICA_SECTION_BREAKDOWN.md`
-- `RNICA_CLINICAL_NARRATIVE_FINAL_DECISION.md`
-- `RNICA_LOCK_DEFECT_UNREACHABLE_NARRATIVE_REVIEW.md`
-- `RNICA_CLINICAL_NARRATIVE_REWIRING_MAP.md`
-- `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`
-- `AI_VISIBILITY_MATRIX.md`
-- `RNICA_USABILITY_AND_AI_REVIEW.md`
+## 2. Authority Legend
 
----
+- **[REPOSITORY-DISCOVERED]** Proven current field, behavior, dependency,
+  validation, trigger, consumer, or non-connection.
+- **[LOCKED PRODUCT DECISION]** Approved future-state decision that may
+  supersede current repository placement.
+- **[REGULATORY / CLINICAL AUTHORITY]** Controlling assessment,
+  plan-of-care, documentation, or terminal-status principle. This label
+  does not imply that the current repository already implements the
+  requirement.
+- **[DESIGN REQUIREMENT]** Figma presentation/interaction requirement
+  preserving the approved authorities.
+- **[FUTURE PRODUCT DIRECTION]** Desired capability not established as
+  current functionality.
+- **[NOT BUILT / NOT CONNECTED]** Explicit discovery non-finding. Figma
+  must not represent this as operational.
+- **[OPEN DEFECT]** Existing defect documented separately and not repaired
+  by this redesign artifact.
 
-## PRIMARY OBJECTIVE
+## 3. Global Locked Decisions
 
-**Preserve:**
-- HOPE
-- POC
-- Validation
-- Structured Findings
-- Intelligence
-- Lock Workflow
-- Amendment Workflow
-- Autosave
-- Assessment History
-- Auditability
+- **[LOCKED PRODUCT DECISION]** `finalization.clinicalNarrative` is the
+  sole authoritative nurse-facing Clinical Narrative.
+- **[LOCKED PRODUCT DECISION]** Diagnosis shows no Clinical Narrative,
+  Clinical Diagnosis Narrative, Final Assessment Narrative, Clinical
+  Synthesis Narrative, or Attestation Narrative.
+- **[LOCKED PRODUCT DECISION]** Historical `diagnoses.clinicalNarrative`,
+  review-state values, amendments, audit history, and locked records are
+  preserved without automatic merge or overwrite.
+- **[OPEN DEFECT]** Historical/API-created records with a populated
+  Diagnosis narrative and an untrue review flag may be unable to lock
+  because the current review control is unreachable.
+- **[LOCKED PRODUCT DECISION]** PPS and KPS are always visible.
+- **[LOCKED PRODUCT DECISION]** FAST appears only for dementia,
+  Alzheimer's disease, or dementia-related diagnosis.
+- **[LOCKED PRODUCT DECISION]** ECOG appears only for cancer, oncology
+  diagnosis, metastatic disease, or hematologic malignancy.
+- **[LOCKED PRODUCT DECISION]** NYHA appears only for CHF, heart failure,
+  or cardiomyopathy.
+- **[LOCKED PRODUCT DECISION]** Hidden scales are not rendered as
+  disabled, placeholder, or "Not Applicable" controls.
+- **[DESIGN REQUIREMENT]** Preserve HOPE, POC, Validation, Structured
+  Findings, RNICA Intelligence, Autosave, Lock, Amendments, Audit Trail,
+  Required Fields, and LCD Narrative.
 
-**Redesign:**
-- Navigation
-- Workflow
-- AI Visibility
-- Patient Experience
-- Nurse Experience
+## 4. Global Capability Boundaries
 
----
-
-## GLOBAL RULES
-
-RNICA IS:
-- Patient First
-- Evidence First
-- Nurse First
-- Workflow First
-- AI Assisted
-- Compliance Guided
-
-RNICA IS NOT:
-- Form First
-- Document First
-- Repository First
-
----
-
-## MASTER NURSE WORKFLOW
-
-```
-Step 1  Patient Story
-   ↓
-Step 2  Evidence & Intake
-   ↓
-Step 3  Functional Status
-   ↓
-Step 4  Pain & Symptom Burden
-   ↓
-Step 5  Diagnosis & LCD
-   ↓
-Step 6  Body Systems
-   ↓
-Step 7  Caregiver & Support
-   ↓
-Step 8  Safety & Clinical Risk
-   ↓
-Step 9  ACP & Goals of Care
-   ↓
-Step 10 Orders & POC
-   ↓
-Step 11 Compliance & Readiness
-   ↓
-Step 12 AI Action Center
-   ↓
-Step 13 Finalization
-```
+- **[REPOSITORY-DISCOVERED]** Intelligence refreshes on load, Save, and
+  Lock, not live typing.
+- **[REPOSITORY-DISCOVERED]** RNICA Intelligence is a deterministic
+  recommendation-only rules/heuristics engine.
+- **[NOT BUILT / NOT CONNECTED]** Dedicated Patient Story engine,
+  Explanation Engine, CTI integration, F2F integration, Survey Readiness,
+  and RNICA Billing Readiness are not established as current RNICA
+  capabilities.
+- **[REPOSITORY-DISCOVERED]** POC, HOPE, Validation, Structured Findings,
+  Autosave, Lock, Amendments, and audit events are wired.
+- **[DESIGN REQUIREMENT]** The UI must distinguish saved intelligence from
+  in-progress edits and must not imply continuous AI analysis when none
+  exists.
+- **[DESIGN REQUIREMENT]** Hospice eligibility evidence must be shown as
+  documentation support, not an automatic substitute for physician
+  judgment.
 
 ---
 
-## CLINICAL RULE EVIDENCE TABLES
+# Screen 1. Patient Story
 
-Each performance-status rule below is stated with the Owner's locked rule,
-the required Figma behavior, a plain-language note on how it compares to
-current repository behavior (no code references), and PASS/FAIL acceptance
-criteria for the redesigned Functional Status screen.
+**Purpose**
+- **[DESIGN REQUIREMENT]** Give the nurse a patient-first orientation
+  before entering the assessment workflow.
 
-### PPS
+**Why the nurse comes here**
+- **[DESIGN REQUIREMENT]** Review patient/admission context, terminal
+  diagnosis, decline evidence, caregiver context, and current risks in one
+  place.
 
-| Field | Value |
-|---|---|
-| Owner Rule | Always Visible |
-| Required Figma Behavior | Always Visible |
-| Current Behavior | Already matches — no diagnosis condition exists today |
-| Current AI Dependency | None (excluded as a computed score, not an AI-assertable fact) |
-| Current HOPE Dependency | Yes — paired with KPS in an either/or HOPE requirement |
-| Current Lock/Compliance Dependency | Always required at finalization, independent of diagnosis |
-| PASS | PPS visible on every patient |
-| FAIL | PPS hidden for any patient |
+**Always visible**
+- **[REPOSITORY-DISCOVERED]** Patient identity and admission context
+  already exist as read-only/prefilled context.
+- **[REPOSITORY-DISCOVERED]** Primary diagnosis, disease/terminal-
+  prognosis content, caregiver fields, intelligence findings, and
+  missing-evidence output exist in separate current areas.
+- **[DESIGN REQUIREMENT]** Present those sources as a read-only
+  orientation summary with provenance links.
 
-### KPS
+**Conditionally visible**
+- **[DESIGN REQUIREMENT]** Prior-assessment decline comparison,
+  hospitalization/utilization evidence, and risk summaries appear only
+  when source data exists.
 
-| Field | Value |
-|---|---|
-| Owner Rule | Always Visible |
-| Required Figma Behavior | Always Visible |
-| Current Behavior | Already matches — no diagnosis condition exists today |
-| Current AI Dependency | None (excluded as a computed score) |
-| Current HOPE Dependency | Yes — paired with PPS in an either/or HOPE requirement |
-| Current Lock/Compliance Dependency | Always required at finalization, independent of diagnosis |
-| PASS | KPS visible on every patient |
-| FAIL | KPS hidden for any patient |
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Intelligence summary, findings,
+  recommendations, missing evidence, and prior-assessment comparison may
+  be presented.
+- **[FUTURE PRODUCT DIRECTION]** A generated narrative Patient Story is
+  not current functionality.
 
-### FAST
+**Compliance content**
+- **[DESIGN REQUIREMENT]** Show source evidence and review state. Do not
+  label the summary as certification or an eligibility determination.
 
-| Field | Value |
-|---|---|
-| Owner Rule | Visible only if: Dementia, Alzheimer's, or a dementia-related diagnosis |
-| Required Figma Behavior | Visible only when diagnosis qualifies; hidden otherwise |
-| Current Behavior | Already matches — diagnosis-gated today on both primary and secondary diagnosis |
-| Current AI Dependency | None (excluded as a computed score) |
-| Current HOPE Dependency | None found |
-| Current Lock/Compliance Dependency | Required at finalization only when a dementia-related diagnosis is documented |
-| Open Gap | None identified |
-| PASS | Diagnosed dementia patient shows FAST; non-dementia patient does not |
-| FAIL | FAST visible for non-dementia patients |
+**Required actions**
+- **[DESIGN REQUIREMENT]** Review and navigate to source sections when
+  correction is needed. Do not require a new duplicate "story approval"
+  field unless separately authorized.
 
-### ECOG
+**Completion criteria**
+- **[DESIGN REQUIREMENT]** Identity, diagnosis, admission context, decline
+  evidence, caregiver context, risk findings, missing evidence, and source
+  links are reachable from the screen.
 
-| Field | Value |
-|---|---|
-| Owner Rule | Visible only if: Oncology diagnosis, Cancer diagnosis, or Metastatic disease |
-| Required Figma Behavior | Visible only when diagnosis qualifies; hidden otherwise |
-| Current Behavior | Already matches — diagnosis-gated today on both primary and secondary diagnosis |
-| Current AI Dependency | None (excluded as a computed score) |
-| Current HOPE Dependency | None found |
-| Current Lock/Compliance Dependency | **Open Gap** — unlike FAST/NYHA, nothing today makes ECOG a finalization/compliance requirement even when a qualifying diagnosis is documented |
-| Future Rewiring Required | Owner decision needed: add an equivalent compliance requirement for ECOG, or confirm its display-only status is intentional |
-| PASS | Cancer patient shows ECOG; non-cancer patient does not |
-| FAIL | ECOG visible for non-cancer diagnosis |
+**Do not show**
+- **[NOT BUILT / NOT CONNECTED]** No claimed Patient Story engine,
+  billing-readiness result, CTI result, F2F result, or survey-readiness
+  result.
 
-### NYHA
+**Do not touch**
+- **[DESIGN REQUIREMENT]** Source authorities remain in their existing
+  clinical/admission domains. The Patient Story does not become a new
+  data authority.
 
-| Field | Value |
-|---|---|
-| Owner Rule | Visible only if: CHF, Heart Failure, or Cardiomyopathy |
-| Required Figma Behavior | Visible only when diagnosis qualifies; hidden otherwise |
-| Current Behavior | Already matches — diagnosis-gated today on both primary and secondary diagnosis |
-| Current AI Dependency | Yes — the only performance scale an AI evidence pipeline may currently assert from clinician narrative text |
-| Current HOPE Dependency | None found |
-| Current Lock/Compliance Dependency | Required at finalization only when a cardiac-related diagnosis is documented |
-| Open Gap | None identified |
-| PASS | CHF patient shows NYHA; non-cardiac patient does not |
-| FAIL | NYHA appears for non-cardiac diagnosis |
+**Pass:** The screen is an evidence-linked summary and clearly identifies
+stale/saved intelligence.
 
-**Cross-cutting open item (not resolved by this document):** the diagnosis
-keywords used to gate each scale for display and the diagnosis keywords
-used to decide whether FAST/NYHA are compliance-required are two
-independently maintained lists today and can disagree at the edges. Owner
-decision needed on whether to unify them before/after redesign.
+**Fail:** The screen creates new authoritative data, hides provenance, or
+implies automated eligibility/certification.
 
 ---
 
-## SCREEN EVIDENCE TABLES
+# Screen 2. Evidence & Intake
 
-For each screen: Purpose, Nurse Question(s), what content is Always
-Visible / Conditionally Visible / must never be shown, AI content, items
-that must survive redesign unchanged, and PASS/FAIL acceptance criteria.
-Where a screen's underlying workflow has not yet had a dedicated
-repository discovery pass this session, that is stated explicitly rather
-than inventing content.
+**Purpose**
+- **[DESIGN REQUIREMENT]** Consolidate admission evidence and intake
+  verification needed before clinical synthesis.
 
-### SCREEN 1 — PATIENT STORY
+**Always visible**
+- **[REPOSITORY-DISCOVERED]** Demographics, vitals, referral information,
+  admission context, living situation, and records/evidence status
+  available to the workflow.
 
-**Purpose:** Understand the patient before documenting.
+**Conditionally visible**
+- **[DESIGN REQUIREMENT]** Missing-source alerts and source-specific
+  detail appear only when applicable.
 
-**Nurse Questions:** Who is this patient? Why hospice? What changed? What
-matters most today?
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Evidence harvesting and missing-evidence
+  output may be surfaced with source provenance.
 
-**Always Visible:** Patient Name, Primary Diagnosis, Secondary Diagnoses,
-Hospice Narrative Summary, Recent Hospitalization Summary, Caregiver
-Summary, Current Risks, AI Summary, Missing Information, Suggested Next
-Action.
+**Compliance content**
+- **[REGULATORY / CLINICAL AUTHORITY]** Initial/comprehensive assessment
+  findings must support individualized planning and be retained in the
+  clinical record.
+- **[REPOSITORY-DISCOVERED]** `referrals.reviewed` is a server-readiness
+  requirement.
 
-**AI Content:** Summary, Risk Findings, Clinical Highlights, Missing
-Evidence.
+**Required actions**
+- **[DESIGN REQUIREMENT]** Review intake evidence and resolve missing
+  required intake/referral documentation.
 
-**Do Not Show:** Forms, Validation Errors, Compliance Tasks.
+**Completion criteria**
+- All configured required intake fields and referral-review requirements
+  are satisfied; unresolved missing evidence remains visible.
 
-**Items That Must Survive:** none — this screen is a new presentation
-layer over existing data; no backend workflow is altered.
+**Do not show**
+- Lock/signature controls or unsupported billing/eligibility
+  determinations.
 
-**PASS:** Nurse understands the patient within 30 seconds.
-**FAIL:** Nurse needs multiple screens to understand the patient.
+**Do not touch**
+- Admission scoping, prefill provenance, referral review, and source
+  evidence.
 
----
-
-### SCREEN 2 — EVIDENCE & INTAKE
-
-**Purpose:** Review available evidence.
-
-**Nurse Question:** What information do I already have?
-
-**Always Visible:** Referral Data, Facesheet Facts, Imported Documents,
-Structured Findings, Evidence Sources, Evidence Summary, Missing Evidence.
-
-**AI Content:** Evidence Summary, Evidence Gaps, Suggested Review.
-
-**Discovery Status:** Evidence-harvesting and structured-findings sourcing
-for this screen has been discovered in prior narrative/AI-visibility
-documents; a dedicated per-source discovery pass for this specific screen
-has not yet been run this session.
-
-**PASS:** Nurse understands available evidence before documenting.
-**FAIL:** Nurse must search the chart to find evidence.
+**Pass:** Required data and evidence status are explicit.
+**Fail:** Missing intake evidence is hidden or inferred as complete.
 
 ---
 
-### SCREEN 3 — FUNCTIONAL STATUS
+# Screen 3. Functional Status
 
-**Purpose:** Assess decline and performance.
+**Purpose**
+- **[DESIGN REQUIREMENT]** Document functional status and disease-
+  relevant performance scales without presenting irrelevant scales.
 
-**Nurse Question:** How functional is this patient today?
+**Always visible**
+- **[LOCKED PRODUCT DECISION]** PPS and KPS.
 
-**Always Visible:** PPS, KPS, ADLs, Mobility, Transfers, Fall Risk,
-Cognitive Status.
+**Conditionally visible**
+- **[LOCKED PRODUCT DECISION]** FAST, ECOG, and NYHA only under their
+  authorized diagnosis conditions.
 
-**Conditionally Visible:** FAST, ECOG, NYHA — see Clinical Rule Evidence
-Tables above.
+**AI content**
+- **[DESIGN REQUIREMENT]** Show functional decline evidence and missing-
+  status prompts only when supported by current data or validation.
 
-**Do Not Show:** Disabled scales, empty scales, "Not Applicable" cards.
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** PPS/KPS warning and HOPE M1190 association
+  remain wired.
+- **[REGULATORY / CLINICAL AUTHORITY]** Functional status is supporting
+  evidence, not an automatic eligibility result.
 
-**AI Content:** Significant Decline, Missing Scales, Suggested Assessments.
+**Required actions / Completion criteria**
+- Complete PPS and KPS; complete any diagnosis-applicable scale; provide
+  required justification where configured.
 
-**Evidence Table:**
+**Do not show**
+- Disabled, placeholder, "N/A," or irrelevant scales.
 
-| Scale | Trigger | Visible |
-|---|---|---|
-| PPS | Always | Yes |
-| KPS | Always | Yes |
-| FAST | Dementia diagnosis | Conditional |
-| ECOG | Oncology diagnosis | Conditional |
-| NYHA | CHF diagnosis | Conditional |
+**Do not touch**
+- Field keys, score semantics, structured-finding mappings, and HOPE
+  mapping.
 
-**Items That Must Survive:** the diagnosis-gating logic itself (already
-correct), the always-required PPS/KPS compliance check, the FAST/NYHA
-diagnosis-conditional compliance check.
-
-**PASS:** Only clinically relevant scales display.
-**FAIL:** Irrelevant scales visible.
-
----
-
-### SCREEN 4 — PAIN & SYMPTOM BURDEN
-
-**Purpose:** Assess symptom impact.
-
-**Nurse Question:** What symptoms are impacting this patient?
-
-**Always Visible:** Pain Score, Pain Pattern, Pain Severity, Pain
-Management, Pain Findings, Dyspnea, Anxiety, Depression, Agitation,
-Fatigue, Sleep, Nausea, Constipation, Diarrhea, Appetite, Weight Change.
-
-**AI Content:** Pain Findings, Pain Recommendations, Missing Pain
-Information, Suggested Follow-Up.
-
-**Discovery Status:** NOT YET DISCOVERED. No repository search has been
-run this session for the current Pain section's field inventory,
-validation rules, AI/structured-findings inputs, or HOPE symptom-impact
-dependency (e.g., HOPE J2051-series items). The Owner-supplied content
-above is recorded as the target requirement, but it is not yet verified
-against repository evidence. A dedicated discovery pass is required before
-this screen's PASS/FAIL criteria can be certified as achievable without
-regression.
-
-**PASS:** Nurse completes the pain workflow from one screen.
-**FAIL:** Symptoms remain split across unrelated screens.
+**Pass:** Only relevant scales render and values persist correctly.
+**Fail:** Irrelevant scales render or hidden scales are represented as
+disabled.
 
 ---
 
-### SCREEN 5 — DIAGNOSIS & LCD
+# Screen 4. Pain & Symptom Burden
 
-**Purpose:** Document hospice eligibility.
+**Purpose**
+- **[REPOSITORY-DISCOVERED]** Combine Pain Assessment and Symptom Impact
+  while preserving HOPE items and existing derivation behavior.
 
-**Nurse Question:** Why does this patient qualify for hospice?
+**Always visible**
+- Pain screening, current burden, pain tool/mode, neuropathic pain, and
+  J2051 symptom-impact summary.
 
-**Always Visible:** Primary Diagnosis, Secondary Diagnoses, Comorbidities,
-Terminal Prognosis, Disease Trajectory, HOPE Diagnosis Category, LCD
-Supporting Evidence, LCD Narrative, Recent Utilization, RN Addendum,
-Clinician Clarification.
+**Conditionally visible**
+- PAINAD/FLACC/verbal detail according to current assessment mode;
+  advanced detail only when applicable.
 
-**LOCKED RULE:** Do NOT show a Clinical Narrative, Final Assessment
-Narrative, Clinical Synthesis Narrative, or Attestation Narrative here —
-already a locked, repository-verified decision.
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Pain threshold findings/recommendations and
+  missing evidence from the Intelligence output.
 
-**Evidence Table:**
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** J0900, J0915, and J2051 mappings and
+  validation remain visible.
 
-| Item | Compliance Critical |
-|---|---|
-| Diagnosis | Yes |
-| HOPE Category | Yes |
-| LCD Evidence | Yes |
-| LCD Narrative | Yes |
-| Disease Trajectory | Yes |
+**Required actions / Completion criteria**
+- Complete hard-required pain fields and review all applicable symptom-
+  impact items.
 
-**Discovery Status:** RN Addendum and Clinician Clarification remain
-classified REQUIRES CLINICAL REVIEW per the Clinical Narrative Final
-Decision — they are listed here as target content, but their inclusion is
-not yet a final Owner decision.
+**Do not show**
+- Derived values as if independently clinician-entered; technical engine
+  details as primary workflow copy.
 
-**PASS:** Clinical Narrative absent from this screen.
-**FAIL:** Clinical Narrative appears here.
+**Do not touch**
+- Blank-only auto-derivation. It must never overwrite a manual entry.
 
----
-
-### SCREEN 6 — BODY SYSTEM REVIEW
-
-**Purpose:** Head-to-toe assessment.
-
-**Nurse Question:** What are the significant clinical findings?
-
-**Always Visible:** Neurological, Cardiovascular, Respiratory, Infection,
-Gastrointestinal, Nutrition, Endocrine, Genitourinary, Musculoskeletal,
-Skin/Wounds, Imminent Death, SFV.
-
-**AI Content:** Clinical Findings, Missing Findings, Safety Findings.
-
-**Discovery Status:** NOT YET DISCOVERED per-system. Purpose, required
-data, conditional data, AI content, compliance content, and validation
-rules for each individual body system have not been separately verified
-against the repository this session.
-
-**PASS:** All systems accessible.
-**FAIL:** Any system omitted or hidden.
+**Pass:** Manual values remain authoritative and HOPE gaps are actionable.
+**Fail:** Derived values overwrite clinical input or required mappings
+disappear.
 
 ---
 
-### SCREEN 7 — CAREGIVER & SUPPORT
+# Screen 5. Diagnosis & LCD
 
-**Purpose:** Evaluate support system.
+**Purpose**
+- Document terminal diagnosis, related diagnoses/comorbidities, prognosis
+  evidence, and LCD support.
 
-**Nurse Question:** Who is supporting the patient and what are their risks?
+**Always visible**
+- **[REPOSITORY-DISCOVERED]** Primary diagnosis, secondary diagnoses,
+  comorbidities, HOPE diagnosis category, terminal prognosis, LCD
+  supporting evidence, and LCD eligibility narrative.
 
-**Always Visible:** Caregiver Assessment, Psychosocial, Spiritual,
-Bereavement, Personal Care, Teaching Needs.
+**Conditionally visible**
+- **[REPOSITORY-DISCOVERED]** Disease-specific LCD guidance after
+  diagnosis detection.
+- **[LOCKED PRODUCT DECISION]** Disease Trajectory, RN Addendum, and
+  Clinician Clarification require approved clinical definition before
+  being revived as live controls.
 
-**AI Content:** Caregiver Risk, Support Risks, Teaching Recommendations.
+**AI content**
+- **[REPOSITORY-DISCOVERED]** LCD detect/config/evaluate chain and
+  diagnosis-related intelligence inputs.
 
-**Discovery Status:** NOT YET DISCOVERED. Grouping rationale and current
-AI/validation dependencies for this screen have not been verified against
-the repository this session.
+**Compliance content**
+- LCD evidence must support individualized documentation and must not be
+  presented as a conclusive automated eligibility decision.
 
-**PASS:** Caregiver workflow centralized.
-**FAIL:** Caregiver workflow fragmented.
+**Required actions / Completion criteria**
+- Complete required diagnosis/HOPE fields and the LCD narrative; resolve
+  visible validation issues.
 
----
+**Do not show**
+- **[LOCKED PRODUCT DECISION]** Any Clinical Narrative in Diagnosis.
 
-### SCREEN 8 — SAFETY & CLINICAL RISK
+**Do not touch**
+- LCD narrative, diagnosis authority, field paths consumed by
+  HOPE/validation/POC/Intelligence.
 
-**Purpose:** Surface risk.
-
-**Nurse Question:** What could harm this patient?
-
-**Always Visible:** Fall Risk, Clinical Risks, Safety Issues, Behavior
-Risks, Cognitive Risks, Imminent Death Indicators, AI Risk Findings,
-Suggested Actions.
-
-**Discovery Status:** NOT YET DISCOVERED. Current risk-source wiring and
-AI risk logic for this screen have not been verified against the
-repository this session.
-
-**PASS:** Risks visible without hunting.
-**FAIL:** Risk buried or omitted.
-
----
-
-### SCREEN 9 — ACP & GOALS OF CARE
-
-**Purpose:** Document goals and treatment preferences.
-
-**Nurse Question:** What care does the patient want?
-
-**Always Visible:** Code Status, CPR Preference, Life Sustaining Treatment
-Preference, Hospitalization Preference, Advance Directives, Decision
-Maker, POA Information.
-
-**Discovery Status:** NOT YET DISCOVERED. Field inventory and dependency
-verification for ACP content has not been run this session.
-
-**PASS:** Goals of care obvious and complete.
-**FAIL:** Goals of care fragmented.
+**Pass:** Diagnosis and evidence are traceable; no duplicate narrative
+exists.
+**Fail:** Diagnosis contains a Clinical Narrative or LCD output is framed
+as physician certification.
 
 ---
 
-### SCREEN 10 — ORDERS & POC
+# Screen 6. Body Systems
 
-**Purpose:** Connect assessment findings to the Plan of Care.
+**Purpose**
+- **[REPOSITORY-DISCOVERED]** Preserve all ten body-system assessment
+  domains while reducing navigation burden.
 
-**Nurse Question:** What is the care plan?
+**Always visible**
+- Access to Neurological, Cardiovascular, Respiratory, Infection,
+  Gastrointestinal, Nutrition, Endocrine, Genitourinary, Musculoskeletal,
+  and Skin/Wounds.
 
-**Always Visible:** Problems, Goals, Interventions, Orders, Suggested
-Orders, POC Readiness, POC Findings.
+**Conditionally visible**
+- Detail cards, repeatable wounds, oxygen/ventilator details,
+  catheter/feeding/ostomy details, and other dependent controls only when
+  applicable.
 
-**Evidence Table:**
+**AI content**
+- Show structured findings and Intelligence findings only for supported
+  inputs; do not imply all systems feed Intelligence.
 
-| Component | Must Remain |
-|---|---|
-| POC Adapter | Yes |
-| POC Readiness Logic | Yes |
-| Suggested Orders Source | Yes |
+**Compliance content**
+- Preserve HOPE-coded neurological and skin/performance mappings and all
+  safety-relevant warnings.
 
-**Discovery Status:** NOT YET DISCOVERED in this document's terms
-(the POC adapter and generation service exist per prior discovery
-documents, but a screen-level requirements verification has not been run
-this session).
+**Required actions / Completion criteria**
+- Applicable systems are reviewed; required/warning states remain
+  visible; "not assessed" must not be silently treated as normal.
 
-**PASS:** POC workflow preserved.
-**FAIL:** POC workflow altered.
+**Do not show**
+- Large empty irrelevant subsections by default.
 
----
+**Do not touch**
+- Paths consumed by Intelligence, structured findings, Symptom Impact
+  derivation, and HOPE mappings.
 
-### SCREEN 11 — COMPLIANCE & READINESS
-
-**Purpose:** Show what must be fixed before completion.
-
-**Nurse Question:** What is preventing completion?
-
-**Always Visible:** Missing Information, Validation Findings, Required
-Documentation, Compliance Issues, HOPE Status, POC Status, Readiness
-Status, Suggested Actions, AI Compliance Findings.
-
-**Discovery Status:** NOT YET DISCOVERED as a consolidated screen. The
-underlying validation/compliance-blocking mechanism is documented in
-`clinical_note_validation_engine.py`-derived findings elsewhere, but this
-screen's specific presentation requirements have not been separately
-verified.
-
-**PASS:** Nurse immediately knows blockers.
-**FAIL:** Nurse must hunt for blockers.
+**Pass:** Every existing system remains reachable and clinically
+significant findings stay visible.
+**Fail:** Collapsing removes data access or suppresses warnings.
 
 ---
 
-### SCREEN 12 — AI ACTION CENTER
+# Screen 7. Caregiver & Support
 
-**Purpose:** Make existing AI visible.
+**Purpose**
+- Group caregiver capability, living support, psychosocial, spiritual,
+  personal-care, and teaching-needs content around care feasibility.
 
-**Nurse Question:** What is AI telling me right now?
+**Always visible**
+- **[REPOSITORY-DISCOVERED]** Caregiver assessed/no-caregiver state,
+  willingness, medication capability, availability/support, concerns, and
+  evaluation fields.
 
-**Always Visible:** AI Summary, Findings, Recommendations, Missing
-Evidence, Clinical Concerns, Risk Findings, Caregiver Suggestions,
-Evidence Harvesting Output, AI Status, Last Analysis Timestamp, Refresh AI.
+**Conditionally visible**
+- No-caregiver reason, detailed caregiver evaluation, referrals,
+  teaching, spiritual, and personal-care detail when applicable.
 
-**Evidence Table:**
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Existing caregiver-adjacent recommendation
+  text may be labeled as a recommendation.
+- **[NOT BUILT / NOT CONNECTED]** No dedicated caregiver intelligence or
+  caregiver-assessment backend integration may be claimed.
 
-| AI Capability | Trigger | Current State | Desired State |
-|---|---|---|---|
-| RNICA Intelligence | Save / Lock | Hidden until Save/Lock | Visible standing screen |
-| Structured Findings | Save / Lock | Hidden until Save/Lock | Visible standing screen |
-| Evidence Harvesting | Load | Runs on load, not surfaced prominently | Visible standing screen |
-| Recommendations | Save / Lock | Hidden until Save/Lock | Visible standing screen |
-| Risk Findings | Save / Lock | Hidden until Save/Lock | Visible standing screen |
+**Compliance content**
+- Preserve caregiver and support documentation needed to plan safe care.
 
-**Current AI Truth (already established):** AI refreshes on Load, Save,
-and Lock — not on continuous typing. Do not invent live/continuous AI.
+**Required actions / Completion criteria**
+- Record caregiver availability/capability or the no-caregiver condition
+  and required reason; keep unresolved support concerns visible.
 
-**PASS:** AI outputs visible without navigating away.
-**FAIL:** AI remains hidden until Save/Lock.
+**Do not show**
+- A fabricated caregiver risk score.
 
----
+**Do not touch**
+- Existing caregiver field paths and conditional no-caregiver logic.
 
-### SCREEN 13 — FINALIZATION
-
-**Purpose:** Complete and sign the assessment.
-
-**Nurse Question:** Is this assessment ready to sign and lock?
-
-**Always Visible:** Clinical Narrative, Signature Certification, Clinician
-Signature, Readiness Checklist, Lock Workflow.
-
-**LOCKED RULE:** Only one Clinical Narrative exists. Authoritative field:
-the Finalization Clinical Narrative (already a locked, repository-verified
-decision — see `RNICA_CLINICAL_NARRATIVE_FINAL_DECISION.md`).
-
-**Required Evidence (already established):** Attestation, Lock, and
-validation dependencies all point to the Finalization Clinical Narrative;
-AI narrative-insertion also targets this field.
-
-**PASS:** One Clinical Narrative shown.
-**FAIL:** More than one Clinical Narrative shown.
+**Pass:** Support capability and gaps are explicit.
+**Fail:** Missing caregiver support is presented as adequate or a
+nonexistent score is shown.
 
 ---
 
-## DO NOT TOUCH
+# Screen 8. Safety & Clinical Risk
 
-- HOPE Workflow
-- POC Adapter
-- Validation Engine
-- Structured Findings
-- RNICA Intelligence Data Contract
-- Autosave
-- Lock Workflow
-- Amendment Workflow
-- Audit Events
-- Required Fields
-- LCD Narrative
-- Signature Certification
-- Clinician Signature
+**Purpose**
+- Surface immediate clinical/safety risks and connect each risk to its
+  source evidence.
 
----
+**Always visible**
+- **[REPOSITORY-DISCOVERED]** Fall risk, oxygen safety, home/disaster
+  safety, imminent-death screening, psychosocial concerns, and relevant
+  mobility/cognitive findings.
 
-## FINAL FIGMA READINESS CHECKLIST
+**Conditionally visible**
+- Disaster detail, suicide-concern documentation, imminent-death
+  indicators, and escalation content only when triggered.
 
-Checked items are backed by completed repository discovery this session.
-Unchecked items require a dedicated discovery pass before they can be
-certified.
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Pain, oxygen, fall, delirium, imminent-
+  death, mobility, and psychosocial threshold findings.
 
-- [x] FAST rule documented
-- [x] ECOG rule documented
-- [x] NYHA rule documented
-- [x] PPS/KPS always-visible rule documented
-- [x] Narrative rule documented
-- [x] AI visibility (Load/Save/Lock triggers) documented
-- [x] HOPE dependency for PPS/KPS documented
-- [x] Lock dependency for FAST/NYHA documented
-- [x] Open Gap: ECOG has no compliance/lock dependency — documented
-- [x] Patient Story requirements documented (target state)
-- [ ] Evidence & Intake workflow — requires dedicated discovery
-- [ ] Pain & Symptom Burden workflow — requires dedicated discovery
-- [ ] Body System Review (per-system) workflow — requires dedicated discovery
-- [ ] Caregiver & Support workflow — requires dedicated discovery
-- [ ] Safety & Clinical Risk workflow — requires dedicated discovery
-- [ ] ACP & Goals of Care workflow — requires dedicated discovery
-- [ ] Orders & POC screen-level requirements — requires dedicated discovery
-- [ ] Compliance & Readiness screen-level requirements — requires dedicated discovery
-- [x] Finalization / single-narrative rule documented
-- [x] PASS criteria written for every screen
-- [x] FAIL criteria written for every screen
-- [ ] Frontend/backend diagnosis-gating keyword unification — open Owner decision, not resolved
+**Compliance content**
+- Preserve suicide-concern note warning and all source evidence.
+
+**Required actions / Completion criteria**
+- Review triggered risks, complete associated documentation, and retain
+  unresolved risks as visible actions.
+
+**Do not show**
+- A formal numeric clinical risk score; discovery found threshold
+  findings, not a scoring engine.
+
+**Do not touch**
+- `fallRiskLevel`, `oxygenInUse`, mobility, neurological, psychosocial,
+  and imminent-death input paths used by Intelligence or warning logic.
+
+**Pass:** Risks show source, severity/priority when provided, and next
+documentation action.
+**Fail:** Advisory findings are represented as diagnoses or source
+evidence is hidden.
 
 ---
 
-## GITHUB SUCCESS TEST
+# Screen 9. ACP & Goals of Care
 
-**Question:** Can Figma design RNICA without reading code, models, React,
-services, or validation files, and still create the correct workflow?
+**Purpose**
+- Make treatment preferences and advance-care-planning requirements
+  independently visible rather than buried under Demographics.
 
-**Answer: NOT YET.**
+**Always visible**
+- CPR preference asked status, code status, life-sustaining-treatment
+  asked status/preference, hospitalization asked status/preference,
+  decision maker, directive/POLST status.
 
-Figma can already design Screens 1, 3, 5, 12, and 13 correctly from this
-document alone — those rules are fully discovered, Owner-locked, and
-evidence-verified. Screens 2, 4, 6, 7, 8, 9, 10, and 11 currently carry
-Owner-supplied target content that has **not yet been checked against
-repository evidence** (existing fields, validation rules, AI dependencies,
-HOPE/POC dependencies, current consumers). Until those dedicated discovery
-passes are completed and this document is updated with their verified
-findings, approving the full document for Figma risks Figma designing
-around requirements that may conflict with an existing compliance,
-billing, or AI dependency that has not yet been surfaced.
+**Conditionally visible**
+- Date, decision-maker, POA, directive, and document detail when
+  applicable.
 
-**Recommendation:** Approve Screens 1, 3, 5, 12, and 13 (and the Clinical
-Rule Evidence Tables) for Figma now. Run discovery on Screens 2, 4, 6, 7,
-8, 9, 10, and 11 before final approval of the complete document.
+**AI content**
+- Missing required ACP documentation only. No separate ACP AI engine is
+  claimed.
+
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** Preserve the six hard-required ACP fields
+  and associated HOPE mappings.
+
+**Required actions / Completion criteria**
+- Complete the six hard-required ACP values and applicable supporting
+  detail.
+
+**Do not show**
+- ACP as a nested, easy-to-miss demographic substep; a claimed goals-of-
+  care engine.
+
+**Do not touch**
+- Field keys, hard-error validation, and HOPE code mappings.
+
+**Pass:** Required ACP status is visible before Finalization.
+**Fail:** ACP can remain hidden until lock failure.
+
+---
+
+# Screen 10. Orders & POC
+
+**Purpose**
+- Convert assessed needs into explicit orders, goals, interventions,
+  disciplines, and plan-of-care readiness while preserving user-triggered
+  behavior.
+
+**Always visible**
+- Admissions Order content, POC completeness, goals, interventions,
+  discipline coverage, and explicit RNICA-to-POC actions that currently
+  exist.
+
+**Conditionally visible**
+- CHHA/HHA requirements, order-from-suggestion action, and discipline-
+  specific detail when applicable.
+
+**AI content**
+- Existing recommendations may support an explicit user action;
+  recommendations must not automatically create orders.
+
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** POC completeness and conditional CHHA POC
+  checks remain visible before Finalization.
+- **[REGULATORY / CLINICAL AUTHORITY]** The individualized POC is based on
+  assessment findings and includes goals/outcomes, services/frequency,
+  symptoms, pain management, safety, supplies/equipment, treatments/
+  orders, and patient limitations/needs.
+
+**Required actions / Completion criteria**
+- Complete required admission-order items, goals/interventions/discipline
+  coverage, and conditional CHHA POC requirements.
+
+**Do not show**
+- Automatic order creation or automatic POC mutation.
+
+**Do not touch**
+- POC adapter calls, rule-key deduplication, explicit-action requirement,
+  and readiness checks.
+
+**Pass:** The nurse sees exactly what blocks POC readiness and explicitly
+initiates mutations.
+**Fail:** Recommendations silently create clinical orders.
+
+---
+
+# Screen 11. Compliance & Readiness
+
+**Purpose**
+- Present one actionable view of validation, HOPE, evidence gaps,
+  referrals, POC, and readiness before Finalization.
+
+**Always visible**
+- Client errors/warnings, server-required fields, finalization readiness
+  checks, HOPE status/gaps, referral review, POC completeness, CHHA
+  readiness, and source navigation.
+
+**Conditionally visible**
+- Only applicable checks and workflow actions; passed checks may collapse
+  but remain reviewable.
+
+**AI content**
+- Missing evidence and recommendations are advisory and visually
+  separated from hard blockers.
+
+**Compliance content**
+- Every enforced blocker must be represented; no truncation or
+  suppression.
+
+**Required actions / Completion criteria**
+- Resolve hard blockers; warnings remain visible with their actual
+  severity; readiness mirrors server truth.
+
+**Do not show**
+- RNICA Billing Readiness, CTI, F2F, Survey Readiness, or dedicated
+  QA/QAPI status as working integrations.
+
+**Do not touch**
+- Validation field set, finalization check conditions, HOPE lifecycle
+  semantics, and lock-time server recheck.
+
+**Pass:** A nurse can navigate from every blocker to its source.
+**Fail:** A hidden or differently worded second blocker list appears only
+after Lock.
+
+---
+
+# Screen 12. AI Action Center
+
+**Purpose**
+- Present existing Intelligence outputs and workflow actions honestly,
+  with freshness and source evidence.
+
+**Always visible**
+- Priority summary, findings, recommendations, missing evidence,
+  structured-finding signals, last refresh state, and Save/refresh
+  guidance.
+
+**Conditionally visible**
+- Caregiver, safety, symptom, and diagnosis recommendations only when
+  returned by the existing output.
+
+**AI content**
+- This is the primary presentation of current RNICA Intelligence.
+
+**Compliance content**
+- Clearly distinguish advisory output from required validation and
+  finalization blockers.
+
+**Required actions / Completion criteria**
+- No blanket acknowledgment requirement. Actions are completed only
+  through their authoritative source workflow.
+
+**Do not show**
+- Live-typing status, LLM claims, Explanation Engine, formal risk score,
+  Patient Story generation, billing readiness, CTI/F2F/survey
+  intelligence.
+
+**Do not touch**
+- Intelligence output contract, evidence harvesting, structured findings,
+  and recommendation-only safety boundary.
+
+**Pass:** Freshness and source are explicit.
+**Fail:** Stale output appears live or recommendations appear
+mandatory/automated.
+
+---
+
+# Screen 13. Finalization
+
+**Purpose**
+- Complete the whole-chart Clinical Narrative, review readiness, attest,
+  sign, lock, and access post-lock amendments/audit history.
+
+**Always visible**
+- **[LOCKED PRODUCT DECISION]** One Clinical Narrative at
+  `finalization.clinicalNarrative`.
+- Readiness status, signature certification, clinician signature, Lock,
+  autosave/save state, amendment access, and audit/history context.
+
+**Conditionally visible**
+- HOPE actions/status, supervisor review, CHHA/POC/referral blockers,
+  legacy read-only narrative provenance, and amendment workflow when
+  applicable.
+
+**AI content**
+- Existing visit-recording insertion remains blank-only. Any revived
+  "Build Draft from Documented Findings" behavior targets Finalization
+  only and requires separate implementation authorization.
+
+**Compliance content**
+- Signature certification and clinician signature remain manual. Lock
+  rechecks server readiness and writes the existing audit event.
+
+**Required actions / Completion criteria**
+- Complete the Clinical Narrative, resolve blockers, manually attest,
+  sign, and successfully lock.
+
+**Do not show**
+- A second narrative, Diagnosis narrative, automatic attestation,
+  automatic signature, or automatic lock.
+
+**Do not touch**
+- Canonical narrative authority, attestation, signature, Lock endpoint
+  behavior, readiness recheck, amendments, mandatory denial reason, and
+  audit trail.
+
+**Pass:** Exactly one active narrative exists and successful Lock follows
+server validation.
+**Fail:** Duplicate narrative, bypassed readiness, auto-attestation, or
+loss of amendment/audit access.
+
+---
+
+## 5. Figma Handoff Gate
+
+Figma handoff is ready only when:
+
+- every requirement has an authority label;
+- every screen identifies current capability boundaries;
+- protected workflows are represented;
+- non-built/non-connected capabilities are not shown as operational;
+- the Clinical Narrative decision is implemented exactly;
+- conditional scale visibility is implemented exactly;
+- advisory Intelligence is separated from compliance blockers;
+- evidence provenance is visible;
+- dark/light/mobile/older-nurse usability are reviewed;
+- the final Anti-HospiceMD test passes;
+- clinical, compliance, product, and Owner approvals are recorded.
+
+## 6. Implementation Boundary
+
+This document defines Figma requirements only. It does not authorize
+code, APIs, schemas, migrations, production data repair, removal of
+legacy fields, or implementation of future product-direction
+capabilities. Approved Figma and a separate implementation plan are
+required before GitHub implementation.
