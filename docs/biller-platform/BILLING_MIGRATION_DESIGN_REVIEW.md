@@ -9,6 +9,11 @@ modified. No alembic revision is authored. No API, UI, backfill, data
 movement, deletion, retirement, alembic stamp, or historical migration
 rewrite is authorized by this document.
 
+**Next authorized phase (after this document's review):** Final Schema
+Authorization Review — to select authority decisions for the three
+items below. Schema creation may only be considered after that review
+is separately approved.
+
 ## Scope
 
 Per instruction, this review is scoped to exactly three carried-forward
@@ -254,14 +259,29 @@ this document.
 
 ## Final Status
 
-Migration Design Review: **DOCUMENTED — future migration strategy
-recorded for all three carried-forward items, no option selected, no
-migration authored.**
+**Migration Design Review completed.**
+
+Final Schema Authorization remains blocked pending resolution of:
+
+1. Patient Coverage Authority
+2. Eligibility Authority
+3. BillingProviderAgencyAssignment write authority
 
 Patient Coverage Authority: **UNRESOLVED** (carried forward unchanged).
 Eligibility Authority: **UNRESOLVED** (carried forward unchanged).
 `BillingProviderAgencyAssignment` Authority: **UNRESOLVED** (carried
 forward unchanged).
+
+Per locked rules carried into any future review of these items:
+- **DO NOT CREATE** `PatientCoverage` unless a future review explicitly
+  authorizes it.
+- **DO NOT CONSOLIDATE** `PatientInsurance`, `PatientPayer`, or
+  `PatientFaceSheet`.
+- **DO NOT CONSOLIDATE** `PayerEligibilityCheck` or
+  `EligibilityVerification`.
+- **DO NOT IMPLEMENT** single-writer enforcement for
+  `BillingProviderAgencyAssignment` until a dedicated authority review
+  is approved.
 
 **IMPLEMENTATION REMAINS BLOCKED.** No schema creation, migration
 creation, API implementation, UI implementation, backfill execution,
