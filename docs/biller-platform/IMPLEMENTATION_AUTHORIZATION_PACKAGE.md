@@ -68,6 +68,35 @@ None of the above items block Implementation *Planning* completion;
 all four are correctly scoped as pending items to be resolved before
 or during a future, separately authorized Implementation phase.
 
+## Implementation Authorization Blocker — Tenant Platform Redesign
+
+**STATUS: BLOCKING.** Per instruction, Implementation Authorization for
+the Billing/Biller Platform work documented in this package **cannot
+be approved** until the following, separate Tenant Platform Redesign
+initiative is completed and Figma-approved:
+
+- ☐ Tenant navigation redesigned
+- ☐ Tenant dashboard redesigned
+- ☐ Patient workspace redesigned
+- ☐ Clinical workflow redesigned
+- ☐ Intake workflow redesigned
+- ☐ AI workflow redesigned
+- ☐ SNS-specific UX established
+- ☐ HospiceMD look-and-feel removed
+- ☐ Tenant platform reviewed against competitive products
+- ☐ Figma approved
+
+This blocker is orthogonal to the Billing/Biller Platform's own
+readiness: the seven Implementation Planning deliverables above remain
+independently reviewable and approvable on their own merits, but
+**Implementation Authorization Review for this program will not be
+granted while this checklist has unchecked items**, per this
+instruction. No item on this checklist has been started, verified, or
+completed by this document — this is a recorded blocking condition
+only, not a redesign plan. A separate Tenant Platform Redesign
+discovery/planning effort (not part of this Billing/Biller Platform
+governance track) would be required to address it.
+
 ## Deliverables Produced This Phase
 
 | Phase | Deliverable | Status |
@@ -84,7 +113,8 @@ or during a future, separately authorized Implementation phase.
 ## Final Output
 
 **READY FOR IMPLEMENTATION AUTHORIZATION REVIEW: PENDING USER
-APPROVAL OF THE SEVEN DELIVERABLES ABOVE.**
+APPROVAL OF THE SEVEN DELIVERABLES ABOVE — AND BLOCKED BY THE TENANT
+PLATFORM REDESIGN CHECKLIST ABOVE.**
 
 **NOT READY FOR IMPLEMENTATION.**
 
