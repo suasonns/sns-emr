@@ -381,6 +381,295 @@ separately. No schema change is authorized by this comparison.
 
 ---
 
+---
+
+## Additional Discovery Pass (Post-Rejection) — PatientFaceSheet, Verified Record Counts, Test Coverage, Background Jobs, and Owner Platform Billing History
+
+This section responds to two explicit rejections of the prior version
+of this document: (1) "REQUIRES MORE DISCOVERY" (migrations, tests,
+fixtures, jobs, imports/exports, FK references, data-exposure
+verification), and (2) a follow-on directive to specifically
+investigate whether billing/claims/insurance functionality previously
+existed in the **Owner Platform** before Biller Platform separation.
+All findings below are grounded in direct repository/database
+evidence, cited by path.
+
+### A. Newly Discovered Third Payer/Subscriber-Bearing Structure: `PatientFaceSheet`
+
+Repository path: `backend/app/models/patient_facesheet.py`
+Model / Table: `PatientFaceSheet` / `patient_facesheet`
+Current status: **ACTIVE**
+Creation migration: baseline (`521d501c6eea_consolidated_baseline`)
+Later extension migrations (verified by `add_column`/`create_table`
+search):
+- `b1d4c7a90e11` — creates a **separate SQL view** named "face sheet"
+  (not the same object as the table; not yet field-diffed against the
+  table in this pass)
+- `ins8f7e6d5c4b_subscriber_information_fields.py` — adds
+  `subscriber_name`, `subscriber_relationship`, `subscriber_id` **to
+  `patient_facesheet`**, not to `patient_insurances` despite the
+  migration's generic filename — this is a real naming/traceability
+  hazard, not an assumption
+- `pay3v4e5r6i7f_payer_verification_fields.py` — adds
+  `payer_verified_date`, `payer_verified_by`, `payer_verification_notes`,
+  `verification_document_reference` **to `patient_facesheet`**, not to
+  `patient_insurances`, for the same reason
+- `b35658e9dca5`, `c4d5e6f7a8b9`, `p7q8r9s0t1u2` — additional facesheet
+  column additions; not yet individually field-diffed in this pass
+  (flagged as an open item)
+
+Insurance-relevant fields on `patient_facesheet`: `primary_payer`,
+`primary_payer_type` (CMS HOPE A1400 crosswalk), `primary_policy_number`,
+`secondary_payer`, `secondary_payer_type`, `secondary_policy_number`,
+`mbi_number`, `subscriber_name`, `subscriber_relationship`,
+`subscriber_id`.
+
+Authorization-relevant fields: `requires_prior_authorization`,
+`authorization_required_for/number/status/start_date/end_date`,
+`contracted_status` (YES/NO/UNKNOWN), `authorization_required_status`
+(YES/NO/UNKNOWN), `non_auth_verification_document_id` (FK →
+`eligibility_source_documents`).
+
+Payer-verification-audit fields: `payer_verified_date`,
+`payer_verified_by` (FK → `users`), `payer_verification_notes`,
+`verification_document_reference` (FK → `eligibility_source_documents`).
+
+Tenant scope: has an explicit `tenant_id` column with FK+index (not via
+`TenantScopedMixin`).
+
+Verified record count: **5 rows** (see Section C below).
+
+Current consumers (verified):
+- `backend/app/billing/services/claim_export_service.py` — joins
+  `patient_facesheet` for attending-physician name/NPI on the claim
+  header; does **not** source the payer/subscriber block from this
+  table (see the SSOT conflict finding below)
+- `backend/app/services/admission/admission_readiness_gate.py`
+- `backend/app/billing/api/eligibility_check_router.py`
+- `backend/app/api/patients.py`
+- `backend/app/api/referrals.py`
+- `backend/scripts/seed_acceptance_patient.py`
+- `backend/tests/test_field_suggestions.py`
+
+Related staging structure: `FacesheetFieldSuggestion`
+(`backend/app/models/facesheet_field_suggestion.py`), an
+OCR/extraction candidate-value queue, explicitly documented in its own
+module as **not SSOT — candidate queue only, ownerless by design**.
+Verified record count: **4 rows**. Currently only feeds 6 demographic
+fields in production; no review/apply UI or API for insurance fields
+was found — a pre-existing, already-documented gap
+(`docs/architecture/InsuranceMappingReconciliation.md`), not a new
+finding of this pass.
+
+### B. Critical Finding — Documented SSOT Claim Conflicts With Verified Runtime Behavior
+
+Four pre-existing, already-authoritative repository documents were
+found and read: `docs/architecture/InsuranceMappingReconciliation.md`,
+`docs/workflows/SourceOfTruthMatrix.md`,
+`docs/workflows/PayerDeterminationWorkflow.md`, and
+`docs/workflows/AuthorizationWorkflow.md`.
+
+`docs/workflows/SourceOfTruthMatrix.md` states explicitly: *"PatientFaceSheet
+(demographic + insurance fields: MBI, Primary/Secondary Payer, Policy
+Numbers, Subscriber Information) — Source Of Truth — ... All insurance
+identifiers live here and nowhere else."*
+
+However, direct inspection of `backend/app/billing/services/claim_export_service.py`
+(`_build_payer_block`, lines ~268–296) shows the claim's actual
+outbound payer/subscriber block (`payer_name`, `payer_type`,
+`subscriber_id`, `subscriber_id_type`, `msp_type_code`,
+`sequence_code`, `priority_order` — an exact field-name match to
+`PatientPayer`'s columns, not `PatientFaceSheet`'s) is built from a
+resolved MSP sequence sourced from `PatientPayer` records via
+`msp_validation_service.py`, **not** from
+`patient_facesheet.primary_payer`/`primary_policy_number`/`subscriber_id`.
+
+**This is a verified, documented conflict between the repository's own
+declared Source-of-Truth claim and the actual runtime behavior of the
+claim-export pipeline.** This document does not resolve it. It is
+recorded as an open defect requiring explicit resolution before Patient
+Coverage Authority can be declared. This materially expands the prior
+two-way PatientInsurance-vs-PatientPayer tension into a three-way
+tension also involving `PatientFaceSheet`. `PATIENT_INSURANCE_DUPLICATION_ANALYSIS.md`
+and `TENANT_BILLER_SYSTEM_OF_RECORD_MATRIX.md` do not yet reflect this
+third structure and should be treated as requiring a follow-up
+addendum once you have reviewed this finding — no changes have been
+made to either of those two already-approved documents in this pass to
+avoid silently reopening an approved item.
+
+### C. Verified Data Exposure (Read-Only `SELECT COUNT(*)`, Live Database)
+
+A live database was confirmed reachable in this session
+(`backend/dev.env` → `DATABASE_URL`, `localhost:5432`). Read-only,
+transaction-scoped (`SET TRANSACTION READ ONLY`) count queries were run
+against every persistent table identified so far. No data was
+modified, inserted, or deleted.
+
+| Table | Verified Record Count |
+|---|---|
+| `patient_insurances` | 0 |
+| `patient_payers` | 5 |
+| `patient_facesheet` | 5 |
+| `facesheet_field_suggestions` | 4 |
+| `payer_eligibility_checks` | 0 |
+| `eligibility_verifications` | 8 |
+| `eligibility_source_documents` | 4 |
+| `claims` | 4 |
+| `claim_edi_batches` | 0 |
+| `denials` | 0 |
+| `appeals` | 0 |
+| `payments` | 4 |
+| `payment_adjustments` | 8 |
+| `remittance_advices` | 4 |
+| `credit_balance_cases` | 0 |
+| `noe_edi_submissions` | 0 |
+| `hospice_cap_records` | 0 |
+| `facility_payment_expectations` | 6 |
+| `facility_payment_allocations` | 0 |
+| `facility_collection_alerts` | 4 |
+| `facility_payment_audit_log` | 18 |
+| `billing_provider_organizations` | 1 |
+| `billing_provider_organization_memberships` | 1 |
+| `billing_provider_agency_assignments` | 1 |
+| `billing_provider_agency_service_scopes` | 2 |
+| `payers` | 0 |
+| `payer_contracts` (model `Contract`) | 0 |
+| `audit_logs` | 1106 |
+
+Self-correction note: an initial query attempt used the assumed table
+names `contracts` and `facility_payment_audit_logs` (plural), both of
+which do not exist; the actual table names, confirmed from the model
+source (`__tablename__`), are `payer_contracts` and
+`facility_payment_audit_log` (singular). Both tables do exist and are
+included correctly above. This is recorded so the correction itself is
+part of the verified trail, not silently fixed.
+
+### D. Test Coverage — Confirmed, Not "Not Verified"
+
+A repository-wide search for direct references to the billing/coverage
+models in `backend/tests/` found the following test files (this
+supersedes the prior "not verified" status for test coverage):
+`test_billing_readiness_validation_matrix.py`,
+`test_contracted_authorization_readiness.py`,
+`test_document_intelligence.py`, `test_billing_readiness_service.py`,
+`test_credit_balance_report.py`, `test_eligibility_workflow_service.py`,
+`test_field_suggestions.py`, `test_facility_payment_visibility.py`,
+`test_eligibility_roster_endpoint.py`,
+`test_billing_phase1_readonly_endpoints.py`,
+`test_payer_review_workflow.py`, `test_referral_intake.py`,
+`test_tenant_billing_outcomes_endpoints.py`. Fixture/seed-data usage
+beyond `backend/scripts/seed_acceptance_patient.py` was not exhaustively
+enumerated in this pass and remains an open item.
+
+### E. Background/Scheduled Jobs — Confirmed Absent as a Formal Framework
+
+A repository-wide search for `celery`, `APScheduler`, `cron`,
+`@shared_task`, and `background_job` found no formal scheduler/task-queue
+framework anywhere in the backend. The single related match,
+`backend/app/billing/services/facility_payment_service.py:1824-1826`,
+is a code comment stating overdue-expectation evaluation is *"called
+opportunistically (alert list load, expectation re-evaluation) — no new
+scheduler/cron job is introduced."* This is treated as verified evidence
+that no background/scheduled job exists for billing, not merely an
+absence of a search hit.
+
+### F. Owner Platform Billing History Investigation (This Round's Specific Directive)
+
+A dedicated search was performed for evidence that
+claims/eligibility/insurance/payment-posting/ERA/remittance/denials/
+appeals/credit-balance/AR/room-and-board/NOE/CAP functionality
+previously existed in the Owner Platform and was later removed, moved,
+or abandoned. Search covered: `git log --all --diff-filter=D` across
+`sns-emr-frontend/src/owner/*` and all `*owner*`-pathed files
+repo-wide, current owner-platform frontend/backend files, and existing
+Owner Platform roadmap/scope documents.
+
+**Finding 1 — No evidence of removed Owner Platform billing/claims
+code.** No deleted file under any `*owner*` path, at any point in git
+history, matched claims/insurance/payer/billing/remittance/denial/
+appeal/era/noe/cap/payment terms. This is a negative result from a
+real search, not an assumption of absence.
+
+**Finding 2 — A pre-existing scope-boundary document, not evidence of
+removed code.** `docs/owner-platform/BILLING_AND_LICENSING_MANAGEMENT_SCOPE.md`
+defines Owner Platform "Billing & Licensing" narrowly as SaaS
+subscription/feature-enablement/consumption/invoice/revenue-share
+tracking for SNS itself, and explicitly lists Claims, Eligibility,
+Authorization Tracking, Aging Reports, Collections, Payment Posting,
+EDI, and Cap Monitoring as **"DO NOT BUILD — these belong exclusively
+to the future Biller Platform."** `docs/roadmap/Owner-Platform-Roadmap.md`
+independently confirms the same boundary ("Owner Platform does NOT
+contain: ... Billing Operations"). This is a documented scope decision,
+not evidence that such functionality was ever built and later removed
+from the Owner Platform.
+
+**Finding 3 — One Owner Platform UI file contains cosmetic mock text
+only, not a real feature.** `sns-emr-frontend/src/owner/pages/AICommandCenter.jsx`
+contains hardcoded illustrative strings ("Denial Rate," "Claims
+Volume," "Clean Claim Rate," a mock "Denial spike detected" narrative).
+These are static demo/mock values with no data-model wiring, no API
+calls, and no backing table — verified by direct file inspection. This
+is UI copy, not a legacy billing feature, and is not recommended for
+any REUSE/EXTEND/LINK/CONSOLIDATE/RETIRE decision.
+
+**Finding 4 — An ACTIVE (not legacy) cross-platform integration point
+was found and must be documented, since it directly touches Biller
+Platform schema from Owner Platform code.**
+`backend/app/api/owner_admin.py` (the current, active Owner Platform
+admin API) directly imports and operates on `BillingProviderOrganization`,
+`BillingProviderAgencyAssignment`, and `BillingProviderAgencyServiceScope`
+(all Biller Platform models). It implements the platform-owner-facing
+"Financials" toggle for a tenant: enabling it requires an `ein`+`ptan`
+on file, an ACTIVE `BillingProviderOrganization`, and creates/queries
+`BillingProviderAgencyAssignment` rows; it also reads/writes
+`tenant.billing_enabled`. This is **current, active, in-production code
+— not a legacy artifact, not something removed, and not something this
+document recommends changing.** It is recorded here because it is a
+real, verified point where Owner Platform code writes into Biller
+Platform's core assignment schema, which is directly relevant to future
+ownership-boundary work (Prompt 3) and to the Administrative-vs-
+Operational-Authority distinction already locked in Section 24.
+
+**Finding 5 — A distinct `PLATFORM_BILLING` role exists alongside the
+tenant-level `BILLING` role.** `backend/app/core/roles.py` defines
+`PLATFORM_BILLING` as a Level-3 specialized platform administrator role
+(access_scope `"platform"`), distinct from the tenant-level
+`BILLING`/`BILLING_MANAGER`/`BILLING_SPECIALIST` department roles
+(access_scope `"billing"`, under `FINANCIAL_ADMIN_ROLES`). Both are
+current and active. This is not evidence of removed functionality; it
+is evidence of an intentional, currently-existing two-tier billing
+role model (platform-level vs. tenant-level) that should inform, but is
+not resolved by, this document.
+
+**Finding 6 — Historical Biller-Platform-internal churn exists, but it
+is internal to the Biller Platform, not Owner-Platform-to-Biller-Platform
+migration evidence.** Git history shows deleted files
+`backend/app/billing/api/export_router.py` and
+`backend/app/billing/exports/claim_builder.py`, plus several
+Biller-Platform alembic migrations removed from a `versions_archive/`
+directory during the squash into the consolidated baseline. These all
+originated and were superseded entirely within `backend/app/billing/`
+(e.g., `claim_builder.py` appears superseded by the current
+`claim_export_service.py`, consistent with the already-documented
+claim-export pipeline). This is recorded for completeness but is not
+evidence of an Owner-Platform origin.
+
+**Owner Platform Billing History — Conclusion:** No evidence was found
+that claims, eligibility, insurance, payment posting, ERA/remittance,
+denials, appeals, credit balances, AR, room & board, NOE, or CAP
+functionality ever existed as a real (non-mock, persisted, or
+API-backed) feature within the Owner Platform and was later removed,
+moved, or abandoned. What does exist is (a) a documented scope boundary
+excluding these from the Owner Platform, (b) cosmetic mock UI text in
+one file, and (c) an active, currently-in-production administrative
+integration point (`owner_admin.py`) where the Owner Platform manages a
+tenant's link to Biller Platform's `BillingProviderOrganization`/
+`BillingProviderAgencyAssignment` schema. This is reported as a
+completed, evidenced negative-and-positive finding, not left as
+unverified.
+
+---
+
 ## Retirement Gate — Applied to `app/billing/store.py`
 
 Per the required gate, this component **cannot** be retired yet
@@ -468,18 +757,37 @@ field-by-field authority for this comparison is now
   without complete search evidence: **corrected** — now explicitly
   labeled a PRELIMINARY LEGACY FINDING, not a final/exhaustive one
 
-## Final Review Result
+## Final Review Result (Updated — Additional Discovery Pass)
 
-**APPROVED WITH CORRECTIONS** — corrections applied in this revision:
-(1) Executive Finding reframed as a PRELIMINARY LEGACY FINDING rather
-than a definitive/exhaustive conclusion; (2) the PatientInsurance-vs-
-PatientPayer comparison now defers to the newly created, field-level
-`PATIENT_INSURANCE_DUPLICATION_ANALYSIS.md` as its authority; (3) the
-"which is older" cell corrected to reflect the verified migration
-evidence (both tables share a squashed baseline migration, so creation
-order is genuinely not determinable from history, not merely
-unchecked).
+**LEGACY BILLING INVENTORY: DISCOVERY IN PROGRESS.** This revision adds:
+(1) the newly discovered `PatientFaceSheet`/`FacesheetFieldSuggestion`
+structures with full field/migration/consumer documentation; (2) a
+verified SSOT-claim-vs-runtime-behavior conflict (Section B above) that
+expands the Patient Coverage question from two structures to three;
+(3) verified, read-only record counts for every persistent table
+identified so far (Section C), including a self-corrected pair of
+table-name errors; (4) confirmed test-file coverage (Section D),
+superseding the prior "not verified" status; (5) a confirmed-absent
+finding for background/scheduled jobs (Section E), evidenced rather
+than assumed; (6) the requested Owner Platform Billing History
+Investigation (Section F), concluding no evidence of removed real
+billing/claims functionality, while documenting one active
+Owner-Platform-to-Biller-Platform integration point
+(`owner_admin.py`) and a cosmetic-only mock-text file.
 
-Prompt 3 (`TENANT_BILLER_OWNERSHIP_BOUNDARIES.md`) remains blocked
-pending your review of this corrected inventory and the new duplication
-analysis.
+Remaining open items before this document can be marked complete:
+individual field-diffs for facesheet migrations `b35658e9dca5`,
+`c4d5e6f7a8b9`, `p7q8r9s0t1u2`, and the `b1d4c7a90e11` view; full
+fixture/seed-data enumeration beyond `seed_acceptance_patient.py`; an
+explicit FK-reference completeness sweep across all ~27 tables now
+identified.
+
+**PATIENT COVERAGE AUTHORITY: UNRESOLVED** (now a three-way question:
+`PatientInsurance` / `PatientPayer` / `PatientFaceSheet`).
+**ELIGIBILITY RESULT AUTHORITY: UNRESOLVED.**
+
+Prompt 3 (`TENANT_BILLER_OWNERSHIP_BOUNDARIES.md`) remains **BLOCKED**
+pending your review of this expanded inventory, including the
+SSOT-conflict finding and the Owner Platform investigation results.
+No schema, migration, API, UI, backfill, deletion, retirement, alembic
+stamp, or historical migration rewrite has been performed.
