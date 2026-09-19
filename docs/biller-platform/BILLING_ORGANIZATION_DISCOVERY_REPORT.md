@@ -5,8 +5,12 @@ MODULE-LEVEL, AGENCY COVERAGE & WORKLOAD, EXPANDED AGENCY DETAIL,
 ORGANIZATION & TEAMS, SCHEMA-DESIGN, AND MIGRATION-DESIGN ADDENDA
 REMAIN APPROVED; USER ACCESS DETAIL DISCOVERY VALIDATION MAPPED WITH
 FOUR OPEN CLARIFICATION ITEMS (SECTION 27.11) BEFORE ITS SCHEMA DESIGN
-CAN BEGIN — MIGRATION FILE CREATION, API DESIGN, AND UI IMPLEMENTATION
-REMAIN EXPLICITLY BLOCKED PENDING SEPARATE IMPLEMENTATION AUTHORIZATION
+CAN BEGIN; CLAIM CATEGORY DISPLAY-LABEL TERMINOLOGY LOCKED (SECTION 28)
+AND CONFIGURABLE PAYER/PLAN DATA MODEL APPROVED FOR DISCOVERY AND
+DESIGN REVIEW ONLY (SECTION 29, REPOSITORY REUSE/EXTEND/CREATE
+CLASSIFICATION STILL OPEN, SECTION 29.13) — MIGRATION FILE CREATION,
+API DESIGN, AND UI IMPLEMENTATION REMAIN EXPLICITLY BLOCKED PENDING
+SEPARATE IMPLEMENTATION AUTHORIZATION
 
 Per the approved Billing Organization GitHub Issue ("[Biller Platform]
 Implement Billing Organization") and the locked
@@ -3305,6 +3309,295 @@ than resolving it; implementation remains blocked.
 
 ---
 
+## SECTION 29: CONFIGURABLE PAYER AND PLAN TERMINOLOGY REFERENCE AND DATA MODEL
+
+**Source:** user-approved "SNS Hospice Solutions — Billing Platform —
+Configurable Payer and Plan Terminology Reference and Data Model."
+
+**Status of source document:** APPROVED FOR GITHUB DISCOVERY AND
+DESIGN REVIEW. Implementation is not yet authorized.
+
+This section resolves and substantially expands the open item flagged
+in Section 28.5: it defines the full logical data model for
+`Payer`/`Plan` (and related supporting concepts) that Section 28.5
+identified as not-yet-modeled. It is itself a discovery/design
+artifact, not an implementation authorization — the source document's
+own Section 18 ("Repository Discovery Requirement") explicitly
+requires REUSE/EXTEND/CREATE classification against the actual
+repository, and prohibits migration creation, before any of this
+proceeds. That classification has **not** been performed yet and is
+tracked as an open follow-on task (Section 29.13).
+
+### 29.1 Core Architecture — Nine Separate Concepts
+
+The platform must keep the following nine concepts distinct and must
+never collapse them into a single field:
+
+1. **Payer Category** — broad platform classification (e.g. Medicare,
+   Medicaid, Commercial Insurance). Distinct from `claim_category`
+   (see 29.4) — Payer Category is a broader, human-facing
+   classification catalog; `claim_category` is the narrower, locked,
+   billing-specific enum.
+2. **Payer Organization** — the actual entity that administers or
+   pays claims (e.g. Kaiser Permanente, Aetna, Medi-Cal, VA).
+3. **Plan or Product** — a specific product offered by a Payer
+   Organization (e.g. a configured Kaiser HMO plan).
+4. **Benefit or Program** — the specific benefit/government program
+   tied to coverage (e.g. Medicare Part A Hospice, Medi-Cal
+   Fee-for-Service).
+5. **Network Type** — HMO / PPO / POS / EPO / Fee-for-Service /
+   Managed Care / Indemnity / Government Program / Self-Pay / Other /
+   Not Applicable / Unknown. Kaiser is not itself a Network Type
+   value.
+6. **Patient Coverage** — a patient-specific enrollment record
+   (payer, plan, benefit, member data, coverage dates, priority,
+   verification state). Does not by itself establish billing
+   responsibility.
+7. **Billing Responsibility** — the verified payer/party expected to
+   receive a specific claim or financial transaction; service-,
+   date-, benefit-, and workflow-specific. Must never be inferred
+   solely from the existence of Patient Coverage.
+8. **Coverage Assignment** — the existing Billing Organization
+   workforce-assignment concept (Section 21, Backup Responsibility
+   Scope Section 22) — a staff member's payer-responsibility
+   assignment for an agency (e.g. Medicare Biller, Medi-Cal/Managed
+   Care Biller). Explicitly **not** Patient Coverage and **not** Payer
+   Category — this reuses, and does not redefine, the Coverage
+   Assignment term already locked in `BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md`.
+9. **Claim Category** — the locked, internal 12-value classification
+   (Section 20.9/26.4). Not the payer organization, not the plan, not
+   the workforce assignment.
+
+### 29.2 Medicare Part A Hospice — Reaffirmed
+
+No change from Section 28: **"Medicare Part A Hospice"** remains the
+authoritative user-facing label for the internal `MEDICARE_HOSPICE`
+claim category. Prohibited relabelings are reaffirmed: "Medicare
+Hospice," "Medicare," "Medicare Part A," "Hospice Medicare." A patient
+may simultaneously hold Medicare Part B, Medicare Advantage, Medicaid,
+Medi-Cal, commercial insurance, VA eligibility, or other payer
+sources — none of these automatically establishes that other payer as
+responsible for the hospice claim (this is the Billing Responsibility
+concept, 29.1 item 7).
+
+### 29.3 Terminology Definitions (Summary)
+
+Full definitions, constraints, and "do not" rules for **Payer
+Category**, **Payer Organization**, **Plan or Product**, **Benefit or
+Program**, **Network Type**, **Patient Coverage**, **Billing
+Responsibility**, **Coverage Assignment**, and **Claim Category** are
+captured verbatim in the source document and are treated as locked.
+Key prohibitions carried forward:
+
+- Payer organizations are configurable; **do not hard-code
+  payer-company names into enums or application logic.**
+- Plan names are configurable; **do not treat a plan name as a payer
+  category** (e.g. "Commercial PPO" is a Network Type/product
+  classification, not a payer organization name).
+- **Do not** assume Medicare Advantage enrollment = hospice-claim
+  payer, Part B = Part B pays the hospice benefit, or commercial
+  insurance = commercial insurer responsible for the hospice claim.
+- **Do not** use one field to represent Payer, Plan, Benefit, Claim
+  Category, and Billing Responsibility simultaneously.
+
+### 29.4 Authoritative Claim Category Values — Unchanged
+
+The locked 12-value `claim_category` enum (Section 20.9/26.4) and its
+display-label mapping (Section 28.1) are **restated, not altered**, by
+this document:
+
+`MEDICARE_HOSPICE`, `MEDICAID`, `MEDI_CAL`, `MEDICARE_ADVANTAGE_HMO`,
+`MEDICARE_ADVANTAGE_PPO`, `COMMERCIAL_HMO`, `COMMERCIAL_PPO`,
+`COMMERCIAL_POS`, `TRICARE`, `VETERANS_AFFAIRS`, `PRIVATE_PAY`,
+`OTHER`.
+
+This document explicitly requires: **if the repository uses a locked
+enum for `claim_category`, the proposed `PAYER_CATEGORIES` catalog
+(29.6) must not create a conflicting second claim-category
+authority.** Section 20.9/26.4 remains the sole source of truth for
+`claim_category`; `PAYER_CATEGORIES` is a broader, separate
+classification catalog (29.1 item 1) that may reference but must not
+duplicate or override it.
+
+### 29.5 Configurable Payer and Plan Support
+
+The system must support any authorized Payer Organization and any
+number of Plans per payer **without requiring a code deployment**.
+Named organizations (Kaiser Permanente, UnitedHealthcare, Aetna,
+Cigna, Humana, Molina Healthcare, Blue Shield, Blue Cross, Health Net,
+SCAN, Alignment Health, L.A. Care, Inland Empire Health Plan,
+Optum-administered arrangements, VA, TRICARE contractors, county/state
+Medicaid programs, commercial insurers, employer/union plans, other
+government programs) are **illustrative examples only** — not a
+hard-coded authoritative list. Payers and Plans must be created and
+maintained as configurable records, consistent with Section 28.5's
+conclusion that named carriers belong in `Payer`/`Plan`, not in
+`claim_category`.
+
+### 29.6 Proposed Data Model (Logical, Pre-Discovery)
+
+The source document proposes eleven logical entities. **Logical names
+are proposed only; final physical names must follow repository
+conventions after discovery (29.13), and no duplicate payer,
+coverage, plan, claim, or eligibility model may be created if an
+equivalent already exists.**
+
+| # | Entity | Purpose (summary) |
+|---|--------|--------------------|
+| 1 | `PAYER_CATEGORIES` | Controlled high-level classification catalog (code, display_name, government/commercial/self-pay flags, effective dates). Must not conflict with the locked `claim_category` enum. |
+| 2 | `PAYER_ORGANIZATIONS` | Configurable insurer/government-program/administrator entity (legal_name, display_name, payer_category_id, national/clearinghouse payer IDs, state_code, supersession chain, versioning). Payer names are never enum values. |
+| 3 | `PAYER_ALIASES` | Alternate/legacy/trading/clearinghouse/imported names mapped to a `PAYER_ORGANIZATIONS` record, avoiding duplicate payer creation. |
+| 4 | `PAYER_PLANS` | Configurable plans/products under a payer (plan_name, product_name, plan_code, network_type, benefit_program_id, `claim_category`, hospice/room-board applicability, submission method, clearinghouse route, ERA support, supersession chain, versioning). `claim_category` here must use the authoritative internal list (29.4) — it is a mapping *reference*, not a redefinition. |
+| 5 | `BENEFIT_PROGRAMS` | The benefit/government program tied to coverage (e.g. Medicare Part A Hospice, Traditional Medicaid, Medi-Cal FFS/Managed Care, Medicare Advantage, VA Community Care, TRICARE, Private Pay); config cannot silently rewrite historical coverage. |
+| 6 | `PATIENT_COVERAGES` | Each payer source/insurance coverage a patient holds (payer, plan, benefit program, member/group identifiers — encrypted/tokenized reference only, subscriber relationship, coverage priority, verification status, supersession chain). Verification statuses: Unverified, Pending Verification, Verified, Unable to Verify, Inactive, Terminated, Superseded. A patient may hold multiple simultaneous payer sources — one-payer-per-patient must not be enforced. |
+| 7 | `SERVICE_BILLING_RESPONSIBILITIES` | Determines the responsible payer/party for a specific service/period/claim (patient_coverage_id, payer/plan/benefit references, `claim_category`, responsibility_type, determination_status, determined_by/at, reason, evidence reference, forward-only supersession). Responsibility types: Primary, Secondary, Tertiary, Room & Board, Patient Responsibility, Other Authorized Responsibility. Determination statuses: Undetermined, Pending Review, Verified, Disputed, Superseded, Inactive. Kept explicitly separate from `PATIENT_COVERAGES`. |
+| 8 | `CLAIM_PAYER_RELATIONSHIPS` | Connects a claim to payer organization(s), plan(s), coverage record, and responsibility order (payer_sequence: Primary/Secondary/Tertiary/Other; submission_status; external_payer_reference). Duplicate active payer sequence for a claim is prohibited absent an approved correction. |
+| 9 | `PAYER_PLAN_AGENCY_CONFIGURATIONS` | Agency-specific overrides of organization-level payer/plan defaults (enabled, submission method, clearinghouse route, ERA enabled, secondary-billing enabled, authorization-review-required, timely-filing rule reference); agency must be assigned to the billing organization; historical configuration preserved. |
+| 10 | `PAYER_IDENTIFIER_RECORDS` | Payer identifiers used across transactions/trading partners (Clearinghouse Payer ID, Government Program ID, Trading Partner ID, Plan ID, Internal Crosswalk ID, Other), scoped by identifier type/value/trading-partner/state/transaction-type. |
+| 11 | `PAYER_PLAN_MAPPING_RULES` | Maps imported/legacy payer names, identifiers, and plans to authoritative `PAYER_ORGANIZATIONS`/`PAYER_PLANS`/`claim_category` records. Match types: Exact Identifier, Exact Name, Alias, Manual Mapping, Rule Mapping. Review states: Unreviewed, Proposed, Verified, Rejected, Superseded — a Verified mapping requires a reviewer and review date; conflicting active exact mappings are prohibited. This is the natural future home for the free-text `payer_name` → `claim_category` backfill mapping documented in Section 25.14/26.2, once/if that mapping is promoted from a one-time backfill script into a durable, reviewable table. |
+
+Full field lists, constraints, and index lists for all eleven entities
+are captured verbatim in the source document (not reproduced in full
+here to keep this report navigable); they govern schema design once
+discovery (29.13) is complete and schema design is separately
+authorized.
+
+### 29.7 Relationship Model (Summary)
+
+- `PAYER_CATEGORIES` 1 → many `PAYER_ORGANIZATIONS`
+- `PAYER_ORGANIZATIONS` 1 → many `PAYER_PLANS`, `PAYER_ALIASES`,
+  `PAYER_IDENTIFIER_RECORDS`
+- `PAYER_PLANS` many → 1 `PAYER_ORGANIZATIONS`; many → 1
+  `BENEFIT_PROGRAMS` where applicable
+- `PATIENT` 1 → many `PATIENT_COVERAGES`
+- `PATIENT_COVERAGES` many → 1 `PAYER_ORGANIZATIONS`; many → 0-or-1
+  `PAYER_PLANS`; many → 0-or-1 `BENEFIT_PROGRAMS`
+- `PATIENT_COVERAGES` 1 → many `SERVICE_BILLING_RESPONSIBILITIES`
+- `CLAIM` 1 → one-or-more `CLAIM_PAYER_RELATIONSHIPS`
+- `AGENCY` 1 → many `PAYER_PLAN_AGENCY_CONFIGURATIONS`
+
+### 29.8 Configuration Rules
+
+Only controlled platform categories (i.e. `claim_category`, 29.4) are
+fixed. Payer Organizations, Payer Aliases, Plans/Products, authorized
+Benefit Programs, Payer Identifiers, Clearinghouse Routing, ERA
+availability, agency-specific settings, and mapping rules are all
+configurable. **Adding a new insurer or plan must not require new
+source code, a new enum value, or a new migration** — unless it
+introduces a genuinely new platform-level category (i.e. a change to
+the locked `claim_category` enum itself, which remains a separately
+governed, high-bar change per Section 25.10's CheckConstraint).
+
+### 29.9 User-Facing Display Rules
+
+Display payer information with progressive detail:
+
+- **Compact:** Payer (e.g. Kaiser Permanente) / Plan (e.g. Configured
+  HMO plan) / Coverage (e.g. Medicare Advantage HMO).
+- **Detailed:** Payer Category, Payer Organization, Plan or Product,
+  Benefit or Program, Network Type, Member Identifier, Coverage
+  Dates, Verification Status, Billing Responsibility.
+
+Do not expose sensitive identifiers without authorization, full member
+identifiers in list views, or subscriber details beyond minimum-
+necessary scope — consistent with the existing PHI/minimum-necessary
+discipline already established elsewhere in this report series (e.g.
+DDE credential non-exposure, Section 27).
+
+### 29.10 Multiple Payer Sources
+
+The system must support multiple simultaneous payer sources per
+patient (e.g. Medicare Part A Hospice + Medicare Advantage enrollment
++ Medi-Cal + commercial insurance + VA eligibility + private-pay
+resources) without causing automatic double billing, duplicate claims,
+conflicting primary responsibility, unverified secondary billing, or
+silent payer substitution. Billing responsibility must be
+independently determined and audited (`SERVICE_BILLING_RESPONSIBILITIES`,
+29.6 item 7) — never inferred automatically from coverage alone.
+
+### 29.11 Payer / Plan Status Values
+
+- **Payer Organization statuses:** Draft, Active, Inactive, Suspended,
+  Superseded, Archived.
+- **Plan statuses:** Draft, Active, Inactive, Closed to New
+  Enrollment, Superseded, Archived.
+
+Referenced payer or plan records must never be physically deleted —
+consistent with this report's existing append-only/non-destructive
+pattern (e.g. Recent Organizational Changes, Section 23; audit
+history, Section 27).
+
+### 29.12 Audit and Authorization Requirements
+
+**Audit events** (append-only, consistent with Section 27's audit
+model): Payer Created/Updated/Deactivated, Alias Added, Plan
+Created/Updated/Deactivated, Claim Category Mapping Changed, Payer
+Identifier Changed, Agency Configuration Changed, Mapping Rule
+Created/Verified, Patient Coverage Verified, Billing Responsibility
+Determined/Superseded, Export — each preserving actor, actor role,
+organization, agency, patient (when applicable), payer, plan, previous
+state, new state, reason, effective date, timestamp, and correlation
+ID.
+
+**Recommended logical permissions** (final names to follow repository
+convention): `payer.view/create/manage/deactivate`,
+`payer.alias.manage`, `payer_plan.view/create/manage/deactivate`,
+`payer_identifier.view/manage`, `payer_mapping.view/manage/verify`,
+`agency_payer_config.view/manage`,
+`patient_coverage.view/verify`,
+`billing_responsibility.view/determine`, `payer_export`. Authorization
+must enforce organization scope, agency scope, patient scope, role,
+capability, and action-specific permission — consistent with the
+operational-access model already locked in Section 23/27 (Organization
+Membership + Role + Capability + Agency Assignment + Account Status +
+Action-Specific Permission).
+
+### 29.13 Repository Discovery Requirement — Open Follow-On Task
+
+The source document explicitly requires, **before any schema or
+migration work**: inspection of existing Payer, Insurance, Plan,
+Patient Coverage, Eligibility, Claim, Clearinghouse-identifier, ERA,
+secondary-billing, authorization-rule, timely-filing, audit, and import
+-mapping structures already present in the repository, with each
+proposed logical entity (29.6) classified as **REUSE / EXTEND /
+CREATE** against what already exists. It further prohibits creating
+duplicate architecture, creating migrations before discovery review,
+using `alembic stamp`, or rewriting historical migrations — forward-
+only, reviewed migrations only (consistent with this report's existing
+migration discipline, Section 25).
+
+**This discovery/classification pass has not yet been performed** and
+is recorded here as an explicit open task, to be completed only when
+separately authorized — it is not implicitly authorized by this
+section's addition to the report.
+
+### 29.14 QA Checklist (Locked, for Future Implementation)
+
+Reproduced from the source document for future reference when
+implementation is eventually authorized: category/payer/plan remain
+separate; "Medicare Part A Hospice" is the approved user-facing label
+and `MEDICARE_HOSPICE` the internal category; Kaiser and other
+insurers are configurable Payer Organizations, not enum values; HMO/
+PPO/POS/EPO are network/product classifications; Plans are children of
+Payer Organizations; multiple payer sources per patient are supported;
+Patient Coverage remains separate from Billing Responsibility; claim
+payer sequence is supported; payer/plan histories are preserved;
+agency-specific payer configuration is supported; import mappings
+require verification; no payer-company names are hard-coded in enums;
+no credentials or full sensitive identifiers appear in unauthorized
+views; audit history is append-only.
+
+**Status:** documentation/discovery-design only — no schema,
+migration, model, service, route, or UI component created or changed.
+This section captures an **approved-for-discovery-and-design-review**
+logical data model; it explicitly does **not** authorize schema
+creation, migration creation, API creation, or UI implementation.
+Repository REUSE/EXTEND/CREATE classification (29.13) remains an open,
+unauthorized follow-on task. Implementation remains blocked pending
+that discovery pass and separate, explicit schema-design authorization.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -3371,3 +3664,4 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 28: Claim Category / Payer Terminology Decision Record, per the approved "Billing Platform Settings — Terminology Decision Record." Locks the user-facing display-label mapping for each Section 20.9 `claim_category` internal value — most notably `MEDICARE_HOSPICE` → "Medicare Part A Hospice" (all other 11 values map to a straightforward title-case rendering of their internal value). Documents this as a presentation-layer decision only: no change to the `claim_category` column definition, `CheckConstraint` value list (Section 25.6/25.10), backfill mapping rules (Section 25.14/26.2), or Figma (`settings-payers-plans-dark.png` requires no changes). Cross-referenced against the subsequently-received `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md` (the broader, cross-platform authoritative terminology source, created the same day) as the primary home for this same decision going forward. Documentation only; no schema, migration, model, service, route, or UI component created or changed. |
 | 2026-09-18 | Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md`, per the approved "SNS Hospice Solutions — Billing Platform Authoritative Terminology Reference." Locks user-facing vs. internal terminology across the whole Billing Platform (payer category labels restating Section 28's mapping; "Coverage Assignment" not "Role"; "Access Administration" not "Credential Management"/"Password Management"/"Token Management"; "Billing Role Profile" not "Employment Info"; four distinct Capability Source values with Source explicitly separate from Granted By; DDE Authorization's six states, an exact match to Section 18.15; "Emergency Access"/"Break-Glass Event" security terminology, prohibiting "Universal Access"/"Super Admin Override"/"Security Bypass"/"Clearance Level"; "SecureInbox Routing Preview — Coming Soon," consistent with the locked Communications Discovery Report; append-only audit language; a new explicit Settings-vs-Billing-Organization module-ownership boundary; and a Clinical Terminology Restriction for Billing Platform Settings). Partially resolves Section 27.11.1 (confirms "Individual Grant" and "User-Specific Grant" are two distinct, independently approved terms, not synonyms) without resolving the underlying schema/storage mechanism distinction between them, which remains open. Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_ENFORCEMENT_RULES.md` as a companion GitHub-implementation enforcement checklist (14 numbered rules, per-area QA checklists, and PR fail-conditions) governing how this terminology must be applied, and prohibited substitutions, across UI/API/Reports/Exports/Audit/Documentation once implementation is separately authorized. Both documents are documentation only; no schema, migration, model, service, route, or UI component created or changed. |
 | 2026-09-18 | Added Section 28.5: Payer / Plan vs. Payer Category — Data-Model Clarification, per the user's follow-up confirming "Medicare Part A Hospice" remains the authoritative label while named carriers/organizations (Kaiser, Blue Shield, UHC, Humana, Molina, Health Net, VA, TRICARE) belong in a separate `Payer`/`Plan` concept, not in the `claim_category` enum. Establishes a three-tier distinction not previously modeled explicitly: `claim_category` (locked 12-value classification, unchanged), `Payer` (not yet modeled — CREATE, open — the actual carrier/organization name), and `Plan` (not yet modeled — CREATE, open — a specific plan under a Payer). Notes that `VETERANS_AFFAIRS`/`TRICARE` appearing in both the category enum and the example Payer list is not a contradiction — those two categories happen to be effectively one-to-one with a single national payer, whereas categories like `COMMERCIAL_HMO` are one-to-many against real Payers. Confirms `claims.payer_name` (used for backfill mapping, Section 25.14/26.2) is a stand-in for the not-yet-modeled Payer/Plan structure, not a place the category enum itself should grow into. No change to the locked `claim_category` enum, CheckConstraint, backfill mapping rules, or Figma; flags an open, not-yet-scoped future `Payer`/`Plan` data-model need without designing or authorizing it. Documentation/clarification only; no schema, migration, model, service, route, or UI component created or changed. |
+| 2026-09-18 | Added Section 29: Configurable Payer and Plan Terminology Reference and Data Model, per the user-approved "SNS Hospice Solutions — Billing Platform — Configurable Payer and Plan Terminology Reference and Data Model" (status: APPROVED FOR GITHUB DISCOVERY AND DESIGN REVIEW; implementation not yet authorized). Resolves and substantially expands the open item flagged in Section 28.5 by defining nine distinct platform concepts (Payer Category, Payer Organization, Plan/Product, Benefit/Program, Network Type, Patient Coverage, Billing Responsibility, Coverage Assignment, Claim Category) that must never be collapsed into one field; reaffirms Medicare Part A Hospice and the locked 12-value `claim_category` enum (Section 20.9/26.4) unchanged; documents eleven proposed logical entities (`PAYER_CATEGORIES`, `PAYER_ORGANIZATIONS`, `PAYER_ALIASES`, `PAYER_PLANS`, `BENEFIT_PROGRAMS`, `PATIENT_COVERAGES`, `SERVICE_BILLING_RESPONSIBILITIES`, `CLAIM_PAYER_RELATIONSHIPS`, `PAYER_PLAN_AGENCY_CONFIGURATIONS`, `PAYER_IDENTIFIER_RECORDS`, `PAYER_PLAN_MAPPING_RULES`) with relationship model, configuration rules (new payers/plans must not require new code/enum/migration), user-facing progressive-detail display rules, multi-payer-source support rules, payer/plan status vocabularies, audit event list, recommended logical permissions, data-quality prohibitions, and a locked QA checklist for future implementation. Explicitly records that the source document's own Repository Discovery Requirement (REUSE/EXTEND/CREATE classification of all eleven entities against the actual repository, prohibiting migration creation before discovery review, no `alembic stamp`, no historical-migration rewrites) has **not yet been performed** and remains an open, unauthorized follow-on task (Section 29.13). Updated the document header STATUS line accordingly. Documentation/discovery-design only; no schema, migration, model, service, route, or UI component created or changed. Implementation remains explicitly blocked pending the discovery pass and separate schema-design authorization. |
