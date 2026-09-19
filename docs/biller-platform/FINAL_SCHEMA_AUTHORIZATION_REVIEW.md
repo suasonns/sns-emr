@@ -2,18 +2,27 @@
 
 ## Status
 
-**AUTHORIZED.** This document exists for exactly one purpose: to
-select **recommended** authority decisions for the three items carried
-forward, unresolved, from `BILLING_SCHEMA_DESIGN_REVIEW.md` and
-`BILLING_MIGRATION_DESIGN_REVIEW.md`.
+**APPROVED.** Discovery: COMPLETE. Schema Design Review: COMPLETE.
+Migration Design Review: COMPLETE. Final Schema Authorization Review:
+**APPROVED** — the three authority decisions below (Sections 1–3) are
+now the approved, locked authority model. **IMPLEMENTATION REMAINS
+BLOCKED.**
 
-**IMPLEMENTATION REMAINS BLOCKED. NO SCHEMA CHANGES AUTHORIZED. NO
-MIGRATIONS AUTHORIZED.** Every recommendation below is a *decision
-recommendation for review and approval*, not an implementation
-instruction. No schema is created or modified. No migration is
-authored, generated, previewed, or scheduled. No API, UI, backfill,
-data movement, deletion, retirement, alembic stamp, or historical
-migration rewrite is performed or authorized by this document.
+This document originally existed to select **recommended** authority
+decisions for the three items carried forward, unresolved, from
+`BILLING_SCHEMA_DESIGN_REVIEW.md` and
+`BILLING_MIGRATION_DESIGN_REVIEW.md`. Those recommendations have now
+been reviewed and approved (see Final Decision, below) as the final
+authority model.
+
+**NO SCHEMA CHANGES AUTHORIZED. NO MIGRATIONS AUTHORIZED. NO
+IMPLEMENTATION AUTHORIZED BY THIS DOCUMENT.** Approval of the authority
+*decisions* is not, by itself, approval of schema creation, migration
+authoring, API changes, or UI changes. No schema is created or
+modified. No migration is authored, generated, previewed, or
+scheduled. No API, UI, backfill, data movement, deletion, retirement,
+alembic stamp, or historical migration rewrite is performed or
+authorized by this document.
 
 ## Previous Phases (all complete)
 
@@ -473,20 +482,84 @@ existing assignment-creation/update logic instead of writing
 
 ## Final Decision
 
-**Recommended Final Decision Option: APPROVED WITH CORRECTIONS or
-APPROVED** (selection reserved for the user's review, per this
-program's established governance pattern — this document does not
-self-certify its own final decision).
+**APPROVED.**
+
+### Approved Final Authority Decisions
+
+1. **Patient Coverage Authority — APPROVED, Option C.**
+   `PatientInsurance` and `PatientPayer` remain separate and linked.
+   `PatientInsurance` remains the eligibility- and
+   verification-oriented structure. `PatientPayer` remains the
+   billing and financial structure. `PatientFaceSheet` is **not**
+   selected as coverage authority and remains a documentation/
+   presentation structure pending any future review.
+
+   Approved rules: no `PatientCoverage` model created; no
+   `PatientInsurance` consolidation; no `PatientPayer` consolidation;
+   no historical data movement; no forced merger.
+
+   Future direction: an explicit relationship between
+   `PatientInsurance` and `PatientPayer` when implementation is
+   authorized.
+
+2. **Eligibility Authority — APPROVED, Option C.** Separate concepts.
+   `PayerEligibilityCheck` owns attempt and verification activity.
+   `EligibilityVerification` owns structured eligibility state.
+
+   Approved rules: no consolidation; no data movement; no
+   replacement; no historical rewrite.
+
+   Future direction: cross-reference only.
+
+3. **`BillingProviderAgencyAssignment` — APPROVED, Option B.**
+   Operational Authority: Biller Platform. Administrative Authority:
+   Owner Platform delegates through approved workflows.
+
+   Approved rules: `BillingProviderAgencyAssignment` retained; no
+   replacement entity; no duplicate assignment table; no schema
+   changes; no implementation during this phase.
+
+   Future direction: single operational authority model during
+   implementation review.
+
+### Locked Decisions (carried forward into any future implementation phase)
+
+- **DO NOT CREATE** `PatientCoverage` without a future explicit
+  architecture review.
+- **DO NOT CONSOLIDATE** `PatientInsurance`, `PatientPayer`,
+  `PatientFaceSheet` during implementation.
+- **DO NOT CONSOLIDATE** `PayerEligibilityCheck`,
+  `EligibilityVerification` during implementation.
+- **DO NOT CREATE** duplicate: Payer authority, Plan authority, Claim
+  authority, Payment authority, ERA authority, Remittance authority,
+  Denial authority, Appeal authority, Room & Board authority, Audit
+  authority, Export authority.
+
+### Implementation Prerequisites (status)
+
+- ✅ Existing authorities preserved
+- ✅ Repository evidence documented
+- ✅ Historical preservation documented
+- ✅ Anti-duplication review completed
+- ✅ Legacy billing review completed
+- ✅ Ownership boundaries completed
+- ✅ Migration strategies documented
 
 ## Implementation Status
 
 **IMPLEMENTATION REMAINS BLOCKED.**
 
+Discovery: **COMPLETE.** Schema Design Review: **COMPLETE.** Migration
+Design Review: **COMPLETE.** Final Schema Authorization Review:
+**APPROVED.** Implementation: **BLOCKED.**
+
 No schema. No migrations. No API changes. No UI changes. No backfill.
 No deletion. No retirement. No alembic stamp. No historical migration
 rewrite.
 
-Only after this document's recommended decisions are reviewed and
-explicitly approved may schema creation be considered — and even then,
-schema creation itself would require a separate, subsequent
-authorization, not granted by this document.
+The three authority decisions above are now approved and locked. This
+approval authorizes only the decisions themselves (which structures
+are authoritative, and their relationship strategy). It does **not**,
+by itself, authorize schema creation, migration authoring, API
+changes, or UI changes. A separate, explicit Implementation
+Authorization is required before any of that work may begin.
