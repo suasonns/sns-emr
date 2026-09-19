@@ -8,11 +8,29 @@ subsequently approved pull request per increment.
 `RNICA_AI_GOVERNANCE.md`, `RNICA_LOCK_READINESS_MATRIX.md`,
 `RNICA_GITHUB_HANDOFF_PLAN.md`, `RNICA_CURRENT_TO_TARGET_GAP_REPORT.md`.
 
-Each increment below reports, in order: Current reusable implementation ·
-Presentation rewiring · Confirmed defects · New API/service work · Schema
-impact · Migration impact · Ownership domains affected · Acceptance
-criteria · Automated test requirements · Feature-flag/rollback strategy ·
-Dependencies/blockers.
+Each increment below reports, in order: Verified files/components/services
+· Current reusable implementation · Presentation rewiring · Confirmed
+defects · New API/service work · Schema impact · Migration impact ·
+Ownership domains affected · Acceptance criteria · Automated test
+requirements · Historical-record handling · Feature-flag/rollback
+strategy · Dependencies/blockers.
+
+**Cross-cutting historical-record handling rule (applies to every
+increment unless the increment states otherwise):** no increment in this
+plan rewrites, backfills, or re-evaluates existing signed/locked/amended
+records against a new or changed rule. New validation, enforcement, or
+presentation behavior applies prospectively to assessments created or
+unlocked after the increment's approved release/flag activation.
+Increments 3, 9, and 13 state their historical-record handling explicitly
+because they introduce Lock-blocking behavior changes; the remaining
+increments are presentation-only or additive and inherit this rule without
+restating it, except where noted.
+
+**Verified files/components/services** for increments not restating them
+individually are the files already cited inline under "Current reusable
+implementation" for that increment; Increment 9 below shows the full
+citation-explicit pattern this plan follows once a defect/discovery item
+is in scope.
 
 ---
 
@@ -84,6 +102,10 @@ Dependencies/blockers.
 - **Acceptance criteria:** FAST/ECOG/NYHA render only per locked
   conditional rules; hidden scales are not rendered as disabled/
   placeholder; ECOG now enforced server-side when applicable.
+- **Historical-record handling:** New ECOG enforcement applies only to
+  assessments created or unlocked after the flag activates; existing
+  signed/locked assessments that lack ECOG (where it should have applied)
+  are not retroactively invalidated or reopened.
 - **Automated test requirements:** New backend test for ECOG conditional
   enforcement (mirrors existing FAST/NYHA tests); regression test that
   PPS/KPS remain always-required.
@@ -218,31 +240,56 @@ Dependencies/blockers.
 
 ## Increment 9 — ACP & Goals of Care
 
+- **Verified files/components/services:** `clinical_note_validation_engine.py:380-517`
+  (server hard-required list); `RNICA.jsx:398-406` (ACP field declarations,
+  including the previously-unmapped discussion-status fields);
+  `RNICA.jsx:975-985` (client-side requiredness); `RNICA_ACP_SIX_FIELD_
+  RECONCILIATION_DECISION.md` (resolves Discovery Item 7).
 - **Current reusable implementation:** 3 of the 6 target ACP fields are
   already server-enforced at Lock (Code Status, Life-Sustaining Treatment
-  Preference, Hospitalization Preference).
+  Preference, Hospitalization Preference). **The other 3 target fields
+  (CPR/Life-Sustaining/Hospitalization Discussion Status) already exist in
+  `form_data`** under `cprPreferenceAskedStatus`, `lifeSustainingAskedStatus`,
+  `hospitalizationAskedStatus` — confirmed no new schema/storage is
+  required for the six-field target.
 - **Presentation rewiring:** Consolidate ACP fields (currently scattered
   across `demographics`/`diagnoses`) into one dedicated screen.
 - **Confirmed defects:** Current repository enforces 3 of the approved
   6-field ACP target — a current-to-target validation gap, not a design
-  reduction. The approved 6-field target stands.
+  reduction. The approved 6-field target stands (see
+  `RNICA_ACP_SIX_FIELD_RECONCILIATION_DECISION.md`). Additionally,
+  `lifeSustainingAskedStatus` is client-required but not server-enforced —
+  an existing client/server parity gap independent of the 3-vs-6 question.
 - **New API/service work:** Add server-side hard-required enforcement for
-  the remaining ACP fields once Discovery Item 7 (exact 6-field list and
-  HOPE mappings) is resolved.
-- **Schema impact:** None expected — candidate fields (Advance Directives,
-  POA, Decision Maker, CPR Preference) likely already exist in `form_data`;
-  confirm during discovery.
-- **Migration impact:** None expected.
+  `cprPreferenceAskedStatus`, `lifeSustainingAskedStatus`, and
+  `hospitalizationAskedStatus`, once the reconciliation decision's 4 open
+  items (HOPE-vs-SNS-internal labeling, response-set integrity,
+  client-side requiredness confirmation, prospective-only release rule)
+  are resolved.
+- **Schema impact:** None — all 6 target fields already exist in
+  `form_data` (confirmed, not assumed).
+- **Migration impact:** None expected; forward-only migration only if a
+  future re-check of `form_data` proves otherwise.
 - **Ownership domains affected:** ACP & Goals of Care only; must not own
   POC interventions, final certification, or Final Clinical Narrative.
 - **Acceptance criteria:** All 6 target ACP fields are server-enforced at
-  Lock, each with a confirmed HOPE mapping.
-- **Automated test requirements:** New Lock-blocker tests for each of the
-  3 newly-enforced fields.
+  Lock, applied prospectively only (no rewrite of signed/locked records);
+  each field's HOPE-vs-SNS-internal label and response-set integrity
+  confirmed per the reconciliation decision.
+- **Automated test requirements:** New Lock-blocker tests for the 3 newly-
+  enforced fields; a client/server parity test for
+  `lifeSustainingAskedStatus`.
+- **Historical-record handling:** New enforcement applies only to
+  assessments created/unlocked after the approved release rule takes
+  effect. Existing signed or locked records are not rewritten or
+  retroactively evaluated against the 6-field requirement.
 - **Feature-flag/rollback strategy:** New enforcement behind its own flag
   (Lock-blocking change, not presentation-only).
-- **Dependencies/blockers:** **Blocked** on Discovery Item 7 (exact 6-field
-  list + HOPE mappings) before server-enforcement work can be scoped.
+- **Dependencies/blockers:** **Blocked** on the 4 open items in
+  `RNICA_ACP_SIX_FIELD_RECONCILIATION_DECISION.md` §9 before server-
+  enforcement work can be scoped. Field-existence discovery (previously
+  Discovery Item 7) is now resolved — no longer a blocker for scoping the
+  presentation-only portion of this increment.
 
 ## Increment 10 — Orders & POC explicit actions
 
@@ -344,6 +391,11 @@ Dependencies/blockers.
   trivial autosave tick; Lock/amendment/audit behavior otherwise unchanged
   and regression-tested; Discovery Item 3 (signature/attestation as
   distinct blockers) resolved.
+- **Historical-record handling:** The `status`-reset fix changes only the
+  write condition on future updates; historical rows' existing `status`
+  values are not rewritten or reinterpreted. Amendment/audit history for
+  already-locked records is unaffected, since locked records never hit
+  this code path (blocked by the existing 423 protection).
 - **Automated test requirements:** Regression test for the `status`-reset
   fix (assert `status` unaffected by autosave-only updates); existing
   `test_rnica_finalization.py`, `test_rnica_amendments.py` must still pass.
