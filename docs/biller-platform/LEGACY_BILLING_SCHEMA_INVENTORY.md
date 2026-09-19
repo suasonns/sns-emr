@@ -281,7 +281,7 @@ Open defects: naming-collision documentation-clarity risk (already flagged in th
 Current status: **not found anywhere in the repository**
 Business concepts represented: n/a
 Historical value: n/a — nothing to preserve; nothing found, historical or active
-Recommended decision: CREATE if pursued (genuinely new; nothing to consolidate or retire)
+Recommended decision: TENTATIVE CREATE if pursued (genuinely new; nothing to consolidate or retire). No authoritative equivalent was found during the current repository search. Creation is not approved until this Legacy Billing Schema Inventory is formally approved (currently still under review) and confirms no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: absence confirmed via repository-wide search
 Open defects: none
 
