@@ -86,22 +86,25 @@ behavior and the approved 13-screen target.
   not a gap to fill).
 
 ### 9. ACP & Goals of Care
-- **C** — **Target-authority correction (per governance review):** the
-  repository's 3-field enforcement is discovery evidence only and does
-  **not** reduce the approved target. Current-to-target treatment:
+- **C** — **Resolved this pass** (see `RNICA_ACP_SIX_FIELD_RECONCILIATION_DECISION.md`):
   1. **Current state:** `RN_ICA_REQUIRED_FIELD_GROUPS` hard-enforces 3
      fields at Lock — Code Status, Life-Sustaining Treatment Preference,
      Hospitalization Preference (`clinical_note_validation_engine.py:
      380-517`).
-  2. **Target authority:** 6 required ACP values, per the approved RNICA
-     authority package and applicable HOPE mappings. Not reduced to 3.
-  3. **Gap classification:** current-to-target validation gap (3 of 6
-     target fields enforced) — **C** (implemented but incomplete relative
-     to target), not a design question.
-  4. **Required before implementation:** verify the exact 6 target values
-     (candidates: Advance Directives, POA, Decision Maker, CPR Preference,
-     plus the 3 already enforced) and their controlling HOPE mappings.
-     Tracked as Discovery Item 7 below.
+  2. **Target authority:** 6 required ACP values — the 3 above plus CPR
+     Preference / Life-Sustaining Treatment / Hospitalization Preference
+     Discussion Status. Not reduced to 3.
+  3. **Confirmed this pass:** all 3 discussion-status fields already exist
+     in `form_data` (`cprPreferenceAskedStatus`, `lifeSustainingAskedStatus`,
+     `hospitalizationAskedStatus`, `RNICA.jsx:398-406`) — no new
+     schema/storage required. `lifeSustainingAskedStatus` is client-
+     required (`RNICA.jsx:975-976`) but not server-enforced.
+  4. **Gap classification:** current-to-target validation-rule gap
+     (3 of 6 target fields server-enforced) — **C**, not a design question.
+  5. **Still open before implementation:** HOPE-vs-SNS-internal labeling
+     confirmation and response-set integrity check (see reconciliation
+     decision §4-5) — Discovery Item 7 is resolved for field *existence*,
+     not yet for HOPE-label/response-set confirmation.
 
 ### 8. Safety & Clinical Risk
 - **B** — Safety and Imminent Death modules exist.
@@ -289,26 +292,43 @@ implementation increment begins. No item may be filled with an assumption.
 - **Blocks implementation:** Yes, for whichever increment owns Symptom
   Impact/SFV triggers, until re-verified.
 
-### 7. ACP target 6-field set and controlling HOPE mappings
-- **Exact unresolved question:** What are the exact 6 ACP fields required
-  by approved target authority (3 are confirmed: Code Status,
-  Life-Sustaining Treatment Preference, Hospitalization Preference), and
-  what are their controlling HOPE mappings?
+### 7. ACP target 6-field set and controlling HOPE mappings — RESOLVED (partially)
+- **Resolution:** See `RNICA_ACP_SIX_FIELD_RECONCILIATION_DECISION.md`,
+  created and committed as part of this pass.
+- **Exact 6-field target (itemized):** CPR Preference Discussion Status,
+  Code Status, Life-Sustaining Treatment Discussion Status, Life-
+  Sustaining Treatment Preference, Hospitalization Preference Discussion
+  Status, Hospitalization Preference.
 - **Files/services inspected:**
-  `clinical_note_validation_engine.py:380-517` (confirms only 3 today);
-  `RNICA_WORKFLOW_AUTHORITY_MAP.md` (not reopened; contains the
-  superseded "six" claim without an itemized list).
-- **Current repository behavior:** 3 of 6 target fields enforced.
+  `clinical_note_validation_engine.py:380-517` (confirms only 3 Preference
+  fields server-enforced today); `RNICA.jsx:398-410,975-985` (confirms all
+  3 discussion-status fields already exist in `form_data` under
+  `demographics.advancedCarePlanning.*`, mapped in-code to HOPE
+  F2000-A/F2100-A/F2200-A, with `lifeSustainingAskedStatus` client-
+  required but not server-enforced).
+- **Current repository behavior:** 3 of 6 target fields server-enforced;
+  all 6 target fields already exist in storage — **no schema work
+  required**.
 - **Target authority:** 6 required ACP values (approved target, does not
-  reduce to 3).
-- **Conflict:** Confirmed gap (3 vs. 6); not a design conflict, a build
-  gap.
-- **Required decision:** Product/compliance authority must confirm the
-  itemized 6-field list and HOPE mappings before Increment 9 (ACP & Goals
-  of Care) is built.
+  reduce to 3) — confirmed unchanged by this resolution.
+- **Conflict:** Confirmed gap (3 vs. 6 server-enforced); resolved as a
+  build/enforcement gap, not a design conflict or schema gap.
+- **Remaining open sub-items (still `[IMPLEMENTATION DISCOVERY REQUIRED]`,
+  tracked in the reconciliation decision, §9):**
+  1. Independent confirmation of the F2000-A/F2100-A/F2200-A HOPE mapping
+     against official CMS guidance (currently only an in-code comment).
+  2. Whether the current 3-value response set satisfies a required
+     5-state model (missing/not-asked/declined/unable-to-respond/unknown).
+  3. Client-side requiredness confirmation for `cprPreferenceAskedStatus`
+     and `hospitalizationAskedStatus` (only `lifeSustainingAskedStatus`
+     confirmed client-required).
+  4. Final HOPE-vs-SNS-internal labeling decision for each of the 6
+     fields.
 - **Test impact:** New Lock-blocker tests for the 3 additional fields once
-  confirmed.
-- **Blocks implementation:** Yes, for Increment 9.
+  the remaining sub-items are resolved.
+- **Blocks implementation:** Field-existence discovery no longer blocks
+  scoping; server-enforcement work for Increment 9 remains blocked on the
+  4 remaining sub-items above.
 
 ## Summary
 
