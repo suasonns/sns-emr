@@ -85,24 +85,35 @@ behavior and the approved 13-screen target.
   `RNICA_SCREEN_AUTHORITY_MATRIX.md` §7 — this is compliant by omission,
   not a gap to fill).
 
+### 9. ACP & Goals of Care
+- **C** — **Target-authority correction (per governance review):** the
+  repository's 3-field enforcement is discovery evidence only and does
+  **not** reduce the approved target. Current-to-target treatment:
+  1. **Current state:** `RN_ICA_REQUIRED_FIELD_GROUPS` hard-enforces 3
+     fields at Lock — Code Status, Life-Sustaining Treatment Preference,
+     Hospitalization Preference (`clinical_note_validation_engine.py:
+     380-517`).
+  2. **Target authority:** 6 required ACP values, per the approved RNICA
+     authority package and applicable HOPE mappings. Not reduced to 3.
+  3. **Gap classification:** current-to-target validation gap (3 of 6
+     target fields enforced) — **C** (implemented but incomplete relative
+     to target), not a design question.
+  4. **Required before implementation:** verify the exact 6 target values
+     (candidates: Advance Directives, POA, Decision Maker, CPR Preference,
+     plus the 3 already enforced) and their controlling HOPE mappings.
+     Tracked as Discovery Item 7 below.
+
 ### 8. Safety & Clinical Risk
 - **B** — Safety and Imminent Death modules exist.
-- **G** — Fall Risk/Morse score's Lock-blocking status is shown in the
-  product screenshot but is not in the confirmed 17-item hard-required
-  list. Until product/compliance authority confirms whether Morse scoring
-  is intended as a hard Lock blocker, implementation of blocking behavior
-  around it is blocked by an authority decision, not a code gap.
-
-### 9. ACP & Goals of Care
-- **C** — A prior document (`RNICA_WORKFLOW_AUTHORITY_MAP.md`, not
-  reopened) stated "six ACP hard-required fields"; direct re-verification
-  of `RN_ICA_REQUIRED_FIELD_GROUPS` found only 3 (Code Status,
-  Life-Sustaining Treatment Preference, Hospitalization Preference).
-  Advance Directives, POA, CPR Preference, and Decision Maker either (a)
-  exist as optional/soft fields today, or (b) do not exist as RNICA fields
-  at all — this distinction was not resolved this pass and is
-  implemented-but-possibly-defective relative to the approved design
-  intent, pending discovery.
+- **BLOCKED BY AUTHORITY DECISION** — Fall Risk/Morse Lock-blocking status.
+  Governing rule: a documented, validated fall-risk instrument may retain
+  its instrument-specific score/interpretation; RNICA must not invent a
+  new aggregate risk-scoring engine; the result becomes a Lock blocker
+  only if a controlling requirement or approved agency policy explicitly
+  requires completion for the applicable assessment type. Until that
+  authority is documented, this item must **not** be converted into a new
+  hard Lock blocker based on Figma presentation alone, and must not be
+  classified A-F.
 
 ### 10. Orders & POC
 - **A** — The POC adapter (`rnica_poc_adapter.py`, `rnica_poc.py`) fully
@@ -155,25 +166,149 @@ behavior and the approved 13-screen target.
 | LCD evidence engine (non-verdict) | **A** | Confirmed shape; UI copy audit for prohibited language **not done** this pass |
 | ECOG Lock enforcement | **C** | Confirmed missing enforcement branch |
 | AI recommendation audit event | **E** | Not found; needs service work if required |
-| Fall Risk/Morse Lock-blocking status | **G** | Needs authority decision before classification as A-F is possible |
-| ACP hard-required field count (3 vs. "six") | **C** | Confirmed discrepancy between prior document and code; needs authority reconciliation, not code, first |
+| ACP hard-required field count (target 6, current 3) | **C** | Target authority stands at 6; repository enforces 3; not a design reduction — see Discovery Item 7 |
+| Fall Risk/Morse Lock-blocking status | **BLOCKED BY AUTHORITY DECISION** | Do not classify A-F or convert to a Lock blocker until controlling requirement/agency policy is documented |
 
-## Items explicitly marked `[IMPLEMENTATION DISCOVERY REQUIRED]` (not resolved this pass)
+## Discovery items — full required treatment
 
-1. Pain-reassessment/24h-follow-up gate — exact server validator distinct
-   from base Pain Screening field, not isolated.
-2. SFV documentation's server-side Lock-blocking enforcement path (client
-   derivation confirmed; server enforcement not isolated).
-3. Whether `finalization.signatureCertification`/`clinicianSignature` are
-   hard Lock blockers distinct from the general readiness check, or merely
-   captured/logged.
-4. UI-copy audit for prohibited LCD/eligibility language across the
-   current `RNICA.jsx` LCD panel.
-5. Whether the 43 previously-catalogued unmapped Structured Findings
-   fields (`RNICA_CERTIFICATION_PACKAGE.md`) remain unmapped today, or have
-   since been resolved — needs a fresh pass, not assumed either way.
-6. Whether HOPE J2050/J2051 wiring defects (`SNS_RNICA_GAP_VALIDATION_2.0.md`)
-   remain present today.
+Each item below must be resolved, in this structure, before its affected
+implementation increment begins. No item may be filled with an assumption.
+
+### 1. Pain-reassessment / 24h-follow-up gate
+- **Exact unresolved question:** Is the pain-reassessment/24h-follow-up
+  gate shown in the product screenshot ("Pain Reassessment Required")
+  enforced by a distinct server validator, or is it a client-only /
+  not-yet-server-enforced check?
+- **Files/services inspected:** `clinical_note_validation_engine.py`
+  (`RN_ICA_REQUIRED_FIELD_GROUPS`, base Pain Screening entry only).
+- **Current repository behavior:** Base Pain Screening field is
+  server-enforced; the time-boxed reassessment/follow-up condition was not
+  isolated as a separate validator in this pass.
+- **Target authority:** Pain & Symptom Burden screen must show this as a
+  Compliance & Readiness blocker per the approved Figma baseline.
+- **Conflict:** Possible — UI may show a blocker the server does not
+  independently enforce.
+- **Required decision:** Confirm whether a distinct backend check exists;
+  if not, decide whether to add one before or during the Pain & Symptom
+  Burden increment.
+- **Test impact:** New blocker-parity test required either way.
+- **Blocks implementation:** Yes, for Increment 4 (Pain & Symptom Burden)
+  and Increment 11 (Compliance & Readiness parity).
+
+### 2. SFV documentation server-side Lock enforcement
+- **Exact unresolved question:** Does a server-side check block Lock when
+  SFV documentation is missing, or is "SFV Assessment Missing" (seen in
+  the product screenshot) purely a client-derived status?
+- **Files/services inspected:** `src/intake/hopeReportMapper.js`
+  (`getSfvStatus`, `getHopeAdmissionStatus` — client-side derivation
+  confirmed); `clinical_note_validation_engine.py` (no matching SFV entry
+  found in `RN_ICA_REQUIRED_FIELD_GROUPS`).
+- **Current repository behavior:** Client-side derivation only, confirmed;
+  server-side enforcement not isolated in this pass.
+- **Target authority:** SFV is a compliance-critical blocker per prior
+  approved documents (RNICA Screen-by-Screen Evidence Matrix).
+- **Conflict:** Possible client/server blocker mismatch.
+- **Required decision:** Confirm/add server-side enforcement before
+  Increment 6 (Body Systems) or Increment 13 (Finalization) is built.
+- **Test impact:** Client/server parity test required.
+- **Blocks implementation:** Yes, for Increment 13.
+
+### 3. Attestation/signature as distinct hard blockers
+- **Exact unresolved question:** Are `finalization.signatureCertification`
+  and `finalization.clinicianSignature` enforced as their own hard Lock
+  blockers, or only captured/logged as audit metadata?
+- **Files/services inspected:** `backend/app/api/visits.py`
+  (`lock_rnica_assessment` — confirmed these fields are read into audit
+  metadata; a distinct blocking check was not isolated from the general
+  `evaluate_finalization_readiness` call).
+- **Current repository behavior:** Confirmed captured at Lock; blocking
+  status not isolated.
+- **Target authority:** Both must be hard blockers per
+  `RNICA_LOCK_READINESS_MATRIX.md` §3 (locked decision, unchanged).
+- **Conflict:** None known, but unverified.
+- **Required decision:** Confirm `evaluate_finalization_readiness`
+  includes these as checks; if not, add them explicitly.
+- **Test impact:** Signature/attestation-specific Lock-failure test
+  required.
+- **Blocks implementation:** Yes, for Increment 13.
+
+### 4. UI-copy audit for prohibited LCD/eligibility language
+- **Exact unresolved question:** Does any current `RNICA.jsx` LCD panel
+  copy use prohibited language ("Eligible", "LCD match: high", "Satisfies
+  LCD") that must be replaced with evidence-support language before or
+  during Increment 5?
+- **Files/services inspected:** `RNICA.jsx` `LcdEligibilityCard` component
+  (structure reviewed; full string-literal audit not performed this pass).
+- **Current repository behavior:** Unknown until a targeted string search
+  is run.
+- **Target authority:** `RNICA_AI_GOVERNANCE.md` §5 required/prohibited
+  language list (locked decision).
+- **Conflict:** Unknown until audited.
+- **Required decision:** Run the audit before Increment 5 begins; replace
+  any prohibited strings found.
+- **Test impact:** Prohibited-language snapshot test (already required by
+  `RNICA_AI_GOVERNANCE.md` §9) should be added at the same time.
+- **Blocks implementation:** Yes, for Increment 5 (Diagnosis & LCD).
+
+### 5. 43 previously-catalogued unmapped Structured Findings fields
+- **Exact unresolved question:** Do the 43 fields catalogued in
+  `RNICA_CERTIFICATION_PACKAGE.md` (Skin/Wounds, GU catheter, GI
+  device/output, endocrine insulin, CV edema pitting, respiratory
+  ventilator settings, HOPE Symptom Impact ×8) remain unmapped today, or
+  have some since been resolved?
+- **Files/services inspected:** `RNICA_CERTIFICATION_PACKAGE.md` (dated
+  document, not re-verified against current `CONCEPT_REGISTRY` this pass).
+- **Current repository behavior:** Not re-checked; treat the 43-field list
+  as unverified-current, not as confirmed-current or confirmed-resolved.
+- **Target authority:** All auto-populatable clinical fields should
+  eventually have concept/apply wiring per the certification package's own
+  completion rule.
+- **Conflict:** None known; purely a currency question.
+- **Required decision:** Re-run the `CONCEPT_REGISTRY` coverage check
+  before Increment 6 (Body Systems) is scoped.
+- **Test impact:** None until re-verified.
+- **Blocks implementation:** Only affects field-completeness scope for
+  Increment 6, not screen-shell delivery.
+
+### 6. HOPE J2050/J2051 wiring defects
+- **Exact unresolved question:** Do the J2050 (Symptom Impact ownership
+  conflict) and J2051 (SFV-trigger source mismatch:
+  `clinical_notes` vs. `form_data`) defects recorded in
+  `SNS_RNICA_GAP_VALIDATION_2.0.md` remain present today?
+- **Files/services inspected:** `SNS_RNICA_GAP_VALIDATION_2.0.md` (dated
+  document, not re-verified against current
+  `rnica_hope_workflow_service.py` this pass).
+- **Current repository behavior:** Not re-checked this pass.
+- **Target authority:** HOPE governance rule — RNICA is the sole
+  authoritative source for HOPE reporting elements; no ownership conflict
+  or trigger-source mismatch is permitted.
+- **Conflict:** Unknown until re-verified.
+- **Required decision:** Re-verify before Increment 4 (Pain & Symptom
+  Burden) or Increment 6 (Body Systems) is scoped, whichever owns J2050.
+- **Test impact:** HOPE-derivation parity test required if still present.
+- **Blocks implementation:** Yes, for whichever increment owns Symptom
+  Impact/SFV triggers, until re-verified.
+
+### 7. ACP target 6-field set and controlling HOPE mappings
+- **Exact unresolved question:** What are the exact 6 ACP fields required
+  by approved target authority (3 are confirmed: Code Status,
+  Life-Sustaining Treatment Preference, Hospitalization Preference), and
+  what are their controlling HOPE mappings?
+- **Files/services inspected:**
+  `clinical_note_validation_engine.py:380-517` (confirms only 3 today);
+  `RNICA_WORKFLOW_AUTHORITY_MAP.md` (not reopened; contains the
+  superseded "six" claim without an itemized list).
+- **Current repository behavior:** 3 of 6 target fields enforced.
+- **Target authority:** 6 required ACP values (approved target, does not
+  reduce to 3).
+- **Conflict:** Confirmed gap (3 vs. 6); not a design conflict, a build
+  gap.
+- **Required decision:** Product/compliance authority must confirm the
+  itemized 6-field list and HOPE mappings before Increment 9 (ACP & Goals
+  of Care) is built.
+- **Test impact:** New Lock-blocker tests for the 3 additional fields once
+  confirmed.
+- **Blocks implementation:** Yes, for Increment 9.
 
 ## Summary
 

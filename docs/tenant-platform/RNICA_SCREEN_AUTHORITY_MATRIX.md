@@ -146,13 +146,21 @@ which screen currently exists.
   `diagnoses` in the current module layout — no dedicated ACP module
   confirmed).
 - **Produces:** HOPE ACP mappings, POC inputs, readiness status.
-- **Confirmed hard-required at Lock (3, not 6 — corrected from v1):** Code
-  Status, Life-Sustaining Treatment Preference, Hospitalization Preference
+- **Current repository enforcement (discovery evidence, not final product
+  authority) — 3 fields hard-required at Lock:** Code Status,
+  Life-Sustaining Treatment Preference, Hospitalization Preference
   (`RN_ICA_REQUIRED_FIELD_GROUPS`,
-  `clinical_note_validation_engine.py:380-517`). Advance Directives, POA,
-  CPR Preference, and Decision Maker are **not found** in the hard-required
-  list — `[IMPLEMENTATION DISCOVERY REQUIRED]` (may be optional/soft fields
-  today; must be verified before presenting them as Lock-blocking).
+  `clinical_note_validation_engine.py:380-517`).
+- **Approved target product authority — 6 fields required**, per the
+  approved RNICA authority package and applicable HOPE mappings. The
+  current 3-field repository enforcement does **not** supersede this
+  target; the gap between 3 (current) and 6 (target) is a validated
+  current-to-target gap, not a reduction of the target. Advance
+  Directives, POA, CPR Preference, and Decision Maker are the candidate
+  additional fields — `[IMPLEMENTATION DISCOVERY REQUIRED]`: the exact
+  six target values and their controlling HOPE mappings must be verified
+  before implementation. See `RNICA_CURRENT_TO_TARGET_GAP_REPORT.md`
+  Screen 9 for the full treatment.
 - **Prohibited:** Owning POC interventions, final certification, or Final
   Clinical Narrative.
 
