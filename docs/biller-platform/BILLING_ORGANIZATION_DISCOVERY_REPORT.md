@@ -3152,6 +3152,102 @@ blocked, consistent with the handoff's own "Next Gate" section.
 
 ---
 
+## SECTION 28 — CLAIM CATEGORY / PAYER TERMINOLOGY DECISION RECORD
+
+STATUS: APPROVED — LOCKED — AUTHORITATIVE. NO SCHEMA CHANGE. NO
+MIGRATION CHANGE. NO IMPLEMENTATION CHANGE. DOCUMENTATION ONLY.
+
+Per the approved "Billing Platform Settings — Terminology Decision
+Record," this section locks the **user-facing display label** for
+each `claim_category` internal enum value (Section 20.9, the sole
+authoritative source for the internal value list per Section 26.4).
+This section does not redefine, reorder, add to, or remove from the
+Section 20.9 enum — it adds a display-label mapping layer on top of
+it, per the explicit "internal enums do not need to exactly match
+user-facing terminology" rule.
+
+### 28.1 Internal Value → User-Facing Label (Locked)
+
+| # | Internal `claim_category` value (Section 20.9) | Locked user-facing label |
+|---|---|---|
+| 1 | `MEDICARE_HOSPICE` | **Medicare Part A Hospice** |
+| 2 | `MEDICAID` | Medicaid |
+| 3 | `MEDI_CAL` | Medi-Cal |
+| 4 | `MEDICARE_ADVANTAGE_HMO` | Medicare Advantage HMO |
+| 5 | `MEDICARE_ADVANTAGE_PPO` | Medicare Advantage PPO |
+| 6 | `COMMERCIAL_HMO` | Commercial HMO |
+| 7 | `COMMERCIAL_PPO` | Commercial PPO |
+| 8 | `COMMERCIAL_POS` | Commercial POS |
+| 9 | `TRICARE` | TRICARE |
+| 10 | `VETERANS_AFFAIRS` | Veterans Affairs (VA) |
+| 11 | `PRIVATE_PAY` | Private Pay |
+| 12 | `OTHER` | Other |
+
+Only row 1 (`MEDICARE_HOSPICE`) carries a display label that differs
+from a direct title-case rendering of the internal value — this is
+the specific, deliberate decision this record locks. All other rows
+are a straightforward title-case/formatting rendering of their
+internal value and are recorded here only for completeness of the
+mapping, not because they were independently in question.
+
+### 28.2 Rationale (restated)
+
+Hospice billing professionals must distinguish Medicare Part A
+Hospice (the hospice benefit itself) from Medicare Part B, Medicare
+Advantage, and other Medicare-related coverage during payer
+identification, claim review, configuration review, reporting, and
+auditing. "Medicare Hospice" alone is judged less precise for this
+professional audience than "Medicare Part A Hospice," which makes the
+benefit source explicit. This is a **presentation-layer precision
+decision**, not a data-modeling decision — it does not imply a need
+for a separate `MEDICARE_PART_A_HOSPICE` vs. some other internal
+value; `MEDICARE_HOSPICE` remains the single internal value for this
+category (Section 20.9), consistent with Section 26.4's rule that no
+section may define a competing or partial version of the enum.
+
+### 28.3 Scope and Non-Impact
+
+- **No schema change:** the `claims.claim_category` column
+  definition, type, and `CheckConstraint` value list (Section 25.6/
+  25.10) are unchanged — the constraint still validates against the
+  internal enum values in Section 20.9/28.1, not display labels.
+- **No migration change:** Section 25's nine proposed migrations and
+  Section 25.13's dependency ordering are unaffected; display labels
+  are a UI/reporting-layer concern applied at render time, never
+  persisted as a separate column or migrated value.
+- **No backfill-strategy change:** Section 25.14/26.2's mapping rules
+  continue to resolve `payer_name` to the internal enum values;
+  display-label rendering is a separate, later step applied only when
+  presenting an already-resolved `claim_category` value to a user.
+- **No Figma change:** `settings-payers-plans-dark.png` requires no
+  changes — the approved label already shown there
+  ("Medicare Part A Hospice") is confirmed correct and is the
+  reference this section locks against.
+- **Applies wherever `claim_category` is rendered:** UI tables/badges
+  (e.g. the Expanded Agency Detail Open Claims Summary, Section 20),
+  exports (Section 21.10/25.8), and reports must all use this same
+  label mapping — no page or export may introduce its own competing
+  label for the same internal value.
+
+### 28.4 Relationship to Section 20.9 / Section 26.4
+
+Section 20.9 remains the single authoritative source for the
+`claim_category` **internal value list** (unchanged by this record).
+This Section 28 is the single authoritative source for the
+`claim_category` **user-facing label mapping**. Together they fully
+define, respectively, what is stored/validated and what is displayed;
+neither section redefines the other's concern, consistent with the
+going-forward, single-source-of-truth rule established in Section
+26.4.
+
+**Status:** documentation only — no schema, migration, model,
+service, route, or UI component created or changed. This is a locked,
+authoritative terminology decision to be honored whenever
+`claim_category` display work is eventually authorized and
+implemented; it does not itself authorize that implementation.
+
+---
+
 ## RELATIONSHIP TO OTHER DOCUMENTS
 
 This report is the required discovery deliverable for the approved
@@ -3215,3 +3311,5 @@ while producing this report or either addendum.
 | 2026-09-18 | Added Section 26: Migration Design Review — Required-Format Deliverables, restating Sections 25.13-25.14 in the exact Migration Name/Depends On/Reason table and lettered (A-E) format required by the follow-up "SECTION 25 — MIGRATION DESIGN REVIEW — APPROVED WITH REQUIRED REVISIONS" message. 26.1 provides the actual dependency graph and explicitly corrects two dependencies implied by the reviewer's illustrative example that this design does not have: `billing_agency_coverage_assignments` does not depend on `billing_agency_team_assignments` (coverage-role assignment is scoped directly to `agency_assignment_id`, independent of which team covers the agency — a deliberate Section 21.3 design decision), and the audit/export event tables use a polymorphic reference rather than a literal FK to the coverage table; also clarifies `billing_administrative_reporting_lines` depends only on the existing membership table, not on any other new "administrative hierarchy structure," and that "claims table validation complete" refers to the separate backfill-execution step, not a schema-level migration dependency. 26.2 restates the backfill strategy in the required A (legacy payer mapping rules, with an explicit per-category mapping-rule table) / B (unknown payer handling) / C (validation strategy) / D (failure handling) / E (backfill execution approach, including concrete verification queries and a reconciliation process) format, and flags that the reviewer's restated payer list omits `COMMERCIAL_POS` while the Section 20.9 locked 12-value enum retains it — the mapping table continues to support all 12 locked values. 26.3 reaffirms no schema, migration, model, API, UI, or backfill execution has occurred. Documentation only. Migration file creation, API design, and UI implementation remain explicitly blocked pending final Migration Design Review sign-off. |
 | 2026-09-18 | Added Section 26.4: Claim Category Enum — Single Source of Truth Reconciliation, per the Section 26 Review's required revision (repeated across two review messages) to reconcile `COMMERCIAL_POS`'s appearance in the locked enum against its omission from a later payer-category reference. Designated Section 20.9 as the single authoritative definition of the `claim_category` value list; confirmed `COMMERCIAL_POS` was never actually dropped from this report's own record (present throughout Section 20.9, the Section 25.6/25.10 CheckConstraint definitions, and the Section 26.2.A mapping-rule table) — the only omission was in a payer list restated informally inside a user review message, which this report does not treat as redefining the locked enum. Established a going-forward rule that every other section referencing `claim_category` (Sections 21, 25.6, 25.10, 25.14/26.2) cross-references Section 20.9 rather than restating or re-deriving the list independently, so no section defines a competing or partial version of the enum. Retained `COMMERCIAL_POS` as a valid payer classification per the review's recommendation. Updated the document header STATUS line to reflect that Migration Design Review is approved and Implementation Planning is authorized, per the user's stated gate — migration file creation, API design, and UI implementation remain explicitly blocked pending separate, explicit implementation authorization. Documentation only; no schema, migrations, models, services, routes, or backfill execution created, changed, or run. |
 | 2026-09-18 | Added Section 27: User Access Detail — Discovery Validation & Implementation Planning Addendum, per the approved, locked, Figma-approved "User Access Detail" implementation handoff and the subsequent Implementation Planning Checklist. Walked every checklist section (Discovery Validation, Data Architecture, UI Implementation Plan, Authorization Model, Audit Model, Export Requirements, Security Review, Functional/UI Test Plan, Definition of Done) and classified each item against Sections 1-26: REUSE for Identity/User/Organization-Membership models, Agency Assignment storage (`BillingProviderAgencyAssignment`/`billing_agency_team_assignments`/`billing_agency_coverage_assignments`), audit infrastructure (`billing_agency_coverage_audit_events`), and export infrastructure (`billing_agency_coverage_export_events`); CREATE (unchanged) for the capability catalog/assignment tables and real route-authorization enforcement, consistent with Discovery Area 4's confirmed-unimplemented `require_permission`/`has_permission` placeholders. Confirmed the handoff's six DDE Authorization Status values are an exact match to Section 18.15's already-documented set, with no new vocabulary introduced. Flagged four open clarification items before Schema Design can begin for this page (Section 27.11): (1) whether "Individual Grant" and "User-Specific Grant" are two names for one `CapabilityAssignment.source` value or two genuinely distinct grant mechanisms; (2) whether DDE Authorization Status remains blocked on the same not-yet-built external DDE entity (Section 18.15/21.12) or requires a new lightweight, credential-free status field to unblock this page now; (3) whether "Access Review Status" is a wholly new recertification concept requiring new storage or a display label over existing capability/agency-assignment audit history; (4) whether the "Coverage Assignment" column requires a new payer-scope field (EXTEND) on `billing_agency_coverage_assignments` or simply restates the existing `coverage_role` assignment using the Section 20.9 `claim_category` enum's extensibility as its rationale. Updated the document header STATUS line accordingly. Documentation and test-plan preparation only; no schema, migration, model, service, route, or UI component created or changed. Migration creation, API creation, UI implementation, and production code changes remain explicitly blocked, per the handoff's own Next Gate section. |
+| 2026-09-18 | Added Section 28: Claim Category / Payer Terminology Decision Record, per the approved "Billing Platform Settings — Terminology Decision Record." Locks the user-facing display-label mapping for each Section 20.9 `claim_category` internal value — most notably `MEDICARE_HOSPICE` → "Medicare Part A Hospice" (all other 11 values map to a straightforward title-case rendering of their internal value). Documents this as a presentation-layer decision only: no change to the `claim_category` column definition, `CheckConstraint` value list (Section 25.6/25.10), backfill mapping rules (Section 25.14/26.2), or Figma (`settings-payers-plans-dark.png` requires no changes). Cross-referenced against the subsequently-received `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md` (the broader, cross-platform authoritative terminology source, created the same day) as the primary home for this same decision going forward. Documentation only; no schema, migration, model, service, route, or UI component created or changed. |
+| 2026-09-18 | Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_REFERENCE.md`, per the approved "SNS Hospice Solutions — Billing Platform Authoritative Terminology Reference." Locks user-facing vs. internal terminology across the whole Billing Platform (payer category labels restating Section 28's mapping; "Coverage Assignment" not "Role"; "Access Administration" not "Credential Management"/"Password Management"/"Token Management"; "Billing Role Profile" not "Employment Info"; four distinct Capability Source values with Source explicitly separate from Granted By; DDE Authorization's six states, an exact match to Section 18.15; "Emergency Access"/"Break-Glass Event" security terminology, prohibiting "Universal Access"/"Super Admin Override"/"Security Bypass"/"Clearance Level"; "SecureInbox Routing Preview — Coming Soon," consistent with the locked Communications Discovery Report; append-only audit language; a new explicit Settings-vs-Billing-Organization module-ownership boundary; and a Clinical Terminology Restriction for Billing Platform Settings). Partially resolves Section 27.11.1 (confirms "Individual Grant" and "User-Specific Grant" are two distinct, independently approved terms, not synonyms) without resolving the underlying schema/storage mechanism distinction between them, which remains open. Created `docs/governance/BILLING_PLATFORM_TERMINOLOGY_ENFORCEMENT_RULES.md` as a companion GitHub-implementation enforcement checklist (14 numbered rules, per-area QA checklists, and PR fail-conditions) governing how this terminology must be applied, and prohibited substitutions, across UI/API/Reports/Exports/Audit/Documentation once implementation is separately authorized. Both documents are documentation only; no schema, migration, model, service, route, or UI component created or changed. |
