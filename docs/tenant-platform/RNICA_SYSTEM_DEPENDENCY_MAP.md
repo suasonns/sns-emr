@@ -12,6 +12,13 @@ Companion documents:
 - `RNICA_UI_DEPENDENCY_MAP.md` — per-UI-element classification
 - `RNICA_REDESIGN_IMPACT_ANALYSIS.md` — redesign risk analysis
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in
+> the redesigned RNICA. `finalization.clinicalNarrative` is the sole
+> authoritative future Clinical Narrative. Dependency evidence below reflects
+> the current repository state and is unchanged.
+
 ---
 
 ## 1. Repository Path Index

@@ -7,6 +7,13 @@ This document evaluates, for every RNICA area identified in
 future redesign would be allowed to change and what it must preserve. It
 proposes no implementation.
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in
+> the redesigned RNICA; `finalization.clinicalNarrative` is the sole
+> authoritative future Clinical Narrative. The risk table below reflects the
+> current repository state and is unchanged.
+
 ---
 
 ## 1. Redesign Risk Table

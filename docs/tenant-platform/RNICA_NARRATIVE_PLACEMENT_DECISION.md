@@ -5,6 +5,14 @@
 **Scope:** RNICA clinical/diagnosis narrative fields vs. the finalization narrative field
 **No code, schema, migration, or field changes are authorized by this document.**
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has since issued a locked product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in the
+> redesigned RNICA. The sole authoritative future Clinical Narrative is
+> `finalization.clinicalNarrative`. The "both fields stay because both have
+> current consumers" framing below is superseded by that correction. The
+> discovery evidence below (current repository state) is unchanged.
+
 ---
 
 ## 1. Locked Decision

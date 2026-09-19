@@ -12,6 +12,13 @@ or billing readiness. It builds directly on
 with file:line citations. No implementation, redesign, or code change is
 proposed.
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has locked a product decision that `diagnoses.clinicalNarrative`
+> was incorrectly placed and must not remain a nurse-facing narrative input in
+> the redesigned RNICA; `finalization.clinicalNarrative` is the sole
+> authoritative future Clinical Narrative. Usability findings below reflect
+> the current repository state and are unchanged.
+
 ---
 
 ## Section 1 — RNICA Usability Review

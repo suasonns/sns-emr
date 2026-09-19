@@ -11,6 +11,14 @@ weighed against — it treats both fields as separate, load-bearing fields
 with separate consumers, and answers each of the 15 required questions on
 that basis before any redesign decision is finalized.
 
+> **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
+> The Owner has since issued a locked product decision: `diagnoses.clinicalNarrative`
+> was incorrectly placed and is not the future nurse-facing narrative;
+> `finalization.clinicalNarrative` is the sole authoritative RNICA Clinical
+> Narrative going forward. The per-field analysis below remains accurate as a
+> record of the *current* repository state and its consumers, and is the
+> evidence base the forward-only rewiring plan must work from.
+
 ---
 
 ## Field 1: `diagnoses.clinicalNarrative`
