@@ -2,7 +2,8 @@
 
 ## Status
 
-REVIEWER APPROVAL RECORD — TEMPLATE (unsigned)
+REVIEWER APPROVAL RECORD — DOCUMENTATION PULL REQUEST APPROVED WITH
+CONDITIONS (individual review-area rows remain unsigned)
 
 Companion sign-off record for the Patient Chart documentation baseline:
 `PATIENT_CHART_WORKFLOW_AUTHORITY.md`,
@@ -62,7 +63,10 @@ Allowed decisions:
 
 | Condition ID | Review Area | Required Action | Owner | Blocking | Resolution Evidence | Status |
 |---|---|---|---|---|---|---|
-| | | | | YES / NO | | OPEN / RESOLVED |
+| PC-COND-1 | CMS and LCD | Complete LCD L33393 section-level mapping during repository discovery. | Repository discovery (PATIENT_CHART_GITHUB_DISCOVERY_PROMPT.md) | YES | Pending — resolves the `DEEP_REVIEW_REQUIRED` row for `1.pdf` in PATIENT_CHART_SOURCE_MAPPING.md. | OPEN |
+| PC-COND-2 | Clinical Authority | Validate repository implementation for certification ownership and status flow. | Repository discovery (PATIENT_CHART_CURRENT_STATE_MAPPING.md) | YES | Pending. | OPEN |
+| PC-COND-3 | Clinical Authority | Validate repository implementation for Plan-of-Care approval/signature workflow. | Repository discovery (PATIENT_CHART_CURRENT_STATE_MAPPING.md / PATIENT_CHART_GAP_ANALYSIS.md) | YES | Pending. | OPEN |
+| PC-COND-4 | Privacy, Security, and Record Integrity | Validate repository implementation for correction/amendment/addendum audit behavior. | Repository discovery (PATIENT_CHART_CURRENT_STATE_MAPPING.md / PATIENT_CHART_IMPLEMENTATION_DISCOVERY.md) | YES | Pending. | OPEN |
 
 ## Final Gate Checklist
 
@@ -87,24 +91,30 @@ Allowed decisions:
 
 Documentation pull request:
 - [ ] APPROVED
-- [ ] APPROVED WITH CONDITIONS
+- [x] APPROVED WITH CONDITIONS
 - [ ] CHANGES REQUIRED
 - [ ] BLOCKED
 
 Repository discovery:
-- [ ] AUTHORIZED
+- [x] AUTHORIZED
 - [ ] NOT AUTHORIZED
 
 Application implementation:
-- [ ] NOT AUTHORIZED
+- [x] NOT AUTHORIZED
 
-Final approver:
+Final approver: (recorded by requester; individual reviewer-area rows above remain unsigned)
 
-Role:
+Role: N/A
 
-Date:
+Date: 2026-09-19
 
-Decision notes:
+Decision notes: Documentation pull request approved with conditions
+PC-COND-1 through PC-COND-4 (see Conditional-Approval Tracking above).
+All four conditions are blocking and must be resolved through the
+repository-discovery deliverables (`PATIENT_CHART_CURRENT_STATE_MAPPING.md`,
+`PATIENT_CHART_GAP_ANALYSIS.md`, `PATIENT_CHART_IMPLEMENTATION_DISCOVERY.md`)
+before Patient Chart implementation planning may begin. This approval
+does not authorize application implementation.
 
 ## Implementation boundary
 
