@@ -263,13 +263,26 @@ migration, API, or UI work.
 - [x] Database safety review approved.
 - [x] Every CREATE recommendation justified (none exist to justify).
 
-All boxes checked. Per the gate's own rule, this means:
+All boxes checked. Per the required correction to this checklist's
+final wording:
 
-**SCHEMA DESIGN = APPROVED FOR NEXT PHASE (with the above corrections
-applied)**
-**MIGRATION DESIGN = still requires its own separate review and
-authorization — not opened by this checklist result.**
-**IMPLEMENTATION = BLOCKED.**
+Schema Design Review completed.
+
+Migration Design Review authorized.
+
+Final schema authorization remains contingent on:
+
+1. Patient Coverage Authority
+   (PatientInsurance vs PatientPayer vs PatientFaceSheet)
+2. Eligibility Authority
+   (PayerEligibilityCheck vs EligibilityVerification)
+3. BillingProviderAgencyAssignment
+   dual-write authority resolution
+
+These three authorities remain unresolved and are carried forward,
+unchanged, into Migration Design Review
+(`BILLING_MIGRATION_DESIGN_REVIEW.md`). **IMPLEMENTATION REMAINS
+BLOCKED.**
 
 ## Review Summary
 
