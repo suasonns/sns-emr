@@ -533,7 +533,8 @@ existing assignment-creation/update logic instead of writing
 - **DO NOT CREATE** duplicate: Payer authority, Plan authority, Claim
   authority, Payment authority, ERA authority, Remittance authority,
   Denial authority, Appeal authority, Room & Board authority, Audit
-  authority, Export authority.
+  authority, Export authority, Permissions authority, Settings
+  authority.
 
 ### Implementation Prerequisites (status)
 
@@ -563,3 +564,48 @@ are authoritative, and their relationship strategy). It does **not**,
 by itself, authorize schema creation, migration authoring, API
 changes, or UI changes. A separate, explicit Implementation
 Authorization is required before any of that work may begin.
+
+### Phase Status
+
+- Discovery: **✅ CLOSED**
+- Repository Grounding: **✅ COMPLETE**
+- System-of-Record Review: **✅ COMPLETE**
+- Legacy Billing Review: **✅ COMPLETE**
+- Ownership Boundary Review: **✅ COMPLETE**
+- Schema Design Review: **✅ COMPLETE**
+- Migration Design Review: **✅ COMPLETE**
+- Final Schema Authorization Review: **✅ COMPLETE**
+
+### Next Phase — Authorized
+
+**IMPLEMENTATION PLANNING — AUTHORIZED.**
+
+Implementation Planning may produce:
+
+- Implementation sequence
+- Epics
+- Stories
+- Work packages
+- Acceptance criteria
+- Dependency map
+- Validation plan
+- Roll-forward repair strategy
+- Testing strategy
+
+### Still Not Authorized
+
+- ❌ Schema creation
+- ❌ Migration creation
+- ❌ Code changes
+- ❌ API changes
+- ❌ UI changes
+- ❌ Backfills
+- ❌ Data movement
+- ❌ Data deletion
+- ❌ Retirement actions
+- ❌ Alembic stamp
+- ❌ Historical migration rewrite
+
+A separate **Implementation Authorization Review** must occur after
+Implementation Planning is completed, before any of the above may be
+authorized.
