@@ -865,25 +865,28 @@ is documented in advance, without authorizing any migration:
 
 ## Final Status
 
-**APPROVED WITH CORRECTIONS is not self-declared here** — this
-document is submitted for your review, not self-approved. Based on the
-approval criteria and fail-condition self-checks above, this reviewer's
-assessment is that the document satisfies the stated criteria with two
-explicitly-flagged open items (settings authority, export authority not
-fully verified) and one intentionally-unresolved item (Patient Coverage
-Authority, with documented blockers, as the approval criteria
-explicitly permit).
+**STATUS: APPROVED WITH CORRECTIONS** (per your review).
 
-Recommended status for your determination: **APPROVED FOR SCHEMA
-DESIGN, WITH PATIENT COVERAGE AND ELIGIBILITY AUTHORITY REMAINING
-INTENTIONALLY UNRESOLVED.**
+Schema Design Review completed.
+
+Migration Design Review authorized.
+
+Final schema authorization remains contingent on:
+
+1. Patient Coverage Authority (PatientInsurance vs PatientPayer vs
+   PatientFaceSheet)
+2. Eligibility Authority (PayerEligibilityCheck vs
+   EligibilityVerification)
+3. BillingProviderAgencyAssignment dual-write authority resolution
+
+These three authorities remain unresolved and are carried forward,
+unchanged, into `BILLING_MIGRATION_DESIGN_REVIEW.md`.
 
 This document does not authorize schema changes, migrations, APIs, UI
-implementation, backfills, data movement, deletions, or retirements. A
-separate Migration Review and Implementation Authorization phase is
-required afterward.
+implementation, backfills, data movement, deletions, or retirements.
 
 **CURRENT STATUS**
 
-Schema Design Review: **SUBMITTED FOR REVIEW.**
+Schema Design Review: **COMPLETE.**
+Migration Design Review: **AUTHORIZED.**
 Implementation: **BLOCKED.**
