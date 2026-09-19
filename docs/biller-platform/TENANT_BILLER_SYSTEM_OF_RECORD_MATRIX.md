@@ -52,7 +52,32 @@ VERIFIED REPLACEMENT, FURTHER INVESTIGATION.
 ## Ownership Status Vocabulary (used exactly as specified)
 
 TENANT OWNED, BILLER OWNED, SHARED DOMAIN OWNED, LEGACY AUTHORITY,
-UNRESOLVED.
+OWNERSHIP UNRESOLVED (the value previously written as `UNRESOLVED`
+throughout this document is the same value as `OWNERSHIP UNRESOLVED`;
+both spellings are used interchangeably below and refer to one
+vocabulary term).
+
+**SHARED DOMAIN OWNED evidence bar.** A concept may only be classified
+SHARED DOMAIN OWNED when repository evidence shows all four of the
+following. If any one is missing, the correct classification is
+OWNERSHIP UNRESOLVED (or TENANT OWNED / BILLER OWNED / LEGACY AUTHORITY,
+if evidence otherwise supports single-platform ownership) — never
+SHARED DOMAIN OWNED by default:
+
+1. The table is intentionally shared across platforms (a documented or
+   code-level design decision, not incidental reuse).
+2. Tenant and Biller consumers reference the same authoritative record
+   (a verified Biller Platform consumer must exist).
+3. Write authority is defined (which platform/role may write, under
+   what conditions).
+4. Scope enforcement is defined (tenant/agency/billing-organization
+   isolation rules for the shared record).
+5. No competing writable copy exists elsewhere.
+
+No concept in this document currently satisfies all five conditions,
+because no Biller Platform consumer of any Tenant-owned billing table
+has been found. See "Ownership Correction Log" below for the
+concept-by-concept test result.
 
 ## Method
 
@@ -202,7 +227,7 @@ Duplicate data present: none — nothing to duplicate
 Missing relationships: a Plan-to-Payer relationship is absent because Plan itself is absent
 Missing constraints: n/a
 Missing history: n/a
-Decision: CREATE (only if/when Payer/Plan design phase resumes, and only after this entry is reviewed) — this is a genuine new business concept (a plan/product is not merely a renamed payer), so the naming-prohibition rule does not block it.
+Decision: TENTATIVE CREATE (only if/when Payer/Plan design phase resumes, and only after this entry is reviewed) — this is a genuine new business concept (a plan/product is not merely a renamed payer), so the naming-prohibition rule does not block it. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Reason: targeted searches for plan/product/insurance-plan/benefit-plan/program model classes returned no matches.
 Repository evidence: absence confirmed via repository-wide search of `backend/app/models/` and `backend/app/billing/models/`
 Migration exposure: none today
@@ -220,7 +245,8 @@ Biller Platform model and table: none
 Legacy model and table: none
 Existing shared model and table: none — single model
 Current verified system of record: eligibility-workflow system of record
-Ownership status: TENANT OWNED — verified: consumed only by tenant-scoped eligibility workflow code; no Biller-Platform consumer exists.
+Repository Location: Tenant-scoped implementation — `backend/app/models/patient_insurance.py`, consumed only by tenant-scoped eligibility workflow code.
+Ownership: OWNERSHIP UNRESOLVED. Repository location (where the code lives, which platform's routers/services touch it today) is distinct from system-of-record authority over the Patient Coverage business concept — the latter is not decided here per instruction. Pending `PATIENT_INSURANCE_DUPLICATION_ANALYSIS.md`.
 Owning organization: tenant hospice agency
 Owning platform: Tenant Platform
 Tenant scope: yes
@@ -257,7 +283,8 @@ Biller Platform model and table: none
 Legacy model and table: none
 Existing shared model and table: none — single model
 Current verified system of record: billing/financial-responsibility system of record
-Ownership status: TENANT OWNED — verified: full CRUD only through tenant-scoped `app/api/patients.py`; no Biller-Platform consumer exists today.
+Repository Location: Tenant-scoped implementation — `backend/app/models/patient_payer.py`, full CRUD only through tenant-scoped `app/api/patients.py`.
+Ownership: OWNERSHIP UNRESOLVED. Repository location is distinct from system-of-record authority over the Patient Coverage business concept — the latter is not decided here per instruction. Pending `PATIENT_INSURANCE_DUPLICATION_ANALYSIS.md`. Note (newly verified): `PatientPayer` has no `tenant_id` column at all (unlike `PatientInsurance`, which is `TenantScopedMixin`) — its tenant scope is only implied indirectly through its `patient_id` FK to `Patient` (which is tenant-scoped). This is a materially different scoping mechanism between the two models and is treated as an open item, not assumed safe.
 Owning organization: tenant hospice agency
 Owning platform: Tenant Platform
 Tenant scope: yes
@@ -294,7 +321,7 @@ Biller Platform model and table: none
 Legacy model and table: none
 Existing shared model and table: none unified
 Current verified system of record: split — no single system of record
-Ownership status: UNRESOLVED — explicitly not classified TENANT OWNED, BILLER OWNED, or SHARED DOMAIN OWNED until `PatientInsurance` vs. `PatientPayer` is resolved.
+Ownership status: OWNERSHIP UNRESOLVED — explicitly not classified TENANT OWNED, BILLER OWNED, or SHARED DOMAIN OWNED until `PatientInsurance` vs. `PatientPayer` is resolved. Patient Coverage Authority is tracked as OWNERSHIP UNRESOLVED at the document level (see Status block at end) pending `PATIENT_INSURANCE_DUPLICATION_ANALYSIS.md`.
 Owning organization: tenant hospice agency (both underlying models)
 Owning platform: Tenant Platform (both underlying models)
 Tenant scope: yes (both)
@@ -326,37 +353,50 @@ Confidence: Verified (as a duplication finding); UNRESOLVED (as an ownership/con
 
 ### Concept: Eligibility Response
 
-Tenant Platform model and table: `PayerEligibilityCheck` (`payer_eligibility_checks`) and `EligibilityVerification` (`eligibility_verifications`) — two real, active, overlapping models
+Tenant Platform model and table: `PayerEligibilityCheck` (`payer_eligibility_checks`) and `EligibilityVerification` (`eligibility_verifications`) — two real, active models with **different scope and purpose**, not confirmed simple duplicates on closer field-level inspection (see below)
 Biller Platform model and table: none
 Legacy model and table: none
 Existing shared model and table: none unified
-Current verified system of record: split between the two models
-Ownership status: TENANT OWNED — verified: both consumed only by tenant-scoped eligibility workflow code.
+Current verified system of record: split between the two models — by design, not by accident, per the field-level evidence below
+Ownership status: TENANT OWNED — verified: both consumed only by tenant-scoped eligibility workflow code; no Biller Platform consumer exists.
 Owning organization: tenant hospice agency
 Owning platform: Tenant Platform
-Tenant scope: yes (both)
-Agency scope: yes (both)
+Tenant scope: yes (both — both carry their own `tenant_id` FK)
+Agency scope: yes (both, via patient)
 Billing-organization scope: none
-Patient scope: yes (both, via `PatientInsurance` FK)
-Current fields: `EligibilityVerification` carries a richer tri-state (verified/unverified/conflicting) model with append-only supersession; `PayerEligibilityCheck` is simpler
-Relationships: both FK to `PatientInsurance`
-Consumers: `eligibility_check_router.py`, `eligibility_workflow_service.py`, `readiness_dashboard_service.py`
+Patient scope: `PayerEligibilityCheck` via `patient_insurance_id` only (indirect); `EligibilityVerification` via both a direct `patient_id` FK and an optional (`nullable=True`) `payer_coverage_id` FK to `patient_insurances`
+
+**Purpose (verified from source):**
+- `PayerEligibilityCheck` (`backend/app/billing/models/payer_eligibility_check.py`) is an audit-trail log of individual eligibility-check *attempts* against one `PatientInsurance` row — one row per check event (270/271-style or manually logged). Its own docstring states it "Extends `PatientInsurance` ... with an audit trail of every verification attempt and its result."
+- `EligibilityVerification` (`backend/app/billing/models/eligibility_verification.py`) is a structured, document-sourced record of ~25 hospice-specific eligibility *findings* (Medicare Part A/B entitlement dates, Medicare Advantage enrollment, MSP applicability/type, crossover, QMB status, prior hospice election history, benefit-period history, home-health overlap), each stored as a tri-state envelope (`RETURNED` / `NOT_RETURNED` / `DOES_NOT_APPLY` / `UNKNOWN`) across three JSONB columns, explicitly to avoid collapsing "not returned" into a false negative. Every verification is traceable to a `source_document_id` FK (the document a human or parser read to produce it).
+
+**Tables:** `payer_eligibility_checks` vs. `eligibility_verifications` — two distinct physical tables, not the same table under two names.
+
+**PatientInsurance linkage:** `PayerEligibilityCheck.patient_insurance_id` is `nullable=False` (mandatory FK — every check belongs to exactly one coverage row). `EligibilityVerification.payer_coverage_id` is `nullable=True` (optional FK to the same `patient_insurances` table) — meaning an `EligibilityVerification` can exist without being tied to a specific `PatientInsurance` row at all, which is a structural difference, not an implementation gap.
+
+**Result/status domain overlap:** `PayerEligibilityCheck.result_status` uses `ACTIVE / INACTIVE / UNKNOWN / ERROR` (mirrors `PatientInsurance.eligibility_status`, which its own `doc=` comment says is "set from the most recent `PayerEligibilityCheck`"). `EligibilityVerification.status` uses a materially different domain: `NOT_RUN / PENDING / VERIFIED_ACTIVE / VERIFIED_INACTIVE / COVERAGE_CONFLICT / REVIEW_REQUIRED / ERROR` — the module docstring explicitly warns this is "intentionally a *different* status domain" from other workflow statuses and instructs "do not conflate them." This is documented, deliberate non-overlap, not accidental duplication.
+
+**Provenance:** `PayerEligibilityCheck` has no source-document requirement (`checked_by` is a free-text string). `EligibilityVerification` mandates `source_document_id` (FK, `nullable=False`) and `verified_by_user_id` (FK to `users`, `nullable=False`) — a stronger evidentiary chain.
+
+**History/supersession:** `EligibilityVerification` is explicitly append-only (`superseded_at`, nullable, set only when a later verification supersedes an earlier one for the same patient+coverage — never deleted or overwritten, per its docstring, "Directive item 8"). `PayerEligibilityCheck` has no supersession field; whether older check rows are ever superseded or simply accumulate was not verified in this pass.
+
+Consumers: `eligibility_check_router.py`, `eligibility_workflow_service.py`, `readiness_dashboard_service.py` (exact per-model consumer split not independently traced in this pass — both models' consumers were confirmed to exist, but which specific service calls which model line-by-line was not re-verified here)
 APIs: eligibility-check endpoints
 Frontend consumers: `EligibilityVerificationPage.tsx`
 Background jobs: not confirmed
 Reports and exports: readiness dashboard
 Existing data exposure: not queried
-Duplicate data present: **yes — a second, distinct duplication risk** (two eligibility-result models with overlapping purpose), noted for a future dedicated review but not one of this phase's required deliverables to resolve.
+Duplicate data present: **partially revised finding.** The two models were previously flagged as "overlapping purpose" without field-level verification. On field-level inspection, they are complementary, not duplicative: `PayerEligibilityCheck` is a lightweight per-attempt check log; `EligibilityVerification` is a richer, document-sourced, hospice-specific structured-findings record. The genuine overlap is narrow and specific: both carry an eligibility result/status concept referencing the same coverage, using two different status vocabularies, which creates a real risk of the two statuses disagreeing for the same patient/coverage at the same point in time. This narrower risk — not wholesale duplication — is the open item.
 Missing relationships: n/a
-Missing constraints: n/a
+Missing constraints: no constraint verified that prevents `PayerEligibilityCheck.result_status` and `EligibilityVerification.status` from disagreeing for the same coverage at the same time
 Missing history: `EligibilityVerification`'s append-only supersession appears to already provide history; `PayerEligibilityCheck` history not verified
-Decision: FURTHER INVESTIGATION (a future consolidation candidate, not decided in this phase)
-Reason: eligibility evidence must remain distinct from verified Patient Coverage or Billing Responsibility per the hard rules; this entry documents the evidence layer only and does not resolve the two-model overlap.
+Decision: FURTHER INVESTIGATION (recommended authority not decided in this phase). Do not consolidate either structure during discovery, per instruction.
+Reason: eligibility evidence must remain distinct from verified Patient Coverage or Billing Responsibility per the hard rules; this entry documents the evidence layer only and does not resolve the two-model relationship.
 Repository evidence: `backend/app/billing/models/payer_eligibility_check.py`; `backend/app/billing/models/eligibility_verification.py`
 Migration exposure: none proposed in this phase
 Backfill exposure: none proposed in this phase
 Historical-preservation requirements: preserve both models as-is pending future review
-Open defects: two-model eligibility duplication, flagged for a future, separate discovery pass
+Open defects: potential status-domain disagreement between the two models for the same coverage, flagged for a future, separate discovery pass; Eligibility Result Authority tracked as OWNERSHIP UNRESOLVED at the document level (see Status block at end)
 Confidence: Verified
 
 ---
@@ -572,7 +612,7 @@ Duplicate data present: none
 Missing relationships: n/a
 Missing constraints: n/a
 Missing history: n/a
-Decision: CREATE if pursued (no existing structure to reuse or rename)
+Decision: TENTATIVE CREATE if pursued (no existing structure to reuse or rename). No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Reason: repository-wide search for a batching/`ClaimBatch` model returned no matches; `Claim.exported_at` suggests submission timing is tracked per-claim, not via a distinct batch entity — this is a genuinely new concept, not a renamed existing one.
 Repository evidence: absence confirmed via search; `Claim.exported_at` referenced in `aging_report_service.py` docstring
 Migration exposure: n/a (nothing exists)
@@ -646,8 +686,8 @@ Duplicate data present: none
 Missing relationships: n/a
 Missing constraints: n/a
 Missing history: n/a
-Decision: CREATE if pursued
-Reason: no trading-partner/clearinghouse routing model was found anywhere in the repository; this is a genuinely new concept.
+Decision: TENTATIVE CREATE if pursued
+Reason: no trading-partner/clearinghouse routing model was found anywhere in the repository; this is a genuinely new concept. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: absence confirmed via repository-wide search
 Migration exposure: n/a
 Backfill exposure: n/a
@@ -1239,8 +1279,8 @@ Duplicate data present: none
 Missing relationships: n/a
 Missing constraints: n/a
 Missing history: n/a
-Decision: CREATE if pursued, only after this documented absence
-Reason: `billing_teams` and all team/hierarchy tables were previously (incorrectly) cited as REUSE in earlier sections and were confirmed absent by the repository-grounding correction; re-confirmed absent in this pass.
+Decision: TENTATIVE CREATE if pursued, only after this documented absence
+Reason: `billing_teams` and all team/hierarchy tables were previously (incorrectly) cited as REUSE in earlier sections and were confirmed absent by the repository-grounding correction; re-confirmed absent in this pass. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: repository-wide search for team/hierarchy models found no matches
 Migration exposure: n/a
 Backfill exposure: n/a
@@ -1260,8 +1300,8 @@ Current verified system of record: none
 Ownership status: UNRESOLVED (nothing exists to own)
 Owning organization: n/a
 Owning platform: n/a
-Decision: CREATE if pursued, separately from `BillingProviderOrganizationMembership`, per instruction to verify separately
-Reason: confirmed absent; `BillingProviderOrganizationMembership` (`MEMBER`/`ADMIN` only) cannot represent team membership.
+Decision: TENTATIVE CREATE if pursued, separately from `BillingProviderOrganizationMembership`, per instruction to verify separately
+Reason: confirmed absent; `BillingProviderOrganizationMembership` (`MEMBER`/`ADMIN` only) cannot represent team membership. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: repository-wide search found no matches
 Migration exposure: n/a
 Backfill exposure: n/a
@@ -1334,8 +1374,8 @@ Biller Platform model and table: none — confirmed absent
 Legacy model and table: none
 Current verified system of record: none exists
 Ownership status: UNRESOLVED (nothing exists to own)
-Decision: CREATE if pursued; effective-dating and primary/backup self-duplication prevention must be designed, not present today
-Reason: confirmed absent by repository-wide search
+Decision: TENTATIVE CREATE if pursued; effective-dating and primary/backup self-duplication prevention must be designed, not present today
+Reason: confirmed absent by repository-wide search. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: absence confirmed via search
 Confidence: Verified (as an absence finding)
 
@@ -1362,8 +1402,8 @@ Biller Platform model and table: none — confirmed absent
 Legacy model and table: none
 Current verified system of record: none exists
 Ownership status: UNRESOLVED (nothing exists to own)
-Decision: CREATE if pursued; must remain separate from role, team, agency, and billing-coverage models
-Reason: confirmed absent by repository-wide search
+Decision: TENTATIVE CREATE if pursued; must remain separate from role, team, agency, and billing-coverage models
+Reason: confirmed absent by repository-wide search. No authoritative equivalent was found during the current repository search. Creation is not approved until the Legacy Billing Schema Inventory confirms that no historical, inactive, archived, or differently named equivalent exists.
 Repository evidence: absence confirmed via search
 Confidence: Verified (as an absence finding)
 
@@ -1464,6 +1504,39 @@ future. No REUSE/EXTEND/CREATE decision changed as a result of this
 correction — only the ownership-status label, which was overstating
 cross-platform sharing that does not yet exist.
 
+### Addendum — Explicit 4-Criteria Evidence Test (applied per required review)
+
+Per review instruction, SHARED DOMAIN OWNED requires all of: (1)
+intentional cross-platform sharing, (2) verified Tenant + Biller
+consumers referencing the same record, (3) defined write authority, (4)
+defined scope enforcement, (5) no competing writable copy. Applying
+this test to each of the fourteen corrected concepts:
+
+| Concept | (1) Intentional sharing | (2) Verified Biller consumer | (3) Write authority defined | (4) Scope enforcement defined | (5) No competing copy | Result |
+|---|---|---|---|---|---|---|
+| Patient Identity | Not documented | No | No | No (Tenant-only today) | Yes | Fails (2)–(4) → TENANT OWNED |
+| Payer | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Claim | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Payment / PaymentAdjustment | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| RemittanceAdvice (ERA/Remittance) | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Payment Posting (workflow) | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Denial | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Appeal | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| AR Item (computed) | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Credit Balance | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| CAP | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Room & Board | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+| Audit Event | Not documented | No | No | No | Yes | Fails (2)–(4) → TENANT OWNED |
+
+None of the fourteen satisfies the full five-part test, so SHARED
+DOMAIN OWNED is not available to any of them today; each is classified
+TENANT OWNED on the basis of criterion (5) holding (no competing
+writable copy — a single authoritative table exists) combined with the
+absence of any verified Biller Platform consumer, rather than on any
+formal cross-platform sharing decision. This is a narrower, more
+defensible basis than the prior SHARED DOMAIN OWNED label and is
+revisited the moment a real Biller Platform consumer is built.
+
 ## Status
 
 Documentation only. No schema, migration, API, UI, backfill, deletion,
@@ -1474,3 +1547,15 @@ Ownership corrections applied per your review. Proceeding to Prompt 2
 design, migration design, and Payer/Plan implementation remain not
 started. PatientInsurance vs. PatientPayer remains the highest-priority
 unresolved architecture decision, unaffected by this Prompt.
+
+## Matrix Status (per required-corrections review)
+
+- Prompt 1: **CORRECTED AND CONDITIONALLY APPROVED**
+- Patient Coverage Authority: **UNRESOLVED**
+- Eligibility Result Authority: **UNRESOLVED**
+- Legacy Billing Inventory: **PENDING**
+- Schema Design: **BLOCKED**
+- Implementation: **BLOCKED**
+
+No schema, migration, API, UI, backfill, deletion, consolidation, or
+retirement is authorized by this document.
