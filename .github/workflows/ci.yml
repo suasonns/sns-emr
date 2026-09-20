@@ -27,6 +27,14 @@ jobs:
       # Same command DigitalOcean runs, so TS errors fail here first.
       - run: npm run build
 
+      # `npm run build` is `tsc -b && vite build` -- if tsc fails (even on
+      # pre-existing, unrelated errors), the `&&` short-circuits and
+      # `vite build` never runs, so Rollup's import resolution is silently
+      # skipped. That gap is how PR #91 shipped files referencing several
+      # never-committed dependencies without CI catching it. This step runs
+      # vite build independently so unresolved imports always fail CI.
+      - run: npm run verify:imports
+
   backend:
     name: Backend schema and import
     runs-on: ubuntu-latest
