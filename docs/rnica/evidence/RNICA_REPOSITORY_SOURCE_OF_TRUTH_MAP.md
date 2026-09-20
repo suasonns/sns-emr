@@ -1,5 +1,20 @@
 # RNICA Repository Source-of-Truth Map
 
+## Amendment Log
+
+### Amendment 1 (post-review correction)
+
+A subsequent verification pass required by the BUILD_NOW-001 findings review discovered `backend/app/domain/forms/form_registry.py`, which was not identified in the original discovery pass. This file contains:
+
+- `HOPE_SYMPTOM_ITEM_CODES` and `HOPE_SFV_ITEM_CODES`, which include `J2050`, `J2051A`–`J2051H`, `J2052`, and `J2053` as named HOPE form item codes.
+- `WORKFLOW_TRIGGER_REGISTRY`, a structured, authoritative registry defining `TRIGGER_HUV1`, `TRIGGER_HUV2`, and `TRIGGER_SFV` rules, each with `allowed_disciplines`, day windows (HUV1: days 6–15, HUV2: days 16–30), and source/completion HOPE item codes for SFV (`source_items`: `J2051A`–`H`; `completion_items`: `J2052`, `J2053`).
+
+**Correction**: The original Summary Table classified `J2050`, `J2052`, and `J2053` as `NOT_FOUND` and `J2051` as `UNRESOLVED`. This was incorrect — all of these exist as named HOPE item codes in the backend. `J2050B` remains correctly classified as `NOT_FOUND` (no match found anywhere, including in `form_registry.py`). The HUV1/HUV2 findings are also updated: the trigger *rule* (day window, allowed discipline, item codes) is authoritatively modeled in `form_registry.py`, even though no dedicated HUV1/HUV2 clinical-record entity exists.
+
+**New finding requiring review (not resolved here)**: `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["allowed_disciplines"]` is `{"RN", "LVN"}` — i.e., the repository's SFV trigger rule currently permits both RN and LVN to satisfy an SFV trigger. This is directly relevant to the frozen SFV/LVN escalation authority and must be compared against that authority document before any conclusion is drawn. See MAP-C02 below.
+
+Corrected rows are marked inline. The Final Report counts at the end of this document reflect the correction.
+
 ## Purpose
 
 Evidence-backed map of the current repository (`suasonns/sns-emr`, branch `main` at commit `c6889c4`) for concepts relevant to RNICA, HOPE, HUV, and SFV. This document is discovery only. It does not authorize, propose, or design any application, schema, or migration change.
@@ -45,14 +60,15 @@ Allowed finding values: `VERIFIED`, `NOT_FOUND`, `UNRESOLVED`, `DUPLICATE_SOURCE
 | Assessment amendment (RNICA) | `backend/app/models/rnica_amendment.py` | `RnicaAmendment` (`rnica_amendments` table) | Distinct append-only amendment record referencing `rnica_assessment_id`; never overwrites the locked assessment | `VERIFIED` |
 | Assessment correction (generic clinical note) | `backend/app/models/amendment.py` | `Amendment` (`amendments` table) | Generic correction/amendment record tied to `clinical_note_id`, separate from `RnicaAmendment` | `VERIFIED` / `DUPLICATE_SOURCE` (two separate amendment mechanisms exist: `Amendment` for clinical notes, `RnicaAmendment` for RNICA) |
 | HOPE Admission | — | — | No distinct `HopeAdmission` model; HOPE Admission workflow state is carried on `RnicaAssessment` itself via `hope_workflow_status`, `hope_closed_at`, `hope_ready_at`, `hope_submitted_at`, `hope_inactivated`, etc. | `UNRESOLVED` |
-| HUV1 | `backend/app/models/enums.py` (`TaskType.HUV1`), `backend/app/services/hope_phase_b_engine.py` | `TaskType.HUV1` task type; no dedicated `HUV1` record/table | HUV1 exists only as a `Task` type and as a string value (`trigger_source_type`) on `SFVRequirement`; no dedicated HUV1 clinical-record entity found | `UNRESOLVED` |
-| HUV2 | `backend/app/models/enums.py` (`TaskType.HUV2`), `backend/app/services/hope_phase_b_engine.py` | `TaskType.HUV2` task type | Same pattern as HUV1 — task type and trigger-source string only | `UNRESOLVED` |
+| HUV1 | `backend/app/domain/forms/form_registry.py` (`WORKFLOW_TRIGGER_REGISTRY[TRIGGER_HUV1]`); also `backend/app/models/enums.py` (`TaskType.HUV1`), `backend/app/services/hope_phase_b_engine.py` | Structured trigger rule (`allowed_disciplines={"RN"}`, `window_start_day=6`, `window_end_day=15`, `hope_item_codes=HOPE_HUV_ITEM_CODES`); also a `Task` type and a `trigger_source_type` string on `SFVRequirement` | The trigger *rule* is authoritatively modeled in `form_registry.py`; no dedicated HUV1 clinical-record/table exists — updated finding (correction — see Amendment 1 below) | `VERIFIED` (rule definition) / `NOT_FOUND` (dedicated record) |
+| HUV2 | `backend/app/domain/forms/form_registry.py` (`WORKFLOW_TRIGGER_REGISTRY[TRIGGER_HUV2]`); also `backend/app/models/enums.py` (`TaskType.HUV2`), `backend/app/services/hope_phase_b_engine.py` | Structured trigger rule (`allowed_disciplines={"RN"}`, `window_start_day=16`, `window_end_day=30`, `hope_item_codes=HOPE_HUV_ITEM_CODES`) | Same pattern as HUV1 — updated finding (correction — see Amendment 1 below) | `VERIFIED` (rule definition) / `NOT_FOUND` (dedicated record) |
 | SFV | `backend/app/models/sfv_requirement.py` | `SFVRequirement` (`sfv_requirements` table) | Authoritative SFV requirement/tracking record, linked to a `completed_visit_id` | `VERIFIED` |
-| J2050 | — | — | Not found as a code identifier anywhere in the repository (only appears in prose in `docs/` markdown files) | `NOT_FOUND` |
-| J2050B | — | — | Not found as a code identifier anywhere in the repository | `NOT_FOUND` |
-| J2051 | `backend/app/services/hope_phase_b_engine.py`, `backend/app/api/visits.py` | `j2051_pain_impact`, `j2051_non_pain_impact` function parameters | Exists only as function-parameter names feeding `_symptom_group_from_inputs()`; not a named database column | `UNRESOLVED` |
-| J2052 | — | — | Not found as a code identifier anywhere in the repository | `NOT_FOUND` |
-| J2053 | — | — | Not found as a code identifier anywhere in the repository | `NOT_FOUND` |
+| Workflow trigger registry (HUV1/HUV2/SFV) | `backend/app/domain/forms/form_registry.py` | `WORKFLOW_TRIGGER_REGISTRY` (`TRIGGER_HUV1`, `TRIGGER_HUV2`, `TRIGGER_SFV` keys) | Authoritative, structured trigger-rule source: day windows, allowed disciplines, and source/completion HOPE item codes for HUV1/HUV2/SFV, distinct from the runtime logic in `hope_phase_b_engine.py` | `VERIFIED` (correction — see Amendment 1 below) |
+| J2050 | `backend/app/domain/forms/form_registry.py` | `HOPE_SYMPTOM_ITEM_CODES` list entry `"J2050"` | Exists as a HOPE form item code (symptom family) | `VERIFIED` (correction — see Amendment 1 below) |
+| J2050B | — | — | Not found as a code identifier anywhere in the repository | `NOT_FOUND` (re-confirmed) |
+| J2051 (J2051A–J2051H) | `backend/app/domain/forms/form_registry.py`; also `backend/app/services/hope_phase_b_engine.py`, `backend/app/api/visits.py` | `HOPE_SYMPTOM_ITEM_CODES`/`TRIGGER_SFV["metadata"]["source_items"]` list entries `"J2051A"`–`"J2051H"`; also `j2051_pain_impact`/`j2051_non_pain_impact` function parameters at runtime | Exists as 8 named HOPE form item codes, used as the SFV trigger `source_items`; the `j2051_*` function parameters are a runtime derivation from these items, not the underlying source | `VERIFIED` (correction — see Amendment 1 below) |
+| J2052 | `backend/app/domain/forms/form_registry.py` | `HOPE_SFV_ITEM_CODES` list entry `"J2052"`, also `TRIGGER_SFV["metadata"]["completion_items"]` | Exists as a HOPE form item code and as one of the two SFV completion items | `VERIFIED` (correction — see Amendment 1 below) |
+| J2053 | `backend/app/domain/forms/form_registry.py` | `HOPE_SFV_ITEM_CODES` list entry `"J2053"`, also `TRIGGER_SFV["metadata"]["completion_items"]` | Exists as a HOPE form item code and as one of the two SFV completion items | `VERIFIED` (correction — see Amendment 1 below) |
 | User (authenticated identity) | `backend/app/models/user.py` | `User` (`users` table) | Authoritative user/identity record | `VERIFIED` |
 | Role | `backend/app/models/user.py` (`User.role`), `backend/app/models/role.py` (`Role`) | Two separate representations | `User.role` is a free-text string used for functional/permission role; `Role` (`roles` table) is a separate, `interface_id`-scoped entity | `UNRESOLVED` / `DUPLICATE_SOURCE` |
 | Credential | `backend/app/models/user.py` | `User.license_number`, `User.npi` | Credential fields live directly on `User`; no separate credential/license-tracking table found for expiration or verification state | `UNRESOLVED` |
@@ -87,7 +103,7 @@ Allowed finding values: `VERIFIED`, `NOT_FOUND`, `UNRESOLVED`, `DUPLICATE_SOURCE
 ### C. Visits and Schedules
 
 - `backend/app/models/visit.py` — `Visit` / `visits`. Fields include `visit_type`, `visit_mode`, `visit_datetime`, `provider_id`, `admission_id`, `patient_id`, `status`.
-- **Schedule**: `NOT_FOUND` — no `class Schedule` or `schedules` table exists in `backend/app/models/`.
+- **Schedule (visit)**: `NOT_FOUND` — no `class Schedule` or `schedules` table exists in `backend/app/models/`. Note: `backend/app/api/idg/router.py` defines `ScheduleRuleCreateRequest` (`weekday`, `nth_occurrences`), but this is an IDG meeting-cadence rule, not a visit-scheduling entity — confirmed unrelated to this finding on re-verification.
 - **Visit type / discipline normalization**: `backend/app/core/visit_types.py` — `CANONICAL_VISIT_TYPES` (`RN`, `LVN`, `NP`, `MD`, `SW`, `CHAPLAIN`, `CHHA`, `VOLUNTEER`), `VISIT_TYPE_ALIASES`, `ALLOWED_VISIT_SERVICES`. This is code-level normalization, not a Postgres enum.
 - **Core discipline standard**: `backend/app/models/enums.py` — `CORE_DISCIPLINES = ["RN", "MD", "MSW", "SC"]`, explicitly documented as the only disciplines used for IDG completeness, signature validation, task routing, and compliance logic. This is a narrower list than `CANONICAL_VISIT_TYPES` — flagged `UNRESOLVED` (two discipline vocabularies exist for different purposes).
 
@@ -105,17 +121,20 @@ Allowed finding values: `VERIFIED`, `NOT_FOUND`, `UNRESOLVED`, `DUPLICATE_SOURCE
 ### E. HOPE and SFV
 
 - **HOPE Admission**: `NOT_FOUND` as a distinct model. HOPE workflow state (`hope_workflow_status`, `hope_closed_at`/`_by`, `hope_ready_at`/`_by`, `hope_exported_to_batch_at`/`_by`/`_batch_id`, `hope_submission_number`, `hope_already_submitted`, `hope_submitted_at`/`_by`, `hope_inactivated`/`_at`/`_by`, `hope_unlocked_at`/`_by`/`_reason`) is carried directly on `RnicaAssessment` (`backend/app/models/rnica_assessment.py`). Flagged `UNRESOLVED` — no separate HOPE Admission record exists apart from the RNICA row it is embedded in.
-- **HUV1 / HUV2**: `NOT_FOUND` as dedicated clinical-record entities. Both exist only as:
+- **HUV1 / HUV2 trigger rules**: `VERIFIED` as structured rule definitions in `backend/app/domain/forms/form_registry.py` — `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_HUV1]` / `[TRIGGER_HUV2]`, each with `allowed_disciplines={"RN"}`, `window_start_day`/`window_end_day` (6–15 / 16–30), and `hope_item_codes=HOPE_HUV_ITEM_CODES`. *(Corrected in Amendment 1 — this authoritative rule source was missed in the original pass.)* No dedicated HUV1/HUV2 clinical-record entity exists (`NOT_FOUND` for the record itself); the rule definitions also independently exist as:
   - `TaskType.HUV1` / `TaskType.HUV2` in `backend/app/models/enums.py`.
   - String literals `SOURCE_HUV1 = "HUV1"`, `SOURCE_HUV2 = "HUV2"`, `TASK_TYPE_HUV1`, `TASK_TYPE_HUV2` in `backend/app/services/hope_phase_b_engine.py`.
   - Allowed values for `SFVRequirement.trigger_source_type` (`CheckConstraint("trigger_source_type IN ('INITIAL_RN_ICA', 'HUV1', 'HUV2')")`) in `backend/app/models/sfv_requirement.py`.
-  - Task-creation logic: `create_huv_tasks_from_initial_rn_ica()` in `hope_phase_b_engine.py` creates `Task` rows of type `HUV1`/`HUV2` with day-window escalation reasons ("HUV1 required on or between days 6 and 15", "HUV2 required on or between days 16 and 30").
-  - Completion validation: `validate_huv_visit_completion()` in `hope_phase_b_engine.py` enforces HUV1 must complete on days 6–15 and HUV2 on days 16–30, and that HUV visits must be completed by RN.
+  - Task-creation logic: `create_huv_tasks_from_initial_rn_ica()` in `hope_phase_b_engine.py` creates `Task` rows of type `HUV1`/`HUV2` with day-window escalation reasons ("HUV1 required on or between days 6 and 15", "HUV2 required on or between days 16 and 30"), consistent with the `form_registry.py` windows.
+  - Completion validation: `validate_huv_visit_completion()` in `hope_phase_b_engine.py` enforces HUV1 must complete on days 6–15 and HUV2 on days 16–30, and that HUV visits must be completed by RN — consistent with `allowed_disciplines={"RN"}` in `form_registry.py`.
 - **SFV**: `VERIFIED` — `backend/app/models/sfv_requirement.py` — `SFVRequirement` / `sfv_requirements`. Fields: `trigger_source_type`, `trigger_reference_id`, `trigger_symptom_group` (`PAIN`/`NON_PAIN`/`BOTH`), `trigger_datetime`, `due_at`, `completed_visit_id`, `completed_at`, `status` (`OPEN`/`COMPLETED`/`OVERDUE`/`CANCELLED`). A unique index (`uq_sfv_requirements_trigger_once`) prevents duplicate SFV requirements for the same `(patient_id, trigger_source_type, trigger_reference_id)`.
-- **SFV trigger/completion logic**: `backend/app/services/hope_phase_b_engine.py` — `maybe_trigger_sfv_from_hope_timepoint()`, `_find_existing_sfv_requirement()`, `complete_sfv_requirement_from_visit()`, `process_initial_rn_ica_finalize()`, `process_huv_finalize()`. Enforces `trigger_source_type` must be one of `INITIAL_RN_ICA`, `HUV1`, `HUV2`, and that "SFV must be a separate visit from the triggering INITIAL_RN_ICA/HUV."
-- **J2050 / J2050B / J2051 / J2052 / J2053**:
-  - `J2050`, `J2050B`, `J2052`, `J2053`: `NOT_FOUND` as code identifiers anywhere in the repository. They appear only as prose references inside `docs/` markdown files (e.g. `docs/tenant-platform/RNICA_DATA_MAPPING_MATRIX.md`, `docs/SNS_RNICA_MASTER_MAP_MAPPING_2.0.md`) and in `sns-emr-frontend/schemas/rnica-field-schema.json` / `sns-emr-frontend/src/components/RNICA.jsx` (not yet confirmed as literal schema keys — see Verification note below).
-  - `J2051`: `UNRESOLVED`. Exists only as function-parameter names (`j2051_pain_impact`, `j2051_non_pain_impact`) in `backend/app/services/hope_phase_b_engine.py` and `backend/app/api/visits.py` (`_extract_j2051_impacts_from_notes()`), feeding `_symptom_group_from_inputs()`. No column named `j2051` or equivalent exists on any model; the underlying pain/non-pain impact values are presumed to live inside `RnicaAssessment.form_data` (JSONB), which was not exhaustively enumerated in this pass.
+- **SFV trigger rule (structured)**: `VERIFIED` — `backend/app/domain/forms/form_registry.py` — `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]`: `allowed_disciplines={"RN", "LVN"}`, `trigger_source="moderate_or_severe_symptom_impact"`, `must_be_separate_visit=True`, `due_within_calendar_days=2`, `source_items=["J2051A".."J2051H"]`, `completion_items=["J2052","J2053"]`. *(New finding, Amendment 1.)* **This is flagged as MAP-C02 below** — the repository currently permits LVN, not only RN, to satisfy an SFV trigger, which must be compared against the frozen SFV/LVN escalation authority before any conclusion is drawn.
+- **SFV trigger/completion logic (runtime)**: `backend/app/services/hope_phase_b_engine.py` — `maybe_trigger_sfv_from_hope_timepoint()`, `_find_existing_sfv_requirement()`, `complete_sfv_requirement_from_visit()`, `process_initial_rn_ica_finalize()`, `process_huv_finalize()`. Enforces `trigger_source_type` must be one of `INITIAL_RN_ICA`, `HUV1`, `HUV2`, and that "SFV must be a separate visit from the triggering INITIAL_RN_ICA/HUV."
+- **J2050 / J2050B / J2051 / J2052 / J2053** *(corrected in Amendment 1)*:
+  - `J2050`: `VERIFIED` — exists in `HOPE_SYMPTOM_ITEM_CODES` in `backend/app/domain/forms/form_registry.py`.
+  - `J2050B`: `NOT_FOUND` — re-confirmed absent from `form_registry.py` and the rest of the repository; only J2050 (no suffix) exists.
+  - `J2051` (`J2051A`–`J2051H`): `VERIFIED` — exists as 8 named HOPE item codes in `HOPE_SYMPTOM_ITEM_CODES` and as `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["metadata"]["source_items"]` in `form_registry.py`. The previously-identified `j2051_pain_impact`/`j2051_non_pain_impact` function parameters in `hope_phase_b_engine.py`/`visits.py` are a runtime derivation from these items via `_extract_j2051_impacts_from_notes()`, not the underlying source; the exact JSONB storage key(s) within `RnicaAssessment.form_data` were still not exhaustively enumerated in this pass.
+  - `J2052`, `J2053`: `VERIFIED` — exist in `HOPE_SFV_ITEM_CODES` and as `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["metadata"]["completion_items"]` in `form_registry.py`.
 - **iQIES submission status**: `RnicaAssessment.hope_submission_number`, `.hope_already_submitted`, `.hope_submitted_at`/`_by` (see above). No separate iQIES-specific model or validation-result table found.
 - **Validation errors/warnings**: `NOT_FOUND` as a dedicated structure for iQIES/HOPE validation results.
 
@@ -149,13 +168,14 @@ Allowed finding values: `VERIFIED`, `NOT_FOUND`, `UNRESOLVED`, `DUPLICATE_SOURCE
 | ID | Finding | Description | Next Action |
 |---|---|---|---|
 | MAP-C01 | `CONFLICT` (candidate) | `Patient` carries `hospice_election_date`/`discharge_date`; `Admission` independently carries `election_signed_at`/`discharged_at`/`soc_date`. Two models track overlapping hospice-lifecycle dates. | Add to Issue #121; do not resolve here. |
+| MAP-C02 | `CONFLICT` (candidate, new — Amendment 1) | `backend/app/domain/forms/form_registry.py` — `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["allowed_disciplines"]` is `{"RN", "LVN"}`, meaning the repository's SFV trigger rule currently permits LVN, not only RN, to satisfy an SFV trigger. This must be compared against the frozen SFV/LVN escalation authority document before any conclusion is drawn. | Add to Issue #121 as high-priority; do not resolve or modify here; do not implement against this rule until compared to the frozen authority. |
 | MAP-U01 | `UNRESOLVED` | No distinct "Episode of Care" entity; `Admission` appears to serve this function. | Add to Issue #121 as a repository gap. |
 | MAP-U02 | `UNRESOLVED` | No distinct "Schedule" entity/table. | Add to Issue #121 as a repository gap. |
 | MAP-U03 | `UNRESOLVED` | No entity literally named "Updated Comprehensive Assessment"; `RNRecertAssessment` (`form_type="RECERT"`) is the closest existing analog. | Add to Issue #121 for clarification. |
 | MAP-U04 | `UNRESOLVED` | No distinct "HOPE Admission" record; HOPE workflow fields live directly on `RnicaAssessment`. | Add to Issue #121; relevant to future `BUILD_LATER: HOPE Admission workflow`. |
-| MAP-U05 | `UNRESOLVED` | HUV1/HUV2 exist only as `Task` types and `SFVRequirement.trigger_source_type` string values, not as dedicated clinical-record entities. | Add to Issue #121; relevant to future `BUILD_LATER: HUV1/HUV2 workflow`. |
-| MAP-N01 | `NOT_FOUND` | J2050, J2050B, J2052, J2053 do not exist as code identifiers (models, columns, or function parameters) anywhere in the backend. | Add to Issue #121 as a repository gap; do not fabricate these fields. |
-| MAP-U06 | `UNRESOLVED` | J2051 exists only as function-parameter names (`j2051_pain_impact`/`j2051_non_pain_impact`); underlying storage location within `RnicaAssessment.form_data` JSONB not exhaustively confirmed in this pass. | Add to Issue #121 for a follow-up JSONB-schema-focused pass. |
+| MAP-U05 | `UNRESOLVED` | HUV1/HUV2 trigger *rules* are authoritatively defined in `WORKFLOW_TRIGGER_REGISTRY` (`form_registry.py`), but no dedicated HUV1/HUV2 clinical-record entity exists. *(Updated, Amendment 1.)* | Add to Issue #121; relevant to future `BUILD_LATER: HUV1/HUV2 workflow`. |
+| MAP-N01 | `NOT_FOUND` (narrowed, Amendment 1) | Only `J2050B` does not exist as a code identifier anywhere in the backend. `J2050`, `J2051A`–`J2051H`, `J2052`, and `J2053` are `VERIFIED` in `backend/app/domain/forms/form_registry.py` (see Amendment 1). | Add `J2050B` to Issue #121 as a repository gap; do not fabricate this field. |
+| MAP-U06 | `UNRESOLVED` (narrowed, Amendment 1) | J2051 items are `VERIFIED` as named HOPE item codes in `form_registry.py`; the exact JSONB key(s) storing their values within `RnicaAssessment.form_data` are not yet exhaustively confirmed. | Add to Issue #121 for a follow-up JSONB-schema-focused pass. |
 | MAP-D01 | `DUPLICATE_SOURCE` | Two amendment mechanisms exist: `RnicaAmendment` (RNICA-specific) and `Amendment` (generic clinical notes). | Add to Issue #121 for clarification of intended scope boundary. |
 | MAP-D02 | `DUPLICATE_SOURCE` / `UNRESOLVED` | Two role representations exist: `User.role` (free-text, operationally used) and `Role` (`roles` table, `interface_id`-scoped). Relationship between them not confirmed. | Add to Issue #121 for clarification. |
 | MAP-U07 | `UNRESOLVED` | Two discipline vocabularies exist: `CORE_DISCIPLINES = ["RN","MD","MSW","SC"]` (`enums.py`) vs. `CANONICAL_VISIT_TYPES`/`ALLOWED_VISIT_SERVICES` (`visit_types.py`), which include additional values (`LVN`, `NP`, `SW`, `CHAPLAIN`, `CHHA`, `VOLUNTEER`, `PA`, `LPN`). | Add to Issue #121 for clarification of intended scope per use case. |
@@ -169,7 +189,7 @@ Allowed finding values: `VERIFIED`, `NOT_FOUND`, `UNRESOLVED`, `DUPLICATE_SOURCE
 - [x] Backend `app/models/` directory enumerated (114 files) and reviewed for entities in scope.
 - [x] Backend `app/services/` and `app/api/` searched for HOPE/HUV/SFV/J2050–J2053 logic.
 - [x] Backend `app/core/` searched for visit-type and discipline normalization.
-- [x] Repository-wide search performed for `J2050`, `J2050B`, `J2052`, `J2053` (found only in `docs/` and frontend schema/component files, not backend code).
+- [x] Repository-wide search performed for `J2050`, `J2050B`, `J2051`, `J2052`, `J2053`. Corrected in Amendment 1: `backend/app/domain/forms/form_registry.py` contains `J2050`, `J2051A`–`J2051H`, `J2052`, and `J2053` as named HOPE item codes; only `J2050B` remains not found anywhere in the repository.
 - [ ] Frontend (`sns-emr-frontend/`) source-of-truth for RNICA form fields not exhaustively cross-checked against backend `form_data` JSONB contents in this pass (see MAP-U06).
 - [ ] Migration history (`alembic` revision files) not exhaustively cross-referenced against current model state in this pass.
 - [x] No synthetic fields or entities were invented; all `NOT_FOUND`/`UNRESOLVED` items are recorded as such rather than assumed.
@@ -183,16 +203,16 @@ PATIENT/EPISODE MAPPING: INCOMPLETE (Episode of care NOT_FOUND)
 BENEFIT-PERIOD MAPPING: COMPLETE
 VISIT/SCHEDULE MAPPING: INCOMPLETE (Schedule NOT_FOUND)
 ASSESSMENT MAPPING: INCOMPLETE (UCA UNRESOLVED)
-HOPE/HUV/SFV MAPPING: INCOMPLETE (HOPE Admission, HUV1, HUV2 UNRESOLVED)
-J2050-J2053 MAPPING: INCOMPLETE (J2050/J2050B/J2052/J2053 NOT_FOUND; J2051 UNRESOLVED)
+HOPE/HUV/SFV MAPPING: INCOMPLETE (HOPE Admission UNRESOLVED; HUV1/HUV2 record NOT_FOUND, rule VERIFIED)
+J2050-J2053 MAPPING: INCOMPLETE (J2050B NOT_FOUND; J2050/J2051/J2052/J2053 VERIFIED per Amendment 1)
 IDENTITY/DISCIPLINE MAPPING: INCOMPLETE (Role, Credential, Discipline vocabulary UNRESOLVED)
 AUDIT/CORRECTION MAPPING: INCOMPLETE (assessment-level version history NOT_FOUND)
 
-VERIFIED: 17
+VERIFIED: 22
 NOT_FOUND: 6
-UNRESOLVED: 11
+UNRESOLVED: 9
 DUPLICATE_SOURCE: 2
-CONFLICT: 1 (candidate, unconfirmed)
+CONFLICT: 2 (candidates, unconfirmed — MAP-C01, MAP-C02)
 
 FROZEN DOCUMENTS MODIFIED: NO
 APPLICATION BEHAVIOR MODIFIED: NO
