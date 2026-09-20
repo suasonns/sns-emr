@@ -34,4 +34,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("Forward-only migration")
+    # Purely additive in upgrade() (new column + check constraint on an
+    # existing table); both are safely reversible, so this migration does
+    # not need to be forward-only. Previously raised NotImplementedError,
+    # which blocked any downgrade chain that needed to pass through this
+    # revision (e.g. full migration round-trip tests).
+    op.drop_constraint(
+        "ck_billing_provider_assignment_permission_level_valid",
+        "billing_provider_agency_service_scopes",
+        type_="check",
+    )
+    op.drop_column("billing_provider_agency_service_scopes", "permission_level")
