@@ -642,6 +642,55 @@ does not itself authorize implementation.
 | Backdating a late SFV | `PROHIBITED` |
 | Schedule completion equals SFV completion | `PROHIBITED` |
 
+## Ownership Tracking
+
+Every open discovery item must have a named accountable owner, not just
+a status. This closes the "ownership tracking" gap identified in the
+program-level assessment of this document set.
+
+| Area | Accountable Role | Owner (Name/Title) | Backup Owner | Review Cadence |
+|---|---|---|---|---|
+| CMS HOPE source validation (SFV-001 through SFV-014, SFV-020) | Compliance/Quality Reporting Lead | TBD — assign before Phase 2 exit | TBD | Monthly until closed |
+| iQIES edit and submission-status mapping (SFV-006, SFV-007, SFV-012 through SFV-014, SFV-020) | HQRP/Quality Reporting Analyst | TBD — assign before Phase 2 exit | TBD | Monthly until closed |
+| Repository source-field mapping (SFV-016) | Engineering Discovery Lead | TBD — assign before Phase 2 exit | TBD | Bi-weekly until closed |
+| LVN-to-RN escalation policy approval (SFV-017 through SFV-019) | Director of Clinical Services / Medical Director | TBD — assign before Phase 2 exit | TBD | Per policy review cycle |
+| California significant-change/Plan-of-Care control | Compliance Officer | TBD — assign before Phase 2 exit | TBD | Per policy review cycle |
+| Document maintenance (this file and related RNICA docs) | RNICA Documentation Owner | TBD — assign before Phase 2 exit | TBD | Each PR touching `docs/rnica/` |
+
+Until named owners are assigned, this section itself remains an open
+discovery item. No status above may be marked resolved without a named
+accountable owner signing off.
+
+## Evidence Tracking
+
+Every `VALIDATED` row in the Final Authority Matrix, Final Authority
+Audit, and Confirmed CMS Requirements sections of this document must be
+traceable to retained evidence, not only to a source title. This closes
+the "evidence tracking" gap identified in the program-level assessment
+of this document set.
+
+| Evidence ID | Claim Supported | Evidence Type | Evidence Location | Retention Status |
+|---|---|---|---|---|
+| EVID-001 | J2051 moderate/severe symptom impact triggers SFV | CMS source PDF | HQRP QM User Manual Chapter: HOPE Measures, Section 1 (URL in Source Registry) | Linked, not yet archived in-repo |
+| EVID-002 | SFV expected within two calendar days | CMS source PDF | Same as EVID-001 | Linked, not yet archived in-repo |
+| EVID-003 | Admission/HUV1/HUV2 are official SFV triggers | CMS source PDF | Same as EVID-001 | Linked, not yet archived in-repo |
+| EVID-004 | J2053 may be completed by RN or LPN/LVN | CMS source PDF | HOPE v1.01–v1.02 Guidance Manual and Item Set Change Table, Section J (URL in Source Registry) | Linked, not yet archived in-repo |
+| EVID-005 | J2050/J2051/J2052/J2053 official item definitions | CMS source PDF | HOPE National Implementation Training, Part 4, Section J (URL in Source Registry) | Linked, not yet archived in-repo |
+| EVID-006 | HOPE records submit through iQIES; fatal/warning edits and errata exist | CMS webpage | HOPE Technical Information (URL in Source Registry) | Linked, not yet archived in-repo |
+| EVID-007 | California significant-change notification/approval control | State regulation PDF | CDPH DPH-18-002E, §§74864, 74868, 74872 (URL in Source Registry) | Linked, not yet archived in-repo |
+| EVID-008 | PR #120 CI status supporting documentation-only merge | CI check run logs | GitHub Actions runs referenced in PR #120 (Frontend build, Backend schema and import, preflight) | Linked via GitHub, not archived offline |
+
+Evidence retention requirements before Phase 2 discovery exit:
+
+- [ ] Archive a point-in-time copy (PDF or screenshot) of every CMS
+      source cited above in a durable, version-controlled location.
+- [ ] Record the retrieval date for each archived source.
+- [ ] Record the CMS document version/publication date where stated.
+- [ ] Link each Evidence ID to the specific Trace ID(s) or matrix
+      row(s) it supports.
+- [ ] Confirm no evidence entry remains `PENDING_SOURCE_VALIDATION`
+      before any related implementation is authorized.
+
 ## Implementation Boundary
 
 `NOT_AUTHORIZED`. This document is discovery/documentation only. No
