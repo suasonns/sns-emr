@@ -492,6 +492,7 @@ See `RNICA_HOPE_SOURCE_VALIDATION_GAPS.md` for the full list. Highlights:
 | HUV2 | `OFFICIAL_HOPE_REQUIRED` | Separate HOPE timepoint. |
 | SFV | `OFFICIAL_HOPE_REQUIRED` | Separate symptom follow-up workflow. |
 | SFV Trigger Logic | `OFFICIAL_HOPE_REQUIRED` | Driven by qualifying symptoms identified during HOPE Admission or HUV. |
+| SFV May Be Performed by RN or LPN/LVN | `OFFICIAL_HOPE_REQUIRED` | Per HOPE v1.01-v1.02 change table; not restricted to RN. |
 | RN Initial Assessment = SFV | `PROHIBITED ASSUMPTION` | Must not be treated as equivalent. |
 | RNICA = Comprehensive Assessment | `PROHIBITED ASSUMPTION` | Must not be treated as equivalent. |
 | HOPE Submission Platform | `OFFICIAL_HOPE_REQUIRED` | iQIES. |
@@ -524,6 +525,20 @@ See `RNICA_HOPE_SOURCE_VALIDATION_GAPS.md` for the full list. Highlights:
   materials referenced during this discovery pass; specific LCD number(s)
   remain `PENDING_SOURCE_VALIDATION` for this document's scope (see
   P2-001 for the dedicated LCD L33393 validation track).
+
+### Appendix A Source Priority
+
+When sources appear to conflict, controlling order is:
+
+1. California `DPH-18-002E` (Hospice Agencies), §74864 and related sections.
+2. `42 CFR §418.54`.
+3. CMS HOPE Guidance Manual v1.02 and related HOPE materials.
+4. CMS LCD guidance and terminal-prognosis documentation references.
+5. Disease-specific LCD support guides (tracked separately, e.g. P2-001).
+
+This priority order governs documentation authorship only. It does not
+authorize automatic conflict resolution in code, and no such code exists
+or is authorized by this document.
 
 ## Current Project Status
 
