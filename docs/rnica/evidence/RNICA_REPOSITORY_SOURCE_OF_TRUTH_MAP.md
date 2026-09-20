@@ -220,3 +220,220 @@ SCHEMA MODIFIED: NO
 MIGRATIONS MODIFIED: NO
 IMPLEMENTATION AUTHORIZATION: NOT_AUTHORIZED
 ```
+
+---
+
+# Addendum: Backend ↔ Frontend Gap Analysis and SSOT Audit
+
+**STATUS: DISCOVERY ONLY. NO CODE, SCHEMA, MIGRATION, WORKFLOW, FORM, MODEL, API, OR REGISTRY CHANGES WERE MADE TO PRODUCE THIS ADDENDUM.**
+
+This addendum reconciles the SNS EMR backend (`backend/app/`, 1021 Python files) and frontend (`sns-emr-frontend/src/`, 256 JS/TS/JSX/TSX files) to identify sources of truth, duplicate sources of truth, undocumented functionality, and legacy/hidden objects, per the requested 8-phase analysis. **Coverage note**: given the repository size, this is a representative, evidence-backed inventory of the objects most relevant to the RNICA/HOPE/SFV domain and system-wide architecture, not a literal row-per-file listing of all 1021+256 files. Categories that could not be fully enumerated are explicitly marked `(partial)`.
+
+## Phase 1 — Repository Inventory
+
+### Backend
+
+| Type | Name | Path | Referenced By | Active |
+|---|---|---|---|---|
+| Forms | `form_registry` (static registry/constants) | `backend/app/domain/forms/form_registry.py` | `app.domain.forms.form_resolution_service`, `app.api.routes.forms`, `app.models.form_registry_model` | ACTIVE |
+| Forms | `MODULE_REGISTRY` | `backend/app/domain/forms/module_registry.py` | `app.domain.forms.form_resolution_service` | ACTIVE |
+| Forms | `FormType`, `FormFamily`, `Discipline` (forms-domain enums) | `backend/app/domain/forms/enums.py:6,25,39` | form registry/resolution | ACTIVE |
+| Models | 114 SQLAlchemy models across `backend/app/models/` (Patient, Admission, BenefitPeriod, Visit, RnicaAssessment, MswIcaAssessment, ScicaAssessment, RNRecertAssessment, SFVRequirement, User, Role, AuditLog, Task, PlanOfCare/PlanOfCareVersion, IDG* (11 models), POC* (3+ models), Physician*, Billing/Ontology tables, etc.) | `backend/app/models/*.py` | API routers and services throughout | ACTIVE (114/114 enumerated by name; see full list in background-agent output retained in PR discussion) |
+| Enums | `CORE_DISCIPLINES`, `TaskStatus`, `TaskType`, `TaskOrigin`, `TaskRegulatoryBasis`, `CompletionReferenceType`, `TaskDiscipline`, `Discipline`, `CareSettingEnum`, `SafetyResponsibilityEnum`, `VisitEventType`, `VisitFormType`, `ServiceContext`, `NoteFormFamily`, `DiagnosisType`, `DiagnosisStatus`, `DiagnosisSource` | `backend/app/models/enums.py` | task engine, form registry, diagnosis sync | ACTIVE |
+| Enums | `IDGImpactLevel`, `IDGActivationRoute` | `backend/app/constants/idg_enums.py` | IDG services | ACTIVE |
+| Enums | `RuleOutcome`, `RuleSeverity`, `Workflow` | `backend/app/rules/base.py` | rules engine/registry | ACTIVE |
+| APIs | ~40+ FastAPI routers sampled, incl. `/auth`, `/patients`, `/admissions`, `/patient-orders`, `/physicians`, `/physician-orders`, `/clinical-notes`, `/communications-log`, `/dashboard`, `/idg`, `/forms`, `/visits/rnica`, `/rules`, `/compliance`, `/documents`, `/tasks`, `/task-scheduling`, `/billing/hospice-cap`, `/billing/835`, `/admin/*`, `/api/owner/*` | `backend/app/api/*.py`, `backend/app/api/routes/*.py`, `backend/app/api/idg/router.py` (partial — 97 total router files, ~40 sampled) | `app.api.registry` | ACTIVE |
+| Services | `task_engine`, `task_scheduler`/`overdue_scheduler`, `document_recovery_scheduler`, `clinical_note_validation_engine`, `clinical_reasoning_engine`, `idg_meeting_scheduler`, `idg_group_service`, `idg_lifecycle_engine`, `idg_task_engine`, `idg_review_automation`, `supervisory_scheduling_service`, `bereavement_letters_service`, `bereavement_poc_catalog`, `eligibility_registry_service`, `eligibility.engine`, `evidence.document_harvest_job`, `evidence.recovery_service`, `billing_engine`, `claim_segment_service`, `readiness_workflow_service`, `claim_export_service`, `poc_generation_service`, `poc_service`, `poc_task_engine`, `task_completion_service`, `task_notification_engine`, `task_overdue_engine`, `workflow_validation`, `hope_phase_b_engine` (partial — 203 total service files, ~30 sampled) | `backend/app/services/*.py`, `backend/app/billing/services/*.py` | routers, other services, `app.main` startup | ACTIVE |
+| Validators | `clinical_note_validation_engine`, `admission_dx_validation_engine`, `workflow_validation`, `rules_dry_run`, `eligibility/evidence_conflict_detection` | `backend/app/services/*.py` | clinical note/admission/eligibility flows | ACTIVE |
+| Workflow/trigger/status registries | `RULE_CLASS_REGISTRY`, `MANDATORY_RULE_IDS`, `DEFAULT_RULES_BY_WORKFLOW` | `backend/app/rules/registry.py` | rules engine | ACTIVE |
+| Workflow/trigger/status registries | `MODULE_REGISTRY`, `VISIT_HEADER_FIELDS`, `FORM_TYPE_ALIASES`, `DISCIPLINE_ALIASES` | `backend/app/domain/forms/module_registry.py`, `form_registry.py` | form resolution | ACTIVE |
+| Workflow/trigger/status registries | **`WORKFLOW_TRIGGER_REGISTRY`** (`TRIGGER_HUV1`, `TRIGGER_HUV2`, `TRIGGER_SFV`, `TRIGGER_SUPERVISORY` keys; `allowed_disciplines`, day windows, `hope_item_codes`, `source_items`/`completion_items`) | `backend/app/domain/forms/form_registry.py:912` | `get_base_form_config`, discipline/trigger validation functions in the same file (lines ~1017-1098) | **ACTIVE — corrects a background-agent scan that reported this registry as "not found"; directly confirmed by `grep` against `origin/main` in this pass.** |
+| Status engines | Status-transition logic in `admission_status_engine`, `task_engine`, `idg_lifecycle_engine`, `idg_meeting_scheduler` | `backend/app/services/*.py` | admission/task/IDG workflows | ACTIVE |
+| Database tables/views | `form_registry`, `form_modules`, `form_package_modules`, `forms`, `tasks`, `visits`, `patients`, `physicians`, `poc_*`, `idg_*` (11 tables), `clinical_notes`/`clinical_note_versions`, `clinical_workflow_map`, `tenant_rule_toggles`, `ontology_*` (multiple), `billing/*` (multiple) | `backend/app/models/*.py` | see Models row above | ACTIVE |
+| Database tables/views | `backend/alembic/` migration history | `backend/alembic/` | schema history | present, not cross-referenced line-by-line in this pass |
+| Jobs/scheduled tasks | `overdue_scheduler()`, `document_recovery_scheduler()`, `generate_idg_meetings`/IDG meeting scheduler, `BackgroundTasks`-driven evidence/document harvest, `visit_recordings` background upload processing | `backend/app/services/task_scheduler.py`, `document_recovery_scheduler.py`, `idg_meeting_scheduler.py`, `evidence/document_harvest_job.py`, `api/visit_recordings.py` | `app.main` startup, API entrypoints | ACTIVE |
+| Jobs/scheduled tasks | `backfill_med_recon_duplicate_backlog_sql.main` | `backend/app/jobs/backfill_med_recon_duplicate_backlog_sql.py` | ad hoc script, not scheduled | UNCLEAR — appears to be a one-off backfill script, not a recurring job |
+
+*(Backend inventory is partial for Services (203 files) and APIs (97 files) — sampled ~30 and ~40 respectively, prioritized toward RNICA/HOPE/SFV, IDG, POC, billing, and rules-engine domains most relevant to this reconciliation.)*
+
+### Frontend
+
+| Type | Name | Path | Calls API | Visible |
+|---|---|---|---|---|
+| Routes | Full route table: `/login`, `/set-password`, `/billing/*` (10 sub-routes), `/analytics`, `/tenant`, `/owner`, `/owner/:section`, `/rnica` (+ aliases `/nursing-assessment`, `/admission`, `/assessment`), `/msw-ica` (+ aliases `/psychosocial`, `/psychosocial-assessment`), `/sc-ica` (+ aliases `/spiritual`, `/spiritual-assessment`), `/patient-lcd`, `/care-overview`, `/plan-of-care`, `/bereavement`, `/incident-occurrence`, `/clinical-alerts`, `/physician`, `/communication-log`, `/secure-inbox` (+ aliases), `/compliance`, `/volunteer-scheduling`, `/idg-workspace`, `/my-profile`, `/portal`, `/chart/:patientId`, fallback `*` → `/login` | `src/App.tsx` (lines 69-132) | route-specific | VISIBLE, several role-gated (`tenant`/`owner`/`analytics`/`billing` feature) |
+| Pages | RNICAPage, MSWICAPage, SCICAPage, CareOverviewPage, PlanOfCarePage, BereavementDataPage, IncidentOccurrenceDataPage, ClinicalAlertsDataPage, PhysicianDataPage, CommunicationLogDataPage, SecureInboxDataPage, ComplianceDataPage, VolunteerSchedulingDataPage, IDGWorkspacePage, MyProfilePage, PatientLCDPage, TenantDashboard, OwnerDashboard, SNSAnalytics, 9 billing pages, `ComingSoonPage` (placeholder) | `src/pages/*.tsx`, `src/tenant/TenantDashboard.jsx`, `src/owner/OwnerDashboard.jsx` | per-page APIs, see below | VISIBLE (most); `ComingSoonPage` is an explicit placeholder |
+| Forms | RNICA, MSWICA, SCICA (major clinical forms); `AdmissionActionCenterDrawer`; `CompliancePage` workflow panel; `PlanOfCarePage`; `PatientLCDPage`; `VolunteerSchedulingPage` | `src/components/RNICA.jsx`, `src/components/MSWICA.jsx`, `src/components/SCICA.jsx`, `src/components/AdmissionActionCenterDrawer.jsx`, `src/pages/*.tsx` | `icaAssessments`, `patientCharts`, `eligibility`, `medications`, `ordersHub`, `physicianOrders`, `facesheet`, others | VISIBLE |
+| Tabs/Wizards/Modals | `RNICACommandWorkspace`, `AdmissionActionCenterDrawer`, `PhysicianDirectoryModal`, `AuditEventDrawer` (owner), `StaffProfileDrawer` (owner) | `src/components/rn-ica/RNICACommandWorkspace.jsx`, `src/components/AdmissionActionCenterDrawer.jsx`, `src/components/PhysicianDirectoryModal.jsx`, `src/owner/components/*.jsx` | RN ICA command APIs, physician lookup, owner audit/staff APIs | VISIBLE |
+| Components | `layout/Sidebar`, `PortalShell`, `PatientModuleShell`, `PatientChart`, `PatientChartSidebar`, `PatientFacesheet`, `DischargePlanningBoard`, `PhysicianOrdersBoard`, `DocumentsBoard`, `VisitNotes`, `VisitRecorderCard`, `ClaimLifecycle`, `BillerShell`, `AgencyContext`, `ClinicalComplianceDashboard`, `RequireSessionAccess`, `RequireFeatureAccess`, `UnauthorizedAccess`, `MedicationNameInput`, `Icd10DiagnosisInput`, `BillingAuditHistoryPanel` (partial — representative sample) | `src/components/**/*.jsx,tsx`, `src/charts/*.jsx` | per-component APIs | VISIBLE |
+| Grids/Tables | BillingDashboard data tables, EligibilityVerificationPage tables, ReportsPage/FacilityCollectionsReportPage grids, RNICA structured findings panels, MSWICA/SCICA assessment sections | `src/pages/BillingDashboard.tsx`, `src/pages/billing/*.tsx`, `src/components/RNICA.jsx`, `src/components/MSWICA.jsx`, `src/components/SCICA.jsx` | per-page/component APIs | VISIBLE |
+| Navigation entries | Owner Dashboard, Billing Hub, Analytics, Tenant Dashboard, IDG Meeting Workspace, Portal Preview (`Sidebar.tsx`); TenantDashboard internal tabs (Dashboard, Patient Census, Referrals, Clinical, Insights, Help & Support, Agency Settings, Inbox, Settings); OwnerShell nav items; Portal quick links (Care Overview, Secure Inbox, Incident/Occurrence, Compliance/LCD/HOPE/QIES, Bereavement, Patient LCD, Analytics, Tenant Dashboard) | `src/components/layout/Sidebar.tsx`, `src/tenant/TenantDashboard.jsx`, `src/owner/shell/OwnerShell.jsx`, `src/pages/SNSPortal.tsx` | none directly (nav only) | VISIBLE, several conditional on role/feature |
+| Feature flags | `billing` feature gate (routes + sidebar nav), owner-only branch (`hasRouteAccess(sessionUser, "owner")`), `access_scope === "billing"` branch, role-gated route wrappers (`tenant`/`owner`/`analytics`) | `src/App.tsx`, `src/components/layout/Sidebar.tsx` | none | HIDDEN unless the corresponding flag/role/scope is satisfied |
+| API call sites | `src/api/dashboard.ts`, `ownerAdmin.ts`, `auth.ts`, `icaAssessments.ts`, `patientCharts.ts`, `census.ts`, `visitNotes.ts`, `eligibility.ts`, `medications.ts`, `ordersHub.ts`, `physicianOrders.ts`, `facesheet.ts`, `vendors.ts`, `staff.ts`, `offlineAssessmentApi.ts`, `offlineSignalReviewApi.ts`, `offlineRecordingQueue.js` | `src/api/*.ts,js` | see individual endpoint lists in agent output retained in PR discussion | N/A (these are the API client layer, not UI) |
+
+*(Frontend inventory is partial for the `components/` directory generally — a representative sample was taken, prioritized toward RNICA/HOPE/SFV-adjacent and navigation-critical components, not all ~150+ component files.)*
+
+## Phase 2 — Backend ↔ Frontend Mapping
+
+| Backend Object | Frontend Object | Status |
+|---|---|---|
+| `RnicaAssessment` + RNICA APIs (`/visits/rnica`, `icaAssessments`) | `RNICAPage` / `src/components/RNICA.jsx` / `RNICACommandWorkspace` | MATCHED |
+| `MswIcaAssessment` + ICA APIs | `MSWICAPage` / `src/components/MSWICA.jsx` | MATCHED |
+| `ScicaAssessment` + ICA APIs | `SCICAPage` / `src/components/SCICA.jsx` | MATCHED |
+| `RNRecertAssessment` | No dedicated frontend page/component identified distinct from RNICA | PARTIAL — recert assessment likely rendered through the same RNICA form/route (`assessment_type` differentiation), not a separately named UI surface |
+| `PlanOfCare`/`PlanOfCareVersion` + POC services | `PlanOfCarePage` | MATCHED |
+| `SFVRequirement` + `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]` | SFV nav section + trigger banner inside `RNICA.jsx` (per `docs/tenant-platform/RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`, line ~11393) | MATCHED — note: this contradicts a background-agent scan of the frontend that reported "no explicit SFV string found"; the existing, more targeted `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md` citation is treated as authoritative here since it includes a specific file:line reference |
+| HUV1/HUV2 trigger rules (`WORKFLOW_TRIGGER_REGISTRY`) | No RNICA-specific HUV UI surface found (per `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`: "BACKEND ONLY") | BACKEND_ONLY |
+| HOPE workflow fields on `RnicaAssessment` (`hope_workflow_status`, etc.) | HOPE-adjacent references in `CompliancePage`/`SNSPortal` ("Compliance / LCD / HOPE / QIES" quick link) | PARTIAL — HOPE lifecycle actions surface inside the RNICA form itself (per `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`: "HOPE Generator" WIRED), while `CompliancePage` provides only a general compliance/HOPE reference point, not the same workflow surface |
+| `IDGGroup`/`IDGMeeting`/`IDGReview`/etc. (11 models) + `/idg` API + IDG services | `IDGWorkspacePage`, IDG nav entry, `idg` router | MATCHED |
+| `Amendment` (generic clinical note correction) | No distinct frontend correction/amendment UI identified in this pass | UNCLEAR — not traced to a specific component |
+| `RnicaAmendment` (RNICA-specific correction) | No distinct frontend amendment UI identified in this pass, separate from the main RNICA form | UNCLEAR — not traced to a specific component |
+| `Role` model (`roles` table) | No frontend role-management UI identified in this pass | UNCLEAR — `User.role` (free text) appears to drive frontend role-gating (`hasRouteAccess`), not the separate `Role` table |
+| Billing engine/services (`billing_engine`, `claim_*`, `readiness_workflow_service`) | 9 billing pages (`BillingOverviewPage`, `ReadinessWorkflowPage`, `ClaimsManagementPage`, etc.) + `ComingSoonPage` placeholder | MATCHED, with `ComingSoonPage` explicitly marking at least one unbuilt billing sub-feature |
+| `guardrail_policies` model | No frontend surface identified in this pass | BACKEND_ONLY (unconfirmed — not exhaustively searched) |
+| `clinical_workflow_map` model | No frontend surface identified in this pass | BACKEND_ONLY (unconfirmed — not exhaustively searched) |
+
+## Phase 3 — RNICA / Assessment Audit
+
+| Assessment | Backend | Frontend | API | Workflow | Status |
+|---|---|---|---|---|---|
+| RNICA | `RnicaAssessment` (`rnica_assessments`) | `RNICAPage`/`RNICA.jsx` | `/visits/rnica`, `icaAssessments` | HOPE workflow fields embedded on the row; lock/amendment via `RnicaAmendment` | VERIFIED, MATCHED |
+| Initial Assessment / Initial Comprehensive Assessment (RNICA+MSW ICA+SC ICA package) | Three separate models (`RnicaAssessment`, `MswIcaAssessment`, `ScicaAssessment`) tracked independently, composed as one package per `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md` ("SNS_INTERNAL_WORKFLOW composition") | Three separate pages/forms | Three separate API surfaces | SNS-internal composition, not a CMS-required single entity | VERIFIED as three-discipline composition, not a single backend/frontend object — MATCHED at the discipline level, no single "package" entity exists |
+| Updated Comprehensive Assessment (UCA) | No entity literally named this; `RNRecertAssessment` is closest analog | No distinct frontend surface identified separate from RNICA form | Not separately confirmed | UNRESOLVED (carried over from BUILD_NOW-001, MAP-U03) | UNRESOLVED |
+| Recertification Assessment | `RNRecertAssessment` (`form_type="RECERT"`) | No separately named page/component found; likely rendered via the same RNICA-family UI | Not separately confirmed in this pass | — | PARTIAL |
+| HOPE Admission | No distinct model; fields embedded on `RnicaAssessment` | No distinct page; HOPE actions appear inside the RNICA form itself | HOPE lifecycle endpoints inside RNICA API surface | UNRESOLVED (carried over from BUILD_NOW-001, MAP-U04) | UNRESOLVED |
+| HUV1 | Trigger rule VERIFIED in `WORKFLOW_TRIGGER_REGISTRY`; no dedicated record | Not found as a distinct frontend surface | Not separately confirmed | Trigger/task creation logic in `hope_phase_b_engine.py` | BACKEND_ONLY |
+| HUV2 | Same as HUV1 | Not found as a distinct frontend surface | Not separately confirmed | Same pattern as HUV1 | BACKEND_ONLY |
+| SFV | `SFVRequirement` VERIFIED; trigger rule VERIFIED in `WORKFLOW_TRIGGER_REGISTRY` | SFV nav section + trigger banner exists inside `RNICA.jsx` per `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md` | `/visits/rnica`-adjacent (not separately enumerated here) | `hope_phase_b_engine.py` trigger/completion functions | MATCHED (backend and frontend both confirmed, via two different evidence sources) |
+
+## Phase 4 — HOPE Item Audit (J2050–J2053)
+
+This phase is fully covered by **Amendment 1** above. Summary, with frontend/API columns added:
+
+| Item | Backend Location | Frontend Location | API | Status |
+|---|---|---|---|---|
+| J2050 | `HOPE_SYMPTOM_ITEM_CODES` in `backend/app/domain/forms/form_registry.py` | Not confirmed as a literal frontend field key in this pass (referenced only in prose in `docs/` and possibly `sns-emr-frontend/schemas/rnica-field-schema.json` — not re-verified in this addendum) | Not separately confirmed | VERIFIED (backend) / UNCONFIRMED (frontend) |
+| J2050B | Not found anywhere in the repository | Not found | Not found | NOT_FOUND |
+| J2051 (A–H) | `HOPE_SYMPTOM_ITEM_CODES` + `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["metadata"]["source_items"]` in `form_registry.py`; runtime derivation via `j2051_pain_impact`/`j2051_non_pain_impact` in `hope_phase_b_engine.py`/`visits.py` | Not confirmed as literal frontend field keys in this pass | Not separately confirmed | VERIFIED (backend) / UNCONFIRMED (frontend) |
+| J2052, J2053 | `HOPE_SFV_ITEM_CODES` + `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["metadata"]["completion_items"]` in `form_registry.py` | Not confirmed as literal frontend field keys in this pass | Not separately confirmed | VERIFIED (backend) / UNCONFIRMED (frontend) |
+
+**Recommended follow-up (not performed in this pass)**: a targeted grep of `sns-emr-frontend/schemas/rnica-field-schema.json` and `RNICA.jsx` for literal `J20xx` keys, to close the "UNCONFIRMED (frontend)" gap above.
+
+## Phase 5 — Registry Audit
+
+| Registry | Definition Location | Authority | Duplicate | Conflict |
+|---|---|---|---|---|
+| `form_registry` (static) | `backend/app/domain/forms/form_registry.py` | Code-level authoritative source for form structure/field lists | Also exists as a DB-backed model `FormRegistryModel`/`form_registry` table (`backend/app/models/form_registry_model.py`) | **Potential duplicate** — a static, code-defined registry and a DB-backed model share the name "form registry." Relationship between the two (which one is authoritative at runtime) was not resolved in this pass — flagged below as MAP-D03. |
+| `WORKFLOW_TRIGGER_REGISTRY` | `backend/app/domain/forms/form_registry.py:912` | Authoritative for HUV1/HUV2/SFV/SUPERVISORY trigger rules (disciplines, day windows, item codes) | None found | None found in this pass, other than the SFV-discipline finding already logged as MAP-C02 |
+| `MODULE_REGISTRY` | `backend/app/domain/forms/module_registry.py` | Authoritative for form-module composition | None found | None found |
+| `RULE_CLASS_REGISTRY` / `DEFAULT_RULES_BY_WORKFLOW` | `backend/app/rules/registry.py` | Authoritative for the general clinical-rules engine (distinct from HOPE/SFV triggers) | None found | Not cross-checked against `WORKFLOW_TRIGGER_REGISTRY` for overlapping responsibility — flagged as MAP-U09 below |
+| Status registry / task registry / assessment registry (as literal named objects) | Not found as single centralized registries; status/task logic is distributed across `task_engine`, `admission_status_engine`, `idg_lifecycle_engine`, and per-model `status` fields | No single authoritative registry exists for these concerns | Distributed logic, not literally duplicated | Not confirmed as a conflict, but distributed status logic is itself a documentation gap — flagged as MAP-U10 below |
+
+## Phase 6 — SSOT Register
+
+| Domain | Authoritative Source | Alternate Sources | Classification |
+|---|---|---|---|
+| Patient | `backend/app/models/patient.py` (`Patient`) | None found | SINGLE_SSOT |
+| Episode (of care) | `Admission` serves this role; no distinct entity | None — this is a naming gap, not a duplication | SINGLE_SSOT (by function, under a different name) |
+| Benefit Period | `backend/app/models/benefit_period.py` (`BenefitPeriod`) | None found | SINGLE_SSOT |
+| Visit | `backend/app/models/visit.py` (`Visit`) | None found | SINGLE_SSOT |
+| Assessment (RNICA family) | `RnicaAssessment`, `MswIcaAssessment`, `ScicaAssessment`, `RNRecertAssessment` — four distinct, discipline-scoped models | None duplicating the same discipline | SINGLE_SSOT per discipline; the "package" concept composing all three ICA disciplines is SNS-internal, not a backend entity |
+| RNICA specifically | `backend/app/models/rnica_assessment.py` | None found | SINGLE_SSOT |
+| HOPE (workflow state) | Embedded fields on `RnicaAssessment` | None found | SINGLE_SSOT (but embedded rather than a distinct "HOPE Admission" entity — MAP-U04) |
+| HOPE (item-code definitions) | `HOPE_*_ITEM_CODES` lists in `backend/app/domain/forms/form_registry.py` | None found | SINGLE_SSOT |
+| HUV (trigger rule) | `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_HUV1]`/`[TRIGGER_HUV2]` in `form_registry.py` | Also referenced as `TaskType.HUV1`/`HUV2` (`enums.py`) and `trigger_source_type` values (`sfv_requirement.py`) | **DUPLICATE_SSOT (candidate)** — the same trigger concept is represented in three places (form_registry rule, enums.py task type, sfv_requirement check constraint). Not necessarily wrong (they may be intentionally cross-referenced layers), but not documented as such anywhere — flagged as MAP-D04 below. |
+| SFV (requirement tracking) | `backend/app/models/sfv_requirement.py` (`SFVRequirement`) | Trigger *rule* duplicated in `WORKFLOW_TRIGGER_REGISTRY` (see HUV row above) | PARTIAL — record-tracking is SINGLE_SSOT; trigger-rule definition overlaps with the same pattern as HUV |
+| User (identity) | `backend/app/models/user.py` (`User`) | None found | SINGLE_SSOT |
+| Employee/Staff | Not confirmed as a distinct entity separate from `User`; `StaffPermissionGrant` references staff capability, not identity | Not resolved in this pass | UNRESOLVED |
+| Credential | `User.license_number`/`User.npi` fields | None found as a separate table | SINGLE_SSOT (narrow) — no credential-expiration tracking exists (MAP-U08, carried over) |
+| Discipline | `CORE_DISCIPLINES` (`enums.py`), `CANONICAL_VISIT_TYPES`/`ALLOWED_VISIT_SERVICES` (`visit_types.py`), `Discipline` enum (`domain/forms/enums.py`), `User.discipline` (free text) | **Four separate representations of "discipline" exist across the codebase** | **CONFLICTING_SSOT** — carried over and escalated from MAP-U07; a fourth representation (`domain/forms/enums.py::Discipline`) was newly identified in this pass and was not part of the original BUILD_NOW-001 finding. Flagged as MAP-C03 below. |
+| Audit | `backend/app/models/audit_log.py` (`AuditLog`) — generic; `RnicaAmendment`/`Amendment` — correction-specific | Two separate amendment mechanisms (already MAP-D01) | PARTIAL — generic audit log is SINGLE_SSOT; correction/amendment tracking is DUPLICATE_SSOT (MAP-D01) |
+| Role/Permission | `User.role` (free text) + `Role` model (`roles` table) + `StaffPermissionGrant` (capability grants) | Three distinct mechanisms | **DUPLICATE_SSOT** — carried over from MAP-D02, now with a third mechanism (`StaffPermissionGrant`) confirmed to layer on top rather than replace the other two |
+
+## Phase 7 — Legacy / Hidden Object Discovery
+
+| Object | Location | Status |
+|---|---|---|
+| `ComingSoonPage` | `sns-emr-frontend/src/pages/billing/ComingSoonPage.tsx` | ACTIVE placeholder — explicitly marks at least one billing sub-feature as not yet built; not legacy, but worth noting as a known incomplete surface |
+| `AssessmentDiscrepancy` model | `backend/app/models/assessment_discrepancy.py` | UNCLEAR — background scan could not confirm active referencing; requires a follow-up reference trace before being called ACTIVE or LEGACY |
+| `ClinicalWorkflowMap` model | `backend/app/models/clinical_workflow_map.py` | UNCLEAR — same as above |
+| `GuardrailPolicy` model | `backend/app/models/guardrail_policy.py` | UNCLEAR — same as above |
+| `Refusal` model | `backend/app/models/refusal.py` | UNCLEAR — same as above |
+| `SurveyAccess` model | `backend/app/models/survey_access.py` | UNCLEAR — same as above |
+| `Interface` model | `backend/app/models/interface.py` | UNCLEAR — same as above |
+| `backfill_med_recon_duplicate_backlog_sql.py` | `backend/app/jobs/` | UNKNOWN — appears to be a one-off backfill script, not a recurring scheduled job; status as "still needed" vs. "completed/dead" not determined in this pass |
+| `Amendment` vs. `RnicaAmendment` | `backend/app/models/amendment.py`, `backend/app/models/rnica_amendment.py` | Both ACTIVE by different call paths (MAP-D01) — not legacy, but a duplicate-mechanism risk, not dead code |
+
+**No object in this phase was confirmed as `DEAD_CODE` in this pass** — several are `UNCLEAR` and require a targeted reference-trace (grep for imports/instantiations) before a confident ACTIVE/LEGACY/DEAD_CODE classification can be made. This addendum does not fabricate a classification where evidence is insufficient.
+
+## Phase 8 — Gap Report
+
+| Gap ID | Category | Finding | Severity | Recommended Authority |
+|---|---|---|---|---|
+| GAP-01 | SSOT — Discipline | Four separate representations of "discipline" exist (`CORE_DISCIPLINES`, `CANONICAL_VISIT_TYPES`/`ALLOWED_VISIT_SERVICES`, `domain/forms/enums.Discipline`, `User.discipline` free text) | HIGH | Compliance + Engineering |
+| GAP-02 | SSOT — Role/Permission | Three separate role/permission mechanisms (`User.role`, `Role` model, `StaffPermissionGrant`) with unconfirmed relationship | HIGH | Engineering + Security |
+| GAP-03 | SSOT — Form registry | Static code-defined `form_registry.py` and DB-backed `FormRegistryModel`/`form_registry` table share a name; authoritative-at-runtime relationship not confirmed | MEDIUM | Engineering |
+| GAP-04 | SSOT — HUV/SFV trigger representation | Same trigger concept (HUV1/HUV2) is represented in three places (`WORKFLOW_TRIGGER_REGISTRY`, `TaskType` enum, `SFVRequirement.trigger_source_type` check constraint) without a documented single authority | MEDIUM | Engineering + Compliance |
+| GAP-05 | Compliance — SFV discipline scope | `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]["allowed_disciplines"]` includes both RN and LVN (MAP-C02) | **CRITICAL** | Compliance + Medical Director |
+| GAP-06 | Frontend/Backend — HUV visibility | HUV1/HUV2 trigger rules exist in the backend with no corresponding frontend surface; clinicians have no dedicated UI for HUV1/HUV2 tasks beyond the generic task list (unconfirmed) | MEDIUM | Clinical Operations + Engineering |
+| GAP-07 | Frontend/Backend — J2050–J2053 field confirmation | Backend HOPE item codes for J2050/J2051/J2052/J2053 are verified, but their presence as literal frontend field keys was not confirmed in this pass | LOW | Engineering |
+| GAP-08 | Legacy/Unknown — Several models with unconfirmed activity | `AssessmentDiscrepancy`, `ClinicalWorkflowMap`, `GuardrailPolicy`, `Refusal`, `SurveyAccess`, `Interface` models could not be confirmed ACTIVE or LEGACY in this pass | LOW | Engineering |
+| GAP-09 | Assessment/Frontend — UCA and Recert UI | No distinct frontend surface was identified for the "Updated Comprehensive Assessment" concept or `RNRecertAssessment`, separate from the main RNICA form | LOW | Clinical Operations |
+| GAP-10 | Amendment mechanism visibility | Neither `Amendment` nor `RnicaAmendment` was traced to a distinct frontend correction/amendment UI in this pass | LOW | Engineering |
+
+## Recommended Authoritative Sources (non-binding, for Issue #121 review — not implemented here)
+
+- **Discipline**: Recommend `CORE_DISCIPLINES` (`enums.py`) as the compliance-facing authority (IDG completeness, signature validation, task routing) and `CANONICAL_VISIT_TYPES` as the visit-scheduling-facing authority, with an explicit documented mapping between them — **not implemented; requires Compliance sign-off.**
+- **Role/Permission**: Recommend `Role` model as the structural authority and `StaffPermissionGrant` as the capability-delegation layer on top of it, with `User.role` treated as a legacy/display field pending confirmation — **not implemented; requires Engineering + Security review.**
+- **Form registry**: Recommend clarifying whether `backend/app/domain/forms/form_registry.py` (code) or `FormRegistryModel`/`form_registry` (DB) is authoritative at runtime — **not implemented; requires Engineering review.**
+- **HUV/SFV trigger definition**: Recommend `WORKFLOW_TRIGGER_REGISTRY` as the single authoritative rule source, with `TaskType` enum and `SFVRequirement.trigger_source_type` treated as consuming/validating representations rather than independent sources — **not implemented; requires Engineering confirmation.**
+- **SFV discipline scope (GAP-05 / MAP-C02)**: No recommendation is made here. This is a clinical-compliance question requiring comparison against the frozen SFV/LVN escalation authority before any recommendation can be responsibly made.
+
+## New Conflict/Unresolved Items From This Addendum (for Issue #121)
+
+| ID | Finding | Type |
+|---|---|---|
+| MAP-D03 | Static `form_registry.py` vs. DB-backed `FormRegistryModel`/`form_registry` table — relationship unconfirmed | DUPLICATE_SOURCE |
+| MAP-D04 | HUV1/HUV2 trigger concept represented in three places (`WORKFLOW_TRIGGER_REGISTRY`, `TaskType` enum, `SFVRequirement` check constraint) | DUPLICATE_SOURCE |
+| MAP-C03 | Four discipline vocabularies now confirmed (escalated from MAP-U07, which found two) | CONFLICT (candidate) |
+| MAP-U09 | `RULE_CLASS_REGISTRY`/general rules engine not cross-checked against `WORKFLOW_TRIGGER_REGISTRY` for overlapping responsibility | UNRESOLVED |
+| MAP-U10 | No single centralized status/task/assessment registry exists; status logic is distributed across multiple engines | UNRESOLVED |
+
+## Addendum Verification
+
+- [x] Backend scanned via direct grep/view plus a dedicated background inventory pass covering models (114/114 by name), a representative sample of APIs (~40/97) and services (~30/203), all reviewed registries, enums, and jobs discovered.
+- [x] Frontend scanned via a dedicated background inventory pass covering the full route table, all top-level pages, and a representative sample of forms/components/nav entries.
+- [x] RNICA/HOPE/HUV/SFV/J2050-J2053 objects specifically cross-checked against both this document's own Amendment 1 and the pre-existing `docs/tenant-platform/RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`.
+- [x] Discrepancy between this addendum's background-agent backend scan (which reported `WORKFLOW_TRIGGER_REGISTRY` as "not found") and direct verification (which found it at `form_registry.py:912`) was caught and corrected in this same pass — background-agent output is treated as a lead requiring direct confirmation, not as final evidence.
+- [ ] Full row-by-row enumeration of all 1021 backend and 256 frontend files was not performed — this addendum is evidence-backed but representative, not exhaustive. Categories/counts below reflect this.
+- [x] No new workflows, forms, models, APIs, registries, or enums were created.
+- [x] No schema, migration, or application behavior change was made.
+- [x] No new file was created — this addendum was appended to the existing `RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md`.
+
+## Addendum Final Report
+
+```text
+BACKEND OBJECTS INVENTORIED:    ~230 (114 models + ~40 API routers + ~30 services + ~15 registries/enums/jobs; partial for services/APIs)
+FRONTEND OBJECTS INVENTORIED:   ~70 (26 routes + ~35 pages/forms/components + navigation/feature-flag entries; partial for components/)
+MATCHED:                        7 (RNICA, MSW ICA, SC ICA, POC, IDG, SFV, Billing)
+BACKEND_ONLY:                   4 (HUV1, HUV2, guardrail_policies, clinical_workflow_map — unconfirmed)
+FRONTEND_ONLY:                  0 identified in this pass
+PARTIAL:                        5 (RNRecertAssessment, HOPE workflow surface, Amendment, RnicaAmendment, SFV record-vs-rule split)
+CONFLICTS:                      3 (MAP-C01, MAP-C02, MAP-C03)
+DUPLICATE SSOT:                 4 (MAP-D01, MAP-D02, MAP-D03, MAP-D04)
+LEGACY ITEMS CONFIRMED:         0 (6 UNCLEAR, none confirmed LEGACY or DEAD_CODE in this pass)
+
+STOP CONDITION TRIGGERED:       YES — DUPLICATE_SSOT found (Discipline, Role/Permission, Form Registry, HUV/SFV trigger representation)
+IMPLEMENTATION PLANNING:        NOT STARTED, per Stop Conditions
+ROUTED FOR RESOLUTION:          Issue #121 (pending)
+
+NEW FILES CREATED:               NO
+NEW WORKFLOWS CREATED:           NO
+NEW FORMS CREATED:               NO
+NEW MODELS CREATED:              NO
+NEW APIS CREATED:                NO
+NEW REGISTRIES CREATED:          NO
+NEW ENUMS CREATED:               NO
+SCHEMA MODIFIED:                 NO
+MIGRATIONS MODIFIED:             NO
+CODE CHANGES MADE:               NO
+```
