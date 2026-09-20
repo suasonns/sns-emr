@@ -11,6 +11,27 @@ in this directory); no new claims are made beyond what those documents
 already cite, plus a small number of explicitly marked new observations
 below.
 
+## Assessment and Visit Classification Authority (Summary)
+
+Detailed authority source: `docs/rnica/RNICA_ASSESSMENT_VISIT_CLASSIFICATION_RULES.md`
+(plus `RNICA_VISIT_CLASSIFICATION_DECISION_TABLE.md`,
+`RNICA_HOPE_SOURCE_VALIDATION_GAPS.md`, `RNICA_ASSESSMENT_STATE_MODEL.md`,
+`RNICA_CLASSIFICATION_TEST_SCENARIOS.md`). Key wiring implications:
+
+- HUV1 (Days 6-15) and HUV2 (Days 16-30) candidate-visit prompts and SFV
+  requirement creation (trigger + 2 calendar days) are `OFFICIAL_HOPE_REQUIRED`
+  behaviors that any future UI wiring must surface as confirmation prompts,
+  never automatic classification.
+- The Initial Comprehensive Assessment package (RNICA + MSW ICA + SC ICA)
+  is `SNS_INTERNAL_WORKFLOW` composition and must be wired as three
+  independently tracked discipline statuses feeding one package status.
+- Day-14/Day-28 CHHA/LVN supervisory-visit fallbacks are
+  `SNS_INTERNAL_WORKFLOW` and must preserve supervisory evidence separately
+  from HUV1/HUV2 evidence.
+- Repository-confirmed HOPE/SFV window logic and open gaps are tracked in
+  `RNICA_HOPE_SOURCE_VALIDATION_GAPS.md` — consult it before assuming any
+  HUV1/HUV2 window is already enforced in code.
+
 > **ARCHITECTURAL CORRECTION NOTICE — see `RNICA_CLINICAL_NARRATIVE_ARCHITECTURAL_CORRECTION.md`:**
 > The Owner has locked a product decision that `diagnoses.clinicalNarrative`
 > was incorrectly placed and must not remain a nurse-facing narrative input in
