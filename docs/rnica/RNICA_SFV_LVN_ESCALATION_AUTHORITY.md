@@ -453,15 +453,115 @@ compliance outcome.
 
 ## Source Registry
 
-- CMS HOPE Guidance Manual v1.02, Chapter 1 and Section J.
-- CMS HQRP Quality Measure Specifications, HOPE Timely Follow-up Measures
-  (Draft HOPE-Based Timely Reassessment Process Measures, Section 1).
+- CMS HOPE Guidance Manual v1.02, Chapter 1 and Section J:
+  https://www.cms.gov/files/document/hope-guidance-manual-v1-02.pdf
+- CMS HQRP Quality Measure Specifications, HOPE Timely Follow-up
+  Measures (HQRP QM User Manual Chapter: HOPE Measures, Section 1):
+  https://www.cms.gov/files/document/hqrp-qm-user-manual-chapter-hope-measures-508c.pdf
 - CMS HOPE v1.01 to v1.02 Guidance Manual and Item Set Change Table,
-  J2053.
-- CMS HOPE National Implementation Training, Part 4, Section J.
-- CMS HOPE Implementation FAQs (Symptom Follow-up Visits section).
-- CMS HOPE Technical Information.
-- California CDPH DPH-18-002E, §§74864, 74868, and 74872.
+  J2053:
+  https://www.cms.gov/files/document/hope-v1-01-1-02-guidance-manual-item-set-change-table.pdf
+- CMS HOPE National Implementation Training, Part 4, Section J:
+  https://www.cms.gov/files/document/part-4section-j-health-conditions-presentation.pdf
+- CMS HOPE Implementation FAQs (Symptom Follow-up Visits section):
+  https://www.cms.gov/files/document/hope-implementation-faqs.pdf
+- CMS HOPE Technical Information:
+  https://www.cms.gov/medicare/quality/hospice-quality-reporting-program/hope-technical-information
+- California CDPH DPH-18-002E, §§74864, 74868, and 74872:
+  https://www.cdph.ca.gov/Programs/OLS/Pages/DPH-18-002E.aspx
+
+## Source-Validation Checklist for Unresolved SFV Rules
+
+Complete this checklist before implementing any SFV behavior derived
+from this document. Every item is discovery-only; checking an item off
+does not itself authorize implementation.
+
+### CMS Guidance Manual
+
+- [ ] Confirm the current controlling HOPE Guidance Manual version.
+- [ ] Record the effective date.
+- [ ] Verify J2050 instructions.
+- [ ] Verify J2051 response values that trigger SFV.
+- [ ] Verify J2052 completion and date rules.
+- [ ] Verify J2053 completion rules.
+- [ ] Verify Admission-triggered SFV requirements.
+- [ ] Verify HUV1-triggered SFV requirements.
+- [ ] Verify HUV2-triggered SFV requirements.
+- [ ] Verify exclusions and applicability rules.
+
+### CMS Measure Specifications
+
+- [ ] Confirm the two-calendar-day measure calculation.
+- [ ] Confirm how the J2050B screening date anchors the window.
+- [ ] Confirm treatment of same-day SFV.
+- [ ] Confirm treatment of an SFV completed after the two-day window.
+- [ ] Confirm applicable numerator exclusions.
+- [ ] Confirm patient discharge or death treatment.
+- [ ] Confirm treatment of continued moderate or severe impact at SFV.
+- [ ] Confirm whether up to three SFVs may affect the measure
+      independently.
+
+### CMS Implementation FAQs
+
+- [ ] Review every question in the SFV section.
+- [ ] Extract any guidance for a missed SFV.
+- [ ] Extract any guidance for a late SFV.
+- [ ] Extract any guidance for patient refusal.
+- [ ] Extract any guidance for patient unavailability.
+- [ ] Extract any guidance for discharge or death before follow-up.
+- [ ] Extract any guidance for multiple symptoms.
+- [ ] Extract any guidance for multiple SFVs.
+- [ ] Record the FAQ version and publication date.
+
+### CMS Data Specifications and iQIES
+
+- [ ] Identify the current final HOPE data-specification version.
+- [ ] Identify the current errata version.
+- [ ] Map every SFV-related fatal edit.
+- [ ] Map every SFV-related warning edit.
+- [ ] Map duplicate-record edits.
+- [ ] Map date-sequence edits.
+- [ ] Map missing-trigger edits.
+- [ ] Map invalid patient or episode linkage edits.
+- [ ] Map missing J2052 edits.
+- [ ] Map missing J2053 edits.
+- [ ] Verify modify-record behavior.
+- [ ] Verify inactivate-record behavior.
+- [ ] Verify correction and resubmission behavior.
+- [ ] Verify Final Validation Report evidence.
+- [ ] Verify accepted, rejected, warning, and fatal statuses.
+
+### Repository Validation
+
+- [ ] Identify the authoritative HOPE source-record table.
+- [ ] Identify the J2050B storage field.
+- [ ] Identify the J2051 storage fields and values.
+- [ ] Identify J2052 storage.
+- [ ] Identify J2053 storage.
+- [ ] Identify patient and episode linkage.
+- [ ] Identify service-date source.
+- [ ] Identify entry and signature timestamps.
+- [ ] Identify clinician identity and discipline source.
+- [ ] Identify HOPE record versioning.
+- [ ] Identify correction and inactivation support.
+- [ ] Identify iQIES submission and validation statuses.
+- [ ] Identify duplicate-control behavior.
+- [ ] Identify missing or conflicting source fields.
+- [ ] Mark the date-source mapping `COMPLETE` only after all sources
+      are verified.
+
+### Agency Policy Validation
+
+- [ ] Approve the routine LVN severe-symptom escalation rule.
+- [ ] Define which findings require RN review.
+- [ ] Define RN-review priority.
+- [ ] Define the responsible RN.
+- [ ] Define notification recipients.
+- [ ] Define Plan-of-Care review triggers.
+- [ ] Define completion evidence.
+- [ ] Define compliance escalation for incomplete RN review.
+- [ ] Define late-SFV review ownership.
+- [ ] Define amendment and correction approval roles.
 
 ## Final Authority Audit
 
