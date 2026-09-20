@@ -10,6 +10,28 @@
 Companion document: `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md` (names the
 supporting discovery document(s) for every screen's underlying content).
 
+## Assessment and Visit Classification Authority (Summary)
+
+Detailed authority source: `docs/rnica/RNICA_ASSESSMENT_VISIT_CLASSIFICATION_RULES.md`
+(plus `RNICA_VISIT_CLASSIFICATION_DECISION_TABLE.md`,
+`RNICA_HOPE_SOURCE_VALIDATION_GAPS.md`, `RNICA_ASSESSMENT_STATE_MODEL.md`,
+`RNICA_CLASSIFICATION_TEST_SCENARIOS.md`).
+
+- The federal **Initial Assessment** (RN, due within 48 hours of hospice
+  election) and **Initial Comprehensive Assessment** (interdisciplinary,
+  due within 5 calendar days) are distinct regulatory events — never
+  collapse them into one "assessment" concept.
+- SNS organizes the Initial Comprehensive Assessment as a package of
+  RNICA + MSW ICA + SC ICA (+ other required disciplines); RNICA alone
+  never satisfies the full package. This package model is
+  `SNS_INTERNAL_WORKFLOW`, not itself a federal requirement.
+- HOPE Admission, HUV1, HUV2, and SFV are a separate CMS data-collection
+  model from the federal assessment clock and must not be equated with it.
+- HUV1/HUV2 candidate classification and SFV creation must never be fully
+  automatic — user confirmation is always required before finalization.
+  See the linked documents for full rules, decision table, validation
+  gaps, and state model.
+
 ## 1. Purpose
 
 This document defines the approved future RNICA information architecture
