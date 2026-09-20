@@ -42,6 +42,32 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Validate Handle Transitions
 - [ ] Validate Track & Report
 
+### Coverage Amendment (Phase 2 Review): Admission and Assessment Timing
+
+- [ ] Validate physician-order dependency for admission.
+- [ ] Validate initial-assessment completion and filing behavior.
+- [ ] Validate comprehensive-assessment completion and filing behavior.
+- [ ] Validate periodic assessment review and update behavior.
+- [ ] Validate assessment-to-Plan-of-Care linkage.
+- [ ] Validate timestamps, authorship, status, and evidence supporting completion.
+
+### Coverage Amendment (Phase 2 Review): Visit-Type and Completion-Evidence Validation
+
+- [ ] Inventory and normalize visit types used by routes, APIs, services, database fields, and UI components.
+- [ ] Validate that completed visits require completion timestamps.
+- [ ] Validate that completed visit tasks link to supporting documentation.
+- [ ] Confirm that schedule status alone does not represent completed clinical documentation.
+- [ ] Identify inconsistent or duplicate visit-status values.
+
+### Coverage Amendment (Phase 2 Review): Medication, Orders, DME, and Controlled Substances
+
+- [ ] Validate medication source ownership and write authority.
+- [ ] Validate physician-order draft, review, approval, signature, and discontinuation states.
+- [ ] Validate DME source ownership and status transitions.
+- [ ] Validate reconciliation provenance.
+- [ ] Validate controlled-substance accountability and reconciliation interfaces where applicable.
+- [ ] Confirm that Manage Treatment does not silently modify source records.
+
 ## Required Deliverables
 
 - [ ] Workflow authority verification matrix

@@ -46,6 +46,51 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Record gaps, conflicts, and controlling authority
 - [ ] Record owner and blocking status
 
+### Coverage Amendment (Phase 2 Review): Principal-Diagnosis Restriction Screening
+
+- [ ] Screen proposed principal hospice diagnoses against all attached never-primary, inappropriate-primary, and not-allowable diagnosis lists.
+- [ ] Distinguish principal terminal diagnosis, related conditions, coexisting conditions, and symptoms.
+- [ ] Record conflicts between code restrictions, disease guides, and current LCD guidance.
+- [ ] Follow the newest controlling CMS source when guidance conflicts.
+
+### Coverage Amendment (Phase 2 Review): HOPE, HUV1/HUV2, SFV, and QIES
+
+- [ ] Validate HOPE source ownership.
+- [ ] Validate HOPE Admission, Update Visit, and Discharge record relationships.
+- [ ] Validate HUV1, HUV2, and SFV timing/status ownership.
+- [ ] Validate QIES submission-status ownership and provenance.
+- [ ] Separate official CMS requirements from SNS internal workflow.
+- [ ] Record unavailable or unconnected HOPE/QIES capabilities as `NOT_CURRENTLY_CONNECTED`.
+
+### Coverage Amendment (Phase 2 Review): Admission and Assessment Timing
+
+- [ ] Validate physician-order dependency for admission.
+- [ ] Validate initial-assessment completion and filing behavior.
+- [ ] Validate comprehensive-assessment completion and filing behavior.
+- [ ] Validate periodic assessment review and update behavior.
+- [ ] Validate assessment-to-Plan-of-Care linkage.
+- [ ] Validate timestamps, authorship, status, and evidence supporting completion.
+
+### Coverage Amendment (Phase 2 Review): Privacy, Release of Information, and Amendment-Request Rights
+
+- [ ] Validate patient record-access request workflow.
+- [ ] Validate release-of-information workflow and request timestamps.
+- [ ] Validate correction/amendment request notifications.
+- [ ] Validate approval or denial recording.
+- [ ] Validate written justification for denied requests.
+- [ ] Validate retention and disposal controls.
+- [ ] Validate HIPAA and CMIA access boundaries.
+- [ ] Validate breach or suspected-breach reporting workflow.
+
+### Coverage Amendment (Phase 2 Review): Backup, Disaster Recovery, and Downtime
+
+- [ ] Validate backup configuration and evidence.
+- [ ] Validate disaster-recovery procedures.
+- [ ] Validate manual clinical documentation during EHR downtime.
+- [ ] Validate restoration and reconciliation of downtime documentation.
+- [ ] Validate linkage of electronic health information from multiple providers.
+- [ ] Validate emergency and after-hours record retrieval.
+
 ## Required Deliverables
 
 - [ ] Regulatory coverage matrix

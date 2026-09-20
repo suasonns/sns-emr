@@ -40,6 +40,23 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Record actor, role, timestamp, source, before/after state, and retention
 - [ ] Identify missing or inconsistent events
 
+### Coverage Amendment (Phase 2 Review): Backup, Disaster Recovery, and Downtime
+
+- [ ] Validate backup configuration and evidence.
+- [ ] Validate disaster-recovery procedures.
+- [ ] Validate manual clinical documentation during EHR downtime.
+- [ ] Validate restoration and reconciliation of downtime documentation.
+- [ ] Validate linkage of electronic health information from multiple providers.
+- [ ] Validate emergency and after-hours record retrieval.
+
+### Coverage Amendment (Phase 2 Review): Visit-Type and Completion-Evidence Validation
+
+- [ ] Inventory and normalize visit types used by routes, APIs, services, database fields, and UI components.
+- [ ] Validate that completed visits require completion timestamps.
+- [ ] Validate that completed visit tasks link to supporting documentation.
+- [ ] Confirm that schedule status alone does not represent completed clinical documentation.
+- [ ] Identify inconsistent or duplicate visit-status values.
+
 ## Required Deliverables
 
 - [ ] Audit-event catalog

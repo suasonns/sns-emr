@@ -42,6 +42,24 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Validate Compliance and HOPE ownership
 - [ ] Validate transition and reporting ownership
 
+### Coverage Amendment (Phase 2 Review): HOPE, HUV1/HUV2, SFV, and QIES
+
+- [ ] Validate HOPE source ownership.
+- [ ] Validate HOPE Admission, Update Visit, and Discharge record relationships.
+- [ ] Validate HUV1, HUV2, and SFV timing/status ownership.
+- [ ] Validate QIES submission-status ownership and provenance.
+- [ ] Separate official CMS requirements from SNS internal workflow.
+- [ ] Record unavailable or unconnected HOPE/QIES capabilities as `NOT_CURRENTLY_CONNECTED`.
+
+### Coverage Amendment (Phase 2 Review): Medication, Orders, DME, and Controlled Substances
+
+- [ ] Validate medication source ownership and write authority.
+- [ ] Validate physician-order draft, review, approval, signature, and discontinuation states.
+- [ ] Validate DME source ownership and status transitions.
+- [ ] Validate reconciliation provenance.
+- [ ] Validate controlled-substance accountability and reconciliation interfaces where applicable.
+- [ ] Confirm that Manage Treatment does not silently modify source records.
+
 ## Required Deliverables
 
 - [ ] Source ownership matrix

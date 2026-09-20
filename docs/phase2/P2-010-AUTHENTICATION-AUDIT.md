@@ -41,6 +41,26 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Map protected record access
 - [ ] Map test coverage
 
+### Coverage Amendment (Phase 2 Review): Privacy, Release of Information, and Amendment-Request Rights
+
+- [ ] Validate patient record-access request workflow.
+- [ ] Validate release-of-information workflow and request timestamps.
+- [ ] Validate correction/amendment request notifications.
+- [ ] Validate approval or denial recording.
+- [ ] Validate written justification for denied requests.
+- [ ] Validate retention and disposal controls.
+- [ ] Validate HIPAA and CMIA access boundaries.
+- [ ] Validate breach or suspected-breach reporting workflow.
+
+### Coverage Amendment (Phase 2 Review): Backup, Disaster Recovery, and Downtime
+
+- [ ] Validate backup configuration and evidence.
+- [ ] Validate disaster-recovery procedures.
+- [ ] Validate manual clinical documentation during EHR downtime.
+- [ ] Validate restoration and reconciliation of downtime documentation.
+- [ ] Validate linkage of electronic health information from multiple providers.
+- [ ] Validate emergency and after-hours record retrieval.
+
 ## Required Deliverables
 
 - [ ] Authentication architecture map

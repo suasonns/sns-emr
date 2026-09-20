@@ -39,6 +39,17 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Map source-record linkage
 - [ ] Map audit and historical retention
 
+### Coverage Amendment (Phase 2 Review): Privacy, Release of Information, and Amendment-Request Rights
+
+- [ ] Validate patient record-access request workflow.
+- [ ] Validate release-of-information workflow and request timestamps.
+- [ ] Validate correction/amendment request notifications.
+- [ ] Validate approval or denial recording.
+- [ ] Validate written justification for denied requests.
+- [ ] Validate retention and disposal controls.
+- [ ] Validate HIPAA and CMIA access boundaries.
+- [ ] Validate breach or suspected-breach reporting workflow.
+
 ## Required Deliverables
 
 - [ ] Amendment workflow map

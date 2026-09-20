@@ -40,6 +40,16 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Map correction, amendment, and addendum behavior
 - [ ] Map audit events and historical records
 
+### Coverage Amendment (Phase 2 Review): Benefit-Period Consistency
+
+- [ ] Identify authoritative benefit-period ownership.
+- [ ] Validate benefit-period storage representation.
+- [ ] Validate application, API, and database consistency.
+- [ ] Validate certification and recertification linkage.
+- [ ] Validate boundary-date handling.
+- [ ] Validate historical benefit-period preservation.
+- [ ] Identify duplicate or conflicting benefit-period representations.
+
 ## Required Deliverables
 
 - [ ] Certification lifecycle diagram
