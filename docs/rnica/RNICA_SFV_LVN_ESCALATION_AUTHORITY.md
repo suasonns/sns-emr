@@ -30,6 +30,100 @@ Documentation and discovery are authorized.
 
 Application implementation remains `NOT_AUTHORIZED`.
 
+## Citation Audit
+
+### Source 1
+
+**Title:** CMS Hospice Quality Reporting Program Quality Measure
+Specifications User's Manual, Draft HOPE-Based Timely Reassessment
+Process Measures
+
+**Exact section:** Section 1, Measure Description
+
+**Explicitly supports:**
+
+- The Symptom Impact item J2051 may trigger an SFV.
+- A moderate or severe pain or non-pain symptom-impact response triggers
+  the expected SFV.
+- The SFV is expected within two calendar days.
+- The measurement window begins with the J2050B screening date.
+- Admission, HUV1, and HUV2 are possible triggering timepoints.
+- Up to three SFVs may be required.
+- Continued moderate or severe impact at an SFV does not trigger another
+  HOPE SFV for the measure.
+- Continued clinical follow-up remains expected based on patient need.
+
+### Source 2
+
+**Title:** CMS HOPE v1.01 to HOPE v1.02 Guidance Manual and Item Set
+Change Table
+
+**Exact section:** Guidance Manual, Section J, item J2053,
+Item-Specific Instructions and Coding Tips
+
+**Explicitly supports:**
+
+- J2053 is the SFV Symptom Impact item.
+- J2053 follows symptoms identified in a HOPE Admission or HUV.
+- J2053 may be conducted by an RN or LPN/LVN.
+- The clinician may use patient/caregiver interview, observation, and
+  clinical judgment.
+
+### Source 3
+
+**Title:** CMS HOPE National Implementation Training, Part 4, Section J:
+Health Conditions
+
+**Exact section:** Section J item overview
+
+**Explicitly identifies:**
+
+- J2050: Symptom Impact Screening
+- J2051: Symptom Impact
+- J2052: Symptom Follow-up Visit
+- J2053: SFV Symptom Impact
+
+### Source 4
+
+**Title:** CMS HOPE Implementation Frequently Asked Questions
+
+**Exact section:** Symptom Follow-up Visits section
+
+The retrieved CMS result confirms that the FAQ contains a dedicated SFV
+section, but the available excerpt does not expose enough of that
+section to support additional detailed rules for late or invalid SFVs.
+Those behaviors must therefore remain `PENDING_SOURCE_VALIDATION` unless
+confirmed against the full FAQ, current HOPE data specifications, or
+iQIES validation edits.
+
+### Source 5
+
+**Title:** CMS HOPE Technical Information
+
+**Explicitly supports:**
+
+- HOPE records are submitted through iQIES.
+- HOPE data specifications include fatal and warning edits.
+- The HOPE Validation Utility Tool produces validation results.
+- Current technical edits and errata must be considered when validating
+  submissions.
+
+### California Source
+
+**Title:** DPH-18-002E-HospiceAgencies_Text.pdf
+
+**Exact sections:** §§74868(g) through 74868(i)
+
+**Explicitly supports:**
+
+- A proposed Plan-of-Care modification requires written approval before
+  implementation.
+- A significant change that may require Plan-of-Care modification must
+  be reported to the attending physician, Medical Director, or designee
+  as soon as possible within 24 hours.
+- Agency policy must identify reportable changes, recipients, methods,
+  and notification timelines.
+
 ## Final Authority Matrix
 
 | Rule | Authority Label | Validation Status | Repository Verified | Source |
@@ -57,6 +151,13 @@ Application implementation remains `NOT_AUTHORIZED`.
 | SFV status may not be marked complete from schedule status alone | `PROHIBITED` | `DOCUMENTED` | `NO` | SNS evidence-integrity policy |
 | SFV completion requires a valid trigger link, clinician identity, service date, required item evidence, and completion status | `SNS_INTERNAL_WORKFLOW` bounded by `OFFICIAL_HOPE_REQUIRED` | `PARTIALLY_VALIDATED` | `NO` | CMS HOPE requirements plus SNS audit policy |
 | Post-finalization SFV changes require correction, modification, inactivation, amendment, or authorized re-finalization | `OFFICIAL_HOPE_REQUIRED` + `SNS_INTERNAL_WORKFLOW` | `PENDING_REPOSITORY_VALIDATION` | `NO` | CMS record-control requirements plus SNS audit policy |
+| The measure window starts on the J2050B symptom-impact screening date | `OFFICIAL_HOPE_REQUIRED` | `VALIDATED` | `NO` | CMS HOPE Measures Manual, Section 1 |
+| A late SFV may be backdated to appear timely | `PROHIBITED` | `SNS_AUDIT_CONTROL` | `NO` | SNS documentation-integrity rule |
+| A late SFV must retain the actual service date and actual entry date | `SNS_INTERNAL_WORKFLOW` | `AGENCY_APPROVAL_REQUIRED` | `NO` | SNS audit policy |
+| A late SFV still satisfies the HQRP timely-follow-up measure | `PROHIBITED_ASSUMPTION` | `VALIDATED` | `NO` | CMS defines the measure window as two calendar days |
+| Exact CMS submission treatment of a late SFV | `PENDING_SOURCE_VALIDATION` | `UNRESOLVED` | `NO` | Must be verified against the full CMS FAQ, current data specifications, and applicable iQIES edits |
+| Exact fatal or warning edit for an invalid SFV sequence | `PENDING_SOURCE_VALIDATION` | `UNRESOLVED` | `NO` | CMS HOPE Technical Information confirms fatal/warning edits exist but the retrieved material does not specify the SFV edit numbers |
+| Invalid SFV may be silently converted into another visit type | `PROHIBITED` | `SNS_AUDIT_CONTROL` | `NO` | SNS traceability rule |
 
 ## SFV Policy
 
@@ -258,13 +359,108 @@ active
 **And** preserve notifications, approvals, dates, and source
 documentation.
 
+## Late and Invalid SFV Rules
+
+### Late SFV
+
+If the SFV occurs after the two-calendar-day measure window:
+
+- Preserve the actual J2050B screening date.
+- Preserve the actual SFV service date.
+- Preserve the actual entry and signature dates.
+- Mark the internal timeliness result as `LATE`.
+- Do not backdate the visit.
+- Do not represent the record as satisfying the two-day measure.
+- Continue clinically appropriate symptom follow-up.
+- Route the record for compliance review.
+
+The statement that the SFV does not satisfy the two-day measure follows
+directly from the CMS-defined measurement window. The exact CMS
+submission disposition of the late record remains
+`PENDING_SOURCE_VALIDATION` pending validation against current CMS
+submission specifications.
+
+### Invalid SFV
+
+Treat an SFV as internally invalid or blocked when any required
+discovery control is missing, including:
+
+- No linked HOPE Admission, HUV1, or HUV2 source.
+- No triggering moderate or severe J2051 response.
+- Source record belongs to another patient or episode.
+- SFV date precedes the triggering assessment.
+- Clinician identity or credential cannot be validated.
+- Duplicate SFV exists for the same source trigger.
+- Required J2052 or J2053 evidence is absent.
+- Service date or source date is missing.
+- Record sequence conflicts with the linked HOPE record.
+
+These are proposed SNS validation controls. The exact corresponding
+iQIES fatal or warning edits must be mapped from current CMS data
+specifications before implementation.
+
+## Additional Given/When/Then Edge-Case Scenarios
+
+### Scenario 11: Trigger Record Later Corrected
+
+**Given** an SFV was linked to a moderate or severe J2051 response
+**And** the source HOPE record is subsequently corrected or modified
+**When** the correction changes the trigger condition
+**Then** the system must mark SFV applicability for revalidation
+**And** preserve both source versions
+**And** must not silently delete the SFV.
+
+### Scenario 12: Trigger Record Inactivated
+
+**Given** an SFV is linked to a HOPE record
+**When** the source record is inactivated
+**Then** the system must flag the SFV linkage as invalid pending review
+**And** preserve the historical relationship
+**And** prevent an unsupported final submission state.
+
+### Scenario 13: Late Data Entry but Timely Service
+
+**Given** the SFV service occurred within the two-calendar-day window
+**But** documentation was entered later
+**When** the record is reviewed
+**Then** the system must preserve service date and entry date
+separately
+**And** must not infer CMS submission validity from service timing
+alone
+**And** must evaluate current CMS submission rules separately.
+
+### Scenario 14: Timely Visit but Rejected iQIES Record
+
+**Given** the SFV service occurred within the measure window
+**And** the submitted record is rejected by iQIES
+**When** the Final Validation Report is received
+**Then** the system must preserve the rejection details
+**And** display submission status separately from clinical timeliness
+**And** require correction and resubmission according to the applicable
+CMS edit.
+
+### Scenario 15: Patient Discharged Before Expected SFV
+
+**Given** a qualifying trigger exists
+**And** the patient is discharged or dies before the planned SFV
+**When** the episode closes
+**Then** the system must preserve the trigger, discharge event, and
+noncompletion reason
+**And** must not fabricate an SFV completion
+**And** must evaluate the CMS exclusion or measure treatment against
+the current HOPE measure specifications before assigning a final
+compliance outcome.
+
 ## Source Registry
 
 - CMS HOPE Guidance Manual v1.02, Chapter 1 and Section J.
-- CMS HQRP Quality Measure Specifications, HOPE Timely Follow-up Measures.
+- CMS HQRP Quality Measure Specifications, HOPE Timely Follow-up Measures
+  (Draft HOPE-Based Timely Reassessment Process Measures, Section 1).
 - CMS HOPE v1.01 to v1.02 Guidance Manual and Item Set Change Table,
   J2053.
-- CMS HOPE Implementation FAQs.
+- CMS HOPE National Implementation Training, Part 4, Section J.
+- CMS HOPE Implementation FAQs (Symptom Follow-up Visits section).
+- CMS HOPE Technical Information.
 - California CDPH DPH-18-002E, §§74864, 74868, and 74872.
 
 ## Final Authority Audit
@@ -279,6 +475,10 @@ documentation.
 | RN review may lead to clinical RN assessment without an SFV | `SNS_INTERNAL_WORKFLOW` |
 | Significant-change notification and Plan-of-Care approval controls | `CALIFORNIA_REQUIRED` |
 | Automatic SFV creation or completion from routine LVN documentation | `PROHIBITED` |
+| Exact late-record submission treatment | `PENDING_SOURCE_VALIDATION` |
+| Exact invalid-sequence fatal/warning edit | `PENDING_SOURCE_VALIDATION` |
+| Backdating a late SFV | `PROHIBITED` |
+| Schedule completion equals SFV completion | `PROHIBITED` |
 
 ## Implementation Boundary
 
