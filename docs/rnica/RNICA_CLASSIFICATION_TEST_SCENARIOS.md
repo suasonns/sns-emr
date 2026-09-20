@@ -69,6 +69,16 @@ is created here.
 7. SFV late.
 8. SFV corrected.
 9. Initial Assessment incorrectly selected as SFV.
+10. LVN visit identifies qualifying severe symptom during first 30 days.
+11. LVN visit identifies qualifying severe symptom after HOPE Admission.
+12. LVN visit identifies qualifying severe symptom during HUV1 window.
+13. LVN visit identifies qualifying severe symptom during HUV2 window.
+14. RN review requested from LVN severe-symptom finding.
+15. RN review completed and SFV determined applicable.
+16. RN review completed and SFV determined not applicable.
+17. LVN severe symptom documented but RN review not completed.
+18. Attempt to automatically classify LVN visit as SFV.
+19. Attempt to mark SFV complete without RN review documentation.
 
 ## 7. Discipline Security
 
