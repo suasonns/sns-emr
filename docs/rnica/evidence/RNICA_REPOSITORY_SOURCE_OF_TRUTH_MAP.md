@@ -437,3 +437,333 @@ SCHEMA MODIFIED:                 NO
 MIGRATIONS MODIFIED:             NO
 CODE CHANGES MADE:               NO
 ```
+
+---
+
+# Amendment 2: Backend ↔ Frontend Reconciliation Verification
+
+**STATUS: DISCOVERY ONLY. Every claim below was re-verified by direct `grep`/`view` against the repository at `origin/main` (post-PR #128, commit `2ec145e`) — not restated from the prior addendum or from background-agent output. Several prior classifications are corrected below with exact file:line evidence. No code, schema, migration, workflow, form, model, API, or registry changes were made.**
+
+## Corrections to the Phase-1–8 Addendum Above
+
+The following corrects claims made in the "Backend ↔ Frontend Gap Analysis and SSOT Audit" addendum after direct re-verification:
+
+1. **HUV1/HUV2 frontend presence was wrong — corrected from `BACKEND_ONLY` to `MATCHED`.** Direct search of `sns-emr-frontend/src` found HUV1/HUV2 referenced in at least 6 frontend files, not zero:
+   - `src/intake/ComplianceHopeBoard.jsx:17-18,897,1025-1036,1462,1473` — dedicated "HOPE - HUV1"/"HOPE - HUV2" board sections and status displays.
+   - `src/intake/HopeReport.jsx:102-103` — report titles.
+   - `src/intake/hopeReportMapper.js:41-42,641,654` (+ `hopeReportMapper.test.js:110-120`, which specifically tests HUV1/HUV2 report-mapping behavior).
+   - `src/intake/NursingAssessmentBoard.jsx:190-191,317`.
+   - `src/charts/PatientChartSidebar.jsx:93-94`.
+   - `src/charts/PatientChart.jsx:477-478`.
+   The earlier claim (from the background frontend-inventory agent, and repeated in the prior addendum) that "no RNICA-specific HUV UI surface" exists is **incorrect**. A dedicated `ComplianceHopeBoard` component and HOPE-report-mapper module exist specifically for HUV1/HUV2.
+
+2. **J2050/J2051(A–H)/J2052/J2053 frontend presence was wrong — corrected from "not confirmed" to `VERIFIED`.** `src/components/RNICA.jsx` contains literal `hopeCode` field definitions: `J2051A`–`J2051H` at lines 8876–8883 (Symptom Impact section, `J2051 A-H` at line 8871), and `J2050`/`J2052`/`J2053` in the SFV section at lines 9377–9397. The nav entry at line 212 also cross-references `hope: ["J2050","J2052","J2053"]`.
+
+3. **SFV frontend nav claim (from `RNICA_FEATURE_TO_UI_WIRING_MATRIX.md`) is confirmed accurate.** `src/components/RNICA.jsx` contains an `sfv` nav entry (line 182, 212), an `SfvTag` UI element (line 1147: `<span style={styles.sfvTag}>SFV Trigger</span>`), and a full SFV form section (lines 9377–9397+).
+
+## MAP-C02 / GAP-05 — Re-verified with exact runtime path
+
+**Registry definition** (`backend/app/domain/forms/form_registry.py:941-944`):
+```python
+TRIGGER_SFV: {
+    "trigger_family": "HOPE",
+    "allowed_disciplines": {"RN", "LVN"},
+    ...
+```
+
+**Registry accessor functions exist but are NOT called anywhere outside `form_registry.py` itself.** A repository-wide search for `trigger_allowed_for_discipline`, `get_workflow_trigger_config`, and `get_supported_workflow_triggers_for_discipline` found zero external callers (routers, services, or tests). The only two backend files that import from `form_registry.py` for discipline/form matching (`app/services/task_completion_service.py:17-20` and `app/services/task_completion_evidence.py:23-26`) import `required_form_family_for_task_discipline` and `note_matches_task_family` — **not** the trigger-discipline gate. **This means `WORKFLOW_TRIGGER_REGISTRY`'s `allowed_disciplines` for SFV is not the code path enforced at runtime.**
+
+**Actual runtime enforcement** is a separate, independent check in `backend/app/services/hope_phase_b_engine.py:396-422`, function `complete_sfv_requirement_from_visit()`:
+```python
+normalized_discipline = _normalize_discipline(discipline)
+if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN}:
+    raise ValueError("SFV must be completed by RN or LPN/LVN")
+```
+This function is called from a live API endpoint at `backend/app/api/visits.py:3885` (via `_maybe_complete_open_sfv_for_visit`), passing `visit.visit_discipline` directly.
+
+**Verified conclusion — this is a real, confirmed conflict, not a candidate:**
+- The registry (`form_registry.py:943`) declares SFV allowed disciplines as `{RN, LVN}`.
+- The actual enforced runtime code (`hope_phase_b_engine.py:422`) allows `{RN, LVN, LPN}` — **LPN is permitted at runtime but is absent from the registry.**
+- The registry is effectively unused documentation for this rule; the real gate is `hope_phase_b_engine.py`.
+- This remains directly relevant to the frozen SFV/LVN escalation authority (now also implicating LPN) and is **not resolved here** — routed for Compliance/Medical Director review.
+
+For comparison, the HUV1/HUV2 registry rule (`allowed_disciplines={"RN"}`) is corroborated by the separately-implemented runtime check `validate_huv_visit_completion()` (`hope_phase_b_engine.py:158-166`, called from `app/api/visits.py:244` and `app/services/assessment_history_service.py:100,110`), which also requires exactly `DISCIPLINE_RN`. No conflict was found for HUV1/HUV2 discipline scope.
+
+## MAP-C03 — Discipline vocabulary, re-verified and escalated
+
+Direct verification found **six** independent discipline-related constructs, not four:
+
+| # | Construct | Location | Members / Behavior |
+|---|---|---|---|
+| 1 | `CORE_DISCIPLINES` (list) | `backend/app/models/enums.py:20` | `["RN", "MD", "MSW", "SC"]` — 4 members |
+| 2 | `TaskDiscipline` (enum) | `backend/app/models/enums.py:120-134` | 12 members: RN, LVN, NP, MD, CHHA, SW, MSW, BSW, LCSW, SC, CHAPLAIN, AIDE — **no LPN** |
+| 3 | `Discipline` (enum) | `backend/app/models/enums.py:170-193` | ~20 members incl. LPN, ADMIN, CASE_MANAGER, MEDICAL_DIRECTOR, ATTENDING_PHYSICIAN — the broadest vocabulary found |
+| 4 | `DISCIPLINE_NORMALIZATION_MAP` + `normalize_discipline()` | `backend/app/models/enums.py:142-163` | **Collapses both `"LVN"` and `"LPN"` into `"RN"`** |
+| 5 | `DISCIPLINE_ALIASES` + `normalize_discipline()` | `backend/app/domain/forms/form_registry.py:189-196,259-264` | A **separately defined, same-named** function; maps `"LPN"` → `"LVN"` but keeps `LVN` distinct from `RN` |
+| 6 | `_normalize_discipline()` (private) | `backend/app/services/hope_phase_b_engine.py:34-36,82-86` | A **third, independent** implementation; keeps `RN`/`LVN`/`LPN` fully distinct, only folds the literal compound string `"LPN/LVN"` into `LVN` |
+
+**Verified conclusion**: two functions named `normalize_discipline` exist in different modules (`app/models/enums.py` and `app/domain/forms/form_registry.py`) and are **not** the same function — `form_registry.py` does not import the one in `enums.py`. Their behavior is **contradictory**: the `enums.py` version treats an LVN/LPN-completed SFV as equivalent to RN (would obscure the RN/LVN/LPN distinction downstream if applied), while the `form_registry.py` and `hope_phase_b_engine.py` versions preserve the distinction. This is a confirmed `CONFLICTING_SSOT` for discipline normalization, escalated from the prior addendum's "4 vocabularies" finding to 6 confirmed constructs (2 of which are duplicate-named functions with opposite normalization behavior for LVN/LPN).
+
+## MAP-D03 / MAP-D04 — Re-verified
+
+- **MAP-D03** (form registry duplication): confirmed unchanged from the prior addendum — a static `form_registry.py` and a DB-backed `FormRegistryModel`/`form_registry` table both exist under the same name. This pass did not re-trace their runtime relationship; still `UNRESOLVED`.
+- **MAP-D04** (HUV1/HUV2/SFV identifier duplication): confirmed with exact citations — the literal strings `HUV1`/`HUV2`/`SFV` are independently declared in three places with no shared enum/constant import between them:
+  - `TaskType` enum: `backend/app/models/enums.py:47-50` (`HUV1 = "HUV1"`, `HUV2 = "HUV2"`, `SFV = "SFV"`, plus `HUV = "HUV"`).
+  - `WORKFLOW_TRIGGER_REGISTRY` keys: `backend/app/domain/forms/form_registry.py:148-151` (`TRIGGER_HUV1 = "HUV1"`, `TRIGGER_HUV2 = "HUV2"`, `TRIGGER_SFV = "SFV"`).
+  - `SFVRequirement.trigger_source_type` `CheckConstraint`: `backend/app/models/sfv_requirement.py:64-67` — restricts values to `'INITIAL_RN_ICA'`, `'HUV1'`, `'HUV2'` (note: this field records what *triggered* the SFV requirement, not a discipline — the prior addendum's phrasing conflated this with discipline; corrected here to describe it accurately as a trigger-source duplication, not a discipline duplication).
+  All three are kept manually in sync by convention (identical string values today); there is no single source `enum`/constant shared across all three call sites.
+
+## MAP-U09 / MAP-U10 — Re-verified
+
+Not re-traced in this pass beyond the original addendum's findings; both remain `UNRESOLVED` pending a dedicated cross-reference of `backend/app/rules/registry.py` against `WORKFLOW_TRIGGER_REGISTRY`, and a dedicated trace of all status-mutation call sites across `task_engine`, `admission_status_engine`, and `idg_lifecycle_engine`. No new evidence gathered for these two items in this verification pass.
+
+## Verified SSOT Register
+
+| Domain | Authoritative Source | Repository Path | Status |
+|---|---|---|---|
+| Patient | `Patient` model | `backend/app/models/patient.py` | VERIFIED |
+| Admission | `Admission` model | `backend/app/models/admission.py` | VERIFIED |
+| Episode | No distinct entity; function served by `Admission` | `backend/app/models/admission.py` | UNRESOLVED (naming gap, carried over) |
+| Benefit Period | `BenefitPeriod` model | `backend/app/models/benefit_period.py` | VERIFIED |
+| Visit | `Visit` model | `backend/app/models/visit.py` | VERIFIED |
+| Assessment (RNICA family) | Four discipline-scoped models, no single parent entity | `backend/app/models/rnica_assessment.py`, `msw_ica_assessment.py`, `scica_assessment.py`, `rn_recert_assessment.py` | VERIFIED per-discipline |
+| RNICA | `RnicaAssessment` model | `backend/app/models/rnica_assessment.py` | VERIFIED |
+| ICA (MSW/SC) | `MswIcaAssessment`, `ScicaAssessment` | `backend/app/models/msw_ica_assessment.py`, `scica_assessment.py` | VERIFIED |
+| UCA (Updated Comprehensive Assessment) | No entity literally named this; closest analog is `RNRecertAssessment` | `backend/app/models/rn_recert_assessment.py` (analog only) | UNRESOLVED (carried over, MAP-U03) |
+| HOPE Admission | No distinct entity; embedded fields on `RnicaAssessment` | `backend/app/models/rnica_assessment.py` | UNRESOLVED (carried over, MAP-U04) |
+| HUV1 | Trigger rule + runtime validator; no dedicated record entity | Rule: `backend/app/domain/forms/form_registry.py:913-926`; runtime: `backend/app/services/hope_phase_b_engine.py:158-166` | VERIFIED (rule + runtime); record entity NOT_FOUND |
+| HUV2 | Same pattern as HUV1 | Same files | VERIFIED (rule + runtime); record entity NOT_FOUND |
+| SFV | `SFVRequirement` model (tracking) + registry rule + runtime completion function | Model: `backend/app/models/sfv_requirement.py`; registry: `form_registry.py:941-944`; runtime: `hope_phase_b_engine.py:396-422` | **CONFLICT** — registry and runtime disagree on allowed disciplines (see MAP-C02 above) |
+| User | `User` model | `backend/app/models/user.py` | VERIFIED |
+| Employee/Staff | Not confirmed as distinct from `User`; `StaffPermissionGrant` layers capability, not identity | `backend/app/models/staff_permission_grant.py` (capability only) | UNRESOLVED (carried over) |
+| Credential | `User.license_number`/`User.npi` fields only; no dedicated credential/expiration entity | `backend/app/models/user.py` | VERIFIED (narrow) — no expiration tracking (MAP-U08, carried over) |
+| Discipline | **No single authoritative source** — 6 independent constructs confirmed (see MAP-C03 table above) | See MAP-C03 table | **CONFLICTING_SSOT** |
+| Audit | `AuditLog` (generic) + `Amendment`/`RnicaAmendment` (correction-specific, two mechanisms) | `backend/app/models/audit_log.py`, `amendment.py`, `rnica_amendment.py` | PARTIAL — generic log VERIFIED; correction tracking DUPLICATE_SSOT (MAP-D01, carried over) |
+| Status | No single centralized status registry; distributed across per-model `status` fields and multiple engines | `task_engine.py`, `admission_status_engine.py`, `idg_lifecycle_engine.py` (not exhaustively cross-referenced) | UNRESOLVED (MAP-U10, carried over) |
+| Trigger | `WORKFLOW_TRIGGER_REGISTRY` (rule definitions) vs. `TaskType` enum vs. `SFVRequirement.trigger_source_type` (three independent string-literal declarations of HUV1/HUV2/SFV) | `form_registry.py:912`, `models/enums.py:47-50`, `sfv_requirement.py:64-67` | DUPLICATE_SSOT (MAP-D04) |
+
+## Frontend ↔ Backend Coverage Matrix (corrected)
+
+| Object | Backend | Frontend | Status |
+|---|---|---|---|
+| RNICA | `RnicaAssessment` model + `/visits/rnica` API | `src/components/RNICA.jsx`, `RNICAPage` | MATCHED |
+| MSW ICA | `MswIcaAssessment` model | `src/components/MSWICA.jsx`, `MSWICAPage` | MATCHED |
+| SC ICA | `ScicaAssessment` model | `src/components/SCICA.jsx`, `SCICAPage` | MATCHED |
+| HUV1 | Registry rule + `validate_huv_visit_completion()` (`hope_phase_b_engine.py`) | `ComplianceHopeBoard.jsx`, `HopeReport.jsx`, `hopeReportMapper.js`, `NursingAssessmentBoard.jsx`, `PatientChartSidebar.jsx`, `PatientChart.jsx` | **MATCHED (corrected from BACKEND_ONLY)** |
+| HUV2 | Same as HUV1 | Same components as HUV1 | **MATCHED (corrected from BACKEND_ONLY)** |
+| SFV | `SFVRequirement` model + registry rule + `complete_sfv_requirement_from_visit()` | `RNICA.jsx` (nav entry, SFV tag, SFV form section) | MATCHED — but see MAP-C02 conflict on allowed disciplines |
+| J2050/J2052/J2053 | `HOPE_SFV_ITEM_CODES`/`HOPE_SYMPTOM_ITEM_CODES` (`form_registry.py`) | `RNICA.jsx` lines 9377-9397 (literal `hopeCode` fields) | **MATCHED (corrected from "unconfirmed")** |
+| J2051 (A–H) | Same registries; `source_items` in `WORKFLOW_TRIGGER_REGISTRY["TRIGGER_SFV"]["metadata"]` | `RNICA.jsx` lines 8871-8883 (literal `J2051A`-`J2051H` fields) | **MATCHED (corrected from "unconfirmed")** |
+| J2050B | Not found anywhere in backend | Not found anywhere in frontend | NOT_FOUND (both sides — re-confirmed) |
+| Discipline normalization | 6 independent, partially conflicting constructs (see MAP-C03) | Not traced to a single frontend discipline-vocabulary source in this pass | CONFLICT (backend-internal) — frontend side not re-verified this pass |
+
+## Duplicate SSOT Findings (this verification pass)
+
+| ID | Finding | Authoritative Candidate (not implemented) |
+|---|---|---|
+| MAP-C03 (escalated) | 6 discipline constructs, including 2 same-named `normalize_discipline` functions with opposite LVN/LPN normalization behavior | No recommendation made — requires Compliance + Engineering review of which normalization is safe to standardize on |
+| MAP-D04 (confirmed) | HUV1/HUV2/SFV declared independently in `TaskType` enum, `WORKFLOW_TRIGGER_REGISTRY`, and `SFVRequirement` check constraint | Candidate: `TaskType` enum, since it is the most structurally-typed (SQLAlchemy enum) of the three — **not implemented, review only** |
+| MAP-C02 (confirmed conflict) | Registry (`RN`,`LVN`) vs. runtime (`RN`,`LVN`,`LPN`) disagree on SFV-allowed disciplines | No recommendation — clinical-compliance question requiring Compliance + Medical Director review before any resolution |
+
+## Orphan Detection (this verification pass)
+
+| Object | Location | Classification |
+|---|---|---|
+| `WORKFLOW_TRIGGER_REGISTRY` discipline-gating functions (`trigger_allowed_for_discipline`, `get_workflow_trigger_config`, `get_supported_workflow_triggers_for_discipline`) | `backend/app/domain/forms/form_registry.py:1011-1064` | **DEAD_CODE (candidate)** — defined, exported, but zero call sites found anywhere else in the backend in this pass. Confirm before removing (out of scope here — discovery only). |
+| `form_registry.py::normalize_discipline` / `DISCIPLINE_ALIASES` | `backend/app/domain/forms/form_registry.py:189-196,259-264` | ACTIVE (used by `normalize_form_type`/form resolution paths within the same file) but produces a *different* result than `models/enums.py::normalize_discipline` for the same input — not dead, but duplicated with divergent behavior |
+
+## Recommended Authoritative Sources (non-binding — not implemented)
+
+- **SFV allowed disciplines**: recommend treating `hope_phase_b_engine.py`'s runtime check as the de facto current behavior (since it is what actually executes), and updating `WORKFLOW_TRIGGER_REGISTRY` to match it (add `LPN`) **or** narrowing the runtime check to match the registry (remove `LPN`) — **which direction is correct is a clinical-compliance decision, not an engineering one, and is not decided here.**
+- **Discipline normalization**: recommend consolidating to a single `normalize_discipline` implementation before any further discipline-scoped logic is built, given two functions of the same name currently disagree. **Not implemented; requires Engineering + Compliance sign-off on which behavior (collapse LVN/LPN into RN vs. keep distinct) is clinically correct.**
+- **HUV1/HUV2/SFV trigger identifiers**: recommend the `TaskType` enum as the single source of truth for these string literals, with `WORKFLOW_TRIGGER_REGISTRY` and `SFVRequirement`'s check constraint referencing it rather than re-declaring the literals. **Not implemented.**
+
+## Amendment 2 Verification
+
+- [x] Every finding above was independently re-verified via direct `grep`/`view` against `origin/main` (commit `2ec145e`), not restated from background-agent output or the prior addendum.
+- [x] Two errors in the prior addendum (HUV1/HUV2 frontend presence; J2050/J2051/J2052/J2053 frontend presence) were found and corrected with exact file:line citations.
+- [x] MAP-C02 was elevated from "candidate conflict" to a confirmed, precisely-cited registry-vs-runtime discrepancy.
+- [x] MAP-C03 was escalated from 4 to 6 confirmed discipline constructs, including a confirmed behavioral conflict between two same-named functions.
+- [x] MAP-D04 was confirmed with exact citations; its earlier description was corrected (trigger-source duplication, not discipline duplication).
+- [x] No new workflows, forms, models, APIs, registries, or enums were created.
+- [x] No schema, migration, or application behavior change was made.
+- [x] No new file was created — this verification was appended to the existing `RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md`.
+
+## Amendment 2 Final Report
+
+```text
+CLAIMS RE-VERIFIED:              14
+CORRECTIONS MADE:                2 (HUV1/HUV2 frontend presence; J2050-J2053 frontend presence)
+CONFLICTS CONFIRMED:             1 (MAP-C02 — registry vs. runtime SFV discipline mismatch)
+DUPLICATE_SSOT CONFIRMED:        2 (MAP-C03 discipline normalization; MAP-D04 trigger identifiers)
+CANDIDATE DEAD CODE FOUND:       1 (WORKFLOW_TRIGGER_REGISTRY discipline-gating accessor functions)
+UNRESOLVED CARRIED OVER:         5 (Episode naming gap, UCA, HOPE Admission entity, Employee/Staff, Status registry)
+
+FROZEN DOCUMENTS MODIFIED:       NO
+APPLICATION BEHAVIOR MODIFIED:   NO
+SCHEMA MODIFIED:                 NO
+MIGRATIONS MODIFIED:             NO
+NEW FILES CREATED:               NO
+NEW ISSUES CREATED:              NO
+NEW TRACKERS CREATED:            NO
+IMPLEMENTATION AUTHORIZATION:    NOT_AUTHORIZED
+```
+
+---
+
+# Amendment 3: Full Repository Reconciliation (Step-by-Step Re-Verification)
+
+**STATUS: DISCOVERY ONLY.** This amendment does not trust Amendment 1 or Amendment 2. Every item below was re-derived from raw repository commands run against the current branch, listed with their exact output, then followed up with direct file reads. This amendment **supersedes** parts of Amendment 2 where new evidence changes the conclusion (noted explicitly below).
+
+## Step 1 — Branch State
+
+```text
+branch:            docs/rnica-backend-frontend-reconciliation
+HEAD:               2ec145e99f4fbf42d208ba646c4731f2de055408
+origin/main HEAD:   2ec145e99f4fbf42d208ba646c4731f2de055408 (identical — branch created from origin/main after PR #128 merged)
+modified files:     docs/rnica/evidence/RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md (this document, in progress)
+unmerged files:     none
+```
+
+## Step 2/3 — Backend & Frontend Inventory (raw counts)
+
+```text
+backend total files:                 1142
+sns-emr-frontend/src total files:    270
+frontend src/pages files:            55
+```
+
+Files matching `*registry*` (backend): `app/api/registry.py`, `app/compliance/registry.py`, `app/config/admission_task_registry.json`, `app/config/eligibility_evidence_registry.json`, `app/config/lcd/lcd_registry.json`, `app/domain/forms/form_registry.py`, `app/domain/forms/module_registry.py`, `app/models/form_registry_model.py`, `app/rules/registry.py`, `app/services/eligibility/eligibility_registry_service.py`, `app/tenancy/registry.py`.
+
+Files matching `*workflow*` (backend, excluding alembic/tests): `clinical_workflow_master.yaml`, `app/billing/api/readiness_workflow_router.py`, `app/billing/models/readiness_workflow_event.py`, `app/billing/services/{contracted_authorization_workflow_service,election_consent_workflow_service,eligibility_workflow_service,readiness_workflow_service}.py`, `app/models/clinical_workflow_map.py`, `app/services/rnica_hope_workflow_service.py`, `app/services/workflow_resolver.py`, `app/services/workflow_validation.py`, `app/services/admission/admission_workflow_service.py`.
+
+No files literally named `*trigger*` exist — `WORKFLOW_TRIGGER_REGISTRY` is a variable inside `form_registry.py`, not a filename.
+
+**Three previously unexamined files were found this pass and are the most significant new discoveries in this reconciliation**: `backend/clinical_workflow_master.yaml`, `backend/app/models/clinical_workflow_map.py`, and `backend/app/services/rnica_hope_workflow_service.py` — see Steps 5–8 below.
+
+## Step 4 — J2050–J2053 Fresh Verification (repo-wide `git grep`, counts and files, tracked files only)
+
+| Item | Hit count (real, excluding stray inventory-dump files) | Backend files | Frontend files | Conclusion |
+|---|---|---|---|---|
+| J2050B | 0 | none | none | `NOT_FOUND` — confirmed again, third time, zero matches anywhere in the tracked repository |
+| J2050 | 7 | `backend/app/domain/forms/form_registry.py` | `sns-emr-frontend/schemas/rnica-field-schema.json`, `src/components/RNICA.jsx`, `src/components/rn-ica/rnIcaClinicalNavigation.js`, `src/intake/hopeReportMapper.js` | `VERIFIED` — both sides |
+| J2051 (incl. A–H) | 74 | `backend/app/domain/forms/form_registry.py`, `backend/app/api/visits.py`, `backend/app/services/evidence/note_draft_service.py`, `backend/app/services/evidence/structured_findings.py`, `backend/tests/test_structured_findings.py` | `schemas/rnica-field-schema.json`, `src/components/RNICA.jsx` (lines 8871–8883, 1027–1031), `src/components/rn-ica/rnIcaClinicalNavigation.js`, `src/components/VisitRecorderCard.jsx`, `src/intake/hopeReportMapper.js` | `VERIFIED` — both sides, with the deepest backend usage of any HOPE item code (API, AI note-drafting evidence service, and a dedicated backend test) |
+| J2052 | 11 | `backend/app/domain/forms/form_registry.py` | `schemas/rnica-field-schema.json`, `src/components/RNICA.jsx`, `src/components/rn-ica/rnIcaClinicalNavigation.js`, `src/intake/HopeReport.jsx`, `src/intake/hopeReportMapper.js` | `VERIFIED` — both sides |
+| J2053 | 28 | `backend/app/domain/forms/form_registry.py` | same 5 frontend files as J2052 | `VERIFIED` — both sides |
+
+**This corrects Amendment 2's residual uncertainty** ("not confirmed as literal frontend field keys") — J2050/J2051/J2052/J2053 are now `VERIFIED` on both backend and frontend with an exhaustive file list, not a partial spot-check.
+
+## Step 5 — Workflow/Trigger/Status Registry Verification (the core new finding of this amendment)
+
+Direct reads of the three newly-found files surface a **third and fourth independent definition of the SFV discipline rule**, and confirm one of the existing definitions is dead:
+
+| Registry/Source | Path | Referenced By | Active Usage | Classification |
+|---|---|---|---|---|
+| `clinical_workflow_master.yaml` | `backend/clinical_workflow_master.yaml` | Only appears in a stray, tracked `backend/_inventory_files.txt` dump (a Windows `Get-ChildItem` output someone committed by accident, referencing local path `C:\dev\sns emr\...`) — **zero references from any `.py` import, YAML loader, or config reader anywhere in the backend** | **NONE — confirmed unused at runtime** despite its own header stating "No logic allowed outside this file." Its content defines `RN.SFV` (day_range 0-2, requires_separate_visit) with **no LVN or LPN entry for SFV at all** (LVN's only entry is a generic `ROUTINE` visit type, not SFV). | `LEGACY` / orphaned specification — not authoritative, not enforced |
+| `ClinicalWorkflowMap` model/table | `backend/app/models/clinical_workflow_map.py`, table created in `alembic/versions/521d501c6eea_consolidated_baseline.py:54` | Queried by `backend/app/services/workflow_resolver.py:18-20`; imported (but not queried) by `backend/app/services/workflow_validation.py:2` | **Table exists in schema, model is imported, but the code's own comments confirm it holds no data**: `workflow_validation.py:12` — *"ClinicalWorkflowMap is currently not populated"*; `clinical_note_service.py:268-269` — *"Do not re-resolve through ClinicalWorkflowMap. ClinicalWorkflowMap is currently not populated..."* | **DEAD (confirmed by code comment, not inferred)** — schema/model present, zero live rows per the codebase's own documentation |
+| `validate_timepoint_safe()` | `backend/app/services/workflow_validation.py:5-20` | Called from `backend/app/services/clinical_note_service.py:722` | **Actively called, but hard-coded to always `return "VALID"`.** Docstring: *"Timepoint validation temporarily disabled... Returning VALID prevents false failures while the workflow mapping engine is being redesigned."* | ACTIVE call site, but a **permanent no-op** — timepoint/discipline compliance validation for clinical notes is currently disabled by design |
+| `validate_sfv_safe()` | `backend/app/services/workflow_validation.py:22-40` | **Zero callers found anywhere in the backend** | Not invoked | `DEAD_CODE` (confirmed — defined, exported, never called) |
+| `WORKFLOW_TRIGGER_REGISTRY` (`TRIGGER_SFV`) | `backend/app/domain/forms/form_registry.py:941-944` | Accessor functions (`trigger_allowed_for_discipline`, etc.) have zero external callers (re-confirmed from Amendment 2) | Not enforced at runtime via its own accessor functions | Documented rule, **not the runtime-enforced path** |
+| `complete_sfv_requirement_from_visit()` | `backend/app/services/hope_phase_b_engine.py:397-422` | Called from `backend/app/api/visits.py:3885` | **This is the only one of the four SFV-discipline sources that is both (a) queried/executed at runtime and (b) actually gates behavior.** | **The de facto runtime authority for SFV discipline scope**, allowing `{RN, LVN, LPN}` |
+| `rnica_hope_workflow_service.py` (HOPE submission-lifecycle status) | `backend/app/services/rnica_hope_workflow_service.py` | Called from `backend/app/api/visits.py` | ACTIVE — defines and enforces `HOPE_WORKFLOW_STATUSES` (`OPEN`, `CLOSED`, `READY_TO_EXPORT`, `EXPORTED_TO_BATCH`, `SUBMITTED`, `INACTIVATED`) as a single, centralized state machine for the HOPE submission lifecycle specifically | `VERIFIED` — this is a genuine, populated, centralized status registry for one sub-domain (HOPE lifecycle), **correcting** Amendment 2's MAP-U10 claim that "no centralized status registry exists" for this specific concern |
+
+### Corrected MAP-C02 — now a confirmed three-way conflict (escalated from two-way)
+
+Four independent sources define who may complete/trigger an SFV, and they do not agree:
+
+1. `clinical_workflow_master.yaml` (orphaned/unused): **RN only** — no LVN or LPN entry for SFV.
+2. `WORKFLOW_TRIGGER_REGISTRY["TRIGGER_SFV"]["allowed_disciplines"]` (`form_registry.py:943`, documented but not runtime-enforced): **RN, LVN**.
+3. `complete_sfv_requirement_from_visit()` (`hope_phase_b_engine.py:422`, the actual runtime-enforced path, called from `api/visits.py:3885`): **RN, LVN, LPN**.
+4. `ClinicalWorkflowMap` DB table (schema exists, confirmed unpopulated): no actual data to compare — would-be authority is empty.
+
+**The only one of these that actually executes and gates real API behavior today is #3 (`hope_phase_b_engine.py`), which is the broadest of the three non-empty definitions (RN, LVN, LPN).** This is a materially more severe finding than Amendment 2 recorded (which treated this as a two-way registry-vs-runtime mismatch); it is now a confirmed three-way conflict across a live orphaned governance file, a documented-but-unenforced registry, and the actual runtime code, with the runtime code being the most permissive. **Not resolved here** — routed for Compliance + Medical Director review, per the Blocking Rule.
+
+### Corrected MAP-U03 (UCA / Update-Recert Assessment) — frontend surface now confirmed to exist
+
+Amendment 2 stated "no distinct frontend surface was identified for the Updated Comprehensive Assessment concept... separate from the main RNICA form." Direct verification finds this is **not a gap** — both the RN and MSW disciplines implement an in-component assessment-type toggle:
+
+- `sns-emr-frontend/src/components/RNICA.jsx:10532-10533` — `const [assessmentType, setAssessmentType] = useState("update"); const isUpdateAssessment = isOngoing && assessmentType === "update";` plus a "Change Since Last Assessment" comparison feature (lines 2711-2824) that reads prior RNICA/RN-recert history.
+- `sns-emr-frontend/src/assessments/MSWComprehensiveAssessment.jsx:207,233` — `const [assessmentType, setAssessmentType] = useState('update');` with a label toggle between `'Recertification Assessment'` and `'Update Assessment'`.
+
+**Corrected classification**: `PARTIAL → MATCHED (same-component mode, not a separate page)`. The backend still has no entity literally named "UCA" (closest analog remains `RNRecertAssessment`), so the backend side of MAP-U03 (naming/entity-modeling gap) remains `UNRESOLVED`, but the frontend-absence claim in Amendment 2 is withdrawn.
+
+## Step 6 — Assessment Verification (fresh grep, file-count only, not exhaustive line dump given volume)
+
+```text
+"RNICA"                 : present across backend (models, services, api) and frontend (RNICA.jsx, rn-ica/, intake/NursingAssessmentBoard.jsx)
+"Initial Assessment"    : present in frontend intake board labels; no backend entity literally named this (uses RnicaAssessment/MswIcaAssessment/ScicaAssessment with a form_type/assessment_type discriminator instead)
+"ICA"                   : present across MswIcaAssessment, ScicaAssessment models/services, and MSWICA.jsx/SCICA.jsx frontend
+"UCA"                   : no literal backend or frontend match for this exact acronym — the concept exists (see Step 5 correction) but is never labeled "UCA" anywhere in code; it is always "update"/"recert"
+"Comprehensive Assessment": present in MSWComprehensiveAssessment.jsx and backend RNRecertAssessment-adjacent naming; not a single canonical backend entity name
+```
+
+## Step 10 — Verification Matrix (this amendment's new/changed items only; unchanged items from Amendment 2 are not repeated)
+
+| Item | Repository Path | Evidence | Classification |
+|---|---|---|---|
+| `clinical_workflow_master.yaml` | `backend/clinical_workflow_master.yaml` | Zero import/loader references outside a stray inventory-dump text file | `LEGACY` |
+| `ClinicalWorkflowMap` (table/model) | `backend/app/models/clinical_workflow_map.py` | Explicit code comments in `workflow_validation.py:12`, `clinical_note_service.py:268-269` state it is "currently not populated" | `NOT_FOUND` (populated data) / model exists but is `DEAD` in practice |
+| `validate_timepoint_safe()` | `backend/app/services/workflow_validation.py:5-20` | Called from `clinical_note_service.py:722`; hard-coded `return "VALID"` | `VERIFIED` (exists, is called) but functionally a no-op — flagged as `CONFLICT` between its name/docstring intent and actual behavior |
+| `validate_sfv_safe()` | `backend/app/services/workflow_validation.py:22-40` | Zero callers found | `LEGACY` (dead code) |
+| `rnica_hope_workflow_service.py` | `backend/app/services/rnica_hope_workflow_service.py` | Called from `backend/app/api/visits.py` | `VERIFIED` |
+| SFV allowed disciplines (4-way) | `clinical_workflow_master.yaml`, `form_registry.py:941-944`, `hope_phase_b_engine.py:397-422`, `clinical_workflow_map.py` | See Step 5 table | `CONFLICT` (escalated, three non-empty definitions disagree) |
+| UCA/Update-Recert frontend surface | `RNICA.jsx:10532-10533`, `MSWComprehensiveAssessment.jsx:207,233` | Direct `grep`/`view` | `VERIFIED` (corrects Amendment 2) |
+| J2050/J2051/J2052/J2053 (both sides) | See Step 4 table | Repo-wide `git grep`, file lists captured | `VERIFIED` (both backend and frontend, corrects Amendment 2's "unconfirmed" frontend status) |
+| J2050B | repo-wide | Zero hits, three independent passes across this session | `NOT_FOUND` |
+| `backend/_inventory_files.txt`, `backend/python_files.txt`, `backend/_inventory_app_files.txt` | `backend/` root | Tracked in git; content is a local `Get-ChildItem`/`find` directory dump referencing `C:\dev\sns emr\...` — not application code | `LEGACY` / repository-hygiene artifact (out of scope to remove here — discovery only) |
+
+## Step 11 — Mandatory Reconciliation Against Prior Findings
+
+| Prior Finding (Amendment 2) | This Amendment's Result | Type of Change |
+|---|---|---|
+| MAP-C02: registry (RN,LVN) vs. runtime (RN,LVN,LPN) — "two-way" conflict | Now a confirmed **three-way** conflict, plus a fourth (empty) source | Escalated / corrected |
+| MAP-U03: "no frontend surface for UCA/Update assessment" | Frontend surface **confirmed present** in both RNICA.jsx and MSWComprehensiveAssessment.jsx (same-component mode) | **Incorrect prior finding — corrected** |
+| MAP-U10: "no centralized status/task/assessment registry exists" | Partially incorrect — `rnica_hope_workflow_service.py` **is** a centralized, populated status registry for the HOPE submission-lifecycle sub-domain specifically. Broader task/admission/IDG status logic remains distributed (original claim stands for those). | **Partially incorrect prior finding — corrected for HOPE lifecycle scope only** |
+| J2050/J2051/J2052/J2053 frontend status: "unconfirmed" | Now fully `VERIFIED` on both sides with exhaustive file citations | Missing finding — now filled in |
+| (New) `clinical_workflow_master.yaml`, `ClinicalWorkflowMap` non-population, `validate_timepoint_safe()` no-op, `validate_sfv_safe()` dead code | Not previously discovered in Amendments 1 or 2 | **Missing findings — added** |
+
+## Stop Conditions Triggered
+
+Per the required stop conditions, the following were discovered and are **recorded only — no design, implementation, or replacement file was created**:
+
+- **Duplicate HOPE/SFV Authority**: confirmed (four independent SFV-discipline definitions, three of them non-empty and mutually disagreeing).
+- **Duplicate Registry Authority**: confirmed (`form_registry.py`, `clinical_workflow_master.yaml`, `ClinicalWorkflowMap` table all attempt to answer the same discipline→visit→form question; only `form_registry.py`'s `FORM_REGISTRY`/`WORKFLOW_TRIGGER_REGISTRY` and `hope_phase_b_engine.py`'s hard-coded checks are actually live).
+- **Duplicate Trigger Authority**: confirmed (carried over from Amendment 2, MAP-D04).
+- Duplicate Assessment Authority, Duplicate Visit Authority, Duplicate Status Authority: **not confirmed as conflicts** in this pass beyond what Amendment 2 already recorded (Status is `PARTIAL` — see MAP-U10 correction above).
+
+## Amendment 3 Verification
+
+- [x] Every claim in this amendment was derived from a command run in this session against the live repository (branch `docs/rnica-backend-frontend-reconciliation`, HEAD `2ec145e`), not restated from Amendment 1, Amendment 2, or background-agent output.
+- [x] Two prior findings were identified as incorrect and corrected (MAP-U03 frontend surface; MAP-U10 partial correction for HOPE lifecycle status).
+- [x] Four new, previously-undiscovered artifacts were found and evidenced: `clinical_workflow_master.yaml` (orphaned), `ClinicalWorkflowMap` (confirmed unpopulated by code comment), `validate_timepoint_safe()` (permanent no-op), `validate_sfv_safe()` (dead code).
+- [x] MAP-C02 was escalated from a two-way to a three-way (four-source) conflict with exact file:line citations for all four sources.
+- [x] No new workflows, forms, models, APIs, registries, or enums were created.
+- [x] No schema, migration, or application behavior change was made.
+- [x] No new file, issue, or tracker was created — this reconciliation was appended to the existing `RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md`.
+
+## Amendment 3 Final Report
+
+```text
+COMMANDS RUN AGAINST LIVE REPOSITORY:   12+ (branch/status/fetch/diff, backend & frontend find-by-pattern, repo-wide git grep for J2050-J2053, targeted file reads)
+NEW ARTIFACTS DISCOVERED:               4 (clinical_workflow_master.yaml, ClinicalWorkflowMap non-population, validate_timepoint_safe no-op, validate_sfv_safe dead code)
+PRIOR FINDINGS CORRECTED:               2 (MAP-U03 frontend surface; MAP-U10 partial, HOPE-lifecycle scope only)
+PRIOR FINDINGS ESCALATED:               1 (MAP-C02: two-way -> three-way/four-source conflict)
+PRIOR FINDINGS RE-CONFIRMED UNCHANGED:  J2050B NOT_FOUND; HUV1/HUV2 discipline rule consistency; MAP-D03; MAP-D04; MAP-C03
+CONFIRMED DEAD CODE:                    2 (validate_sfv_safe; ClinicalWorkflowMap population)
+CONFIRMED ORPHANED GOVERNANCE FILE:     1 (clinical_workflow_master.yaml)
+CONFIRMED PERMANENT NO-OP:              1 (validate_timepoint_safe)
+
+STOP CONDITIONS TRIGGERED:              YES — Duplicate HOPE/SFV Authority, Duplicate Registry Authority, Duplicate Trigger Authority
+DESIGN PERFORMED:                       NO
+IMPLEMENTATION PERFORMED:               NO
+REPLACEMENT FILES CREATED:              NO
+
+FROZEN DOCUMENTS MODIFIED:              NO
+APPLICATION BEHAVIOR MODIFIED:          NO
+SCHEMA MODIFIED:                        NO
+MIGRATIONS MODIFIED:                    NO
+NEW FILES CREATED:                      NO
+NEW ISSUES CREATED:                     NO
+NEW TRACKERS CREATED:                   NO
+IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
+```
