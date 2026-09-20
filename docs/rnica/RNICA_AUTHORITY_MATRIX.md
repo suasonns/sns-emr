@@ -45,8 +45,8 @@ which now links here instead of duplicating it.
 | SFV Eligibility Window | `OFFICIAL_HOPE_REQUIRED` | HOPE Guidance Manual v1.02, HOPE v1.01-v1.02 change table. SFV can occur during the first 30 days of hospice service, since its triggering source records are HOPE Admission, HUV1, and HUV2. SFV is not triggered solely by time; it requires a qualifying symptom finding in a triggering HOPE record. A patient within the first 30 days may have no SFV requirement if no qualifying finding exists. |
 | SFV May Be Performed by RN or LPN/LVN | `OFFICIAL_HOPE_REQUIRED` | HOPE v1.01-v1.02 change table; not restricted to RN. |
 | LVN Identifies Qualifying HOPE Symptom | `SNS_INTERNAL_WORKFLOW` | SNS escalation workflow (see `RNICA_VISIT_CLASSIFICATION_DECISION_TABLE.md` §6.1). |
-| LVN Finding Creates RN Review Recommendation | `SNS_INTERNAL_WORKFLOW` | SNS escalation workflow; displays "RN Assessment Review Recommended" and a compliance alert. |
-| LVN Finding Automatically Creates SFV | `PROHIBITED_ASSUMPTION` | Not established in CMS source; an LVN finding may only recommend RN review, never auto-create or auto-complete an SFV. |
+| LVN Finding Creates RN Review Recommendation | `SNS_INTERNAL_WORKFLOW` | SNS escalation workflow; displays "RN Assessment Review Required" and creates a compliance-review item. |
+| LVN Finding Automatically Creates SFV | `PROHIBITED_ASSUMPTION` | Not established in CMS source; an LVN finding may only recommend RN review, never auto-create or auto-complete an SFV. See `RNICA_SFV_LVN_ESCALATION_AUTHORITY.md` for the consolidated SFV/LVN escalation policy. |
 | RN Initial Assessment = SFV | `PROHIBITED_ASSUMPTION` | Not supported by HOPE guidance. Must not be treated as equivalent. |
 | RNICA = Entire Comprehensive Assessment | `PROHIBITED_ASSUMPTION` | SNS workflow contribution only. Must not be treated as equivalent. |
 | HOPE Submission Platform | `OFFICIAL_HOPE_REQUIRED` | HOPE technical information. iQIES. |
