@@ -41,6 +41,13 @@ It does **not** authorize application code changes, API changes, schema changes,
 - [ ] Update source mapping with exact source locations
 - [ ] Keep L33393 marked `DEEP_REVIEW_REQUIRED` until all exit criteria are met
 
+### Coverage Amendment (Phase 2 Review): Principal-Diagnosis Restriction Screening
+
+- [ ] Screen proposed principal hospice diagnoses against all attached never-primary, inappropriate-primary, and not-allowable diagnosis lists.
+- [ ] Distinguish principal terminal diagnosis, related conditions, coexisting conditions, and symptoms.
+- [ ] Record conflicts between code restrictions, disease guides, and current LCD guidance.
+- [ ] Follow the newest controlling CMS source when guidance conflicts.
+
 ## Required Deliverables
 
 - [ ] Section-level L33393 source map
