@@ -470,6 +470,68 @@ compliance outcome.
 - California CDPH DPH-18-002E, §§74864, 74868, and 74872:
   https://www.cdph.ca.gov/Programs/OLS/Pages/DPH-18-002E.aspx
 
+## SFV Unresolved Rules Traceability Table
+
+**Status:** DISCOVERY ONLY
+**Implementation Authorization:** `NOT_AUTHORIZED`
+
+This table assigns a stable Trace ID to every SFV rule that is not yet
+fully validated from a published CMS source, plus the SNS-only rules
+that require agency policy approval rather than CMS validation. Each
+Trace ID must be referenced by any future implementation ticket so the
+underlying source gap or approval gap is not silently assumed away.
+
+| Trace ID | Rule / Question | Current Status | Known Source | Missing Validation | Implementation Risk | Required Artifact |
+|-----------|-----------|-----------|-----------|-----------|-----------|-----------|
+| SFV-001 | Exact exclusion rules for patient death before SFV | PENDING_SOURCE_VALIDATION | CMS HOPE Measures Manual | Whether death creates exclusion, exception, or failure condition | Incorrect quality measure calculation | CMS HOPE Measures Manual exclusion section |
+| SFV-002 | Exact exclusion rules for discharge before SFV | PENDING_SOURCE_VALIDATION | CMS HOPE Measures Manual | Treatment of discharge occurring before follow-up window closes | Incorrect quality measure calculation | CMS Measure Specifications |
+| SFV-003 | Patient refusal of SFV | PENDING_SOURCE_VALIDATION | CMS HOPE FAQs | Whether refusal creates exception, exclusion, or failed measure | Incorrect compliance reporting | FAQ SFV section |
+| SFV-004 | Patient unavailable during follow-up window | PENDING_SOURCE_VALIDATION | CMS HOPE FAQs | Measure treatment and documentation requirements | Survey and audit risk | FAQ SFV section |
+| SFV-005 | Exact late-SFV submission treatment | PENDING_SOURCE_VALIDATION | CMS Measures Manual | CMS handling after two-calendar-day window | Incorrect internal status logic | CMS Measures Manual |
+| SFV-006 | Exact late-SFV iQIES status | PENDING_SOURCE_VALIDATION | CMS Technical Information | Fatal edit, warning edit, accepted, or informational status | Invalid submission workflow | HOPE Data Specifications |
+| SFV-007 | Duplicate SFV edit logic | PENDING_SOURCE_VALIDATION | CMS Technical Information | Exact duplicate detection rules | Duplicate records | HOPE Data Specifications |
+| SFV-008 | SFV linked to corrected source trigger | PENDING_SOURCE_VALIDATION | CMS Technical Information | Correct CMS workflow after source modification | Broken historical linkage | Data Specs & Errata |
+| SFV-009 | SFV linked to inactivated source trigger | PENDING_SOURCE_VALIDATION | CMS Technical Information | Required CMS resubmission sequence | Invalid record chain | Data Specs & Errata |
+| SFV-010 | Multiple qualifying symptoms from same trigger | PENDING_SOURCE_VALIDATION | CMS Measures Manual | Single SFV vs multiple SFVs | Over-generation of visits | CMS Measures Manual |
+| SFV-011 | Multiple severe symptoms during SFV | PARTIALLY_VALIDATED | CMS Measures Manual | Additional recording behavior | Ambiguous documentation | Guidance Manual Section J |
+| SFV-012 | Same-day trigger and SFV | PENDING_SOURCE_VALIDATION | CMS Measures Manual | Whether same-day counts as timely | Incorrect measure scoring | CMS Measures Manual |
+| SFV-013 | Missing J2053 after valid trigger | PENDING_SOURCE_VALIDATION | CMS Data Specifications | Exact CMS validation edit | Submission failure | Data Specifications |
+| SFV-014 | Missing J2052 after valid trigger | PENDING_SOURCE_VALIDATION | CMS Data Specifications | Exact CMS validation edit | Submission failure | Data Specifications |
+| SFV-015 | Trigger found after original visit finalized | SNS_WORKFLOW_PENDING | SNS repository review | Revalidation workflow | Audit inconsistency | Repository Rule Mapping |
+| SFV-016 | Retrospective trigger discovery | SNS_WORKFLOW_PENDING | SNS workflow concept | Whether prior visit may be linked retroactively | Audit inconsistency | SNS Audit Policy |
+| SFV-017 | LVN severe symptom without official trigger | SNS_WORKFLOW_PENDING | SNS escalation proposal | RN review workflow approval | Clinical escalation gap | SNS Policy |
+| SFV-018 | RN review SLA after LVN escalation | SNS_WORKFLOW_PENDING | Not defined | Escalation timing requirement | Delayed symptom review | SNS Policy |
+| SFV-019 | Compliance status when trigger exists but RN review is incomplete | SNS_WORKFLOW_PENDING | Not defined | Workflow ownership | Open compliance task ambiguity | SNS Policy |
+| SFV-020 | Exact iQIES edit numbers impacting SFV submissions | PENDING_SOURCE_VALIDATION | CMS Technical Information | Fatal and warning edit catalog | Unsupported implementation | Current Data Spec Package |
+
+### Discovery Completion Criteria
+
+The SFV design cannot be considered source-complete until:
+
+- [ ] CMS FAQ SFV section fully reviewed
+- [ ] Full HOPE Guidance Manual v1.02 Section J reviewed
+- [ ] Current HOPE Data Specifications reviewed
+- [ ] Current HOPE Errata reviewed
+- [ ] iQIES fatal edits mapped
+- [ ] iQIES warning edits mapped
+- [ ] Patient death/discharge exclusions validated
+- [ ] Refusal and unavailable-patient handling validated
+- [ ] Duplicate record behavior validated
+- [ ] Modify/inactivate workflows validated
+- [ ] Repository source-field mapping completed
+- [ ] SNS LVN→RN escalation policy approved
+
+### Traceability Final Status
+
+| Area | Status |
+|--------|--------|
+| CMS SFV Core Requirements | VALIDATED |
+| CMS SFV Edge Cases | PENDING_SOURCE_VALIDATION |
+| iQIES Edit Mapping | PENDING_SOURCE_VALIDATION |
+| Repository Mapping | INCOMPLETE |
+| SNS Escalation Policy | PENDING_APPROVAL |
+| Production Implementation | NOT_AUTHORIZED |
+
 ## Source-Validation Checklist for Unresolved SFV Rules
 
 Complete this checklist before implementing any SFV behavior derived
