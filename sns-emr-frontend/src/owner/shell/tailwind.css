@@ -1,0 +1,134 @@
+/* Tailwind entry point for the redesigned Owner Platform shell.
+   Preflight is disabled in tailwind.config.js so this only adds utility
+   classes on top of the existing app styles, without resetting them. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Owner Platform Command Center — theme tokens.
+ *
+ * The shell/dashboard components use Tailwind classes (bg-sns-app,
+ * text-text-primary, etc.) that are wired in tailwind.config.js to these
+ * CSS custom properties instead of literal hex values, so they can react to
+ * the existing light/dark toggle. `applyThemeMode()` (src/theme/theme.tsx)
+ * already sets `data-theme="light" | "dark"` on <html> for the old
+ * CSS-variable-based page system — we key off the same attribute here so
+ * there is only one source of truth for the current mode.
+ *
+ * Values below: dark defaults match the original Figma dark design;
+ * `[data-theme="light"]` overrides come from the Figma-provided light theme
+ * spec (tailwind-light-theme.js + SNSCommandCenterLight reference JSX).
+ */
+:root,
+[data-theme='dark'] {
+  --owner-app: #0b0f19;
+  --owner-main: #111521;
+  --owner-card: #131b2e;
+  --owner-elevated: #1a2640;
+  --owner-sidebar: #080c16;
+  --owner-topbar: rgba(9, 13, 24, 0.9);
+  --owner-row: #1c1b2a;
+  --owner-column: #0b0f19;
+  --owner-pulse: #0f1424;
+  --owner-border: #1d263b;
+  --owner-border-subtle: #24324d;
+  --owner-border-active: #2b3955;
+  --owner-pill-border: #334155;
+
+  --owner-text-primary: #f8fafc;
+  --owner-text-body: #cbd5e1;
+  --owner-text-secondary: #94a3b8;
+  --owner-text-tertiary: #64748b;
+
+  --owner-ai-rgb: 45 212 191;
+  --owner-ai-bg-rgb: 10 31 28;
+  --owner-ai-gradient-start: #0a1f1c;
+  --owner-ai-badge-bg: #0d1b1e;
+  --owner-ai-badge-border: #0d9488;
+  --owner-ai-on: #0b0f19;
+
+  --owner-status-healthy-rgb: 16 185 129;
+  --owner-status-high-rgb: 56 189 248;
+  --owner-status-warning-rgb: 245 158 11;
+  --owner-status-critical-rgb: 244 63 94;
+  --owner-status-monitor-rgb: 45 212 191;
+  --owner-status-info-rgb: 56 189 248;
+
+  --owner-nav-active-bg: rgba(255, 255, 255, 0.1);
+  --owner-nav-hover-bg: rgba(255, 255, 255, 0.06);
+  --owner-nav-text: rgba(255, 255, 255, 0.5);
+  --owner-nav-text-hover: #ffffff;
+  --owner-sidebar-divider: rgba(255, 255, 255, 0.2);
+
+  --owner-badge-info-bg: #10192a;
+  --owner-badge-info-border: #22374e;
+  --owner-badge-info-text: #38bdf8;
+  --owner-icon-btn-bg: #141e33;
+
+  --owner-preview-badge-bg: #2a2010;
+  --owner-preview-badge-border: #4c3a1e;
+
+  --owner-btn-secondary-bg: #2a242e;
+  --owner-btn-secondary-border: #423547;
+  --owner-btn-secondary-hover: #352e3a;
+
+  --owner-pill-neutral-bg: #1d263b;
+  --owner-gauge-track: #1d263b;
+}
+
+[data-theme='light'] {
+  --owner-app: #f8fafc;
+  --owner-main: #ffffff;
+  --owner-card: #ffffff;
+  --owner-elevated: #ffffff;
+  --owner-sidebar: #1e3a5f;
+  --owner-topbar: #ffffff;
+  --owner-row: #ffffff;
+  --owner-column: #f8fafc;
+  --owner-pulse: #ffffff;
+  --owner-border: #e2e8f0;
+  --owner-border-subtle: #f1f5f9;
+  --owner-border-active: #cbd5e1;
+  --owner-pill-border: #e2e8f0;
+
+  --owner-text-primary: #0f172a;
+  --owner-text-body: #334155;
+  --owner-text-secondary: #64748b;
+  --owner-text-tertiary: #94a3b8;
+
+  --owner-ai-rgb: 13 148 136;
+  --owner-ai-bg-rgb: 240 253 250;
+  --owner-ai-gradient-start: #f0fdfa;
+  --owner-ai-badge-bg: #ccfbf1;
+  --owner-ai-badge-border: #99f6e4;
+  --owner-ai-on: #ffffff;
+
+  --owner-status-healthy-rgb: 16 185 129;
+  --owner-status-high-rgb: 2 132 199;
+  --owner-status-warning-rgb: 245 158 11;
+  --owner-status-critical-rgb: 225 29 72;
+  --owner-status-monitor-rgb: 13 148 136;
+  --owner-status-info-rgb: 14 165 233;
+
+  --owner-nav-active-bg: rgba(255, 255, 255, 0.16);
+  --owner-nav-hover-bg: rgba(255, 255, 255, 0.1);
+  --owner-nav-text: rgba(255, 255, 255, 0.6);
+  --owner-nav-text-hover: #ffffff;
+  --owner-sidebar-divider: rgba(255, 255, 255, 0.2);
+
+  --owner-badge-info-bg: #eff6ff;
+  --owner-badge-info-border: #bfdbfe;
+  --owner-badge-info-text: #1e40af;
+  --owner-icon-btn-bg: #f8fafc;
+
+  --owner-preview-badge-bg: #fffbeb;
+  --owner-preview-badge-border: #fde68a;
+
+  --owner-btn-secondary-bg: #f1f5f9;
+  --owner-btn-secondary-border: #e2e8f0;
+  --owner-btn-secondary-hover: #e2e8f0;
+
+  --owner-pill-neutral-bg: #ffffff;
+  --owner-gauge-track: #e2e8f0;
+}

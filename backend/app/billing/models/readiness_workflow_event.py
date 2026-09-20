@@ -36,8 +36,13 @@ class ReadinessWorkflowEvent(BaseModel):
         index=True,
     )
 
-    # BLOCKER | ASSIGNMENT | FOLLOW_UP
-    entity_type = Column(String(16), nullable=False, index=True)
+    # BLOCKER | ASSIGNMENT | FOLLOW_UP, plus the longer eligibility-
+    # workflow entity types this table also records (e.g.
+    # "BENEFIT_PERIOD_DETERMINATION", up to 29 chars) -- see
+    # app.billing.services.eligibility_workflow_service.
+    # ELIGIBILITY_WORKFLOW_ENTITY_TYPES. Length matches the live schema;
+    # a prior model declaration of String(16) never matched actual usage.
+    entity_type = Column(String(48), nullable=False, index=True)
 
     # id of the billing_blocker_records / readiness_assignments /
     # readiness_follow_ups row this event describes.

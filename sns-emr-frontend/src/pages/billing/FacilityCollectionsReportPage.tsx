@@ -586,7 +586,7 @@ export default function FacilityCollectionsReportPage() {
         title="Facility Collections"
         subtitle="Expected vs. received facility, room and board, and share-of-cost obligations"
         actions={
-          <Stack direction="row" spacing={1} alignItems="center">
+          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
             <Button
               variant="outlined"
               size="small"
@@ -713,7 +713,7 @@ export default function FacilityCollectionsReportPage() {
                             <TableCell sx={{ color: "#4ade80", borderColor: "#1f3a5c", textAlign: "right" }}>{currency(row.amount_received)}</TableCell>
                             <TableCell sx={{ color: "#f87171", borderColor: "#1f3a5c", textAlign: "right" }}>{currency(row.outstanding_amount)}</TableCell>
                             <TableCell sx={{ borderColor: "#1f3a5c" }}>
-                              <Stack direction="row" spacing={1} alignItems="center">
+                              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                                 <Typography sx={{ color: "#7f97b3", fontSize: 12 }}>{row.due_date || "Not available"}</Typography>
                                 <Chip size="small" label={badge.label} sx={{ bgcolor: `${badge.color}22`, color: badge.color, fontWeight: 700, fontSize: 10.5 }} />
                               </Stack>
@@ -748,14 +748,14 @@ export default function FacilityCollectionsReportPage() {
                   <Alert severity="info">Select an expectation to review details, history, corrections, and residence snapshot changes.</Alert>
                 ) : (
                   <Stack spacing={2}>
-                    <Stack direction={{ xs: "column", md: "row" }} justifyContent="space-between" spacing={1}>
+                    <Stack direction={{ xs: "column", md: "row" }} spacing={1} sx={{ justifyContent: "space-between" }}>
                       <Box>
                         <Typography sx={{ color: "#fff", fontWeight: 800, fontSize: 16 }}>{detail.patient_name || "Patient not available"}</Typography>
                         <Typography sx={{ color: "#7f97b3", fontSize: 12.5 }}>
                           {detail.agency_name || "Agency not available"} • MRN {detail.mrn || "Not available"}
                         </Typography>
                       </Box>
-                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
                         <Button size="small" variant="outlined" onClick={() => { setCorrectionForm(buildCorrectionForm(detail)); setCorrectionError(null); setCorrectionOpen(true); }}>
                           Correct
                         </Button>
@@ -785,7 +785,7 @@ export default function FacilityCollectionsReportPage() {
                           <Field labelText="Service period" value={`${detail.service_period_start} – ${detail.service_period_end}`} />
                           <Box>
                             <Typography sx={{ color: "#7f97b3", fontSize: 12 }}>Due date</Typography>
-                            <Stack direction="row" spacing={1} alignItems="center">
+                            <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
                               <Typography sx={{ color: "#e2e8f0", fontSize: 12.5 }}>{detail.due_date || "Not available"}</Typography>
                               {(() => {
                                 const badge = dueDateBadge(detail.due_date_source, detail.payment_term_verified, detail.due_date);
@@ -842,7 +842,7 @@ export default function FacilityCollectionsReportPage() {
                           <Stack spacing={1}>
                             {(history?.items ?? []).map((item) => (
                               <Box key={item.id} sx={{ border: item.id === detail.id ? "1px solid #10b7a2" : "1px solid #1f3a5c", borderRadius: 1.5, p: 1.5 }}>
-                                <Stack direction="row" justifyContent="space-between" spacing={1}>
+                                <Stack direction="row" spacing={1} sx={{ justifyContent: "space-between" }}>
                                   <Typography sx={{ color: "#e2e8f0", fontWeight: 700 }}>Version {item.version_number}</Typography>
                                   <StatusChip value={item.status} />
                                 </Stack>
@@ -916,9 +916,9 @@ export default function FacilityCollectionsReportPage() {
             </Stack>
             <Typography variant="subtitle2">Service and Payment Period</Typography>
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-              <TextField fullWidth type="date" label="Service Period Start" InputLabelProps={{ shrink: true }} value={createForm.service_period_start} onChange={(e) => setCreateForm((current) => ({ ...current, service_period_start: e.target.value }))} />
-              <TextField fullWidth type="date" label="Service Period End" InputLabelProps={{ shrink: true }} value={createForm.service_period_end} onChange={(e) => setCreateForm((current) => ({ ...current, service_period_end: e.target.value }))} />
-              <TextField fullWidth type="date" label="Explicit Due Date" InputLabelProps={{ shrink: true }} value={createForm.due_date} onChange={(e) => setCreateForm((current) => ({ ...current, due_date: e.target.value }))} />
+              <TextField fullWidth type="date" label="Service Period Start" slotProps={{ inputLabel: { shrink: true } }} value={createForm.service_period_start} onChange={(e) => setCreateForm((current) => ({ ...current, service_period_start: e.target.value }))} />
+              <TextField fullWidth type="date" label="Service Period End" slotProps={{ inputLabel: { shrink: true } }} value={createForm.service_period_end} onChange={(e) => setCreateForm((current) => ({ ...current, service_period_end: e.target.value }))} />
+              <TextField fullWidth type="date" label="Explicit Due Date" slotProps={{ inputLabel: { shrink: true } }} value={createForm.due_date} onChange={(e) => setCreateForm((current) => ({ ...current, due_date: e.target.value }))} />
             </Stack>
             <Typography variant="subtitle2">Supporting Basis</Typography>
             <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
@@ -964,9 +964,9 @@ export default function FacilityCollectionsReportPage() {
                   </TextField>
                 </Stack>
                 <Stack direction={{ xs: "column", md: "row" }} spacing={2}>
-                  <TextField fullWidth type="date" label="Service Period Start" InputLabelProps={{ shrink: true }} value={correctionForm.service_period_start} onChange={(e) => setCorrectionForm((current) => current ? { ...current, service_period_start: e.target.value } : current)} />
-                  <TextField fullWidth type="date" label="Service Period End" InputLabelProps={{ shrink: true }} value={correctionForm.service_period_end} onChange={(e) => setCorrectionForm((current) => current ? { ...current, service_period_end: e.target.value } : current)} />
-                  <TextField fullWidth type="date" label="Explicit Due Date" InputLabelProps={{ shrink: true }} value={correctionForm.due_date} onChange={(e) => setCorrectionForm((current) => current ? { ...current, due_date: e.target.value } : current)} />
+                  <TextField fullWidth type="date" label="Service Period Start" slotProps={{ inputLabel: { shrink: true } }} value={correctionForm.service_period_start} onChange={(e) => setCorrectionForm((current) => current ? { ...current, service_period_start: e.target.value } : current)} />
+                  <TextField fullWidth type="date" label="Service Period End" slotProps={{ inputLabel: { shrink: true } }} value={correctionForm.service_period_end} onChange={(e) => setCorrectionForm((current) => current ? { ...current, service_period_end: e.target.value } : current)} />
+                  <TextField fullWidth type="date" label="Explicit Due Date" slotProps={{ inputLabel: { shrink: true } }} value={correctionForm.due_date} onChange={(e) => setCorrectionForm((current) => current ? { ...current, due_date: e.target.value } : current)} />
                 </Stack>
                 <TextField fullWidth label="Correction Reason" value={correctionForm.correction_reason} onChange={(e) => setCorrectionForm((current) => current ? { ...current, correction_reason: e.target.value } : current)} />
                 <TextField fullWidth multiline minRows={3} label="Notes" value={correctionForm.notes} onChange={(e) => setCorrectionForm((current) => current ? { ...current, notes: e.target.value } : current)} />

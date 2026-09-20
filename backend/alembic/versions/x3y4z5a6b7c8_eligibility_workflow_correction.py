@@ -192,13 +192,14 @@ def downgrade() -> None:
     op.drop_index("ix_billing_readiness_verdicts_evidence_hash", table_name="billing_readiness_verdicts")
     op.drop_column("billing_readiness_verdicts", "evidence_hash")
 
-    op.alter_column(
-        "readiness_workflow_events",
-        "entity_type",
-        existing_type=sa.String(length=48),
-        type_=sa.String(length=16),
-        existing_nullable=False,
-    )
+    # NOTE: `readiness_workflow_events.entity_type` is intentionally left at
+    # VARCHAR(48) on downgrade rather than narrowed back to VARCHAR(16).
+    # eligibility_workflow_service.py writes real entity types up to 29
+    # characters (e.g. "BENEFIT_PERIOD_DETERMINATION"); narrowing this
+    # column back to 16 is lossy/unsafe against any real data already
+    # written under the wider type and previously caused
+    # StringDataRightTruncation failures when downgrading past this
+    # revision. See app/billing/models/readiness_workflow_event.py.
     op.alter_column(
         "billing_blocker_records",
         "blocker_code",

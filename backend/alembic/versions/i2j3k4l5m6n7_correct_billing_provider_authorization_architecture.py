@@ -253,16 +253,15 @@ def downgrade() -> None:
         unique=False,
     )
 
-    op.drop_constraint(
-        "ck_billing_provider_assignment_scope_valid",
-        "billing_provider_agency_service_scopes",
-        type_="check",
-    )
-    op.create_check_constraint(
-        "ck_billing_provider_assignment_scope_valid",
-        "billing_provider_agency_service_scopes",
-        "scope IN ('BILLING_READINESS', 'CLAIMS', 'PAYMENT_POSTING', 'PAYMENT_RECONCILIATION', 'FACILITY_COLLECTIONS', 'DENIALS_APPEALS', 'AUTHORIZATION', 'FINANCIAL_MONITORING', 'CAP_MONITORING')",
-    )
+    # NOTE: intentionally NOT narrowing ck_billing_provider_assignment_scope_valid
+    # back to the pre-migration scope list here. The upgrade() in this migration
+    # widened the allowed scope values (adding NOE_TRACKING, ELIGIBILITY,
+    # AUTHORIZATION_TRACKING, CREDIT_BALANCES, AGING_REPORT, EDI, BILLING_REPORTS)
+    # and application code now writes those values in normal operation. Re-narrowing
+    # the CHECK constraint on downgrade would reject any already-persisted rows
+    # using the newer scope values, making downgrade impossible in practice once
+    # the feature has been used. The constraint is left at its wider (upgraded)
+    # definition; schema/table drops below still fully reverse this migration.
 
     op.drop_index(
         "uq_bp_org_memberships_active_pair",

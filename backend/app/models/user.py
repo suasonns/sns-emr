@@ -214,7 +214,11 @@ class User(BaseModel):
     # =========================================================
     physician_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("physicians.id"),
+        ForeignKey(
+            "physicians.id",
+            name="fk_users_physician_id_physicians",
+            use_alter=True,
+        ),
         nullable=True,
         index=True,
     )
