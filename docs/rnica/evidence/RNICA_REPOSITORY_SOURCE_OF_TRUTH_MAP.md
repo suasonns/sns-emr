@@ -1687,7 +1687,29 @@ review).
 
 **Is `ADMINISTRATIVE` intentionally included?** Unknown — not traced to any runtime, Task, or frontend code path that produces it. Requires an Engineering/Clinical answer on whether it is a legitimate, reachable value or vestigial.
 
-## 3. Consumer Classification Table
+## 3. Governance Approvals Required
+
+```text
+Engineering approval:
+NOT RECORDED
+Required to: adopt Visit.visit_discipline as canonical, approve the
+vocabulary reconciliation plan against ck_discipline_valid/TaskDiscipline.
+
+Clinical review:
+NOT RECORDED
+Required to: confirm RN/LVN/LPN/PA/ADMINISTRATIVE behavior is unaffected
+or intentionally changed by adopting Visit.visit_discipline as canonical.
+
+Compliance review:
+NOT RECORDED
+Required to: confirm CMS hospice conditions-of-participation impact of
+any discipline-authority change, particularly RN/LVN SFV trigger
+eligibility (MAP-C02).
+```
+
+Until all three approvals are recorded, `Visit.visit_discipline` remains `RECOMMENDED_CANONICAL_CANDIDATE`, not `CANONICAL_AUTHORITY`.
+
+## 4. Consumer Classification Table
 
 | Authority | Classification |
 |---|---|
@@ -1699,7 +1721,7 @@ review).
 | `RNICA.jsx` vocabulary | PRESENTATION |
 | `app/domain/forms/enums.py::Discipline`, `clinical_discipline_mapping.py`, `sfv_completion.py`, `sfv_tasks.py::create_sfv_required_task()`, `clinical_workflow_master.yaml`, `ClinicalWorkflowMap` | LEGACY |
 
-## 4. MAP-C02 Closure Assessment
+## 5. MAP-C02 Closure Assessment
 
 ```text
 Can MAP-C02 close if Visit.visit_discipline is approved as authority?
@@ -1708,7 +1730,7 @@ NO
 
 Blocked on: the `ClinicalNote.discipline`/`ck_discipline_valid` vocabulary conflict (Database Conflict Assessment above) is not yet resolved or explicitly accepted. **MAP-C02 remains OPEN.**
 
-## 5. MAP-C03 Closure Assessment
+## 6. MAP-C03 Closure Assessment
 
 ```text
 Have all competing discipline authorities been identified?
