@@ -767,3 +767,115 @@ NEW ISSUES CREATED:                     NO
 NEW TRACKERS CREATED:                   NO
 IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
 ```
+
+## Amendment 4: Final Reconciliation Pass (Re-Verification of Amendments 1-3)
+
+Performed against a fresh worktree checked out directly from `origin/main` at commit `f7dcc1e` (post-PR #129, current HEAD at time of this pass). Every command in this section was re-run live in this session; no prior output was restated without re-verification.
+
+### 1. MAP-C02 — SFV allowed disciplines (4-source conflict)
+
+| Source | File | Line(s) | Discipline Rule | Status |
+|---|---|---|---|---|
+| `clinical_workflow_master.yaml` | `backend/clinical_workflow_master.yaml` | 15-19 (`RN:` block); LVN block (37-40) has no `SFV` key | **RN only** | Orphaned — confirmed zero references anywhere in application code (`git grep "clinical_workflow_master"` across the whole repo returns only hits inside this evidence document itself) |
+| `WORKFLOW_TRIGGER_REGISTRY[TRIGGER_SFV]` | `backend/app/domain/forms/form_registry.py` | 941-944 | `{"RN", "LVN"}` | Documented, but its only consumers (`trigger_allowed_for_discipline`, `get_workflow_trigger_config` at 1026/1149, `get_supported_workflow_triggers_for_discipline`, `form_supports_trigger`, `get_hope_item_codes_for_trigger`) have **zero callers outside `form_registry.py` itself** — re-confirmed via fresh `git grep` this pass |
+| `complete_sfv_requirement_from_visit()` | `backend/app/services/hope_phase_b_engine.py` | 397-422 | `{RN, LVN, LPN}` (line ~419: `if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN}`) | **Actual runtime-enforced behavior** — called from `backend/app/api/visits.py:3885` (import at line 77), a live API code path |
+| `ClinicalWorkflowMap` (via `resolve_workflow()`) | `backend/app/models/clinical_workflow_map.py`, `backend/app/services/workflow_resolver.py` | resolver 5-28 | N/A (table empty) | **Confirmed dead this pass**: `resolve_workflow()` is imported into `clinical_note_service.py:21` but a fresh `git grep "resolve_workflow("` against that file returns **zero invocations** — the import is unused. The adjacent code comment (`clinical_note_service.py:268-269`) explicitly says "Do not re-resolve through ClinicalWorkflowMap... currently not populated." This is stronger than the Amendment 3 finding ("unpopulated table") — the resolution function itself is never called, not merely operating on empty data. |
+
+**Classification: CONFIRMED CONFLICT (unchanged from Amendment 3) — 4 sources, 3 distinct non-empty rules, no consensus.** Not resolved; still routed to Issue #121 pending Compliance/Medical Director review.
+
+### 2. MAP-C03 — Discipline vocabulary (escalated from 6 to a confirmed 12 constructs)
+
+**Normalization functions (7, was 3):**
+
+| Function | File:Line | Behavior |
+|---|---|---|
+| `normalize_discipline` | `app/models/enums.py:162` | Collapses LVN+LPN → RN (per `DISCIPLINE_NORMALIZATION_MAP`) |
+| `normalize_discipline` | `app/domain/forms/form_registry.py:259` | Uses `DISCIPLINE_ALIASES`; maps LPN→LVN, keeps LVN distinct from RN |
+| `normalize_discipline` | `app/domain/forms/form_resolution_service.py:92` | Uses a **different** `DISCIPLINE_ALIASES` dict (no LPN/LVN entry at all — passes LVN/LPN through unchanged) |
+| `_normalize_discipline` | `app/services/hope_phase_b_engine.py:82` | Keeps RN/LVN/LPN fully distinct |
+| `_normalize_discipline` | `app/api/routes/forms.py:57` | Local helper, one caller (line 74), independent logic |
+| `_normalize_discipline` | `app/services/idg_signature_validation.py:21` | Independent, feeds `validate_required_signatures` (imported by `idg_finalize.py`) |
+| `_normalize_discipline_set` | `app/services/tenant_settings_service.py:159` | Set-based variant, independent |
+
+None of the 7 import from or delegate to any other. Confirmed via `git grep -n "def normalize_discipline\|def _normalize_discipline"`.
+
+**Discipline enum classes (2, newly confirmed as genuinely conflicting, not just duplicated):**
+
+| Class | File:Line | Members (sample) |
+|---|---|---|
+| `Discipline(str, Enum)` | `app/domain/forms/enums.py:39-51` | RN, LVN, NP, MD, SOCIAL_WORK, CHAPLAIN, HHA — **no LPN member at all** |
+| `Discipline(str, enum.Enum)` | `app/models/enums.py:170-189` | MD, DO, MEDICAL_DIRECTOR, ATTENDING_PHYSICIAN, NP, PA, RN, LVN, **LPN**, CHHA, AIDE, SW, MSW, BSW, LCSW, SC, CHAPLAIN, ADMIN, CASE_MANAGER |
+
+These are two distinct, differently-scoped enum classes with the same name in different modules — `app/domain/forms/enums.py::Discipline` cannot represent an LPN at all, while `app/models/enums.py::Discipline` can.
+
+**Alias dictionaries (3, differing content, same/similar name):**
+
+| Dict | File:Line | LPN/LVN handling |
+|---|---|---|
+| `DISCIPLINE_ALIASES` | `form_registry.py:189-196` | `"LPN": "LVN"` (collapses LPN into LVN) |
+| `DISCIPLINE_ALIASES` | `form_resolution_service.py:69-75` | No LPN or LVN key present at all |
+| `_PROFILE_DISCIPLINE_ALIASES` | `patient_assignment_service.py:30` | Independent mapping, used only within the same file (line 87) |
+
+**Classification: MAP-C03 escalated — CONFIRMED, DUPLICATE_SSOT, worse than previously documented.** 12 total independent discipline-vocabulary constructs (7 functions + 2 enums + 3 alias dicts) with at least 3 confirmed behavioral disagreements on LVN/LPN handling.
+
+### 3. MAP-U09 / Status-engine — re-verified, no new duplicate found
+
+- `backend/app/services/rnica_hope_workflow_service.py` defines `HOPE_STATUS_OPEN`, `HOPE_STATUS_CLOSED`, `HOPE_STATUS_READY_TO_EXPORT`, `HOPE_STATUS_EXPORTED_TO_BATCH`, `HOPE_STATUS_SUBMITTED`, `HOPE_STATUS_INACTIVATED` (lines 8-13) and is called extensively and actively from `api/visits.py` (11 call sites confirmed this pass: lines 130, 860, 1126, 1230, 1342, 1383, 1399, 1416, 1437, 1459, 1480).
+- A fresh search for any competing HOPE/visit lifecycle status enum in `backend/app/models` found only unrelated status enums (`TaskStatus`, `DiagnosisStatus`) — **no duplicate HOPE-status registry was found this pass.**
+- **Classification: SINGLE_SSOT for HOPE submission-lifecycle status — `rnica_hope_workflow_service.py` is confirmed authoritative and active.** (Consistent with, and now further confirmed beyond, the partial correction made in Amendment 3.)
+
+### 4. J2050-J2053 — re-confirmed present, J2050B re-confirmed absent from code
+
+- Backend: `J2050` (`form_registry.py:386`), `J2051A-H` (`form_registry.py:387-394`, `visits.py` Phase-B extraction logic lines 3617-3706), `J2052`/`J2053` (`form_registry.py:398-399,961-962`).
+- Frontend: `J2050`/`J2052`/`J2053` (`RNICA.jsx:212,9378-9395`), `J2051A-H` (`rnica-field-schema.json:600-775`), `J2053A-H` (`RNICA.jsx:9388-9395`, `rnica-field-schema.json:2641-2791+`).
+- `J2050B`: re-confirmed present **only** in documentation/authority markdown (`docs/compliance/hope-sfv-guide.md`, `docs/rnica/RNICA_SFV_LVN_ESCALATION_AUTHORITY.md`, `docs/rnica/RNICA_DOCUMENT_FREEZE_AND_SOURCE_CHANGE_CONTROL.md`) — **zero occurrences in any `.py` or frontend source file.**
+- **Classification: CONFIRMED unchanged from Amendment 3.**
+
+### Mandatory Reconciliation Against Prior Findings (Amendments 1-3)
+
+| Finding | Prior Status | This Pass | Disposition |
+|---|---|---|---|
+| MAP-C02 (SFV disciplines) | 4-source conflict (Amendment 3) | Re-verified identical, with `resolve_workflow()` shown to be unused (not merely unpopulated) | **CONFIRMED + CORRECTED** (dead-code characterization strengthened) |
+| MAP-C03 (discipline vocab count) | 6 constructs (Amendment 2/3) | 12 constructs found (7 normalize fns, 2 enums, 3 alias dicts) | **ESCALATED** |
+| MAP-U09/U10 (status engine) | Partial correction — `rnica_hope_workflow_service.py` active (Amendment 3) | Re-confirmed active with 11 call sites; no competing registry found | **CONFIRMED** |
+| J2050-J2053 / J2050B | VERIFIED present (code) / NOT_FOUND (code) — Amendment 2/3 | Unchanged | **CONFIRMED** |
+| `clinical_workflow_master.yaml`, `validate_timepoint_safe()`, `validate_sfv_safe()` | Orphaned/dead (Amendment 3) | Re-confirmed unchanged | **CONFIRMED** |
+
+No prior finding was found to be incorrect or was removed in this pass; MAP-C02 and MAP-C03 evidence was deepened and MAP-C03 was escalated.
+
+## Amendment 4 Verification
+
+- [x] Every claim above was derived from a command run in this session against a fresh worktree checked out from `origin/main` at `f7dcc1e`, not restated from Amendments 1-3 or background-agent output.
+- [x] MAP-C03 was escalated from 6 to 12 confirmed discipline-vocabulary constructs, with two genuinely conflicting `Discipline` enum classes newly identified (one lacks an LPN member entirely).
+- [x] The `ClinicalWorkflowMap`/`resolve_workflow()` dead-code finding was strengthened from "unpopulated table" to "resolution function imported but never invoked."
+- [x] MAP-U09/U10 (HOPE status lifecycle) re-confirmed as SINGLE_SSOT with no competing registry found.
+- [x] No prior finding was removed as incorrect; all were reconciled as CONFIRMED, CORRECTED, or ESCALATED.
+- [x] No new workflows, forms, models, APIs, registries, or enums were created.
+- [x] No schema, migration, or application behavior change was made.
+- [x] No new file, issue, or tracker was created — appended to the existing `RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md`.
+
+## Amendment 4 Final Report
+
+```text
+COMMANDS RUN AGAINST LIVE REPOSITORY:   20+ (fresh worktree setup, MAP-C02 4-source re-verification, MAP-C03 discipline
+                                         function/enum/alias enumeration, dead-code re-verification, status-engine
+                                         duplicate search, J2050-J2053 repo-wide re-search)
+PRIOR FINDINGS CONFIRMED UNCHANGED:     6 (MAP-C02 conflict; J2050/J2051/J2052/J2053 presence; J2050B absence;
+                                         clinical_workflow_master.yaml orphaned; validate_timepoint_safe no-op;
+                                         validate_sfv_safe dead code)
+PRIOR FINDINGS CORRECTED/STRENGTHENED:  1 (ClinicalWorkflowMap: "unpopulated" -> "resolution function never invoked")
+PRIOR FINDINGS ESCALATED:               1 (MAP-C03: 6 -> 12 confirmed discipline-vocabulary constructs)
+PRIOR FINDINGS REMOVED AS INCORRECT:    0
+NEW SSOT CONFIRMATIONS:                 1 (rnica_hope_workflow_service.py re-confirmed as sole HOPE-status authority)
+
+FROZEN DOCUMENTS MODIFIED:              NO
+APPLICATION BEHAVIOR MODIFIED:          NO
+SCHEMA MODIFIED:                        NO
+MIGRATIONS MODIFIED:                    NO
+NEW FILES CREATED:                      NO
+NEW ISSUES CREATED:                     NO
+NEW TRACKERS CREATED:                   NO
+NEW REPLACEMENT REGISTRIES CREATED:     NO
+NEW REPLACEMENT WORKFLOWS CREATED:      NO
+IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
+```
