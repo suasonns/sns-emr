@@ -1092,20 +1092,29 @@ git grep -n -I -e 'normalize_discipline' -w -e 'Discipline' -e 'LVN' -e 'LPN' --
 
 ### Corrected finding for `app/domain/forms/enums.py::Discipline` (supersedes the initial PR #134 draft classification)
 
-```text
-Symbol:                          app/domain/forms/enums.py::Discipline
-Definition:                      VERIFIED (backend/app/domain/forms/enums.py:39)
-Package re-export:               VERIFIED (backend/app/domain/forms/__init__.py:1,7)
-Verified production importers:   0
-Verified production callers:     0
-Verified runtime readers:        0
-Runtime authority:               NOT VERIFIED
-Classification:                  EMPTY_OR_UNUSED_SOURCE
-Canonical-authority eligibility: REJECTED_PENDING_RUNTIME_CONSUMER
-Disposition:                     KEEP_PENDING_MAP_C03_RESOLUTION
-```
+| Evidence | Result |
+|---|---|
+| Definition | `VERIFIED` (backend/app/domain/forms/enums.py:39) |
+| Package re-export | `VERIFIED` (backend/app/domain/forms/__init__.py:1,7) |
+| Verified production importers | `0 VERIFIED` |
+| Verified production callers | `0 VERIFIED` |
+| Verified runtime readers | `0 VERIFIED` |
+| Frontend matching vocabulary | `PRESENTATION_EVIDENCE_ONLY` |
+| Database ownership | `NOT_ESTABLISHED` |
+| Runtime authority | `NOT_VERIFIED` |
+| Classification | `EMPTY_OR_UNUSED_SOURCE` |
+| Canonical eligibility | `REJECTED_PENDING_RUNTIME_CONSUMER` |
+| Disposition | `KEEP_PENDING_MAP_C03_RESOLUTION` |
 
-A matching frontend vocabulary, a package re-export, stable Git history, or file naming do **not** establish this symbol — or any other symbol — as a canonical discipline authority. A self-reference inside a module's own `__init__.py` is not a consumer. `app/models/enums.py::Discipline` is **not** declared canonical by this finding either; it is documented only as having verified production importers/callers/tests (see its row above), which is a materially different, narrower claim than "canonical." Selecting a canonical discipline source requires identifying the active runtime authority that actually supplies discipline values to authentication, credentials, visit assignment, clinical-note creation, RNICA, HOPE/SFV, API serialization, and frontend forms across every domain — see the Runtime Authority Evidence Table below.
+A package re-export does not establish production usage.
+
+A matching frontend vocabulary does not establish backend authority.
+
+A self-reference does not establish runtime usage.
+
+Stable Git history does not establish runtime authority.
+
+`app/models/enums.py::Discipline` is **not** declared canonical by this finding either; it is documented only as having verified production importers/callers/tests (see its row above), which is a materially different, narrower claim than "canonical." Selecting a canonical discipline source requires identifying the active runtime authority that actually supplies discipline values to authentication, credentials, visit assignment, clinical-note creation, RNICA, HOPE/SFV, API serialization, and frontend forms across every domain — see the Runtime Authority Evidence Table below.
 
 ### Additional files matching word-bounded `discipline`/`LVN`/`LPN` in frontend (not exhaustively traced this pass)
 
@@ -1113,53 +1122,348 @@ A matching frontend vocabulary, a package re-export, stable Git history, or file
 
 ## Runtime Authority Evidence Table (per-domain canonical-authority verification)
 
-Verification commands run this pass (in addition to those listed above): repository-state checks (`git rev-parse --show-toplevel`, `git branch --show-current`, `git rev-parse HEAD`, `git status --short --untracked-files=all`, `git diff --name-status`, `git diff --cached --name-status`, `git ls-files --unmerged` — all clean, HEAD `d1234e6`); `git grep -n -I -i -E 'credential_type|license_type|professional_role|clinical_role'`; `git grep -l -I -i -E 'discipline' -- '*workflow*' '*registry*' '*service*' '*engine*'`; targeted follow-up reads of the files those searches surfaced.
+Verification commands run this pass (in addition to those listed above): repository-state checks (`git rev-parse --show-toplevel`, `git branch --show-current`, `git rev-parse HEAD`, `git status --short --untracked-files=all`, `git diff --name-status`, `git diff --cached --name-status`, `git ls-files --unmerged` — all clean, HEAD `c599cce`); `git grep -n -I -F 'complete_sfv_requirement_from_visit'`, `'visit_discipline'`, `'hope_phase_b_engine'`, `'rnica_hope_workflow_service'`; `git grep -n -I -F 'ck_discipline_valid'`, `'ClinicalNote'`; `git grep -n -I -F 'WORKFLOW_TRIGGER_REGISTRY'`, `'clinical_workflow_master'`, `'ClinicalWorkflowMap'`; `git grep -n -F 'ClinicalWorkflowMap('` (constructor/row-creation search — 0 hits outside the class definition); `git grep -n -F 'resolve_workflow('` (0 call sites anywhere in the repository beyond its own definition); `git log --all --oneline -- backend/clinical_workflow_master.yaml`; targeted follow-up reads of every file those searches surfaced.
 
-| Candidate Source | Definition | Production Importers | Production Callers | Runtime Readers | Frontend Consumers | Database Usage | Classification | Canonical Eligibility |
-|---|---|---:|---:|---:|---:|---:|---|---|
-| `app/domain/forms/enums.py::Discipline` | Verified (`enums.py:39`) | 0 verified | 0 verified | 0 verified | Matching vocabulary only, not consumed | Not established | `EMPTY_OR_UNUSED_SOURCE` | `REJECTED_PENDING_RUNTIME_CONSUMER` |
-| Frontend discipline vocabulary in `StaffAssignment.jsx` | Verified | N/A | Active frontend UI use (staff-assignment picker) | N/A | Verified candidate, mirrors `app/models/enums.py::Discipline` | N/A | `FRONTEND_PRESENTATION_SOURCE` | `NOT_BACKEND_AUTHORITY` |
-| Runtime discipline source used by authentication | No discipline reference found in `backend/app/api/auth.py` or any `core/auth*.py`/`services/auth*.py` file | 0 (not applicable) | 0 (not applicable) | 0 (not applicable) | N/A | N/A | `NOT_APPLICABLE` — authentication is role-based (`User.role`), not discipline-based | `NOT_A_CANDIDATE` |
-| Runtime discipline source used by credentials | `User.discipline` (`backend/app/models/user.py:113`), free-text `Column(String(50), nullable=True)` — no enum binding, no CHECK constraint found | Read by `patient_assignment_service.py:188` (`"staff_discipline": getattr(staff_user, "discipline", None)`) | Same | Consumed by `api/patient_assignments.py`, `api/patient_charts.py` (via `patient_assignment_service.py`) | `staff_discipline` field surfaces in `StaffAssignment.jsx` and `patientAssignments.ts` | Free-text column, unconstrained at DB layer | `VERIFIED_BUT_UNTYPED` | `PARTIAL — no enum enforcement at the credential source itself` |
-| Runtime discipline source used by visit assignments | `PatientAssignment.discipline` (`backend/app/models/patient_assignment.py`) — `SQLAEnum(Discipline, name="assignment_discipline_enum", create_constraint=False, create_type=False)`, directly bound to `app.models.enums.Discipline` | `patient_assignment_service.py` | `list_patient_assignments()` and related functions | `api/patient_assignments.py`, `api/patient_charts.py` | `StaffAssignment.jsx` | SQLAlchemy-level `Enum` type bound to `app.models.enums.Discipline`, but `create_constraint=False`/`create_type=False` means **no native Postgres CHECK/ENUM type is actually created** — enforcement is Python-ORM-layer only | `VERIFIED` — the only column with any type-level binding to `app.models.enums.Discipline` | `STRONGEST CANDIDATE FOR THIS DOMAIN ONLY — not repository-wide` |
-| Runtime discipline source used by clinical-note creation | `ClinicalNote.discipline` (`backend/app/models/clinical_note.py`), free-text `Column(String(10), nullable=False)` **with a database-level `CheckConstraint` (`ck_discipline_valid`)**: `discipline IN ('RN','LVN','NP','PA','MD','SC','MSW','LCSW','BSW','SW','CHAPLAIN','AIDE','CHHA','ADMINISTRATIVE')` | `clinical_note_service.py` (multiple sites: lines 257, 264, 444, 577, 651, 1041) | Same | `clinical_note_service.py` finalize/validation logic (e.g., BSW-countersign rule at model level) | Not traced this pass | **CORRECTION to the Phase 1 inventory merged in PR #132**: that pass stated "no database column anywhere uses a native SQL enum/check-constraint for discipline." This is **incorrect** — `ck_discipline_valid` is a real, active Postgres `CHECK` constraint. Its vocabulary (14 values, includes `ADMINISTRATIVE`, **excludes `LPN` entirely**) is a **16th independent discipline vocabulary**, disagreeing with every enum/normalizer identified so far. | `CONFLICTING_SSOT` — new, previously unreported |
-| Runtime discipline source used by RNICA | `resolve_form_package()` (`form_resolution_service.py:92`, the confirmed active runtime normalizer) reads a `discipline` argument passed in from callers (`visits.py`, `clinical_note_service.py`) — ultimately traced back to `Visit.visit_discipline` / `ClinicalNote.discipline`, both free text | See above | Same | Same | `RNICA.jsx` renders its own local discipline picker (`DEFAULT_VISIT_DISCIPLINES`, line 321; Finalization POC discipline `FormSelect` at line ~4282 with options `["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]` — a **17th, UI-only vocabulary that collapses LVN/LPN into a single option**, not traced against any backend enum) | Not a single column; RNICA reads/writes multiple free-text discipline fields depending on context | `CONFLICTING_SSOT` | `UNRESOLVED` |
-| Runtime discipline source used by HOPE/SFV | **`Visit.visit_discipline`** (`backend/app/models/visit.py:99`, free-text `Column(String(32), nullable=True, index=True)`, no enum/CHECK constraint) feeds `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()` via `backend/app/api/visits.py:3868-3889` (`_maybe_complete_open_sfv_for_visit()` → `_run_phase_b_finalize_hooks()`) — **confirmed the actual, only executed runtime SFV-completion path** | `api/visits.py` | `complete_sfv_requirement_from_visit()`, `hope_phase_b_engine.py:396-422` | Confirmed live via `_run_phase_b_finalize_hooks` | Not traced this pass | Free-text, unconstrained | `VERIFIED — ACTIVE RUNTIME PATH FOR THIS DOMAIN ONLY` | `STRONGEST CANDIDATE FOR HOPE/SFV DOMAIN ONLY — not repository-wide, and not enum-typed` |
-| **New finding — dead parallel SFV module** | `backend/app/services/sfv_completion.py::complete_open_sfv_for_visit()`, with its own `ELIGIBLE_SFV_COMPLETION_DISCIPLINES = {"RN", "LVN"}` (no LPN) | 0 verified — confirmed via `git grep -n -F 'from app.services.sfv_completion'` / `'services.sfv_completion'` / `'services import sfv_completion'`, all zero matches | 0 verified — the similarly-named `_maybe_complete_open_sfv_for_visit()` in `visits.py` calls `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()`, **not** this module; confirmed by reading `visits.py:3868-3889` directly | 0 | N/A | N/A | `EMPTY_OR_UNUSED_SOURCE` — a second, entirely dead module with its own conflicting (but inert) SFV-discipline rule | `REJECTED_PENDING_RUNTIME_CONSUMER` |
-| **New finding — dead discipline-mapping service** | `backend/app/services/clinical_discipline_mapping.py::DISCIPLINE_TO_PRIMARY_CATEGORY` / `resolve_primary_note_category()` | 0 verified — confirmed via `git grep -n -F 'clinical_discipline_mapping'`, only self-reference in its own file | 0 verified | 0 | N/A | N/A | `EMPTY_OR_UNUSED_SOURCE` | `REJECTED_PENDING_RUNTIME_CONSUMER` |
-| Additional `Discipline`-adjacent enum: `TaskDiscipline` | `backend/app/models/enums.py:120`, `class TaskDiscipline(str, enum.Enum)` — separate from `Discipline` at line 170 | `api/patients.py`, `domain/forms/form_registry.py`, `models/task.py`, `services/admission/admission_task_generation_service.py` | Active — bound to `Task.discipline` via `SAEnum(TaskDiscipline, create_type=False)` (`models/task.py:109-110`) | Active, task-routing/note-family-mapping logic in `form_registry.py:290-303` | Not traced this pass | SQLAlchemy `Enum` type bound to `TaskDiscipline`, `create_type=False` (no native Postgres type) | `VERIFIED — ACTIVE, but a DIFFERENT enum than `Discipline`** | `DUPLICATE_SSOT — a third confirmed enum class, task-domain-scoped` |
-| `normalize_discipline` implementations (7 total) | See "Discipline normalization functions" table above (unchanged from prior amendments) | Varies per function | Varies per function | Varies per function | N/A | N/A | `DUPLICATE_SSOT` (confirmed, unchanged) | `PENDING — no single normalizer covers all domains` |
-| **New finding — `CLINICAL_ROLES` RBAC-role vocabulary** | Local `CLINICAL_ROLES` list literals (e.g. `["LVN","RN","NP","PA","MD","MEDICAL_DIRECTOR","ATTENDING_PHYSICIAN","HOSPICE_PHYSICIAN"]`, values vary by file) duplicated in ~10 API route files: `api/benefits.py`, `api/certifications.py`, `api/f2f.py`, `api/fax.py`, `api/idg/router.py`, `api/lab_catalog.py`, `api/order_templates.py`, `api/patient_orders.py`, `api/physician_orders.py`, plus others not exhaustively enumerated this pass | Each file defines and uses its own local list — not imported from a shared module (confirmed via `git grep -n -F 'CLINICAL_ROLES'`: no shared-module definition found, each occurrence is a local literal) | Feeds `require_roles(CLINICAL_ROLES)` / equivalent FastAPI dependency checks for endpoint authorization | Active — gates API access | Not traced this pass | N/A — authorization check, not a stored column | `DUPLICATE_SSOT` — an 18th independent discipline/role-adjacent vocabulary, RBAC-scoped rather than clinical-eligibility-scoped, not previously catalogued | `NOT_A_CANDIDATE` — this is an authorization role list, not a discipline source, but its per-file duplication and value drift from every `Discipline` enum should be tracked as a related, unresolved consolidation risk |
+| Candidate Source | Verified Role | Consumers or Enforcement | Classification | Disposition |
+|---|---|---|---|---|
+| `app/domain/forms/enums.py::Discipline` | Defined and package-exported | No verified production consumer | `EMPTY_OR_UNUSED_SOURCE` | `KEEP_PENDING_MAP_C03_RESOLUTION` |
+| `Visit.visit_discipline` | Runtime visit-discipline input (`backend/app/models/visit.py:99`, free-text `String(32)`, no enum/CHECK constraint) | Feeds active SFV processing path | `ACTIVE_RUNTIME_INPUT` | Preserve |
+| `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()` | Active SFV completion path (`backend/app/services/hope_phase_b_engine.py:397`) | Called from `backend/app/api/visits.py:3885`; uses `visit.visit_discipline` at runtime | `ACTIVE_RUNTIME_AUTHORITY` | Preserve pending MAP-C02 |
+| `rnica_hope_workflow_service.py` | HOPE lifecycle service (`backend/app/services/rnica_hope_workflow_service.py`) | Active lifecycle execution path — imported at `backend/app/api/visits.py:83`, invoked at 12+ call sites (`current_metadata`, `sync_submission_fields_from_form_data`, `apply_close`, `apply_ready_to_export`, `apply_export_to_batch`, `apply_submission_update`, `apply_inactivation`, `apply_unlock`, `HopeWorkflowError`) | `ACTIVE_LIFECYCLE_AUTHORITY` | Preserve |
+| `WORKFLOW_TRIGGER_REGISTRY` | Registry discipline rule (`backend/app/domain/forms/form_registry.py:912`), e.g. `TRIGGER_HUV1`/`TRIGGER_HUV2` entries carry `"allowed_disciplines": {"RN"}` | Active registry consumers within `form_registry.py` (lines 1017, 1062, 1082, 1093) require exact mapping | `ACTIVE_REGISTRY_AUTHORITY` | Preserve pending MAP-C02 |
+| `clinical_workflow_master.yaml` | Conflicting workflow vocabulary (file confirmed present at `backend/clinical_workflow_master.yaml`, tracked since `4ba6a9a`) | No verified code reader — confirmed via `git grep -n -I -F 'clinical_workflow_master.yaml'`: the only match is a static listing in `backend/_inventory_files.txt`; no `open()`/`yaml.load()`/import reference anywhere in application code | `DEPRECATE_CANDIDATE` | Do not delete before MAP-C02 |
+| `ClinicalWorkflowMap` | Database model and table (`backend/app/models/clinical_workflow_map.py:9`, registered `models/__init__.py:132`) | Queried by `workflow_resolver.py::resolve_workflow()`, but that function has **0 call sites anywhere in the repository** beyond its own definition (imported once, unused, at `clinical_note_service.py:21`); `git grep -n -F 'ClinicalWorkflowMap('` (row construction) returns 0 hits outside the class definition — confirmed unpopulated, consistent with the explicit code comments at `workflow_validation.py:12` and `clinical_note_service.py:268-269` ("ClinicalWorkflowMap is currently not populated") | `EMPTY_OR_UNUSED_SOURCE` | Separate database disposition required |
+| `ClinicalNote.discipline` | Database-enforced clinical-note vocabulary (`backend/app/models/clinical_note.py`, `Column(String(10), nullable=False)`) | PostgreSQL constraint `ck_discipline_valid` — `discipline IN ('RN','LVN','NP','PA','MD','SC','MSW','LCSW','BSW','SW','CHAPLAIN','AIDE','CHHA','ADMINISTRATIVE')` | `ACTIVE_DATABASE_AUTHORITY` | Preserve and reconcile |
+| `sfv_completion.py` | Conflicting SFV discipline set (`ELIGIBLE_SFV_COMPLETION_DISCIPLINES = {"RN", "LVN"}`, no LPN) | No verified importers or callers — confirmed via `git grep -n -F 'from app.services.sfv_completion'` / `'services.sfv_completion'` / `'services import sfv_completion'`, all zero matches | `UNUSED_CANDIDATE` | Do not delete before MAP-C02 review |
+| `clinical_discipline_mapping.py` | Discipline-mapping service (`DISCIPLINE_TO_PRIMARY_CATEGORY`, `resolve_primary_note_category()`) | No verified consumers — confirmed via `git grep -n -F 'clinical_discipline_mapping'`, only self-reference in its own file | `UNUSED_CANDIDATE` | Do not delete before MAP-C03 review |
+| `TaskDiscipline` | Separate task vocabulary (`backend/app/models/enums.py:120`, distinct from `Discipline` at line 170) | Runtime consumers exist (`api/patients.py`, `domain/forms/form_registry.py`, `models/task.py`, `services/admission/admission_task_generation_service.py`), but reconciliation with the credential/eligibility `Discipline` vocabulary requires completion of mapping | `DISTINCT_DISCIPLINE_CONSTRUCT` | Preserve pending mapping |
+| `CLINICAL_ROLES` | RBAC vocabulary (local list literals, e.g. `["LVN","RN","NP","PA","MD","MEDICAL_DIRECTOR","ATTENDING_PHYSICIAN","HOSPICE_PHYSICIAN"]`, values vary by file) | Duplicated across ~10 API route files (`api/benefits.py`, `api/certifications.py`, `api/f2f.py`, `api/fax.py`, `api/idg/router.py`, `api/lab_catalog.py`, `api/order_templates.py`, `api/patient_orders.py`, `api/physician_orders.py`, and others not exhaustively enumerated) | `DUPLICATE_RBAC_VOCABULARY` | Inventory active consumers |
+| `RNICA.jsx` discipline vocabulary | Frontend-local vocabulary (`DEFAULT_VISIT_DISCIPLINES`, and a Finalization POC discipline `FormSelect` with options `["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]`, which collapses LVN/LPN into a single option) | Presentation and selection behavior only; not traced against any backend enum this pass | `FRONTEND_LOCAL_VOCABULARY` | Reconcile with backend |
+| Authentication discipline source | Not fully established — no discipline reference found in `backend/app/api/auth.py` or any `core/auth*.py`/`services/auth*.py` file; authentication is role-based (`User.role`), not discipline-based | User identity path remains unresolved for discipline purposes | `UNRESOLVED` | Continue mapping |
+| Credential discipline source | Not fully established — `User.discipline` (`backend/app/models/user.py:113`) is free-text, no enum binding, no CHECK constraint | Credential ownership remains unresolved; read only by `patient_assignment_service.py:188` (`staff_discipline`) | `UNRESOLVED` | Continue mapping |
+| Visit-assignment discipline source | Partially established — `PatientAssignment.discipline` is `SQLAEnum(Discipline, name="assignment_discipline_enum", create_constraint=False, create_type=False)`, ORM-bound to `app.models.enums.Discipline` | Consumed via `patient_assignment_service.py`, `api/patient_assignments.py`, `api/patient_charts.py`; `Visit.visit_discipline` (the actual HOPE/SFV field) verified separately above | `PARTIALLY_VERIFIED` | Complete mapping |
 
-### Canonical Authority Selection Requirements — checked against this pass's evidence
-
-- [x] Active production importers exist — **for individual domains** (`PatientAssignment.discipline` → `app.models.enums.Discipline`; `Visit.visit_discipline` → free text), **not for a single repository-wide symbol**
-- [x] Active production callers exist — same caveat
-- [x] Runtime execution path is verified — for `PatientAssignment` (assignment domain) and `Visit.visit_discipline`→`hope_phase_b_engine.py` (HOPE/SFV domain) **separately**, not unified
-- [ ] Authentication ownership is identified — **not applicable**; authentication does not consult discipline
-- [ ] Credential ownership is identified — `User.discipline` exists but is **free text, no enum binding**
-- [ ] Employee or contractor ownership is identified — not traced this pass
-- [x] Visit-assignment usage is identified — `PatientAssignment.discipline`, SQLAEnum-bound to `app.models.enums.Discipline`
-- [x] Clinical-note usage is identified — `ClinicalNote.discipline`, free text with its **own, 16th, conflicting** `CHECK` constraint vocabulary
-- [ ] RNICA usage is identified — multiple free-text fields plus a distinct frontend-only 17th vocabulary; **no single RNICA discipline source found**
-- [x] HOPE/SFV usage is identified — `Visit.visit_discipline` → `hope_phase_b_engine.py`, confirmed the sole active runtime path, but this column is untyped free text, not bound to any enum
-- [ ] Database representation is identified — **fragmented**: `PatientAssignment.discipline` is SQLAEnum-bound to `app.models.enums.Discipline`; `ClinicalNote.discipline` has its own independent `CHECK` constraint; `Visit.visit_discipline`, `User.discipline`, and most other columns are unconstrained free text
-- [ ] API representation is identified — not exhaustively traced this pass
-- [ ] Frontend representation is identified — `StaffAssignment.jsx` mirrors `app.models.enums.Discipline`; `RNICA.jsx` uses its own, different, LVN/LPN-collapsing vocabulary — **not consistent across the frontend**
-- [ ] Alias behavior is identified — 3 alias dicts identified, still disagree with each other (unchanged from prior amendments)
-- [x] RN, LVN, and LPN behavior is explicit — but **differs by domain**: `app.models.enums.Discipline` and `hope_phase_b_engine.py` keep all three distinct; `ClinicalNote`'s `CHECK` constraint has no LPN at all; `sfv_completion.py` (dead) also lacks LPN
-- [ ] Tests cover active behavior — partial (5 test files for `app.models.enums.Discipline`; no tests found directly exercising `ClinicalNote.discipline`'s `CHECK` constraint, `Visit.visit_discipline`, or RNICA's frontend vocabulary)
-- [x] Competing sources are documented — this table
-- [ ] Engineering review is recorded — **NOT RECORDED**
-- [ ] Clinical review is recorded — **NOT RECORDED**
-- [ ] Compliance review is recorded — **NOT RECORDED**
+### Corrected Database-Enforcement Finding
 
 ```text
-CANONICAL DISCIPLINE AUTHORITY:
-UNRESOLVED
+Previous Finding:
+No database-level discipline enforcement exists.
+
+Correction:
+ClinicalNote.discipline is protected by PostgreSQL CHECK constraint
+ck_discipline_valid.
+
+Verified Impact:
+The constraint defines an independent discipline vocabulary.
+
+Conflict:
+The database constraint includes ADMINISTRATIVE and excludes LPN,
+which conflicts with other runtime, registry, frontend, credential,
+task, and HOPE/SFV vocabularies.
+
+Classification:
+CONFLICTING_SSOT
+
+Resolution:
+BLOCKED_PENDING_MAP_C03
+
+Status:
+SUPERSEDED_BY_PR_134
 ```
 
-No single existing source satisfies all applicable criteria across every domain. `app.models.enums.Discipline` is the strongest candidate for the visit-assignment domain specifically (real SQLAlchemy-level type binding via `PatientAssignment.discipline`), and `hope_phase_b_engine.py`'s normalization behavior is the strongest candidate for the HOPE/SFV domain specifically — but neither is bound to `Visit.visit_discipline`, `ClinicalNote.discipline` (which has its own independent, conflicting `CHECK` constraint), `User.discipline`, or RNICA's frontend vocabulary. A new enum or normalization source must **not** be created while this remains unresolved. Engineering, Clinical, and Compliance review remain required and are not recorded in this conversation.
+`ck_discipline_valid` is not modified, dropped, or altered by this PR. No migration is introduced by this PR.
+
+### Expanded MAP-C03 Conflict Set
+
+MAP-C03 previously described a narrower (two-enum) conflict. It is hereby expanded to include every discipline-adjacent construct verified in this PR:
+
+- `app/domain/forms/enums.py::Discipline`
+- `app/models/enums.py::Discipline`
+- `TaskDiscipline`
+- `ClinicalNote.discipline`
+- `ck_discipline_valid`
+- `Visit.visit_discipline`
+- Authentication roles (`User.role`)
+- Credential and license values (`User.discipline`, free text)
+- Employee role or discipline fields (not fully traced)
+- `CLINICAL_ROLES`
+- `RNICA.jsx` discipline vocabulary
+- Other frontend-local discipline vocabularies (41 candidate files, not individually traced)
+- `WORKFLOW_TRIGGER_REGISTRY`
+- `clinical_workflow_master.yaml`
+- SFV runtime discipline rules (`hope_phase_b_engine.py`, `sfv_completion.py` (dead))
+- HOPE runtime discipline rules (`rnica_hope_workflow_service.py`)
+- Every `normalize_discipline` implementation (7 total)
+- Every alias dictionary (3 total)
+- `clinical_discipline_mapping.py`
+
+```text
+MAP-C03:
+EXPANDED_CONFLICT_SET
+
+CANONICAL DISCIPLINE AUTHORITY:
+UNRESOLVED
+
+NORMALIZER CONSOLIDATION:
+BLOCKED
+
+NEW DISCIPLINE ENUM CREATION:
+PROHIBITED
+
+DATABASE CONSTRAINT CHANGES:
+BLOCKED
+
+DEAD-CODE REMOVAL FOR DISCIPLINE SOURCES:
+BLOCKED_PENDING_AUTHORITY_RESOLUTION
+```
+
+MAP-C03 is not a two-enum conflict. It is a repository-wide, multi-layer (enum, ORM-type, database-CHECK-constraint, registry, YAML, service, RBAC-list, and frontend) conflict set, none of whose members has been established as canonical.
+
+### Dead-Code Candidates — Recorded, Not Deleted
+
+#### `sfv_completion.py`
+
+| Evidence | Result |
+|---|---|
+| Definition | `VERIFIED` |
+| Verified production importers | `0` |
+| Verified production callers | `0` |
+| Verified runtime readers | `0` |
+| Conflicting discipline set | `PRESENT` (`ELIGIBLE_SFV_COMPLETION_DISCIPLINES = {"RN", "LVN"}`, no LPN) |
+| Classification | `UNUSED_CANDIDATE` |
+| Deletion status | `BLOCKED_PENDING_MAP_C02` |
+
+Do not delete before MAP-C02 resolves whether any behavior or rule inside this file must be preserved in the canonical implementation.
+
+#### `clinical_discipline_mapping.py`
+
+| Evidence | Result |
+|---|---|
+| Definition | `VERIFIED` |
+| Verified production importers | `0` |
+| Verified production callers | `0` |
+| Verified runtime readers | `0` |
+| Classification | `UNUSED_CANDIDATE` |
+| Deletion status | `BLOCKED_PENDING_MAP_C03` |
+
+Do not delete before MAP-C03 determines whether any alias or mapping inside this file must be preserved in the canonical discipline model.
+
+#### `clinical_workflow_master.yaml`
+
+| Evidence | Result |
+|---|---|
+| Tracked file | `VERIFIED` |
+| Verified code importers | `0` |
+| Verified runtime readers | `0` |
+| Verified test readers | `0` |
+| MAP-C02 participation | `VERIFIED` (referenced only in prior amendment discovery narrative, not by any code path) |
+| Classification | `DEPRECATE_CANDIDATE` |
+| Deletion status | `BLOCKED_PENDING_MAP_C02` |
+
+Do not delete the YAML in this PR.
+
+### Preserved Completed Cleanup Evidence
+
+#### `validate_sfv_safe()`
+
+```text
+PR:
+#133
+
+Final classification:
+REMOVED_AFTER_ZERO_CONSUMER_VERIFICATION
+
+Current action:
+DO_NOT_RECREATE
+```
+
+#### `validate_timepoint_safe()`
+
+```text
+Import:
+clinical_note_service.py:22
+
+Active caller:
+clinical_note_service.py:722
+
+Final classification:
+KEEP_ACTIVE_TECHNICAL_DEBT
+
+Current action:
+DO_NOT_DELETE
+```
+
+These decisions are not reopened in this PR.
+
+### Corrected Findings (Supersession Record)
+
+#### Corrected Finding
+
+**Previous finding:** No database-level discipline enforcement exists anywhere in the repository.
+
+**Correction:** `ClinicalNote.discipline` (`backend/app/models/clinical_note.py`) is enforced by an active PostgreSQL `CHECK` constraint, `ck_discipline_valid`.
+
+**Repository evidence:** `ck_discipline_valid` — `discipline IN ('RN','LVN','NP','PA','MD','SC','MSW','LCSW','BSW','SW','CHAPLAIN','AIDE','CHHA','ADMINISTRATIVE')`.
+
+**Reason:** The prior Phase 1 inventory (PR #132) did not identify this constraint; only free-text/unconstrained columns had been traced at that time.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** Only two discipline enums or constructs exist in the repository (`app/models/enums.py::Discipline` and `app/domain/forms/enums.py::Discipline`).
+
+**Correction:** At least three distinct enum/constraint/registry constructs govern discipline-shaped values: `app/models/enums.py::Discipline`, `app/domain/forms/enums.py::Discipline`, and `TaskDiscipline` (`app/models/enums.py:120`) — plus non-enum constructs (`ck_discipline_valid`, `WORKFLOW_TRIGGER_REGISTRY`, `CLINICAL_ROLES`) that independently constrain or classify discipline-shaped values.
+
+**Repository evidence:** `backend/app/models/enums.py:120` (`TaskDiscipline`), `backend/app/models/enums.py:170` (`Discipline`), `backend/app/domain/forms/enums.py:39` (`Discipline`), `backend/app/models/clinical_note.py` (`ck_discipline_valid`), `backend/app/domain/forms/form_registry.py:912` (`WORKFLOW_TRIGGER_REGISTRY`).
+
+**Reason:** Earlier passes scoped discovery to `class Discipline`/`enum Discipline` pattern matches only, missing differently-named constructs.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** `app/domain/forms/enums.py::Discipline` is the canonical (or strongest-candidate) discipline authority.
+
+**Correction:** `app/domain/forms/enums.py::Discipline` is `EMPTY_OR_UNUSED_SOURCE` with zero verified production importers, callers, or runtime readers. It is not canonical, and no other single source is canonical either — see `CANONICAL DISCIPLINE AUTHORITY: UNRESOLVED` above.
+
+**Repository evidence:** `git grep -n -F 'from app.domain.forms.enums import'`, `git grep -n -F 'domain.forms.enums'`, `git grep -n -F 'from app.domain.forms import'` — all zero hits outside the module's own package re-export.
+
+**Reason:** An earlier draft of this PR implied canonical status from frontend-vocabulary matching, package re-export, and git history; none of these constitute runtime-consumer evidence.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** The discipline-construct inventory omitted `TaskDiscipline`.
+
+**Correction:** `TaskDiscipline` (`backend/app/models/enums.py:120`) is a distinct, actively-used enum bound to `Task.discipline` via `SAEnum(TaskDiscipline, create_type=False)`.
+
+**Repository evidence:** `backend/app/models/task.py:109-110`; consumers in `api/patients.py`, `domain/forms/form_registry.py`, `services/admission/admission_task_generation_service.py`.
+
+**Reason:** Not discovered in prior amendments, which focused on the credential/eligibility `Discipline` enum only.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** The discipline-construct inventory omitted `CLINICAL_ROLES`.
+
+**Correction:** `CLINICAL_ROLES` local list literals, duplicated across ~10 API route files, gate `require_roles()`-style authorization checks and constitute an additional, uncatalogued discipline/role-adjacent vocabulary.
+
+**Repository evidence:** `api/benefits.py`, `api/certifications.py`, `api/f2f.py`, `api/fax.py`, `api/idg/router.py`, `api/lab_catalog.py`, `api/order_templates.py`, `api/patient_orders.py`, `api/physician_orders.py`.
+
+**Reason:** Not discovered in prior amendments, which focused on the `Discipline` enum classes rather than RBAC role lists.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** The frontend discipline-vocabulary inventory omitted `RNICA.jsx`'s own discipline picker.
+
+**Correction:** `RNICA.jsx` defines its own, 17th, LVN/LPN-collapsing discipline vocabulary (`["RN", "LVN/LPN", "MSW", "Chaplain", "HHA", "Volunteer", "Dietitian", "All disciplines"]`), independent of `StaffAssignment.jsx`'s vocabulary.
+
+**Repository evidence:** `sns-emr-frontend/src/components/RNICA.jsx`.
+
+**Reason:** Prior amendments traced `RNICA.jsx` only for an unrelated `FORM_REGISTRY` naming collision, not for its discipline picker.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** The dead-code inventory omitted `sfv_completion.py`.
+
+**Correction:** `backend/app/services/sfv_completion.py::complete_open_sfv_for_visit()` is a fully dead, zero-consumer module carrying its own conflicting (but inert) SFV-discipline rule.
+
+**Repository evidence:** `git grep -n -F 'from app.services.sfv_completion'` / `'services.sfv_completion'` / `'services import sfv_completion'` — all zero matches.
+
+**Reason:** Not previously discovered; this PR's review of `visits.py:3868-3921` surfaced it while confirming the real runtime SFV path.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+#### Corrected Finding
+
+**Previous finding:** The dead-code inventory omitted `clinical_discipline_mapping.py`.
+
+**Correction:** `backend/app/services/clinical_discipline_mapping.py` (`DISCIPLINE_TO_PRIMARY_CATEGORY`, `resolve_primary_note_category()`) is a fully dead, zero-consumer module.
+
+**Repository evidence:** `git grep -n -F 'clinical_discipline_mapping'` — only self-reference in its own file.
+
+**Reason:** Not previously discovered.
+
+**Status:** `SUPERSEDED_BY_PR_134`
+
+## PR #134 Final Merge Checklist
+
+### Evidence Completeness
+
+- [x] Canonical discipline authority is `UNRESOLVED`
+- [x] `app/domain/forms/enums.py::Discipline` is not named canonical
+- [x] Definition and package re-export are documented separately
+- [x] Zero verified production importers are documented
+- [x] Zero verified production callers are documented
+- [x] Zero verified runtime readers are documented
+- [x] `Visit.visit_discipline` is documented
+- [x] `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()` is documented
+- [x] `rnica_hope_workflow_service.py` is documented
+- [x] `WORKFLOW_TRIGGER_REGISTRY` is documented
+- [x] `clinical_workflow_master.yaml` is documented
+- [x] `ClinicalWorkflowMap` is documented
+- [x] `ClinicalNote.discipline` is documented
+- [x] `ck_discipline_valid` is documented
+- [x] `TaskDiscipline` is documented
+- [x] `CLINICAL_ROLES` duplication is documented
+- [x] `RNICA.jsx` local vocabulary is documented
+- [x] `sfv_completion.py` is documented
+- [x] `clinical_discipline_mapping.py` is documented
+- [x] Authentication and credential sources remain `UNRESOLVED`
+- [x] MAP-C03 is documented as an expanded conflict set
+- [x] All stale claims are marked superseded
+
+### Scope
+
+- [x] Only `docs/rnica/evidence/RNICA_REPOSITORY_SOURCE_OF_TRUTH_MAP.md` changed
+- [x] No backend code changed
+- [x] No frontend code changed
+- [x] No schema changed
+- [x] No database constraint changed
+- [x] No migration changed
+- [x] No enum created
+- [x] No enum deleted
+- [x] No normalizer changed
+- [x] No dead-code candidate deleted
+- [x] No workflow changed
+- [x] No clinical behavior changed
+- [x] No production data changed
+
+### Document Integrity
+
+- [x] Runtime-authority table has one header
+- [x] Markdown tables render correctly
+- [x] Code fences are balanced
+- [x] No merge-conflict markers remain
+- [x] No duplicate correction section remains
+- [x] No malformed characters remain
+- [x] PR #132 evidence remains intact
+- [x] PR #133 evidence remains intact
+- [x] Historical corrections remain auditable
+
+### Review
+
+- [ ] Engineering reviewer verifies repository paths and runtime evidence
+- [ ] Compliance reviewer accepts `UNRESOLVED`
+- [ ] Clinical reviewer confirms no discipline authority was selected
+- [x] Documentation-only scope is verified
+- [ ] Required checks pass, or GitHub confirms documentation-only changes do not trigger required checks
+- [ ] PR #134 is mergeable
+
+### Final Decision
+
+```text
+CHANGES_REQUIRED — resolved in this commit; awaiting Engineering/Compliance/Clinical review sign-off above before APPROVED_AFTER_REQUIRED_CORRECTIONS.
+```
+
+> **Note:** An earlier draft of this section (per-domain "Runtime discipline source used by ..." rows, plus a "Canonical Authority Selection Requirements" checklist) has been superseded by, and folded into, the "Runtime Authority Evidence Table" and "Canonical Authority Selection Requirements" content earlier in this document. It has been removed from this location to eliminate the duplicate/orphaned table that resulted from incremental edits; no findings were lost — every row's content is preserved in the earlier table and the `CANONICAL DISCIPLINE AUTHORITY: UNRESOLVED` conclusion recorded above.
 
 ### Decision-Rule Check (informational only — this phase does not implement)
 
