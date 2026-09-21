@@ -1050,3 +1050,75 @@ clinical_workflow_master.yaml: DEPRECATE_CANDIDATE (unchanged, not deleted)
 ClinicalWorkflowMap table: EMPTY_OR_UNUSED_SOURCE (unchanged, not modified)
 MAP-C02 / MAP-C03:       UNRESOLVED — blocked pending Medical Director + Compliance approval
 ```
+
+## Phase 1 (RNICA/HOPE SSOT Resolution Plan): Verify the Canonical Discipline Authority
+
+**Status: verification only — no code created, modified, or deleted in this phase.** Objective: confirm whether `app/models/enums.py::Discipline` can serve as the canonical discipline source without creating a new enum. Re-verified fresh, from a clean worktree off `main` at `b069e8f`, using the exact commands specified for this phase.
+
+### Verification commands run (this pass)
+
+```text
+git status --short --untracked-files=all         → clean
+git rev-parse HEAD                                → b069e8f959069ce9dbf5e32b779366a18acaa7ad
+git grep -n -I -F 'class Discipline' -- .
+git grep -n -I -F 'enum Discipline' -- .
+git grep -n -I -F 'normalize_discipline' -- .
+git grep -n -I -i -e 'Registered Nurse' -e 'Licensed Vocational Nurse' -e 'Licensed Practical Nurse' -- .
+git grep -c -I -w 'Discipline' -- .
+git ls-files --error-unmatch 'backend/app/models/enums.py'
+git log --all --follow --oneline -- 'backend/app/models/enums.py'
+git grep -l -I -i -w 'discipline' -- '*.js' '*.jsx' '*.ts' '*.tsx'
+git grep -l -I -w -e 'LVN' -e 'LPN' -- '*.js' '*.jsx' '*.ts' '*.tsx'
+git grep -n -I -e 'normalize_discipline' -w -e 'Discipline' -e 'LVN' -e 'LPN' -- '*test*' '*tests*' '*spec*'
+```
+
+### Required Evidence
+
+| Source | Path | Values | Importers | Callers | Tests | Classification |
+|---|---|---|---|---|---|---|
+| `Discipline(str, enum.Enum)` | `backend/app/models/enums.py:170` | MD, DO, MEDICAL_DIRECTOR, ATTENDING_PHYSICIAN, NP, PA, RN, LVN, LPN, CHHA, AIDE, SW, MSW, BSW, LCSW, SC, CHAPLAIN, ADMIN, CASE_MANAGER | 9 files: `api/patient_charts.py`, `models/patient_assignment.py`, `services/patient_assignment_service.py`, `scripts/seed_user_patient_assignments.py`, plus 5 backend test files | Instantiated directly as assignment/discipline values across the same 9 files | 5 test files reference it directly (`test_idg_batch_sign_authorization.py`, `test_patient_assignments_api.py`, `test_physician_identity_mapping.py`, `test_visit_note_supervisory_workflow.py`, `test_visit_staff_picker_and_edit_history.py`) | `VERIFIED` — `ACTIVE`, richest membership, has real test coverage |
+| `Discipline(str, Enum)` | `backend/app/domain/forms/enums.py:39` | RN, LVN, NP, MD, SOCIAL_WORK, CHAPLAIN, HHA — no LPN member | **0** — re-exported in `backend/app/domain/forms/__init__.py:1,7` (`from .enums import ... Discipline`, `__all__` includes `"Discipline"`) but confirmed via `git grep -n -F 'from app.domain.forms.enums import'`, `git grep -n -F 'domain.forms.enums'`, and `git grep -n -F 'from app.domain.forms import'` that **no other module anywhere imports this class**, directly or via the package re-export | 0 | 0 | `NEW FINDING — DEAD_OR_UNUSED`. Previously classified only as "narrower subset" / an alias; this pass confirms it has **zero real consumers** anywhere in the repository. It is not merely a duplicate SSOT — it is unreferenced dead code. |
+| `normalize_discipline()` | `backend/app/models/enums.py:162` | Collapses `LVN`+`LPN` → `RN` via `DISCIPLINE_NORMALIZATION_MAP` | Callers within `models/` domain | Active | Not directly unit-tested by name | `VERIFIED` — active, but conflicting normalization behavior vs. rows below |
+| `normalize_discipline()` | `backend/app/domain/forms/form_registry.py:259` | `DISCIPLINE_ALIASES`: `"LPN"→"LVN"`, keeps `LVN` distinct from `RN` | Internal to `form_registry.py` (6 call sites: lines 856, 990, 1031, 1037, 1046, 1058) | Active | Not directly unit-tested by name | `VERIFIED` — active, disagrees with `models/enums.py` version |
+| `normalize_discipline()` | `backend/app/domain/forms/form_resolution_service.py:92` | `DISCIPLINE_ALIASES`: no LPN/LVN key at all (passthrough) | `resolve_form_package()` — imported by `visits.py`, `clinical_note_service.py`, `domain/forms/__init__.py` | **Active, real runtime path** (3 call sites: lines 248, 348, 390) | Not directly unit-tested by name | `VERIFIED` — active runtime path, disagrees with both prior rows |
+| `_normalize_discipline()` | `backend/app/services/hope_phase_b_engine.py:82` | Keeps `RN`/`LVN`/`LPN` fully distinct | Internal (2 call sites: lines 165, 421) | **Active — the actual SFV-eligibility runtime path** | Not directly unit-tested by name (SFV/J2053-specific tests not found referencing this function directly) | `VERIFIED` — active, is the CMS-J2053-matching implementation |
+| `_normalize_discipline()` | `backend/app/api/routes/forms.py:57` | Independent, local | 1 caller (line 74) | Active, narrow scope | Not directly unit-tested by name | `VERIFIED` — active, single-use, low risk |
+| `_normalize_discipline()` | `backend/app/services/idg_signature_validation.py:21` | Independent | Feeds `validate_required_signatures()` (line 70), imported by `idg_finalize.py` | Active | Not directly unit-tested by name | `VERIFIED` — active, IDG-signature-specific scope |
+| `_normalize_discipline_set()` | `backend/app/services/tenant_settings_service.py:159` | Set-based variant | 2 internal call sites (lines 219, 234) | Active | Not directly unit-tested by name | `VERIFIED` — active, settings-scope only |
+| Visit-type "REGISTERED NURSE"→"RN" maps | `backend/app/core/visit_type_normalizer.py:28`, `backend/app/core/visit_types.py:70` | Full-name-to-code mapping for visit types, not a discipline enum | Visit-type resolution paths | Active | Not traced in this pass | `NEW FINDING — UNRESOLVED`. Adjacent to, but distinct in purpose from, the discipline vocabulary; not previously enumerated among the 12 discipline constructs. Flagged for a future pass, not resolved here. |
+| Display-label dict | `backend/app/services/evidence/note_draft_service.py:369-371` | `{"RN": "Registered Nurse", "LVN": "Licensed Vocational Nurse", "LPN": "Licensed Practical Nurse"}` | Internal, display/narrative text only | Active | Not traced in this pass | `NEW FINDING — LOW_RISK`. Display-label-only mapping, not an eligibility or normalization authority. Noted for completeness, not a competing SSOT. |
+| Frontend `DISCIPLINE_GROUPS`/`DISCIPLINE_LABELS` | `sns-emr-frontend/src/intake/StaffAssignment.jsx` | Mirrors `app/models/enums.py::Discipline` almost exactly | Staff-assignment UI | Active | Not traced in this pass | `VERIFIED` — strongest frontend evidence in favor of `app/models/enums.py::Discipline` as canonical |
+| Frontend `FORM_REGISTRY` (unrelated name collision, not discipline) | `sns-emr-frontend/src/components/RNICA.jsx:242` | N/A — prior finding, not discipline-related; listed here only because `RNICA.jsx` also appears in the LVN/LPN word-bounded file list below | N/A | N/A | N/A | Not a discipline source — excluded from this table's conclusions |
+
+### Additional files matching word-bounded `discipline`/`LVN`/`LPN` in frontend (not exhaustively traced this pass)
+
+`git grep -l -I -i -w 'discipline'` (backend excluded) returned 41 frontend files; `git grep -l -I -w -e 'LVN' -e 'LPN'` returned 17 frontend files. Beyond `StaffAssignment.jsx` and `RNICA.jsx` (already traced in prior amendments), the remaining files were not individually re-verified in this pass — recorded as `UNRESOLVED` scope for a future dedicated frontend-consumer pass, not asserted as either consistent or conflicting.
+
+### Decision-Rule Check (informational only — this phase does not implement)
+
+```text
+Preserve RN/LVN/LPN as distinct credential values:          app/models/enums.py::Discipline satisfies this (has all three); app/domain/forms/enums.py::Discipline does not (no LPN)
+Support aliases without rewriting original credential:      Not yet designed — deferred to Phase 2
+Avoid creating another enum:                                 Satisfied by this phase (no new enum created)
+Avoid changing stored values without a separate review:      Satisfied — no stored value was changed in this phase
+Identify every frontend and backend consumer:                PARTIAL — backend fully enumerated (12 constructs); frontend only StaffAssignment.jsx and RNICA.jsx individually traced, 41 additional files unresolved
+Identify every conflicting normalizer:                        7 normalizer functions identified, at least 3 confirmed behavioral disagreements on LVN/LPN handling (models/enums.py collapses to RN; form_registry.py collapses LPN into LVN; form_resolution_service.py and hope_phase_b_engine.py keep all three distinct)
+```
+
+### Phase 1 (this pass) Acceptance Status
+
+```text
+Every discipline enum identified:                 YES (2: app/models/enums.py::Discipline — ACTIVE; app/domain/forms/enums.py::Discipline — DEAD_OR_UNUSED, new finding this pass)
+Every discipline normalizer identified:            YES (7 functions, unchanged from prior amendments)
+Every alias dictionary identified:                 YES (3, unchanged from prior amendments)
+Backend consumers identified:                      YES for enums/normalizers; PARTIAL for API/auth-profile schema fields (unchanged limitation from Phase 1 inventory)
+Frontend consumers identified:                     PARTIAL — 2 of ~41-58 candidate files individually traced
+Database representations identified:                YES (from prior Phase 1 inventory — all free-text String columns, no native enum/check-constraint)
+API representations identified:                     NO — not traced this pass
+Tests and fixtures identified:                      PARTIAL — 5 backend test files confirmed using app/models/enums.py::Discipline; no test found for app/domain/forms/enums.py::Discipline (consistent with its zero-consumer finding)
+Canonical candidate approved by Engineering:        NOT RECORDED
+Workflow implications approved by Clinical and Compliance: NOT RECORDED
+No code deletion in this phase:                     TRUE — confirmed, no code was created, modified, or deleted
+```
+
+**Conclusion (verification only, not a decision):** `app/models/enums.py::Discipline` remains the strongest — and now, with the new zero-consumer finding for `app/domain/forms/enums.py::Discipline`, the only actively-used — existing `Discipline` enum class. No new enum was created. Per the plan's own acceptance criteria, Phase 2 (normalizer consolidation) and Phase 3 (MAP-C02 resolution) remain blocked pending recorded Engineering approval of the canonical candidate and recorded Clinical/Compliance approval of workflow implications — neither has occurred in this conversation.
