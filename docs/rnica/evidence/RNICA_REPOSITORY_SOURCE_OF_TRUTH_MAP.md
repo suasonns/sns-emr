@@ -968,3 +968,47 @@ TABLES POPULATED:                       NO
 FILES DELETED:                          NO
 IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
 ```
+
+## Phase 1 (Discipline SSOT Consolidation Plan): Canonical Discipline Vocabulary Inventory
+
+**Status: documentation only — no code created, modified, or deleted in this phase.** Per the standing execution plan, Phase 1's deliverable is this inventory table; selecting and implementing an actual canonical resolver is deferred to Phase 2/3, which additionally require recorded Medical Director/Compliance approval before any code change to discipline-eligibility behavior is made.
+
+### Inventory: All Known Discipline Sources, Consumers, and Runtime Use
+
+| Current Source | Values | Consumers | Runtime Use | Canonical / Alias / Deprecated (recommendation only, not applied) |
+|---|---|---|---|---|
+| `app/models/enums.py::Discipline` (enum) | MD, DO, MEDICAL_DIRECTOR, ATTENDING_PHYSICIAN, NP, PA, RN, LVN, **LPN**, CHHA, AIDE, SW, MSW, BSW, LCSW, SC, CHAPLAIN, ADMIN, CASE_MANAGER | Widest membership of the two enum classes; mirrored almost 1:1 by frontend `StaffAssignment.jsx::DISCIPLINE_GROUPS`/`DISCIPLINE_LABELS` | Application-layer validation/typing only — **no database column anywhere uses a native SQL enum type for discipline** (see DB row below) | **Candidate canonical** — most complete membership, already has a matching frontend mirror |
+| `app/domain/forms/enums.py::Discipline` (enum) | RN, LVN, NP, MD, SOCIAL_WORK, CHAPLAIN, HHA — **no LPN member** | `form_registry.py`/form-domain code | Application-layer only | Alias/narrower subset — cannot represent LPN, a functional gap versus the above |
+| `app/models/enums.py::normalize_discipline` (function) | Uses `DISCIPLINE_NORMALIZATION_MAP`; collapses LVN+LPN → RN | Callers within `models/` domain | Active | Candidate canonical normalizer (but its LVN/LPN→RN collapse must be reconciled with MAP-C02's requirement to keep LVN/LPN distinct for SFV eligibility — flagged, not resolved here) |
+| `form_registry.py::normalize_discipline` + `DISCIPLINE_ALIASES` | Maps LPN→LVN, keeps LVN distinct from RN | Internal to `form_registry.py` | Active (via internal callers of `normalize_form_type`/config lookups) | Alias — disagrees with `models/enums.py` version |
+| `form_resolution_service.py::normalize_discipline` + its own `DISCIPLINE_ALIASES` | No LPN/LVN key at all (passthrough) | `resolve_form_package()` — actively imported by `visits.py`, `clinical_note_service.py`, `domain/forms/__init__.py` | **Active, real runtime path** | Alias — disagrees with both prior implementations |
+| `hope_phase_b_engine.py::_normalize_discipline` | Keeps RN/LVN/LPN fully distinct | Internal to `complete_sfv_requirement_from_visit()` and related HOPE Phase-B functions | **Active — this is the actual SFV-eligibility runtime path (see MAP-C02)** | Alias — the only implementation whose behavior matches the CMS J2053 RN-or-LPN/LVN rule as-is |
+| `routes/forms.py::_normalize_discipline` | Independent, local, 1 caller (line 74) | `routes/forms.py` only | Active, narrow scope | Alias — single-use, low risk |
+| `idg_signature_validation.py::_normalize_discipline` | Independent | Feeds `validate_required_signatures()`, imported by `idg_finalize.py` | Active | Alias — IDG-signature-specific scope, not general discipline eligibility |
+| `tenant_settings_service.py::_normalize_discipline_set` | Set-based variant | Internal to tenant-settings resolution | Active | Alias — settings-scope only |
+| `form_registry.py::DISCIPLINE_ALIASES` (dict) | LPN→LVN | Used by `form_registry.py::normalize_discipline` | Active | Alias source, disagrees with `form_resolution_service.py`'s dict of the same name |
+| `form_resolution_service.py::DISCIPLINE_ALIASES` (dict) | No LPN/LVN key | Used by `form_resolution_service.py::normalize_discipline` | **Active, real runtime path** (via `resolve_form_package`) | Alias source |
+| `patient_assignment_service.py::_PROFILE_DISCIPLINE_ALIASES` (dict) | Independent mapping | Used only within `patient_assignment_service.py:87` | Active, narrow scope | Alias — profile-assignment-specific |
+| **Database columns** (`assessment.py:41`, `clinical_note.py:64`, `bereavement_assessment.py:64`, `cc_hourly_narrative_entry.py:30`, `form_registry_model.py:24`, `clinical_workflow_map.py:14`, `admission_action_request.py:85`, `idg_attendee.py:67`, and others) | Every discipline-bearing column is a free-text `Column(String(N))` | Each table's own ORM model | **No native SQL enum/check-constraint enforces membership at the database layer anywhere** — the database currently accepts any string in these columns | Not a source of truth — a gap. Any canonical resolution effort must also decide whether/how to add DB-level enforcement (schema change, out of scope for this phase) |
+| **Frontend**: `sns-emr-frontend/src/intake/StaffAssignment.jsx::DISCIPLINE_GROUPS`/`DISCIPLINE_LABELS` | Mirrors `app/models/enums.py::Discipline` almost exactly (MEDICAL_DIRECTOR, ATTENDING_PHYSICIAN, MD, DO, NP, PA, CASE_MANAGER, RN, MSW, SW, BSW, LCSW, SC, CHAPLAIN, CHHA, AIDE, LVN, LPN) | Staff-assignment UI | Active | Strongest existing frontend evidence in favor of `app/models/enums.py::Discipline` as the canonical candidate |
+| **Frontend**: `RNICA.jsx::VISIT_FREQUENCY_DISCIPLINE_OPTIONS` | Not yet enumerated in this pass | RNICA visit-frequency picker | Active | Not yet reconciled against the two backend enums — flagged `UNRESOLVED` for a future pass |
+
+### API/Visit-Assignment/Auth-Profile Values
+
+Not exhaustively re-traced in this phase beyond what is already captured above (`patient_assignment_service.py`'s profile-token aliasing was the only visit-assignment/auth-profile-specific discipline mapping found in prior passes). A dedicated Phase 1 sub-pass tracing every API request/response schema field would be required to close this row with full evidence; recorded here as `UNRESOLVED` rather than asserted.
+
+### Recommendation (not applied)
+
+Per the evidence above, `app/models/enums.py::Discipline` is the strongest existing candidate for the canonical vocabulary (richest membership, already mirrored by a frontend component), and `hope_phase_b_engine.py::_normalize_discipline`'s RN/LVN/LPN-distinct behavior is the strongest candidate for canonical normalization behavior specifically for SFV/HOPE eligibility (since it is what actually executes and matches the CMS J2053 rule as described). **This is a recommendation for human review, not an implementation decision** — Phase 2 (consolidating normalizers) and Phase 3 (resolving MAP-C02) both require recorded clinical/compliance approval before any of this is implemented, per the standing execution plan's own dependency gates.
+
+### Phase 1 Acceptance Status
+
+```text
+One existing discipline source selected as canonical:     RECOMMENDED (app/models/enums.py::Discipline) — NOT YET APPROVED
+RN/LVN/LPN distinctness preserved in recommendation:       YES
+LPN/LVN equivalence scoped to SFV only in recommendation:  YES (hope_phase_b_engine.py behavior, not a blanket collapse)
+Every consumer identified:                                 PARTIAL — 12 constructs enumerated; API/auth-profile schema fields not exhaustively traced
+New enum created:                                          NO
+Code deleted in this phase:                                NO
+Clinical and compliance approval recorded:                 NOT RECORDED — Phase 2/3 blocked pending this
+```
