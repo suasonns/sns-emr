@@ -1012,3 +1012,41 @@ New enum created:                                          NO
 Code deleted in this phase:                                NO
 Clinical and compliance approval recorded:                 NOT RECORDED — Phase 2/3 blocked pending this
 ```
+
+## Cleanup PR: Removed `validate_sfv_safe()` (Phase 5, Candidate 1)
+
+**This is the first actual code change made against this evidence document's findings.** Per the SSOT resolution plan's own authorization boundary ("Dead-code removal: AUTHORIZED ONLY AFTER ZERO-CONSUMER VERIFICATION"), `validate_sfv_safe()` was removed from `backend/app/services/workflow_validation.py`.
+
+### Verification performed immediately before deletion (this pass)
+
+```text
+$ git grep -n -I -F "validate_sfv_safe" -- .
+backend/app/services/workflow_validation.py:22:def validate_sfv_safe(
+(all other hits are within this evidence document itself)
+
+Definition count:        1
+Import count:            0
+Caller count:            0
+Configuration references: 0
+Test references:         0
+Route references:        0
+API references:          0
+```
+
+All criteria for `SAFE_TO_DELETE_CANDIDATE` were met with zero exceptions. `validate_timepoint_safe()` in the same file was **not** touched — it retains an active caller (`clinical_note_service.py:722`) and remains classified `KEEP` per the same rule.
+
+### What was NOT done
+
+- `clinical_workflow_master.yaml` was **not** deleted — it remains a candidate MAP-C02 source and its removal is explicitly deferred until MAP-C02 is resolved with recorded clinical/compliance approval.
+- No discipline-normalization consolidation (Phase 2) or SFV-authority resolution (Phase 3) was performed — both remain blocked pending recorded Medical Director/Compliance sign-off, which has not occurred in this conversation.
+- No schema or migration changes were made; the empty `ClinicalWorkflowMap` table was left untouched pending a separate, explicitly-approved decision.
+
+### Status
+
+```text
+validate_sfv_safe():     DELETED (this PR)
+validate_timepoint_safe(): KEEP (unchanged)
+clinical_workflow_master.yaml: DEPRECATE_CANDIDATE (unchanged, not deleted)
+ClinicalWorkflowMap table: EMPTY_OR_UNUSED_SOURCE (unchanged, not modified)
+MAP-C02 / MAP-C03:       UNRESOLVED — blocked pending Medical Director + Compliance approval
+```
